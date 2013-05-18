@@ -1,3 +1,6 @@
 [submodule "core"]
 	path = core
 	url = git@github.com:DaMSL/K3-Core.git
+[submodule "driver"]
+	path = driver
+	url = git@github.com:DaMSL/K3-Driver.git
