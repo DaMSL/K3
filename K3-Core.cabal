@@ -15,4 +15,5 @@ library
 
     exposed-modules:
         Language.K3.Core.Annotation,
+        Language.K3.Core.Expression,
         Language.K3.Core.Type
