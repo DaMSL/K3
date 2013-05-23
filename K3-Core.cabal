@@ -10,4 +10,8 @@ library
         src
 
     build-depends:
-        base
+        base,
+        containers
+
+    exposed-modules:
+        Language.K3.Core.Annotation
