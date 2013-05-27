@@ -3,6 +3,8 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Data.Word (Word8)
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Type
 
@@ -29,7 +31,7 @@ data Expression
 data Constant
     = CBool Bool
     | CInt Int
-    | CByte Int
+    | CByte Word8
     | CFloat Float
     | CString String
   deriving (Eq, Read, Show)
