@@ -10,18 +10,18 @@ import Language.K3.Core.Type
 data Expression
     = EConstant Constant
     | EVariable Identifier
-    | EOption
-    | EIndirection
+    | ESome
+    | EIndirect
     | ETuple
     | ERecord [Identifier]
     | EEmpty
     | ELambda Identifier
-    | EOperator Operator
-    | EProjection Identifier
-    | ELet Identifier
+    | EOperate Operator
+    | EProject Identifier
+    | ELetIn Identifier
     | EAssign Identifier
-    | ECase Identifier
-    | EBind Binder
+    | ECaseOf Identifier
+    | EBindAs Binder
     | EIfThenElse
   deriving (Eq, Read, Show)
 
@@ -37,17 +37,17 @@ data Constant
 -- | Binary Operators.
 data Operator
     = OAdd
-    | OSubtract
-    | OMultiply
-    | ODivide
+    | OSub
+    | OMul
+    | ODiv
     | OEqu
     | OLth
     | OLeq
     | OGth
     | OGeq
-    | OSequence
-    | OApply
-    | OSend
+    | OSeq
+    | OApp
+    | OSnd
   deriving (Eq, Read, Show)
 
 -- | Binding Forms.
