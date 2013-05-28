@@ -29,3 +29,20 @@ library
         Language.K3.Core.Constructor.Type,
 
         Language.K3.Parser.Parser
+
+test-suite all
+    type: exitcode-stdio-1.0
+
+    main-is: Test.hs
+
+    hs-source-dirs:
+        test
+
+    build-depends:
+        base,
+
+        K3-Core,
+
+        HUnit,
+        test-framework,
+        test-framework-hunit
