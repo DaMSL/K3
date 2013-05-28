@@ -11,7 +11,12 @@ library
 
     build-depends:
         base,
-        containers
+        containers,
+        unordered-containers,
+        parsec,
+        parsec-parsers,
+        parsers
+
 
     exposed-modules:
         Language.K3.Core.Annotation,
@@ -19,4 +24,6 @@ library
         Language.K3.Core.Type,
 
         Language.K3.Core.Constructor.Expression,
-        Language.K3.Core.Constructor.Type
+        Language.K3.Core.Constructor.Type,
+
+        Language.K3.Parser.Parser

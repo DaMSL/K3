@@ -64,4 +64,5 @@ instance Annotatable Expression where
     data Annotation Expression
         = EMutable
         | EImmutable
+        | EPos Position
       deriving (Eq, Read, Show)
