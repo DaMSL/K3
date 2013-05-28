@@ -10,7 +10,10 @@ module Language.K3.Core.Constructor.Type (
     tuple,
     record,
     collection,
-    function
+    function,
+    source,
+    sink,
+    trigger
 ) where
 
 import Data.List
@@ -62,3 +65,12 @@ collection rt = Node (TCollection :@: []) [rt]
 -- | Function type, based on the argument type and return type.
 function :: K3 Type -> K3 Type -> K3 Type
 function a r = Node (TFunction :@: []) [a, r]
+
+source :: K3 Type -> K3 Type
+source i = Node (TSource :@: []) [i]
+
+sink :: K3 Type -> K3 Type
+sink o = Node (TSink :@: []) [o]
+
+trigger :: [(Identifier, K3 Type)] -> K3 Type
+trigger idts = Node (TTrigger ids :@: []) ts where (ids, ts) = unzip idts
