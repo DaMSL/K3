@@ -3,7 +3,7 @@ module Language.K3.Parser.Parser (
   parseK3
 ) where
 
--- TODO: structured top-level declaration construction
+-- TODO: selector statements
 -- TODO: annotations (bodies, attachment to collections and expressions)
 -- TODO: qualifier attachment
 -- TODO: qualified types and expressions in grammar
@@ -131,7 +131,8 @@ namedBraceDecl k n rule cstr =
 
 {- Declarations -}
 declaration :: DeclParser
-declaration = choice [dGlobal, dTrigger, dSource, dSink, dBind, dRole, dAnnotation]
+declaration = choice [dGlobal, dTrigger, dSource, dSink,
+                      dBind, dRole, dSelector, dAnnotation]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkState <$>)
@@ -165,6 +166,9 @@ dBind = mkBind <$> identifier <*> bidirectional <*> identifier
 dRole :: DeclParser
 dRole = namedBraceDecl n n roleBody DC.role
   where n = "role"
+
+dSelector :: DeclParser
+dSelector = namedDecl "selector" "default" $ (DC.selector <$>)
 
 dAnnotation :: DeclParser
 dAnnotation = namedBraceDecl n n (some annotationBody) mkAnnotation
