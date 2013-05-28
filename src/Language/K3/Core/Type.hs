@@ -29,6 +29,9 @@ data Type
     | TRecord [Identifier]
     | TCollection
     | TFunction
+    | TSource
+    | TTrigger
+    | TSink
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.
