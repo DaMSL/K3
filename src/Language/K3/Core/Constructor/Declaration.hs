@@ -3,7 +3,8 @@ module Language.K3.Core.Constructor.Declaration (
     global,
     bind,
     selector,
-    role
+    role,
+    annotation
 ) where
 
 import Data.Tree
@@ -26,5 +27,9 @@ selector :: Identifier -> K3 Declaration
 selector s = Node (DSelector s :@: []) []
 
 -- | Define a sequence of declarations to make up a role.
-role :: [K3 Declaration] -> K3 Declaration
-role = Node (DRole :@: [])
+role :: Identifier -> [K3 Declaration] -> K3 Declaration
+role i = Node (DRole i :@: [])
+
+-- TODO: annotation bodies
+annotation :: Identifier -> K3 Declaration
+annotation i = Node (DAnnotation i :@: []) []
