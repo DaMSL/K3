@@ -3,8 +3,14 @@ module Language.K3.Parser.Parser (
   parseK3
 ) where
 
+-- TODO: structured top-level declaration construction
+-- TODO: annotations (bodies, attachment to collections and expressions)
+-- TODO: qualifier attachment
+-- TODO: qualified types and expressions in grammar
+
 import Control.Applicative
 
+import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.String
@@ -16,8 +22,9 @@ import qualified Text.Parsec.Prim as PP
 import qualified Text.Parsec.Language as PL
 import qualified Text.Parsec.Token as PT
 
-import Text.Parser.Combinators
 import Text.Parser.Char
+import Text.Parser.Combinators
+import Text.Parser.Expression
 import Text.Parser.Token
 import Text.Parser.Token.Style
 
@@ -31,6 +38,7 @@ import Language.K3.Core.Annotation
 type K3Type = K3 Type
 type K3Expr = K3 Expression
 
+type K3TypeParser = PP.ParsecT String () Identity (Tree Type)
 
 {- Helpers -}
 set :: [String] -> HashSet String
@@ -45,6 +53,13 @@ parseError rule i m = m <?> (i ++ " " ++ rule)
 
 declError :: Parsing m => String -> m a -> m a
 declError x = parseError "declaration" x
+
+{- Expression helpers -}
+mkExpr n ch = Node n ch
+mkConst x   = mkExpr (EConstant x) []
+mkVar x     = mkExpr (EVariable x) []
+mkOp op l r = mkExpr (EOperate op) [l, r]
+mkUOp op e  = mkExpr (EOperate op) [e]
 
 {- Language definition constants -}
 k3Operators = [
@@ -61,6 +76,7 @@ k3Keywords = [
     "declare", "trigger", "source", "consume", "fun",
     {- Expressions -}
     "let", "in", "if", "then", "else", "case", "of", "bind", "as",
+    "and", "or", "not",
     {- Values -}
     "true", "false", "ind", "Some", "None", "empty"
   ]
@@ -115,7 +131,7 @@ declaration = choice [state, sink, source, instruction, role, annotation]
 state = namedDecl "state" "declare" $ rule . (mkState <$>)
   where
     rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
-    mkState name (qual,t) initExpr = name ++ qual ++ t ++ (show initExpr)
+    mkState name (qual,t) initExpr = name ++ qual ++ (show t) ++ (show initExpr)
 
 sink = namedDecl "trigger" "trigger" $ rule . (mkSink <$>)
   where
@@ -149,14 +165,16 @@ annotation = namedBraceDecl "annotation" "annotation" (some annotationBody) mkAn
 annotationBody = identifier
 
 {- Types -}
+typeExpr :: K3TypeParser
 typeExpr = parseError "type" "expression" $ choice [
     tPrimitive, tOption, tIndirection,
     tTuple, tRecord,
     tCollection, tFunction
   ]
 
-qualifiedTypeExpr =
-  (,) <$> choice [tNamed "immut", tNamed "mut"] <*> identifier
+--qualifiedTypeExpr :: (String, K3Type)
+qualifiedTypeExpr = 
+  (,) <$> choice [tNamed "immut", tNamed "mut"] <*> typeExpr
 
 
 -- TODO: qualified type subcomponents
@@ -177,7 +195,7 @@ tOption = tNested mkOptionType "option"
   where mkOptionType t = mkType $ Node TOption [t]
 
 tIndirection = tNested mkIndType "ind"
-  where mkIndType t = mkType $ Node TIndirection [t]
+  where mkIndType t = mkType $ Node TIndirection [t]    
 
 tTuple = mkTuple <$> (parens . commaSep1) typeExpr
   where mkTuple l = mkType $ Node TTuple l
@@ -185,6 +203,7 @@ tTuple = mkTuple <$> (parens . commaSep1) typeExpr
 tRecord = mkRecord . unzip <$> (braces . semiSep1) idType
   where mkRecord (ids, types) = mkType $ Node (TRecord ids) types
 
+-- TODO: annotations
 tCollection = tNested mkCollectionType "collection"
   where mkCollectionType t = mkType $ Node TCollection [t]
 
@@ -193,26 +212,23 @@ tFunction = mkFunType <$> (typeExpr <* symbol "->") <*> typeExpr
 
 
 {- Expressions -}
--- TODO: options, indirections, tuples, records, collections
-expr = parseError "k3" "expression" $ choice [
-    eTerminal,
-    eBinop, eProject,
-    eLambda, eCondition,
-    eAssign, eLet,
-    eCase, eBind
+-- TODO: qualified expressions as subcomponents
+expr = parseError "k3" "expression" $ buildExpressionParser opTable eTerm
+qualifiedExpr = 
+  (,) <$> choice [tNamed "immut", tNamed "mut"] <*> expr
+
+eTerm = choice [
+    eLiterals,
+    eProject, eLambda, eCondition, 
+    eAssign, eLet, eCase, eBind 
   ]
 
---qualifiedExpr = identifier
-equateExpr = symbol "=" *> expr
+{- Literals -}
+eLiterals = choice [eTerminal, eOption, eIndirection, eTuple, eRecord, eCollection]
 
 {- Terminals -}
 eTerminal = choice [eConstant, eVariable]
 eConstant = choice [eCBool, eCNumber, eCString]
-
-mkExpr n ch = Node n ch
-mkConst x   = mkExpr (EConstant x) []
-mkVar x     = mkExpr (EVariable x) []
-mkOp op l r = mkExpr (EOperate op) [l, r]
 
 eCBool = (mkConst . CBool) <$>
   choice [keyword "true" >> return True, keyword "false" >> return False]
@@ -226,14 +242,50 @@ eCString = mkConst . CString <$> stringLiteral
 
 eVariable = mkVar <$> identifier
 
--- TODO: qualified expressions as subcomponents
+{- Complex literals -}
+eOption = choice [mkOption <$> (keyword "Some" *> expr),
+                  keyword "None" >> return (mkConst CNone)]
+  where mkOption e = mkExpr ESome [e]
 
+eIndirection = mkIndirection <$> (keyword "ind" *> expr)
+  where mkIndirection e = mkExpr EIndirect [e]
+
+eTuple = mkTuple <$> commaSep expr
+  where mkTuple l = mkExpr ETuple l
+
+eRecord = (mkRecord . unzip) <$> idExprList
+  where mkRecord (ids, exprs) = mkExpr (ERecord ids) exprs
+
+-- TODO: annotations
+eCollection = mkEmpty <$> (keyword "empty" *> tRecord)
+  where mkEmpty cType = mkConst CEmpty
+
+{- Operators -}
+binary  op cstr assoc parser = Infix   ((pure cstr) <* parser op) assoc
+prefix  op cstr parser       = Prefix  ((pure cstr) <* parser op)
+postfix op cstr parser       = Postfix ((pure cstr) <* parser op)
+
+mkBinOp  (opName, opTag) = binary opName (mkOp opTag) AssocLeft operator
+mkBinOpK (opName, opTag) = binary opName (mkOp opTag) AssocLeft keyword
+mkUnOp   (opName, opTag) = prefix opName (mkUOp opTag) operator
+mkUnOpK  (opName, opTag) = prefix opName (mkUOp opTag) keyword
+
+opTable = [ [Infix ((pure $ mkOp OApp) <* someSpace) AssocLeft],
+              map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+              map mkBinOp  [("+",   OAdd), ("-",  OSub)],
+              map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq),
+                            ("<",   OLth), ("<=", OLeq),
+                            (">",   OGth), (">=", OGeq) ],
+            ((map mkBinOpK [("and", OAnd), ("or", OOr)])
+              ++ [mkUnOpK   ("not", ONot)]),
+              map mkBinOp  [("<-",  OSnd)],
+              map mkBinOp  [(";",   OSeq)]
+          ]
+
+{- Terms -}
 ePrefix k = keyword k *> expr
 iPrefix k = keyword k *> identifier
-iArrow k  = iPrefix k <* symbol "->"
-
--- TODO: use buildExpressionParser
-eBinop = mkVar <$> identifier
+iArrow k  = iPrefix k <* symbol "->" 
 
 eProject = mkProject <$> expr <*> (dot *> identifier)
   where mkProject e field = mkExpr (EProject field) [e]
@@ -267,12 +319,17 @@ bindTup = BTuple <$> parens idList
 bindRec = BRecord <$> braces idPairList
 
 
-{- Identifiers -}
+{- Identifiers and their list forms -}
 idList     = commaSep identifier
 idPairList = commaSep idPair
-idPair     = (,) <$> identifier <*> (colon *> identifier)
+idExprList = commaSep idExpr
 idTypeList = commaSep idType
+idPair     = (,) <$> identifier <*> (colon *> identifier)
+idExpr     = (,) <$> identifier <*> (colon *> expr)
 idType     = (,) <$> identifier <*> (colon *> typeExpr)
+
+{- Misc -}
+equateExpr = symbol "=" *> expr
 
 {- Main parsing functions -}
 parseK3 :: String -> String

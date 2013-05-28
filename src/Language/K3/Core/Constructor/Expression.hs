@@ -8,7 +8,8 @@ module Language.K3.Core.Constructor.Expression (
     record,
     empty,
     lambda,
-    operate,
+    unop,
+    binop,
     project,
     letIn,
     assign,
@@ -50,15 +51,19 @@ record vs = Node (ERecord ids :@: []) es where (ids, es) = unzip vs
 
 -- | Create an empty collection.
 empty :: K3 Expression
-empty = Node (EEmpty :@: []) []
+empty = Node (EConstant CEmpty :@: []) []
 
 -- | Create an anonymous function..
 lambda :: Identifier -> K3 Expression -> K3 Expression
 lambda x b = Node (ELambda x :@: []) [b]
 
+-- | Create an application of a unary operator.
+unop :: Operator -> K3 Expression -> K3 Expression
+unop op a = Node (EOperate op :@: []) [a]
+
 -- | Create an application of a binary operator.
-operate :: Operator -> K3 Expression -> K3 Expression -> K3 Expression
-operate op a b = Node (EOperate op :@: []) [a, b]
+binop :: Operator -> K3 Expression -> K3 Expression -> K3 Expression
+binop op a b = Node (EOperate op :@: []) [a, b]
 
 -- | Project a field from a record.
 project :: Identifier -> K3 Expression -> K3 Expression

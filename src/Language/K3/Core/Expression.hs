@@ -10,43 +10,49 @@ import Language.K3.Core.Type
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression
-    = EConstant Constant
-    | EVariable Identifier
+    = EConstant   Constant
+    | EVariable   Identifier
     | ESome
     | EIndirect
     | ETuple
-    | ERecord [Identifier]
-    | EEmpty
-    | ELambda Identifier
-    | EOperate Operator
-    | EProject Identifier
-    | ELetIn Identifier
-    | EAssign Identifier
-    | ECaseOf Identifier
-    | EBindAs Binder
-    | EIfThenElse
+    | ERecord     [Identifier]
+    | ELambda     Identifier
+    | EOperate    Operator
+    | EProject    Identifier
+    | ELetIn      Identifier
+    | EAssign     Identifier
+    | ECaseOf     Identifier
+    | EBindAs     Binder
+    | EIfThenElse 
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.
 data Constant
-    = CBool Bool
-    | CInt Int
-    | CByte Word8
-    | CFloat Float
+    = CBool   Bool
+    | CInt    Int
+    | CByte   Word8
+    | CFloat  Float
     | CString String
+    | CNone
+    | CEmpty
   deriving (Eq, Read, Show)
 
--- | Binary Operators.
+-- | Operators (unary and binary).
 data Operator
     = OAdd
     | OSub
     | OMul
     | ODiv
+    | ONeg
     | OEqu
+    | ONeq
     | OLth
     | OLeq
     | OGth
     | OGeq
+    | OAnd
+    | OOr
+    | ONot
     | OSeq
     | OApp
     | OSnd

@@ -13,6 +13,7 @@ library
         base,
         containers,
         unordered-containers,
+        transformers,
         parsec,
         parsec-parsers,
         parsers
