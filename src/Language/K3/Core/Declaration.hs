@@ -13,12 +13,15 @@ import Language.K3.Core.Type
 
 -- | Top-Level Declarations
 data Declaration
-    = DGlobal Identifier (K3 Type) (Maybe (K3 Expression))
-    | DBind Identifier Identifier
-    | DSelector Identifier
-    | DRole
+    = DGlobal     Identifier (K3 Type) (Maybe (K3 Expression))
+    | DBind       Identifier Identifier
+    | DSelector   Identifier
+    | DRole       Identifier
+    | DAnnotation Identifier
   deriving (Eq, Read, Show)
 
 -- | Annotations on Declarations.
 instance Annotatable Declaration where
     data Annotation Declaration
+      = DPos Position
+      deriving (Eq, Read, Show)
