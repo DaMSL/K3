@@ -30,8 +30,8 @@ data Type
     | TCollection
     | TFunction
     | TSource
-    | TTrigger
     | TSink
+    | TTrigger [Identifier]
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.

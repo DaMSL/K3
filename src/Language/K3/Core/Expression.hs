@@ -70,5 +70,6 @@ instance Annotatable Expression where
     data Annotation Expression
         = EMutable
         | EImmutable
+        | EType (K3 Type)
         | EPos Position
       deriving (Eq, Read, Show)
