@@ -113,7 +113,7 @@ namedBraceDecl k n rule cstr =
 declaration = choice [state, sink, source, instruction, role, annotation]
 
 state = namedDecl "state" "declare" $ rule . (mkState <$>)
-  where 
+  where
     rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
     mkState name (qual,t) initExpr = name ++ qual ++ t ++ (show initExpr)
 
@@ -153,9 +153,9 @@ typeExpr = parseError "type" "expression" $ choice [
     tPrimitive, tOption, tIndirection,
     tTuple, tRecord,
     tCollection, tFunction
-  ] 
+  ]
 
-qualifiedTypeExpr = 
+qualifiedTypeExpr =
   (,) <$> choice [tNamed "immut", tNamed "mut"] <*> identifier
 
 
@@ -166,7 +166,7 @@ tNested f k = f <$> (keyword k *> typeExpr)
 
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
   where tConst x   = keyword x >> return (typeCstr x)
-        typeCstr x = case x of 
+        typeCstr x = case x of
                       "bool"    -> f TBool
                       "int"     -> f TInt
                       "real"    -> f TFloat
@@ -197,9 +197,9 @@ tFunction = mkFunType <$> (typeExpr <* symbol "->") <*> typeExpr
 expr = parseError "k3" "expression" $ choice [
     eTerminal,
     eBinop, eProject,
-    eLambda, eCondition, 
+    eLambda, eCondition,
     eAssign, eLet,
-    eCase, eBind 
+    eCase, eBind
   ]
 
 --qualifiedExpr = identifier
@@ -218,7 +218,7 @@ eCBool = (mkConst . CBool) <$>
   choice [keyword "true" >> return True, keyword "false" >> return False]
 
 eCNumber = mkNumber <$> integerOrDouble
-  where mkNumber x = case x of 
+  where mkNumber x = case x of
                       Left i  -> mkConst . CInt . fromIntegral $ i
                       Right d -> mkConst . CFloat . double2Float $ d
 
@@ -230,7 +230,7 @@ eVariable = mkVar <$> identifier
 
 ePrefix k = keyword k *> expr
 iPrefix k = keyword k *> identifier
-iArrow k  = iPrefix k <* symbol "->" 
+iArrow k  = iPrefix k <* symbol "->"
 
 -- TODO: use buildExpressionParser
 eBinop = mkVar <$> identifier

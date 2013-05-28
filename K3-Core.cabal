@@ -17,7 +17,6 @@ library
         parsec-parsers,
         parsers
 
-
     exposed-modules:
         Language.K3.Core.Annotation,
         Language.K3.Core.Expression,
