@@ -3,11 +3,6 @@ module Language.K3.Parser.Parser (
   parseK3
 ) where
 
--- TODO: selector statements
--- TODO: annotations (bodies, attachment to collections and expressions)
--- TODO: qualifier attachment
--- TODO: qualified types and expressions in grammar
-
 import Control.Applicative
 
 import Data.Functor.Identity
@@ -135,10 +130,8 @@ declaration = choice [dGlobal, dTrigger, dSource, dSink,
                       dBind, dRole, dSelector, dAnnotation]
 
 dGlobal :: DeclParser
-dGlobal = namedDecl "state" "declare" $ rule . (mkState <$>)
-  where
-    rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
-    mkState name (qual,t) e = DC.global name t e
+dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
+  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
@@ -186,15 +179,14 @@ typeExpr = parseError "type" "expression" $ choice [
     tCollection, tFunction
   ]
 
-qualifiedTypeExpr :: K3Parser (String, K3 Type)
-qualifiedTypeExpr = 
-  (,) <$> choice [tNamed "immut", tNamed "mut"] <*> typeExpr
+qualifiedTypeExpr :: TypeParser
+qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
 
+typeQualifier :: K3Parser (Annotation Type)
+typeQualifier = choice [keyword "immut" >> return TImmutable,
+                        keyword "mut" >> return TMutable]
 
--- TODO: qualified type subcomponents
-tNamed x    = keyword x >> return x
-tNested f k = f <$> (keyword k *> typeExpr)
-
+{- Type terms -}
 tPrimitive :: TypeParser
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
   where tConst x   = keyword x >> return (typeCstr x)
@@ -204,34 +196,42 @@ tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
                       "real"    -> TC.float
                       "string"  -> TC.string
 
+tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
+
 tOption :: TypeParser
-tOption = tNested TC.option "option"
+tOption = tQNested TC.option "option"
 
 tIndirection :: TypeParser
-tIndirection = tNested TC.indirection "ind"
+tIndirection = tQNested TC.indirection "ind"
 
 tTuple :: TypeParser
-tTuple = TC.tuple <$> (parens . commaSep1) typeExpr
+tTuple = TC.tuple <$> (parens . commaSep1) qualifiedTypeExpr
 
 tRecord :: TypeParser
-tRecord = TC.record <$> (braces . semiSep1) idType
+tRecord = TC.record <$> (braces . semiSep1) idQType
 
--- TODO: annotations
 tCollection :: TypeParser
-tCollection = tNested TC.collection "collection"
+tCollection = mkCollectionType <$> (keyword "collection" *> tRecord)
+                               <*> (option [] (symbol "@" *> tAnnotations))
+  where mkCollectionType t a = foldl (@+) (TC.collection t) a
 
 tFunction :: TypeParser
 tFunction = TC.function <$> (typeExpr <* symbol "->") <*> typeExpr
 
+tAnnotations :: K3Parser [Annotation Type]
+tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
+  where mkTAnnotation x = TAnnotation x
 
 {- Expressions -}
--- TODO: qualified expressions as subcomponents
 expr :: ExpressionParser
 expr = parseError "k3" "expression" $ buildExpressionParser opTable eTerm
 
-qualifiedExpr :: K3Parser (String, K3 Expression)
-qualifiedExpr = 
-  (,) <$> choice [tNamed "immut", tNamed "mut"] <*> expr
+qualifiedExpr :: ExpressionParser
+qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
+
+exprQualifier :: K3Parser (Annotation Expression)
+exprQualifier = choice [keyword "immut" >> return EImmutable,
+                        keyword "mut" >> return EMutable]
 
 eTerm :: ExpressionParser
 eTerm = choice [
@@ -243,7 +243,7 @@ eTerm = choice [
 {- Literals -}
 eLiterals :: ExpressionParser
 eLiterals = choice [eTerminal, eOption, eIndirection,
-                    eTuple, eRecord, eCollection]
+                    eTuple, eRecord, eEmpty]
 
 {- Terminals -}
 eTerminal :: ExpressionParser
@@ -270,22 +270,27 @@ eVariable = EC.variable <$> identifier
 
 {- Complex literals -}
 eOption :: ExpressionParser
-eOption = choice [EC.some <$> (keyword "Some" *> expr),
-                  keyword "None" >> return (EC.constant CNone)]
+eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
+                  (@+) (EC.constant CNone) <$> (keyword "None" *> exprQualifier)]
 
 eIndirection :: ExpressionParser
-eIndirection = EC.indirect <$> (keyword "ind" *> expr)
+eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
 eTuple :: ExpressionParser
-eTuple = EC.tuple <$> commaSep expr
+eTuple = EC.tuple <$> commaSep qualifiedExpr
 
 eRecord :: ExpressionParser
-eRecord = EC.record <$> idExprList
+eRecord = EC.record <$> idQExprList
 
--- TODO: annotations
-eCollection :: ExpressionParser
-eCollection = mkEmpty <$> (keyword "empty" *> tRecord)
-  where mkEmpty t = EC.empty @+ (EType t)
+eEmpty :: ExpressionParser
+eEmpty = mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
+  where mkEmpty e a = foldl (@+) e a 
+        typedEmpty = ((@+) EC.empty) . EType <$> (keyword "empty" *> tRecord)
+
+eAnnotations :: K3Parser [Annotation Expression]
+eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
+  where mkEAnnotation x = EAnnotation x
+  
 
 {- Operators -}
 binary  op cstr assoc parser = Infix   ((pure cstr) <* parser op) assoc
@@ -327,7 +332,7 @@ eAssign :: ExpressionParser
 eAssign = EC.assign <$> identifier <*> equateExpr
 
 eLet :: ExpressionParser
-eLet = EC.letIn <$> identifier <*> ((symbol "=" *> expr) <* keyword "in") <*> expr
+eLet = EC.letIn <$> identifier <*> equateQExpr <*> (keyword "in" *> expr)
 
 eCase :: ExpressionParser
 eCase = mkCase <$> ((ePrefix "case") <* keyword "of")
@@ -349,17 +354,21 @@ bindRec = BRecord <$> braces idPairList
 
 
 {- Identifiers and their list forms -}
-idList     = commaSep identifier
-idPairList = commaSep idPair
-idExprList = commaSep idExpr
-idTypeList = commaSep idType
-idPair     = (,) <$> identifier <*> (colon *> identifier)
-idExpr     = (,) <$> identifier <*> (colon *> expr)
-idType     = (,) <$> identifier <*> (colon *> typeExpr)
+idList      = commaSep identifier
+idPairList  = commaSep idPair
+idQExprList = commaSep idQExpr
+idTypeList  = commaSep idType
+idPair      = (,) <$> identifier <*> (colon *> identifier)
+idQExpr     = (,) <$> identifier <*> (colon *> qualifiedExpr)
+idType      = (,) <$> identifier <*> (colon *> typeExpr)
+idQType     = (,) <$> identifier <*> (colon *> qualifiedTypeExpr)
 
 {- Misc -}
 equateExpr :: ExpressionParser
 equateExpr = symbol "=" *> expr
+
+equateQExpr :: ExpressionParser
+equateQExpr = symbol "=" *> qualifiedExpr
 
 {- Main parsing functions -}
 parseK3 :: String -> String

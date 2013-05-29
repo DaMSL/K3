@@ -41,4 +41,5 @@ instance Annotatable Type where
         | TImmutable
         | TWitness
         | TPos Position
+        | TAnnotation Identifier
       deriving (Eq, Read, Show)

@@ -72,4 +72,5 @@ instance Annotatable Expression where
         | EImmutable
         | EType (K3 Type)
         | EPos Position
+        | EAnnotation Identifier
       deriving (Eq, Read, Show)
