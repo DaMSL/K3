@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 -- | K3 Parser.
 module Language.K3.Parser.Parser (
   parseK3
@@ -12,10 +14,10 @@ import Data.String
 import Data.Tree
 import GHC.Float
 
-import qualified Text.Parsec as P
-import qualified Text.Parsec.Prim as PP
+import qualified Text.Parsec          as P
+import qualified Text.Parsec.Prim     as PP
 import qualified Text.Parsec.Language as PL
-import qualified Text.Parsec.Token as PT
+import qualified Text.Parsec.Token    as PT
 
 import Text.Parser.Char
 import Text.Parser.Combinators
@@ -30,8 +32,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
 import Language.K3.Core.Annotation
 
-import qualified Language.K3.Core.Constructor.Type as TC
-import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Type        as TC
+import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 {- Type synonyms for parser return types -}
@@ -45,15 +47,28 @@ type DeclParser       = K3Parser (K3 Declaration)
 set :: [String] -> HashSet String
 set = HashSet.fromList
 
-mkPosition :: P.SourcePos -> Position
-mkPosition p =
-  Position (P.sourceName p) (P.sourceLine p) (P.sourceColumn p)
-
 parseError :: Parsing m => String -> String -> m a -> m a
 parseError rule i m = m <?> (i ++ " " ++ rule)
 
 declError :: Parsing m => String -> m a -> m a
 declError x = parseError "declaration" x
+
+typeError :: Parsing m => String -> m a -> m a
+typeError x = parseError "type expression" x
+
+exprError :: Parsing m => String -> m a -> m a
+exprError x = parseError "expression" x
+
+-- Span computation
+-- TODO: what if source names do not match?
+(<->) :: (Annotated a, Annotatable (Kernel a)) 
+            => (Span -> Annotation (Kernel a)) -> K3Parser a -> K3Parser a
+(<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
+  where annotate start x end = x @+ (cstr $ mkSpan start end)
+        mkSpan s e = Span (P.sourceName s) (P.sourceColumn s) (P.sourceLine s)
+                                           (P.sourceColumn e) (P.sourceLine e)
+
+infixl 1 <->
 
 {- Language definition constants -}
 k3Operators = [
@@ -72,7 +87,9 @@ k3Keywords = [
     "let", "in", "if", "then", "else", "case", "of", "bind", "as",
     "and", "or", "not",
     {- Values -}
-    "true", "false", "ind", "Some", "None", "empty"
+    "true", "false", "ind", "Some", "None", "empty",
+    {- Annotation declarations -}
+    "annotation", "lifted", "provides", "requires"
   ]
 
 {- K3 LanguageDef for Parsec -}
@@ -109,16 +126,15 @@ keyword = reserve k3Idents
 
 -- TODO: inline testing
 program :: DeclParser
-program = mkProgram <$> endBy roleBody eof
+program = DSpan <-> mkProgram <$> endBy roleBody eof
   where mkProgram l = DC.role "__global" $ concat l
 
 roleBody :: K3Parser [K3 Declaration]
 roleBody = some declaration
 
-
 {- Declaration helpers -}
 namedDecl nameKind name namedCstr =
-  declError nameKind $ namedCstr $ keyword name *> identifier
+  (<->) DSpan $ declError nameKind $ namedCstr $ keyword name *> identifier
 
 namedBraceDecl k n rule cstr =
   namedDecl k n $ braceRule . (cstr <$>)
@@ -136,7 +152,7 @@ dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
   where
-    rule x = x <*> (parens idTypeList) <*> equateExpr
+    rule x = x <*> (parens idQTypeList) <*> equateExpr
     mkTrig name args body = DC.global name (TC.trigger args) (Just body)
 
 dEndpoint :: String -> String -> (K3 Type -> K3 Type) -> DeclParser
@@ -151,7 +167,7 @@ dSink :: DeclParser
 dSink = dEndpoint "sink" "sink" TC.sink
 
 dBind :: DeclParser
-dBind = mkBind <$> identifier <*> bidirectional <*> identifier
+dBind = DSpan <-> mkBind <$> identifier <*> bidirectional <*> identifier
   where mkBind id1 lSrc id2 = if lSrc then DC.bind id1 id2 else DC.bind id2 id1
         bidirectional = choice [symbol "|>" >> return True,
                                 symbol "<|" >> return False]
@@ -164,23 +180,50 @@ dSelector :: DeclParser
 dSelector = namedDecl "selector" "default" $ (DC.selector <$>)
 
 dAnnotation :: DeclParser
-dAnnotation = namedBraceDecl n n (some annotationBody) mkAnnotation
+dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
   where n = "annotation"
-        mkAnnotation n body = DC.annotation $ n ++ (foldl (++) "" body)
 
--- TODO: requires, provides, methods, attributes, etc
-annotationBody = identifier
+{- Annotation declaration members -}
+annotationMember :: K3Parser AnnMemDecl
+annotationMember = chain <$> polarity <*> member
+  where chain p f = f p
+        member    = choice [annMethod, annLifted, annAttribute, subAnnotation]
+
+polarity :: K3Parser Polarity
+polarity = choice [keyword "provides" >> return Provides,
+                   keyword "requires" >> return Requires]
+
+annMethod :: K3Parser (Polarity -> AnnMemDecl)
+annMethod = mkMethod <$> identifier <*> parens idQTypeList
+                     <*> (colon *> typeExpr)
+                     <*> choice [Just <$> braces expr, semi >> return Nothing]
+  where mkMethod n args ret body_opt pol = Method n pol args ret body_opt
+
+annLifted :: K3Parser (Polarity -> AnnMemDecl)
+annLifted = mkLifted <$> (keyword "lifted" *> identifier)
+                     <*> (colon *> qualifiedTypeExpr)
+                     <*> ((optional equateExpr) <* semi)
+  where mkLifted n t e_opt pol = Lifted n pol t e_opt
+
+annAttribute :: K3Parser (Polarity -> AnnMemDecl)
+annAttribute = mkAttribute <$> identifier <*> (colon *> qualifiedTypeExpr)
+                                          <*> ((optional equateExpr) <* semi)
+  where mkAttribute n t e_opt pol = Attribute n pol t e_opt
+
+subAnnotation :: K3Parser (Polarity -> AnnMemDecl)
+subAnnotation = MAnnotation <$> (keyword "annotation" *> identifier)
+
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = parseError "type" "expression" $ choice [
+typeExpr = (<->) TSpan $ parseError "type" "expression" $ choice [
     tPrimitive, tOption, tIndirection,
     tTuple, tRecord,
     tCollection, tFunction
   ]
 
 qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
+qualifiedTypeExpr = TSpan <-> flip (@+) <$> typeQualifier <*> typeExpr
 
 typeQualifier :: K3Parser (Annotation Type)
 typeQualifier = choice [keyword "immut" >> return TImmutable,
@@ -224,10 +267,10 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 
 {- Expressions -}
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $ buildExpressionParser opTable eTerm
+expr = (<->) ESpan $ parseError "k3" "expression" $ buildExpressionParser opTable eTerm
 
 qualifiedExpr :: ExpressionParser
-qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
+qualifiedExpr = ESpan <-> flip (@+) <$> exprQualifier <*> expr
 
 exprQualifier :: K3Parser (Annotation Expression)
 exprQualifier = choice [keyword "immut" >> return EImmutable,
@@ -357,10 +400,9 @@ bindRec = BRecord <$> braces idPairList
 idList      = commaSep identifier
 idPairList  = commaSep idPair
 idQExprList = commaSep idQExpr
-idTypeList  = commaSep idType
+idQTypeList = commaSep idQType
 idPair      = (,) <$> identifier <*> (colon *> identifier)
 idQExpr     = (,) <$> identifier <*> (colon *> qualifiedExpr)
-idType      = (,) <$> identifier <*> (colon *> typeExpr)
 idQType     = (,) <$> identifier <*> (colon *> qualifiedTypeExpr)
 
 {- Misc -}

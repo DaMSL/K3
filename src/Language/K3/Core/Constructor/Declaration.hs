@@ -30,6 +30,6 @@ selector s = Node (DSelector s :@: []) []
 role :: Identifier -> [K3 Declaration] -> K3 Declaration
 role i = Node (DRole i :@: [])
 
--- TODO: annotation bodies
-annotation :: Identifier -> K3 Declaration
-annotation i = Node (DAnnotation i :@: []) []
+-- | Create a user-defined annotation
+annotation :: Identifier -> [AnnMemDecl] -> K3 Declaration
+annotation i members = Node (DAnnotation i members :@: []) []

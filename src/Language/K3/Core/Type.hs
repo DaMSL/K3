@@ -3,7 +3,7 @@
 -- | Types in K3.
 module Language.K3.Core.Type (
     Identifier,
-    Position(..),
+    Span(..),
     Type(..),
     Annotation(..)
 ) where
@@ -13,8 +13,8 @@ import Language.K3.Core.Annotation
 -- | The types of K3 Identifiers.
 type Identifier = String
 
--- | K3 source code positions 
-data Position = Position String Int Int deriving (Eq, Read, Show)
+-- | K3 source code spans (source name, line1, column1, line2, column2)
+data Span = Span String Int Int Int Int deriving (Eq, Read, Show)
 
 -- | Tags in the Type Tree. Every type can be qualified with a mutability annotation.
 data Type
@@ -40,6 +40,6 @@ instance Annotatable Type where
         = TMutable
         | TImmutable
         | TWitness
-        | TPos Position
+        | TSpan Span
         | TAnnotation Identifier
       deriving (Eq, Read, Show)
