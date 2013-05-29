@@ -12,11 +12,13 @@ library
     build-depends:
         base,
         containers,
-        unordered-containers,
-        transformers,
+        either,
+        mtl,
         parsec,
         parsec-parsers,
-        parsers
+        parsers,
+        transformers,
+        unordered-containers
 
     exposed-modules:
         Language.K3.Core.Annotation,
@@ -28,6 +30,7 @@ library
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Type,
 
+        Language.K3.Interpreter,
         Language.K3.Parser.Parser
 
 test-suite all
