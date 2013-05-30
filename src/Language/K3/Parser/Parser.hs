@@ -2,6 +2,11 @@
 
 -- | K3 Parser.
 module Language.K3.Parser.Parser (
+  declaration,
+  qualifiedTypeExpr,
+  typeExpr,
+  qualifiedExpr,
+  expr,
   parseK3
 ) where
 
@@ -10,6 +15,7 @@ import Control.Applicative
 import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
+import Data.List
 import Data.String
 import Data.Tree
 import GHC.Float
@@ -65,8 +71,8 @@ exprError x = parseError "expression" x
             => (Span -> Annotation (Kernel a)) -> K3Parser a -> K3Parser a
 (<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
   where annotate start x end = x @+ (cstr $ mkSpan start end)
-        mkSpan s e = Span (P.sourceName s) (P.sourceColumn s) (P.sourceLine s)
-                                           (P.sourceColumn e) (P.sourceLine e)
+        mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
+                                           (P.sourceLine e) (P.sourceColumn e)
 
 infixl 1 <->
 
@@ -223,7 +229,7 @@ typeExpr = (<->) TSpan $ parseError "type" "expression" $ choice [
   ]
 
 qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = TSpan <-> flip (@+) <$> typeQualifier <*> typeExpr
+qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
 
 typeQualifier :: K3Parser (Annotation Type)
 typeQualifier = choice [keyword "immut" >> return TImmutable,
@@ -270,17 +276,17 @@ expr :: ExpressionParser
 expr = (<->) ESpan $ parseError "k3" "expression" $ buildExpressionParser opTable eTerm
 
 qualifiedExpr :: ExpressionParser
-qualifiedExpr = ESpan <-> flip (@+) <$> exprQualifier <*> expr
+qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
 
 exprQualifier :: K3Parser (Annotation Expression)
 exprQualifier = choice [keyword "immut" >> return EImmutable,
                         keyword "mut" >> return EMutable]
 
 eTerm :: ExpressionParser
-eTerm = choice [
-    eLiterals,
+eTerm = ESpan <-> choice [
+    eLiterals, eSend,
     eProject, eLambda, eCondition, 
-    eAssign, eLet, eCase, eBind 
+    eAssign, eLet, eCase, eBind
   ]
 
 {- Literals -}
@@ -311,6 +317,10 @@ eCString = EC.constant . CString <$> stringLiteral
 eVariable :: ExpressionParser
 eVariable = EC.variable <$> identifier
 
+eAddress :: ExpressionParser
+eAddress = mkAddress <$> eCString <* comma <*> eCNumber
+  where mkAddress a b = EC.tuple [a,b]
+
 {- Complex literals -}
 eOption :: ExpressionParser
 eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
@@ -340,10 +350,33 @@ binary  op cstr assoc parser = Infix   ((pure cstr) <* parser op) assoc
 prefix  op cstr parser       = Prefix  ((pure cstr) <* parser op)
 postfix op cstr parser       = Postfix ((pure cstr) <* parser op)
 
-mkBinOp  (opName, opTag) = binary opName (EC.binop opTag) AssocLeft operator
-mkBinOpK (opName, opTag) = binary opName (EC.binop opTag) AssocLeft keyword
-mkUnOp   (opName, opTag) = prefix opName (EC.unop opTag) operator
-mkUnOpK  (opName, opTag) = prefix opName (EC.unop opTag) keyword
+-- Temporary hack to annotate operator spans
+-- TODO: clean up
+getAnnotations (Node (_ :@: al) _) = al
+
+getSpan l = case find isSpan l of
+              Just (ESpan s) -> s
+              Nothing -> Span "<dummy>" 0 0 0 0
+isSpan x = case x of
+            ESpan _ -> True
+            _ -> False
+
+binOpSpan cstr l r = (cstr l r) @+ (ESpan $ coverSpans (getSpan la) (getSpan ra))
+  where la = getAnnotations l
+        ra = getAnnotations r
+        coverSpans (Span n l1 c1 _ _) (Span _ _ _ l2 c2) = Span n l1 c1 l2 c2
+
+unOpSpan opName cstr e = (cstr e) @+ (ESpan $ prefixSpan $ getSpan al)
+  where al = getAnnotations e
+        prefixSpan (Span n l1 c1 l2 c2) = Span n l1 (c1-(length opName)) l2 c2
+
+binaryParseOp (opName, opTag) = binary opName (binOpSpan $ EC.binop opTag) AssocLeft
+mkBinOp  x = binaryParseOp x operator
+mkBinOpK x = binaryParseOp x keyword
+
+unaryParseOp (opName, opTag) = prefix opName (unOpSpan opName $ EC.unop opTag)
+mkUnOp  x = unaryParseOp x operator
+mkUnOpK x = unaryParseOp x keyword
 
 opTable = [ [Infix ((pure $ EC.binop OApp) <* someSpace) AssocLeft],
               map mkBinOp  [("*",   OMul), ("/",  ODiv)],
@@ -353,7 +386,6 @@ opTable = [ [Infix ((pure $ EC.binop OApp) <* someSpace) AssocLeft],
                             (">",   OGth), (">=", OGeq) ],
             ((map mkBinOpK [("and", OAnd), ("or", OOr)])
               ++ [mkUnOpK   ("not", ONot)]),
-              map mkBinOp  [("<-",  OSnd)],
               map mkBinOp  [(";",   OSeq)]
           ]
 
@@ -361,6 +393,10 @@ opTable = [ [Infix ((pure $ EC.binop OApp) <* someSpace) AssocLeft],
 ePrefix k = keyword k *> expr
 iPrefix k = keyword k *> identifier
 iArrow k  = iPrefix k <* symbol "->" 
+
+eSend :: ExpressionParser
+eSend = mkSend <$> eVariable <* comma <*> eAddress <* symbol "<-" <*> expr
+  where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
 
 eProject :: ExpressionParser
 eProject = (flip EC.project) <$> expr <*> (dot *> identifier)
