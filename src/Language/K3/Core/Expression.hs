@@ -66,13 +66,12 @@ data Binder
   deriving (Eq, Read, Show)
 
 -- | Annotations on expressions are mutability qualifiers.
-instance Annotatable Expression where
-    data Annotation Expression
-        = EMutable
-        | EImmutable
-        | EType (K3 Type)
-        | ESpan Span
-        | EAnnotation Identifier
-      deriving (Eq, Read, Show)
+data instance Annotation Expression
+    = EMutable
+    | EImmutable
+    | EType (K3 Type)
+    | ESpan Span
+    | EAnnotation Identifier
+  deriving (Eq, Read, Show)
 
 -- | TODO: pretty printing of expression tree

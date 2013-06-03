@@ -35,13 +35,12 @@ data Type
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.
-instance Annotatable Type where
-    data Annotation Type
-        = TMutable
-        | TImmutable
-        | TWitness
-        | TSpan Span
-        | TAnnotation Identifier
-      deriving (Eq, Read, Show)
+data instance Annotation Type
+    = TMutable
+    | TImmutable
+    | TWitness
+    | TSpan Span
+    | TAnnotation Identifier
+  deriving (Eq, Read, Show)
 
 -- | TODO: pretty printing of type tree

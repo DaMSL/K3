@@ -42,9 +42,8 @@ data AnnMemDecl
 data Polarity = Provides | Requires deriving (Eq, Read, Show)
 
 -- | Annotations on Declarations.
-instance Annotatable Declaration where
-    data Annotation Declaration
-      = DSpan Span
-      deriving (Eq, Read, Show)
+data instance Annotation Declaration
+  = DSpan Span
+  deriving (Eq, Read, Show)
 
 -- | TODO: pretty printing of declaration tree
