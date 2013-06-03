@@ -67,8 +67,6 @@ exprError x = parseError "expression" x
 
 -- Span computation
 -- TODO: what if source names do not match?
-(<->) :: (Annotated a, Annotatable (Kernel a)) 
-            => (Span -> Annotation (Kernel a)) -> K3Parser a -> K3Parser a
 (<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
   where annotate start x end = x @+ (cstr $ mkSpan start end)
         mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
