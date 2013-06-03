@@ -6,74 +6,126 @@
 -- | The K3 Annotation System.
 module Language.K3.Core.Annotation (
     -- * Basic Infrastructure
-    Annotatable(..),
-    Annotated(..),
+    Annotation(..),
+    AContainer(..),
+    AConstruct(..),
 
     -- * K3 Instantiations
     (:@:)(..),
     K3
 ) where
 
-import Data.List (delete)
+import Data.List (delete, find)
 import Data.Tree
 
--- | Values of a given type are 'Annotatable' if they can specify exactly what types of data they
--- can be annotated with.
-class Annotatable a where
-    data Annotation a :: *
+-- | Every tag type defines the set of annotations that can be associated with that tag.
+data family Annotation t :: *
 
--- | A value is 'Annotated' if it contains an 'Annotatable' element inside it, which it can specify
--- as its 'Kernel', and can explain how to add/remove annotations relating to that kernel.
-class Annotated t where
+-- | An annotation container is a generic container which supports a standard set of operations that
+-- one might want to perform on a set of annotations. There is, however, nothing annotation-specific
+-- about the container's interface.
+class AContainer c where
     -- | The sub-component of an annotated value that is actually annotatable.
-    type Kernel t :: *
+    type IElement c :: *
 
     -- | The annotation addition operator. Adds the given annotation to an annotated value.
-    (@+) :: Annotatable (Kernel t) => t -> Annotation (Kernel t) -> t
+    (@+) :: Eq (IElement c) => c -> IElement c -> c
 
     -- | The annotation subtraction operator. Removes the given annotation from an annotated value.
-    (@-) :: Annotatable (Kernel t) => t -> Annotation (Kernel t) -> t
+    (@-) :: Eq (IElement c) => c -> IElement c -> c
+
+    -- | The annotation matching operator. Returns the first annotation satisfying the given
+    -- predicate.
+    (@~) :: c -> (IElement c -> Bool) -> Maybe (IElement c)
 
 infixl 3 @+
 infixl 3 @-
 
+-- | An annotation construct is a data structure where each member contains a tag, and a container
+-- of the corresponding tag type's annotations. 
+class AConstruct c where
+    -- | The type of the tag.
+    type ITag c :: *
+
+    -- | The type of the container.
+    type IContainer c :: *
+
+    -- | Retrieve the tag from the construct.
+    tag :: c -> ITag c
+
+    -- | Retrieve the annotation container from the construct.
+    annotations :: c -> IContainer c
+
+    -- | Replace the annotation container within the construct.
+    (@<-) :: c -> IContainer c -> c
+
+-- | A maybe-type is a container of a single annotation.
+instance AContainer (Maybe a) where
+    type IElement (Maybe a) = a
+
+    -- | Adding an annotation replaces the existing annotation, if there was one.
+    v @+ v' = Just v'
+
+    -- | Removing an annotation only occurs if the exact annotation was already present.
+    Just v @- v'
+        | v == v' = Nothing
+        | otherwise = Just v
+    Nothing @- _ = Nothing
+
+    -- | Matching an annotation only occurs if there was an annotation to begin with.
+    Just v @~ p
+        | p v = Just v
+        | otherwise = Nothing
+    Nothing @~ _ = Nothing
+
+-- | A list is a container of annotations, quite trivially.
+instance AContainer [a] where
+    type IElement [a] = a
+
+    vs @+ v = (v:vs)
+    vs @- v = delete v vs
+    vs @~ p = find p vs
+
+-- | A tree can act as a proxy to the container at its root.
+instance AContainer a => AContainer (Tree a) where
+    type IElement (Tree a) = IElement a
+
+    Node a cs @+ v = Node (a @+ v) cs
+    Node a cs @- v = Node (a @- v) cs
+    Node a cs @~ f = a @~ f
+
 -- | A convenience form for attachment, structurally equivalent to tupling.
 data a :@: b = a :@: b deriving (Eq, Read, Show)
 
--- | One standard way of attaching annotations to an annotatable is to pair it with a list of
--- annotations. We can then define how to add and remove annotations to that list.
-instance (Annotatable a, Eq (Annotation a)) => Annotated (a :@: [Annotation a]) where
-    -- | Proxy the annotatability to the first element of the tuple.
-    type Kernel (a :@: [Annotation a]) = a
+-- | A pair can act as a proxy to the container it contains as its second element.
+instance AContainer a => AContainer (b :@: a) where
+    type IElement (b :@: a) = IElement a
 
-    -- | We prepend the new annotation to the list; we don't care about duplicates right now.
-    (v :@: as) @+ a = v :@: (a:as)
+    (b :@: a) @+ v = b :@: (a @+ v)
+    (b :@: a) @- v = b :@: (a @- v)
+    (b :@: a) @~ f = a @~ f
 
-    -- | Deleting an annotation from a list requires equality on annotations, hence the constraint.
-    (v :@: as) @- a = v :@: (delete a as)
+-- | A pair can also act as a construct, where the first element is the tag.
+instance AConstruct (b :@: a) where
+    type ITag (b :@: a) = b
+    type IContainer (b :@: a) = a
 
--- | If we wish to impose the restriction that at most one annotation is attached to a particular
--- annotatable, we can use a @Maybe@ type instead.
-instance (Annotatable a, Eq (Annotation a)) => Annotated (a :@: Maybe (Annotation a)) where
-    -- | Proxy the annotatability to the first element of the tuple.
-    type Kernel (a :@: Maybe (Annotation a)) = a
+    tag (b :@: a) = b
 
-    -- | Adding an annotation simply puts it in the Maybe cell, regardless of what was there before.
-    (v :@: _) @+ a = v :@: (Just a)
+    annotations (b :@: a) = a
 
-    -- | Removing an annotation only has an effect if the annotation to be removed was the one there
-    -- to begin with.
-    (v :@: Nothing) @- a = v :@: Nothing
-    (v :@: Just a') @- a
-        | a == a' = v :@: Nothing
-        | otherwise = v :@: (Just a')
+    (b :@: a) @<- a' = (b :@: a')
 
--- | If we have a tree with annotatated elements at each node, we can say that the tree itself is
--- annotated, where it acts as a proxy to the annotated element at its root.
-instance Annotated a => Annotated (Tree a) where
-    type Kernel (Tree a) = Kernel a
-    (Node v cs) @+ a = Node (v @+ a) cs
-    (Node v cs) @- a = Node (v @- a) cs
+-- | A tree can act as a proxy to the construct at its root.
+instance AConstruct a => AConstruct (Tree a) where
+    type ITag (Tree a) = ITag a
+    type IContainer (Tree a) = IContainer a
+
+    tag (Node a _) = tag a
+
+    annotations (Node a _) = annotations a
+
+    (Node a cs) @<- a' = Node (a @<- a') cs
 
 -- | A K3 source tree contains a tag, along with a list of annotations defined for trees with that
 -- tag.
