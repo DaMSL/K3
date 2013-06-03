@@ -74,3 +74,5 @@ instance Annotatable Expression where
         | ESpan Span
         | EAnnotation Identifier
       deriving (Eq, Read, Show)
+
+-- | TODO: pretty printing of expression tree

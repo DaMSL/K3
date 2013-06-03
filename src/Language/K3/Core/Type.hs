@@ -43,3 +43,5 @@ instance Annotatable Type where
         | TSpan Span
         | TAnnotation Identifier
       deriving (Eq, Read, Show)
+
+-- | TODO: pretty printing of type tree

@@ -46,3 +46,5 @@ instance Annotatable Declaration where
     data Annotation Declaration
       = DSpan Span
       deriving (Eq, Read, Show)
+
+-- | TODO: pretty printing of declaration tree
