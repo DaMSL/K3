@@ -31,7 +31,9 @@ library
         Language.K3.Core.Constructor.Type,
 
         Language.K3.Interpreter,
-        Language.K3.Parser.Parser
+        Language.K3.Parser.Parser,
+
+        Language.K3.Transform.Alpha
 
 test-suite all
     type: exitcode-stdio-1.0

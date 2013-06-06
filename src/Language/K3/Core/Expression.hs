@@ -69,6 +69,7 @@ data Binder
 data instance Annotation Expression
     = EMutable
     | EImmutable
+    | ELexicalName Identifier
     | EType (K3 Type)
     | ESpan Span
     | EAnnotation Identifier
