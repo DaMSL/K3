@@ -20,6 +20,8 @@ import Data.String
 import Data.Tree
 import GHC.Float
 
+import Debug.Trace
+
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
 import qualified Text.Parsec.Language as PL
@@ -109,12 +111,10 @@ k3CommentStyle :: CommentStyle
 k3CommentStyle = javaCommentStyle
 
 k3Ops :: TokenParsing m => IdentifierStyle m
-k3Ops = emptyOps
-  { _styleReserved = set k3Operators }
+k3Ops = emptyOps { _styleReserved = set k3Operators }
 
 k3Idents :: TokenParsing m => IdentifierStyle m
-k3Idents = emptyIdents
-  { _styleReserved = set k3Keywords }
+k3Idents = emptyIdents { _styleReserved = set k3Keywords }
 
 operator :: (TokenParsing m, Monad m) => String -> m ()
 operator = reserve k3Ops
@@ -161,8 +161,8 @@ dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
 
 dEndpoint :: String -> String -> (K3 Type -> K3 Type) -> DeclParser
 dEndpoint kind name typeCstr = namedDecl kind name $ rule . (mkEndpoint <$>)
-  where rule x = x <*> (colon *> typeExpr) <*> equateExpr
-        mkEndpoint n t e = DC.global n (typeCstr t) (Just e)
+  where rule x = x <*> (colon *> typeExpr) <*> (symbol "=" *> channel)
+        mkEndpoint n t channelCstr = DC.endpoint n (typeCstr t) (channelCstr n)
 
 dSource :: DeclParser
 dSource = dEndpoint "source" "source" TC.source
@@ -220,20 +220,26 @@ subAnnotation = MAnnotation <$> (keyword "annotation" *> identifier)
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = (<->) TSpan $ parseError "type" "expression" $ choice [
-    tPrimitive, tOption, tIndirection,
-    tTuple, tRecord,
-    tCollection, tFunction
-  ]
+typeExpr = (<->) TSpan $ parseError "type" "expression" $ tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
 
 typeQualifier :: K3Parser (Annotation Type)
-typeQualifier = choice [keyword "immut" >> return TImmutable,
-                        keyword "mut" >> return TMutable]
+typeQualifier = parseError "type" "qualifier" $
+                  choice [keyword "immut" >> return TImmutable,
+                          keyword "mut" >> return TMutable]
 
 {- Type terms -}
+tTerm :: TypeParser
+tTerm = choice [ tPrimitive, tOption, tIndirection,
+                 tTuple, tRecord, tCollection ]
+
+tTermOrFun :: TypeParser
+tTermOrFun = mkFun <$> tTerm <*> (optional $ symbol "->" *> typeExpr)
+  where mkFun l Nothing = l
+        mkFun l (Just r) = TC.function l r
+
 tPrimitive :: TypeParser
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
   where tConst x   = keyword x >> return (typeCstr x)
@@ -252,7 +258,9 @@ tIndirection :: TypeParser
 tIndirection = tQNested TC.indirection "ind"
 
 tTuple :: TypeParser
-tTuple = TC.tuple <$> (parens . commaSep1) qualifiedTypeExpr
+tTuple = mkTuple <$> (parens . commaSep) qualifiedTypeExpr
+  where mkTuple [x] = x
+        mkTuple l = TC.tuple l
 
 tRecord :: TypeParser
 tRecord = TC.record <$> (braces . semiSep1) idQType
@@ -261,9 +269,6 @@ tCollection :: TypeParser
 tCollection = mkCollectionType <$> (keyword "collection" *> tRecord)
                                <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
-
-tFunction :: TypeParser
-tFunction = TC.function <$> (typeExpr <* symbol "->") <*> typeExpr
 
 tAnnotations :: K3Parser [Annotation Type]
 tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
@@ -328,10 +333,12 @@ eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
 eTuple :: ExpressionParser
-eTuple = EC.tuple <$> commaSep qualifiedExpr
+eTuple = mkTuple <$> (parens . commaSep) qualifiedExpr
+  where mkTuple [x] = x
+        mkTuple l = EC.tuple l
 
 eRecord :: ExpressionParser
-eRecord = EC.record <$> idQExprList
+eRecord = EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
 eEmpty = mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
@@ -445,6 +452,30 @@ equateExpr = symbol "=" *> expr
 
 equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
+
+{- Channels -}
+channel :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
+channel = choice [file, network]
+
+file :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
+file = mkFile <$> (symbol "file" *> eCString) <*> format
+  where mkFile path_e format_e n = (fileInit path_e format_e n, fileProcess, fileFinal n)
+        fileInit path_e format_e n = EC.applyMany (EC.variable "fileOpen") [string n, path_e, format_e]
+        fileFinal n = EC.applyMany (EC.variable "fileClose") [string n]
+        fileProcess = EC.lambda "_" (EC.tuple [])
+        string n = EC.constant $ CString n
+
+network :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
+network = mkNetwork <$> (symbol "network" *> eAddress) <*> format
+  where mkNetwork addr_e format_e n = (netInit addr_e format_e n, netProcess, netFinal n)
+        netInit addr_e format_e n = EC.applyMany (EC.variable "netOpen") [string n, addr_e, format_e]
+        netFinal n = EC.applyMany (EC.variable "netClose") [string n]
+        netProcess = EC.lambda "_" (EC.tuple [])
+        string n = EC.constant $ CString n
+
+format :: ExpressionParser
+format = choice [symbol "csv" >> return (EC.constant $ CString "csv"),
+                 symbol "txt" >> return (EC.constant $ CString "txt")]
 
 {- Main parsing functions -}
 parseK3 :: String -> String

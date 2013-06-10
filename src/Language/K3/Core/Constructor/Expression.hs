@@ -10,6 +10,7 @@ module Language.K3.Core.Constructor.Expression (
     lambda,
     unop,
     binop,
+    applyMany,
     project,
     letIn,
     assign,
@@ -64,6 +65,10 @@ unop op a = Node (EOperate op :@: []) [a]
 -- | Create an application of a binary operator.
 binop :: Operator -> K3 Expression -> K3 Expression -> K3 Expression
 binop op a b = Node (EOperate op :@: []) [a, b]
+
+-- | Create a multi-argument function application.
+applyMany :: K3 Expression -> [K3 Expression] -> K3 Expression
+applyMany f args = foldl (\curried_f arg -> binop OApp curried_f arg) f args
 
 -- | Project a field from a record.
 project :: Identifier -> K3 Expression -> K3 Expression

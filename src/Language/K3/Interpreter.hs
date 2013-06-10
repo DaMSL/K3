@@ -49,10 +49,13 @@ type IEnvironment = [(Identifier, Value)]
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = UnknownVariable Identifier 
-    | TypeError       String      Value    -- type mismaatch w/ expected type and supplied value
-    | OperatorError   Operator    [Value]  -- invalid operator application
-    | BindError       Value       Binder   -- invalid binding identifiers
+    = UnknownVariable    Identifier 
+    | TypeError          String      Value        -- type mismaatch w/ expected type and supplied value
+    | OperatorError      Operator    [Value]      -- invalid operator application
+    | BindError          Value       Binder       -- invalid binding identifiers
+    | ProjectError       Value       Identifier   -- invalid project request
+    | ApplyError         Value                    -- invalid function application
+    | InvalidDestination Value
   deriving (Read, Show)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
@@ -110,6 +113,8 @@ constant c = right $ case c of
               CNone     -> VOption Nothing
               CEmpty    -> VCollection []
 
+-- TODO: current send targets are parsed as variables,
+-- and will fail on this lookup
 variable :: Identifier -> Interpretation Value
 variable n = do
   env <- get
@@ -134,8 +139,31 @@ lambda a b = do
   env <- get
   return $ VFunction env a b
 
+apply :: Interpretation Value -> Interpretation Value -> Interpretation Value
+apply f arg = f >>= performApply
+  where performApply (VFunction env n body) = do
+          -- TODO: this does not correctly handle updates to globals
+          -- by the applied function
+          savedEnv <- get
+          v <- arg
+          put $ bindEnv env n v
+          result <- expression body
+          put savedEnv
+          return result
+        performApply f = throwE $ ApplyError f
+
+send :: Interpretation Value -> Interpretation Value -> Interpretation Value
+send dest arg = dest >>= performSend
+  where performSend (VTuple [_, VString addr, VInt port]) = undefined
+        performSend x = throwE $ InvalidDestination x
+
 project :: Identifier -> Interpretation Value -> Interpretation Value
-project = undefined
+project x e = e >>= applyProject
+  where applyProject (VRecord idvs) =
+          case lookup x idvs of
+            Just v  -> right v
+            Nothing -> throwE $ ProjectError (VRecord idvs) x
+        applyProject v = throwE $ ProjectError v x
 
 letIn :: Identifier -> Interpretation Value -> K3 Expression -> Interpretation Value
 letIn n iv b = (do
@@ -223,14 +251,15 @@ binOp op liv riv = (liftM2 applyOp liv riv) >>= hoistEither
     boolOps = [(OEqu, (==)), (ONeq, (/=)), (OLth, (<)), (OLeq, (<=)), (OGth, (>)), (OGeq, (>=)), (OAnd, (&&)), (OOr, (||))]
 
 
--- TODO: function application and sends
-operator :: Interpretation Value -> Operator -> [Interpretation Value] -> Interpretation Value
-operator m op args = case op of 
-                    OSeq -> sequence args >>= right . last
-                    OApp -> undefined
-                    OSnd -> undefined
-                    _ | op `elem` [ONeg, ONot] -> unOp op $ head args
-                      | otherwise -> binOp op (head args) (args !! 1)
+operator :: Operator -> [Interpretation Value] -> Interpretation Value
+operator op args =
+  case op of 
+    OSeq -> sequence args >>= right . last
+    OApp -> pass apply args
+    OSnd -> pass send args
+    _ | op `elem` [ONeg, ONot] -> unOp op $ head args
+      | otherwise -> pass (binOp op) args
+  where pass f l = uncurry f ((head l), l !! 1)
 
 expression :: K3 Expression -> Interpretation Value
 expression e =
@@ -242,8 +271,8 @@ expression e =
     ETuple               -> tuple subvals
     ERecord     ids      -> record ids subvals 
     ELambda     x        -> lambda x $ head subexprs
-    EOperate    op       -> operator (last subvals) op subvals
-    EProject    memberId -> undefined --project memberId $ head subexprs
+    EOperate    op       -> operator op subvals
+    EProject    memberId -> project memberId $ head subvals
     ELetIn      x        -> letIn x (head subvals) (last subexprs)
     EAssign     lhs      -> assign lhs (head subvals)
     ECaseOf     x        -> caseOf (head subvals) x (subexprs !! 1) (subexprs !! 2)

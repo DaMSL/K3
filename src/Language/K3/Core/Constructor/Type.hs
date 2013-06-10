@@ -5,6 +5,7 @@ module Language.K3.Core.Constructor.Type (
     int,
     float,
     string,
+    unit,
     option,
     indirection,
     tuple,
@@ -41,6 +42,10 @@ float = Node (TFloat :@: []) []
 -- | String type.
 string :: K3 Type
 string = Node (TString :@: []) []
+
+-- | Unit type.
+unit :: K3 Type
+unit = tuple []
 
 -- | Option type, based on the underlying type.
 option :: K3 Type -> K3 Type
