@@ -31,7 +31,7 @@ library
         Language.K3.Core.Constructor.Type,
 
         Language.K3.Interpreter,
-        Language.K3.Parser.Parser,
+        Language.K3.Parser,
         Language.K3.Pretty,
 
         Language.K3.Transform.Alpha

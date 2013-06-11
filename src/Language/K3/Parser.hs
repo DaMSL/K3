@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | K3 Parser.
-module Language.K3.Parser.Parser (
+module Language.K3.Parser (
   declaration,
   qualifiedTypeExpr,
   typeExpr,
