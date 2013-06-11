@@ -7,7 +7,8 @@ module Language.K3.Parser (
   typeExpr,
   qualifiedExpr,
   expr,
-  parseK3
+  parseK3,
+  K3Parser
 ) where
 
 import Control.Applicative
