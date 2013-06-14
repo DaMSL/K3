@@ -36,6 +36,8 @@ library
 
         Language.K3.Transform.Alpha
 
+    ghc-options: -Wall
+
 test-suite all
     type: exitcode-stdio-1.0
 
