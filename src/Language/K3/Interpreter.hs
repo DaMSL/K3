@@ -1,23 +1,41 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | The K3 Interpreter
 module Language.K3.Interpreter (
+    -- | Types
+    Value(..),
+
     Interpretation,
     InterpretationError,
 
-    IEnvironment, ILog,
+    IEnvironment,
+    ILog,
+
+    -- | Interpreters
+    runInterpretation,
+
     expression,
-    declaration,
     program
 ) where
 
+import Control.Applicative
+import Control.Arrow
+
 import Control.Monad.Identity
+import Control.Monad.IO.Class
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
+import Data.Function
+import Data.IORef
 import Data.List
+import Data.Ord
 import Data.Tree
 import Data.Word (Word8)
 
@@ -28,18 +46,31 @@ import Language.K3.Core.Declaration
 
 -- | K3 Values
 data Value
-    = VBool        Bool
-    | VByte        Word8
-    | VInt         Int
-    | VFloat       Float
-    | VString      String
-    | VOption      (Maybe Value)
-    | VTuple       [Value]
-    | VRecord      [(Identifier, Value)]
-    | VCollection  [Value]
-    | VIndirection Value
-    | VFunction    IEnvironment Identifier (K3 Expression)
-  deriving (Read, Show)
+    = VBool Bool
+    | VByte Word8
+    | VInt Int
+    | VReal Double
+    | VString String
+    | VOption (Maybe Value)
+    | VTuple [Value]
+    | VRecord [(Identifier, Value)]
+    | VCollection [Value]
+    | VIndirection (IORef Value)
+    | VFunction (Value -> Interpretation Value)
+
+-- We can't deriving Show because IORefs aren't showable.
+instance Show Value where
+    show (VBool b) = "VBool " ++ show b
+    show (VByte b) = "VByte " ++ show b
+    show (VInt i) = "VInt " ++ show i
+    show (VReal r) = "VReal " ++ show r
+    show (VString s) = "VString " ++ show s
+    show (VOption m) = "VOption " ++ show m
+    show (VTuple t) = "VTuple " ++ show t
+    show (VRecord r) = "VRecord " ++ show r
+    show (VCollection c) = "VCollection " ++ show c
+    show (VIndirection i) = "VIndirection <opaque>"
+    {- show (VFunction f i e) = "VFunction <function>" -}
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -49,239 +80,206 @@ type IEnvironment = [(Identifier, Value)]
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = UnknownVariable    Identifier 
-    | TypeError          String      Value        -- type mismaatch w/ expected type and supplied value
-    | OperatorError      Operator    [Value]      -- invalid operator application
-    | BindError          Value       Binder       -- invalid binding identifiers
-    | ProjectError       Value       Identifier   -- invalid project request
-    | ApplyError         Value                    -- invalid function application
-    | InvalidDestination Value
-  deriving (Read, Show)
+    = RunTimeInterpretationError String
+    | RunTimeTypeError String
+  deriving (Eq, Read, Show)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IEnvironment (WriterT ILog Identity))
+type Interpretation = EitherT InterpretationError (StateT IEnvironment (WriterT ILog IO))
 
 -- | Run an interpretation to get a value or error, resulting environment and event log.
-runInterpretation :: IEnvironment -> Interpretation a -> ((Either InterpretationError a, IEnvironment), ILog)
-runInterpretation e = runIdentity . runWriterT . flip runStateT e . runEitherT
+runInterpretation :: IEnvironment -> Interpretation a -> IO ((Either InterpretationError a, IEnvironment), ILog)
+runInterpretation e = runWriterT . flip runStateT e . runEitherT
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
 throwE :: InterpretationError -> Interpretation a
-throwE = left
+throwE = Control.Monad.Trans.Either.left
 
-{- Value helpers -}
-valueType v = case v of
-  VBool _             -> "bool"
-  VByte _             -> "byte"
-  VInt _              -> "int"
-  VFloat _            -> "float"
-  VString _           -> "string"
-  VOption v_opt       -> "option"
-  VTuple subv         -> "tuple"
-  VRecord subv        -> "record"
-  VCollection subv    -> "collection"
-  VIndirection v      -> "ind"
-  VFunction _ _ _     -> "function"
+-- | Look-up the environment, with a thrown error if unsuccessful.
+lookupE :: Identifier -> Interpretation Value
+lookupE n = get >>= maybe (throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'") return . lookup n
 
-{- Environment helpers -}
-addEnv env n v = env ++ [(n,v)]
-deleteEnv env n = filter ((n ==) . fst) env
-lookupEnv env n = case lookup n env of
-    Just v -> Right v
-    Nothing -> Left $ UnknownVariable n
+children = subForest
 
-replaceEnv env n v = addEnv (deleteEnv env n) n v
-bindEnv env n v = case lookup n env of
-                    Just a -> replaceEnv env n v
-                    Nothing -> addEnv env n v
-
-
-{- Interpreter implementation -}
-vUnit  = VTuple []
-vTrue  = VBool True
-vFalse = VBool False
-
-
+-- | Interpretation of Constants.
 constant :: Constant -> Interpretation Value
-constant c = right $ case c of
-              CBool b   -> VBool b
-              CInt i    -> VInt i
-              CByte w   -> VByte w
-              CFloat f  -> VFloat f
-              CString s -> VString s
-              CNone     -> VOption Nothing
-              CEmpty    -> VCollection []
+constant (CBool b) = return $ VBool b
+constant (CInt i) = return $ VInt i
+constant (CByte w) = return $ VByte w
+constant (CReal r) = return $ VReal r
+constant (CString s) = return $ VString s
+constant CNone = return $ VOption Nothing
+constant CEmpty = return $ VCollection []
 
--- TODO: current send targets are parsed as variables,
--- and will fail on this lookup
-variable :: Identifier -> Interpretation Value
-variable n = do
-  env <- get
-  case lookupEnv env n of
-    Left e -> throwE e
-    Right v -> right v
+-- | Common Numeric-Operation handling, with casing for int/real promotion.
+numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
+numeric op a b = do
+    a' <- expression a
+    b' <- expression b
+    case (a', b') of
+        (VInt x, VInt y) -> return $ VInt $ op x y
+        (VInt x, VReal y) -> return $ VReal $ op (fromIntegral x) y
+        (VReal x, VInt y) -> return $ VReal $ op x (fromIntegral y)
+        (VReal x, VReal y) -> return $ VReal $ op x y
 
-some :: Interpretation Value -> Interpretation Value
-some v = v >>= right . VOption . Just
+-- | Common boolean operation handling.
+logic :: (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
+logic op a b = do
+    a' <- expression a
+    b' <- expression b
 
-indirect :: Interpretation Value -> Interpretation Value
-indirect v = v >>= right . VIndirection
+    case (a', b') of
+        (VBool x, VBool y) -> return $ VBool $ op x y
+        otherwise -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
 
-tuple :: [Interpretation Value] -> Interpretation Value
-tuple fields = sequence fields >>= right . VTuple
+-- | Common comparison operation handling.
+comparison :: (forall a. Ord a => a -> a -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
+comparison op a b = do
+    a' <- expression a
+    b' <- expression b
 
-record :: [Identifier] -> [Interpretation Value] -> Interpretation Value
-record ids vals = sequence vals >>= right . VRecord . zip ids
+    case (a', b') of
+        (VBool x, VBool y) -> return $ VBool $ op x y
+        (VInt x, VInt y) -> return $ VBool $ op x y
+        (VReal x, VReal y) -> return $ VBool $ op x y
+        (VString x, VString y) -> return $ VBool $ op x y
 
-lambda :: Identifier -> K3 Expression -> Interpretation Value
-lambda a b = do
-  env <- get
-  return $ VFunction env a b
+-- | Interpretation of unary operators.
+unary :: Operator -> K3 Expression -> Interpretation Value
 
-apply :: Interpretation Value -> Interpretation Value -> Interpretation Value
-apply f arg = f >>= performApply
-  where performApply (VFunction env n body) = do
-          -- TODO: this does not correctly handle updates to globals
-          -- by the applied function
-          savedEnv <- get
-          v <- arg
-          put $ bindEnv env n v
-          result <- expression body
-          put savedEnv
-          return result
-        performApply f = throwE $ ApplyError f
+-- | Interpretation of unary negation of numbers.
+unary ONeg a = expression a >>= \case
+    VInt i -> return $ VInt (negate i)
+    VReal r -> return $ VReal (negate r)
+    otherwise -> throwE $ RunTimeTypeError "Invalid Negation"
 
-send :: Interpretation Value -> Interpretation Value -> Interpretation Value
-send dest arg = dest >>= performSend
-  where performSend (VTuple [_, VString addr, VInt port]) = undefined
-        performSend x = throwE $ InvalidDestination x
+-- | Interpretation of unary negation of booleans.
+unary ONot a = expression a >>= \case
+    VBool b -> return $ VBool (not b)
+    otherwise -> throwE $ RunTimeTypeError "Invalid Complement"
 
-project :: Identifier -> Interpretation Value -> Interpretation Value
-project x e = e >>= applyProject
-  where applyProject (VRecord idvs) =
-          case lookup x idvs of
-            Just v  -> right v
-            Nothing -> throwE $ ProjectError (VRecord idvs) x
-        applyProject v = throwE $ ProjectError v x
+unary _ _ = throwE $ RunTimeTypeError "Invalid Unary Operator"
 
-letIn :: Identifier -> Interpretation Value -> K3 Expression -> Interpretation Value
-letIn n iv b = (do
-  v <- iv
-  env <- get
-  put $ bindEnv env n v
-  return vUnit) >> (expression b)
+-- | Interpretation of binary operators.
+binary :: Operator -> K3 Expression -> K3 Expression -> Interpretation Value
 
-assign :: Identifier -> Interpretation Value -> Interpretation Value
-assign n iv = do
-  v <- iv
-  env <- get
-  put $ bindEnv env n v
-  return vUnit
+-- | Standard numeric operators.
+binary OAdd = numeric (+)
+binary OSub = numeric subtract
+binary OMul = numeric (*)
 
-caseOf :: Interpretation Value -> Identifier -> K3 Expression -> K3 Expression -> Interpretation Value
-caseOf dv n se ne = dv >>= applyCase
-  where applyCase (VOption Nothing) = expression ne
-        applyCase (VOption (Just v)) = (do
-          env <- get
-          put $ bindEnv env n v
-          return vUnit) >> (expression se)
+-- | Division handled similarly, but accounting zero-division errors.
+binary ODiv = \a b -> do
+    a' <- expression a
+    b' <- expression b
 
-bindAs :: Interpretation Value -> Binder -> K3 Expression -> Interpretation Value
-bindAs bv binder e = bv >>= applyBind binder
-  where applyBind (BIndirection n) (VIndirection v) = (do
-          env <- get
-          put $ bindEnv env n v
-          return vUnit) >> (expression e)          
-        applyBind (BTuple ids) (VTuple subv) = 
-          if length subv /= length ids then
-            throwE $ BindError (VTuple subv) (BTuple ids)
-          else (do
-            env <- get
-            put $ foldl (uncurry . bindEnv) env $ zip ids subv
-            return vUnit) >> expression e
-        applyBind (BRecord rebinds) (VRecord idvs) = 
-          if length idvs /= length rebinds then
-            throwE $ BindError (VRecord idvs) (BRecord rebinds)
-          else (do
-            env <- get
-            case foldl (rename idvs) (Right env) rebinds of
-              Left bindErr -> throwE bindErr
-              Right nEnv -> (put nEnv >> return vUnit)) >> expression e
-        applyBind b v = throwE $ BindError v b
-        rename record acc (new, old) = case (acc, lookup old record) of
-          (Left err, _)       -> Left err
-          (Right env, Just v) -> Right $ bindEnv env new v
-          (Right env, _)      -> Left $ BindError (VRecord record) (BRecord [(new,old)])
+    case b' of
+        VInt 0 -> throwE $ RunTimeInterpretationError $ "Division by Zero"
+        VReal 0 -> throwE $ RunTimeInterpretationError $ "Division by Zero"
 
+    case (a', b') of
+        (VInt x, VInt y) -> return $ VInt $ x `div` y
+        (VInt x, VReal y) -> return $ VReal $ fromIntegral x / y
+        (VReal x, VInt y) -> return $ VReal $ x / (fromIntegral y)
+        (VReal x, VReal y) -> return $ VReal $ x / y
 
-ifThenElse :: Interpretation Value -> K3 Expression -> K3 Expression -> Interpretation Value
-ifThenElse pv t e = pv >>= (\v -> 
-    case v of 
-      VBool b -> if b then expression t else expression e
-      _ -> throwE $ TypeError (valueType vTrue) v)
+-- | Logical Operators
+binary OAnd = logic (&&)
+binary OOr  = logic (||)
 
-unOp :: Operator -> Interpretation Value -> Interpretation Value
-unOp op iv = iv >>= (\v -> case (op, v) of
-  (ONeg, VInt i)   -> right $ VInt (negate i)
-  (ONeg, VFloat f) -> right $ VFloat (negate f)
-  (ONot, VBool b)  -> right $ VBool (not b)
-  _ -> throwE $ OperatorError op [v])
+-- | Function Application
+binary OApp = \f x -> do
+    f' <- expression f
+    x' <- expression x
 
+    case f' of
+        VFunction b -> b x'
+        otherwise -> throwE $ RunTimeTypeError "Invalid Function Application"
 
-binOp :: Operator -> Interpretation Value -> Interpretation Value -> Interpretation Value
-binOp op liv riv = (liftM2 applyOp liv riv) >>= hoistEither
-  where
-    applyOp lv rv =
-      let err = Left $ OperatorError op [lv,rv] in case (op, lv, rv) of 
-      (x, VInt l, VInt r)     | x `elem` (map fst intOps) -> dispatchIntOp err VInt x l r
-      (x, VInt l, VFloat r)   | x `elem` (map fst floatOps) -> dispatchFloatOp err VFloat x (promote l) r
-      (x, VFloat l, VInt r)   | x `elem` (map fst floatOps) -> dispatchFloatOp err VFloat x l (promote r)
-      (x, VBool l, VBool r)   | x `elem` (map fst boolOps) -> dispatchBoolOp err VBool x l r
-      _ -> err
-    dispatch opList err cstr op l r = case op `elemIndex` (map fst opList) of
-      Just i -> Right $ cstr $ (snd $ opList !! i) l r
-      Nothing -> err
-    dispatchIntOp = dispatch intOps
-    dispatchFloatOp = dispatch floatOps
-    dispatchBoolOp = dispatch boolOps
-    promote i = fromIntegral i :: Float
-    intOps = [(OAdd, (+)), (OSub, (-)), (OMul, (*)), (ODiv, div)]
-    floatOps = [(OAdd, (+)), (OSub, (-)), (OMul, (*)), (ODiv, (/))]
-    boolOps = [(OEqu, (==)), (ONeq, (/=)), (OLth, (<)), (OLeq, (<=)), (OGth, (>)), (OGeq, (>=)), (OAnd, (&&)), (OOr, (||))]
+-- | Comparison Operators
+binary OEqu = comparison (==)
+binary ONeq = comparison (/=)
+binary OLth = comparison (<)
+binary OLeq = comparison (<=)
+binary OGth = comparison (>)
+binary OGeq = comparison (>=)
 
+-- | Message Passing
+binary OSnd = binary OApp
 
-operator :: Operator -> [Interpretation Value] -> Interpretation Value
-operator op args =
-  case op of 
-    OSeq -> sequence args >>= right . last
-    OApp -> pass apply args
-    OSnd -> pass send args
-    _ | op `elem` [ONeg, ONot] -> unOp op $ head args
-      | otherwise -> pass (binOp op) args
-  where pass f l = uncurry f ((head l), l !! 1)
-
+-- | Interpretation of Expressions
 expression :: K3 Expression -> Interpretation Value
-expression e =
-  case tag e of 
-    EConstant   c        -> constant c
-    EVariable   n        -> variable n
-    ESome                -> some . head $ subvals
-    EIndirect            -> indirect . head $ subvals
-    ETuple               -> tuple subvals
-    ERecord     ids      -> record ids subvals 
-    ELambda     x        -> lambda x $ head subexprs
-    EOperate    op       -> operator op subvals
-    EProject    memberId -> project memberId $ head subvals
-    ELetIn      x        -> letIn x (head subvals) (last subexprs)
-    EAssign     lhs      -> assign lhs (head subvals)
-    ECaseOf     x        -> caseOf (head subvals) x (subexprs !! 1) (subexprs !! 2)
-    EBindAs     binder   -> bindAs (head subvals) binder (last subexprs)
-    EIfThenElse          -> ifThenElse (head subvals) (subexprs !! 1) (subexprs !! 2)
-  where children (Node _ x) = x
-        tag (Node (x :@: _) _) = x
-        subexprs = children e
-        subvals = map expression subexprs
+
+-- | Interpretation of constant expressions.
+expression (tag -> EConstant c) = constant c
+
+-- | Interpretation of variable lookups.
+expression (tag -> EVariable i) = lookupE i
+
+-- | Interpretation of option type construction expressions.
+expression (tag &&& children -> (ESome, [x])) = expression x >>= return . VOption . Just
+expression (tag -> ESome) = throwE $ RunTimeTypeError "Invalid Construction of Option"
+
+-- | Interpretation of indirection type construction expressions.
+expression (tag &&& children -> (EIndirect, [x])) = expression x >>= liftIO . newIORef >>= return . VIndirection
+expression (tag -> EIndirect) = throwE $ RunTimeTypeError "Invalid Construction of Indirection"
+
+-- | Interpretation of tuple construction expressions.
+expression (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . VTuple
+
+-- | Interpretation of record construction expressions.
+expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= return . VRecord . zip is
+
+-- | Interpretation of function construction.
+expression (tag &&& children -> (ELambda i, [b])) = return $ VFunction $ \v -> modify ((i, v):) >> expression b
+
+-- | Interpretation of unary/binary operators.
+expression (tag &&& children -> (EOperate otag, cs))
+    | otag `elem` [ONeg, ONot], [a] <- cs = unary otag a
+    | otherwise, [a, b] <- cs = binary otag a b
+    | otherwise = undefined
+
+-- | Interpretation of Record Projection.
+expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
+    VRecord vr -> maybe (throwE $ RunTimeTypeError "Unknown Record Field") return $ lookup i vr
+    otherwise -> throwE $ RunTimeTypeError "Invalid Record Projection"
+expression (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
+
+-- | Interpretation of Let-In Constructions.
+expression (tag &&& children -> (ELetIn i, [e, b])) = expression e >>= modify . (:) . (i,) >> expression b
+expression (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
+
+-- | Interpretation of Assignment.
+expression (tag &&& children -> (EAssign i, [e])) = lookupE i >>= \case
+    VIndirection r -> expression e >>= liftIO . writeIORef r >> return (VTuple [])
+    otherwise -> throwE $ RunTimeTypeError "Assignment to Non-Reference"
+expression (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
+
+-- | Interpretation of Case-Matches.
+expression (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
+    VOption (Just v) -> modify ((i, v):) >> expression s
+    VOption (Nothing) -> expression n
+    otherwise -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
+expression (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
+
+-- | Interpretation of Binding.
+expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> case (b, b') of
+    (BIndirection i, VIndirection r) -> (modify . (:) $ (i, VIndirection r)) >> expression f
+    (BTuple ts, VTuple vs) -> (modify . (++) $ zip ts vs) >> expression f
+    (BRecord ids, VRecord ivs) -> do
+        let (idls, idbs) = unzip $ sortBy (compare `on` fst) ids
+        let (ivls, ivvs) = unzip $ sortBy (compare `on` fst) ivs
+        if idls == ivls
+            then modify ((++) (zip idbs ivvs)) >> expression f
+            else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
+expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
+
+-- | Interpretation of If-Then-Else constructs.
+expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \case
+    VBool True -> expression t
+    VBool False -> expression e
+    otherwise -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
 
 global      :: Identifier -> (K3 Type) -> (Maybe (K3 Expression)) -> Interpretation Value
 global      = undefined
@@ -308,7 +306,7 @@ declaration d = case tag d of
   where children (Node _ x) = x
         tag (Node (x :@: _) _) = x
 
-program :: K3 Declaration -> IEnvironment
-program p = case runInterpretation [] $ declaration p of
-              ((Right _, env), _) -> env
-              ((Left x, _), _) -> []
+program :: K3 Declaration -> IO IEnvironment
+program p = runInterpretation [] (declaration p) >>= \case
+              ((Right _, env), _) -> return env
+              ((Left x, _), _) -> return []
