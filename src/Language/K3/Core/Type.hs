@@ -21,7 +21,7 @@ data Type
     = TBool
     | TByte
     | TInt
-    | TFloat
+    | TReal
     | TString
     | TOption
     | TIndirection

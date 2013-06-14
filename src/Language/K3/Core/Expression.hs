@@ -28,10 +28,10 @@ data Expression
 
 -- | Constant expression values.
 data Constant
-    = CBool   Bool
-    | CInt    Int
-    | CByte   Word8
-    | CFloat  Float
+    = CBool Bool
+    | CInt Int
+    | CByte Word8
+    | CReal Double
     | CString String
     | CNone
     | CEmpty

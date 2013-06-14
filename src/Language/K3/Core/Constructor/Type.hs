@@ -3,7 +3,7 @@ module Language.K3.Core.Constructor.Type (
     bool,
     byte,
     int,
-    float,
+    real,
     string,
     unit,
     option,
@@ -35,9 +35,9 @@ byte = Node (TByte :@: []) []
 int :: K3 Type
 int = Node (TInt :@: []) []
 
--- | Floating type.
-float :: K3 Type
-float = Node (TFloat :@: []) []
+-- | Decimal type.
+real :: K3 Type
+real = Node (TReal :@: []) []
 
 -- | String type.
 string :: K3 Type
