@@ -24,7 +24,6 @@ module Language.K3.Interpreter (
     program
 ) where
 
-import Control.Applicative
 import Control.Arrow
 
 import Control.Monad.Identity
@@ -36,7 +35,6 @@ import Control.Monad.Writer
 import Data.Function
 import Data.IORef
 import Data.List
-import Data.Ord
 import Data.Tree
 import Data.Word (Word8)
 
@@ -70,8 +68,8 @@ instance Show Value where
     show (VTuple t) = "VTuple " ++ show t
     show (VRecord r) = "VRecord " ++ show r
     show (VCollection c) = "VCollection " ++ show c
-    show (VIndirection i) = "VIndirection <opaque>"
-    {- show (VFunction f i e) = "VFunction <function>" -}
+    show (VIndirection _) = "VIndirection <opaque>"
+    show (VFunction _) = "VFunction <function>"
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -101,6 +99,7 @@ throwE = Control.Monad.Trans.Either.left
 lookupE :: Identifier -> Interpretation Value
 lookupE n = get >>= maybe (throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'") return . lookup n
 
+children :: Tree a -> Forest a
 children = subForest
 
 -- | Interpretation of Constants.
@@ -123,6 +122,7 @@ numeric op a b = do
         (VInt x, VReal y) -> return $ VReal $ op (fromIntegral x) y
         (VReal x, VInt y) -> return $ VReal $ op x (fromIntegral y)
         (VReal x, VReal y) -> return $ VReal $ op x y
+        _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Common boolean operation handling.
 logic :: (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -145,6 +145,7 @@ comparison op a b = do
         (VInt x, VInt y) -> return $ VBool $ op x y
         (VReal x, VReal y) -> return $ VBool $ op x y
         (VString x, VString y) -> return $ VBool $ op x y
+        _ -> throwE $ RunTimeTypeError "Comparison Type Mis-Match"
 
 -- | Interpretation of unary operators.
 unary :: Operator -> K3 Expression -> Interpretation Value
@@ -175,15 +176,17 @@ binary ODiv = \a b -> do
     a' <- expression a
     b' <- expression b
 
-    case b' of
-        VInt 0 -> throwE $ RunTimeInterpretationError $ "Division by Zero"
-        VReal 0 -> throwE $ RunTimeInterpretationError $ "Division by Zero"
+    void $ case b' of
+        VInt 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
+        VReal 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
+        _ -> return ()
 
     case (a', b') of
         (VInt x, VInt y) -> return $ VInt $ x `div` y
         (VInt x, VReal y) -> return $ VReal $ fromIntegral x / y
         (VReal x, VInt y) -> return $ VReal $ x / (fromIntegral y)
         (VReal x, VReal y) -> return $ VReal $ x / y
+        _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Logical Operators
 binary OAnd = logic (&&)
@@ -208,6 +211,8 @@ binary OGeq = comparison (>=)
 
 -- | Message Passing
 binary OSnd = binary OApp
+
+binary _ = const . const $ throwE $ RunTimeInterpretationError "Unreachable"
 
 -- | Interpretation of Expressions
 expression :: K3 Expression -> Interpretation Value
@@ -274,6 +279,7 @@ expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> c
         if idls == ivls
             then modify ((++) (zip idbs ivvs)) >> expression f
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
+    _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
 expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
 
 -- | Interpretation of If-Then-Else constructs.
@@ -281,6 +287,8 @@ expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \ca
     VBool True -> expression t
     VBool False -> expression e
     _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
+
+expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 global      :: Identifier -> (K3 Type) -> (Maybe (K3 Expression)) -> Interpretation Value
 global      = undefined
