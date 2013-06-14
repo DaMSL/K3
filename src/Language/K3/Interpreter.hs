@@ -131,7 +131,7 @@ logic op a b = do
 
     case (a', b') of
         (VBool x, VBool y) -> return $ VBool $ op x y
-        otherwise -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
+        _ -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
 
 -- | Common comparison operation handling.
 comparison :: (forall a. Ord a => a -> a -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -152,12 +152,12 @@ unary :: Operator -> K3 Expression -> Interpretation Value
 unary ONeg a = expression a >>= \case
     VInt i -> return $ VInt (negate i)
     VReal r -> return $ VReal (negate r)
-    otherwise -> throwE $ RunTimeTypeError "Invalid Negation"
+    _ -> throwE $ RunTimeTypeError "Invalid Negation"
 
 -- | Interpretation of unary negation of booleans.
 unary ONot a = expression a >>= \case
     VBool b -> return $ VBool (not b)
-    otherwise -> throwE $ RunTimeTypeError "Invalid Complement"
+    _ -> throwE $ RunTimeTypeError "Invalid Complement"
 
 unary _ _ = throwE $ RunTimeTypeError "Invalid Unary Operator"
 
@@ -195,7 +195,7 @@ binary OApp = \f x -> do
 
     case f' of
         VFunction b -> b x'
-        otherwise -> throwE $ RunTimeTypeError "Invalid Function Application"
+        _ -> throwE $ RunTimeTypeError "Invalid Function Application"
 
 -- | Comparison Operators
 binary OEqu = comparison (==)
@@ -243,7 +243,7 @@ expression (tag &&& children -> (EOperate otag, cs))
 -- | Interpretation of Record Projection.
 expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
     VRecord vr -> maybe (throwE $ RunTimeTypeError "Unknown Record Field") return $ lookup i vr
-    otherwise -> throwE $ RunTimeTypeError "Invalid Record Projection"
+    _ -> throwE $ RunTimeTypeError "Invalid Record Projection"
 expression (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
 
 -- | Interpretation of Let-In Constructions.
@@ -253,14 +253,14 @@ expression (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construc
 -- | Interpretation of Assignment.
 expression (tag &&& children -> (EAssign i, [e])) = lookupE i >>= \case
     VIndirection r -> expression e >>= liftIO . writeIORef r >> return (VTuple [])
-    otherwise -> throwE $ RunTimeTypeError "Assignment to Non-Reference"
+    _ -> throwE $ RunTimeTypeError "Assignment to Non-Reference"
 expression (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
 
 -- | Interpretation of Case-Matches.
 expression (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
     VOption (Just v) -> modify ((i, v):) >> expression s
     VOption (Nothing) -> expression n
-    otherwise -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
+    _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
 expression (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
 -- | Interpretation of Binding.
@@ -279,7 +279,7 @@ expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construc
 expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \case
     VBool True -> expression t
     VBool False -> expression e
-    otherwise -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
+    _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
 
 global      :: Identifier -> (K3 Type) -> (Maybe (K3 Expression)) -> Interpretation Value
 global      = undefined
