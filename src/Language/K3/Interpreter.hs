@@ -304,10 +304,8 @@ declaration d = case tag d of
                   DSelector   n         -> selector n
                   DRole       r         -> role r $ children d
                   DAnnotation n members -> annotation n members
-  where children (Node _ x) = x
-        tag (Node (x :@: _) _) = x
 
 program :: K3 Declaration -> IO IEnvironment
 program p = runInterpretation [] (declaration p) >>= \case
               ((Right _, env), _) -> return env
-              ((Left x, _), _) -> return []
+              ((Left _, _), _) -> return []
