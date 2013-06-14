@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
