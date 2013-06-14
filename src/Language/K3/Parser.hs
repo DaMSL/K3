@@ -247,7 +247,7 @@ tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
         typeCstr x = case x of
                       "bool"    -> TC.bool
                       "int"     -> TC.int
-                      "real"    -> TC.float
+                      "real"    -> TC.real
                       "string"  -> TC.string
 
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
@@ -313,7 +313,7 @@ eCNumber :: ExpressionParser
 eCNumber = mkNumber <$> integerOrDouble
   where mkNumber x = case x of
                       Left i  -> EC.constant . CInt . fromIntegral $ i
-                      Right d -> EC.constant . CFloat . double2Float $ d
+                      Right d -> EC.constant . CReal $ d
 
 eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
