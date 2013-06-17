@@ -18,8 +18,6 @@ import Language.K3.Core.Type
 -- | Top-Level Declarations
 data Declaration
     = DGlobal     Identifier (K3 Type) (Maybe (K3 Expression))
-    | DBind       Identifier Identifier
-    | DSelector   Identifier
     | DRole       Identifier
     | DAnnotation Identifier [AnnMemDecl]
   deriving (Eq, Read, Show)

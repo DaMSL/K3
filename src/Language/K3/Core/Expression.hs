@@ -24,15 +24,16 @@ data Expression
     | ECaseOf     Identifier
     | EBindAs     Binder
     | EIfThenElse 
+    | EAddress
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.
 data Constant
-    = CBool Bool
-    | CInt Int
-    | CByte Word8
-    | CReal Double
-    | CString String
+    = CBool    Bool
+    | CInt     Int
+    | CByte    Word8
+    | CReal    Double
+    | CString  String
     | CNone
     | CEmpty
   deriving (Eq, Read, Show)
@@ -74,5 +75,3 @@ data instance Annotation Expression
     | ESpan Span
     | EAnnotation Identifier
   deriving (Eq, Read, Show)
-
--- | TODO: pretty printing of expression tree

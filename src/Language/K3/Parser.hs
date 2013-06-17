@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | K3 Parser.
 module Language.K3.Parser (
@@ -12,6 +14,7 @@ module Language.K3.Parser (
 ) where
 
 import Control.Applicative
+import Control.Monad
 
 import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
@@ -19,14 +22,11 @@ import Data.HashSet (HashSet)
 import Data.List
 import Data.String
 import Data.Tree
-import GHC.Float
 
 import Debug.Trace
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
-import qualified Text.Parsec.Language as PL
-import qualified Text.Parsec.Token    as PT
 
 import Text.Parser.Char
 import Text.Parser.Combinators
@@ -45,16 +45,40 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+import Language.K3.Pretty
+import Language.K3.ProgramBuilder
+
 {- Type synonyms for parser return types -}
-type K3Parser a       = PP.ParsecT String () Identity a
-type TypeParser       = K3Parser (K3 Type)
-type ExpressionParser = K3Parser (K3 Expression)
-type BinderParser     = K3Parser Binder
-type DeclParser       = K3Parser (K3 Declaration)
+{-| Parser environment type.
+    This includes two scoped frames, one for source metadata, and another as a
+    list of K3 program entry points as role-qualified sources that can be consumed.    
+-}
+
+-- source name => bound triggers, qualified source name, go expression
+type SourcesBQG        = [(Identifier, ([Identifier], Identifier, Maybe (K3 Expression)))]
+
+-- role name, default name
+type DefaultEntries    = [(Identifier, Identifier)] 
+
+type EnvironmentFrame  = (SourcesBQG, DefaultEntries)
+type ParserEnvironment = [EnvironmentFrame]
+
+type K3Parser a        = PP.ParsecT String ParserEnvironment Identity a
+type TypeParser        = K3Parser (K3 Type)
+type ExpressionParser  = K3Parser (K3 Expression)
+type BinderParser      = K3Parser Binder
+type DeclParser        = K3Parser (K3 Declaration)
 
 {- Helpers -}
+optAsList :: Maybe a -> [a]
+optAsList (Just a) = [a]
+optAsList Nothing = []
+
 set :: [String] -> HashSet String
 set = HashSet.fromList
+
+filterOptions :: [Maybe a] -> [a]
+filterOptions = concat . map optAsList
 
 parseError :: Parsing m => String -> String -> m a -> m a
 parseError rule i m = m <?> (i ++ " " ++ rule)
@@ -99,14 +123,6 @@ k3Keywords = [
     "annotation", "lifted", "provides", "requires"
   ]
 
-{- K3 LanguageDef for Parsec -}
-k3Style = PL.javaStyle {
-  PT.opStart = oneOf "+-*/=!<>;",
-  PT.opLetter = oneOf "+-*/=!<>;",
-  PT.reservedOpNames = k3Operators,
-  PT.reservedNames = k3Keywords
-}
-
 {- Style definitions for parsers library -}
 k3CommentStyle :: CommentStyle
 k3CommentStyle = javaCommentStyle
@@ -127,28 +143,35 @@ keyword :: (TokenParsing m, Monad m) => String -> m ()
 keyword = reserve k3Idents
 
 
+{- Main parsing functions -}
+parseK3 :: String -> Maybe (K3 Declaration)
+parseK3 progStr = case P.runParser program [] "" progStr of
+  Left err -> Nothing
+  Right val -> Just val
+
+
 {- K3 grammar parsers -}
 
 -- TODO: inline testing
 program :: DeclParser
-program = DSpan <-> mkProgram <$> endBy roleBody eof
-  where mkProgram l = DC.role "__global" $ concat l
+program = DSpan <-> (rule >>= mkEntryPoints >>= return . declareBuiltins)
+  where rule = mkProgram <$> endBy (roleBody "") eof
+        mkProgram l = DC.role defaultRoleName $ concat l
+        mkEntryPoints d = PP.getState >>= return . (uncurry $ desugarRoleEntries d) . fst . safePopFrame
 
-roleBody :: K3Parser [K3 Declaration]
-roleBody = some declaration
-
-{- Declaration helpers -}
-namedDecl nameKind name namedCstr =
-  (<->) DSpan $ declError nameKind $ namedCstr $ keyword name *> identifier
-
-namedBraceDecl k n rule cstr =
-  namedDecl k n $ braceRule . (cstr <$>)
-  where braceRule x = x <*> (braces rule)
+roleBody :: Identifier -> K3Parser [K3 Declaration]
+roleBody n = pushBindings >> rule >>= popBindings >>= desugarRole n
+  where rule = some declaration >>= return . filterOptions
+        pushBindings = PP.getState >>= PP.putState . addFrame
+        popBindings dl = PP.getState >>= (\env ->
+          (PP.putState . removeFrame) env >> return (dl, currentFrame env))
+        
 
 {- Declarations -}
-declaration :: DeclParser
-declaration = choice [dGlobal, dTrigger, dSource, dSink,
-                      dBind, dRole, dSelector, dAnnotation]
+declaration :: K3Parser (Maybe (K3 Declaration))
+declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
+  where decls = choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
+        sugaredDecls = choice [dSelector, dBind]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
@@ -158,31 +181,41 @@ dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
   where
     rule x = x <*> (parens idQTypeList) <*> equateExpr
-    mkTrig name args body = DC.global name (TC.trigger args) (Just body)
+    mkTrig name args body =
+      DC.global name (TC.trigger args)
+        (Just $ flip mkBody body $ (fst . unzip) args)
+    
+    mkBody [] body  = EC.lambda "_" body
+    mkBody [n] body = EC.lambda n body
+    mkBody ids body =
+      EC.lambda "__x" $ EC.bindAs (EC.variable "__x") (BTuple ids) body
 
-dEndpoint :: String -> String -> (K3 Type -> K3 Type) -> DeclParser
-dEndpoint kind name typeCstr = namedDecl kind name $ rule . (mkEndpoint <$>)
+dEndpoint :: String -> String -> (K3 Type -> K3 Type)
+              -> (K3 Declaration -> DeclParser) -> DeclParser
+dEndpoint kind name typeCstr stateModifier = 
+  namedDecl kind name $ join . rule . (mkEndpoint <$>)
   where rule x = x <*> (colon *> typeExpr) <*> (symbol "=" *> channel)
-        mkEndpoint n t channelCstr = DC.endpoint n (typeCstr t) (channelCstr n)
+        mkEndpoint n t channelCstr =
+          stateModifier $ uncurry (DC.endpoint n (typeCstr t)) (channelCstr n t)
 
 dSource :: DeclParser
-dSource = dEndpoint "source" "source" TC.source
+dSource = dEndpoint "source" "source" TC.source trackSource
 
 dSink :: DeclParser
-dSink = dEndpoint "sink" "sink" TC.sink
+dSink = dEndpoint "sink" "sink" TC.sink return
 
-dBind :: DeclParser
-dBind = DSpan <-> mkBind <$> identifier <*> bidirectional <*> identifier
-  where mkBind id1 lSrc id2 = if lSrc then DC.bind id1 id2 else DC.bind id2 id1
+dBind :: K3Parser ()
+dBind = (trackBindings =<<) $ mkBind <$> identifier <*> bidirectional <*> identifier
+  where mkBind id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         bidirectional = choice [symbol "|>" >> return True,
                                 symbol "<|" >> return False]
 
 dRole :: DeclParser
-dRole = namedBraceDecl n n roleBody DC.role
+dRole = chainedNamedBraceDecl n n roleBody DC.role
   where n = "role"
 
-dSelector :: DeclParser
-dSelector = namedDecl "selector" "default" $ (DC.selector <$>)
+dSelector :: K3Parser ()
+dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 dAnnotation :: DeclParser
 dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
@@ -277,7 +310,7 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 
 {- Expressions -}
 expr :: ExpressionParser
-expr = (<->) ESpan $ parseError "k3" "expression" $ buildExpressionParser opTable eTerm
+expr = parseError "k3" "expression" $ buildExpressionParser opTable eTerm
 
 qualifiedExpr :: ExpressionParser
 qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
@@ -287,16 +320,29 @@ exprQualifier = choice [keyword "immut" >> return EImmutable,
                         keyword "mut" >> return EMutable]
 
 eTerm :: ExpressionParser
-eTerm = ESpan <-> choice [
-    eLiterals, eSend,
-    eProject, eLambda, eCondition, 
-    eAssign, eLet, eCase, eBind
-  ]
+eTerm = ESpan <-> mkTerm <$> choice [
+    trace "ELIT" eLiterals,
+    trace "ESND" eSend,
+    trace "ELAM" eLambda,
+    trace "ECND" eCondition,
+    trace "EASN" eAssign,
+    trace "ELET" eLet,
+    trace "ECAS" eCase,
+    trace "EBND" eBind,
+    trace "EADR" eAddress ] <*> eProject
+  where eProject = (optional (dot *> identifier))
+        mkTerm e Nothing = e
+        mkTerm e (Just x) = EC.project x e
 
 {- Literals -}
 eLiterals :: ExpressionParser
-eLiterals = choice [eTerminal, eOption, eIndirection,
-                    eTuple, eRecord, eEmpty]
+eLiterals = choice [ 
+    trace "ETRM" eTerminal,
+    trace "EOPT" eOption,
+    trace "EIND" eIndirection,
+    trace "ETON" eTupleOrNested,
+    trace "EREC" eRecord,
+    trace "EMPT" eEmpty ]
 
 {- Terminals -}
 eTerminal :: ExpressionParser
@@ -321,10 +367,6 @@ eCString = EC.constant . CString <$> stringLiteral
 eVariable :: ExpressionParser
 eVariable = EC.variable <$> identifier
 
-eAddress :: ExpressionParser
-eAddress = mkAddress <$> eCString <* comma <*> eCNumber
-  where mkAddress a b = EC.tuple [a,b]
-
 {- Complex literals -}
 eOption :: ExpressionParser
 eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
@@ -333,10 +375,11 @@ eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
 eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
-eTuple :: ExpressionParser
-eTuple = mkTuple <$> (parens . commaSep) qualifiedExpr
-  where mkTuple [x] = x
-        mkTuple l = EC.tuple l
+eTupleOrNested :: ExpressionParser
+eTupleOrNested = choice [try unit, parens exprOrFields]
+  where unit = symbol "(" *> symbol ")" >> return (EC.tuple [])
+        exprOrFields =
+          choice [try expr, commaSep qualifiedExpr >>= return . EC.tuple]
 
 eRecord :: ExpressionParser
 eRecord = EC.record <$> braces idQExprList
@@ -404,9 +447,6 @@ eSend :: ExpressionParser
 eSend = mkSend <$> eVariable <* comma <*> eAddress <* symbol "<-" <*> expr
   where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
 
-eProject :: ExpressionParser
-eProject = (flip EC.project) <$> expr <*> (dot *> identifier)
-
 eLambda :: ExpressionParser
 eLambda = EC.lambda <$> (iArrow "fun") <*> expr
 
@@ -437,6 +477,13 @@ bindInd = BIndirection <$> iPrefix "ind"
 bindTup = BTuple <$> parens idList
 bindRec = BRecord <$> braces idPairList
 
+eAddress :: ExpressionParser
+eAddress = choice [primAddr, exprAddr]
+  where primAddr = EC.address <$> ipAddress <* colon <*> port
+        exprAddr = EC.address <$> expr <* colon <*> expr
+        ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
+        port = EC.constant . CInt . fromIntegral <$> natural
+
 
 {- Identifiers and their list forms -}
 idList      = commaSep identifier
@@ -455,32 +502,121 @@ equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
 
 {- Channels -}
-channel :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
-channel = choice [file, network]
+channel :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+channel = choice [values, file, network]
 
-file :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
+values :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+values = mkValueStream <$> (symbol "values" *> expr)
+  where mkValueStream e n t = (Just e, [])
+
+file :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 file = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile path_e format_e n = (fileInit path_e format_e n, fileProcess, fileFinal n)
-        fileInit path_e format_e n = EC.applyMany (EC.variable "fileOpen") [string n, path_e, format_e]
-        fileFinal n = EC.applyMany (EC.variable "fileClose") [string n]
-        fileProcess = EC.lambda "_" (EC.tuple [])
-        string n = EC.constant $ CString n
+  where mkFile argE formatE n t = (,) Nothing $ channelMethods True argE formatE n t
 
-network :: K3Parser (Identifier -> (K3 Expression, K3 Expression, K3 Expression))
+network :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 network = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork addr_e format_e n = (netInit addr_e format_e n, netProcess, netFinal n)
-        netInit addr_e format_e n = EC.applyMany (EC.variable "netOpen") [string n, addr_e, format_e]
-        netFinal n = EC.applyMany (EC.variable "netClose") [string n]
-        netProcess = EC.lambda "_" (EC.tuple [])
-        string n = EC.constant $ CString n
+  where mkNetwork argE formatE n t = (,) Nothing $ channelMethods False argE formatE n t
+
 
 format :: ExpressionParser
 format = choice [symbol "csv" >> return (EC.constant $ CString "csv"),
                  symbol "txt" >> return (EC.constant $ CString "txt")]
 
-{- Main parsing functions -}
-parseK3 :: String -> String
-parseK3 progStr = case P.parse program "" progStr of
-  -- TODO: better parse error handling
-  Left err -> "No match " ++ show err
-  Right val -> "Found val" ++ show val
+
+
+{- Declaration helpers -}
+namedIdentifier nameKind name namedCstr =
+  declError nameKind $ namedCstr $ keyword name *> identifier
+
+namedDecl k n c = (DSpan <->) $ namedIdentifier k n c
+
+namedBraceDecl k n rule cstr =
+  namedDecl k n $ braceRule . (cstr <$>)
+  where braceRule x = x <*> (braces rule)
+
+chainedNamedBraceDecl k n namedRule cstr =
+  namedDecl k n $ join . (passName <$>)
+  where passName x = (cstr x) <$> (braces $ namedRule x)
+
+
+{- Environment maintenance helpers -}
+addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+addAssoc l a b = (a,b):l
+
+removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
+removeAssoc l a = filter ((a /=) . fst) l
+
+replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+replaceAssoc l a b = addAssoc (removeAssoc l a) a b
+
+sourceState :: EnvironmentFrame -> SourcesBQG
+sourceState = fst
+
+defaultEntries :: EnvironmentFrame -> DefaultEntries
+defaultEntries = snd
+
+sourceBindings :: SourcesBQG -> [(Identifier, Identifier)]
+sourceBindings s = concat $ map extractBindings s
+  where extractBindings (x,(b,_,_)) = map ((,) x) b
+
+qualifiedSources :: SourcesBQG -> [Identifier]
+qualifiedSources s = map (second . snd) s
+  where second (_,x,_) = x
+
+addFrame :: ParserEnvironment -> ParserEnvironment
+addFrame env = ([],[]):env
+
+removeFrame :: ParserEnvironment -> ParserEnvironment
+removeFrame = tail
+
+currentFrame :: ParserEnvironment -> EnvironmentFrame
+currentFrame = head
+
+safePopFrame :: ParserEnvironment -> (EnvironmentFrame, ParserEnvironment)
+safePopFrame [] = (([],[]),[])
+safePopFrame (h:t) = (h,t)
+
+-- | Records source bindings in a K3 parsing environment
+trackBindings :: (Identifier, Identifier) -> K3Parser ()
+trackBindings (src, dest) = PP.getState >>= update src dest
+  where update src dest (safePopFrame -> ((s,d), env)) =
+          case lookup src s of
+            Just (b,q,g) -> PP.putState $ (replaceAssoc s src (dest:b, q, g), d):env
+            Nothing      -> PP.parserFail $ "invalid binding, no source " ++ src
+
+-- | Records declaration identifiers in a K3 parsing environment
+trackSource :: K3 Declaration -> DeclParser
+trackSource d
+  | DGlobal n _ eOpt <- tag d
+  = PP.getState >>= PP.putState . addSourceId n eOpt >> return d
+  | otherwise = return d
+  where addSourceId n eOpt (safePopFrame -> ((s,d), env)) =
+          case eOpt of 
+            Just e -> (replaceAssoc s n ([], n, Nothing), d):env
+            Nothing -> (replaceAssoc s n ([], n, Just $ mkRunSourceE n), d):env
+
+-- | Records defaults in a K3 parsing environment
+trackDefault :: Identifier -> K3Parser ()
+trackDefault n = PP.getState >>= PP.putState . updateState n 
+  where updateState n (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
+
+
+{- Desugaring methods -}
+desugarRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
+desugarRole n (dl, frame) = 
+  PP.getState >>= qualify frame >> (return $ desugarSourceImpl dl frame)
+
+  where desugarSourceImpl dl (s,_) = flip map dl $ rewriteSource $ sourceBindings s
+        
+        qualify poppedFrame (safePopFrame -> (frame, env)) =
+          case validateSources poppedFrame of
+            (ndIds, []) -> PP.putState . (:env) $ concatWithPrefix poppedFrame frame
+            (_, failed) -> PP.parserFail $ "invalid defaults " ++ show poppedFrame
+
+        validateSources (s,d) = partition ((flip elem $ qualifiedSources s) . snd) d
+        concatWithPrefix (s,d) (s2,d2) = (qualifySources s ++ s2, qualifyDefaults d ++ d2)
+        
+        qualifySources  = map (\(src,(b,q,g)) -> (src, (b, prefix "." n q, g))) 
+        qualifyDefaults = map $ uncurry $ flip (,) . prefix "." n
+        
+        prefix sep x z = if x == "" then z else x ++ sep ++ z

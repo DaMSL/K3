@@ -5,18 +5,22 @@ module Language.K3.Core.Constructor.Expression (
     some,
     indirect,
     tuple,
+    unit,
     record,
     empty,
     lambda,
     unop,
     binop,
     applyMany,
+    block,
+    send,
     project,
     letIn,
     assign,
     caseOf,
     bindAs,
-    ifThenElse
+    ifThenElse,
+    address
 ) where
 
 import Data.List
@@ -46,6 +50,10 @@ indirect e = Node (EIndirect :@: []) [e]
 tuple :: [K3 Expression] -> K3 Expression
 tuple = Node (ETuple :@: [])
 
+-- | Unit value.
+unit :: K3 Expression
+unit = Node (ETuple :@: []) []
+
 -- | Create a record from a list of field names and initializers.
 record :: [(Identifier, K3 Expression)] -> K3 Expression
 record vs = Node (ERecord ids :@: []) es where (ids, es) = unzip vs
@@ -70,6 +78,15 @@ binop op a b = Node (EOperate op :@: []) [a, b]
 applyMany :: K3 Expression -> [K3 Expression] -> K3 Expression
 applyMany f args = foldl (\curried_f arg -> binop OApp curried_f arg) f args
 
+-- | Create a chain of sequential computation.
+block :: [K3 Expression] -> K3 Expression
+block []  = undefined
+block [x] = x
+block exprs = foldl (\sq e -> binop OSeq sq e) (head exprs) (tail exprs)
+
+send :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
+send target addr arg = binop OSnd (tuple [target, addr]) arg
+
 -- | Project a field from a record.
 project :: Identifier -> K3 Expression -> K3 Expression
 project i r = Node (EProject i :@: []) [r]
@@ -93,3 +110,7 @@ bindAs e x b = Node (EBindAs x :@: []) [e, b]
 -- | Create an if/then/else conditional expression.
 ifThenElse :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
 ifThenElse p t e = Node (EIfThenElse :@: []) [p, t, e]
+
+-- | Create an address expression
+address :: K3 Expression -> K3 Expression -> K3 Expression
+address ip port = Node (EAddress :@: []) [ip, port]

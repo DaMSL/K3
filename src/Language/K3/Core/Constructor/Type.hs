@@ -12,6 +12,7 @@ module Language.K3.Core.Constructor.Type (
     record,
     collection,
     function,
+    address,
     source,
     sink,
     trigger
@@ -23,25 +24,28 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Type
 
+leaf :: Type -> K3 Type
+leaf typeTag = Node (typeTag :@: []) []
+
 -- | Boolean type.
 bool :: K3 Type
-bool = Node (TBool :@: []) []
+bool = leaf TBool
 
 -- | Byte type.
 byte :: K3 Type
-byte = Node (TByte :@: []) []
+byte = leaf TByte
 
 -- | Integer type.
 int :: K3 Type
-int = Node (TInt :@: []) []
+int = leaf TInt
 
 -- | Decimal type.
 real :: K3 Type
-real = Node (TReal :@: []) []
+real = leaf TReal
 
 -- | String type.
 string :: K3 Type
-string = Node (TString :@: []) []
+string = leaf TString
 
 -- | Unit type.
 unit :: K3 Type
@@ -70,6 +74,9 @@ collection rt = Node (TCollection :@: []) [rt]
 -- | Function type, based on the argument type and return type.
 function :: K3 Type -> K3 Type -> K3 Type
 function a r = Node (TFunction :@: []) [a, r]
+
+address :: K3 Type
+address = leaf TAddress
 
 source :: K3 Type -> K3 Type
 source i = Node (TSource :@: []) [i]

@@ -29,6 +29,7 @@ data Type
     | TRecord [Identifier]
     | TCollection
     | TFunction
+    | TAddress
     | TSource
     | TSink
     | TTrigger [Identifier]

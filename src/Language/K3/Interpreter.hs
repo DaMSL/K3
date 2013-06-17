@@ -8,20 +8,21 @@
 
 -- | The K3 Interpreter
 module Language.K3.Interpreter (
-    -- | Types
-    Value(..),
+  -- | Types
+  Value(..),
 
-    Interpretation,
-    InterpretationError,
+  Interpretation,
+  InterpretationError,
 
-    IEnvironment,
-    ILog,
+  IEnvironment,
+  ILog,
 
-    -- | Interpreters
-    runInterpretation,
+  -- | Interpreters
+  runInterpretation,
 
-    expression,
-    program
+  expression,
+  program,
+  runProgram
 ) where
 
 import Control.Arrow
@@ -37,39 +38,44 @@ import Data.IORef
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Type
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
 
+import Language.K3.Pretty
+
 -- | K3 Values
 data Value
-    = VBool Bool
-    | VByte Word8
-    | VInt Int
-    | VReal Double
-    | VString String
-    | VOption (Maybe Value)
-    | VTuple [Value]
-    | VRecord [(Identifier, Value)]
-    | VCollection [Value]
+    = VBool        Bool
+    | VByte        Word8
+    | VInt         Int
+    | VReal        Double
+    | VString      String
+    | VOption      (Maybe Value)
+    | VTuple       [Value]
+    | VRecord      [(Identifier, Value)]
+    | VCollection  [Value]
     | VIndirection (IORef Value)
-    | VFunction (Value -> Interpretation Value)
+    | VFunction    (Value -> Interpretation Value)
+    | VAddress     (String, Int)
 
 -- We can't deriving Show because IORefs aren't showable.
 instance Show Value where
-    show (VBool b) = "VBool " ++ show b
-    show (VByte b) = "VByte " ++ show b
-    show (VInt i) = "VInt " ++ show i
-    show (VReal r) = "VReal " ++ show r
-    show (VString s) = "VString " ++ show s
-    show (VOption m) = "VOption " ++ show m
-    show (VTuple t) = "VTuple " ++ show t
-    show (VRecord r) = "VRecord " ++ show r
-    show (VCollection c) = "VCollection " ++ show c
-    show (VIndirection _) = "VIndirection <opaque>"
-    show (VFunction _) = "VFunction <function>"
+  show (VBool b) = "VBool " ++ show b
+  show (VByte b) = "VByte " ++ show b
+  show (VInt i) = "VInt " ++ show i
+  show (VReal r) = "VReal " ++ show r
+  show (VString s) = "VString " ++ show s
+  show (VOption m) = "VOption " ++ show m
+  show (VTuple t) = "VTuple " ++ show t
+  show (VRecord r) = "VRecord " ++ show r
+  show (VCollection c) = "VCollection " ++ show c
+  show (VIndirection _) = "VIndirection <opaque>"
+  show (VFunction _) = "VFunction <function>"
+  show (VAddress (host, port)) = "VAddress " ++ host ++ ":" ++ show port
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -83,12 +89,21 @@ data InterpretationError
     | RunTimeTypeError String
   deriving (Eq, Read, Show)
 
+-- | Pairing of errors and environments for debugging output.
+type EnvOnError = (InterpretationError, IEnvironment)
+
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IEnvironment (WriterT ILog IO))
 
 -- | Run an interpretation to get a value or error, resulting environment and event log.
 runInterpretation :: IEnvironment -> Interpretation a -> IO ((Either InterpretationError a, IEnvironment), ILog)
 runInterpretation e = runWriterT . flip runStateT e . runEitherT
+
+-- | Interpret a K3 value and extract the resulting environment
+envOfInterpretation :: IEnvironment -> Interpretation a -> IO (Either EnvOnError IEnvironment)
+envOfInterpretation initEnv i = runInterpretation initEnv i >>= \case
+                                  ((Right _, env), _) -> return $ Right env
+                                  ((Left err, env), _) -> return $ Left (err, env)
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
@@ -102,64 +117,84 @@ lookupE n = get >>= maybe (throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ 
 children :: Tree a -> Forest a
 children = subForest
 
+{- Names -}
+myAddrId = "me"
+
+-- | Default values for specific types
+defaultValue :: K3 Type -> Interpretation Value
+defaultValue (tag -> TBool)       = return $ VBool False
+defaultValue (tag -> TByte)       = return $ VByte 0
+defaultValue (tag -> TInt)        = return $ VInt 0
+defaultValue (tag -> TReal)       = return $ VReal 0.0
+defaultValue (tag -> TString)     = return $ VString ""
+defaultValue (tag -> TOption)     = return $ VOption Nothing
+defaultValue (tag -> TCollection) = return $ VCollection []
+defaultValue (tag -> TAddress)    = return $ VAddress ("localhost", 10000)
+
+defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
+defaultValue (tag &&& children -> (TTuple, ch))       = mapM defaultValue ch >>= return . VTuple
+defaultValue (tag &&& children -> (TRecord ids, ch))  = mapM defaultValue ch >>= return . VRecord . zip ids
+defaultValue _ = undefined
+
+
 -- | Interpretation of Constants.
 constant :: Constant -> Interpretation Value
-constant (CBool b) = return $ VBool b
-constant (CInt i) = return $ VInt i
-constant (CByte w) = return $ VByte w
-constant (CReal r) = return $ VReal r
+constant (CBool b)   = return $ VBool b
+constant (CInt i)    = return $ VInt i
+constant (CByte w)   = return $ VByte w
+constant (CReal r)   = return $ VReal r
 constant (CString s) = return $ VString s
-constant CNone = return $ VOption Nothing
-constant CEmpty = return $ VCollection []
+constant CNone       = return $ VOption Nothing
+constant CEmpty      = return $ VCollection []
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
 numeric op a b = do
-    a' <- expression a
-    b' <- expression b
-    case (a', b') of
-        (VInt x, VInt y) -> return $ VInt $ op x y
-        (VInt x, VReal y) -> return $ VReal $ op (fromIntegral x) y
-        (VReal x, VInt y) -> return $ VReal $ op x (fromIntegral y)
-        (VReal x, VReal y) -> return $ VReal $ op x y
-        _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
+  a' <- expression a
+  b' <- expression b
+  case (a', b') of
+      (VInt x, VInt y) -> return $ VInt $ op x y
+      (VInt x, VReal y) -> return $ VReal $ op (fromIntegral x) y
+      (VReal x, VInt y) -> return $ VReal $ op x (fromIntegral y)
+      (VReal x, VReal y) -> return $ VReal $ op x y
+      _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Common boolean operation handling.
 logic :: (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
 logic op a b = do
-    a' <- expression a
-    b' <- expression b
+  a' <- expression a
+  b' <- expression b
 
-    case (a', b') of
-        (VBool x, VBool y) -> return $ VBool $ op x y
-        _ -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
+  case (a', b') of
+      (VBool x, VBool y) -> return $ VBool $ op x y
+      _ -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
 
 -- | Common comparison operation handling.
 comparison :: (forall a. Ord a => a -> a -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
 comparison op a b = do
-    a' <- expression a
-    b' <- expression b
+  a' <- expression a
+  b' <- expression b
 
-    case (a', b') of
-        (VBool x, VBool y) -> return $ VBool $ op x y
-        (VInt x, VInt y) -> return $ VBool $ op x y
-        (VReal x, VReal y) -> return $ VBool $ op x y
-        (VString x, VString y) -> return $ VBool $ op x y
-        _ -> throwE $ RunTimeTypeError "Comparison Type Mis-Match"
+  case (a', b') of
+      (VBool x, VBool y) -> return $ VBool $ op x y
+      (VInt x, VInt y) -> return $ VBool $ op x y
+      (VReal x, VReal y) -> return $ VBool $ op x y
+      (VString x, VString y) -> return $ VBool $ op x y
+      _ -> throwE $ RunTimeTypeError "Comparison Type Mis-Match"
 
 -- | Interpretation of unary operators.
 unary :: Operator -> K3 Expression -> Interpretation Value
 
 -- | Interpretation of unary negation of numbers.
 unary ONeg a = expression a >>= \case
-    VInt i -> return $ VInt (negate i)
-    VReal r -> return $ VReal (negate r)
-    _ -> throwE $ RunTimeTypeError "Invalid Negation"
+  VInt i -> return $ VInt (negate i)
+  VReal r -> return $ VReal (negate r)
+  _ -> throwE $ RunTimeTypeError "Invalid Negation"
 
 -- | Interpretation of unary negation of booleans.
 unary ONot a = expression a >>= \case
-    VBool b -> return $ VBool (not b)
-    _ -> throwE $ RunTimeTypeError "Invalid Complement"
+  VBool b -> return $ VBool (not b)
+  _ -> throwE $ RunTimeTypeError "Invalid Complement"
 
 unary _ _ = throwE $ RunTimeTypeError "Invalid Unary Operator"
 
@@ -173,33 +208,24 @@ binary OMul = numeric (*)
 
 -- | Division handled similarly, but accounting zero-division errors.
 binary ODiv = \a b -> do
-    a' <- expression a
-    b' <- expression b
+  a' <- expression a
+  b' <- expression b
 
-    void $ case b' of
-        VInt 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
-        VReal 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
-        _ -> return ()
+  void $ case b' of
+      VInt 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
+      VReal 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
+      _ -> return ()
 
-    case (a', b') of
-        (VInt x, VInt y) -> return $ VInt $ x `div` y
-        (VInt x, VReal y) -> return $ VReal $ fromIntegral x / y
-        (VReal x, VInt y) -> return $ VReal $ x / (fromIntegral y)
-        (VReal x, VReal y) -> return $ VReal $ x / y
-        _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
+  case (a', b') of
+      (VInt x, VInt y) -> return $ VInt $ x `div` y
+      (VInt x, VReal y) -> return $ VReal $ fromIntegral x / y
+      (VReal x, VInt y) -> return $ VReal $ x / (fromIntegral y)
+      (VReal x, VReal y) -> return $ VReal $ x / y
+      _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Logical Operators
 binary OAnd = logic (&&)
 binary OOr  = logic (||)
-
--- | Function Application
-binary OApp = \f x -> do
-    f' <- expression f
-    x' <- expression x
-
-    case f' of
-        VFunction b -> b x'
-        _ -> throwE $ RunTimeTypeError "Invalid Function Application"
 
 -- | Comparison Operators
 binary OEqu = comparison (==)
@@ -209,8 +235,29 @@ binary OLeq = comparison (<=)
 binary OGth = comparison (>)
 binary OGeq = comparison (>=)
 
+-- | Function Application
+binary OApp = \f x -> do
+  f' <- expression f
+  x' <- expression x
+
+  case f' of
+      VFunction b -> b x'
+      _ -> throwE $ RunTimeTypeError "Invalid Function Application"
+
 -- | Message Passing
-binary OSnd = binary OApp
+binary OSnd = \target x -> do
+  target' <- expression target
+  x'      <- expression x
+  env     <- get
+
+  case (target', lookup myAddrId env) of 
+    (VTuple [VFunction f', VAddress addr], Just (VAddress myAddr))
+      | addr == myAddr -> f' x'
+    (_, Nothing) -> throwE $ RunTimeTypeError "Invalid Local Address"
+    _ -> throwE $ RunTimeTypeError "Invalid Trigger Target"
+
+-- | Sequential expressions
+binary OSeq = \e1 e2 -> expression e1 >> expression e2
 
 binary _ = const . const $ throwE $ RunTimeInterpretationError "Unreachable"
 
@@ -290,30 +337,91 @@ expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \ca
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
-global      :: Identifier -> (K3 Type) -> (Maybe (K3 Expression)) -> Interpretation Value
-global      = undefined
 
-bind        :: Identifier -> Identifier -> Interpretation Value
-bind        = undefined
+{- Declaration interpretation -}
 
-selector    :: Identifier -> Interpretation Value
-selector    = undefined
+global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
+global n (tag -> TSource) (Just e)      = return ()
+global n t (Just e)                     = expression e >>= modify . (:) . (n,)
+global n t Nothing | TFunction <- tag t = builtin n t
+global n t Nothing                      = defaultValue t >>= modify . (:) . (n,)
 
-role        :: Identifier -> [K3 Declaration] -> Interpretation Value
-role        = undefined
+-- TODO: qualify names?
+role :: Identifier -> [K3 Declaration] -> Interpretation ()
+role n subDecls = mapM_ declaration subDecls
 
-annotation  :: Identifier -> [AnnMemDecl] -> Interpretation Value
-annotation  = undefined
+-- TODO
+annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
+annotation n members = undefined
 
-declaration :: K3 Declaration -> Interpretation Value
-declaration d = case tag d of 
-                  DGlobal     n t e_opt -> global n t e_opt
-                  DBind       src dest  -> bind src dest
-                  DSelector   n         -> selector n
-                  DRole       r         -> role r $ children d
-                  DAnnotation n members -> annotation n members
+declaration :: K3 Declaration -> Interpretation ()
+declaration (tag &&& children -> (DGlobal n t eO, ch)) =
+  debugDecl n t $ global n t eO >> mapM_ declaration ch
+  where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
-program :: K3 Declaration -> IO IEnvironment
-program p = runInterpretation [] (declaration p) >>= \case
-              ((Right _, env), _) -> return env
-              ((Left _, _), _) -> return []
+declaration (tag &&& children -> (DRole r, ch)) = role r ch
+declaration (tag -> DAnnotation n members)      = annotation n members
+
+program :: K3 Declaration -> IO (Either EnvOnError IEnvironment)
+program p = envOfInterpretation [] $ declaration p
+
+runProgram :: K3 Declaration -> IO ()
+runProgram p = program p >>= runInit
+  where runInit (Left e) = putStrLn $ showErrorEnv e
+        runInit (Right env)
+          | Just (VFunction f) <- lookup "atInit" env 
+          = envOfInterpretation env (f $ VTuple [])
+              >>= putStrLn . either showErrorEnv showEnv
+          
+          | otherwise = putStrLn $ "Could not find atInit:\n" ++ showEnv env
+
+        showErrorEnv (err, env) =
+          concat $ ["Error\n", show err, "\n", showEnv env]
+        
+        showEnv env =
+          concat $ ["Environment:\n"] ++
+            map (flip (++) "\n" . show) (reverse env)
+
+
+{- Built-in functions -}
+
+ignoreFn e = VFunction $ \_ -> return e
+
+builtin :: Identifier -> K3 Type -> Interpretation ()
+builtin n t = genBuiltin n t >>= modify . (:) . (n,)
+
+genBuiltin :: Identifier -> K3 Type -> Interpretation Value
+
+-- parseArgs :: () -> ([String], [(String, String)])
+genBuiltin "parseArgs" t =
+  return $ ignoreFn $ VTuple [VCollection [], VCollection []]
+
+-- type ChannelId = String
+-- openFile :: ChannelId -> String -> String -> ()
+-- openSocket :: ChannelId -> Address -> String -> ()
+genBuiltin "openFile" t = return $ ignoreFn $ ignoreFn $ ignoreFn $ VTuple []
+genBuiltin "openSocket" t = return $ ignoreFn $ ignoreFn $ ignoreFn $ VTuple []
+
+-- closeFile, closeSocket :: ChannelId -> ()
+genBuiltin "closeFile" t = return $ ignoreFn $ VTuple []
+genBuiltin "closeSocket" t = return $ ignoreFn $ VTuple []
+
+-- hasNext :: ChannelId -> ()
+genBuiltin "hasNext" t = return $ ignoreFn $ VTuple []
+
+-- registerSocketHandler :: ChannelId -> TTrigger () -> ()
+genBuiltin "registerSocketHandler" t = return $ ignoreFn $ ignoreFn $ VTuple []
+
+-- <source>HasNext :: () -> Bool
+genBuiltin (channelMethod -> "HasNext") t = return $ ignoreFn $ VBool False
+
+-- <source>Next :: () -> t
+genBuiltin (channelMethod -> "Next") t = undefined
+
+channelMethod :: String -> String
+channelMethod x =
+  case find (flip isSuffixOf x) ["HasNext", "Next"] of
+    Just y -> y
+    Nothing -> x
+
+
