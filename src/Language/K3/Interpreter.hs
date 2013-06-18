@@ -22,6 +22,7 @@ module Language.K3.Interpreter (
 
   expression,
   program,
+  runExpression,
   runProgram
 ) where
 
@@ -99,11 +100,16 @@ type Interpretation = EitherT InterpretationError (StateT IEnvironment (WriterT 
 runInterpretation :: IEnvironment -> Interpretation a -> IO ((Either InterpretationError a, IEnvironment), ILog)
 runInterpretation e = runWriterT . flip runStateT e . runEitherT
 
--- | Interpret a K3 value and extract the resulting environment
+-- | Run an interpretation and extract the resulting environment
 envOfInterpretation :: IEnvironment -> Interpretation a -> IO (Either EnvOnError IEnvironment)
 envOfInterpretation initEnv i = runInterpretation initEnv i >>= \case
                                   ((Right _, env), _) -> return $ Right env
                                   ((Left err, env), _) -> return $ Left (err, env)
+
+-- | Run an interpretation and extract its value.
+valueOfInterpretation :: IEnvironment -> Interpretation a -> IO (Maybe a)
+valueOfInterpretation initEnv i =
+  runInterpretation initEnv i >>= return . either (\_ -> Nothing) Just . fst . fst
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
@@ -285,7 +291,10 @@ expression (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . 
 expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= return . VRecord . zip is
 
 -- | Interpretation of function construction.
-expression (tag &&& children -> (ELambda i, [b])) = return $ VFunction $ \v -> modify ((i, v):) >> expression b
+expression (tag &&& children -> (ELambda i, [b])) =
+  return $ VFunction $ \v -> 
+    modify ((i, v):) >> expression b 
+      >>= (\rv -> modify (deleteBy (\(i,_) (j,_) -> i == j) (i,v)) >> return rv)
 
 -- | Interpretation of unary/binary operators.
 expression (tag &&& children -> (EOperate otag, cs))
@@ -339,7 +348,6 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 
 {- Declaration interpretation -}
-
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSource) (Just e)      = return ()
 global n t (Just e)                     = expression e >>= modify . (:) . (n,)
@@ -365,6 +373,20 @@ declaration (tag -> DAnnotation n members)      = annotation n members
 program :: K3 Declaration -> IO (Either EnvOnError IEnvironment)
 program p = envOfInterpretation [] $ declaration p
 
+
+{- Top-level methods -}
+
+showErrorEnv :: EnvOnError -> String
+showErrorEnv (err, env) = concat $ ["Error\n", show err, "\n", showEnv env]
+
+showEnv :: IEnvironment -> String
+showEnv env =
+  concat $ ["Environment:\n"] ++
+    map (flip (++) "\n" . show) (reverse env)
+
+runExpression :: K3 Expression -> IO ()
+runExpression e = valueOfInterpretation [] (expression e) >>= putStrLn . show
+
 runProgram :: K3 Declaration -> IO ()
 runProgram p = program p >>= runInit
   where runInit (Left e) = putStrLn $ showErrorEnv e
@@ -374,13 +396,6 @@ runProgram p = program p >>= runInit
               >>= putStrLn . either showErrorEnv showEnv
           
           | otherwise = putStrLn $ "Could not find atInit:\n" ++ showEnv env
-
-        showErrorEnv (err, env) =
-          concat $ ["Error\n", show err, "\n", showEnv env]
-        
-        showEnv env =
-          concat $ ["Environment:\n"] ++
-            map (flip (++) "\n" . show) (reverse env)
 
 
 {- Built-in functions -}

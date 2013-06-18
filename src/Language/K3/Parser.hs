@@ -9,6 +9,8 @@ module Language.K3.Parser (
   typeExpr,
   qualifiedExpr,
   expr,
+  parseType,
+  parseExpression,
   parseK3,
   K3Parser
 ) where
@@ -105,7 +107,7 @@ infixl 1 <->
 k3Operators = [
     "+", "-", "*", "/",
     "==", "!=", "<>", "<", ">", ">=", "<=",
-    ";", "<-"
+    ";", "->", "<-"
   ]
 
 k3Keywords = [
@@ -144,10 +146,14 @@ keyword = reserve k3Idents
 
 
 {- Main parsing functions -}
+parseType :: String -> Maybe (K3 Type)
+parseType s = either (\_ -> Nothing) Just $ P.runParser typeExpr [] "" s
+
+parseExpression :: String -> Maybe (K3 Expression)
+parseExpression s = either (\_ -> Nothing) Just $ P.runParser expr [] "" s
+
 parseK3 :: String -> Maybe (K3 Declaration)
-parseK3 progStr = case P.runParser program [] "" progStr of
-  Left err -> Nothing
-  Right val -> Just val
+parseK3 s = either (\_ -> Nothing) Just $ P.runParser program [] "" s
 
 
 {- K3 grammar parsers -}
@@ -254,7 +260,7 @@ subAnnotation = MAnnotation <$> (keyword "annotation" *> identifier)
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = (<->) TSpan $ parseError "type" "expression" $ tTermOrFun
+typeExpr = parseError "type" "expression" $ tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
@@ -266,13 +272,12 @@ typeQualifier = parseError "type" "qualifier" $
 
 {- Type terms -}
 tTerm :: TypeParser
-tTerm = choice [ tPrimitive, tOption, tIndirection,
-                 tTuple, tRecord, tCollection ]
+tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
+                           tTupleOrNested, tRecord, tCollection ]
 
 tTermOrFun :: TypeParser
-tTermOrFun = mkFun <$> tTerm <*> (optional $ symbol "->" *> typeExpr)
-  where mkFun l Nothing = l
-        mkFun l (Just r) = TC.function l r
+tTermOrFun = 
+  choice [try (TSpan <-> TC.function <$> tTerm <* operator "->" <*> typeExpr), tTerm]
 
 tPrimitive :: TypeParser
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
@@ -291,10 +296,13 @@ tOption = tQNested TC.option "option"
 tIndirection :: TypeParser
 tIndirection = tQNested TC.indirection "ind"
 
-tTuple :: TypeParser
-tTuple = mkTuple <$> (parens . commaSep) qualifiedTypeExpr
-  where mkTuple [x] = x
-        mkTuple l = TC.tuple l
+tTupleOrNested :: TypeParser
+tTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> typeExpr), tTuple]]
+  where unit = symbol "(" *> symbol ")" >> return (TC.unit)
+        tTuple = commaSep qualifiedTypeExpr >>= return . TC.tuple
+        stripSpan t = maybe t (t @-) $ t @~ isSpan
+        isSpan (TSpan _) = True
+        isSpan _ = False
 
 tRecord :: TypeParser
 tRecord = TC.record <$> (braces . semiSep1) idQType
@@ -310,7 +318,10 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 
 {- Expressions -}
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $ buildExpressionParser opTable eTerm
+expr = parseError "k3" "expression" $
+  choice [ try (mkApp <$> some eTerm),
+           buildExpressionParser opTable eTerm ]
+  where mkApp = foldl1 (EC.binop OApp)
 
 qualifiedExpr :: ExpressionParser
 qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
@@ -322,17 +333,21 @@ exprQualifier = choice [keyword "immut" >> return EImmutable,
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
     trace "ELIT" eLiterals,
-    trace "ESND" eSend,
     trace "ELAM" eLambda,
+    trace "ESND" eSend,
     trace "ECND" eCondition,
     trace "EASN" eAssign,
     trace "ELET" eLet,
     trace "ECAS" eCase,
     trace "EBND" eBind,
-    trace "EADR" eAddress ] <*> eProject
-  where eProject = (optional (dot *> identifier))
+    trace "EADR" eAddress ] <*> optional eSuffix
+  where eSuffix  = choice [eAddr >>= return . Left, eProject >>= return . Right]
+        eAddr    = colon *> expr  
+        eProject = dot *> identifier
         mkTerm e Nothing = e
-        mkTerm e (Just x) = EC.project x e
+        mkTerm e (Just (Left e2)) = EC.address e e2
+        mkTerm e (Just (Right x)) = EC.project x e
+
 
 {- Literals -}
 eLiterals :: ExpressionParser
@@ -376,10 +391,12 @@ eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
 eTupleOrNested :: ExpressionParser
-eTupleOrNested = choice [try unit, parens exprOrFields]
+eTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> expr), eTuple]]
   where unit = symbol "(" *> symbol ")" >> return (EC.tuple [])
-        exprOrFields =
-          choice [try expr, commaSep qualifiedExpr >>= return . EC.tuple]
+        eTuple = commaSep qualifiedExpr >>= return . EC.tuple
+        stripSpan e = maybe e (e @-) $ e @~ isSpan
+        isSpan (ESpan _) = True
+        isSpan _ = False
 
 eRecord :: ExpressionParser
 eRecord = EC.record <$> braces idQExprList
@@ -427,8 +444,7 @@ unaryParseOp (opName, opTag) = prefix opName (unOpSpan opName $ EC.unop opTag)
 mkUnOp  x = unaryParseOp x operator
 mkUnOpK x = unaryParseOp x keyword
 
-opTable = [ [Infix ((pure $ EC.binop OApp) <* someSpace) AssocLeft],
-              map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+opTable = [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
               map mkBinOp  [("+",   OAdd), ("-",  OSub)],
               map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq),
                             ("<",   OLth), ("<=", OLeq),
@@ -441,14 +457,15 @@ opTable = [ [Infix ((pure $ EC.binop OApp) <* someSpace) AssocLeft],
 {- Terms -}
 ePrefix k = keyword k *> expr
 iPrefix k = keyword k *> identifier
-iArrow k  = iPrefix k <* symbol "->" 
-
-eSend :: ExpressionParser
-eSend = mkSend <$> eVariable <* comma <*> eAddress <* symbol "<-" <*> expr
-  where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
+iArrow k  = iPrefix k <* operator "->"
+iArrowS s = symbol s *> identifier <* operator "->"
 
 eLambda :: ExpressionParser
-eLambda = EC.lambda <$> (iArrow "fun") <*> expr
+eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> expr
+
+eSend :: ExpressionParser
+eSend = mkSend <$> eVariable <* comma <*> eAddress <* operator "<-" <*> expr
+  where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
 
 eCondition :: ExpressionParser
 eCondition = EC.ifThenElse <$> (ePrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
@@ -463,7 +480,7 @@ eCase :: ExpressionParser
 eCase = mkCase <$> ((ePrefix "case") <* keyword "of")
                <*> (braces eCaseSome) <*> (braces eCaseNone)
   where eCaseSome = (,) <$> (iArrow "Some") <*> expr
-        eCaseNone = (keyword "None" >> symbol "->") *> expr
+        eCaseNone = (keyword "None" >> operator "->") *> expr
         mkCase e (x, s) n = EC.caseOf e x s n
 
 
@@ -478,10 +495,8 @@ bindTup = BTuple <$> parens idList
 bindRec = BRecord <$> braces idPairList
 
 eAddress :: ExpressionParser
-eAddress = choice [primAddr, exprAddr]
-  where primAddr = EC.address <$> ipAddress <* colon <*> port
-        exprAddr = EC.address <$> expr <* colon <*> expr
-        ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
+eAddress = EC.address <$> ipAddress <* colon <*> port
+  where ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
         port = EC.constant . CInt . fromIntegral <$> natural
 
 
