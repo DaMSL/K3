@@ -32,9 +32,11 @@ import Control.Monad.Identity
 import Control.Monad.IO.Class
 import Control.Monad.State
 import Control.Monad.Trans.Either
+import Control.Monad.Reader
 import Control.Monad.Writer
 
 import Data.Function
+import qualified Data.HashMap.Lazy as H 
 import Data.IORef
 import Data.List
 import Data.Tree
@@ -47,6 +49,9 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
 
 import Language.K3.Pretty
+
+-- | Address implementation
+type Address = (String, Int)
 
 -- | K3 Values
 data Value
@@ -61,7 +66,7 @@ data Value
     | VCollection  [Value]
     | VIndirection (IORef Value)
     | VFunction    (Value -> Interpretation Value)
-    | VAddress     (String, Int)
+    | VAddress     Address
 
 -- We can't deriving Show because IORefs aren't showable.
 instance Show Value where
@@ -90,41 +95,105 @@ data InterpretationError
     | RunTimeTypeError String
   deriving (Eq, Read, Show)
 
+-- | Type declaration for an Interpretation's state.
+type IState = (IEnvironment, IEndpoint)
+
+-- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
+type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IO))
+
+-- | An evaluated value type, produced from running an interpretation.
+type IResult a = ((Either InterpretationError a, IState), ILog)
+
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment)
 
--- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IEnvironment (WriterT ILog IO))
+-- | A type capturing the environment resulting from an interpretation
+type REnvironment = Either EnvOnError IEnvironment
+
+-- | Simulation types, containing all simulation data structures.
+data Simulation 
+  = SingleSite    (IORef (Address, [(Identifier, Value)]))
+  | NodeQueues    (IORef (H.HashMap Address [(Identifier, Value)]))
+  | TriggerQueues (IORef (H.HashMap (Address, Identifier) [Value]))
+
+-- | Network types, containing endpoints through which messages may be sent.
+data Network
+  = UDP
+  | TCP --TCPConnectionPool
+
+-- | A type class for message transportation.
+class Transport a where
+  enqueue :: a -> Address -> Identifier -> Value -> IO ()
+
+instance Transport Simulation where
+  enqueue (SingleSite qref) addr n arg = modifyIORef qref enqueueIfValid
+    where enqueueIfValid (addr', q) 
+            | addr == addr' = (addr, q++[(n,arg)])
+            | otherwise = (addr', q)  -- TODO: should this be more noisy, i.e. logged?
+
+  enqueue (NodeQueues qsref) addr n arg = modifyIORef qsref $ enqueueToNode
+    where enqueueToNode qs = H.adjust (++[(n,arg)]) addr qs
+
+
+  enqueue (TriggerQueues qsref) addr n arg = modifyIORef qsref $ enqueueToTrigger
+    where enqueueToTrigger qs = H.adjust (++[arg]) (addr, n) qs
+
+-- TODO
+instance Transport Network where
+  enqueue UDP addr n arg = undefined -- Connectionless send
+  enqueue TCP addr n arg = undefined -- Send through connection pool, establishing/caching connections as necessary
+
+data IEndpoint = SimEP Simulation | NetworkEP Network
+
+{- Helpers -}
 
 -- | Run an interpretation to get a value or error, resulting environment and event log.
-runInterpretation :: IEnvironment -> Interpretation a -> IO ((Either InterpretationError a, IEnvironment), ILog)
-runInterpretation e = runWriterT . flip runStateT e . runEitherT
+runInterpretation :: IState -> Interpretation a -> IO (IResult a)
+runInterpretation s = runWriterT . flip runStateT s . runEitherT
 
 -- | Run an interpretation and extract the resulting environment
-envOfInterpretation :: IEnvironment -> Interpretation a -> IO (Either EnvOnError IEnvironment)
-envOfInterpretation initEnv i = runInterpretation initEnv i >>= \case
-                                  ((Right _, env), _) -> return $ Right env
-                                  ((Left err, env), _) -> return $ Left (err, env)
+envOfInterpretation :: IState -> Interpretation a -> IO REnvironment
+envOfInterpretation s i = runInterpretation s i >>= \case
+                                  ((Right _, (env,_)), _) -> return $ Right env
+                                  ((Left err, (env,_)), _) -> return $ Left (err, env)
 
 -- | Run an interpretation and extract its value.
-valueOfInterpretation :: IEnvironment -> Interpretation a -> IO (Maybe a)
-valueOfInterpretation initEnv i =
-  runInterpretation initEnv i >>= return . either (\_ -> Nothing) Just . fst . fst
+valueOfInterpretation :: IState -> Interpretation a -> IO (Maybe a)
+valueOfInterpretation s i =
+  runInterpretation s i >>= return . either (\_ -> Nothing) Just . fst . fst
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
 throwE :: InterpretationError -> Interpretation a
 throwE = Control.Monad.Trans.Either.left
 
--- | Look-up the environment, with a thrown error if unsuccessful.
+-- | Environment lookup, with a thrown error if unsuccessful.
 lookupE :: Identifier -> Interpretation Value
-lookupE n = get >>= maybe (throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'") return . lookup n
+lookupE n = get >>= maybe (throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'") return . lookup n . fst
 
+-- | Environment modification
+modifyE :: (IEnvironment -> IEnvironment) -> Interpretation ()
+modifyE f = modify (\(env,ep) -> (f env, ep))
+
+-- | Endpoint enqueuing
+enqueueE :: Address -> Identifier -> Value -> Interpretation ()
+enqueueE addr n val = get >>= liftIO . (\ep -> enqueue' ep addr n val) . snd >> return ()
+  where enqueue' (SimEP x) a n v     = enqueue x a n v
+        enqueue' (NetworkEP x) a n v = enqueue x a n v
+
+-- | Subtree extraction
 children :: Tree a -> Forest a
 children = subForest
 
-{- Names -}
+{- Constants -}
+myAddrId :: Identifier
 myAddrId = "me"
+
+defaultAddress :: Address 
+defaultAddress = ("localhost", 10000)
+
+vunit :: Value
+vunit = VTuple []
 
 -- | Default values for specific types
 defaultValue :: K3 Type -> Interpretation Value
@@ -135,11 +204,11 @@ defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
 defaultValue (tag -> TOption)     = return $ VOption Nothing
 defaultValue (tag -> TCollection) = return $ VCollection []
-defaultValue (tag -> TAddress)    = return $ VAddress ("localhost", 10000)
+defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
-defaultValue (tag &&& children -> (TTuple, ch))       = mapM defaultValue ch >>= return . VTuple
-defaultValue (tag &&& children -> (TRecord ids, ch))  = mapM defaultValue ch >>= return . VRecord . zip ids
+defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
+defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
 defaultValue _ = undefined
 
 
@@ -159,9 +228,9 @@ numeric op a b = do
   a' <- expression a
   b' <- expression b
   case (a', b') of
-      (VInt x, VInt y) -> return $ VInt $ op x y
-      (VInt x, VReal y) -> return $ VReal $ op (fromIntegral x) y
-      (VReal x, VInt y) -> return $ VReal $ op x (fromIntegral y)
+      (VInt x, VInt y)   -> return $ VInt  $ op x y
+      (VInt x, VReal y)  -> return $ VReal $ op (fromIntegral x) y
+      (VReal x, VInt y)  -> return $ VReal $ op x (fromIntegral y)
       (VReal x, VReal y) -> return $ VReal $ op x y
       _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
@@ -182,9 +251,9 @@ comparison op a b = do
   b' <- expression b
 
   case (a', b') of
-      (VBool x, VBool y) -> return $ VBool $ op x y
-      (VInt x, VInt y) -> return $ VBool $ op x y
-      (VReal x, VReal y) -> return $ VBool $ op x y
+      (VBool x, VBool y)     -> return $ VBool $ op x y
+      (VInt x, VInt y)       -> return $ VBool $ op x y
+      (VReal x, VReal y)     -> return $ VBool $ op x y
       (VString x, VString y) -> return $ VBool $ op x y
       _ -> throwE $ RunTimeTypeError "Comparison Type Mis-Match"
 
@@ -193,8 +262,8 @@ unary :: Operator -> K3 Expression -> Interpretation Value
 
 -- | Interpretation of unary negation of numbers.
 unary ONeg a = expression a >>= \case
-  VInt i -> return $ VInt (negate i)
-  VReal r -> return $ VReal (negate r)
+  VInt i   -> return $ VInt  (negate i)
+  VReal r  -> return $ VReal (negate r)
   _ -> throwE $ RunTimeTypeError "Invalid Negation"
 
 -- | Interpretation of unary negation of booleans.
@@ -218,14 +287,14 @@ binary ODiv = \a b -> do
   b' <- expression b
 
   void $ case b' of
-      VInt 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
+      VInt 0  -> throwE $ RunTimeInterpretationError "Division by Zero"
       VReal 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
       _ -> return ()
 
   case (a', b') of
-      (VInt x, VInt y) -> return $ VInt $ x `div` y
-      (VInt x, VReal y) -> return $ VReal $ fromIntegral x / y
-      (VReal x, VInt y) -> return $ VReal $ x / (fromIntegral y)
+      (VInt x, VInt y)   -> return $ VInt $ x `div` y
+      (VInt x, VReal y)  -> return $ VReal $ fromIntegral x / y
+      (VReal x, VInt y)  -> return $ VReal $ x / (fromIntegral y)
       (VReal x, VReal y) -> return $ VReal $ x / y
       _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
@@ -252,13 +321,14 @@ binary OApp = \f x -> do
 
 -- | Message Passing
 binary OSnd = \target x -> do
-  target' <- expression target
-  x'      <- expression x
-  env     <- get
+  target'  <- expression target
+  x'       <- expression x
+  (env,ep) <- get
 
   case (target', lookup myAddrId env) of 
     (VTuple [VFunction f', VAddress addr], Just (VAddress myAddr))
-      | addr == myAddr -> f' x'
+      | addr == myAddr -> f' x'                                 -- short-circuit. TODO: remove
+      | otherwise -> enqueueE addr "TODO:ID" x' >> return vunit -- TODO: trigger id
     (_, Nothing) -> throwE $ RunTimeTypeError "Invalid Local Address"
     _ -> throwE $ RunTimeTypeError "Invalid Trigger Target"
 
@@ -293,8 +363,8 @@ expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= retur
 -- | Interpretation of function construction.
 expression (tag &&& children -> (ELambda i, [b])) =
   return $ VFunction $ \v -> 
-    modify ((i, v):) >> expression b 
-      >>= (\rv -> modify (deleteBy (\(i,_) (j,_) -> i == j) (i,v)) >> return rv)
+    modifyE ((i,v):) >> expression b 
+      >>= (\rv -> modifyE (deleteBy (\(i,_) (j,_) -> i == j) (i,v)) >> return rv)
 
 -- | Interpretation of unary/binary operators.
 expression (tag &&& children -> (EOperate otag, cs))
@@ -309,31 +379,31 @@ expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
 expression (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
 
 -- | Interpretation of Let-In Constructions.
-expression (tag &&& children -> (ELetIn i, [e, b])) = expression e >>= modify . (:) . (i,) >> expression b
+expression (tag &&& children -> (ELetIn i, [e, b])) = expression e >>= modifyE . (:) . (i,) >> expression b
 expression (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
 
 -- | Interpretation of Assignment.
 expression (tag &&& children -> (EAssign i, [e])) = lookupE i >>= \case
-    VIndirection r -> expression e >>= liftIO . writeIORef r >> return (VTuple [])
+    VIndirection r -> expression e >>= liftIO . writeIORef r >> return vunit
     _ -> throwE $ RunTimeTypeError "Assignment to Non-Reference"
 expression (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
 
 -- | Interpretation of Case-Matches.
 expression (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
-    VOption (Just v) -> modify ((i, v):) >> expression s
+    VOption (Just v) -> modifyE ((i, v):) >> expression s
     VOption (Nothing) -> expression n
     _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
 expression (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
 -- | Interpretation of Binding.
 expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> case (b, b') of
-    (BIndirection i, VIndirection r) -> (modify . (:) $ (i, VIndirection r)) >> expression f
-    (BTuple ts, VTuple vs) -> (modify . (++) $ zip ts vs) >> expression f
+    (BIndirection i, VIndirection r) -> (modifyE . (:) $ (i, VIndirection r)) >> expression f
+    (BTuple ts, VTuple vs) -> (modifyE . (++) $ zip ts vs) >> expression f
     (BRecord ids, VRecord ivs) -> do
         let (idls, idbs) = unzip $ sortBy (compare `on` fst) ids
         let (ivls, ivvs) = unzip $ sortBy (compare `on` fst) ivs
         if idls == ivls
-            then modify ((++) (zip idbs ivvs)) >> expression f
+            then modifyE ((++) (zip idbs ivvs)) >> expression f
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
     _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
 expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
@@ -350,9 +420,9 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 {- Declaration interpretation -}
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSource) (Just e)      = return ()
-global n t (Just e)                     = expression e >>= modify . (:) . (n,)
+global n t (Just e)                     = expression e >>= modifyE . (:) . (n,)
 global n t Nothing | TFunction <- tag t = builtin n t
-global n t Nothing                      = defaultValue t >>= modify . (:) . (n,)
+global n t Nothing                      = defaultValue t >>= modifyE . (:) . (n,)
 
 -- TODO: qualify names?
 role :: Identifier -> [K3 Declaration] -> Interpretation ()
@@ -370,8 +440,10 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
 
-program :: K3 Declaration -> IO (Either EnvOnError IEnvironment)
-program p = envOfInterpretation [] $ declaration p
+program :: Maybe IEndpoint -> K3 Declaration -> IO (IResult ())
+program (Just ep) p = runInterpretation ([], ep) $ declaration p
+program Nothing   p = standaloneInterpreter withEndpoint
+  where withEndpoint ep = runInterpretation ([], ep) $ declaration p
 
 
 {- Top-level methods -}
@@ -384,18 +456,24 @@ showEnv env =
   concat $ ["Environment:\n"] ++
     map (flip (++) "\n" . show) (reverse env)
 
+standaloneInterpreter :: (IEndpoint -> IO a) -> IO a
+standaloneInterpreter f = newIORef (defaultAddress, []) >>= f . SimEP . SingleSite
+
 runExpression :: K3 Expression -> IO ()
-runExpression e = valueOfInterpretation [] (expression e) >>= putStrLn . show
+runExpression e = standaloneInterpreter withEndpoint
+  where withEndpoint ep = valueOfInterpretation ([], ep) (expression e) >>= putStrLn . show
 
 runProgram :: K3 Declaration -> IO ()
-runProgram p = program p >>= runInit
-  where runInit (Left e) = putStrLn $ showErrorEnv e
-        runInit (Right env)
+runProgram p = program Nothing p >>= runInit . fst
+  where runInit (Left err, (env,_)) = putStrLn $ showErrorEnv (err,env)
+        runInit (Right v, (env,ep))
           | Just (VFunction f) <- lookup "atInit" env 
-          = envOfInterpretation env (f $ VTuple [])
-              >>= putStrLn . either showErrorEnv showEnv
+          = envOfInterpretation (env,ep) (f vunit) >>= putStrLn . either showErrorEnv showEnv
           
           | otherwise = putStrLn $ "Could not find atInit:\n" ++ showEnv env
+
+-- TODO: runNetwork
+-- runNetwork :: [Address] -> K3 Declaration -> IO ()
 
 
 {- Built-in functions -}
@@ -403,7 +481,7 @@ runProgram p = program p >>= runInit
 ignoreFn e = VFunction $ \_ -> return e
 
 builtin :: Identifier -> K3 Type -> Interpretation ()
-builtin n t = genBuiltin n t >>= modify . (:) . (n,)
+builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
 
 genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
