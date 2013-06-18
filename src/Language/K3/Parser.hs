@@ -48,7 +48,7 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Pretty
-import Language.K3.ProgramBuilder
+import Language.K3.Parser.ProgramBuilder
 
 {- Type synonyms for parser return types -}
 {-| Parser environment type.
@@ -152,8 +152,8 @@ parseType s = either (\_ -> Nothing) Just $ P.runParser typeExpr [] "" s
 parseExpression :: String -> Maybe (K3 Expression)
 parseExpression s = either (\_ -> Nothing) Just $ P.runParser expr [] "" s
 
-parseK3 :: String -> Maybe (K3 Declaration)
-parseK3 s = either (\_ -> Nothing) Just $ P.runParser program [] "" s
+parseK3 :: String -> Either String (K3 Declaration)
+parseK3 s = either (Left . show) Right $ P.runParser program [] "" s
 
 
 {- K3 grammar parsers -}
@@ -211,7 +211,7 @@ dSink :: DeclParser
 dSink = dEndpoint "sink" "sink" TC.sink return
 
 dBind :: K3Parser ()
-dBind = (trackBindings =<<) $ mkBind <$> identifier <*> bidirectional <*> identifier
+dBind = (trackBindings =<<) $ mkBind <$> (symbol "~~" *> identifier) <*> bidirectional <*> identifier
   where mkBind id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         bidirectional = choice [symbol "|>" >> return True,
                                 symbol "<|" >> return False]
@@ -518,10 +518,10 @@ equateQExpr = symbol "=" *> qualifiedExpr
 
 {- Channels -}
 channel :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-channel = choice [values, file, network]
+channel = choice [value, file, network]
 
-values :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-values = mkValueStream <$> (symbol "values" *> expr)
+value :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+value = mkValueStream <$> (symbol "value" *> expr)
   where mkValueStream e n t = (Just e, [])
 
 file :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
