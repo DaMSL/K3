@@ -22,8 +22,10 @@ module Language.K3.Interpreter (
 
   expression,
   program,
+  
   runExpression,
-  runProgram
+  runProgram,
+  runNetwork
 ) where
 
 import Control.Arrow
@@ -445,11 +447,6 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
 
-program :: Maybe IState -> K3 Declaration -> IO (IResult ())
-program (Just s) p = runInterpretation s $ declaration p
-program Nothing  p = standaloneInterpreter withEndpoint
-  where withEndpoint ep = runInterpretation ([], ep) $ declaration p
-
 
 {- Top-level methods -}
 
@@ -484,6 +481,20 @@ initializeEnvironment = initDecl []
         initGlobal env n (tag -> TFunction) _ = env -- TODO: mutually recursive functions
         initGlobal env _ _ _ = env
 
+initializeState :: K3 Declaration -> IEndpoint -> IO IState
+initializeState prog ep = return (initializeEnvironment prog, ep)
+
+initializeProgram :: K3 Declaration -> IState -> IO (IResult ())
+initializeProgram p s = runInterpretation s $ declaration p
+
+initializeMessages :: IResult () -> IO (IResult Value)
+initializeMessages = \case
+    ((Right v, (env,ep)), ilog) 
+      | Just (VFunction f) <- lookup "atInit" env -> runInterpretation (env,ep) (f vunit)
+      | otherwise                                 -> return ((iError "Could not find atInit", (env,ep)), ilog)
+    ((Left err, state), ilog)                     -> return ((Left err, state), ilog)
+  where iError = Left . RunTimeInterpretationError
+
 standaloneInterpreter :: (IEndpoint -> IO a) -> IO a
 standaloneInterpreter f = newIORef (defaultAddress, []) >>= f . SimEP . SingleSite
 
@@ -491,55 +502,71 @@ runExpression :: K3 Expression -> IO ()
 runExpression e = standaloneInterpreter withEndpoint
   where withEndpoint ep = valueOfInterpretation ([], ep) (expression e) >>= putStrLn . show
 
+runProgramWithState :: K3 Declaration -> IState -> IO (IResult Value)
+runProgramWithState p s = initializeProgram p s >>= initializeMessages
+
+program :: K3 Declaration -> IO (IResult ())
+program p = standaloneInterpreter (initializeState p) >>= initializeProgram p
+
 runProgram :: K3 Declaration -> IO ()
-runProgram p = initState >>= flip program p >>= go . fst
-  where initState = standaloneInterpreter (\ep -> return $ Just (initializeEnvironment p, ep))
-        go (Left err, (env,_)) = putStrLn $ prettyErrorEnv (err,env)
-        go (Right v, (env,ep))
-          | Just (VFunction f) <- lookup "atInit" env 
-          = runInterpretation (env,ep) (f vunit) >>= putIResult
-          
-          | otherwise = putStrLn $ "Could not find atInit:\n" ++ prettyEnv env
+runProgram p = program p >>= initializeMessages >>= putIResult
 
---finished :: IEndpoint -> IO Bool
---next :: IEndpoint -> IO (Identifier, Value) -- trigger id, arg
---dispatch :: (Value, Value) -> Maybe (IO (IResult a))
 
-{-
-runPeer :: IResult a -> Either (IO (IResult a)) (IO (IResult a))
-runPeer ((Right val, (env, ep)), ilog) = maybe terminate dispatch $ next ep
-  where next (SimEP (SingleSite qref)) = readIORef qref >>= return . tryHead
-        next (SimEP (NodeQueues qsref)) = readIORef qsref >>= return . someNQMessage -- TODO: fair peer traversal
-        next (SimEP (TriggerQueues qsref)) = readIORef qsref >>= return . someTQMessage
-        next (NetworkEP x) = undefined
+{- Message processing -}
+
+-- TODO: fair peer traversal
+-- TODO: efficient queue modification rather than toList / fromList
+nextMessage :: IEndpoint -> IO (Maybe (Identifier, Value))
+nextMessage = \case
+    (SimEP (SingleSite qref))     -> atomicModifyIORef' qref someMessage
+    (SimEP (NodeQueues qsref))    -> atomicModifyIORef' qsref $ someMapMessage (Just . head . snd)
+    (SimEP (TriggerQueues qsref)) -> atomicModifyIORef' qsref $ someMapMessage (Just . idVal)
+
+    (NetworkEP x) -> undefined
+
+  where someMessage (addr,l) = (\(nl, opt) -> ((addr, nl), opt)) $ trySplit l
+        someMapMessage f = messageFromMap (uncurry $ rebuildMap f)
+        messageFromMap f = f . trySplit . H.toList . H.filter (not . null)
+        rebuildMap f l kvOpt = (H.fromList l, maybe Nothing f kvOpt)
+
+        idVal ((_,n),vs) = (n, head vs)
+        tryHead l  = if null l then Nothing else Just $ head l
+        trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
+
+
+processNextMessage :: Value -> IState -> ILog -> IO (Either (IResult Value) (IResult Value))
+processNextMessage val (env, ep) ilog = nextMessage ep >>= maybe (return $ terminate $ Right val) dispatch
+  
+  where dispatch (n, val) = maybe (return $ unknownTrigger n) (runTrigger (n,val) (env,ep)) $ lookup n env
         
-        dispatch (n, val) = return $ Right $ maybe (unknownTrigger n) (runTrigger (n,val) (env,ep)) $ lookup n env
-        runTrigger (n,val) state (VTrigger _ (Just f)) = runInterpretation state (f val)
-        runTrigger (n,_) _ (VTrigger _ Nothing) = iError $ "Uninitialized Trigger " ++ n
-        runTrigger (n,_) _ _  = tError $ "Invalid Trigger Value for " ++ n
+        runTrigger (_,val) state (VTrigger (_, (Just f))) = runInterpretation state (f val) >>= return . Right
+        runTrigger (n,_) _ (VTrigger _)                   = return . iError $ "Uninitialized Trigger " ++ n
+        runTrigger (n,_) _ _                              = return . tError $ "Invalid Trigger Value for " ++ n
+        
         unknownTrigger n = tError $ "Unknown trigger "++n
         
-        iError = terminateWithError . RunTimeInterpretationError
-        tError = terminateWithError . RunTimeTypeError
-        terminateWithError err = Left ((Left err, (env, ep)), ilog)
-        terminate = return $ Left ((Right val, (env, ep)), ilog)
+        iError = terminate . Left . RunTimeInterpretationError
+        tError = terminate . Left . RunTimeTypeError
+        terminate x = Left ((x, (env,ep)), ilog)
 
-        tryHead [] = Nothing
-        tryHead (h:t) = Just h
-        
-        -- TODO: pull from queues, not just read.
-        someNQMessage = tryHead . H.elems . H.filter (not null)
-        someTQMessage = maybe Nothing idVal . tryHead . H.toList . H.filter (not null)
-        idVal ((addr,n),v) = (n,v)
 
-runPeer x = Left x
--}
---runMessages :: Either (IO (IResult a)) (IO (IResult a)) -> IO ()
---runMessages Left x = putIResult x
---runMessages Right x = runMessages (runPeer x)
+runPeer :: IResult Value -> IO (Either (IResult Value) (IResult Value))
+runPeer = \case
+  ((Right val, state), ilog) -> processNextMessage val state ilog
+  x -> return $ Left x
 
--- TODO: runNetwork
--- runNetwork :: [Address] -> K3 Declaration -> IO ()
+runMessages :: IO (Either (IResult Value) (IResult Value)) -> IO ()
+runMessages prev = prev >>= \case 
+  Left x -> putIResult x
+  Right x -> runMessages (runPeer x)
+
+runNetwork :: [Address] -> K3 Declaration -> IO ()
+runNetwork peers prog = initializeQueues peers 
+                        >>= initializeState prog
+                        >>= runProgramWithState prog
+                        >>= runMessages . return . resultAsEither
+  where initializeQueues peers = newIORef (H.fromList $ map (,[]) peers) >>= return . SimEP . NodeQueues
+        resultAsEither x = either (\_ -> Left x) (\_ -> Right x) $ fst $ fst x
 
 
 {- Built-in functions -}
