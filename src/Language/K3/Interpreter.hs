@@ -67,21 +67,24 @@ data Value
     | VIndirection (IORef Value)
     | VFunction    (Value -> Interpretation Value)
     | VAddress     Address
+    | VTrigger     (Identifier, Maybe (Value -> Interpretation Value))
 
 -- We can't deriving Show because IORefs aren't showable.
 instance Show Value where
-  show (VBool b) = "VBool " ++ show b
-  show (VByte b) = "VByte " ++ show b
-  show (VInt i) = "VInt " ++ show i
-  show (VReal r) = "VReal " ++ show r
-  show (VString s) = "VString " ++ show s
-  show (VOption m) = "VOption " ++ show m
-  show (VTuple t) = "VTuple " ++ show t
-  show (VRecord r) = "VRecord " ++ show r
-  show (VCollection c) = "VCollection " ++ show c
-  show (VIndirection _) = "VIndirection <opaque>"
-  show (VFunction _) = "VFunction <function>"
+  show (VBool b)               = "VBool " ++ show b
+  show (VByte b)               = "VByte " ++ show b
+  show (VInt i)                = "VInt " ++ show i
+  show (VReal r)               = "VReal " ++ show r
+  show (VString s)             = "VString " ++ show s
+  show (VOption m)             = "VOption " ++ show m
+  show (VTuple t)              = "VTuple " ++ show t
+  show (VRecord r)             = "VRecord " ++ show r
+  show (VCollection c)         = "VCollection " ++ show c
+  show (VIndirection _)        = "VIndirection <opaque>"
+  show (VFunction _)           = "VFunction <function>"
   show (VAddress (host, port)) = "VAddress " ++ host ++ ":" ++ show port
+  show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>" 
+  show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>" 
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -143,6 +146,7 @@ instance Transport Network where
   enqueue UDP addr n arg = undefined -- Connectionless send
   enqueue TCP addr n arg = undefined -- Send through connection pool, establishing/caching connections as necessary
 
+-- | An interpreter endpoint data type. This is carried in the interpreter state for message passing.
 data IEndpoint = SimEP Simulation | NetworkEP Network
 
 {- Helpers -}
@@ -323,13 +327,9 @@ binary OApp = \f x -> do
 binary OSnd = \target x -> do
   target'  <- expression target
   x'       <- expression x
-  (env,ep) <- get
 
-  case (target', lookup myAddrId env) of 
-    (VTuple [VFunction f', VAddress addr], Just (VAddress myAddr))
-      | addr == myAddr -> f' x'                                 -- short-circuit. TODO: remove
-      | otherwise -> enqueueE addr "TODO:ID" x' >> return vunit -- TODO: trigger id
-    (_, Nothing) -> throwE $ RunTimeTypeError "Invalid Local Address"
+  case target' of 
+    VTuple [VTrigger (n, _), VAddress addr] -> enqueueE addr n x' >> return vunit
     _ -> throwE $ RunTimeTypeError "Invalid Trigger Target"
 
 -- | Sequential expressions
@@ -419,6 +419,11 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
+
+global n (tag -> TTrigger _) (Just e) = expression e >>= replaceTrigger
+  where replaceTrigger (VFunction f) = modifyE (((n, VTrigger (n, Just f)):) . filter ((n /=) . fst))
+        replaceTrigger _ = throwE $ RunTimeTypeError "Invalid Trigger Body"
+
 global n (tag -> TSource) (Just e)      = return ()
 global n t (Just e)                     = expression e >>= modifyE . (:) . (n,)
 global n t Nothing | TFunction <- tag t = builtin n t
@@ -440,21 +445,44 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
 
-program :: Maybe IEndpoint -> K3 Declaration -> IO (IResult ())
-program (Just ep) p = runInterpretation ([], ep) $ declaration p
-program Nothing   p = standaloneInterpreter withEndpoint
+program :: Maybe IState -> K3 Declaration -> IO (IResult ())
+program (Just s) p = runInterpretation s $ declaration p
+program Nothing  p = standaloneInterpreter withEndpoint
   where withEndpoint ep = runInterpretation ([], ep) $ declaration p
 
 
 {- Top-level methods -}
 
-showErrorEnv :: EnvOnError -> String
-showErrorEnv (err, env) = concat $ ["Error\n", show err, "\n", showEnv env]
+prettyErrorEnv :: EnvOnError -> String
+prettyErrorEnv (err, env) = intercalate "\n" ["Error", show err, prettyEnv env]
 
-showEnv :: IEnvironment -> String
-showEnv env =
-  concat $ ["Environment:\n"] ++
-    map (flip (++) "\n" . show) (reverse env)
+prettyEnv :: IEnvironment -> String
+prettyEnv env = intercalate "\n" $ ["Environment:"] ++ map show (reverse env)
+
+
+putEndpoint :: IEndpoint -> IO ()
+putEndpoint (SimEP x) = putStrLn "Messages:" >> putSim x
+  where putSim (SingleSite qref) = readIORef qref >>= putStrLn . show
+        putSim (NodeQueues qsref) = readIORef qsref >>= putStrLn . show
+        putSim (TriggerQueues qsref) = readIORef qsref >>= putStrLn . show
+
+putEndpoint (NetworkEP x) = undefined  -- TODO
+
+
+putIResult :: Show a => IResult a -> IO ()
+putIResult ((Left err, (env,ep)), ilog) = putStrLn (prettyErrorEnv (err,env)) >> putEndpoint ep
+putIResult ((Right val, (env,ep)), ilog) = putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putEndpoint ep
+  where prettyVal = "Value:\n"++show val
+
+
+initializeEnvironment :: K3 Declaration -> IEnvironment
+initializeEnvironment = initDecl []
+  where initDecl env (tag &&& children -> (DGlobal n t eO, ch)) = foldl initDecl (initGlobal env n t eO) ch
+        initDecl env (tag &&& children -> (DRole r, ch)) = foldl initDecl env ch
+        initDecl env _ = env
+        initGlobal env n (tag -> TTrigger _) _ = env ++ [(n, VTrigger (n, Nothing))]
+        initGlobal env n (tag -> TFunction) _ = env -- TODO: mutually recursive functions
+        initGlobal env _ _ _ = env
 
 standaloneInterpreter :: (IEndpoint -> IO a) -> IO a
 standaloneInterpreter f = newIORef (defaultAddress, []) >>= f . SimEP . SingleSite
@@ -464,13 +492,51 @@ runExpression e = standaloneInterpreter withEndpoint
   where withEndpoint ep = valueOfInterpretation ([], ep) (expression e) >>= putStrLn . show
 
 runProgram :: K3 Declaration -> IO ()
-runProgram p = program Nothing p >>= runInit . fst
-  where runInit (Left err, (env,_)) = putStrLn $ showErrorEnv (err,env)
-        runInit (Right v, (env,ep))
+runProgram p = initState >>= flip program p >>= go . fst
+  where initState = standaloneInterpreter (\ep -> return $ Just (initializeEnvironment p, ep))
+        go (Left err, (env,_)) = putStrLn $ prettyErrorEnv (err,env)
+        go (Right v, (env,ep))
           | Just (VFunction f) <- lookup "atInit" env 
-          = envOfInterpretation (env,ep) (f vunit) >>= putStrLn . either showErrorEnv showEnv
+          = runInterpretation (env,ep) (f vunit) >>= putIResult
           
-          | otherwise = putStrLn $ "Could not find atInit:\n" ++ showEnv env
+          | otherwise = putStrLn $ "Could not find atInit:\n" ++ prettyEnv env
+
+--finished :: IEndpoint -> IO Bool
+--next :: IEndpoint -> IO (Identifier, Value) -- trigger id, arg
+--dispatch :: (Value, Value) -> Maybe (IO (IResult a))
+
+{-
+runPeer :: IResult a -> Either (IO (IResult a)) (IO (IResult a))
+runPeer ((Right val, (env, ep)), ilog) = maybe terminate dispatch $ next ep
+  where next (SimEP (SingleSite qref)) = readIORef qref >>= return . tryHead
+        next (SimEP (NodeQueues qsref)) = readIORef qsref >>= return . someNQMessage -- TODO: fair peer traversal
+        next (SimEP (TriggerQueues qsref)) = readIORef qsref >>= return . someTQMessage
+        next (NetworkEP x) = undefined
+        
+        dispatch (n, val) = return $ Right $ maybe (unknownTrigger n) (runTrigger (n,val) (env,ep)) $ lookup n env
+        runTrigger (n,val) state (VTrigger _ (Just f)) = runInterpretation state (f val)
+        runTrigger (n,_) _ (VTrigger _ Nothing) = iError $ "Uninitialized Trigger " ++ n
+        runTrigger (n,_) _ _  = tError $ "Invalid Trigger Value for " ++ n
+        unknownTrigger n = tError $ "Unknown trigger "++n
+        
+        iError = terminateWithError . RunTimeInterpretationError
+        tError = terminateWithError . RunTimeTypeError
+        terminateWithError err = Left ((Left err, (env, ep)), ilog)
+        terminate = return $ Left ((Right val, (env, ep)), ilog)
+
+        tryHead [] = Nothing
+        tryHead (h:t) = Just h
+        
+        -- TODO: pull from queues, not just read.
+        someNQMessage = tryHead . H.elems . H.filter (not null)
+        someTQMessage = maybe Nothing idVal . tryHead . H.toList . H.filter (not null)
+        idVal ((addr,n),v) = (n,v)
+
+runPeer x = Left x
+-}
+--runMessages :: Either (IO (IResult a)) (IO (IResult a)) -> IO ()
+--runMessages Left x = putIResult x
+--runMessages Right x = runMessages (runPeer x)
 
 -- TODO: runNetwork
 -- runNetwork :: [Address] -> K3 Declaration -> IO ()
