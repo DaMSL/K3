@@ -1,6 +1,6 @@
-dist
+dist*
 tmp
+
 /.dist-buildwrapper
 /.settings
 /.project
-.ghci
