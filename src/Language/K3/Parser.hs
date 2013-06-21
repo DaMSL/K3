@@ -332,11 +332,11 @@ exprQualifier = choice [keyword "immut" >> return EImmutable,
 
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
+    trace "EASN" (try eAssign),
     trace "ELIT" eLiterals,
     trace "ELAM" eLambda,
     trace "ESND" eSend,
     trace "ECND" eCondition,
-    trace "EASN" eAssign,
     trace "ELET" eLet,
     trace "ECAS" eCase,
     trace "EBND" eBind,
