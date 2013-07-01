@@ -73,8 +73,20 @@ closeFileFn   = EC.variable "closeFile"
 closeSocketFn :: K3 Expression
 closeSocketFn = EC.variable "closeSocket"
 
-registerSocketHandlerFn :: K3 Expression
-registerSocketHandlerFn = EC.variable "registerSocketHandler"
+registerFileDataTriggerFn :: K3 Expression
+registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
+
+registerFileCloseTriggerFn :: K3 Expression
+registerFileCloseTriggerFn = EC.variable "registerFileCloseTrigger"
+
+registerSocketAcceptTriggerFn :: K3 Expression
+registerSocketAcceptTriggerFn = EC.variable "registerSocketAcceptTrigger"
+
+registerSocketDataTriggerFn :: K3 Expression
+registerSocketDataTriggerFn = EC.variable "registerSocketDataTrigger"
+
+registerSocketCloseTriggerFn :: K3 Expression
+registerSocketCloseTriggerFn = EC.variable "registerSocketCloseTrigger"
 
 {- Top-level functions -}
 initId :: Identifier
@@ -170,7 +182,7 @@ channelMethods isFile argE formatE n t  =
         startE n =
           if isFile
           then EC.send (EC.variable (ccName n)) myAddr EC.unit
-          else EC.applyMany registerSocketHandlerFn [sourceId n, EC.variable $ ccName n]
+          else EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
 
         controlE processE =
           if not isFile
@@ -227,7 +239,11 @@ declareBuiltins d
           DC.global "closeFile" (TC.function idT TC.unit) Nothing,
           DC.global "closeSocket" (TC.function idT TC.unit) Nothing,
           DC.global "hasNext" (TC.function idT TC.bool) Nothing,
-          DC.global "registerSocketHandler" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing ]
+          DC.global "registerFileDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
+          DC.global "registerFileCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
+          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
+          DC.global "registerSocketDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
+          DC.global "registerSocketCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing ]
 
         peerDecls = [
           DC.global myId TC.address Nothing,

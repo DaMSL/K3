@@ -9,20 +9,24 @@ module Language.K3.Interpreter.Runtime (
   MessageQueues(..),
   Workers(..),
   
-  Transports(..),
-  InTransport(..),
-  OutTransport(..),
+  NTransports(..),
+  NInTransport(..),
+  NOutTransport(..),
 
+  ValueFormat(..),
+
+  IEndpoint(..),
   ITransport(..),
-  
-  ConnectionPool(..),
-  Endpoint(..),
-  Connection(..),
+
+  NConnectionPool(..),
+  NEndpoint(..),
+  NConnection(..),
 
   enqueue,
   dequeue,
   send,
 
+  nodes,
   queues,
   workers,
   transport,
@@ -32,27 +36,43 @@ module Language.K3.Interpreter.Runtime (
   simpleEngine,
 
   putMessageQueues,
-  putTransport
+  putTransport,
+
+  openFile,
+  closeFile,
+  openSocket,
+  closeSocket,
+
+  readFormattedString,
+  readEndpoint
 
 ) where
 
 import Control.Concurrent.MVar
+import Control.Exception
 import Control.Monad.IO.Class
 
 import qualified Data.HashMap.Lazy as H 
 import Data.List
 
-import qualified Network.Transport as NT
+import qualified System.IO as SIO
 
-import Language.K3.Core.Type (Identifier)
+import qualified Network.Transport as NT
+import qualified Network.Transport.TCP as NTTCP
+
+import Language.K3.Core.Annotation
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
+
+import Language.K3.Parser
 
 -- | Address implementation
 type Address = (String, Int)
 
 
 data Engine a
-  = Simulation (MessageQueues a) Workers
-  | Network    (MessageQueues a) Workers Transports
+  = Simulation [Address] (MessageQueues a) Workers
+  | Network    [Address] (MessageQueues a) Workers NTransports
 
 data MessageQueues a
   = Peer          (MVar (Address, [(Identifier, a)]))
@@ -68,25 +88,34 @@ data Workers
 type ThreadPool  = [Int]
 type ProcessPool = [Int]
 
-{- Transports -}
 
-newtype Transports   = Transports ([(Address, InTransport)], OutTransport)
+{- Network transports -}
 
-newtype InTransport  = InTransport Endpoint
-newtype OutTransport = OutTransport ConnectionPool
+newtype NTransports   = NTransports ([(Address, NInTransport)], NOutTransport)
+newtype NInTransport  = NInTransport NEndpoint
+newtype NOutTransport = NOutTransport NConnectionPool
 
--- | A Transport that is carried around in the interpreter's state.
-data ITransport a    = TRSim (MessageQueues a) | TRNet OutTransport
-
-type ConnectionPool  = [(Endpoint, Maybe Connection)]
-newtype Endpoint     = Endpoint (LLTransport, LLEndpoint)
-newtype Connection   = Connection (Address, LLConnection)
-
+type NConnectionPool  = [(NEndpoint, Maybe NConnection)]
+newtype NEndpoint     = NEndpoint (LLTransport, LLEndpoint)
+newtype NConnection   = NConnection (Address, LLConnection)
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
 type LLEndpoint   = NT.EndPoint
 type LLConnection = NT.Connection
+
+
+{- Interpreter I/O components -}
+data ValueFormat = CSV | Text | Binary
+
+-- | K3 endpoint (source/sink) implementations
+data IEndpoint
+  = File SIO.Handle ValueFormat (Maybe (K3 Type))
+  | Socket NEndpoint ValueFormat (Maybe (K3 Type))
+
+-- | An interpreter transport that is used to implement message passing.
+data ITransport a = TRSim (MessageQueues a) | TRNet NOutTransport
+
 
 
 -- | Queue accessors
@@ -134,17 +163,21 @@ send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as
 
 {- Accessors -}
 
+nodes :: Engine a -> [Address]
+nodes (Simulation n _ _) = n
+nodes (Network n _ _ _) = n
+
 queues :: Engine a -> MessageQueues a
-queues (Simulation q _) = q
-queues (Network q _ _) = q
+queues (Simulation _ q _) = q
+queues (Network _ q _ _) = q
 
 workers :: Engine a -> Workers
-workers (Simulation _ w) = w
-workers (Network _ w _) = w
+workers (Simulation _ _ w) = w
+workers (Network _ _ w _) = w
 
 transport :: Engine a -> ITransport a
-transport (Simulation q _)      = TRSim q
-transport (Network _ _ (Transports (_,otr))) = TRNet otr
+transport (Simulation _ q _) = TRSim q
+transport (Network _ _ _ (NTransports (_,otr))) = TRNet otr
 
 {- Constructors -}
 
@@ -155,8 +188,8 @@ simpleTransport :: Address -> IO (ITransport a)
 simpleTransport addr = simpleQueues addr >>= return . TRSim
 
 simpleEngine :: [Address] -> IO (Engine a)
-simpleEngine [addr] = simpleQueues addr >>= return . flip Simulation Uniprocess
-simpleEngine peers  = newMVar (H.fromList $ map (,[]) peers) >>= return . flip Simulation Uniprocess . ManyByPeer
+simpleEngine [addr] = simpleQueues addr >>= return . (\q -> Simulation [addr] q Uniprocess)
+simpleEngine peers  = newMVar (H.fromList $ map (,[]) peers) >>= return . (\q -> Simulation peers q Uniprocess) . ManyByPeer
 
 -- TODO: network engine constructor. This should initialize Endpoints
 -- for all given address, for incoming trigger invocations.
@@ -173,3 +206,45 @@ putTransport :: Show a => ITransport a -> IO ()
 putTransport = \case
   (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
   (TRNet otr) -> undefined -- TODO
+
+
+{- Interpreter I/O helpers -}
+format :: String -> ValueFormat
+format "csv" = CSV
+format "txt" = Text
+format "bin" = Binary
+format _ = undefined
+
+openFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IO IEndpoint
+openFile cid path fmt tOpt = SIO.openFile path SIO.ReadMode >>= (\h -> return $ File h (format fmt) tOpt)
+
+closeFile :: Identifier -> IEndpoint -> IO ()
+closeFile n (File h _ _) = SIO.hClose h
+closeFile _ _ = undefined
+
+
+openSocket :: Identifier -> Address -> String -> Maybe (K3 Type) -> IO IEndpoint
+openSocket cid (host, port) fmt tOpt =
+  NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO mkEndpoint
+  where mkEndpoint tr = NT.newEndPoint tr >>=
+          either throwTransportError (\e -> return $ Socket (NEndpoint (tr,e)) (format fmt) tOpt)
+        throwTransportError t = throwIO (ErrorCall $ show t)
+
+closeSocket :: Identifier -> IEndpoint -> IO ()
+closeSocket n (Socket (NEndpoint (t,e)) _ _) = NT.closeEndPoint e >> NT.closeTransport t
+closeSocket _ _ = undefined
+
+
+-- TODO: validate against expected type if available.
+readFormattedString :: ValueFormat -> Maybe (K3 Type) -> String -> Maybe (K3 Expression)
+readFormattedString fmt tOpt s = case fmt of
+    CSV    -> parseExpressionCSV s
+    Text   -> parseExpression s
+    Binary -> Nothing -- TODO
+
+readEndpoint :: IEndpoint -> IO (Maybe (K3 Expression))
+readEndpoint (File h fmt tOpt) = SIO.hIsEOF h >>= readNext
+  where readNext done = if done then return Nothing
+                        else SIO.hGetLine h >>= return . readFormattedString fmt tOpt
+
+readEndpoint _ = undefined

@@ -11,12 +11,16 @@ library
 
     build-depends:
         base,
+        bytestring,
         containers,
         either,
         mtl,
+        network-transport,
+        network-transport-tcp,
         parsec,
         parsec-parsers,
         parsers,
+        SafeSemaphore,
         transformers,
         unordered-containers
 
@@ -35,6 +39,7 @@ library
 
         Language.K3.Pretty,
 
+        Language.K3.Interpreter.Runtime,
         Language.K3.Interpreter,
 
         Language.K3.Transform.Alpha

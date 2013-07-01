@@ -11,6 +11,7 @@ module Language.K3.Parser (
   expr,
   parseType,
   parseExpression,
+  parseExpressionCSV,
   parseK3,
   K3Parser
 ) where
@@ -146,11 +147,19 @@ keyword = reserve k3Idents
 
 
 {- Main parsing functions -}
+maybeParser :: K3Parser a -> String -> Maybe a
+maybeParser p s = either (\_ -> Nothing) Just $ P.runParser p [] "" s
+
 parseType :: String -> Maybe (K3 Type)
-parseType s = either (\_ -> Nothing) Just $ P.runParser typeExpr [] "" s
+parseType = maybeParser typeExpr
 
 parseExpression :: String -> Maybe (K3 Expression)
-parseExpression s = either (\_ -> Nothing) Just $ P.runParser expr [] "" s
+parseExpression = maybeParser expr
+
+parseExpressionCSV :: String -> Maybe (K3 Expression)
+parseExpressionCSV = maybeParser (mkTuple <$> commaSep1 expr)
+  where mkTuple [x] = x
+        mkTuple x = EC.tuple x
 
 parseK3 :: String -> Either String (K3 Declaration)
 parseK3 s = either (Left . show) Right $ P.runParser program [] "" s
