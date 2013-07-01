@@ -3,4 +3,4 @@ tmp
 /.dist-buildwrapper
 /.settings
 /.project
-
+.ghci
