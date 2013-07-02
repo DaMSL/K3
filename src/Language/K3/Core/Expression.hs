@@ -6,7 +6,7 @@ module Language.K3.Core.Expression where
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Type
+import {-# SOURCE #-} Language.K3.Core.Type
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression

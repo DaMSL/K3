@@ -16,7 +16,7 @@ module Language.K3.Core.Type
 , AnnType(..)
 , AnnBodyType(..)
 , AnnMemType(..)
-, Polarity(..)
+, TPolarity(..)
 , TEnv(..)
 , TEnvId(..)
 , TypeAliasEntry(..)
@@ -35,14 +35,12 @@ import Data.Monoid
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
-import Language.K3.Core.Type
-
 
 -- | The types of K3 Identifiers.
 type Identifier = String
 
 -- | K3 source code spans (source name, line1, column1, line2, column2)
-data Span = Span String Int Int Int Int deriving (Eq, Read, Show)
+data Span = Span String Int Int Int Int deriving (Eq, Ord, Read, Show)
 
 -- * Basic types
 
@@ -131,11 +129,11 @@ data AnnBodyType
   deriving (Eq, Read, Show)
 
 -- |Annotation member types.
-data AnnMemType = AnnMemType Identifier Polarity QTVar
+data AnnMemType = AnnMemType Identifier TPolarity QTVar
   deriving (Eq, Read, Show)
 
 -- |A simple data type for polarities.
-data Polarity = Positive | Negative
+data TPolarity = Positive | Negative
   deriving (Eq, Read, Show)
 
 -- |Type environments.
