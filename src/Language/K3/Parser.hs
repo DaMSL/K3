@@ -107,8 +107,7 @@ infixl 1 <->
 {- Language definition constants -}
 k3Operators = [
     "+", "-", "*", "/",
-    "==", "!=", "<>", "<", ">", ">=", "<=",
-    ";", "->", "<-"
+    "==", "!=", "<>", "<", ">", ">=", "<=", ";"
   ]
 
 k3Keywords = [
@@ -116,7 +115,7 @@ k3Keywords = [
     "int", "bool", "real", "string",
     "immut", "mut", "witness", "option", "ind" , "collection",
     {- Declarations -}
-    "declare", "trigger", "source", "consume", "fun",
+    "declare", "trigger", "source", "fun",
     {- Expressions -}
     "let", "in", "if", "then", "else", "case", "of", "bind", "as",
     "and", "or", "not",
@@ -190,7 +189,7 @@ declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
-  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
+  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
@@ -255,12 +254,12 @@ annMethod = mkMethod <$> identifier <*> parens idQTypeList
 annLifted :: K3Parser (Polarity -> AnnMemDecl)
 annLifted = mkLifted <$> (keyword "lifted" *> identifier)
                      <*> (colon *> qualifiedTypeExpr)
-                     <*> ((optional equateExpr) <* semi)
+                     <*> ((optional equateNSExpr) <* semi)
   where mkLifted n t e_opt pol = Lifted n pol t e_opt
 
 annAttribute :: K3Parser (Polarity -> AnnMemDecl)
 annAttribute = mkAttribute <$> identifier <*> (colon *> qualifiedTypeExpr)
-                                          <*> ((optional equateExpr) <* semi)
+                                          <*> ((optional equateNSExpr) <* semi)
   where mkAttribute n t e_opt pol = Attribute n pol t e_opt
 
 subAnnotation :: K3Parser (Polarity -> AnnMemDecl)
@@ -286,7 +285,7 @@ tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
 
 tTermOrFun :: TypeParser
 tTermOrFun = 
-  choice [try (TSpan <-> TC.function <$> tTerm <* operator "->" <*> typeExpr), tTerm]
+  choice [try (TSpan <-> TC.function <$> tTerm <* symbol "->" <*> typeExpr), tTerm]
 
 tPrimitive :: TypeParser
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
@@ -326,11 +325,15 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
   where mkTAnnotation x = TAnnotation x
 
 {- Expressions -}
+myTrace :: String -> K3Parser a -> K3Parser a
+myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
+
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $
-  choice [ try (mkApp <$> some eTerm),
-           buildExpressionParser opTable eTerm ]
-  where mkApp = foldl1 (EC.binop OApp)
+expr = parseError "k3" "expression" $ mkSeq <$> sepBy1 nonSeqExpr (operator ";")
+  where mkSeq = foldl1 (EC.binop OSeq)
+
+nonSeqExpr :: ExpressionParser
+nonSeqExpr = myTrace "EOPS" $ buildExpressionParser opTable eApp
 
 qualifiedExpr :: ExpressionParser
 qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
@@ -341,17 +344,17 @@ exprQualifier = choice [keyword "immut" >> return EImmutable,
 
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
-    trace "EASN" (try eAssign),
-    trace "ELIT" eLiterals,
-    trace "ELAM" eLambda,
-    trace "ESND" eSend,
-    trace "ECND" eCondition,
-    trace "ELET" eLet,
-    trace "ECAS" eCase,
-    trace "EBND" eBind,
-    trace "EADR" eAddress ] <*> optional eSuffix
+    myTrace "EASN" (try eAssign),
+    myTrace "ESND" (try eSend),
+    myTrace "ELIT" eLiterals,
+    myTrace "ELAM" eLambda,
+    myTrace "ECND" eCondition,
+    myTrace "ELET" eLet,
+    myTrace "ECAS" eCase,
+    myTrace "EBND" eBind,
+    myTrace "EADR" eAddress ] <*> optional eSuffix
   where eSuffix  = choice [eAddr >>= return . Left, eProject >>= return . Right]
-        eAddr    = colon *> expr  
+        eAddr    = colon *> nonSeqExpr  
         eProject = dot *> identifier
         mkTerm e Nothing = e
         mkTerm e (Just (Left e2)) = EC.address e e2
@@ -361,19 +364,22 @@ eTerm = ESpan <-> mkTerm <$> choice [
 {- Literals -}
 eLiterals :: ExpressionParser
 eLiterals = choice [ 
-    trace "ETRM" eTerminal,
-    trace "EOPT" eOption,
-    trace "EIND" eIndirection,
-    trace "ETON" eTupleOrNested,
-    trace "EREC" eRecord,
-    trace "EMPT" eEmpty ]
+    myTrace "ETRM" eTerminal,
+    myTrace "EOPT" eOption,
+    myTrace "EIND" eIndirection,
+    myTrace "ETON" eTupleOrNested,
+    myTrace "EREC" eRecord,
+    myTrace "EMPT" eEmpty ]
 
 {- Terminals -}
 eTerminal :: ExpressionParser
-eTerminal = choice [eConstant, eVariable]
+eTerminal = choice [myTrace "ECST" eConstant,
+                    myTrace "EVAR" eVariable]
 
 eConstant :: ExpressionParser
-eConstant = choice [eCBool, eCNumber, eCString]
+eConstant = choice [myTrace "EBOL" eCBool,
+                    myTrace "ENUM" $ try eCNumber,
+                    myTrace "ESTR" eCString]
 
 eCBool :: ExpressionParser
 eCBool = (EC.constant . CBool) <$>
@@ -455,46 +461,50 @@ mkUnOpK x = unaryParseOp x keyword
 
 opTable = [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
               map mkBinOp  [("+",   OAdd), ("-",  OSub)],
-              map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq),
-                            ("<",   OLth), ("<=", OLeq),
-                            (">",   OGth), (">=", OGeq) ],
-            ((map mkBinOpK [("and", OAnd), ("or", OOr)])
-              ++ [mkUnOpK   ("not", ONot)]),
-              map mkBinOp  [(";",   OSeq)]
+              map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
+              map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
+              map mkUnOpK  [("not", ONot)],
+              map mkBinOpK [("and", OAnd)],
+              map mkBinOpK [("or",  OOr)]
+              --map mkBinOp  [(";",   OSeq)]
           ]
 
 {- Terms -}
-ePrefix k = keyword k *> expr
-iPrefix k = keyword k *> identifier
-iArrow k  = iPrefix k <* operator "->"
-iArrowS s = symbol s *> identifier <* operator "->"
+nsPrefix k = keyword k *> nonSeqExpr
+ePrefix k  = keyword k *> expr
+iPrefix k  = keyword k *> identifier
+iArrow k   = iPrefix k <* symbol "->"
+iArrowS s  = symbol s *> identifier <* symbol "->"
 
 eLambda :: ExpressionParser
-eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> expr
+eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
+
+eApp :: ExpressionParser
+eApp = myTrace "EAPP" $ try $ mkApp <$> (some $ try eTerm)
+  where mkApp = foldl1 (EC.binop OApp)
 
 eSend :: ExpressionParser
-eSend = mkSend <$> eVariable <* comma <*> eAddress <* operator "<-" <*> expr
+eSend = mkSend <$> eVariable <* comma <*> eAddress <* symbol "<-" <*> nonSeqExpr
   where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
 
 eCondition :: ExpressionParser
-eCondition = EC.ifThenElse <$> (ePrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
+eCondition = EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
 
 eAssign :: ExpressionParser
-eAssign = EC.assign <$> identifier <*> equateExpr
+eAssign = EC.assign <$> identifier <*> equateNSExpr
 
 eLet :: ExpressionParser
-eLet = EC.letIn <$> identifier <*> equateQExpr <*> (keyword "in" *> expr)
+eLet = EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
 
 eCase :: ExpressionParser
-eCase = mkCase <$> ((ePrefix "case") <* keyword "of")
+eCase = mkCase <$> ((nsPrefix "case") <* keyword "of")
                <*> (braces eCaseSome) <*> (braces eCaseNone)
   where eCaseSome = (,) <$> (iArrow "Some") <*> expr
-        eCaseNone = (keyword "None" >> operator "->") *> expr
+        eCaseNone = (keyword "None" >> symbol "->") *> expr
         mkCase e (x, s) n = EC.caseOf e x s n
 
-
 eBind :: ExpressionParser
-eBind = EC.bindAs <$> (ePrefix "bind") <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
+eBind = EC.bindAs <$> (nsPrefix "bind") <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
 
 eBinder :: BinderParser
 eBinder = choice [bindInd, bindTup, bindRec]
@@ -522,6 +532,9 @@ idQType     = (,) <$> identifier <*> (colon *> qualifiedTypeExpr)
 equateExpr :: ExpressionParser
 equateExpr = symbol "=" *> expr
 
+equateNSExpr :: ExpressionParser
+equateNSExpr = symbol "=" *> nonSeqExpr
+
 equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
 
@@ -544,7 +557,8 @@ network = mkNetwork <$> (symbol "network" *> eAddress) <*> format
 
 format :: ExpressionParser
 format = choice [symbol "csv" >> return (EC.constant $ CString "csv"),
-                 symbol "txt" >> return (EC.constant $ CString "txt")]
+                 symbol "txt" >> return (EC.constant $ CString "txt"),
+                 symbol "bin" >> return (EC.constant $ CString "bin")]
 
 
 
