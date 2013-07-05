@@ -42,6 +42,8 @@ library
         Language.K3.Interpreter.Runtime,
         Language.K3.Interpreter,
 
+        Language.K3.Runtime.Dispatch,
+
         Language.K3.Transform.Alpha
 
     ghc-options: -Wall
