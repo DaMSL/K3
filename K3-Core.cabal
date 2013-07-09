@@ -39,10 +39,10 @@ library
 
         Language.K3.Pretty,
 
-        Language.K3.Interpreter.Runtime,
         Language.K3.Interpreter,
 
         Language.K3.Runtime.Dispatch,
+        Language.K3.Runtime.Engine,
 
         Language.K3.Transform.Alpha
 

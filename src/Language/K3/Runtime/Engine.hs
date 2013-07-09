@@ -2,7 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 
 -- | A message processing runtime for the K3 interpreter
-module Language.K3.Interpreter.Runtime (
+module Language.K3.Runtime.Engine (
   Address(..),
 
   Engine(..),

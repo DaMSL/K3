@@ -55,7 +55,7 @@ import Language.K3.Core.Type
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
 
-import Language.K3.Interpreter.Runtime
+import Language.K3.Runtime.Engine
 
 import Language.K3.Pretty
 
