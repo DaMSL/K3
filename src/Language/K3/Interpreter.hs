@@ -205,12 +205,6 @@ myAddrId = "me"
 defaultAddress :: Address 
 defaultAddress = ("localhost", 10000)
 
-defaultMsgFormat :: Value
-defaultMsgFormat = VString "txt"
-
-nodeIdOfAddr :: Address -> Value
-nodeIdOfAddr addr = VString $ "__node_" ++ (show addr)
-
 vunit :: Value
 vunit = VTuple []
 
@@ -486,21 +480,25 @@ genBuiltin "parseArgs" t =
 
 -- openFile :: ChannelId -> String -> String -> ()
 genBuiltin "openFile" t =
-  return $ VFunction $ \cid -> return $ VFunction $ \path -> return $ VFunction $ \format ->
-    modifyStateE_ (bindFile cid path format $ Just t) >> return vunit
+    return $ VFunction $ \(VString cid) ->
+        return $ VFunction $ \(VString path) ->
+            return $ VFunction $ \(VString format) ->
+                modifyStateE_ (bindFile cid path format $ Just t) >> return vunit
 
 -- openSocket :: ChannelId -> Address -> String -> ()
 genBuiltin "openSocket" t = 
-  return $ VFunction $ \cid -> return $ VFunction $ \addr -> return $ VFunction $ \format ->
-    modifyStateE_ (bindSocket cid addr format $ Just t) >> return vunit
+    return $ VFunction $ \(VString cid) ->
+        return $ VFunction $ \(VAddress addr) ->
+            return $ VFunction $ \(VString format) ->
+                modifyStateE_ (bindSocket cid addr format $ Just t) >> return vunit
 
 -- closeFile :: ChannelId -> ()
 genBuiltin "closeFile" t = 
-  return $ VFunction $ \cid -> modifyStateE_ (releaseFile cid) >> return vunit
+  return $ VFunction $ \(VString cid) -> modifyStateE_ (releaseFile cid) >> return vunit
 
 -- closeSocket :: ChannelId -> ()
 genBuiltin "closeSocket" t = 
-  return $ VFunction $ \cid -> modifyStateE_ (releaseSocket cid) >> return vunit
+  return $ VFunction $ \(VString cid) -> modifyStateE_ (releaseSocket cid) >> return vunit
 
 -- TODO: dispatch notifiers
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
@@ -633,7 +631,7 @@ runEngine e prog = (return $ initState prog $ transport e)
           Simulation _ _ _ -> return ((v, st), l)
           Network peers _ _ _ -> foldM initPeerEndpoint st peers >>= (\st -> return ((v, st), l))
 
-        initPeerEndpoint state addr = bindSocket (nodeIdOfAddr addr) (VAddress addr) defaultMsgFormat Nothing state
+        initPeerEndpoint state addr = bindSocket ("__node_" ++ show addr) addr "txt" Nothing state
 
         -- TODO: termination variables?
         startNetwork res = (startEndpoints $ getEndpoints $ getResultState res) >>= return . (res,)
@@ -681,37 +679,26 @@ runProgram peers prog = simpleEngine peers >>= flip runEngine prog
 addEndpoint :: IState -> Identifier -> (IEndpoint, EndpointBuffer, EndpointBindings) -> IState
 addEndpoint (env, ep, tr) n x = (env, (n,x):ep, tr)
 
-bindEndpoint :: (Value -> Value -> Value -> Maybe (K3 Type) -> IO (Identifier, (IEndpoint, EndpointBuffer, EndpointBindings)))
-                -> Value -> Value -> Value -> Maybe (K3 Type) -> IState -> IO IState
-bindEndpoint f v1 v2 v3 tOpt state = f v1 v2 v3 tOpt >>= return . uncurry (addEndpoint state)
+bindFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IState -> IO IState
+bindFile cid path format tOpt ist = do
+    file <- openFile cid path format tOpt
+    return $ addEndpoint ist cid (file, (Exclusive $ Single Nothing), [])
 
-bindFile :: Value -> Value -> Value -> Maybe (K3 Type) -> IState -> IO IState
-bindFile = bindEndpoint fileArgs
-  where fileArgs (VString cid) (VString path) (VString format) tOpt = 
-          openFile cid path format tOpt >>= (\x -> return (cid, (x, initBuffer, [])))
-        fileArgs _ _ _ _ = undefined
-        initBuffer = Exclusive $ Single Nothing
+bindSocket :: Identifier -> Address -> String -> Maybe (K3 Type) -> IState -> IO IState
+bindSocket cid addr format tOpt ist = do
+    socket <- openSocket cid addr format tOpt
+    mvar <- newMVar (Multiple [])
+    return $ addEndpoint ist cid (socket, Shared mvar, [])
 
-bindSocket :: Value -> Value -> Value -> Maybe (K3 Type) -> IState -> IO IState
-bindSocket = bindEndpoint socketArgs
-  where socketArgs (VString cid) (VAddress addr) (VString format) tOpt = do
-          x <- openSocket cid addr format tOpt
-          y <- newMVar (Multiple [])
-          return (cid, (x, Shared y, []))
-        socketArgs _ _ _ _ = undefined
-
-
-releaseEndpoint :: (Identifier -> IEndpoint -> IO ()) -> Value -> IState -> IO IState
-releaseEndpoint f (VString n) (env, ep, tr) = case lookup n ep of
+releaseEndpoint :: (Identifier -> IEndpoint -> IO ()) -> String -> IState -> IO IState
+releaseEndpoint f n (env, ep, tr) = case lookup n ep of
   Nothing -> return (env, ep, tr)
   Just (e,_,_) -> f n e >> return (env, removeAssoc ep n, tr)
 
-releaseEndpoint _ _ _ = undefined
-
-releaseFile :: Value -> IState -> IO IState 
+releaseFile :: String -> IState -> IO IState
 releaseFile = releaseEndpoint closeFile
 
-releaseSocket :: Value -> IState -> IO IState 
+releaseSocket :: String -> IState -> IO IState
 releaseSocket = releaseEndpoint closeSocket
 
 {- Endpoint buffers -}
