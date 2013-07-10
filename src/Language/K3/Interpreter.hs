@@ -97,23 +97,23 @@ instance Show Value where
 type ILog = [String]
 
 -- | Interpretation Environment.
-type IEnvironment = [(Identifier, Value)]
+type IEnvironment v = [(Identifier, v)]
 
 -- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
-data EndpointBufferContents
-  = Single   (Maybe Value)
-  | Multiple [Value]
+data EndpointBufferContents a
+  = Single   (Maybe a)
+  | Multiple [a]
 
 -- | Endpoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
-data EndpointBuffer
-  = Exclusive EndpointBufferContents
-  | Shared    (MVar EndpointBufferContents)
+data EndpointBuffer a
+  = Exclusive (EndpointBufferContents a)
+  | Shared    (MVar (EndpointBufferContents a))
 
 -- | Endpoint bindings (i.e. triggers attached to open/close/data)
-type EndpointBindings = [(Identifier, Value)]
+type EndpointBindings v = [(Identifier, v)]
 
 -- | Named sources and sinks.
-type IEndpoints = [(Identifier, (IEndpoint, EndpointBuffer, EndpointBindings))]
+type IEndpoints a = [(Identifier, (IEndpoint, EndpointBuffer a, EndpointBindings a))]
 
 -- | Errors encountered during interpretation.
 data InterpretationError
@@ -122,7 +122,7 @@ data InterpretationError
   deriving (Eq, Read, Show)
 
 -- | Type declaration for an Interpretation's state.
-type IState = (IEnvironment, IEndpoints, ITransport Value)
+type IState = (IEnvironment Value, IEndpoints Value, ITransport Value)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IO))
@@ -131,18 +131,18 @@ type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog I
 type IResult a = ((Either InterpretationError a, IState), ILog)
 
 -- | Pairing of errors and environments for debugging output.
-type EnvOnError = (InterpretationError, IEnvironment)
+type EnvOnError = (InterpretationError, IEnvironment Value)
 
 -- | A type capturing the environment resulting from an interpretation
-type REnvironment = Either EnvOnError IEnvironment
+type REnvironment = Either EnvOnError (IEnvironment Value)
 
 
 {- State and result accessors -}
 
-getEnv :: IState -> IEnvironment
+getEnv :: IState -> IEnvironment Value
 getEnv (x,_,_) = x
 
-getEndpoints :: IState -> IEndpoints
+getEndpoints :: IState -> IEndpoints Value
 getEndpoints (_,x,_) = x
 
 getTransport :: IState -> ITransport Value
@@ -182,7 +182,7 @@ lookupE n = get >>= maybe (err n) return . lookup n . getEnv
   where err n = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
 -- | Environment modification
-modifyE :: (IEnvironment -> IEnvironment) -> Interpretation ()
+modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
 modifyE f = modify (\(env,ep,tr) -> (f env, ep, tr))
 
 -- | State modification
@@ -547,7 +547,7 @@ channelMethod x =
 
 {- Program initialization methods -}
 
-initEnvironment :: K3 Declaration -> IEnvironment
+initEnvironment :: K3 Declaration -> IEnvironment Value
 initEnvironment = initDecl []
   where initDecl env (tag &&& children -> (DGlobal n t eO, ch)) = foldl initDecl (initGlobal env n t eO) ch
         initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
@@ -651,7 +651,7 @@ runEngine e prog = (return $ initState prog $ transport e)
 
 
 -- TODO: dispatch bindings
-runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> (IEndpoint, EndpointBuffer, EndpointBindings) -> IO ()
+runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> (IEndpoint, EndpointBuffer Value, EndpointBindings Value) -> IO ()
 runNEndpoint n (msgAvail, sem) (Socket (NEndpoint (tr,ep)) fmt tOpt, buf, bnds) = do
   event <- NT.receive ep
   case event of 
@@ -676,7 +676,7 @@ runProgram peers prog = simpleEngine peers >>= flip runEngine prog
 
 {- Endpoint management -}
 
-addEndpoint :: IState -> Identifier -> (IEndpoint, EndpointBuffer, EndpointBindings) -> IState
+addEndpoint :: IState -> Identifier -> (IEndpoint, EndpointBuffer Value, EndpointBindings Value) -> IState
 addEndpoint (env, ep, tr) n x = (env, (n,x):ep, tr)
 
 bindFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IState -> IO IState
@@ -703,47 +703,47 @@ releaseSocket = releaseEndpoint closeSocket
 
 {- Endpoint buffers -}
 
-wrapEBuffer :: (EndpointBufferContents -> a) -> EndpointBuffer -> IO a
+wrapEBuffer :: (EndpointBufferContents b -> a) -> EndpointBuffer b -> IO a
 wrapEBuffer f = \case
   Exclusive c -> return $ f c
   Shared mvc -> readMVar mvc >>= return . f
 
-modifyEBuffer :: (EndpointBufferContents -> IO (EndpointBufferContents, a)) -> EndpointBuffer -> IO (EndpointBuffer, a)
+modifyEBuffer :: (EndpointBufferContents b -> IO (EndpointBufferContents b, a)) -> EndpointBuffer b -> IO (EndpointBuffer b, a)
 modifyEBuffer f = \case
   Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
   Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
 
-emptyEBContents :: EndpointBufferContents -> Bool
+emptyEBContents :: EndpointBufferContents a -> Bool
 emptyEBContents (Single x)   = maybe True (\_ -> False) x
 emptyEBContents (Multiple x) = null x
 
-emptyEBuffer :: EndpointBuffer -> IO Bool
+emptyEBuffer :: EndpointBuffer a -> IO Bool
 emptyEBuffer = wrapEBuffer emptyEBContents
 
-readEBContents :: EndpointBufferContents -> Maybe Value
+readEBContents :: EndpointBufferContents a -> Maybe a
 readEBContents (Single x) = x
 readEBContents (Multiple x) = if null x then Nothing else Just $ head x
 
-readEBuffer :: EndpointBuffer -> IO (Maybe Value)
+readEBuffer :: EndpointBuffer a -> IO (Maybe a)
 readEBuffer = wrapEBuffer readEBContents
 
-appendEBContents :: Value -> EndpointBufferContents -> IO (EndpointBufferContents, Maybe Value)
+appendEBContents :: v -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
 appendEBContents v (Single x) = return (Single $ Just v, x)
 appendEBContents v (Multiple x) = return $ (Multiple $ x++[v], Nothing)
 
-appendEBuffer :: Value -> EndpointBuffer -> IO EndpointBuffer
+appendEBuffer :: v -> EndpointBuffer v -> IO (EndpointBuffer v)
 appendEBuffer v buf = modifyEBuffer (appendEBContents v) buf >>= return . fst
 
-takeEBContents :: EndpointBufferContents -> IO (EndpointBufferContents, Maybe Value)
+takeEBContents :: EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
 takeEBContents = \case
   Single x       -> return (Single Nothing, x)
   Multiple []    -> return (Multiple [], Nothing)
   Multiple (h:t) -> return (Multiple t, Just h)
 
-takeEBuffer :: EndpointBuffer -> IO (EndpointBuffer, Maybe Value)
+takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
 
-refreshEBContents :: IEndpoint -> EndpointBufferContents -> IO (EndpointBufferContents, Maybe Value)
+refreshEBContents :: IEndpoint -> EndpointBufferContents Value -> IO (EndpointBufferContents Value, Maybe Value)
 refreshEBContents (File h fmt tOpt) c = takeEBContents c >>= refill
   where refill (c, vOpt) | refillPolicy c = rebuild (File h fmt tOpt) c >>= return . (, vOpt)
                          | otherwise = return (c, vOpt)
@@ -760,7 +760,7 @@ refreshEBContents (File h fmt tOpt) c = takeEBContents c >>= refill
 
 refreshEBContents (Socket _ _ _) c = takeEBContents c
 
-refreshEBuffer :: IEndpoint -> EndpointBuffer -> IO (EndpointBuffer, Maybe Value)
+refreshEBuffer :: IEndpoint -> EndpointBuffer Value -> IO (EndpointBuffer Value, Maybe Value)
 refreshEBuffer ep = modifyEBuffer $ refreshEBContents ep
 
 
@@ -803,7 +803,7 @@ replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 prettyErrorEnv :: EnvOnError -> String
 prettyErrorEnv (err, env) = intercalate "\n" ["Error", show err, prettyEnv env]
 
-prettyEnv :: IEnvironment -> String
+prettyEnv :: Show v => IEnvironment v -> String
 prettyEnv env = intercalate "\n" $ ["Environment:"] ++ map show (reverse env)
 
 
