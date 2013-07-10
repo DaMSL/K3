@@ -106,7 +106,7 @@ type LLConnection = NT.Connection
 
 
 {- Interpreter I/O components -}
-data ValueFormat = CSV | Text | Binary
+data ValueFormat = CSV | Text | Binary deriving (Eq, Read, Show)
 
 -- | K3 endpoint (source/sink) implementations
 data IEndpoint
@@ -207,16 +207,8 @@ putTransport = \case
   (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
   (TRNet otr) -> undefined -- TODO
 
-
-{- Interpreter I/O helpers -}
-format :: String -> ValueFormat
-format "csv" = CSV
-format "txt" = Text
-format "bin" = Binary
-format _ = undefined
-
 openFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IO IEndpoint
-openFile _ path fmt tOpt = SIO.openFile path SIO.ReadMode >>= (\h -> return $ File h (format fmt) tOpt)
+openFile _ path fmt tOpt = SIO.openFile path SIO.ReadMode >>= (\h -> return $ File h (read fmt) tOpt)
 
 closeFile :: Identifier -> IEndpoint -> IO ()
 closeFile n (File h _ _) = SIO.hClose h
@@ -227,7 +219,7 @@ openSocket :: Identifier -> Address -> String -> Maybe (K3 Type) -> IO IEndpoint
 openSocket _ (host, port) fmt tOpt =
   NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO mkEndpoint
   where mkEndpoint tr = NT.newEndPoint tr >>=
-          either throwTransportError (\e -> return $ Socket (NEndpoint (tr,e)) (format fmt) tOpt)
+          either throwTransportError (\e -> return $ Socket (NEndpoint (tr,e)) (read fmt) tOpt)
         throwTransportError t = throwIO (ErrorCall $ show t)
 
 closeSocket :: Identifier -> IEndpoint -> IO ()
