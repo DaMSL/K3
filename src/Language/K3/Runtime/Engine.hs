@@ -13,23 +13,16 @@ module Language.K3.Runtime.Engine (
   NInTransport(..),
   NOutTransport(..),
 
-  ValueFormat(..),
-
-  IEndpoint(..),
+  EEndPoint(..),
   ITransport(..),
 
   NConnectionPool(..),
-  NEndpoint(..),
+  NEndPoint(..),
   NConnection(..),
 
   enqueue,
   dequeue,
   send,
-
-  nodes,
-  queues,
-  workers,
-  transport,
 
   simpleQueues,
   simpleTransport,
@@ -52,6 +45,7 @@ import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad.IO.Class
 
+import Data.Functor
 import qualified Data.HashMap.Lazy as H 
 import Data.List
 
@@ -71,8 +65,8 @@ type Address = (String, Int)
 
 
 data Engine a
-  = Simulation [Address] (MessageQueues a) Workers
-  | Network    [Address] (MessageQueues a) Workers NTransports
+  = Simulation { nodes :: [Address], queues :: (MessageQueues a), workers :: Workers }
+  | Network    { nodes :: [Address], queues :: (MessageQueues a), workers :: Workers, transports :: NTransports }
 
 data MessageQueues a
   = Peer          (MVar (Address, [(Identifier, a)]))
@@ -92,31 +86,29 @@ type ProcessPool = [Int]
 {- Network transports -}
 
 newtype NTransports   = NTransports ([(Address, NInTransport)], NOutTransport)
-newtype NInTransport  = NInTransport NEndpoint
+newtype NInTransport  = NInTransport NEndPoint
 newtype NOutTransport = NOutTransport NConnectionPool
 
-type NConnectionPool  = [(NEndpoint, Maybe NConnection)]
-newtype NEndpoint     = NEndpoint (LLTransport, LLEndpoint)
+type NConnectionPool  = [(NEndPoint, Maybe NConnection)]
+newtype NEndPoint     = NEndPoint (LLTransport, LLEndPoint)
 newtype NConnection   = NConnection (Address, LLConnection)
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
-type LLEndpoint   = NT.EndPoint
+type LLEndPoint   = NT.EndPoint
 type LLConnection = NT.Connection
 
+-- | An external source/sink.
+data EEndPoint a
+  = FileEP (WireDesc a) SIO.Handle
+  | SocketEP (WireDesc a) NEndPoint
 
-{- Interpreter I/O components -}
-data ValueFormat = CSV | Text | Binary deriving (Eq, Read, Show)
-
--- | K3 endpoint (source/sink) implementations
-data IEndpoint
-  = File SIO.Handle ValueFormat (Maybe (K3 Type))
-  | Socket NEndpoint ValueFormat (Maybe (K3 Type))
+-- | A description of a wire format, with serialization of data, deserialization into data, and
+-- validation of deserialized data.
+data WireDesc a = WireDesc { packWith :: a -> String, unpackWith :: String -> a, validateWith :: a -> Bool }
 
 -- | An interpreter transport that is used to implement message passing.
 data ITransport a = TRSim (MessageQueues a) | TRNet NOutTransport
-
-
 
 -- | Queue accessors
 enqueue :: MessageQueues a -> Address -> Identifier -> a -> IO ()
@@ -130,7 +122,6 @@ enqueue (ManyByPeer qsmv) addr n arg = modifyMVar_ qsmv enqueueToNode
 
 enqueue (ManyByTrigger qsmv) addr n arg = modifyMVar_ qsmv enqueueToTrigger
   where enqueueToTrigger qs = return $ H.adjust (++[arg]) (addr, n) qs
-
 
 -- TODO: fair peer traversal
 -- TODO: efficient queue modification rather than toList / fromList
@@ -159,25 +150,6 @@ dequeue = \case
 send :: ITransport a ->  Address -> Identifier -> a -> IO ()
 send (TRSim q) addr n arg = enqueue q addr n arg
 send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as necessary.
-
-
-{- Accessors -}
-
-nodes :: Engine a -> [Address]
-nodes (Simulation n _ _) = n
-nodes (Network n _ _ _) = n
-
-queues :: Engine a -> MessageQueues a
-queues (Simulation _ q _) = q
-queues (Network _ q _ _) = q
-
-workers :: Engine a -> Workers
-workers (Simulation _ _ w) = w
-workers (Network _ _ w _) = w
-
-transport :: Engine a -> ITransport a
-transport (Simulation _ q _) = TRSim q
-transport (Network _ _ _ (NTransports (_,otr))) = TRNet otr
 
 {- Constructors -}
 
