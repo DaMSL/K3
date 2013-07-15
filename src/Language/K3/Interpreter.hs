@@ -51,9 +51,10 @@ import Debug.Trace
 import qualified Network.Transport as NT
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Type
-import Language.K3.Core.Expression
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
 
 import Language.K3.Runtime.Engine
 

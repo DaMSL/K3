@@ -2,9 +2,7 @@
 
 -- | Types in K3.
 module Language.K3.Core.Type
-( Identifier
-, Span(..)
-, Type(..)
+( Type(..)
 , Annotation(..)
 , UnqualifiedTVar(..)
 , QualifiedTVar(..)
@@ -34,13 +32,7 @@ import Data.Map (Map)
 import Data.Monoid
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Expression
-
--- | The types of K3 Identifiers.
-type Identifier = String
-
--- | K3 source code spans (source name, line1, column1, line2, column2)
-data Span = Span String Int Int Int Int deriving (Eq, Ord, Read, Show)
+import Language.K3.Core.Common
 
 -- * Basic types
 
@@ -181,5 +173,6 @@ data Constraint
   | QualifiedLowerConstraint TypeOrVar QTVar
   | QualifiedUpperConstraint QTVar TypeOrVar
   | QualifiedIntermediateConstraint QualOrVar QualOrVar
-  | BinaryOperatorConstraint UTVar Operator UTVar UTVar
+  -- TODO: Isomorphic Operator Datatype.
+  {- | BinaryOperatorConstraint UTVar Operator UTVar UTVar -}
   deriving (Eq, Read, Show)

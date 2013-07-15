@@ -39,10 +39,11 @@ import Text.Parser.Token.Style
 
 import Text.Parser.Parsec
 
-import Language.K3.Core.Type
-import Language.K3.Core.Expression
-import Language.K3.Core.Declaration
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
+import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC

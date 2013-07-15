@@ -11,7 +11,7 @@ import Control.Applicative
 import Control.Monad.Reader
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Type
+import Language.K3.Core.Common
 import Language.K3.Core.Expression
 
 -- | The renaming environment consists of a supply of unique identifiers (integers), and a mapping

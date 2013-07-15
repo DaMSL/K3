@@ -22,6 +22,7 @@ import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Type
 
 leaf :: Type -> K3 Type
