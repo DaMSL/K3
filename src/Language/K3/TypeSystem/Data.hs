@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TemplateHaskell, GADTs, TypeFamilies #-}
+
 module Language.K3.TypeSystem.Data
 ( UnqualifiedTVar(..)
 , QualifiedTVar(..)
@@ -9,6 +11,7 @@ module Language.K3.TypeSystem.Data
 , AnnType(..)
 , AnnBodyType(..)
 , AnnMemType(..)
+, ShallowType(..)
 , TPolarity(..)
 , TEnv(..)
 , TEnvId(..)
@@ -16,14 +19,25 @@ module Language.K3.TypeSystem.Data
 , TAliasEnv
 , TNormEnv
 , TParamEnv
-, ConstraintSet(..)
 , TypeOrVar
 , QualOrVar
+, BinaryOperator(..)
 , Constraint(..)
+, constraint
+, ConstraintSet(..)
+, csEmpty
+, csSing
+, csFromList
+, csSubset
+, csUnion
+, csUnions
+, csquery
+, ConstraintSetQuery(..)
 ) where
 
+import Control.Applicative
+import Control.Monad
 import Data.Map (Map)
-import qualified Data.Map as Map
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -141,17 +155,6 @@ type QualOrVar = Either TQual QVar
 
 -- * Constraints
 
--- |A data type for sets of constraints.  This data type is not a type alias
---  to help ensure that it is treated abstractly by its users.  This will
---  permit structural changes for performance optimization in the future.
-data ConstraintSet = ConstraintSet (Set Constraint)
-  deriving (Eq, Ord, Read, Show)
-  
-instance Monoid ConstraintSet where
-  mempty = ConstraintSet Set.empty
-  mappend (ConstraintSet cs1) (ConstraintSet cs2) =
-    ConstraintSet $ Set.union cs1 cs2
-
 -- |A data type to describe constraints.
 data Constraint
   = IntermediateConstraint TypeOrVar TypeOrVar
@@ -178,3 +181,173 @@ data BinaryOperator
   | BinOpApply
   | BinOpSend
   deriving (Eq, Ord, Read, Show)
+  
+-- * Constraint sets
+
+-- |A data type for sets of constraints.  This data type is not a type alias
+--  to help ensure that it is treated abstractly by its users.  This will
+--  permit structural changes for performance optimization in the future.
+data ConstraintSet = ConstraintSet (Set Constraint)
+  deriving (Eq, Ord, Read, Show)
+  
+instance Monoid ConstraintSet where
+  mempty = ConstraintSet Set.empty
+  mappend (ConstraintSet cs1) (ConstraintSet cs2) =
+    ConstraintSet $ Set.union cs1 cs2
+
+-- ** Accessors and updaters
+
+-- TODO: Implement a considerably more efficient underlying data structure for
+-- constraint sets.
+
+csEmpty :: ConstraintSet
+csEmpty = ConstraintSet $ Set.empty
+
+csSing :: Constraint -> ConstraintSet
+csSing = ConstraintSet . Set.singleton
+
+csFromList :: [Constraint] -> ConstraintSet
+csFromList = ConstraintSet . Set.fromList
+
+csSubset :: ConstraintSet -> ConstraintSet -> Bool
+csSubset (ConstraintSet a) (ConstraintSet b) = Set.isSubsetOf a b
+
+csUnion :: ConstraintSet -> ConstraintSet -> ConstraintSet
+csUnion (ConstraintSet a) (ConstraintSet b) = ConstraintSet $ a `Set.union` b
+
+csUnions :: [ConstraintSet] -> ConstraintSet
+csUnions css = ConstraintSet $ Set.unions $ map (\(ConstraintSet s) -> s) css
+
+{-
+  Queries against the constraint set are managed via the ConstraintSetQuery
+  data type.  This data type allows queries to be expressed in such a way that
+  an efficient implementation of ConstraintSet can use a uniform policy for
+  indexing the answers.
+-}
+data ConstraintSetQuery r where
+  QueryAllTypesLowerBoundingUVars ::
+    ConstraintSetQuery (ShallowType,UVar)
+  QueryAllTypesLowerBoundingTypes ::
+    ConstraintSetQuery (ShallowType,ShallowType)
+  QueryAllBinaryOperations ::
+    ConstraintSetQuery (UVar,BinaryOperator,UVar,UVar)
+  QueryAllQualOrVarLowerBoundingQualOrVar ::
+    ConstraintSetQuery (QualOrVar, QualOrVar)
+  QueryAllTypeOrVarLowerBoundingQVar ::
+    ConstraintSetQuery (TypeOrVar, QVar)
+  QueryAllQVarLowerBoundingQVar ::
+    ConstraintSetQuery (QVar, QVar)
+  QueryTypeOrVarByUVarLowerBound ::
+    UVar -> ConstraintSetQuery TypeOrVar
+  QueryTypeByUVarUpperBound ::
+    UVar -> ConstraintSetQuery ShallowType
+  QueryQualOrVarByQualOrVarLowerBound ::
+    QualOrVar -> ConstraintSetQuery QualOrVar
+  QueryTypeOrVarByQVarLowerBound ::
+    QVar -> ConstraintSetQuery TypeOrVar
+  QueryTypeOrVarByQVarUpperBound ::
+    QVar -> ConstraintSetQuery TypeOrVar
+
+-- TODO: this routine is a prime candidate for optimization once the
+--       ConstraintSet type is fancier.
+csquery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
+csquery (ConstraintSet csSet) query =
+  let cs = Set.toList csSet in
+  case query of
+    QueryAllTypesLowerBoundingUVars -> do
+      IntermediateConstraint (Left t) (Right a) <- cs
+      return (t,a)
+    QueryAllTypesLowerBoundingTypes -> do
+      IntermediateConstraint (Left t) (Left t') <- cs
+      return (t,t')
+    QueryAllBinaryOperations -> do
+      BinaryOperatorConstraint a1 op a2 a3 <- cs
+      return (a1,op,a2,a3)
+    QueryAllQualOrVarLowerBoundingQualOrVar -> do
+      QualifiedIntermediateConstraint qv1 qv2 <- cs
+      return (qv1,qv2)
+    QueryAllTypeOrVarLowerBoundingQVar -> do
+      QualifiedLowerConstraint ta qa <- cs
+      return (ta,qa)
+    QueryAllQVarLowerBoundingQVar -> do
+      QualifiedIntermediateConstraint (Right qa1) (Right qa2) <- cs
+      return (qa1, qa2)
+    QueryTypeOrVarByUVarLowerBound a -> do
+      IntermediateConstraint (Right a') ta <- cs
+      guard $ a == a'
+      return ta
+    QueryTypeByUVarUpperBound a -> do
+      IntermediateConstraint (Left t) (Right a') <- cs
+      guard $ a == a'
+      return t
+    QueryQualOrVarByQualOrVarLowerBound qa -> do
+      QualifiedIntermediateConstraint qa1 qa2 <- cs
+      guard $ qa == qa1
+      return qa2
+    QueryTypeOrVarByQVarLowerBound qa -> do
+      QualifiedUpperConstraint qa' ta <- cs
+      guard $ qa == qa'
+      return ta
+    QueryTypeOrVarByQVarUpperBound qa -> do
+      QualifiedLowerConstraint ta qa' <- cs
+      guard $ qa == qa'
+      return ta
+
+-- ** Convenience routines
+
+-- |A typeclass with convenience instances for constructing constraints.  This
+--  constructor only works on 2-ary constraint constructors (which most
+--  constraints have).
+class ConstraintConstructor2 a b where
+  constraint :: a -> b -> Constraint
+
+{-
+  The following Template Haskell creates various instances for the constraint
+  function.  In each case of a TypeOrVar or QualOrVar, three variations are
+  produced: one which takes the left side, one which takes the right, and one
+  which takes the actual Either structure.
+-}
+$(
+  -- The instances variable contains 5-tuples describing the varying positions
+  -- in the typeclass instance template below.
+  let instances =
+        let typeOrVar = [ ([t|ShallowType|], [|Left|])
+                        , ([t|UVar|], [|Right|])
+                        , ([t|TypeOrVar|], [|id|])
+                        ]
+            qualOrVar = [ ([t|TQual|], [|Left|])
+                        , ([t|QVar|], [|Right|])
+                        , ([t|QualOrVar|], [|id|])
+                        ]
+        in
+        -- Each of the following lists represent the 5-tuples for one constraint
+        -- constructor.
+        [ (t1, t2, [|IntermediateConstraint|], f1, f2)
+        | (t1,f1) <- typeOrVar
+        , (t2,f2) <- typeOrVar
+        ]
+        ++
+        [ (t1, [t|QVar|], [|QualifiedLowerConstraint|], f1, [|id|])
+        | (t1, f1) <- typeOrVar
+        ]
+        ++
+        [ ([t|QVar|], t2, [|QualifiedUpperConstraint|], [|id|], f2)
+        | (t2, f2) <- typeOrVar
+        ]
+        ++
+        [ (t1, t2, [|QualifiedIntermediateConstraint|], f1, f2)
+        | (t1, f1) <- qualOrVar
+        , (t2, f2) <- qualOrVar
+        ]
+  in
+  -- This function takes the 5-tuples and feeds them into the typeclass instance
+  -- template, the actual instances.
+  let mkInstance (t1, t2, cons, f1, f2) =
+        [d|
+          instance ConstraintConstructor2 $t1 $t2 where
+            constraint a b = $cons ($f1 a) ($f2 b)
+        |]
+  in
+  -- Rubber, meet road.
+  concat <$> mapM mkInstance instances
+ )

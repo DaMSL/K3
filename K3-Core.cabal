@@ -48,7 +48,9 @@ library
         Language.K3.Transform.Alpha
 
     ghc-options: -Wall
-    other-modules: Language.K3.TypeSystem.Data
+    other-modules: 
+                   Language.K3.TypeSystem.Data,
+                   Language.K3.TypeSystem.Closure.BinOp
 
 test-suite all
     type: exitcode-stdio-1.0
