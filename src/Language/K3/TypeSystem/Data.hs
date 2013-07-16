@@ -24,14 +24,15 @@ module Language.K3.TypeSystem.Data
 , BinaryOperator(..)
 , Constraint(..)
 , constraint
-, ConstraintSet(..)
+, ConstraintSet
 , csEmpty
 , csSing
 , csFromList
+, csToList
 , csSubset
 , csUnion
 , csUnions
-, csquery
+, csQuery
 , ConstraintSetQuery(..)
 ) where
 
@@ -150,7 +151,7 @@ type TParamEnv = TEnv UVar
 -- |A type alias describing a type or a variable.
 type TypeOrVar = Either ShallowType UVar
 -- |A type alias describing a type qualifier or qualified variable.
-type QualOrVar = Either TQual QVar
+type QualOrVar = Either (Set TQual) QVar
 
 
 -- * Constraints
@@ -209,6 +210,9 @@ csSing = ConstraintSet . Set.singleton
 csFromList :: [Constraint] -> ConstraintSet
 csFromList = ConstraintSet . Set.fromList
 
+csToList :: ConstraintSet -> [Constraint]
+csToList (ConstraintSet cs) = Set.toList cs
+
 csSubset :: ConstraintSet -> ConstraintSet -> Bool
 csSubset (ConstraintSet a) (ConstraintSet b) = Set.isSubsetOf a b
 
@@ -250,8 +254,8 @@ data ConstraintSetQuery r where
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
-csquery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
-csquery (ConstraintSet csSet) query =
+csQuery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
+csQuery (ConstraintSet csSet) query =
   let cs = Set.toList csSet in
   case query of
     QueryAllTypesLowerBoundingUVars -> do
@@ -315,7 +319,7 @@ $(
                         , ([t|UVar|], [|Right|])
                         , ([t|TypeOrVar|], [|id|])
                         ]
-            qualOrVar = [ ([t|TQual|], [|Left|])
+            qualOrVar = [ ([t|Set TQual|], [|Left|])
                         , ([t|QVar|], [|Right|])
                         , ([t|QualOrVar|], [|id|])
                         ]

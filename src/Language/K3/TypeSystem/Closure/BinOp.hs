@@ -24,9 +24,9 @@ binOpType op t1 t2 =
           (,mempty) . Left <$> comparisonType
     (BinOpSequence, _, _) -> Just (Left t2, mempty)
     (BinOpApply, SFunction a1 a2, _) ->
-      Just (Right a2, ConstraintSet $ Set.singleton $ constraint t2 a1)
+      Just (Right a2, csSing $ constraint t2 a1)
     (BinOpSend, STrigger a, _) ->
-      Just (Left $ STuple [], ConstraintSet $ Set.singleton $ constraint t2 a)
+      Just (Left $ STuple [], csSing $ constraint t2 a)
     _ -> Nothing
   where
     arithOp = [BinOpAdd,BinOpSubtract,BinOpMultiply,BinOpDivide]

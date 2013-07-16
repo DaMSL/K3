@@ -42,15 +42,15 @@ calculateClosureStep cs =
 -- |Performs closure for transitivity.
 closeTransitivity :: ConstraintSet -> ConstraintSet
 closeTransitivity cs = csFromList $ do
-  (t,a) <- csquery cs QueryAllTypesLowerBoundingUVars
-  ta <- csquery cs $ QueryTypeOrVarByUVarLowerBound a
+  (t,a) <- csQuery cs QueryAllTypesLowerBoundingUVars
+  ta <- csQuery cs $ QueryTypeOrVarByUVarLowerBound a
   return $ constraint t ta
   
 -- |Performs immediate type closure.  This routine calculates the closure for
 --  all immediate type-to-type constraints.
 closeImmediate :: ConstraintSet -> ConstraintSet
 closeImmediate cs = csUnions $ do
-  (t1,t2) <- csquery cs QueryAllTypesLowerBoundingTypes
+  (t1,t2) <- csQuery cs QueryAllTypesLowerBoundingTypes
   case (t1,t2) of
     (SFunction a1 a2, SFunction a3 a4) ->
       give [constraint a2 a4, constraint a3 a1]
@@ -70,9 +70,9 @@ closeImmediate cs = csUnions $ do
 -- |Performs binary operation closure.
 closeBinaryOperations :: ConstraintSet -> ConstraintSet
 closeBinaryOperations cs = csUnions $ do
-  (a1,op,a2,a3) <- csquery cs QueryAllBinaryOperations
-  t1 <- csquery cs $ QueryTypeByUVarUpperBound a1
-  t2 <- csquery cs $ QueryTypeByUVarUpperBound a2
+  (a1,op,a2,a3) <- csQuery cs QueryAllBinaryOperations
+  t1 <- csQuery cs $ QueryTypeByUVarUpperBound a1
+  t2 <- csQuery cs $ QueryTypeByUVarUpperBound a2
   let ans = binOpType op t1 t2
   case ans of
     Nothing -> mzero
@@ -81,18 +81,18 @@ closeBinaryOperations cs = csUnions $ do
 
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do
-  (qv1,qv2) <- csquery cs QueryAllQualOrVarLowerBoundingQualOrVar
-  qv3 <- csquery cs $ QueryQualOrVarByQualOrVarLowerBound qv2
+  (qv1,qv2) <- csQuery cs QueryAllQualOrVarLowerBoundingQualOrVar
+  qv3 <- csQuery cs $ QueryQualOrVarByQualOrVarLowerBound qv2
   return $ constraint qv1 qv3
 
 closeQualifiedRead :: ConstraintSet -> ConstraintSet
 closeQualifiedRead cs = csFromList $ do
-  (ta,qa) <- csquery cs QueryAllTypeOrVarLowerBoundingQVar
-  ta' <- csquery cs $ QueryTypeOrVarByQVarLowerBound qa
+  (ta,qa) <- csQuery cs QueryAllTypeOrVarLowerBoundingQVar
+  ta' <- csQuery cs $ QueryTypeOrVarByQVarLowerBound qa
   return $ constraint ta ta'
 
 closeQualifiedWrite :: ConstraintSet -> ConstraintSet
 closeQualifiedWrite cs = csFromList $ do
-  (qa1,qa2) <- csquery cs QueryAllQVarLowerBoundingQVar
-  ta <- csquery cs $ QueryTypeOrVarByQVarUpperBound qa2
+  (qa1,qa2) <- csQuery cs QueryAllQVarLowerBoundingQVar
+  ta <- csQuery cs $ QueryTypeOrVarByQVarUpperBound qa2
   return $ constraint ta qa1
