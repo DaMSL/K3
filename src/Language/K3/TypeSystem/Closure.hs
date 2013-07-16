@@ -13,7 +13,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Constructor.Type
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
-import Language.K3.Core.Type.Data
+import Language.K3.TypeSystem.Data
 
 -- |An operation for determining how binary operations should be typed.  This
 --  function models the @BinOpType@ function from the specification.  When

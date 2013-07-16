@@ -7,7 +7,7 @@ module Language.K3.TypeSystem.Environment
 
 import qualified Data.Map as Map
 
-import Language.K3.Core.Type.Data
+import Language.K3.TypeSystem.Data
 
 envMerge :: TEnv a -> TEnv a -> TEnv a
 envMerge (TEnv x) (TEnv y) = TEnv $ Map.union y x
