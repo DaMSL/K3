@@ -1,11 +1,12 @@
-{-# LANGUAGE MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TemplateHaskell, GADTs, TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TemplateHaskell, GADTs, TypeFamilies, DataKinds, KindSignatures, StandaloneDeriving #-}
 
 module Language.K3.TypeSystem.Data
-( UnqualifiedTVar(..)
-, QualifiedTVar(..)
+( module Language.K3.TypeSystem.Data.Utils
+, TVarQualification(..)
 , TVar(..)
 , QVar
 , UVar
+, AnyTVar(..)
 , TQual(..)
 , QuantType(..)
 , AnnType(..)
@@ -44,34 +45,45 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.TypeSystem.Data.Utils
 
 -- * Types
 
 -- TODO: data kinds for TVar?
 
--- |A tagging type describing unqualified type variables.
-data UnqualifiedTVar = UnqualifiedTVar
-  deriving (Eq, Ord, Read, Show)
-
--- |A tagging type describing qualified type variables.
-data QualifiedTVar = QualifiedTVar
+data TVarQualification
+  = UnqualifiedTVar
+  | QualifiedTVar
   deriving (Eq, Ord, Read, Show)
 
 -- |A data structure representing type variables.
-data TVar a
-  = TVar
-      a -- ^A description of the form of variable represented.
-      Int -- ^The index for this type variable.  This index is unique across a
-          --  typechecking pass; fresh variables receive a new index.
-      [Span] -- ^A list of spans describing the points at which polyinstantiaton
-             --  has occurred (where the leftmost element is the most recent).
-             --  This list is extended whenever variables are polyinstantiated.
-  deriving (Eq, Ord, Read, Show)
+data TVar (a :: TVarQualification) where
+  QTVar :: Int -- ^The index for this type variable.  This index is unique
+               --  across a typechecking pass; fresh variables receive a new
+               --  index.
+        -> [Span] -- ^A list of spans describing the points at which
+                  --  polyinstantiaton has occurred (where the leftmost element
+                  --  is the most recent).  This list is extended whenever
+                  --  variables are polyinstantiated.
+        -> TVar QualifiedTVar
+  UTVar :: Int
+        -> [Span]
+        -> TVar UnqualifiedTVar
+
+deriving instance Eq (TVar a)
+deriving instance Ord (TVar a)
+deriving instance Show (TVar a)
              
 -- |A type alias for qualified type variables.
 type QVar = TVar QualifiedTVar
 -- |A type alias for unqualified type variables.
 type UVar = TVar UnqualifiedTVar
+
+-- |A data type which carries any type of type variable.
+data AnyTVar
+  = SomeQVar QVar
+  | SomeUVar UVar
+  deriving (Eq, Ord, Show)
 
 -- |Type qualifiers.
 data TQual = TMut | TImmut
@@ -80,10 +92,11 @@ data TQual = TMut | TImmut
 -- |Quantified types.
 data QuantType
   = QuantType
-      [QVar] -- ^The set of variables over which this type is polymorphic.
+      (Set AnyTVar)
+        -- ^The set of variables over which this type is polymorphic.
       QVar -- ^The variable describing the type.
       ConstraintSet -- ^The constraints on the type.
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Show)
 
 -- |Annotation types.
 data AnnType
@@ -91,7 +104,7 @@ data AnnType
       TParamEnv -- ^The type parameter environment for the annotation type.
       AnnBodyType -- ^The body type of the annotation.
       ConstraintSet -- ^The set of constraints for the annotation.
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Show)
 
 -- |Annotation body types.
 data AnnBodyType
@@ -99,11 +112,11 @@ data AnnBodyType
       [AnnMemType] -- ^The set of methods in the annotation.
       [AnnMemType] -- ^The set of lifted attributes in the annotation.
       [AnnMemType] -- ^The set of schema attributes in the annotation.
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Show)
 
 -- |Annotation member types.
 data AnnMemType = AnnMemType Identifier TPolarity QVar
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Show)
   
 -- |Shallow types
 data ShallowType
@@ -119,15 +132,15 @@ data ShallowType
   | SRecord (Map Identifier QVar)
   | STop
   | SBottom
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Show)
 
 -- |A simple data type for polarities.
 data TPolarity = Positive | Negative
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- |Type environments.
 data TEnv a = TEnv (Map TEnvId a)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- |Type environment identifiers.
 data TEnvId
@@ -149,9 +162,9 @@ type TNormEnv = TEnv QuantType
 type TParamEnv = TEnv UVar
 
 -- |A type alias describing a type or a variable.
-type TypeOrVar = Either ShallowType UVar
+type TypeOrVar = Coproduct ShallowType UVar
 -- |A type alias describing a type qualifier or qualified variable.
-type QualOrVar = Either (Set TQual) QVar
+type QualOrVar = Coproduct (Set TQual) QVar
 
 
 -- * Constraints
@@ -165,7 +178,7 @@ data Constraint
   | BinaryOperatorConstraint UVar BinaryOperator UVar UVar
   -- TODO: unary prefix operator constraint?  it's not in the spec, but the
   --       implementation parses "!"
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Show)
 
 -- |A data type representing binary operators in the type system.
 data BinaryOperator
@@ -189,7 +202,7 @@ data BinaryOperator
 --  to help ensure that it is treated abstractly by its users.  This will
 --  permit structural changes for performance optimization in the future.
 data ConstraintSet = ConstraintSet (Set Constraint)
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Show)
   
 instance Monoid ConstraintSet where
   mempty = ConstraintSet Set.empty
@@ -263,10 +276,10 @@ csQuery (ConstraintSet csSet) query =
   let cs = Set.toList csSet in
   case query of
     QueryAllTypesLowerBoundingUVars -> do
-      IntermediateConstraint (Left t) (Right a) <- cs
+      IntermediateConstraint (CLeft t) (CRight a) <- cs
       return (t,a)
     QueryAllTypesLowerBoundingTypes -> do
-      IntermediateConstraint (Left t) (Left t') <- cs
+      IntermediateConstraint (CLeft t) (CLeft t') <- cs
       return (t,t')
     QueryAllBinaryOperations -> do
       BinaryOperatorConstraint a1 op a2 a3 <- cs
@@ -278,18 +291,18 @@ csQuery (ConstraintSet csSet) query =
       QualifiedLowerConstraint ta qa <- cs
       return (ta,qa)
     QueryAllQVarLowerBoundingQVar -> do
-      QualifiedIntermediateConstraint (Right qa1) (Right qa2) <- cs
+      QualifiedIntermediateConstraint (CRight qa1) (CRight qa2) <- cs
       return (qa1, qa2)
     QueryTypeOrVarByUVarLowerBound a -> do
-      IntermediateConstraint (Right a') ta <- cs
+      IntermediateConstraint (CRight a') ta <- cs
       guard $ a == a'
       return ta
     QueryTypeByUVarUpperBound a -> do
-      IntermediateConstraint (Left t) (Right a') <- cs
+      IntermediateConstraint (CLeft t) (CRight a') <- cs
       guard $ a == a'
       return t
     QueryTypeByQVarUpperBound qa -> do
-      QualifiedLowerConstraint (Left t) qa' <- cs
+      QualifiedLowerConstraint (CLeft t) qa' <- cs
       guard $ qa == qa'
       return t
     QueryQualOrVarByQualOrVarLowerBound qa -> do
@@ -304,6 +317,10 @@ csQuery (ConstraintSet csSet) query =
       QualifiedLowerConstraint ta qa' <- cs
       guard $ qa == qa'
       return ta
+    QueryTQualSetByQVarUpperBound qa -> do
+      QualifiedIntermediateConstraint (CLeft qs) (CRight qa') <- cs
+      guard $ qa == qa'
+      return qs
 
 -- ** Convenience routines
 
@@ -323,12 +340,12 @@ $(
   -- The instances variable contains 5-tuples describing the varying positions
   -- in the typeclass instance template below.
   let instances =
-        let typeOrVar = [ ([t|ShallowType|], [|Left|])
-                        , ([t|UVar|], [|Right|])
+        let typeOrVar = [ ([t|ShallowType|], [|CLeft|])
+                        , ([t|UVar|], [|CRight|])
                         , ([t|TypeOrVar|], [|id|])
                         ]
-            qualOrVar = [ ([t|Set TQual|], [|Left|])
-                        , ([t|QVar|], [|Right|])
+            qualOrVar = [ ([t|Set TQual|], [|CLeft|])
+                        , ([t|QVar|], [|CRight|])
                         , ([t|QualOrVar|], [|id|])
                         ]
         in

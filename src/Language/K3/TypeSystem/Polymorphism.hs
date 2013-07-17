@@ -4,26 +4,35 @@
   model.
 -}
 module Language.K3.TypeSystem.Polymorphism
-(
+( generalize
 ) where
 
 import Control.Monad.Reader
-import Control.Monad.Trans
 import Control.Monad.Trans.List
 import qualified Data.Map as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Morphisms.ExtractVariables
 
 -- * Generalization
 
 -- |Generalizes a type to produce a quantified type.
 generalize :: TNormEnv -> QVar -> ConstraintSet -> QuantType
-generalize env qa cs =
+generalize (TEnv env) qa cs =
   let cs' = calculateClosure cs in
-  let reachableQVars = runReader (runListT $ reachableFromQVar qa) cs' in
-  undefined -- TODO
+  let reachableQVars = Set.map SomeQVar $ Set.fromList $
+                          runReader (runListT $ reachableFromQVar qa) cs' in
+  let freeEnvVars = Set.unions $ map openVars $ Map.elems env in
+  let quantSet = extractVariables cs' `Set.difference` reachableQVars
+                                      `Set.difference` freeEnvVars in
+  QuantType quantSet qa cs
+  where
+    openVars :: QuantType -> Set AnyTVar
+    openVars (QuantType bound var cs'') =
+      Set.insert (SomeQVar var) (extractVariables cs'') `Set.difference` bound
 
 type Reachability = ListT (Reader ConstraintSet) QVar
 

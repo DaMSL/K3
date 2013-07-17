@@ -21,6 +21,7 @@ library
         parsec-parsers,
         parsers,
         SafeSemaphore,
+        template-haskell,
         transformers,
         unordered-containers
 
@@ -52,7 +53,12 @@ library
                    Language.K3.TypeSystem.Data,
                    Language.K3.TypeSystem.Closure.BinOp,
                    Language.K3.TypeSystem.Consistency,
-                   Language.K3.TypeSystem.Polymorphism
+                   Language.K3.TypeSystem.Polymorphism,
+                   Language.K3.TypeSystem.Morphisms.ExtractVariables,
+                   Language.K3.TemplateHaskell.Transform,
+                   Language.K3.TemplateHaskell.Utils,
+                   Language.K3.TemplateHaskell.Reduce,
+                   Language.K3.TypeSystem.Data.Utils
 
 test-suite all
     type: exitcode-stdio-1.0

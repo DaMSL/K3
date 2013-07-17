@@ -21,12 +21,12 @@ inconsistent cs = any isInconsistent (csToList cs)
   where
     isInconsistent :: Constraint -> Bool
     isInconsistent c = case c of
-      IntermediateConstraint (Left t1) (Left t2) ->
+      IntermediateConstraint (CLeft t1) (CLeft t2) ->
         immInconsistent t1 t2 ||
         (t1 == STop && t2 /= STop) ||
         (t2 /= SBottom && t2 == SBottom) ||
         recordInconsistent t1 t2
-      QualifiedIntermediateConstraint (Left q1) (Left q2) ->
+      QualifiedIntermediateConstraint (CLeft q1) (CLeft q2) ->
         q1 `Set.isProperSubsetOf` q2
       BinaryOperatorConstraint a1 op a2 _ -> or $ do
         t1 <- csQuery cs $ QueryTypeByUVarUpperBound a1
