@@ -63,3 +63,6 @@ reachableFromType t = case t of
   STuple qas -> reachableUnions $ map reachableFromQVar qas
   SRecord m -> reachableUnions $ map reachableFromQVar $ Map.elems m
   _ -> mzero
+
+-- * Polyinstantiation
+

@@ -1,5 +1,10 @@
 {-# LANGUAGE TemplateHaskell, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances #-}
 
+{-|
+  This module defines an operation which extracts all variables which "appear"
+  within a given construct.
+-}
+
 module Language.K3.TypeSystem.Morphisms.ExtractVariables
 ( ExtractVariables
 , extractVariables

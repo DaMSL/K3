@@ -58,7 +58,8 @@ library
                    Language.K3.TemplateHaskell.Transform,
                    Language.K3.TemplateHaskell.Utils,
                    Language.K3.TemplateHaskell.Reduce,
-                   Language.K3.TypeSystem.Data.Utils
+                   Language.K3.TypeSystem.Data.Utils,
+                   Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
 test-suite all
     type: exitcode-stdio-1.0

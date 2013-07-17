@@ -47,6 +47,7 @@ module Language.K3.TemplateHaskell.Transform
 
 import Control.Applicative
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Language.Haskell.TH
 
 import Language.K3.TemplateHaskell.Utils
@@ -153,7 +154,7 @@ defineTransformFunctorInstance :: Name -> Q Type -> Q [Dec]
 defineTransformFunctorInstance tname funcType = do
   (ttyp,_) <- canonicalType tname
   [d| instance (Transform $(return ttyp) a)
-            => Transform ($(funcType) $(return ttyp)) (f a) where
+            => Transform $(return ttyp) ($(funcType) a) where
         transform t d = fmap (transform t) d |]
         
 -- |Creates identity @Transform@ instances for common primitives.
@@ -172,14 +173,20 @@ defineCommonTupleTransformInstance tname n = do
   paramNames <- sequence $ take n $ mkPrefixNames "tupleParam"
   let tupleType = applyTypeCon (TupleT n) $ map VarT paramNames
   argNames <- sequence $ take n $ mkPrefixNames "tupleArg"
-  let transName = mkName "t"
+  let transName = mkName "_t"
   let tupleName = mkName "tuple"
   let body =  tupE $ map (\nm -> [|transform $(varE transName) $(varE nm)|])
                       argNames
   let expr = caseE (varE tupleName) $ [match (tupP $ map varP argNames)
                 (normalB body) []]
-  [d| instance Transform $(return ttyp) $(return tupleType) where
-        transform t tuple = $(expr) |]
+  let context = cxt $ map (\v -> classP (''Transform) [return ttyp, varT v])
+                        paramNames
+  let instD = 
+        instanceD context (applyTypeCon (ConT ''Transform) <$>
+                              sequence [return ttyp, return tupleType])
+          [funD 'transform [clause [varP transName, varP tupleName]
+                          (normalB expr) []]]
+  sequence [instD]
 
 {- |Creates instances for homorphic transforms over common cases:
       * n-tuples for n==0 or 2 <= n <= 8
@@ -190,11 +197,19 @@ defineCommonTupleTransformInstance tname n = do
       * @Set@
 -}    
 defineCommonHomInstances :: Name -> Q [Dec]
-defineCommonHomInstances tname =
+defineCommonHomInstances tname = do
+  (ttyp,_) <- canonicalType tname
+  let litDecls =
+        [ [d|
+            instance (Ord a, Transform $(return ttyp) a)
+                  => Transform $(return ttyp) (Set a) where
+              transform t s = Set.map (transform t) s
+          |]
+        ]
   let insts = [ defineCommonPrimitiveTransformIdentityInstances tname
               ] ++ map (defineCommonTupleTransformInstance tname) (0:[2..8])
                 ++ map (defineHomInstance tname) [''Either,''Maybe]
                 ++ map (defineTransformFunctorInstance tname)
-                        [ [t| [] |], [t|Set|] ]
-  in
+                        [ [t| [] |] ]
+                ++ litDecls
   concat <$> sequence insts
