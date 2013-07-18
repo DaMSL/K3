@@ -46,22 +46,24 @@ library
         Language.K3.Runtime.Dispatch,
         Language.K3.Runtime.Engine,
 
-        Language.K3.Transform.Alpha
+        Language.K3.Transform.Alpha,
+
+        Language.K3.TemplateHaskell.Reduce,
+        Language.K3.TemplateHaskell.ReduceM,
+        Language.K3.TemplateHaskell.Transform,
+        Language.K3.TemplateHaskell.TransformM,
+        Language.K3.TemplateHaskell.Utils,
+
+        Language.K3.TypeSystem.Closure.BinOp,
+        Language.K3.TypeSystem.Consistency,
+        Language.K3.TypeSystem.Data,
+        Language.K3.TypeSystem.Data.Utils,
+        Language.K3.TypeSystem.Monad.Iface.FreshVar,
+        Language.K3.TypeSystem.Morphisms.ExtractVariables,
+        Language.K3.TypeSystem.Morphisms.ReplaceVariables,
+        Language.K3.TypeSystem.Polymorphism
 
     ghc-options: -Wall
-    other-modules: 
-                   Language.K3.TypeSystem.Data,
-                   Language.K3.TypeSystem.Closure.BinOp,
-                   Language.K3.TypeSystem.Consistency,
-                   Language.K3.TypeSystem.Polymorphism,
-                   Language.K3.TypeSystem.Morphisms.ExtractVariables,
-                   Language.K3.TemplateHaskell.TransformM,
-                   Language.K3.TemplateHaskell.Transform,
-                   Language.K3.TemplateHaskell.Utils,
-                   Language.K3.TemplateHaskell.Reduce,
-                   Language.K3.TemplateHaskell.ReduceM,
-                   Language.K3.TypeSystem.Data.Utils,
-                   Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
 test-suite all
     type: exitcode-stdio-1.0

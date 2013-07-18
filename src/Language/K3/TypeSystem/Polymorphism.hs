@@ -1,21 +1,26 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs #-}
 {-|
   This module contains functionality related to K3's let-bound polymorphism
   model.
 -}
 module Language.K3.TypeSystem.Polymorphism
 ( generalize
+, polyinstantiate
 ) where
 
 import Control.Monad.Reader
 import Control.Monad.Trans.List
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Core.Common
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
+import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
 -- * Generalization
 
@@ -66,3 +71,19 @@ reachableFromType t = case t of
 
 -- * Polyinstantiation
 
+-- |Polyinstantiates a quantified type.
+polyinstantiate
+             :: Span -- ^The span at which this polyinstantiation occurred.
+             -> QuantType -- ^The type to polyinstantiate.
+             -> (QVar, ConstraintSet) -- ^The result of polyinstantiation.
+polyinstantiate inst (QuantType boundSet qa cs) =
+  let (qvarMap,uvarMap) = mconcat $ map freshMap $ Set.toList boundSet in
+  replaceVariables qvarMap uvarMap (qa,cs)
+  where
+    freshMap :: AnyTVar -> (Map QVar QVar, Map UVar UVar)
+    freshMap var =
+      case var of
+        SomeQVar qa'@(QTVar idx src insts) ->
+          (Map.singleton qa' $ QTVar idx src $ inst : insts, Map.empty)
+        SomeUVar a'@(UTVar idx src insts) ->
+          (Map.empty, Map.singleton a' $ UTVar idx src $ inst : insts)

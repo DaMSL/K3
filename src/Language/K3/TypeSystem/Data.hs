@@ -61,12 +61,17 @@ data TVar (a :: TVarQualification) where
   QTVar :: Int -- ^The index for this type variable.  This index is unique
                --  across a typechecking pass; fresh variables receive a new
                --  index.
+        -> Maybe Span -- ^A description of the piece of code represented by this
+                      --  type variable (if any).  Type variables inferred from
+                      --  source are given a span describing that source; other
+                      --  type variables are given @None@.
         -> [Span] -- ^A list of spans describing the points at which
                   --  polyinstantiaton has occurred (where the leftmost element
                   --  is the most recent).  This list is extended whenever
                   --  variables are polyinstantiated.
         -> TVar QualifiedTVar
   UTVar :: Int
+        -> Maybe Span
         -> [Span]
         -> TVar UnqualifiedTVar
 

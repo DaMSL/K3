@@ -6,6 +6,7 @@
 -}
 module Language.K3.TypeSystem.Morphisms.ReplaceVariables
 ( ReplaceVariables(..)
+, replaceVariables
 ) where
 
 import Control.Applicative
@@ -19,6 +20,11 @@ import Language.K3.TypeSystem.Data
 
 -- |The data type defining the transformation.
 data ReplaceVariables = ReplaceVariables (Map QVar QVar) (Map UVar UVar)
+
+-- |A function to extract variables from type system data.
+replaceVariables :: (Transform ReplaceVariables a)
+                 => Map QVar QVar -> Map UVar UVar -> a -> a
+replaceVariables qvarMap uvarMap = transform (ReplaceVariables qvarMap uvarMap)
 
 instance Transform ReplaceVariables QVar where
   transform (ReplaceVariables m _) qa = fromMaybe qa $ Map.lookup qa m
