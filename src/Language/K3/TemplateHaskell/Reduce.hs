@@ -15,7 +15,7 @@
     -- Common instances
     $(defineCommonCatInstances ''MyReduction)
     -- Special case
-    $(defineHomFunc ''MyReduction ''Baz $ mkName "catBaz")
+    $(defineCatFunc ''MyReduction ''Baz $ mkName "catBaz")
     instance Reduce Baz MyReduction (Set Int) where
       reduce (MyReduction n) baz = case baz of
         Baz5 m -> if n > m then mempty else Set.singleton m
@@ -28,10 +28,10 @@
   catamorphic; the data are disassembled, the arguments are reduced, and the
   results are monoidally concatenated.  The common instances allow for cases
   such as Int and Set to be defined as @mempty@ with minimal boilerplate.  The
-  Baz case is special: if the constructor Baz5 is used, it may be reconstructed
-  with a non-empty value; all other Baz constructors are naturally catamorphic.
-  Note that this special case applies to all instances of Baz5 throughout all
-  of the reduced structure.
+  Baz case is special: if the constructor Baz5 is used, it may be reduced to a
+  non-empty value; all other Baz constructors are naturally catamorphic.  Note
+  that this special case applies to all instances of Baz5 throughout all of the
+  reduced structure.
 -}
 module Language.K3.TemplateHaskell.Reduce
 ( Reduce(..)
