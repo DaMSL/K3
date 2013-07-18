@@ -6,7 +6,6 @@ module Language.K3.TypeSystem.Closure.BinOp
 
 import Control.Applicative
 import Data.Monoid
-import qualified Data.Set as Set
 
 import Language.K3.TypeSystem.Data
 
