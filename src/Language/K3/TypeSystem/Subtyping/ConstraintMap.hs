@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, GADTs, TypeFamilies, DataKinds, KindSignatures, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns, GADTs, TypeFamilies, DataKinds, KindSignatures, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TupleSections, ScopedTypeVariables, Rank2Types, ViewPatterns #-}
 {-|
   This module defines the data structures associated with constraint maps.  A
   constraint map is a structure used in the decidable subtyping approximation;
@@ -21,15 +21,21 @@ module Language.K3.TypeSystem.Subtyping.ConstraintMap
 ) where
 
 import Control.Arrow
+import Control.Applicative
+import Control.Monad
+import Control.Monad.Writer
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
 import Data.Set (Set)
+import qualified Data.Traversable as Trav
 import qualified Data.Set as Set
 
+import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
 
 -- |A data structure representing a constraint map: K in the grammar presented
 --  in spec sec 6.1.  We use positive polarity to represent <= and
@@ -44,6 +50,9 @@ lowerBound = Positive
 
 upperBound :: TPolarity
 upperBound = Negative
+
+flipBound :: TPolarity -> TPolarity
+flipBound = mappend Negative
 
 data family VarBound (a :: TVarQualification) :: *
 data instance VarBound UnqualifiedTVar
@@ -194,3 +203,142 @@ isContractive (ConstraintMap m1 m2) =
           in
           let nextVars = vars `Set.difference` visited in
           result || cycleHunt nextVars
+
+-- |A routine which computes the VarB function for a given constraint map as
+--  defined in spec sec 6.1.
+varB :: AnyTVar -> TPolarity -> ConstraintMap -> Set AnyTVar
+varB sa pol cm =
+  accum Set.empty sa
+  where
+    -- |This accumulator function will build up a set of explored variables to
+    --  find the transitive bounds of a single variable.  The second argument
+    --  is the variable currently being explored.  This function is essentially
+    --  performing its own occurrence check; it should terminate even if the
+    --  constraint map is non-contractive.
+    accum :: Set AnyTVar -> AnyTVar -> Set AnyTVar
+    accum s sa' =
+      let vars = Set.fromList $ case sa of
+                  SomeQVar qa -> mapMaybe (boundToVar . (qa,)) $
+                                    Set.toList $ cmBoundsOf qa pol cm in
+      let newVars = sa' `Set.delete` (vars `Set.difference` s) in
+      Set.insert sa $ Set.union vars $ Set.unions $ map (accum vars) $
+                                                        Set.toList newVars
+    boundToVar :: forall a. (TVar a, VarBound a) -> Maybe AnyTVar
+    boundToVar x = case x of
+      (QTVar{}, QBQVar qa) -> Just $ someVar qa
+      (QTVar{}, QBUVar a) -> Just $ someVar a
+      (UTVar{}, UBQVar qa) -> Just $ someVar qa
+      (UTVar{}, UBUVar a) -> Just $ someVar a
+      _ -> Nothing
+
+-- |A routine which computes the ConB function for a given constraint map as
+--  defined in spec sec 6.1.
+conB :: AnyTVar -> TPolarity -> ConstraintMap -> Set ShallowType
+conB = genConB boundToType
+  where
+    boundToType :: forall a. (TVar a, VarBound a) -> Maybe ShallowType
+    boundToType x = case x of
+      (QTVar{}, QBType t) -> Just t
+      (UTVar{}, UBType t) -> Just t
+      _ -> Nothing
+
+-- |A routine which computes the ConB function for a given constraint map as
+--  defined in spec sec 6.1.
+qualB :: AnyTVar -> TPolarity -> ConstraintMap -> Set (Set TQual)
+qualB = genConB boundToQualSet
+  where
+    boundToQualSet :: forall a. (TVar a, VarBound a) -> Maybe (Set TQual)
+    boundToQualSet x = case x of
+      (QTVar{}, QBQualSet qs) -> Just qs
+      _ -> Nothing
+
+-- |A routine which generalizes over ConB and QualB in spec sec 6.1.
+genConB :: forall b. (Ord b) => (forall a. (TVar a, VarBound a) -> Maybe b)
+        -> AnyTVar -> TPolarity -> ConstraintMap -> Set b
+genConB extract sa pol cm = Set.fromList $ do
+  var <- Set.toList $ varB sa pol cm
+  case var of
+    SomeQVar qa -> conForVar qa
+    SomeUVar a -> conForVar a
+  where
+    conForVar :: TVar a -> [b]
+    conForVar v =
+      mapMaybe (extract . (v,)) $ Set.toList $ cmBoundsOf v pol cm
+
+-- |A routine to compute the type part of the Bound function in spec sec 6.1.
+--  When Bound is undefined, this function evaluates to @Nothing@.
+typeBound :: forall m. (FreshVarI m)
+          => Set ShallowType -> TPolarity -> ConstraintMap
+          -> m (Maybe (ShallowType, ConstraintMap))
+typeBound tsSet pol cm =
+  let npol = flipBound pol in
+  case Set.toList tsSet of
+    [] -> case pol of
+            Positive -> return $ Just (SBottom, mempty)
+            Negative -> return $ Just (STop, mempty)
+    [t] -> return $ Just (t, mempty)
+    (mapM matchFunc -> Just bindings) -> do
+      a0 <- freshVar
+      a0' <- freshVar
+      let cm' = mconcat $
+                  map (cmSing a0 pol . UBUVar . fst) bindings ++
+                  map (cmSing a0' npol . UBUVar . snd) bindings
+      return $ Just (SFunction a0 a0', cm')
+    (mapM matchOption -> Just bindings) -> do
+      qa0 <- freshVar
+      let cm' = mconcat $ map (cmSing qa0 npol . QBQVar) bindings
+      return $ Just (SOption qa0, cm')
+    (mapM matchIndirection -> Just bindings) -> do
+      qa0 <- freshVar
+      let cm' = mconcat $ map (cmSing qa0 npol . QBQVar) bindings
+      return $ Just (SIndirection qa0, cm')
+    (sameLength <=< mapM matchTuple -> Just (bindings,_)) -> do
+      (vars,cms) <- unzip <$> mapM boundForAlignedPosition (transpose bindings)
+      return $ Just (STuple vars, mconcat cms)
+    (mapM matchRecord -> Just bindings) -> do
+      let mapMerger = case pol of
+                        Positive -> Map.unionWith
+                        Negative -> Map.intersectionWith
+      let m = foldl' (mapMerger (++)) Map.empty $ map (fmap (:[])) bindings
+      m' <- Trav.mapM boundForAlignedPosition m
+      let (m'',cm') = runWriter $ Trav.mapM (\(x,y) -> tell y >> return x ) m'
+      return $ Just (SRecord m'', cm')
+    _:_:_ ->
+      -- By this point, we have a two element list which is not comprised
+      -- completely of any of the above.  We cannot proceed; there is no perfect
+      -- bound.  (This isn't quite true; we could use top or bottom.  But the
+      -- spec doesn't say this.)
+      return Nothing
+  where
+    matchFunc :: ShallowType -> Maybe (UVar, UVar)
+    matchFunc t = case t of
+      SFunction a a' -> Just (a,a')
+      _ -> Nothing
+    matchOption :: ShallowType -> Maybe QVar
+    matchOption t = case t of
+      SOption qa -> Just qa
+      _ -> Nothing
+    matchIndirection :: ShallowType -> Maybe QVar
+    matchIndirection t = case t of
+      SIndirection qa -> Just qa
+      _ -> Nothing
+    matchTuple :: ShallowType -> Maybe [QVar]
+    matchTuple t = case t of
+      STuple qas -> Just qas
+      _ -> Nothing
+    sameLength :: [[a]] -> Maybe ([[a]], Int)
+    sameLength lsts =
+      case lsts of
+        [] -> Just ([],0)
+        [lst] -> Just (lsts, length lst)
+        lst:lsts' -> do
+          (_,n) <- sameLength lsts'
+          if length lst == n then Just (lsts,n) else Nothing
+    boundForAlignedPosition :: [QVar] -> m (QVar, ConstraintMap)
+    boundForAlignedPosition vars = do
+      qa <- freshVar
+      return (qa, mconcat $ map (cmSing qa (flipBound pol) . QBQVar) vars)
+    matchRecord :: ShallowType ->  Maybe (Map Identifier QVar)
+    matchRecord t = case t of
+      SRecord m -> Just m
+      _ -> Nothing
