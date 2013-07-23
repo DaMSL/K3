@@ -64,6 +64,9 @@ library
         Language.K3.TypeSystem.Polymorphism
 
     ghc-options: -Wall
+    other-modules: 
+                   Language.K3.TypeSystem.Subtyping,
+                   Language.K3.TypeSystem.Subtyping.ConstraintMap
 
 test-suite all
     type: exitcode-stdio-1.0

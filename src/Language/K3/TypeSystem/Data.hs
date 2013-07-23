@@ -7,6 +7,7 @@ module Language.K3.TypeSystem.Data
 , QVar
 , UVar
 , AnyTVar(..)
+, someVar
 , TQual(..)
 , QuantType(..)
 , AnnType(..)
@@ -24,7 +25,7 @@ module Language.K3.TypeSystem.Data
 , QualOrVar
 , BinaryOperator(..)
 , Constraint(..)
-, constraint
+, ConstraintConstructor2(..)
 , ConstraintSet
 , csEmpty
 , csSing
@@ -90,6 +91,11 @@ data AnyTVar
   | SomeUVar UVar
   deriving (Eq, Ord, Show)
 
+someVar :: TVar a -> AnyTVar
+someVar a = case a of
+  QTVar _ _ _ -> SomeQVar a
+  UTVar _ _ _ -> SomeUVar a
+
 -- |Type qualifiers.
 data TQual = TMut | TImmut
   deriving (Eq, Ord, Read, Show)
@@ -139,9 +145,14 @@ data ShallowType
   | SBottom
   deriving (Eq, Ord, Show)
 
--- |A simple data type for polarities.
+-- |A simple data type for polarities.  Polarities are monoidal by XOR.  The
+--  empty polarity is positive.
 data TPolarity = Positive | Negative
   deriving (Eq, Ord, Read, Show)
+
+instance Monoid TPolarity where
+  mempty = Positive
+  mappend x y = if x == y then Positive else Negative
 
 -- |Type environments.
 data TEnv a = TEnv (Map TEnvId a)
