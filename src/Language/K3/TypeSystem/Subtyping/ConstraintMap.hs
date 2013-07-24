@@ -268,37 +268,36 @@ genConB extract sa pol cm = Set.fromList $ do
 -- |A routine to compute the type part of the Bound function in spec sec 6.1.
 --  When Bound is undefined, this function evaluates to @Nothing@.
 typeBound :: forall m. (FreshVarI m)
-          => Set ShallowType -> TPolarity -> ConstraintMap
+          => Set ShallowType -> TPolarity
           -> m (Maybe (ShallowType, ConstraintMap))
-typeBound tsSet pol cm =
-  let npol = flipBound pol in
+typeBound tsSet pol =
   case Set.toList tsSet of
     [] -> case pol of
-            Positive -> return $ Just (SBottom, mempty)
-            Negative -> return $ Just (STop, mempty)
+            Positive -> return $ Just (STop, mempty)
+            Negative -> return $ Just (SBottom, mempty)
     [t] -> return $ Just (t, mempty)
     (mapM matchFunc -> Just bindings) -> do
       a0 <- freshVar
       a0' <- freshVar
       let cm' = mconcat $
-                  map (cmSing a0 pol . UBUVar . fst) bindings ++
-                  map (cmSing a0' npol . UBUVar . snd) bindings
+                  map (cmSing a0 (flipBound pol) . UBUVar . fst) bindings ++
+                  map (cmSing a0' pol . UBUVar . snd) bindings
       return $ Just (SFunction a0 a0', cm')
     (mapM matchOption -> Just bindings) -> do
       qa0 <- freshVar
-      let cm' = mconcat $ map (cmSing qa0 npol . QBQVar) bindings
+      let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SOption qa0, cm')
     (mapM matchIndirection -> Just bindings) -> do
       qa0 <- freshVar
-      let cm' = mconcat $ map (cmSing qa0 npol . QBQVar) bindings
+      let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SIndirection qa0, cm')
     (sameLength <=< mapM matchTuple -> Just (bindings,_)) -> do
       (vars,cms) <- unzip <$> mapM boundForAlignedPosition (transpose bindings)
       return $ Just (STuple vars, mconcat cms)
     (mapM matchRecord -> Just bindings) -> do
       let mapMerger = case pol of
-                        Positive -> Map.unionWith
-                        Negative -> Map.intersectionWith
+                        Positive -> Map.intersectionWith
+                        Negative -> Map.unionWith
       let m = foldl' (mapMerger (++)) Map.empty $ map (fmap (:[])) bindings
       m' <- Trav.mapM boundForAlignedPosition m
       let (m'',cm') = runWriter $ Trav.mapM (\(x,y) -> tell y >> return x ) m'
@@ -337,7 +336,7 @@ typeBound tsSet pol cm =
     boundForAlignedPosition :: [QVar] -> m (QVar, ConstraintMap)
     boundForAlignedPosition vars = do
       qa <- freshVar
-      return (qa, mconcat $ map (cmSing qa (flipBound pol) . QBQVar) vars)
+      return (qa, mconcat $ map (cmSing qa pol . QBQVar) vars)
     matchRecord :: ShallowType ->  Maybe (Map Identifier QVar)
     matchRecord t = case t of
       SRecord m -> Just m
