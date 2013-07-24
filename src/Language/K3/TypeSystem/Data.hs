@@ -4,6 +4,7 @@ module Language.K3.TypeSystem.Data
 ( module Language.K3.TypeSystem.Data.Utils
 , TVarQualification(..)
 , TVar(..)
+, TVarOrigin(..)
 , QVar
 , UVar
 , AnyTVar(..)
@@ -63,24 +64,30 @@ data TVar (a :: TVarQualification) where
   QTVar :: Int -- ^The index for this type variable.  This index is unique
                --  across a typechecking pass; fresh variables receive a new
                --  index.
-        -> Maybe Span -- ^A description of the piece of code represented by this
-                      --  type variable (if any).  Type variables inferred from
-                      --  source are given a span describing that source; other
-                      --  type variables are given @None@.
-        -> [Span] -- ^A list of spans describing the points at which
-                  --  polyinstantiaton has occurred (where the leftmost element
-                  --  is the most recent).  This list is extended whenever
-                  --  variables are polyinstantiated.
+        -> TVarOrigin QualifiedTVar
+               -- ^A description of the origin of this type variable.
         -> TVar QualifiedTVar
   UTVar :: Int
-        -> Maybe Span
-        -> [Span]
+        -> TVarOrigin UnqualifiedTVar
         -> TVar UnqualifiedTVar
 
 deriving instance Eq (TVar a)
 deriving instance Ord (TVar a)
 deriving instance Show (TVar a)
-             
+
+-- |A description of the origin of a given type variable.
+data TVarOrigin (a :: TVarQualification)
+  = TVarSourceOrigin Span -- ^Type variable produced directly from source code.
+  | TVarPolyinstantiationOrigin (TVar a) Span
+      -- ^Type variable is the result of polyinstantiation at a given source
+      --  location.
+  | TVarBoundGeneralization [TVar a] TPolarity
+      -- ^Type variable was created to generalize a number of existing
+      --  variables.  The polarity describes the bounding direction: positive
+      --  if this variable will be a lower bound, negative if it will be an
+      --  upper bound.
+  deriving (Eq, Ord, Show)
+
 -- |A type alias for qualified type variables.
 type QVar = TVar QualifiedTVar
 -- |A type alias for unqualified type variables.
@@ -94,8 +101,8 @@ data AnyTVar
 
 someVar :: TVar a -> AnyTVar
 someVar a = case a of
-  QTVar _ _ _ -> SomeQVar a
-  UTVar _ _ _ -> SomeUVar a
+  QTVar{} -> SomeQVar a
+  UTVar{} -> SomeUVar a
 
 -- |Type qualifiers.
 data TQual = TMut | TImmut

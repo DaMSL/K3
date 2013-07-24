@@ -80,15 +80,15 @@ cmGetMapFor :: TVar a -> ConstraintMap
             -> Map (TVar a, TPolarity) (Set (VarBound a))
 cmGetMapFor sa (ConstraintMap um qm) =
   case sa of
-    QTVar _ _ _ -> qm
-    UTVar _ _ _ -> um
+    QTVar{} -> qm
+    UTVar{} -> um
     
 cmSing :: TVar a -> TPolarity -> VarBound a -> ConstraintMap
 cmSing sa pol bnd =
   case sa of
-    QTVar _ _ _ ->
+    QTVar{} ->
       ConstraintMap Map.empty $ Map.singleton (sa,pol) $ Set.singleton bnd
-    UTVar _ _ _ ->
+    UTVar{} ->
       ConstraintMap (Map.singleton (sa,pol) (Set.singleton bnd)) Map.empty
 
 cmUnion :: ConstraintMap -> ConstraintMap -> ConstraintMap
@@ -285,18 +285,19 @@ typeBound tsSet pol =
             Negative -> return $ Just (SBottom, mempty)
     [t] -> return $ Just (t, mempty)
     (mapM matchFunc -> Just bindings) -> do
-      a0 <- freshVar
-      a0' <- freshVar
+      a0 <- freshVar $ TVarBoundGeneralization (map fst bindings)
+                (flipBound pol)
+      a0' <- freshVar $ TVarBoundGeneralization (map snd bindings) pol
       let cm' = mconcat $
                   map (cmSing a0 (flipBound pol) . UBUVar . fst) bindings ++
                   map (cmSing a0' pol . UBUVar . snd) bindings
       return $ Just (SFunction a0 a0', cm')
     (mapM matchOption -> Just bindings) -> do
-      qa0 <- freshVar
+      qa0 <- freshVar $ TVarBoundGeneralization bindings pol
       let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SOption qa0, cm')
     (mapM matchIndirection -> Just bindings) -> do
-      qa0 <- freshVar
+      qa0 <- freshVar $ TVarBoundGeneralization bindings pol
       let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SIndirection qa0, cm')
     (sameLength <=< mapM matchTuple -> Just (bindings,_)) -> do
@@ -343,7 +344,7 @@ typeBound tsSet pol =
           if length lst == n then Just (lsts,n) else Nothing
     boundForAlignedPosition :: [QVar] -> m (QVar, ConstraintMap)
     boundForAlignedPosition vars = do
-      qa <- freshVar
+      qa <- freshVar $ TVarBoundGeneralization vars pol
       return (qa, mconcat $ map (cmSing qa pol . QBQVar) vars)
     matchRecord :: ShallowType ->  Maybe (Map Identifier QVar)
     matchRecord t = case t of

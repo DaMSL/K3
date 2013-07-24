@@ -9,5 +9,6 @@ module Language.K3.TypeSystem.Monad.Iface.FreshVar
 
 import Language.K3.TypeSystem.Data
 
+-- TODO: modify freshVar to take the appropriate inputs
 class (Monad m, Functor m) => FreshVarI m where
-  freshVar :: m (TVar a)
+  freshVar :: TVarOrigin a -> m (TVar a)

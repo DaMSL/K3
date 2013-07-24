@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs, ScopedTypeVariables #-}
 {-|
   This module contains functionality related to K3's let-bound polymorphism
   model.
@@ -8,6 +8,7 @@ module Language.K3.TypeSystem.Polymorphism
 , polyinstantiate
 ) where
 
+import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.Trans.List
 import Data.Map (Map)
@@ -19,6 +20,7 @@ import qualified Data.Set as Set
 import Language.K3.Core.Common
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
@@ -73,17 +75,20 @@ reachableFromType t = case t of
 
 -- |Polyinstantiates a quantified type.
 polyinstantiate
-             :: Span -- ^The span at which this polyinstantiation occurred.
+             :: forall m. (FreshVarI m)
+             => Span -- ^The span at which this polyinstantiation occurred.
              -> QuantType -- ^The type to polyinstantiate.
-             -> (QVar, ConstraintSet) -- ^The result of polyinstantiation.
-polyinstantiate inst (QuantType boundSet qa cs) =
-  let (qvarMap,uvarMap) = mconcat $ map freshMap $ Set.toList boundSet in
-  replaceVariables qvarMap uvarMap (qa,cs)
+             -> m (QVar, ConstraintSet) -- ^The result of polyinstantiation.
+polyinstantiate inst (QuantType boundSet qa cs) = do
+  (qvarMap,uvarMap) <- mconcat <$> mapM freshMap (Set.toList boundSet)
+  return $ replaceVariables qvarMap uvarMap (qa,cs)
   where
-    freshMap :: AnyTVar -> (Map QVar QVar, Map UVar UVar)
+    freshMap :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
     freshMap var =
       case var of
-        SomeQVar qa'@(QTVar idx src insts) ->
-          (Map.singleton qa' $ QTVar idx src $ inst : insts, Map.empty)
-        SomeUVar a'@(UTVar idx src insts) ->
-          (Map.empty, Map.singleton a' $ UTVar idx src $ inst : insts)
+        SomeQVar qa' -> do
+          qa'' <- freshVar $ TVarPolyinstantiationOrigin qa' inst
+          return (Map.singleton qa' qa'', Map.empty)
+        SomeUVar a' -> do
+          a'' <- freshVar $ TVarPolyinstantiationOrigin a' inst
+          return (Map.empty, Map.singleton a' a'')
