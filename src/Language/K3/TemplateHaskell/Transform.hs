@@ -101,7 +101,8 @@ defineHomFuncX fname tname dname = do
       (dtyp,dbndrs) <- canonicalType dname
       (ttyp,tbndrs) <- canonicalType tname
       let mkPred typ = classP ''Transform [return ttyp, typ]
-      let preds = map mkPred $ getDataArgTypes info
+      argTyps <- getDataArgTypes info
+      let preds = map (mkPred . return) argTyps
       fcxt <- cxt preds
       let typ = forallT (dbndrs ++ tbndrs) (return fcxt) $
                   return $

@@ -114,8 +114,9 @@ defineCatFuncXM rtype mname fname tname dname = do
       (dtyp,dbndrs) <- canonicalType dname
       (ttyp,tbndrs) <- canonicalType tname
       let mkPred typ = classP ''ReduceM [varT mname, return ttyp, typ, rtype]
+      argTyps <- getDataArgTypes info
       let preds = [classP ''Monad [varT mname]]
-                    ++ map mkPred (getDataArgTypes info)
+                    ++ map (mkPred . return) argTyps
       fcxt <- cxt preds
       let typ = forallT (dbndrs ++ tbndrs ++ [PlainTV mname]) (return fcxt) $
                   mkFnType <$> sequence

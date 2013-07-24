@@ -102,7 +102,8 @@ defineCatFuncX rtype fname tname dname = do
       (dtyp,dbndrs) <- canonicalType dname
       (ttyp,tbndrs) <- canonicalType tname
       let mkPred typ = classP ''Reduce [return ttyp, typ, rtype]
-      let preds = map mkPred $ getDataArgTypes info
+      argTyps <- getDataArgTypes info
+      let preds = map (mkPred . return) argTyps
       fcxt <- cxt preds
       let typ = forallT (dbndrs ++ tbndrs) (return fcxt) $
                   mkFnType <$> sequence
@@ -114,14 +115,8 @@ defineCatFuncX rtype fname tname dname = do
     makeFnDef info = do
       tagName <- newName "_t"
       valName <- newName "v"
-      let branches = case info of
-            TyConI dec -> case dec of
-              DataD _ _ _ cons _ ->
-                map (makeBranch tagName) cons
-              _ -> error $ "defineCatFunc: " ++ show dname
-                      ++ " is not a data decl"
-            _ -> error $ "defineCatFunc: " ++ show dname
-                  ++ " is not a type constructor"
+      cons <- getConstructors info
+      let branches = map (makeBranch tagName) cons
       let body = normalB $ caseE (varE valName) branches
       sequence [funD fname [clause [varP tagName, varP valName]
                   body []]]
