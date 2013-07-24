@@ -88,13 +88,13 @@ getNameOfType t = case t of
   VarT n -> n
   ConT n -> n
   PromotedT n -> n
-  TupleT _ -> error $ "don't know name for tuple types"
-  UnboxedTupleT _ -> error $ "don't know name for tuple types"
-  ArrowT -> error $ "don't know name for arrow types"
-  ListT -> error $ "don't know name for list types"
-  PromotedTupleT _ -> error $ "don't know name for tuple types"
-  PromotedNilT -> error $ "don't know name for list types"
-  PromotedConsT -> error $ "don't know name for list types"
-  StarT -> error $ "don't know name for star types"
-  ConstraintT -> error $ "don't know name for constraint types"
-  LitT _ -> error $ "don't know name for literal types"
+  TupleT _ -> error "don't know name for tuple types"
+  UnboxedTupleT _ -> error "don't know name for tuple types"
+  ArrowT -> error "don't know name for arrow types"
+  ListT -> error "don't know name for list types"
+  PromotedTupleT _ -> error "don't know name for tuple types"
+  PromotedNilT -> error "don't know name for list types"
+  PromotedConsT -> error "don't know name for list types"
+  StarT -> error "don't know name for star types"
+  ConstraintT -> error "don't know name for constraint types"
+  LitT _ -> error "don't know name for literal types"
