@@ -6,7 +6,7 @@
 -}
 
 module Language.K3.TypeSystem.Morphisms.ExtractVariables
-( ExtractVariables
+( ExtractVariables(..)
 , extractVariables
 ) where
 
@@ -44,6 +44,7 @@ $(
                 , ''Coproduct
                 , ''TQual
                 , ''ShallowType
+                , ''TPolarity
                 ]
  )
  

@@ -9,6 +9,7 @@ module Language.K3.TypeSystem.Data
 , AnyTVar(..)
 , someVar
 , TQual(..)
+, allQuals
 , QuantType(..)
 , AnnType(..)
 , AnnBodyType(..)
@@ -99,6 +100,10 @@ someVar a = case a of
 -- |Type qualifiers.
 data TQual = TMut | TImmut
   deriving (Eq, Ord, Read, Show)
+  
+-- |A set of all qualifiers.
+allQuals :: Set TQual
+allQuals = Set.fromList [TMut, TImmut]
 
 -- |Quantified types.
 data QuantType

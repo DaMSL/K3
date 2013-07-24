@@ -1,4 +1,7 @@
-{-# LANGUAGE ViewPatterns, GADTs, TypeFamilies, DataKinds, KindSignatures, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TupleSections, ScopedTypeVariables, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, GADTs, TypeFamilies, DataKinds, KindSignatures,
+             MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances,
+             TupleSections, ScopedTypeVariables, Rank2Types, TemplateHaskell,
+             FlexibleContexts, UndecidableInstances #-}
 {-|
   This module defines the data structures associated with constraint maps.  A
   constraint map is a structure used in the decidable subtyping approximation;
@@ -23,6 +26,7 @@ module Language.K3.TypeSystem.Subtyping.ConstraintMap
 import Control.Arrow
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 import Data.List
 import Data.Map (Map)
@@ -34,8 +38,10 @@ import qualified Data.Traversable as Trav
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Morphisms.ExtractVariables
 
 -- |A data structure representing a constraint map: K in the grammar presented
 --  in spec sec 6.1.  We use positive polarity to represent <= and
@@ -44,7 +50,7 @@ data ConstraintMap
   = ConstraintMap (Map (UVar, TPolarity) (Set UVarBound))
                   (Map (QVar, TPolarity) (Set QVarBound))
   deriving (Eq, Ord, Show)
-  
+
 lowerBound :: TPolarity
 lowerBound = Positive
 
@@ -265,11 +271,13 @@ genConB extract sa pol cm = Set.fromList $ do
     conForVar v =
       mapMaybe (extract . (v,)) $ Set.toList $ cmBoundsOf v pol cm
 
+-- |A common type structure describing the Bound function in spec sec 6.1.
+type TypeBoundFn m a = Set a -> TPolarity
+                             -> m (Maybe (a, ConstraintMap))
+
 -- |A routine to compute the type part of the Bound function in spec sec 6.1.
 --  When Bound is undefined, this function evaluates to @Nothing@.
-typeBound :: forall m. (FreshVarI m)
-          => Set ShallowType -> TPolarity
-          -> m (Maybe (ShallowType, ConstraintMap))
+typeBound :: forall m. (FreshVarI m) => TypeBoundFn m ShallowType
 typeBound tsSet pol =
   case Set.toList tsSet of
     [] -> case pol of
@@ -341,3 +349,117 @@ typeBound tsSet pol =
     matchRecord t = case t of
       SRecord m -> Just m
       _ -> Nothing
+
+-- |A routine to compute the qualifier set part of the Bound function in spec
+--  sec 6.1.  When Bound is undefined, this function evaluates to @Nothing@.
+qualsBound :: forall m. (FreshVarI m) => TypeBoundFn m (Set TQual)
+qualsBound qsSet pol =
+  let qss = Set.toList qsSet in
+  let newSet =
+        if null qss
+          then case pol of
+                  Positive -> Set.empty
+                  Negative -> allQuals
+          else
+            let f = case pol of
+                      Positive -> Set.union
+                      Negative -> Set.intersection
+            in foldl1' f qss
+  in
+  return $ Just (newSet, mempty)
+
+-- |A function to canonicalize constraint maps.
+canonicalize :: forall m. (FreshVarI m) => ConstraintMap
+                                        -> m (Maybe ConstraintMap)
+canonicalize theCm =
+  runMaybeT $ foldM canonicalizeFor theCm $ Set.toList $ extractVariables theCm
+  where
+    canonicalizeFor :: ConstraintMap -> AnyTVar -> MaybeT m ConstraintMap
+    canonicalizeFor cm sa = do
+      cm' <- canonicalizeForDir cm sa Positive
+      canonicalizeForDir cm' sa Negative
+    canonicalizeForDir :: ConstraintMap -> AnyTVar -> TPolarity
+                       -> MaybeT m ConstraintMap
+    canonicalizeForDir cm sa pol =
+      -- The following generalizes the creation of K' to reduce duplicate code.
+      let cm' = deleteConcreteBounds sa pol cm in
+      case sa of
+        SomeQVar qa -> do
+          cm1 <- canonicalizedMapFor qa (conB . SomeQVar) typeBound QBType
+          cm2 <- canonicalizedMapFor qa (qualB . SomeQVar) qualsBound QBQualSet
+          return $ mconcat $ [cm', cm1, cm2]
+        SomeUVar a -> do
+          cm1 <- canonicalizedMapFor a (conB . SomeUVar) typeBound UBType
+          return $ mconcat $ [cm', cm1]
+      where
+        -- This routine actually creates the additions to make K'.
+        canonicalizedMapFor :: forall a b.
+                               TVar a
+                            -> (TVar a -> TPolarity -> ConstraintMap -> Set b)
+                            -> TypeBoundFn m b
+                            -> (b -> VarBound a)
+                            -> MaybeT m ConstraintMap
+        canonicalizedMapFor a findBounds boundFn boundCons = MaybeT $ do
+          let bnds = findBounds a pol cm
+          result <- boundFn bnds (flipBound pol)
+          case result of
+            Nothing ->
+              return $ Nothing
+            Just (el, cm') ->
+              return $ Just $ cmSing a pol (boundCons el) `mappend` cm'
+    deleteConcreteBounds :: AnyTVar -> TPolarity -> ConstraintMap
+                         -> ConstraintMap
+    deleteConcreteBounds sa pol (ConstraintMap m1 m2) =
+      case sa of
+        SomeQVar qa -> ConstraintMap m1 (scrub qa isQConc m2)
+        SomeUVar a -> ConstraintMap (scrub a isUConc m1) m2
+      where
+        scrub :: TVar a -> (VarBound a -> Bool)
+              -> Map (TVar a, TPolarity) (Set (VarBound a))
+              -> Map (TVar a, TPolarity) (Set (VarBound a))
+        scrub sa' isConc m =
+          let mbnds = Map.lookup (sa',pol) m in
+          case mbnds of
+            Nothing -> m
+            Just bnds ->
+              Map.insert (sa',pol) (Set.filter isConc bnds) m
+        isQConc :: QVarBound -> Bool
+        isQConc bnd = case bnd of
+                        QBType _ -> True
+                        QBQualSet _ -> True
+                        QBQVar _ -> False
+                        QBUVar _ -> False
+        isUConc :: UVarBound -> Bool
+        isUConc bnd = case bnd of
+                        UBType _ -> True
+                        UBQVar _ -> False
+                        UBUVar _ -> False
+
+-- Some convenient Template Haskell -------------------------------------------
+$(  
+  concat <$> mapM (defineCatInstance [t|Set AnyTVar|] ''ExtractVariables)
+                [ ''ConstraintMap
+                ]
+ )
+ 
+instance Reduce ExtractVariables (Map (QVar, TPolarity)
+            (Set QVarBound)) (Set AnyTVar) where
+  reduce ExtractVariables m = reduce ExtractVariables $ Map.toList m 
+
+instance Reduce ExtractVariables (Map (UVar, TPolarity)
+            (Set UVarBound)) (Set AnyTVar) where
+  reduce ExtractVariables m = reduce ExtractVariables $ Map.toList m 
+
+instance Reduce ExtractVariables QVarBound (Set AnyTVar) where
+  reduce ExtractVariables bnd = case bnd of
+    QBQVar qa -> extractVariables qa
+    QBUVar a -> extractVariables a
+    QBType t -> extractVariables t
+    QBQualSet qs -> extractVariables qs
+
+instance Reduce ExtractVariables UVarBound (Set AnyTVar) where
+  reduce ExtractVariables bnd = case bnd of
+    UBQVar qa -> extractVariables qa
+    UBUVar a -> extractVariables a
+    UBType t -> extractVariables t
+  
