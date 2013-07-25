@@ -40,6 +40,8 @@ $(
                 , ''Coproduct
                 , ''TQual
                 , ''ShallowType
+                , ''QuantType
+                , ''AnyTVar
                 ]
  )
  

@@ -8,6 +8,8 @@ module Language.K3.TypeSystem.Data
 , QVar
 , UVar
 , AnyTVar(..)
+, onlyUVar
+, onlyQVar
 , someVar
 , TQual(..)
 , allQuals
@@ -86,6 +88,9 @@ data TVarOrigin (a :: TVarQualification)
       --  variables.  The polarity describes the bounding direction: positive
       --  if this variable will be a lower bound, negative if it will be an
       --  upper bound.
+  | TVarAlphaRenaming (TVar a)
+      -- ^Type variable was created to provide an alpha renaming of another
+      --  variable in order to ensure that the variables were distinct.
   deriving (Eq, Ord, Show)
 
 -- |A type alias for qualified type variables.
@@ -98,6 +103,17 @@ data AnyTVar
   = SomeQVar QVar
   | SomeUVar UVar
   deriving (Eq, Ord, Show)
+
+-- |A function to match only qualified type variables.
+onlyQVar :: AnyTVar -> Maybe QVar
+onlyQVar sa = case sa of
+  SomeQVar qa -> Just qa
+  SomeUVar _ -> Nothing
+-- |A function to match only unqualified type variables.
+onlyUVar :: AnyTVar -> Maybe UVar
+onlyUVar sa = case sa of
+  SomeQVar _ -> Nothing
+  SomeUVar a -> Just a
 
 someVar :: TVar a -> AnyTVar
 someVar a = case a of
@@ -263,7 +279,7 @@ csUnion (ConstraintSet a) (ConstraintSet b) = ConstraintSet $ a `Set.union` b
 csUnions :: [ConstraintSet] -> ConstraintSet
 csUnions css = ConstraintSet $ Set.unions $ map (\(ConstraintSet s) -> s) css
 
-{-
+{-|
   Queries against the constraint set are managed via the ConstraintSetQuery
   data type.  This data type allows queries to be expressed in such a way that
   an efficient implementation of ConstraintSet can use a uniform policy for
@@ -296,9 +312,23 @@ data ConstraintSetQuery r where
     QVar -> ConstraintSetQuery TypeOrVar
   QueryTQualSetByQVarUpperBound ::
     QVar -> ConstraintSetQuery (Set TQual)
+  -- |Finds *all* constraints concretely bounding the given variable.  This only
+  --  includes immediate bounds; it does not include e.g. binary operation
+  --  constraints.
+  QueryConcreteBoundingConstraintsByUVar ::
+    UVar -> ConstraintSetQuery Constraint
+  -- |Finds *all* constraints concretely bounding the given variable.  This only
+  --  includes immediate bounds; it does not include e.g. binary operation
+  --  constraints.
+  QueryConcreteBoundingConstraintsByQVar ::
+    QVar -> ConstraintSetQuery Constraint
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
+-- |Performs a query against a constraint set.  The results are returned as a
+--  list in no particular order.
+-- TODO: should this be a set of results?  it'd cost more to construct but it
+--       would expediate containment checks; consider use cases
 csQuery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
 csQuery (ConstraintSet csSet) query =
   let cs = Set.toList csSet in
@@ -349,6 +379,38 @@ csQuery (ConstraintSet csSet) query =
       QualifiedIntermediateConstraint (CLeft qs) (CRight qa') <- cs
       guard $ qa == qa'
       return qs
+    QueryConcreteBoundingConstraintsByUVar a ->
+      (do
+        c@(IntermediateConstraint (CLeft _) (CRight a')) <- cs
+        guard $ a == a'
+        return c
+      ) ++
+      (do
+        c@(IntermediateConstraint (CRight a') (CLeft _)) <- cs
+        guard $ a == a'
+        return c
+      )
+    QueryConcreteBoundingConstraintsByQVar qa ->
+      (do
+        c@(QualifiedLowerConstraint (CLeft _) qa') <- cs
+        guard $ qa == qa'
+        return c
+      ) ++
+      (do
+        c@(QualifiedUpperConstraint qa' (CLeft _)) <- cs
+        guard $ qa == qa'
+        return c
+      ) ++
+      (do
+        c@(QualifiedIntermediateConstraint (CLeft _) (CRight qa')) <- cs
+        guard $ qa == qa'
+        return c
+      ) ++
+      (do
+        c@(QualifiedIntermediateConstraint (CLeft _) (CRight qa')) <- cs
+        guard $ qa == qa'
+        return c
+      )
 
 -- ** Convenience routines
 

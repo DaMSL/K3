@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types #-}
+{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections #-}
 
 {-|
   This module represents the implementation of K3 spec sec. 6: the subtyping of
@@ -20,16 +20,67 @@ module Language.K3.TypeSystem.Subtyping
 ( isSubtypeOf
 ) where
 
+import Control.Applicative
 import Control.Monad
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Maybe
 import Data.Monoid
+import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Closure
+import Language.K3.TypeSystem.Consistency
+import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Subtyping.ConstraintMap
 
-isSubtypeOf :: QuantType -> QuantType -> Bool
-isSubtypeOf = undefined -- TODO
+isSubtypeOf :: forall m. (FreshVarI m) => QuantType -> QuantType -> m Bool
+isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
+  -- First, ensure that the type variable sets are disjoint.  If this is not
+  -- the case, then perform alpha-renaming as necessary.
+  let overlap = sas' `Set.intersection` sas'' in
+  if not $ Set.null overlap
+    then do
+      -- We're going to recurse on a quantified type which does not overlap in
+      -- variable names.
+      uvarMap <- freshVarsFor $ mapMaybe onlyUVar $ Set.toList overlap
+      qvarMap <- freshVarsFor $ mapMaybe onlyQVar $ Set.toList overlap
+      isSubtypeOf qt1 $ replaceVariables qvarMap uvarMap qt2
+    else do
+      let cs = cs' `csUnion` cs'' `csUnion` csSing (constraint qa' qa'')
+      let cs''' = calculateClosure cs
+      let k' = kernel cs'
+      mk'' <- canonicalize $ kernel cs''
+      case mk'' of
+        Nothing -> return False
+        Just k'' ->
+          {- TODO: there's an overall bug here.  Primitive subtyping should not
+             consider type variables in the same way when working with a
+             *canonical* constraint map.  This is a problem with the
+             specification; it should be fixed and then this code should be
+             updated. -}
+          return $ consistent cs'''
+                && proveAll k' sas' cs''' Negative
+                && proveAll k'' sas'' cs''' Positive
+  where
+    freshVarsFor :: [TVar a] -> m (Map (TVar a) (TVar a))
+    freshVarsFor vars =
+      Map.fromList <$> mapM (\x -> (x,) <$> freshVar (TVarAlphaRenaming x)) vars
+    proveAll :: ConstraintMap -> Set AnyTVar -> ConstraintSet -> TPolarity
+             -> Bool
+    proveAll cm sas cs pol = all (primitiveSubtype pol cm) constraints
+      where
+        constraints :: [Constraint]
+        constraints = concatMap constraintsFrom (Set.toList sas)
+        constraintsFrom :: AnyTVar -> [Constraint]
+        constraintsFrom sa =
+          case sa of
+            SomeQVar qa ->
+              csQuery cs (QueryConcreteBoundingConstraintsByQVar qa)
+            SomeUVar a ->
+              csQuery cs (QueryConcreteBoundingConstraintsByUVar a)
 
 -- |An implementation of the primitive subtyping relation.  This function
 --  evaluates to @True@ if a proof of primitive subtyping can be found and
@@ -152,11 +203,3 @@ primitiveSubtype pol cm c =
             (QTVar{}, QBUVar a,Negative) -> Just $ constraint tov a
             (QTVar{}, QBQVar qa,Negative) -> Just $ constraint tov qa
             (QTVar{}, QBQualSet _,_) -> Nothing
-
-{-
-  = IntermediateConstraint TypeOrVar TypeOrVar
-  | QualifiedLowerConstraint TypeOrVar QVar
-  | QualifiedUpperConstraint QVar TypeOrVar
-  | QualifiedIntermediateConstraint QualOrVar QualOrVar
-  | BinaryOperatorConstraint UVar BinaryOperator UVar UVar
--}

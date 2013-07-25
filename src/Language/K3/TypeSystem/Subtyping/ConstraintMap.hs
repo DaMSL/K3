@@ -21,9 +21,9 @@ module Language.K3.TypeSystem.Subtyping.ConstraintMap
 , ConstraintMapBoundable(..)
 , kernel
 , isContractive
+, canonicalize
 ) where
 
-import Control.Arrow
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Maybe
@@ -32,7 +32,6 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Traversable as Trav
 import qualified Data.Set as Set
@@ -225,7 +224,10 @@ varB sa pol cm =
     accum s sa' =
       let vars = Set.fromList $ case sa of
                   SomeQVar qa -> mapMaybe (boundToVar . (qa,)) $
-                                    Set.toList $ cmBoundsOf qa pol cm in
+                                    Set.toList $ cmBoundsOf qa pol cm
+                  SomeUVar a -> mapMaybe (boundToVar . (a,)) $
+                                    Set.toList $ cmBoundsOf a pol cm
+      in
       let newVars = sa' `Set.delete` (vars `Set.difference` s) in
       Set.insert sa $ Set.union vars $ Set.unions $ map (accum vars) $
                                                         Set.toList newVars
