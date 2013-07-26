@@ -12,13 +12,19 @@ module Language.K3.TypeSystem.Subtyping.ConstraintMap
 ( ConstraintMap
 , lowerBound
 , upperBound
+, flipBound
 , VarBound(..)
 , UVarBound
 , QVarBound
+, isQConcrete
+, isUConcrete
 , cmSing
 , cmUnion
-, cmBoundsOf
 , ConstraintMapBoundable(..)
+
+, CanonicalConstraintMap
+, IsConstraintMap(..)
+
 , kernel
 , isContractive
 , canonicalize
@@ -42,20 +48,26 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 
+-- * Constraint map data struccture and operations
+
 -- |A data structure representing a constraint map: K in the grammar presented
 --  in spec sec 6.1.  We use positive polarity to represent <= and
---  negative polarity to represent >=.
+--  negative polarity to represent >=.  That is, the constraint map
+--  {a <= int} is represented as a singleton map from @(a,lowerBound)@ to @int@.
 data ConstraintMap
   = ConstraintMap (Map (UVar, TPolarity) (Set UVarBound))
                   (Map (QVar, TPolarity) (Set QVarBound))
   deriving (Eq, Ord, Show)
 
+-- |Represents the lower bound operator <=.
 lowerBound :: TPolarity
 lowerBound = Positive
 
+-- |Represents the upper bound operator >=.
 upperBound :: TPolarity
 upperBound = Negative
 
+-- |Flips a bound operator.
 flipBound :: TPolarity -> TPolarity
 flipBound = mappend Negative
 
@@ -75,6 +87,18 @@ data instance VarBound QualifiedTVar
 type UVarBound = VarBound UnqualifiedTVar
 type QVarBound = VarBound QualifiedTVar
 
+isQConcrete :: QVarBound -> Bool
+isQConcrete bnd = case bnd of
+                QBType _ -> True
+                QBQualSet _ -> True
+                QBQVar _ -> False
+                QBUVar _ -> False
+isUConcrete :: UVarBound -> Bool
+isUConcrete bnd = case bnd of
+                UBType _ -> True
+                UBQVar _ -> False
+                UBUVar _ -> False
+
 cmGetMapFor :: TVar a -> ConstraintMap
             -> Map (TVar a, TPolarity) (Set (VarBound a))
 cmGetMapFor sa (ConstraintMap um qm) =
@@ -93,10 +117,6 @@ cmSing sa pol bnd =
 cmUnion :: ConstraintMap -> ConstraintMap -> ConstraintMap
 cmUnion = mappend
 
-cmBoundsOf :: TVar a -> TPolarity -> ConstraintMap -> Set (VarBound a)
-cmBoundsOf sa pol cm = fromMaybe Set.empty $ Map.lookup (sa,pol) $
-                        cmGetMapFor sa cm
-                        
 class ConstraintMapBoundable a b where
   cmBound :: a -> VarBound b
 instance ConstraintMapBoundable ShallowType UnqualifiedTVar where
@@ -121,6 +141,39 @@ instance Monoid ConstraintMap where
     where
       f :: (Ord k, Ord a) => Map k (Set a) -> Map k (Set a) -> Map k (Set a)
       f = Map.unionWith Set.union
+
+-- * Canonical constraint map structure and operations
+
+-- |A data structure representing a canonical constraint map.  Canonical
+--  constraint maps admit fewer operations but guarantee that each type variable
+--  has exactly one concrete bound of each form (type or qualifier set).
+newtype CanonicalConstraintMap = CanonicalConstraintMap ConstraintMap
+
+-- * Operations which work on both canonical and regular constraint maps.
+
+class IsConstraintMap m where
+  cmBoundsOf :: TVar a -> TPolarity -> m -> Set (VarBound a)
+  cmAddVarBound :: AnyTVar -> TPolarity -> AnyTVar -> m -> m
+
+instance IsConstraintMap ConstraintMap where
+  cmBoundsOf sa pol cm = fromMaybe Set.empty $ Map.lookup (sa,pol) $
+                            cmGetMapFor sa cm
+  cmAddVarBound sa pol sa' cm =
+    let cm' = 
+          case (sa,sa') of
+            (SomeQVar qa, SomeQVar qa') -> cmSing qa pol $ QBQVar qa'
+            (SomeQVar qa, SomeUVar a') -> cmSing qa pol $ QBUVar a'
+            (SomeUVar a, SomeQVar qa') -> cmSing a pol $ UBQVar qa'
+            (SomeUVar a, SomeUVar a') -> cmSing a pol $ UBUVar a'
+    in
+    cm `mappend` cm'
+                        
+instance IsConstraintMap CanonicalConstraintMap where
+  cmBoundsOf sa pol (CanonicalConstraintMap cm) = cmBoundsOf sa pol cm
+  cmAddVarBound sa pol sa' (CanonicalConstraintMap cm) =
+    CanonicalConstraintMap $ cmAddVarBound sa pol sa' cm
+
+-- * Constraint map operations
 
 -- |A routine for computing the kernel of a constraint set.  This routine is
 --  only valid if the provided constraint set has already been closed.
@@ -373,9 +426,10 @@ qualsBound qsSet pol =
 
 -- |A function to canonicalize constraint maps.
 canonicalize :: forall m. (FreshVarI m) => ConstraintMap
-                                        -> m (Maybe ConstraintMap)
+                                        -> m (Maybe CanonicalConstraintMap)
 canonicalize theCm =
-  runMaybeT $ foldM canonicalizeFor theCm $ Set.toList $ extractVariables theCm
+  runMaybeT $ CanonicalConstraintMap <$>
+    (foldM canonicalizeFor theCm $ Set.toList $ extractVariables theCm)
   where
     canonicalizeFor :: ConstraintMap -> AnyTVar -> MaybeT m ConstraintMap
     canonicalizeFor cm sa = do
@@ -414,8 +468,8 @@ canonicalize theCm =
                          -> ConstraintMap
     deleteConcreteBounds sa pol (ConstraintMap m1 m2) =
       case sa of
-        SomeQVar qa -> ConstraintMap m1 (scrub qa isQConc m2)
-        SomeUVar a -> ConstraintMap (scrub a isUConc m1) m2
+        SomeQVar qa -> ConstraintMap m1 (scrub qa isQConcrete m2)
+        SomeUVar a -> ConstraintMap (scrub a isUConcrete m1) m2
       where
         scrub :: TVar a -> (VarBound a -> Bool)
               -> Map (TVar a, TPolarity) (Set (VarBound a))
@@ -426,17 +480,6 @@ canonicalize theCm =
             Nothing -> m
             Just bnds ->
               Map.insert (sa',pol) (Set.filter isConc bnds) m
-        isQConc :: QVarBound -> Bool
-        isQConc bnd = case bnd of
-                        QBType _ -> True
-                        QBQualSet _ -> True
-                        QBQVar _ -> False
-                        QBUVar _ -> False
-        isUConc :: UVarBound -> Bool
-        isUConc bnd = case bnd of
-                        UBType _ -> True
-                        UBQVar _ -> False
-                        UBUVar _ -> False
 
 -- Some convenient Template Haskell -------------------------------------------
 $(  

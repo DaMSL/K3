@@ -312,23 +312,21 @@ data ConstraintSetQuery r where
     QVar -> ConstraintSetQuery TypeOrVar
   QueryTQualSetByQVarUpperBound ::
     QVar -> ConstraintSetQuery (Set TQual)
-  -- |Finds *all* constraints concretely bounding the given variable.  This only
+  -- |Finds *all* constraints bounding the given variable.  This only
   --  includes immediate bounds; it does not include e.g. binary operation
   --  constraints.
-  QueryConcreteBoundingConstraintsByUVar ::
+  QueryBoundingConstraintsByUVar ::
     UVar -> ConstraintSetQuery Constraint
-  -- |Finds *all* constraints concretely bounding the given variable.  This only
+  -- |Finds *all* constraints bounding the given variable.  This only
   --  includes immediate bounds; it does not include e.g. binary operation
   --  constraints.
-  QueryConcreteBoundingConstraintsByQVar ::
+  QueryBoundingConstraintsByQVar ::
     QVar -> ConstraintSetQuery Constraint
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
 -- |Performs a query against a constraint set.  The results are returned as a
 --  list in no particular order.
--- TODO: should this be a set of results?  it'd cost more to construct but it
---       would expediate containment checks; consider use cases
 csQuery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
 csQuery (ConstraintSet csSet) query =
   let cs = Set.toList csSet in
@@ -379,35 +377,35 @@ csQuery (ConstraintSet csSet) query =
       QualifiedIntermediateConstraint (CLeft qs) (CRight qa') <- cs
       guard $ qa == qa'
       return qs
-    QueryConcreteBoundingConstraintsByUVar a ->
+    QueryBoundingConstraintsByUVar a ->
       (do
-        c@(IntermediateConstraint (CLeft _) (CRight a')) <- cs
+        c@(IntermediateConstraint _ (CRight a')) <- cs
         guard $ a == a'
         return c
       ) ++
       (do
-        c@(IntermediateConstraint (CRight a') (CLeft _)) <- cs
+        c@(IntermediateConstraint (CRight a') _) <- cs
         guard $ a == a'
         return c
       )
-    QueryConcreteBoundingConstraintsByQVar qa ->
+    QueryBoundingConstraintsByQVar qa ->
       (do
-        c@(QualifiedLowerConstraint (CLeft _) qa') <- cs
+        c@(QualifiedLowerConstraint _ qa') <- cs
         guard $ qa == qa'
         return c
       ) ++
       (do
-        c@(QualifiedUpperConstraint qa' (CLeft _)) <- cs
+        c@(QualifiedUpperConstraint qa' _) <- cs
         guard $ qa == qa'
         return c
       ) ++
       (do
-        c@(QualifiedIntermediateConstraint (CLeft _) (CRight qa')) <- cs
+        c@(QualifiedIntermediateConstraint _ (CRight qa')) <- cs
         guard $ qa == qa'
         return c
       ) ++
       (do
-        c@(QualifiedIntermediateConstraint (CLeft _) (CRight qa')) <- cs
+        c@(QualifiedIntermediateConstraint (CRight qa') _) <- cs
         guard $ qa == qa'
         return c
       )
