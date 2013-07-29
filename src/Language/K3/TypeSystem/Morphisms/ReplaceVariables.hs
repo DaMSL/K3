@@ -42,6 +42,9 @@ $(
                 , ''ShallowType
                 , ''QuantType
                 , ''AnyTVar
+                , ''AnnBodyType
+                , ''AnnMemType
+                , ''TPolarity
                 ]
  )
  

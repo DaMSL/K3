@@ -1,0 +1,160 @@
+{-# LANGUAGE TupleSections, ScopedTypeVariables #-}
+{-|
+  This module contains functions for annotation types.
+-}
+module Language.K3.TypeSystem.Annotations
+( instantiateAnnotation
+) where
+
+import Control.Applicative
+import Control.Arrow
+import Control.Monad
+import Control.Monad.Trans.Maybe
+import qualified Data.Map as Map
+import Data.Maybe
+import Data.Monoid
+import qualified Data.Set as Set
+import Data.Set (Set)
+
+import Language.K3.Core.Common
+import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Morphisms.ReplaceVariables
+import Language.K3.TypeSystem.Utils
+
+-- |Instantiates an annotation type.  If bindings appear in the parameters
+--  which are not open type variables in the annotation type, they are ignored.
+--  The resulting annotation type may still have open variables.
+instantiateAnnotation :: TParamEnv -> AnnType -> AnnType
+instantiateAnnotation (TEnv p) (AnnType (TEnv p') b cs) =
+  let substitutions = Map.elems $ Map.intersectionWith (,) p' p in
+  let (b',cs') =
+        replaceVariables Map.empty (Map.fromList substitutions) (b,cs) in
+  AnnType (TEnv (Map.difference p' p)) b' cs'
+
+-- |Defines concatenation of annotation types.
+concatAnnType :: AnnType -> AnnType
+              -> Either AnnotationConcatenationError AnnType
+concatAnnType (AnnType (TEnv p1) b1 cs1) ann2@(AnnType (TEnv p2) _ _) = do
+    let (AnnType (TEnv p2') b2' cs2') = instantiateAnnotation (TEnv p1) ann2
+    unless (Map.null p2') $ Left $
+      IncompatibleTypeParameters (TEnv p1) (TEnv p2)
+    (b3,cs3) <- concatAnnBody b1 b2'
+    return $ AnnType (TEnv p1) b3 $ csUnions [cs1,cs2',cs3]
+    
+-- |Defines concatenation over numerous annotation types.
+concatAnnTypes :: [AnnType] -> Either AnnotationConcatenationError AnnType
+concatAnnTypes = foldM concatAnnType emptyAnnotation
+
+-- |Defines concatenation of annotation body types.
+concatAnnBody :: AnnBodyType -> AnnBodyType
+              -> Either AnnotationConcatenationError
+                  (AnnBodyType, ConstraintSet)
+concatAnnBody (AnnBodyType ms1 ms2 ms3) (AnnBodyType ms1' ms2' ms3') = do
+  (ms1'',cs1) <- concatAnnMembers ms1 ms1'
+  (ms2'',cs2) <- concatAnnMembers ms2 ms2'
+  (ms3'',cs3) <- concatAnnMembers ms3 ms3'
+  return (AnnBodyType ms1'' ms2'' ms3'', csUnions [cs1, cs2, cs3])
+
+-- |Defines concatenation over numerous annotation body types.
+concatAnnBodies :: [AnnBodyType]
+                -> Either AnnotationConcatenationError
+                    (AnnBodyType, ConstraintSet)
+concatAnnBodies bs =
+  foldM f (emptyBody, csEmpty)  $ map (,csEmpty) bs
+  where
+    emptyBody = AnnBodyType [] [] []
+    f (b1,cs1) (b2,cs2) = do
+      (b3,cs3) <- concatAnnBody b1 b2
+      return (b3, csUnions [cs1, cs2, cs3])
+  
+-- |Defines concatenation over (lists of) annotation member types.
+concatAnnMembers :: [AnnMemType] -> [AnnMemType]
+                 -> Either AnnotationConcatenationError
+                      ([AnnMemType], ConstraintSet)
+concatAnnMembers ms1 ms2 = do
+  css <- mapM concatConstr [(m1,m2) | m1 <- ms1, m2 <- ms2]
+  return (ms1 ++ ms2, csUnions css)
+  where
+    concatConstr :: (AnnMemType, AnnMemType)
+                 -> Either AnnotationConcatenationError ConstraintSet
+    concatConstr (AnnMemType i1 p1 qa1, AnnMemType i2 p2 qa2) =
+      case (p1,p2) of
+        _ | i1 /= i2 -> return csEmpty
+        (Negative,Negative) -> return csEmpty
+        (Positive,Negative) -> return $ csSing $ qa1 <: qa2
+        (Negative,Positive) -> return $ csSing $ qa2 <: qa1
+        (Positive,Positive) -> Left $ OverlappingPositiveMember i1
+
+-- |A data type describing the errors which can occur in concatenation.
+data AnnotationConcatenationError
+  = OverlappingPositiveMember Identifier
+      -- ^Produced when two annotation members attempt to define the same
+      --  identifier in a positive context.
+  | IncompatibleTypeParameters TParamEnv TParamEnv
+      -- ^Produced when two annotation types are concatenated and one has a
+      --  different set of open type variables than the other.
+
+-- |Defines depolarization of annotation members.  If depolarization is not
+--  defined (e.g. because multiple annotations positively define the same
+--  identifier), then @Nothing@ is returned.
+depolarize :: [AnnMemType] -> Maybe (ShallowType, ConstraintSet)
+depolarize ms = do
+  let ids = Set.toList $ Set.fromList $ map idOf ms -- dedup the list
+  pairs <- mapM depolarizePart ids
+  let (mt,cs) = (recordOf *** csUnions) $ unzip pairs
+  (,cs) <$> mt
+  where
+    idOf :: AnnMemType -> Identifier
+    idOf (AnnMemType i _ _) = i
+    depolarizePart :: Identifier -> Maybe (ShallowType, ConstraintSet)
+    depolarizePart i =
+      let (posqas,negqas) = mconcat $ map extract ms in
+      case (Set.size posqas, Set.null negqas) of
+        (0,True) -> return (STop, csEmpty)
+        (0,False) -> return ( SRecord $ Map.singleton i $ Set.findMin negqas
+                            , csFromList [ qa1 <: qa2
+                                         | qa1 <- Set.toList negqas
+                                         , qa2 <- Set.toList negqas ])
+        (1,_) ->
+          let posqa = Set.findMin posqas in
+          return ( SRecord $ Map.singleton i posqa
+                 , csFromList [ posqa <: qa
+                              | qa <- Set.toList negqas ])
+        (_,_) -> Nothing
+      where
+        extract :: AnnMemType -> (Set QVar, Set QVar)
+        extract (AnnMemType i' p qa) =
+          case (p) of
+            _ | i /= i' -> (Set.empty,Set.empty)
+            Positive -> (Set.singleton qa,Set.empty)
+            Negative -> (Set.empty,Set.singleton qa)
+
+-- |Defines instantiation of collection types.  If the instantiation is not
+--  defined (e.g. because depolarization fails), then @Nothing@ is returned.
+instantiateCollection :: (FreshVarI m)
+                      => AnnType -> UVar -> m (Maybe (UVar, ConstraintSet))
+instantiateCollection ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs') a_c =
+  runMaybeT $ do
+    -- TODO: consider richer error reporting
+    a_s :: UVar <- freshVar $ TVarCollectionInstantiation ann a_c
+    (a_c', a_f', a_s') <- liftMaybe readParameters
+    (t_s, cs_s) <- liftMaybe $ depolarize $ ms1 ++ ms2
+    (t_f, cs_f) <- liftMaybe $ depolarize ms3
+    let cs'' = csFromList [ t_s <: a_s
+                          , t_f <: a_f'
+                          , a_f' <: t_f
+                          , t_s <: a_s'
+                          , a_s' <: t_s
+                          ]
+    let cs''' = replaceVariables Map.empty (Map.singleton a_c' a_c) cs''
+    return (a_s, cs''')
+  where
+    liftMaybe :: (Monad m) => Maybe a -> MaybeT m a
+    liftMaybe = MaybeT . return
+    readParameters :: Maybe (UVar, UVar, UVar)
+    readParameters = do
+      a_c' <- Map.lookup TEnvIdContent p
+      a_f' <- Map.lookup TEnvIdFinal p
+      a_s' <- Map.lookup TEnvIdSelf p
+      return (a_c', a_f', a_s')

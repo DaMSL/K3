@@ -17,6 +17,7 @@ module Language.K3.TypeSystem.Data
 , AnnType(..)
 , AnnBodyType(..)
 , AnnMemType(..)
+, emptyAnnotation
 , ShallowType(..)
 , TPolarity(..)
 , TEnv(..)
@@ -30,6 +31,7 @@ module Language.K3.TypeSystem.Data
 , BinaryOperator(..)
 , Constraint(..)
 , ConstraintConstructor2(..)
+, (<:)
 , ConstraintSet
 , csEmpty
 , csSing
@@ -45,6 +47,7 @@ module Language.K3.TypeSystem.Data
 import Control.Applicative
 import Control.Monad
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -91,6 +94,7 @@ data TVarOrigin (a :: TVarQualification)
   | TVarAlphaRenaming (TVar a)
       -- ^Type variable was created to provide an alpha renaming of another
       --  variable in order to ensure that the variables were distinct.
+  | TVarCollectionInstantiation AnnType UVar
   deriving (Eq, Ord, Show)
 
 -- |A type alias for qualified type variables.
@@ -156,6 +160,10 @@ data AnnBodyType
 -- |Annotation member types.
 data AnnMemType = AnnMemType Identifier TPolarity QVar
   deriving (Eq, Ord, Show)
+  
+-- |A value defining the empty annotation.
+emptyAnnotation :: AnnType
+emptyAnnotation = AnnType (TEnv Map.empty) (AnnBodyType [] [] []) csEmpty
   
 -- |Shallow types
 data ShallowType
@@ -417,6 +425,11 @@ csQuery (ConstraintSet csSet) query =
 --  constraints have).
 class ConstraintConstructor2 a b where
   constraint :: a -> b -> Constraint
+  
+-- |An infix synonym for @constraint@.
+infix 7 <:
+(<:) :: (ConstraintConstructor2 a b) => a -> b -> Constraint
+(<:) = constraint
 
 {-
   The following Template Haskell creates various instances for the constraint

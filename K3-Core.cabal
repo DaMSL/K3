@@ -66,7 +66,9 @@ library
     ghc-options: -Wall
     other-modules: 
                    Language.K3.TypeSystem.Subtyping,
-                   Language.K3.TypeSystem.Subtyping.ConstraintMap
+                   Language.K3.TypeSystem.Subtyping.ConstraintMap,
+                   Language.K3.TypeSystem.Annotations,
+                   Language.K3.TypeSystem.Utils
 
 test-suite all
     type: exitcode-stdio-1.0
