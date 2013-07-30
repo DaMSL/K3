@@ -64,13 +64,13 @@ data TVarQualification
   | QualifiedTVar
   deriving (Eq, Ord, Read, Show)
 
--- |A data structure representing type variables.
+-- |A data structure representing type variables.  The first argument for each
+--  constructor is an index uniquely identifying the type variable.   The
+--  second is an origin describing why the type variable was created (for
+--  history and tracking purposes).
 data TVar (a :: TVarQualification) where
-  QTVar :: Int -- ^The index for this type variable.  This index is unique
-               --  across a typechecking pass; fresh variables receive a new
-               --  index.
+  QTVar :: Int
         -> TVarOrigin QualifiedTVar
-               -- ^A description of the origin of this type variable.
         -> TVar QualifiedTVar
   UTVar :: Int
         -> TVarOrigin UnqualifiedTVar
@@ -95,9 +95,11 @@ data TVarOrigin (a :: TVarQualification)
       -- ^Type variable was created to provide an alpha renaming of another
       --  variable in order to ensure that the variables were distinct.
   | TVarCollectionInstantiationOrigin AnnType UVar
+      -- ^The type variable was created as part of the instantiation of a
+      --  collection type.
+  | TVarAnnotationToFunctionOrigin AnnType
       -- ^Type variable was created to model an annotation as a function for the
       --  purposes of subtyping.
-  | TVarAnnotationToFunctionOrigin AnnType
   deriving (Eq, Ord, Show)
 
 -- |A type alias for qualified type variables.
@@ -137,27 +139,26 @@ allQuals = Set.fromList [TMut, TImmut]
 
 -- |Quantified types.
 data QuantType
-  = QuantType
-      (Set AnyTVar)
-        -- ^The set of variables over which this type is polymorphic.
-      QVar -- ^The variable describing the type.
-      ConstraintSet -- ^The constraints on the type.
+  = QuantType (Set AnyTVar) QVar ConstraintSet
+      -- ^Constructs a quantified type.  The arguments are the set of variables
+      --  over which the type is polymorphic, the variable describing the type,
+      --  and the set of constraints on that variable
   deriving (Eq, Ord, Show)
 
 -- |Annotation types.
 data AnnType
-  = AnnType
-      TParamEnv -- ^The type parameter environment for the annotation type.
-      AnnBodyType -- ^The body type of the annotation.
-      ConstraintSet -- ^The set of constraints for the annotation.
+  = AnnType TParamEnv AnnBodyType ConstraintSet
+      -- ^Constructs an annotation type.  The arguments are the named parameter
+      --  bindings for the annotation type, the body of the annotation type, and
+      --  the set of constraints which apply to that body.
   deriving (Eq, Ord, Show)
 
 -- |Annotation body types.
 data AnnBodyType
-  = AnnBodyType
-      [AnnMemType] -- ^The set of methods in the annotation.
-      [AnnMemType] -- ^The set of lifted attributes in the annotation.
-      [AnnMemType] -- ^The set of schema attributes in the annotation.
+  = AnnBodyType [AnnMemType] [AnnMemType] [AnnMemType]
+      -- ^Constructs an annotation body type.  The arguments are the members of
+      --  the annotation: in order, they are the methods, lifed attributes, and
+      --  schema attributes.
   deriving (Eq, Ord, Show)
 
 -- |Annotation member types.
@@ -295,6 +296,11 @@ csUnions css = ConstraintSet $ Set.unions $ map (\(ConstraintSet s) -> s) css
   data type.  This data type allows queries to be expressed in such a way that
   an efficient implementation of ConstraintSet can use a uniform policy for
   indexing the answers.
+  
+  The @QueryBoundingConstraintsByQVar@ and @QueryBoundingConstraintsByUVar@
+  query forms find all constraints bounding the given variable.  This only
+  includes immediate bounds; it does not include e.g. binary operation
+  constraints.
 -}
 data ConstraintSetQuery r where
   QueryAllTypesLowerBoundingUVars ::
@@ -323,14 +329,8 @@ data ConstraintSetQuery r where
     QVar -> ConstraintSetQuery TypeOrVar
   QueryTQualSetByQVarUpperBound ::
     QVar -> ConstraintSetQuery (Set TQual)
-  -- |Finds *all* constraints bounding the given variable.  This only
-  --  includes immediate bounds; it does not include e.g. binary operation
-  --  constraints.
   QueryBoundingConstraintsByUVar ::
     UVar -> ConstraintSetQuery Constraint
-  -- |Finds *all* constraints bounding the given variable.  This only
-  --  includes immediate bounds; it does not include e.g. binary operation
-  --  constraints.
   QueryBoundingConstraintsByQVar ::
     QVar -> ConstraintSetQuery Constraint
 
