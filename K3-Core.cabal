@@ -68,7 +68,8 @@ library
                    Language.K3.TypeSystem.Subtyping,
                    Language.K3.TypeSystem.Subtyping.ConstraintMap,
                    Language.K3.TypeSystem.Annotations,
-                   Language.K3.TypeSystem.Utils
+                   Language.K3.TypeSystem.Utils,
+                   Language.K3.TypeSystem.TypeChecking
 
 test-suite all
     type: exitcode-stdio-1.0
@@ -82,6 +83,7 @@ test-suite all
         base,
 
         K3-Core,
+        parsec,
 
         HUnit,
         test-framework,
