@@ -4,6 +4,11 @@
 -}
 module Language.K3.TypeSystem.Annotations
 ( instantiateAnnotation
+, concatAnnTypes
+, concatAnnBodies
+, AnnotationConcatenationError(..)
+, instantiateCollection
+, isAnnotationSubtypeOf
 ) where
 
 import Control.Applicative
@@ -11,7 +16,7 @@ import Control.Arrow
 import Control.Monad
 import Control.Monad.Trans.Maybe
 import qualified Data.Map as Map
-import Data.Maybe
+import Data.Map (Map)
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -20,6 +25,7 @@ import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
+import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.Utils
 
 -- |Instantiates an annotation type.  If bindings appear in the parameters
@@ -125,7 +131,7 @@ depolarize ms = do
       where
         extract :: AnnMemType -> (Set QVar, Set QVar)
         extract (AnnMemType i' p qa) =
-          case (p) of
+          case p of
             _ | i /= i' -> (Set.empty,Set.empty)
             Positive -> (Set.singleton qa,Set.empty)
             Negative -> (Set.empty,Set.singleton qa)
@@ -137,7 +143,7 @@ instantiateCollection :: (FreshVarI m)
 instantiateCollection ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs') a_c =
   runMaybeT $ do
     -- TODO: consider richer error reporting
-    a_s :: UVar <- freshVar $ TVarCollectionInstantiation ann a_c
+    a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
     (a_c', a_f', a_s') <- liftMaybe readParameters
     (t_s, cs_s) <- liftMaybe $ depolarize $ ms1 ++ ms2
     (t_f, cs_f) <- liftMaybe $ depolarize ms3
@@ -147,7 +153,8 @@ instantiateCollection ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs') a_c =
                           , t_s <: a_s'
                           , a_s' <: t_s
                           ]
-    let cs''' = replaceVariables Map.empty (Map.singleton a_c' a_c) cs''
+    let cs''' = replaceVariables Map.empty (Map.singleton a_c' a_c) $
+                  csUnions [cs',cs_s,cs_f,cs'']
     return (a_s, cs''')
   where
     liftMaybe :: (Monad m) => Maybe a -> MaybeT m a
@@ -158,3 +165,44 @@ instantiateCollection ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs') a_c =
       a_f' <- Map.lookup TEnvIdFinal p
       a_s' <- Map.lookup TEnvIdSelf p
       return (a_c', a_f', a_s')
+
+-- |Defines annotation subtyping.
+isAnnotationSubtypeOf :: forall m. (FreshVarI m) => AnnType -> AnnType -> m Bool
+isAnnotationSubtypeOf ann1 ann2 = do
+  fun1 <- annToFun ann1
+  fun2 <- annToFun ann2
+  isSubtypeOf fun1 fun2
+  where
+    annToFun :: AnnType -> m QuantType
+    annToFun ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs) = do
+      let origin = TVarAnnotationToFunctionOrigin ann
+      let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
+                            , recordTypeFromMembers Positive ms )
+      let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2,ms3]
+      let mkFresh n = mapM (const $ freshVar origin) [1::Int .. n]
+      qa :: QVar <- freshVar origin
+      a0 <- freshVar origin
+      a0' <- freshVar origin
+      negVars <- mkFresh $ length negTyps
+      posVars <- mkFresh $ length posTyps
+      let cs' = csUnions [ cs
+                         , csFromList [ SFunction a0 a0' <: qa
+                                      , a0 <: STuple negVars
+                                      , STuple posVars <: a0'
+                                      ]
+                         , csFromList $ zipWith constraint negVars negTyps
+                         , csFromList $ zipWith constraint posTyps posVars
+                         ]
+      let sas = Set.unions [ Set.singleton $ someVar qa
+                           , Set.fromList $ map someVar negVars
+                           , Set.fromList $ map someVar posVars
+                           , Set.fromList $ map someVar $ Map.elems p ]
+      return $ QuantType sas qa cs'
+      where
+        recordTypeFromMembers :: TPolarity -> [AnnMemType] -> ShallowType
+        recordTypeFromMembers pol ms =
+          SRecord $ Map.unions $ map memberToRecordEntry ms
+          where
+            memberToRecordEntry :: AnnMemType -> Map Identifier QVar
+            memberToRecordEntry (AnnMemType i pol' qa) =
+              if pol == pol' then Map.singleton i qa else Map.empty

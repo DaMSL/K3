@@ -62,7 +62,8 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
   where
     freshVarsFor :: [TVar a] -> m (Map (TVar a) (TVar a))
     freshVarsFor vars =
-      Map.fromList <$> mapM (\x -> (x,) <$> freshVar (TVarAlphaRenaming x)) vars
+      Map.fromList <$> mapM (\x -> (x,) <$>
+                          freshVar (TVarAlphaRenamingOrigin x)) vars
     proveAll :: (IsConstraintMap cmType)
              => cmType
              -> Set AnyTVar

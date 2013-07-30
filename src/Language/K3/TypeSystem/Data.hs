@@ -86,15 +86,18 @@ data TVarOrigin (a :: TVarQualification)
   | TVarPolyinstantiationOrigin (TVar a) Span
       -- ^Type variable is the result of polyinstantiation at a given source
       --  location.
-  | TVarBoundGeneralization [TVar a] TPolarity
+  | TVarBoundGeneralizationOrigin [TVar a] TPolarity
       -- ^Type variable was created to generalize a number of existing
       --  variables.  The polarity describes the bounding direction: positive
       --  if this variable will be a lower bound, negative if it will be an
       --  upper bound.
-  | TVarAlphaRenaming (TVar a)
+  | TVarAlphaRenamingOrigin (TVar a)
       -- ^Type variable was created to provide an alpha renaming of another
       --  variable in order to ensure that the variables were distinct.
-  | TVarCollectionInstantiation AnnType UVar
+  | TVarCollectionInstantiationOrigin AnnType UVar
+      -- ^Type variable was created to model an annotation as a function for the
+      --  purposes of subtyping.
+  | TVarAnnotationToFunctionOrigin AnnType
   deriving (Eq, Ord, Show)
 
 -- |A type alias for qualified type variables.
