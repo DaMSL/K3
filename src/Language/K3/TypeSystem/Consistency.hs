@@ -1,5 +1,6 @@
 {-|
-  This module implements the consistency checking routines from spec sec 4.4.
+  This module implements the constraint set consistency checking routines from
+  the specification.
 -}
 module Language.K3.TypeSystem.Consistency
 ( consistent

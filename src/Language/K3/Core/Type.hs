@@ -13,8 +13,8 @@ import Language.K3.Core.Common
 
 -- | Tags in the Type Tree. Every type can be qualified with a mutability
 --   annotation.  This set of tags is a superset of those which can be parsed
---   by the type expression grammar (spec sec 1.2) because it also represents
---   the (unparseable) types inferred by the type system.
+--   by the type expression grammar in the K3 specification because it also
+--   represents the (unparseable) types inferred by the type system.
 data Type
     = TBool
     | TByte

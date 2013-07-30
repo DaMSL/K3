@@ -51,9 +51,10 @@ import Language.K3.TypeSystem.Morphisms.ExtractVariables
 -- * Constraint map data struccture and operations
 
 -- |A data structure representing a constraint map: K in the grammar presented
---  in spec sec 6.1.  We use positive polarity to represent <= and
---  negative polarity to represent >=.  That is, the constraint map
---  {a <= int} is represented as a singleton map from @(a,lowerBound)@ to @int@.
+--  in the Subtyping section of the specification.  We use positive polarity to
+--  represent <= and negative polarity to represent >=.  That is, the
+--  constraint map {a <= int} is represented as a singleton map from
+--  @(a,lowerBound)@ to @int@.
 data ConstraintMap
   = ConstraintMap (Map (UVar, TPolarity) (Set UVarBound))
                   (Map (QVar, TPolarity) (Set QVarBound))
@@ -263,7 +264,7 @@ isContractive (ConstraintMap m1 m2) =
           result || cycleHunt nextVars
 
 -- |A routine which computes the VarB function for a given constraint map as
---  defined in spec sec 6.1.
+--  defined in the Subtyping section of the specification.
 varB :: AnyTVar -> TPolarity -> ConstraintMap -> Set AnyTVar
 varB sa pol cm =
   accum Set.empty sa
@@ -293,7 +294,7 @@ varB sa pol cm =
       _ -> Nothing
 
 -- |A routine which computes the ConB function for a given constraint map as
---  defined in spec sec 6.1.
+--  defined in the Subtyping section of the specification.
 conB :: AnyTVar -> TPolarity -> ConstraintMap -> Set ShallowType
 conB = genConB boundToType
   where
@@ -304,7 +305,7 @@ conB = genConB boundToType
       _ -> Nothing
 
 -- |A routine which computes the ConB function for a given constraint map as
---  defined in spec sec 6.1.
+--  defined in the Subtyping section of the specification.
 qualB :: AnyTVar -> TPolarity -> ConstraintMap -> Set (Set TQual)
 qualB = genConB boundToQualSet
   where
@@ -313,7 +314,8 @@ qualB = genConB boundToQualSet
       (QTVar{}, QBQualSet qs) -> Just qs
       _ -> Nothing
 
--- |A routine which generalizes over ConB and QualB in spec sec 6.1.
+-- |A routine which generalizes over ConB and QualB in the Subtyping section
+--  of the specification.
 genConB :: forall b. (Ord b) => (forall a. (TVar a, VarBound a) -> Maybe b)
         -> AnyTVar -> TPolarity -> ConstraintMap -> Set b
 genConB extract sa pol cm = Set.fromList $ do
@@ -326,12 +328,14 @@ genConB extract sa pol cm = Set.fromList $ do
     conForVar v =
       mapMaybe (extract . (v,)) $ Set.toList $ cmBoundsOf v pol cm
 
--- |A common type structure describing the Bound function in spec sec 6.1.
+-- |A common type structure describing the Bound function in the Subtyping
+--  section of the specification.
 type TypeBoundFn m a = Set a -> TPolarity
                              -> m (Maybe (a, ConstraintMap))
 
--- |A routine to compute the type part of the Bound function in spec sec 6.1.
---  When Bound is undefined, this function evaluates to @Nothing@.
+-- |A routine to compute the type part of the Bound function in the Subtyping
+--  section of the specification.  When Bound is undefined, this function
+--  evaluates to @Nothing@.
 typeBound :: forall m. (FreshVarI m) => TypeBoundFn m ShallowType
 typeBound tsSet pol =
   case Set.toList tsSet of

@@ -1,10 +1,10 @@
 {-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections #-}
 
 {-|
-  This module represents the implementation of K3 spec sec. 6: the subtyping of
-  constrained types.  This implementation is an adaptation of the theory
-  presented in Subtyping Constrained Types by Trifonov and Smith; at the time
-  of this writing, the paper can be found at
+  This module represents the implementation of the Subtyping section of the K3
+  specification.  This implementation is an adaptation of the theory presented
+  in Subtyping Constrained Types by Trifonov and Smith; at the time of
+  this writing, the paper can be found at
   @http://pl.cs.jhu.edu/papers/sas96.pdf@.
   
   This module defines a computable function, @isSubtypeOf@, which will determine
