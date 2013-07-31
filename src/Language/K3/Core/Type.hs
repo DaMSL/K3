@@ -41,5 +41,3 @@ data instance Annotation Type
     | TSpan Span
     | TAnnotation Identifier
   deriving (Eq, Read, Show)
-
--- | TODO: pretty printing of type tree
