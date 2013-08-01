@@ -8,7 +8,7 @@ module Language.K3.Runtime.Engine (
   Engine(..),
   MessageQueues(..),
   Workers(..),
-  
+
   NTransports(..),
   NInTransport(..),
   NOutTransport(..),
@@ -23,6 +23,7 @@ module Language.K3.Runtime.Engine (
   enqueue,
   dequeue,
   send,
+  transport,
 
   simpleQueues,
   simpleTransport,
@@ -31,13 +32,24 @@ module Language.K3.Runtime.Engine (
   putMessageQueues,
   putTransport,
 
-  openFile,
-  closeFile,
-  openSocket,
-  closeSocket,
+  openFileEP,
+  closeEP,
+  openSocketEP,
 
-  readFormattedString,
-  readEndpoint
+  readEP,
+
+  EndPointBuffer(..),
+  EndPointBufferContents(..),
+  EndPointBindings(..),
+  IEndPoints(..),
+
+  appendEBuffer,
+  takeEBContents,
+  emptyEBContents,
+  modifyEBuffer,
+  emptyEBuffer,
+
+  exprWD
 
 ) where
 
@@ -46,7 +58,7 @@ import Control.Exception
 import Control.Monad.IO.Class
 
 import Data.Functor
-import qualified Data.HashMap.Lazy as H 
+import qualified Data.HashMap.Lazy as H
 import Data.List
 
 import qualified System.IO as SIO
@@ -81,7 +93,6 @@ data Workers
 -- TODO
 type ThreadPool  = [Int]
 type ProcessPool = [Int]
-
 
 {- Network transports -}
 
@@ -151,6 +162,10 @@ send :: ITransport a ->  Address -> Identifier -> a -> IO ()
 send (TRSim q) addr n arg = enqueue q addr n arg
 send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as necessary.
 
+transport :: Engine a -> ITransport a
+transport (Simulation _ q _) = TRSim q
+transport (Network _ _ _ (NTransports (_, otr))) = TRNet otr
+
 {- Constructors -}
 
 simpleQueues :: Address -> IO (MessageQueues a)
@@ -163,7 +178,7 @@ simpleEngine :: [Address] -> IO (Engine a)
 simpleEngine [addr] = simpleQueues addr >>= return . (\q -> Simulation [addr] q Uniprocess)
 simpleEngine peers  = newMVar (H.fromList $ map (,[]) peers) >>= return . (\q -> Simulation peers q Uniprocess) . ManyByPeer
 
--- TODO: network engine constructor. This should initialize Endpoints
+-- TODO: network engine constructor. This should initialize EndPoints
 -- for all given address, for incoming trigger invocations.
 -- networkEngine :: [Address] -> IO (Engine a)
 
@@ -179,36 +194,93 @@ putTransport = \case
   (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
   (TRNet otr) -> undefined -- TODO
 
-openFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IO IEndpoint
-openFile _ path fmt tOpt = SIO.openFile path SIO.ReadMode >>= (\h -> return $ File h (read fmt) tOpt)
+-- | Open an external file, with given wire description and file path.
+openFileEP :: WireDesc a -> FilePath -> IO (EEndPoint a)
+openFileEP wd p = SIO.openFile p SIO.ReadMode >>= return . FileEP wd
 
-closeFile :: Identifier -> IEndpoint -> IO ()
-closeFile n (File h _ _) = SIO.hClose h
-closeFile _ _ = undefined
+-- | Open an external socket, with given wire description and address.
+openSocketEP :: WireDesc a -> Address -> IO (EEndPoint a)
+openSocketEP wd (host, port) = do
+    t <- NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO return
+    e <- NT.newEndPoint t >>= either throwIO return
+    return $ SocketEP wd (NEndPoint (t, e))
 
+-- | Close an external.
+closeEP :: (EEndPoint a) -> IO ()
+closeEP (FileEP _ h) = SIO.hClose h
+closeEP (SocketEP _ (NEndPoint (t, e))) = NT.closeEndPoint e >> NT.closeTransport t
 
-openSocket :: Identifier -> Address -> String -> Maybe (K3 Type) -> IO IEndpoint
-openSocket _ (host, port) fmt tOpt =
-  NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO mkEndpoint
-  where mkEndpoint tr = NT.newEndPoint tr >>=
-          either throwTransportError (\e -> return $ Socket (NEndpoint (tr,e)) (read fmt) tOpt)
-        throwTransportError t = throwIO (ErrorCall $ show t)
+-- | Read a single payload from an external.
+readEP :: EEndPoint a -> IO (Maybe a)
+readEP (FileEP wd h) = do
+    done <- SIO.hIsEOF h
+    if done then return Nothing
+        else do
 
-closeSocket :: Identifier -> IEndpoint -> IO ()
-closeSocket n (Socket (NEndpoint (t,e)) _ _) = NT.closeEndPoint e >> NT.closeTransport t
-closeSocket _ _ = undefined
+            -- TODO: Add proper delimiter support, to avoid delimiting by newline.
+            payload <- unpackWith wd <$> SIO.hGetLine h
+            if validateWith wd payload then return (Just payload)
+                else return Nothing
 
+readEEndPoint (SocketEP wd np) = error "Unsupported: readEEndPoint from Socket"
 
--- TODO: validate against expected type if available.
-readFormattedString :: ValueFormat -> Maybe (K3 Type) -> String -> Maybe (K3 Expression)
-readFormattedString fmt tOpt s = case fmt of
-    CSV    -> parseExpressionCSV s
-    Text   -> parseExpression s
-    Binary -> Nothing -- TODO
+-- | EndPoint bindings (i.e. triggers attached to open/close/data)
+type EndPointBindings v = [(Identifier, v)]
 
-readEndpoint :: IEndpoint -> IO (Maybe (K3 Expression))
-readEndpoint (File h fmt tOpt) = SIO.hIsEOF h >>= readNext
-  where readNext done = if done then return Nothing
-                        else SIO.hGetLine h >>= return . readFormattedString fmt tOpt
+-- | Named sources and sinks.
+type IEndPoints a = [(Identifier, (EEndPoint a, EndPointBuffer a, EndPointBindings a))]
 
-readEndpoint _ = undefined
+-- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
+data EndPointBufferContents a
+  = Single   (Maybe a)
+  | Multiple [a]
+
+-- | EndPoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
+data EndPointBuffer a
+  = Exclusive (EndPointBufferContents a)
+  | Shared    (MVar (EndPointBufferContents a))
+
+{- EndPoint buffers -}
+
+wrapEBuffer :: (EndPointBufferContents b -> a) -> EndPointBuffer b -> IO a
+wrapEBuffer f = \case
+  Exclusive c -> return $ f c
+  Shared mvc -> readMVar mvc >>= return . f
+
+modifyEBuffer :: (EndPointBufferContents b -> IO (EndPointBufferContents b, a)) -> EndPointBuffer b -> IO (EndPointBuffer b, a)
+modifyEBuffer f = \case
+  Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
+  Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
+
+emptyEBContents :: EndPointBufferContents a -> Bool
+emptyEBContents (Single x)   = maybe True (\_ -> False) x
+emptyEBContents (Multiple x) = null x
+
+emptyEBuffer :: EndPointBuffer a -> IO Bool
+emptyEBuffer = wrapEBuffer emptyEBContents
+
+readEBContents :: EndPointBufferContents a -> Maybe a
+readEBContents (Single x) = x
+readEBContents (Multiple x) = if null x then Nothing else Just $ head x
+
+readEBuffer :: EndPointBuffer a -> IO (Maybe a)
+readEBuffer = wrapEBuffer readEBContents
+
+appendEBContents :: v -> EndPointBufferContents v -> IO (EndPointBufferContents v, Maybe v)
+appendEBContents v (Single x) = return (Single $ Just v, x)
+appendEBContents v (Multiple x) = return $ (Multiple $ x++[v], Nothing)
+
+appendEBuffer :: v -> EndPointBuffer v -> IO (EndPointBuffer v)
+appendEBuffer v buf = modifyEBuffer (appendEBContents v) buf >>= return . fst
+
+takeEBContents :: EndPointBufferContents v -> IO (EndPointBufferContents v, Maybe v)
+takeEBContents = \case
+  Single x       -> return (Single Nothing, x)
+  Multiple []    -> return (Multiple [], Nothing)
+  Multiple (h:t) -> return (Multiple t, Just h)
+
+takeEBuffer :: EndPointBuffer v -> IO (EndPointBuffer v, Maybe v)
+takeEBuffer = modifyEBuffer $ takeEBContents
+
+exprWD :: WireDesc (K3 Expression)
+exprWD = WireDesc show read (const True)
