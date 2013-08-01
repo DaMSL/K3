@@ -420,7 +420,7 @@ eRecord = EC.record <$> braces idQExprList
 eEmpty :: ExpressionParser
 eEmpty = mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
-        typedEmpty = ((@+) EC.empty) . EType <$> (keyword "empty" *> tRecord)
+        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
 
 eAnnotations :: K3Parser [Annotation Expression]
 eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)

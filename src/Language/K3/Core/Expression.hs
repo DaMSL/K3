@@ -36,7 +36,7 @@ data Constant
     | CReal    Double
     | CString  String
     | CNone
-    | CEmpty
+    | CEmpty   (K3 Type)
   deriving (Eq, Read, Show)
 
 -- | Operators (unary and binary).

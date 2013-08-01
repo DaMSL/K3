@@ -60,8 +60,8 @@ record :: [(Identifier, K3 Expression)] -> K3 Expression
 record vs = Node (ERecord ids :@: []) es where (ids, es) = unzip vs
 
 -- | Create an empty collection.
-empty :: K3 Expression
-empty = Node (EConstant CEmpty :@: []) []
+empty :: K3 Type -> K3 Expression
+empty t = Node (EConstant (CEmpty t) :@: []) []
 
 -- | Create an anonymous function..
 lambda :: Identifier -> K3 Expression -> K3 Expression

@@ -98,7 +98,7 @@ deriveExpression aEnv env expr =
           --       qualifier inside of a None with e.g. the qualifiers of the
           --       tuple that contained it
           return (a, csFromList [SOption qa <: a, qualifiersOfExpr expr <: qa ])
-        CEmpty ->
+        CEmpty _ ->
           error "CEmpty does not match specification!" -- TODO
     EVariable x -> do
       assertExpr0Children expr

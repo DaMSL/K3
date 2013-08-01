@@ -234,7 +234,7 @@ constant (CByte w)   = return $ VByte w
 constant (CReal r)   = return $ VReal r
 constant (CString s) = return $ VString s
 constant CNone       = return $ VOption Nothing
-constant CEmpty      = return $ VCollection []
+constant (CEmpty _)  = return $ VCollection []
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
