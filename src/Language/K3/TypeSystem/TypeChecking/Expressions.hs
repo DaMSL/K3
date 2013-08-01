@@ -188,6 +188,7 @@ deriveExpression aEnv env expr =
                      , csSing $ a1 <: STuple qas )
             {- FIXME: the implementation does not agree with the spec here on
                       the potential arity of BRecord
+               TODO: modify spec to support multiple bindings
             BRecord (i,i') -> do
               qa <- freshTypecheckingVar =<< spanOfExpr expr
               return ( Map.singleton (TEnvIdentifier i') $
