@@ -14,6 +14,7 @@ library
         bytestring,
         containers,
         either,
+        errors,
         mtl,
         network-transport,
         network-transport-tcp,
@@ -31,30 +32,21 @@ library
         Language.K3.Core.Declaration,
         Language.K3.Core.Expression,
         Language.K3.Core.Type,
-
         Language.K3.Core.Constructor.Declaration,
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Type,
-
         Language.K3.Parser,
         Language.K3.Parser.ProgramBuilder,
-
         Language.K3.Pretty,
-
         Language.K3.Interpreter,
-
         Language.K3.Runtime.Dispatch,
         Language.K3.Runtime.Engine,
-
         Language.K3.Transform.Alpha,
-
         Language.K3.TemplateHaskell.Reduce,
         Language.K3.TemplateHaskell.ReduceM,
         Language.K3.TemplateHaskell.Transform,
         Language.K3.TemplateHaskell.TransformM,
         Language.K3.TemplateHaskell.Utils,
-
-        Language.K3.TypeSystem.Closure.BinOp,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Data.Utils,
@@ -69,7 +61,11 @@ library
                    Language.K3.TypeSystem.Subtyping.ConstraintMap,
                    Language.K3.TypeSystem.Annotations,
                    Language.K3.TypeSystem.Utils,
-                   Language.K3.TypeSystem.TypeChecking
+                   Language.K3.TypeSystem.TypeChecking,
+                   Language.K3.TypeSystem.TypeChecking.Expressions,
+                   Language.K3.TypeSystem.TypeChecking.Declarations,
+                   Language.K3.TypeSystem.TypeChecking.Basis,
+                   Language.K3.TypeSystem.TypeChecking.TypeExpressions
 
 test-suite all
     type: exitcode-stdio-1.0

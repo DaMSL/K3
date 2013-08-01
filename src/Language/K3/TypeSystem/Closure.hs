@@ -9,8 +9,8 @@ import Control.Monad
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Closure.BinOp
+import Language.K3.TypeSystem.Data
 
 -- * Closure routine
 

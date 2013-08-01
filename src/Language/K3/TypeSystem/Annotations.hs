@@ -32,21 +32,21 @@ import Language.K3.TypeSystem.Utils
 --  which are not open type variables in the annotation type, they are ignored.
 --  The resulting annotation type may still have open variables.
 instantiateAnnotation :: TParamEnv -> AnnType -> AnnType
-instantiateAnnotation (TEnv p) (AnnType (TEnv p') b cs) =
+instantiateAnnotation p (AnnType p' b cs) =
   let substitutions = Map.elems $ Map.intersectionWith (,) p' p in
   let (b',cs') =
         replaceVariables Map.empty (Map.fromList substitutions) (b,cs) in
-  AnnType (TEnv (Map.difference p' p)) b' cs'
+  AnnType (Map.difference p' p) b' cs'
 
 -- |Defines concatenation of annotation types.
 concatAnnType :: AnnType -> AnnType
               -> Either AnnotationConcatenationError AnnType
-concatAnnType (AnnType (TEnv p1) b1 cs1) ann2@(AnnType (TEnv p2) _ _) = do
-    let (AnnType (TEnv p2') b2' cs2') = instantiateAnnotation (TEnv p1) ann2
+concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
+    let (AnnType p2' b2' cs2') = instantiateAnnotation p1 ann2
     unless (Map.null p2') $ Left $
-      IncompatibleTypeParameters (TEnv p1) (TEnv p2)
+      IncompatibleTypeParameters p1 p2
     (b3,cs3) <- concatAnnBody b1 b2'
-    return $ AnnType (TEnv p1) b3 $ csUnions [cs1,cs2',cs3]
+    return $ AnnType p1 b3 $ csUnions [cs1,cs2',cs3]
     
 -- |Defines concatenation over numerous annotation types.
 concatAnnTypes :: [AnnType] -> Either AnnotationConcatenationError AnnType
@@ -140,7 +140,7 @@ depolarize ms = do
 --  defined (e.g. because depolarization fails), then @Nothing@ is returned.
 instantiateCollection :: (FreshVarI m)
                       => AnnType -> UVar -> m (Maybe (UVar, ConstraintSet))
-instantiateCollection ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs') a_c =
+instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2 ms3) cs') a_c =
   runMaybeT $ do
     -- TODO: consider richer error reporting
     a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
@@ -174,7 +174,7 @@ isAnnotationSubtypeOf ann1 ann2 = do
   isSubtypeOf fun1 fun2
   where
     annToFun :: AnnType -> m QuantType
-    annToFun ann@(AnnType (TEnv p) (AnnBodyType ms1 ms2 ms3) cs) = do
+    annToFun ann@(AnnType p (AnnBodyType ms1 ms2 ms3) cs) = do
       let origin = TVarAnnotationToFunctionOrigin ann
       let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
                             , recordTypeFromMembers Positive ms )

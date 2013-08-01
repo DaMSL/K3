@@ -28,7 +28,7 @@ import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
 -- |Generalizes a type to produce a quantified type.
 generalize :: TNormEnv -> QVar -> ConstraintSet -> QuantType
-generalize (TEnv env) qa cs =
+generalize env qa cs =
   let cs' = calculateClosure cs in
   let reachableQVars = Set.map SomeQVar $ Set.fromList $
                           runReader (runListT $ reachableFromQVar qa) cs' in

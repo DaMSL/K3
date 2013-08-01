@@ -29,6 +29,7 @@ module Language.K3.TypeSystem.Data
 , TypeOrVar
 , QualOrVar
 , BinaryOperator(..)
+, AnyOperator(..)
 , Constraint(..)
 , ConstraintConstructor2(..)
 , (<:)
@@ -167,7 +168,7 @@ data AnnMemType = AnnMemType Identifier TPolarity QVar
   
 -- |A value defining the empty annotation.
 emptyAnnotation :: AnnType
-emptyAnnotation = AnnType (TEnv Map.empty) (AnnBodyType [] [] []) csEmpty
+emptyAnnotation = AnnType Map.empty (AnnBodyType [] [] []) csEmpty
   
 -- |Shallow types
 data ShallowType
@@ -195,8 +196,7 @@ instance Monoid TPolarity where
   mappend x y = if x == y then Positive else Negative
 
 -- |Type environments.
-data TEnv a = TEnv (Map TEnvId a)
-  deriving (Eq, Ord, Read, Show)
+type TEnv a = Map TEnvId a
 
 -- |Type environment identifiers.
 data TEnvId
@@ -250,6 +250,11 @@ data BinaryOperator
   | BinOpSequence
   | BinOpApply
   | BinOpSend
+  deriving (Eq, Ord, Read, Show)
+  
+-- |A data type representing some form of operator.
+data AnyOperator
+  = SomeBinaryOperator BinaryOperator
   deriving (Eq, Ord, Read, Show)
   
 -- * Constraint sets

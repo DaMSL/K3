@@ -10,4 +10,4 @@ import qualified Data.Map as Map
 import Language.K3.TypeSystem.Data
 
 envMerge :: TEnv a -> TEnv a -> TEnv a
-envMerge (TEnv x) (TEnv y) = TEnv $ Map.union y x
+envMerge = flip Map.union
