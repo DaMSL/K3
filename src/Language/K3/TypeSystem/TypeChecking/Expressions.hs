@@ -103,10 +103,7 @@ deriveExpression aEnv env expr =
     EVariable x -> do
       assertExpr0Children expr
       s <- spanOfExpr expr
-      qt <- EitherT $ return $
-              note (Seq.singleton $
-                      UnboundEnvironmentIdentifier (TEnvIdentifier x) s) $
-                Map.lookup (TEnvIdentifier x) env
+      qt <- lookupOrFail $ TEnvIdentifier x
       (qa,cs) <- EitherT $ Right <$> polyinstantiate s qt
       a <- freshTypecheckingVar s
       return (a, csSing (qa <: a) `csUnion` cs)
@@ -162,11 +159,7 @@ deriveExpression aEnv env expr =
     EAssign i -> do
       expr' <- assertExpr1Children expr
       (a,cs) <- deriveUnqualifiedExpression aEnv env expr'
-      (QuantType _ qa _) <-
-        fromMaybe (typecheckError .
-                      UnboundEnvironmentIdentifier (TEnvIdentifier i)
-                        =<< spanOfExpr expr) $
-              return <$> Map.lookup (TEnvIdentifier i) env
+      (QuantType _ qa _) <- lookupOrFail $ TEnvIdentifier i
       return (a,cs `csUnion` csFromList [a <: qa,
                   MonomorphicQualifiedUpperConstraint qa $ Set.singleton TMut])
     ECaseOf i -> do
