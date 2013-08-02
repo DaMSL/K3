@@ -189,15 +189,15 @@ deriveExpression aEnv env expr =
               return ( Map.fromList $ zip (map TEnvIdentifier is) $
                           map (\qa -> QuantType Set.empty qa csEmpty) qas
                      , csSing $ a1 <: STuple qas )
-            {- FIXME: the implementation does not agree with the spec here on
-                      the potential arity of BRecord
-               TODO: modify spec to support multiple bindings
-            BRecord (i,i') -> do
-              qa <- freshTypecheckingVar =<< spanOfExpr expr
-              return ( Map.singleton (TEnvIdentifier i') $
-                          QuantType Set.empty qa csEmpty
-                     , csSing $ a1 <: SRecord (Map.singleton i qa) )
-            -}
+            BRecord ips -> do
+              let (is,i's) = unzip ips
+              qas <- replicateM (length ips) $
+                        freshTypecheckingVar =<< spanOfExpr expr
+              return ( Map.fromList $ zipWith
+                          (\i' qa -> ( TEnvIdentifier i'
+                                     , QuantType Set.empty qa csEmpty ))
+                          i's qas
+                     , csSing $ a1 <: SRecord (Map.fromList $ zip is qas) )
       (env',cs') <- handleBinder
       (a2,cs2) <- deriveUnqualifiedExpression aEnv (envMerge env env') expr2
       return (a2, csUnions [cs1,cs2,cs'])
