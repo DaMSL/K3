@@ -659,17 +659,17 @@ runProgram peers prog = simpleEngine peers >>= flip runEngine prog
 
 {- EndPoint management -}
 
-addEndPoint :: IState -> Identifier -> (EEndPoint (K3 Expression), EndPointBuffer Value, EndPointBindings Value) -> IState
+addEndPoint :: IState -> Identifier -> (EEndPoint Value, EndPointBuffer Value, EndPointBindings Value) -> IState
 addEndPoint (env, ep, tr) n x = (env, (n,x):ep, tr)
 
 bindFileEP :: Identifier -> String -> String -> Maybe (K3 Type) -> IState -> IO IState
 bindFileEP cid path format tOpt ist = do
-    file <- openFileEP exprWD path
+    file <- openFileEP valueWD path
     return $ addEndPoint ist cid (file, (Exclusive $ Single Nothing), [])
 
 bindSocketEP :: Identifier -> Address -> String -> Maybe (K3 Type) -> IState -> IO IState
 bindSocketEP cid addr format tOpt ist = do
-    socket <- openSocketEP exprWD addr
+    socket <- openSocketEP valueWD addr
     mvar <- newMVar (Multiple [])
     return $ addEndPoint ist cid (socket, Shared mvar, [])
 
@@ -680,13 +680,13 @@ releaseEP n (env, ep, tr) = case lookup n ep of
 
 {- EndPoint buffers -}
 
-refreshEBContents :: EEndPoint (K3 Expression) -> EndPointBufferContents Value -> IO (EndPointBufferContents Value, Maybe Value)
-refreshEBContents f c = takeEBContents c >>= refill
+refreshEBContents :: EEndPoint Value -> EndPointBufferContents Value -> IO (EndPointBufferContents Value, Maybe Value)
+refreshEBContents f@(FileEP _ _) c = takeEBContents c >>= refill
   where refill (c, vOpt) | refillPolicy c = rebuild f c >>= return . (, vOpt)
                          | otherwise = return (c, vOpt)
 
-        rebuild ep (Single _) = readEP ep >>= maybe mkESingle (\e -> runExpression e >>= maybe mkESingle mkSingle)
-        rebuild ep (Multiple x) = readEP ep >>= maybe (mkMulti x) (\e -> runExpression e >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y]))
+        rebuild ep (Single _) = readEP ep >>= maybe mkESingle mkSingle
+        rebuild ep (Multiple x) = readEP ep >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y])
 
         refillPolicy = emptyEBContents
 
@@ -697,7 +697,7 @@ refreshEBContents f c = takeEBContents c >>= refill
 
 refreshEBContents (SocketEP _ _) c = takeEBContents c
 
-refreshEBuffer :: EEndPoint (K3 Expression) -> EndPointBuffer Value -> IO (EndPointBuffer Value, Maybe Value)
+refreshEBuffer :: EEndPoint Value -> EndPointBuffer Value -> IO (EndPointBuffer Value, Maybe Value)
 refreshEBuffer ep = modifyEBuffer $ refreshEBContents ep
 
 
@@ -749,3 +749,8 @@ putIResult ((Left err, (env, ep, tr)), ilog) = putStrLn (prettyErrorEnv (err,env
 putIResult ((Right val, (env, ep, tr)), ilog) =
     putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putTransport tr
   where prettyVal = "Value:\n"++show val
+
+valueWD :: WireDesc Value
+valueWD = WireDesc show read (const True)
+
+instance Read Value

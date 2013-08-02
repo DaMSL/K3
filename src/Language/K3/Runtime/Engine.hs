@@ -20,6 +20,8 @@ module Language.K3.Runtime.Engine (
   NEndPoint(..),
   NConnection(..),
 
+  WireDesc(..),
+
   enqueue,
   dequeue,
   send,
