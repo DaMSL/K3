@@ -32,14 +32,14 @@ binOpType op t1 t2 =
     compOp = [BinOpEquals,BinOpLess,BinOpGreater,BinOpLessEq,BinOpGreaterEq]
     promotedType = case (t1,t2) of
       (SInt, SInt) -> Just SInt
-      (SFloat, SInt) -> Just SFloat
-      (SInt, SFloat) -> Just SFloat
-      (SFloat, SFloat) -> Just SFloat
+      (SReal, SInt) -> Just SReal
+      (SInt, SReal) -> Just SReal
+      (SReal, SReal) -> Just SReal
       _ -> Nothing
     comparisonType = case (t1,t2) of
       (SInt, SInt) -> Just SBool
-      (SFloat, SInt) -> Just SBool
-      (SInt, SFloat) -> Just SBool
-      (SFloat, SFloat) -> Just SBool
+      (SReal, SInt) -> Just SBool
+      (SInt, SReal) -> Just SBool
+      (SReal, SReal) -> Just SBool
       (SString, SString) -> Just SBool
       _ -> Nothing

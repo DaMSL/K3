@@ -40,7 +40,7 @@ inconsistent cs = any isInconsistent (csToList cs)
       (STrigger _, STrigger _) -> False
       (SBool,SBool) -> False
       (SInt,SInt) -> False
-      (SFloat,SFloat) -> False
+      (SReal,SReal) -> False
       (SString,SString) -> False
       (SOption _,SOption _) -> False
       (SIndirection _,SIndirection _) -> False

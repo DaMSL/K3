@@ -10,19 +10,11 @@ module Language.K3.TypeSystem.TypeChecking.Expressions
 , deriveUnqualifiedExpression
 ) where
 
-import Control.Arrow
 import Control.Applicative
-import Control.Error.Util
 import Control.Monad
-import Control.Monad.Trans
 import Control.Monad.Trans.Either
-import Data.Either
-import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Monoid
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
@@ -89,7 +81,7 @@ deriveExpression aEnv env expr =
           error "No Byte type defined in the specification!" -- TODO
         CReal _ -> do
           a :: UVar <- freshTypecheckingVar =<< spanOfExpr expr
-          return (a, csSing $ SFloat <: a) -- TODO: naming? (float vs. real)
+          return (a, csSing $ SReal <: a)
         CString _ -> do
           a :: UVar <- freshTypecheckingVar =<< spanOfExpr expr
           return (a, csSing $ SString <: a)

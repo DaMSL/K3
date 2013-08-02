@@ -175,7 +175,7 @@ data ShallowType
   | STrigger UVar
   | SBool
   | SInt
-  | SFloat
+  | SReal
   | SString
   | SOption QVar
   | SIndirection QVar
