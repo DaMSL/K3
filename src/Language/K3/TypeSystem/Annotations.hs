@@ -56,11 +56,10 @@ concatAnnTypes = foldM concatAnnType emptyAnnotation
 concatAnnBody :: AnnBodyType -> AnnBodyType
               -> Either AnnotationConcatenationError
                   (AnnBodyType, ConstraintSet)
-concatAnnBody (AnnBodyType ms1 ms2 ms3) (AnnBodyType ms1' ms2' ms3') = do
+concatAnnBody (AnnBodyType ms1 ms2) (AnnBodyType ms1' ms2') = do
   (ms1'',cs1) <- concatAnnMembers ms1 ms1'
   (ms2'',cs2) <- concatAnnMembers ms2 ms2'
-  (ms3'',cs3) <- concatAnnMembers ms3 ms3'
-  return (AnnBodyType ms1'' ms2'' ms3'', csUnions [cs1, cs2, cs3])
+  return (AnnBodyType ms1'' ms2'', csUnions [cs1, cs2])
 
 -- |Defines concatenation over numerous annotation body types.
 concatAnnBodies :: [AnnBodyType]
@@ -69,7 +68,7 @@ concatAnnBodies :: [AnnBodyType]
 concatAnnBodies bs =
   foldM f (emptyBody, csEmpty)  $ map (,csEmpty) bs
   where
-    emptyBody = AnnBodyType [] [] []
+    emptyBody = AnnBodyType [] []
     f (b1,cs1) (b2,cs2) = do
       (b3,cs3) <- concatAnnBody b1 b2
       return (b3, csUnions [cs1, cs2, cs3])
@@ -140,13 +139,13 @@ depolarize ms = do
 --  defined (e.g. because depolarization fails), then @Nothing@ is returned.
 instantiateCollection :: (FreshVarI m)
                       => AnnType -> UVar -> m (Maybe (UVar, ConstraintSet))
-instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2 ms3) cs') a_c =
+instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
   runMaybeT $ do
     -- TODO: consider richer error reporting
     a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
     (a_c', a_f', a_s') <- liftMaybe readParameters
-    (t_s, cs_s) <- liftMaybe $ depolarize $ ms1 ++ ms2
-    (t_f, cs_f) <- liftMaybe $ depolarize ms3
+    (t_s, cs_s) <- liftMaybe $ depolarize ms1
+    (t_f, cs_f) <- liftMaybe $ depolarize ms2
     let cs'' = csFromList [ t_s <: a_s
                           , t_f <: a_f'
                           , a_f' <: t_f
@@ -174,11 +173,11 @@ isAnnotationSubtypeOf ann1 ann2 = do
   isSubtypeOf fun1 fun2
   where
     annToFun :: AnnType -> m QuantType
-    annToFun ann@(AnnType p (AnnBodyType ms1 ms2 ms3) cs) = do
+    annToFun ann@(AnnType p (AnnBodyType ms1 ms2) cs) = do
       let origin = TVarAnnotationToFunctionOrigin ann
       let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
                             , recordTypeFromMembers Positive ms )
-      let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2,ms3]
+      let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2]
       let mkFresh n = mapM (const $ freshVar origin) [1::Int .. n]
       qa :: QVar <- freshVar origin
       a0 <- freshVar origin

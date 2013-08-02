@@ -156,10 +156,9 @@ data AnnType
 
 -- |Annotation body types.
 data AnnBodyType
-  = AnnBodyType [AnnMemType] [AnnMemType] [AnnMemType]
+  = AnnBodyType [AnnMemType] [AnnMemType]
       -- ^Constructs an annotation body type.  The arguments are the members of
-      --  the annotation: in order, they are the methods, lifed attributes, and
-      --  schema attributes.
+      --  the annotation: lifted attributes first, schema attributes second.
   deriving (Eq, Ord, Show)
 
 -- |Annotation member types.
@@ -168,7 +167,7 @@ data AnnMemType = AnnMemType Identifier TPolarity QVar
   
 -- |A value defining the empty annotation.
 emptyAnnotation :: AnnType
-emptyAnnotation = AnnType Map.empty (AnnBodyType [] [] []) csEmpty
+emptyAnnotation = AnnType Map.empty (AnnBodyType [] []) csEmpty
   
 -- |Shallow types
 data ShallowType
