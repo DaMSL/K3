@@ -104,7 +104,8 @@ deriveExpression aEnv env expr =
       assertExpr0Children expr
       s <- spanOfExpr expr
       qt <- EitherT $ return $
-              note (Seq.singleton $ UnboundIdentifier x s) $
+              note (Seq.singleton $
+                      UnboundEnvironmentIdentifier (TEnvIdentifier x) s) $
                 Map.lookup (TEnvIdentifier x) env
       (qa,cs) <- EitherT $ Right <$> polyinstantiate s qt
       a <- freshTypecheckingVar s
@@ -158,7 +159,16 @@ deriveExpression aEnv env expr =
       let env' = Map.insert (TEnvIdentifier i) qt env
       (a,cs') <- deriveUnqualifiedExpression aEnv env' expr'
       return (a,cs')
-    EAssign _ -> undefined -- TODO: what kind of behavior do we want here?
+    EAssign i -> do
+      expr' <- assertExpr1Children expr
+      (a,cs) <- deriveUnqualifiedExpression aEnv env expr'
+      (QuantType _ qa _) <-
+        fromMaybe (typecheckError .
+                      UnboundEnvironmentIdentifier (TEnvIdentifier i)
+                        =<< spanOfExpr expr) $
+              return <$> Map.lookup (TEnvIdentifier i) env
+      return (a,cs `csUnion` csFromList [a <: qa,
+                  MonomorphicQualifiedUpperConstraint qa $ Set.singleton TMut])
     ECaseOf i -> do
       (expr0,expr1,expr2) <- assertExpr3Children expr
       (a0,cs0) <- deriveUnqualifiedExpression aEnv env expr0

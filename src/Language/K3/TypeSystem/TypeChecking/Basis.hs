@@ -55,7 +55,7 @@ data TypecheckingError
   = InternalError InternalTypecheckingError
       -- ^Represents an internal typechecking error.  These represent bugs in
       --  the K3 software.
-  | UnboundIdentifier Identifier Span
+  | UnboundEnvironmentIdentifier TEnvId Span
       -- ^Indicates that, at the given location, the provided identifier is used
       --  but unbound.
   deriving (Eq, Show)

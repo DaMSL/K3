@@ -106,8 +106,10 @@ generalPrimitiveSubtype :: forall cmType.
 generalPrimitiveSubtype mode visited cm c =
   let pol = polarityOfMode mode in
   case (c,mode) of
-    -- Binary operators aren't subject to primitive subtyping.
+    -- Several forms of constraint aren't subject to primitive subtyping.
     (BinaryOperatorConstraint{},_) -> False
+    (MonomorphicQualifiedUpperConstraint{},_) -> False
+    (PolyinstantiationLineageConstraint{},_) -> False
     -- Reflexivity rule.  We use the documented invariant to avoid checking for
     -- the presence of the variable in each case.
     (IntermediateConstraint (CRight a) (CRight a'),_) | a == a' -> True

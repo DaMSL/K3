@@ -210,7 +210,9 @@ kernel (csToList -> cs) =
         cmSing qa2 upperBound (QBQVar qa1)
       IntermediateConstraint (CLeft _) (CLeft _) -> mempty
       QualifiedIntermediateConstraint (CLeft _) (CLeft _) -> mempty
-      BinaryOperatorConstraint _ _ _ _ -> mempty
+      BinaryOperatorConstraint{} -> mempty
+      MonomorphicQualifiedUpperConstraint{} -> mempty
+      PolyinstantiationLineageConstraint{} -> mempty
 
 -- |A routine to determine whether or not a given constraint map is contractive
 --  for the specified polarity.

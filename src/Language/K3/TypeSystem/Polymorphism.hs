@@ -81,7 +81,10 @@ polyinstantiate
              -> m (QVar, ConstraintSet) -- ^The result of polyinstantiation.
 polyinstantiate inst (QuantType boundSet qa cs) = do
   (qvarMap,uvarMap) <- mconcat <$> mapM freshMap (Set.toList boundSet)
-  return $ replaceVariables qvarMap uvarMap (qa,cs)
+  let (qa',cs') = replaceVariables qvarMap uvarMap (qa,cs)
+  return (qa', cs' `csUnion`
+               csFromList (map (uncurry PolyinstantiationLineageConstraint)
+                              $ Map.toList qvarMap))
   where
     freshMap :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
     freshMap var =

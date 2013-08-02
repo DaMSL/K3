@@ -20,7 +20,7 @@ module Language.K3.TypeSystem.Data
 , emptyAnnotation
 , ShallowType(..)
 , TPolarity(..)
-, TEnv(..)
+, TEnv
 , TEnvId(..)
 , TypeAliasEntry(..)
 , TAliasEnv
@@ -234,6 +234,8 @@ data Constraint
   | BinaryOperatorConstraint UVar BinaryOperator UVar UVar
   -- TODO: unary prefix operator constraint?  it's not in the spec, but the
   --       implementation parses "!"
+  | MonomorphicQualifiedUpperConstraint QVar (Set TQual)
+  | PolyinstantiationLineageConstraint QVar QVar
   deriving (Eq, Ord, Show)
 
 -- |A data type representing binary operators in the type system.
