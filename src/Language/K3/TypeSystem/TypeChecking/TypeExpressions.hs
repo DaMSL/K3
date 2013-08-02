@@ -36,8 +36,7 @@ import Language.K3.TypeSystem.TypeChecking.Basis
 -- |A function to derive the type of a type expression.
 deriveTypeExpression :: forall m. (FreshVarI m)
                      => TAliasEnv -- ^The relevant type alias environment.
-                     -> TNormEnv -- ^The relevant type environment.
                      -> K3 Type
                      -> TypecheckM m (UVar, ConstraintSet)
-deriveTypeExpression aEnv env expr =
+deriveTypeExpression aEnv expr =
   undefined -- TODO

@@ -28,6 +28,7 @@ import qualified Data.Set as Set
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
@@ -37,6 +38,7 @@ import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Basis
+import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.Utils
 
 -- |A function to derive the type of a qualified expression.
@@ -98,8 +100,15 @@ deriveExpression aEnv env expr =
           --       qualifier inside of a None with e.g. the qualifiers of the
           --       tuple that contained it
           return (a, csFromList [SOption qa <: a, qualifiersOfExpr expr <: qa ])
-        CEmpty _ ->
-          error "CEmpty does not match specification!" -- TODO
+        CEmpty recType -> do
+          -- The EAnnotation items on this expression are the annotation
+          -- identifiers.
+          let getAnnIdent ann = case ann of
+                EAnnotation i -> Just i
+                _ -> Nothing
+          let anns = mapMaybe getAnnIdent $ annotations expr
+          let tExpr = foldl (@+) (TC.collection recType) $ map TAnnotation anns
+          deriveTypeExpression aEnv tExpr
     EVariable x -> do
       assertExpr0Children expr
       s <- spanOfExpr expr
