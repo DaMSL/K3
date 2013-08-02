@@ -25,7 +25,8 @@ instance Eq ParseError where
     p == q = errorPos p == errorPos q && errorMessages p == errorMessages q
 
 (<%>) :: K3Parser a -> String -> Either ParseError a
-p <%> s = runParser p () "" s
+p <%> s = runParser p [] "" s
+  -- TODO: provide a correct ParserEnvironment (instead of just [])
 
 -- | Apply a function until the argument stops changing.
 fixMap :: Eq a => (a -> a) -> a -> a
