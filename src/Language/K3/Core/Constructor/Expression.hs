@@ -20,7 +20,8 @@ module Language.K3.Core.Constructor.Expression (
     caseOf,
     bindAs,
     ifThenElse,
-    address
+    address,
+    self
 ) where
 
 import Data.List
@@ -115,3 +116,7 @@ ifThenElse p t e = Node (EIfThenElse :@: []) [p, t, e]
 -- | Create an address expression
 address :: K3 Expression -> K3 Expression -> K3 Expression
 address ip port = Node (EAddress :@: []) [ip, port]
+
+-- | A self expression.
+self :: K3 Expression
+self = Node (ESelf :@: []) []

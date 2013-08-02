@@ -26,6 +26,7 @@ data Expression
     | EBindAs     Binder
     | EIfThenElse 
     | EAddress
+    | ESelf
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.

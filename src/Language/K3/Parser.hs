@@ -115,6 +115,7 @@ k3Keywords = [
     {- Types -}
     "int", "bool", "real", "string",
     "immut", "mut", "witness", "option", "ind" , "collection",
+    "self", "structure", "horizon", "content",
     {- Declarations -}
     "declare", "trigger", "source", "fun",
     {- Expressions -}
@@ -282,7 +283,8 @@ typeQualifier = parseError "type" "qualifier" $
 {- Type terms -}
 tTerm :: TypeParser
 tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
-                           tTupleOrNested, tRecord, tCollection ]
+                           tTupleOrNested, tRecord, tCollection,
+                           tBuiltIn ]
 
 tTermOrFun :: TypeParser
 tTermOrFun = 
@@ -321,6 +323,13 @@ tCollection = mkCollectionType <$> (keyword "collection" *> tRecord)
                                <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
 
+tBuiltIn :: TypeParser
+tBuiltIn = choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
+              [ ("self",TSelf)
+              , ("structure",TStructure)
+              , ("horizon",THorizon)
+              , ("content",TContent) ]
+
 tAnnotations :: K3Parser [Annotation Type]
 tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
   where mkTAnnotation x = TAnnotation x
@@ -353,7 +362,8 @@ eTerm = ESpan <-> mkTerm <$> choice [
     myTrace "ELET" eLet,
     myTrace "ECAS" eCase,
     myTrace "EBND" eBind,
-    myTrace "EADR" eAddress ] <*> optional eSuffix
+    myTrace "EADR" eAddress,
+    myTrace "ESLF" eSelf           ] <*> optional eSuffix
   where eSuffix  = choice [eAddr >>= return . Left, eProject >>= return . Right]
         eAddr    = colon *> nonSeqExpr  
         eProject = dot *> identifier
@@ -519,6 +529,8 @@ eAddress = EC.address <$> ipAddress <* colon <*> port
   where ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
         port = EC.constant . CInt . fromIntegral <$> natural
 
+eSelf :: ExpressionParser
+eSelf = keyword "self" >> return EC.self
 
 {- Identifiers and their list forms -}
 idList      = commaSep identifier

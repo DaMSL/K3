@@ -3,6 +3,7 @@
 -- | Types in K3.
 module Language.K3.Core.Type
 ( Type(..)
+, TypeBuiltIn(..)
 , Annotation(..)
 ) where
 
@@ -31,6 +32,15 @@ data Type
     | TSource
     | TSink
     | TTrigger [Identifier]
+    | TBuiltIn TypeBuiltIn
+  deriving (Eq, Read, Show)
+  
+-- | The built-in type references.
+data TypeBuiltIn
+    = TSelf
+    | TStructure
+    | THorizon
+    | TContent
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.

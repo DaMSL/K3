@@ -15,7 +15,8 @@ module Language.K3.Core.Constructor.Type (
     address,
     source,
     sink,
-    trigger
+    trigger,
+    builtIn
 ) where
 
 import Data.List
@@ -87,3 +88,6 @@ sink o = Node (TSink :@: []) [o]
 
 trigger :: [(Identifier, K3 Type)] -> K3 Type
 trigger idts = Node (TTrigger ids :@: []) ts where (ids, ts) = unzip idts
+
+builtIn :: TypeBuiltIn -> K3 Type
+builtIn bi = Node (TBuiltIn bi :@: []) []
