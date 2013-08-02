@@ -631,7 +631,7 @@ runEngine e prog = (return $ initState prog $ transport e)
 
 
 -- TODO: dispatch bindings
-runNEndPoint :: Identifier -> (MSampleVar (), MSem Int) -> (EEndPoint a, EndPointBuffer Value, EndPointBindings Value) -> IO ()
+runNEndPoint :: Identifier -> (MSampleVar (), MSem Int) -> (EEndPoint Value, EndPointBuffer Value, EndPointBindings Value) -> IO ()
 runNEndPoint n (msgAvail, sem) (SocketEP wd (NEndPoint (tr,ep)), buf, bnds) = do
   event <- NT.receive ep
   case event of
@@ -677,28 +677,6 @@ releaseEP :: String -> IState -> IO IState
 releaseEP n (env, ep, tr) = case lookup n ep of
   Nothing -> return (env, ep, tr)
   Just (e, _, _) -> closeEP e >> return (env, removeAssoc ep n, tr)
-
-{- EndPoint buffers -}
-
-refreshEBContents :: EEndPoint Value -> EndPointBufferContents Value -> IO (EndPointBufferContents Value, Maybe Value)
-refreshEBContents f@(FileEP _ _) c = takeEBContents c >>= refill
-  where refill (c, vOpt) | refillPolicy c = rebuild f c >>= return . (, vOpt)
-                         | otherwise = return (c, vOpt)
-
-        rebuild ep (Single _) = readEP ep >>= maybe mkESingle mkSingle
-        rebuild ep (Multiple x) = readEP ep >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y])
-
-        refillPolicy = emptyEBContents
-
-        mkSingle = return . Single . Just
-        mkESingle = return $ Single Nothing
-        mkMulti x = return $ Multiple x
-
-
-refreshEBContents (SocketEP _ _) c = takeEBContents c
-
-refreshEBuffer :: EEndPoint Value -> EndPointBuffer Value -> IO (EndPointBuffer Value, Maybe Value)
-refreshEBuffer ep = modifyEBuffer $ refreshEBContents ep
 
 
 {- EndPoint Notifiers -}

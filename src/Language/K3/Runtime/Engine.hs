@@ -50,6 +50,8 @@ module Language.K3.Runtime.Engine (
   emptyEBContents,
   modifyEBuffer,
   emptyEBuffer,
+  refreshEBuffer,
+  refreshEBContents,
 
   exprWD
 
@@ -277,6 +279,24 @@ takeEBContents = \case
 takeEBuffer :: EndPointBuffer v -> IO (EndPointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
 
+refreshEBContents :: EEndPoint v -> EndPointBufferContents v -> IO (EndPointBufferContents v, Maybe v)
+refreshEBContents f@(FileEP _ _) c = takeEBContents c >>= refill
+  where refill (c, vOpt) | refillPolicy c = rebuild f c >>= return . (, vOpt)
+                         | otherwise = return (c, vOpt)
+
+        rebuild ep (Single _) = readEP ep >>= maybe mkESingle mkSingle
+        rebuild ep (Multiple x) = readEP ep >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y])
+
+        refillPolicy = emptyEBContents
+
+        mkSingle = return . Single . Just
+        mkESingle = return $ Single Nothing
+        mkMulti x = return $ Multiple x
+
+refreshEBContents (SocketEP _ _) c = takeEBContents c
+
+refreshEBuffer :: EEndPoint v -> EndPointBuffer v -> IO (EndPointBuffer v, Maybe v)
+refreshEBuffer ep = modifyEBuffer $ refreshEBContents ep
 
 {- Wire descriptions -}
 
