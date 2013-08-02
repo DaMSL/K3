@@ -216,12 +216,23 @@ deriveExpression aEnv env expr =
       return (a4, csUnions [ cs1, cs2, cs3, csFromList
                               [ a1 <: SBool, a2 <: a4, a3 <: a4 ] ])
     EAddress -> error "No address expression in specification!" -- TODO
+    ESelf -> do
+      assertExpr0Children expr
+      qt@(QuantType sas qa cs) <- lookupOrFail TEnvIdSelf
+      s <- spanOfExpr expr
+      unless (Set.null sas) $
+        typecheckError $ InternalError $ PolymorphicSelfBinding qt s 
+      a <- freshTypecheckingVar s
+      return (a, csSing (qa <: a) `csUnion` cs)
   where
     commonSingleContainer constr = do
       expr' <- assertExpr1Children expr
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingVar =<< spanOfExpr expr
       return (a, cs `csUnion` csSing (constr qa <: a))
+    lookupOrFail envId =
+      fromMaybe (typecheckError . UnboundEnvironmentIdentifier envId
+                    =<< spanOfExpr expr) $ return <$> Map.lookup envId env
 
 -- |Obtains the type qualifiers of a given expression.
 qualifiersOfExpr :: K3 Expression -> Set TQual

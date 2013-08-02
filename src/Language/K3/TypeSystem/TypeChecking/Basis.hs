@@ -72,6 +72,9 @@ data InternalTypecheckingError
   | InvalidExpressionChildCount (K3 Expression)
       -- ^Indicates that type derivation occurred on an expression which had a
       --  number of children inappropriate for its tag.
+  | PolymorphicSelfBinding QuantType Span
+      -- ^Indicates that the special self binding was bound to a polymorphic
+      --  type, which is illegal.
   deriving (Eq, Show)
   
 -- |A type alias for typechecking environments.
