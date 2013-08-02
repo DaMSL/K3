@@ -121,6 +121,23 @@ data WireDesc a = WireDesc { packWith :: a -> String, unpackWith :: String -> a,
 -- | An interpreter transport that is used to implement message passing.
 data ITransport a = TRSim (MessageQueues a) | TRNet NOutTransport
 
+-- | EndPoint bindings (i.e. triggers attached to open/close/data)
+type EndPointBindings v = [(Identifier, v)]
+
+-- | Named sources and sinks.
+type IEndPoints a = [(Identifier, (EEndPoint a, EndPointBuffer a, EndPointBindings a))]
+
+-- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
+data EndPointBufferContents a
+  = Single   (Maybe a)
+  | Multiple [a]
+
+-- | EndPoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
+data EndPointBuffer a
+  = Exclusive (EndPointBufferContents a)
+  | Shared    (MVar (EndPointBufferContents a))
+
+
 -- | Queue accessors
 enqueue :: MessageQueues a -> Address -> Identifier -> a -> IO ()
 enqueue (Peer qmv) addr n arg = modifyMVar_ qmv enqueueIfValid
@@ -166,7 +183,7 @@ transport :: Engine a -> ITransport a
 transport (Simulation _ q _) = TRSim q
 transport (Network _ _ _ (NTransports (_, otr))) = TRNet otr
 
-{- Constructors -}
+{- Engine constructors -}
 
 simpleQueues :: Address -> IO (MessageQueues a)
 simpleQueues addr = newMVar (addr, []) >>= return . Peer
@@ -182,17 +199,8 @@ simpleEngine peers  = newMVar (H.fromList $ map (,[]) peers) >>= return . (\q ->
 -- for all given address, for incoming trigger invocations.
 -- networkEngine :: [Address] -> IO (Engine a)
 
-{- Pretty printing helpers -}
 
-putMessageQueues :: Show a => MessageQueues a -> IO ()
-putMessageQueues (Peer q)           = readMVar q >>= putStrLn . show
-putMessageQueues (ManyByPeer qs)    = readMVar qs >>= putStrLn . show
-putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
-
-putTransport :: Show a => ITransport a -> IO ()
-putTransport = \case
-  (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
-  (TRNet otr) -> undefined -- TODO
+{- Endpoint constructors -}
 
 -- | Open an external file, with given wire description and file path.
 openFileEP :: WireDesc a -> FilePath -> IO (EEndPoint a)
@@ -222,23 +230,8 @@ readEP (FileEP wd h) = do
             if validateWith wd payload then return (Just payload)
                 else return Nothing
 
-readEEndPoint (SocketEP wd np) = error "Unsupported: readEEndPoint from Socket"
+readEP (SocketEP wd np) = error "Unsupported: readEEndPoint from Socket"
 
--- | EndPoint bindings (i.e. triggers attached to open/close/data)
-type EndPointBindings v = [(Identifier, v)]
-
--- | Named sources and sinks.
-type IEndPoints a = [(Identifier, (EEndPoint a, EndPointBuffer a, EndPointBindings a))]
-
--- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
-data EndPointBufferContents a
-  = Single   (Maybe a)
-  | Multiple [a]
-
--- | EndPoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
-data EndPointBuffer a
-  = Exclusive (EndPointBufferContents a)
-  | Shared    (MVar (EndPointBufferContents a))
 
 {- EndPoint buffers -}
 
@@ -282,5 +275,21 @@ takeEBContents = \case
 takeEBuffer :: EndPointBuffer v -> IO (EndPointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
 
+
+{- Wire descriptions -}
+
 exprWD :: WireDesc (K3 Expression)
 exprWD = WireDesc show read (const True)
+
+
+{- Pretty printing helpers -}
+
+putMessageQueues :: Show a => MessageQueues a -> IO ()
+putMessageQueues (Peer q)           = readMVar q >>= putStrLn . show
+putMessageQueues (ManyByPeer qs)    = readMVar qs >>= putStrLn . show
+putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
+
+putTransport :: Show a => ITransport a -> IO ()
+putTransport = \case
+  (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
+  (TRNet otr) -> undefined -- TODO
