@@ -22,20 +22,13 @@ module Language.K3.TypeSystem.TypeChecking.Basis
 , assertExpr8Children
 ) where
 
-import Control.Arrow
 import Control.Applicative
-import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
 import Data.Either
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Maybe
-import Data.Monoid
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Tree
 import Language.Haskell.TH
 
@@ -43,9 +36,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
-import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 
 -- * Types
