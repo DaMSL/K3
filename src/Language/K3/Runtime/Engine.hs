@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | A message processing runtime for the K3 interpreter
 module Language.K3.Runtime.Engine (
@@ -84,17 +85,28 @@ import Language.K3.Parser
 type Address = (String, Int)
 
 
-data Engine a b
+data Engine a
   = Simulation { nodes     :: [Address]
                , queues    :: MessageQueues a
                , workers   :: Workers
-               , endpoints :: EEndpoints a b }
+               , endpoints :: EEndpoints a }
 
   | Network    { nodes      :: [Address]
                , queues     :: MessageQueues a
                , workers    :: Workers
-               , endpoints  :: EEndpoints a b
+               , endpoints  :: EEndpoints a
                , transports :: NTransports }
+
+{- Message processing -}
+
+data LoopStatus res err = Result res | Error err | MessagesDone res
+
+data MessageProcessor prog msg res err =
+     MessageProcessor { initialize :: prog -> Engine msg -> IO res
+                      , process    :: (Address, Identifier, msg) -> res -> IO res
+                      , status     :: res -> Either err res }
+
+{- Engine components -}
 
 data MessageQueues a
   = Peer          (MVar (Address, [(Identifier, a)]))
@@ -150,24 +162,24 @@ data EndpointBuffer a
   = Exclusive (EndpointBufferContents a)
   | Shared    (MVar (EndpointBufferContents a))
 
--- | Endpoint bindings (i.e. triggers attached to open/close/data)
-type EndpointBindings sub = [(Identifier, sub)]
+-- | Endpoint notifications (i.e. triggers attached to open/close/data)
+-- | Currently, notifications can only use a constant (i.e., compile-time value) argument on dispatch
+type EndpointBindings msg = [(EndpointNotification, (Address, Identifier, msg))]
 
-data Endpoint msg sub = Endpoint { handle      :: IOHandle msg
-                                 , buffer      :: EndpointBuffer msg
-                                 , subscribers :: EndpointBindings sub } 
+data Endpoint msg = Endpoint { handle      :: IOHandle msg
+                             , buffer      :: EndpointBuffer msg
+                             , subscribers :: EndpointBindings msg } 
 
-type EEndpoints msg sub = MVar (H.HashMap Identifier (Endpoint msg sub))
+type EEndpoints msg = MVar (H.HashMap Identifier (Endpoint msg))
 
-
-{- Message processing -}
-
-data LoopStatus res err = Result res | Error err | MessagesDone res
-
-data MessageProcessor prog msg sub res err =
-     MessageProcessor { initialize :: prog -> Engine msg sub -> IO res
-                      , process    :: (Address, Identifier, msg) -> res -> IO res
-                      , status     :: res -> Either err res }
+{- Builtin notifications -}
+data EndpointNotification
+    = FileData
+    | FileClose
+    | SocketAccept
+    | SocketData
+    | SocketClose
+  deriving (Eq, Show, Read)
 
 
 -- | Queue accessors
@@ -211,7 +223,7 @@ send :: ETransport a ->  Address -> Identifier -> a -> IO ()
 send (TRSim q) addr n arg = enqueue q addr n arg
 send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as necessary.
 
-transport :: Engine a b -> ETransport a
+transport :: Engine a -> ETransport a
 transport (Simulation _ q _ _) = TRSim q
 transport (Network _ _ _ _ (NTransports (_, otr))) = TRNet otr
 
@@ -220,7 +232,7 @@ transport (Network _ _ _ _ (NTransports (_, otr))) = TRNet otr
 simpleQueues :: Address -> IO (MessageQueues a)
 simpleQueues addr = newMVar (addr, []) >>= return . Peer
 
-simpleEngine :: [Address] -> IO (Engine a b)
+simpleEngine :: [Address] -> IO (Engine a)
 simpleEngine [addr] = do
   q <- simpleQueues addr
   eps <- newMVar (H.fromList [])
@@ -245,37 +257,41 @@ exprWD = WireDesc show read (const True)
 
 {- Message processing -}
 
-processMessage :: MessageProcessor p a b r e -> Engine a b -> r -> IO (LoopStatus r e)
+processMessage :: MessageProcessor p a r e -> Engine a -> r -> IO (LoopStatus r e)
 processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
   where term = return $ MessagesDone prevResult
         proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr
 
-runMessages :: (Show r, Show e) => MessageProcessor p a b r e -> Engine a b -> IO (LoopStatus r e) -> IO ()
+runMessages :: (Show r, Show e) => MessageProcessor p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case 
   Result r       -> runMessages msgPrcsr e $ processMessage msgPrcsr e r
   Error e        -> putStrLn $ "Error:\n" ++ show e
   MessagesDone r -> putStrLn $ "Terminated:\n" ++ show r
 
-runEngine :: (Show r, Show e) => WireDesc a -> MessageProcessor prog a b r e -> Engine a b -> prog -> IO ()
+runEngine :: (Show r, Show e) => WireDesc a -> MessageProcessor prog a r e -> Engine a -> prog -> IO ()
 runEngine peerWd msgPrcsr (Network _ _ _ _ _) prog = undefined
 runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
                                     >>= runNetwork
                                     >>= runMessages msgPrcsr e . return . initStatus
   where
     -- TODO: termination variables?
-    runNetwork res = initNetwork >> (startNEndpoints $ endpoints e) >>= return . (res,)
+    runNetwork res = initNetwork >> (startNEndpoints e) >>= return . (res,)
     initNetwork = case e of
       Simulation _ _ _ _ -> return ()
       Network peers _ _ _ _ -> mapM_ initPeerEndpoint peers
 
-    startNEndpoints eps = initControl eps >>= runNEndpoints eps
+    startNEndpoints engine = initControl (endpoints engine) >>= runNEndpoints engine
+    
     initControl eps = newEmptySV >>= (\v -> numSockets eps >>= MSem.new . (1+) >>= return . (v,))
-    runNEndpoints eps ctrl = withMVar eps (sequence . H.foldlWithKey' (startEndpoint ctrl) []) >>= return . (ctrl,)
+    
+    runNEndpoints engine ctrl =
+      withMVar (endpoints engine)
+        (sequence . H.foldlWithKey' (startEndpoint ctrl $ transport engine) []) >>= return . (ctrl,)
 
-    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing $ endpoints e
+    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing e
 
-    startEndpoint _ acc n (Endpoint {handle = FileH _ _}) = acc ++ [return (n, Nothing)]
-    startEndpoint ctrl acc n e = acc ++ [(forkIO $ runNEndpoint n ctrl e) >>= return . (n,) . Just]
+    startEndpoint _ _ acc n (Endpoint {handle = FileH _ _}) = acc ++ [return (n, Nothing)]
+    startEndpoint ctrl tr acc n e = acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
 
     numSockets eps = withMVar eps (return . H.foldl' incrSocket 0)
     incrSocket acc (Endpoint {handle = SocketH _ _}) = acc-1
@@ -286,26 +302,27 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
 
 {- Network endpoint execution -}
 
--- TODO: dispatch bindings
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
-runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> Endpoint a b -> IO ()
-runNEndpoint n (msgAvail, sem) e@(Endpoint {handle = h@(SocketH wd (NEndpoint (tr, ep)))}) = do
+runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> ETransport a -> Endpoint a -> IO ()
+runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (NEndpoint (_, ep))), subscribers = subs}) = do
   event <- NT.receive ep
   case event of
-    NT.ConnectionOpened cid rel addr                 -> rcr
+    NT.ConnectionOpened cid rel addr                 -> notify SocketAccept >> rcr
     NT.ConnectionClosed cid                          -> rcr
-    NT.Received cid payload                          -> bufferPayload payload >>= (\buf -> writeSV msgAvail () >> rcr' buf)
+    NT.Received cid payload                          -> processMsg payload
     NT.ReceivedMulticast maddr payload               -> rcr                     
     NT.EndPointClosed                                -> MSem.signal sem
     NT.ErrorEvent (NT.TransportError errCode errMsg) -> MSem.signal sem
   where
-    rcr           = runNEndpoint n (msgAvail, sem) e
-    rcr' buf      = runNEndpoint n (msgAvail, sem) $ nep buf
-    nep  buf      = Endpoint {handle = h, buffer = buf, subscribers = subscribers e}
+    rcr           = runNEndpoint n (msgAvail, sem) tr e
+    rcr' buf      = runNEndpoint n (msgAvail, sem) tr $ nep buf
+    nep  buf      = Endpoint {handle = h, buffer = buf, subscribers = subs}
     
-    bufferPayload = foldM (\b msg -> flip appendEBuffer b $ unpackMsg msg) (buffer e)
-    unpackMsg     = unpackWith wd . BS.unpack
+    processMsg msg = bufferMsg msg >>= (\buf -> writeSV msgAvail () >> notify SocketData >> rcr' buf)
+    bufferMsg      = foldM (\b msg -> flip appendEBuffer b $ unpackMsg msg) (buffer e)
+    unpackMsg      = unpackWith wd . BS.unpack
+    notify evt     = notifySubscribers evt subs tr
 
 
 {- IO Handle methods -}
@@ -342,68 +359,93 @@ readHandle (SocketH wd np) = error "Unsupported: read from Socket"
 
 {- Endpoint accessors -}
 
-addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b -> IO ()
+addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings a) -> EEndpoints a -> IO ()
 addEndpoint n (h,b,s) eps = modifyMVar_ eps (return . H.insert n Endpoint {handle=h, buffer=b, subscribers=s})
 
-removeEndpoint :: Identifier -> EEndpoints a b -> IO ()
+removeEndpoint :: Identifier -> EEndpoints a -> IO ()
 removeEndpoint n eps = modifyMVar_ eps $ return . H.delete n
 
-getEndpoint :: Identifier -> EEndpoints a b -> IO (Maybe (Endpoint a b))
+getEndpoint :: Identifier -> EEndpoints a -> IO (Maybe (Endpoint a))
 getEndpoint n eps = withMVar eps (return . H.lookup n)
 
 
 {- High-level endpoint accessors -}
+endpointsAndTransport :: Engine a -> (EEndpoints a, ETransport a)
+endpointsAndTransport engine = (endpoints engine, transport engine)
 
-openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> EEndpoints a b -> IO ()
-openFile cid path wd tOpt eps = do
+openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> Engine a -> IO ()
+openFile cid path wd tOpt engine = do
     file <- openFileHandle path wd
-    addEndpoint cid (file, (Exclusive $ Single Nothing), []) eps
+    addEndpoint cid (file, (Exclusive $ Single Nothing), []) (endpoints engine)
 
-openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> EEndpoints a b -> IO ()
-openSocket cid addr wd tOpt eps = do
+openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> Engine a -> IO ()
+openSocket cid addr wd tOpt engine = do
     socket <- openSocketHandle addr wd
     mvar <- newMVar (Multiple [])
-    addEndpoint cid (socket, Shared mvar, []) eps
+    addEndpoint cid (socket, Shared mvar, []) (endpoints engine)
 
-close :: String -> EEndpoints a b -> IO ()
-close n eps = getEndpoint n eps >>= \case
+close :: String -> Engine a -> IO ()
+close n engine@(endpointsAndTransport -> (eps, tr)) =
+  getEndpoint n eps >>= \case
   Nothing -> return ()
-  Just e -> closeHandle (handle e) >> removeEndpoint n eps
+  Just e  -> closeHandle (handle e) 
+            >> removeEndpoint n eps 
+            >> notifySubscribers (notifyType $ handle e) (subscribers e) tr
+  
+  where notifyType (FileH _ _) = FileClose
+        notifyType (SocketH _ _) = SocketClose
 
-hasNext :: Identifier -> EEndpoints a b -> IO (Maybe Bool)
-hasNext n eps = getEndpoint n eps >>= \case
-  Just e -> emptyEBuffer (buffer e) >>= return . Just . not
+hasNext :: Identifier -> Engine a -> IO (Maybe Bool)
+hasNext n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n (endpoints engine) >>= \case
   Nothing -> return Nothing
+  Just e  -> emptyEBuffer (buffer e) >>= return . Just . not
 
-next :: Identifier -> EEndpoints a b -> IO (Maybe a)
-next n eps = getEndpoint n eps >>= \case
-  Just e -> refresh e
+next :: Identifier -> Engine a -> IO (Maybe a)
+next n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
-  where refresh e = refreshEBuffer (handle e) (buffer e) >>= updateAndYield e
+  Just e  -> refresh e
+  
+  where refresh e = refreshEBuffer (handle e) (subscribers e, tr) (buffer e) >>= updateAndYield e
         updateAndYield e (nBuf, vOpt) = addEndpoint n (nep e nBuf) eps >> return vOpt
         nep e b = (handle e, b, subscribers e)
 
 
 {- Endpoint Notifiers -} 
 
-modifySubscribers :: Identifier -> (EndpointBindings b -> EndpointBindings b) -> EEndpoints a b -> IO Bool
+getNotificationType :: Identifier -> Endpoint a -> EndpointNotification
+getNotificationType n (handle -> FileH _ _) = case n of
+  "data"  -> FileData
+  "close" -> FileClose
+  _ -> error $ "invalid notification type " ++ n
+
+getNotificationType n (handle -> SocketH _ _) = case n of
+  "accept" -> SocketAccept
+  "data"   -> SocketData
+  "close"  -> SocketClose
+  _ -> error $ "invalid notification type " ++ n
+
+notifySubscribers :: EndpointNotification -> EndpointBindings a -> ETransport a -> IO ()
+notifySubscribers nt subs tr = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
+  where notify (addr, tid, msg) = send tr addr tid msg
+
+modifySubscribers :: Identifier -> (Endpoint a -> EndpointBindings a) -> EEndpoints a -> IO Bool
 modifySubscribers eid f eps = getEndpoint eid eps >>= maybe (return False) updateSub
-  where updateSub e = (addEndpoint eid (nep e $ f $ subscribers e) eps) >> return True  
+  where updateSub e = (addEndpoint eid (nep e $ f e) eps) >> return True  
         nep e subs = (handle e, buffer e, subs)
 
-attachNotifier :: Identifier -> Identifier -> b -> EEndpoints a b -> IO Bool
-attachNotifier eid nid sub eps = modifySubscribers eid newSubs eps
-  where newSubs subs = nubBy (\(a,_) (b,_) -> a == b) $ (nid,sub):subs
+attachNotifier :: Identifier -> Identifier -> (Address, Identifier, a) -> EEndpoints a -> IO Bool
+attachNotifier eid nt msg eps = modifySubscribers eid newSubs eps
+  where newSubs e = nubBy (\(a,_) (b,_) -> a == b) $ (getNotificationType nt e, msg):(subscribers e)
 
-attachNotifier_ :: Identifier -> Identifier -> b -> EEndpoints a b -> IO ()
-attachNotifier_ eid nid sub eps = void $ attachNotifier eid nid sub eps 
+attachNotifier_ :: Identifier -> Identifier -> (Address, Identifier, a) -> EEndpoints a -> IO ()
+attachNotifier_ eid nt msg eps = void $ attachNotifier eid nt msg eps 
 
-detachNotifier :: Identifier -> Identifier -> EEndpoints a b -> IO Bool
-detachNotifier eid nid eps = modifySubscribers eid newSubs eps
-  where newSubs subs = filter ((nid /= ) . fst) subs
+detachNotifier :: Identifier -> Identifier -> EEndpoints a -> IO Bool
+detachNotifier eid nt eps = modifySubscribers eid newSubs eps 
+  where newSubs e = filter (((getNotificationType nt e) /= ) . fst) $ subscribers e
 
-detachNotifier_ :: Identifier -> Identifier -> EEndpoints a b -> IO ()
-detachNotifier_ eid nid eps = void $ detachNotifier eid nid eps 
+detachNotifier_ :: Identifier -> Identifier -> EEndpoints a -> IO ()
+detachNotifier_ eid nt eps = void $ detachNotifier eid nt eps 
 
 
 
@@ -449,24 +491,26 @@ takeEBContents = \case
 takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
 
-refreshEBContents :: IOHandle v -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
-refreshEBContents f@(FileH _ _) c = takeEBContents c >>= refill
+refreshEBContents :: IOHandle v -> (EndpointBindings v, ETransport v) -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
+refreshEBContents f@(FileH _ _) (subs,tr) c = takeEBContents c >>= refill
   where refill (c, vOpt) | refillPolicy c = rebuild f c >>= return . (, vOpt)
                          | otherwise = return (c, vOpt)
 
-        rebuild h (Single _)   = readHandle h >>= maybe mkESingle mkSingle
-        rebuild h (Multiple x) = readHandle h >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y])
+        rebuild h (Single _)   = readHandle h >>= maybe mkESingle (\v -> notify >> mkSingle v)
+        rebuild h (Multiple x) = readHandle h >>= maybe (mkMulti x) (\y -> notify >> (mkMulti $ x++[y]))
 
         refillPolicy = emptyEBContents
+
+        notify = notifySubscribers FileData subs tr 
 
         mkSingle  = return . Single . Just
         mkESingle = return $ Single Nothing
         mkMulti x = return $ Multiple x
 
-refreshEBContents (SocketH _ _) c = takeEBContents c
+refreshEBContents (SocketH _ _) _ c = takeEBContents c
 
-refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
-refreshEBuffer h = modifyEBuffer $ refreshEBContents h
+refreshEBuffer :: IOHandle v -> (EndpointBindings v, ETransport v) -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
+refreshEBuffer h notices = modifyEBuffer $ refreshEBContents h notices
 
 
 {- Pretty printing helpers -}
@@ -481,7 +525,7 @@ putTransport = \case
   (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
   (TRNet otr) -> undefined -- TODO
 
-putEngine :: (Show a, Show b) => Engine a b -> IO ()
+putEngine :: (Show a) => Engine a -> IO ()
 putEngine = \case
   e@(Simulation _ q _ _) -> putStrLn (show e) >> putMessageQueues q
   e@(Network _ q _ _ _)  -> putStrLn (show e) >> putMessageQueues q
@@ -490,6 +534,6 @@ putEngine = \case
 {- Instance implementations -}
 
 -- TODO: put workers, endpoints
-instance (Show a, Show b) => Show (Engine a b) where
+instance (Show a) => Show (Engine a) where
   show (Simulation n q _ _) = "Simulation:\n" ++ ("Nodes:\n" ++ show n ++ "\n")
   show (Network n q _ _ _)  = "Network:\n" ++ ("Nodes:\n" ++ show n ++ "\n")

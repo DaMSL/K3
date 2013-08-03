@@ -97,8 +97,8 @@ data InterpretationError
   deriving (Eq, Read, Show)
 
 -- | Type synonym for interpreter engine, endpoints and transport
-type IEngine    = Engine Value Value
-type IEndpoints = EEndpoints Value Value
+type IEngine    = Engine Value
+type IEndpoints = EEndpoints Value
 type ITransport = ETransport Value
 
 -- | Type declaration for an Interpretation's state.
@@ -168,6 +168,9 @@ modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
 modifyE f = modify (\(env, eng) -> (f env, eng))
 
 -- | Accessor methods to compute with engine contents
+withEngine :: (IEngine -> IO a) -> Interpretation a
+withEngine f = get >>= liftIO . f . getEngine
+
 withEndpoints :: (IEndpoints -> IO a) -> Interpretation a
 withEndpoints f = get >>= liftIO . f . getEndpoints
 
@@ -467,7 +470,7 @@ genBuiltin "openFileEP" t =
       return $ VFunction $ \(VString path) ->
           return $ VFunction $ \(VString format) ->
               mkFile cid path format t >> return vunit
-  where mkFile n p f t = withEndpoints $ openFile n p (wireDesc f) $ Just t
+  where mkFile n p f t = withEngine $ openFile n p (wireDesc f) $ Just t
 
 -- openSocketEP :: ChannelId -> Address -> String -> ()
 genBuiltin "openSocketEP" t =
@@ -475,13 +478,12 @@ genBuiltin "openSocketEP" t =
       return $ VFunction $ \(VAddress addr) ->
           return $ VFunction $ \(VString format) ->
               mkSocket cid addr format t >> return vunit
-  where mkSocket n a f t = withEndpoints $ openSocket n a (wireDesc f) $ Just t
+  where mkSocket n a f t = withEngine $ openSocket n a (wireDesc f) $ Just t
 
 -- closeEP :: ChannelId -> ()
 genBuiltin "closeEP" t =
-  return $ VFunction $ \(VString cid) -> withEndpoints (close cid) >> return vunit
+  return $ VFunction $ \(VString cid) -> withEngine (close cid) >> return vunit
 
--- TODO: dispatch notifiers
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
 genBuiltin "registerFileEPDataTrigger" t     = registerNotifier "data"
@@ -495,12 +497,12 @@ genBuiltin "registerSocketEPCloseTrigger" t  = registerNotifier "close"
 genBuiltin (channelMethod -> ("HasNext", Just n)) t =
   return $ VFunction $ \_ -> checkBuffer
   
-  where checkBuffer = withEndpoints (hasNext n) >>= maybe invalid (return . VBool)
+  where checkBuffer = withEngine (hasNext n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Next :: () -> t
 genBuiltin (channelMethod -> ("Next", Just n)) t =
-  return $ VFunction $ \_ -> withEndpoints (next n) >>= throwOnError
+  return $ VFunction $ \_ -> withEngine (next n) >>= throwOnError
 
   where throwOnError (Just v) = return v
         throwOnError Nothing =
@@ -519,10 +521,12 @@ channelMethod x =
 
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
-  return $ VFunction $ \cid -> return $ VFunction $ \trig ->
-    attach n cid trig >> return vunit
+  return $ VFunction $ \cid -> return $ VFunction $ \target ->
+    attach cid n target >> return vunit
   
-  where attach n (VString cid) sub@(VTrigger _) = withEndpoints $ attachNotifier_ n cid sub
+  where attach (VString cid) n (VTuple [VTrigger (trigId, _), VAddress addr]) = 
+          withEndpoints $ attachNotifier_ cid n (addr, trigId, vunit)
+        
         attach _ _ _ = undefined
 
 
@@ -574,7 +578,7 @@ runProgram peers prog = simpleEngine peers >>= (\e -> runEngine valueWD valuePro
 
 {- Message processing -}
 
-valueProcessor :: MessageProcessor (K3 Declaration) Value Value (IResult Value) (IResult Value)
+valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status }
   where status res = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
         
