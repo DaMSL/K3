@@ -19,7 +19,7 @@ module Language.K3.Interpreter (
 
   -- | Interpreters
   runInterpretation,
-  
+
   runExpression,
   runExpression_,
 
@@ -27,28 +27,16 @@ module Language.K3.Interpreter (
 ) where
 
 import Control.Arrow
-import Control.Concurrent
-import Control.Concurrent.MVar
-import Control.Concurrent.MSampleVar
-import qualified Control.Concurrent.MSem as MSem
-import Control.Concurrent.MSem (MSem)
-import Control.Monad.Identity
-import Control.Monad.IO.Class
 import Control.Monad.State
 import Control.Monad.Trans.Either
-import Control.Monad.Reader
 import Control.Monad.Writer
 
-import qualified Data.ByteString.Char8 as BS
 import Data.Function
-import qualified Data.HashMap.Lazy as H 
 import Data.IORef
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
 import Debug.Trace
-
-import qualified Network.Transport as NT
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -91,8 +79,11 @@ instance Show Value where
   show (VIndirection _)        = "VIndirection <opaque>"
   show (VFunction _)           = "VFunction <function>"
   show (VAddress (host, port)) = "VAddress " ++ host ++ ":" ++ show port
-  show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>" 
-  show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>" 
+  show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>"
+  show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
+
+instance Read Value
+
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -100,30 +91,19 @@ type ILog = [String]
 -- | Interpretation Environment.
 type IEnvironment v = [(Identifier, v)]
 
--- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
-data EndpointBufferContents a
-  = Single   (Maybe a)
-  | Multiple [a]
-
--- | Endpoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
-data EndpointBuffer a
-  = Exclusive (EndpointBufferContents a)
-  | Shared    (MVar (EndpointBufferContents a))
-
--- | Endpoint bindings (i.e. triggers attached to open/close/data)
-type EndpointBindings v = [(Identifier, v)]
-
--- | Named sources and sinks.
-type IEndpoints a = [(Identifier, (IEndpoint, EndpointBuffer a, EndpointBindings a))]
-
 -- | Errors encountered during interpretation.
 data InterpretationError
     = RunTimeInterpretationError String
     | RunTimeTypeError String
   deriving (Eq, Read, Show)
 
+-- | Type synonym for interpreter engine, endpoints and transport
+type IEngine    = Engine Value
+type IEndpoints = EEndpoints Value
+type ITransport = ETransport Value
+
 -- | Type declaration for an Interpretation's state.
-type IState = (IEnvironment Value, IEndpoints Value, ITransport Value)
+type IState = (IEnvironment Value, IEngine)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IO))
@@ -137,17 +117,19 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 -- | A type capturing the environment resulting from an interpretation
 type REnvironment = Either EnvOnError (IEnvironment Value)
 
-
 {- State and result accessors -}
 
 getEnv :: IState -> IEnvironment Value
-getEnv (x,_,_) = x
+getEnv (x,_) = x
 
-getEndpoints :: IState -> IEndpoints Value
-getEndpoints (_,x,_) = x
+getEngine :: IState -> IEngine
+getEngine (_,e) = e
 
-getTransport :: IState -> ITransport Value
-getTransport (_,_,x) = x
+getEndpoints :: IState -> IEndpoints
+getEndpoints = endpoints . getEngine
+
+getTransport :: IState -> ITransport
+getTransport = transport . getEngine
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -164,8 +146,8 @@ runInterpretation s = runWriterT . flip runStateT s . runEitherT
 -- | Run an interpretation and extract the resulting environment
 envOfInterpretation :: IState -> Interpretation a -> IO REnvironment
 envOfInterpretation s i = runInterpretation s i >>= \case
-                                  ((Right _, (env,_,_)), _) -> return $ Right env
-                                  ((Left err, (env,_,_)), _) -> return $ Left (err, env)
+                                  ((Right _, (env,_)), _) -> return $ Right env
+                                  ((Left err, (env,_)), _) -> return $ Left (err, env)
 
 -- | Run an interpretation and extract its value.
 valueOfInterpretation :: IState -> Interpretation a -> IO (Maybe a)
@@ -184,15 +166,17 @@ lookupE n = get >>= maybe (err n) return . lookup n . getEnv
 
 -- | Environment modification
 modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
-modifyE f = modify (\(env,ep,tr) -> (f env, ep, tr))
+modifyE f = modify (\(env, eng) -> (f env, eng))
 
--- | State modification
--- TODO: error handling
-modifyStateE :: (IState -> IO (IState, a)) -> Interpretation a
-modifyStateE f = get >>= (\state -> liftIO $ f state) >>= (\(a,b) -> put a >> return b)
+-- | Accessor methods to compute with engine contents
+withEngine :: (IEngine -> IO a) -> Interpretation a
+withEngine f = get >>= liftIO . f . getEngine
 
-modifyStateE_ :: (IState -> IO IState) -> Interpretation ()
-modifyStateE_ f = get >>= (\state -> liftIO $ f state) >>= put
+withEndpoints :: (IEndpoints -> IO a) -> Interpretation a
+withEndpoints f = get >>= liftIO . f . getEndpoints
+
+withTransport :: (ITransport -> IO a) -> Interpretation a
+withTransport f = get >>= liftIO . f . getTransport
 
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
@@ -203,7 +187,7 @@ sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getTransport
 myAddrId :: Identifier
 myAddrId = "me"
 
-defaultAddress :: Address 
+defaultAddress :: Address
 defaultAddress = ("localhost", 10000)
 
 vunit :: Value
@@ -338,7 +322,7 @@ binary OSnd = \target x -> do
   target'  <- expression target
   x'       <- expression x
 
-  case target' of 
+  case target' of
     VTuple [VTrigger (n, _), VAddress addr] -> sendE addr n x' >> return vunit
     _ -> throwE $ RunTimeTypeError "Invalid Trigger Target"
 
@@ -372,8 +356,8 @@ expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= retur
 
 -- | Interpretation of function construction.
 expression (tag &&& children -> (ELambda i, [b])) =
-  return $ VFunction $ \v -> 
-    modifyE ((i,v):) >> expression b 
+  return $ VFunction $ \v ->
+    modifyE ((i,v):) >> expression b
       >>= (\rv -> modifyE (deleteBy (\(i,_) (j,_) -> i == j) (i,v)) >> return rv)
 
 -- | Interpretation of unary/binary operators.
@@ -475,65 +459,55 @@ genBuiltin "parseArgs" t =
 
 -- TODO: error handling on all open/close methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
--- TODO: correct element type (rather than function type sig) for openFile / openSocket
+-- TODO: correct element type (rather than function type sig) for openFileEP / openSocketEP
+
+-- TODO: rename without "EP"
 
 -- type ChannelId = String
 
--- openFile :: ChannelId -> String -> String -> ()
-genBuiltin "openFile" t =
-    return $ VFunction $ \(VString cid) ->
-        return $ VFunction $ \(VString path) ->
-            return $ VFunction $ \(VString format) ->
-                modifyStateE_ (bindFile cid path format $ Just t) >> return vunit
+-- openFileEP :: ChannelId -> String -> String -> ()
+genBuiltin "openFileEP" t =
+  return $ VFunction $ \(VString cid) ->
+      return $ VFunction $ \(VString path) ->
+          return $ VFunction $ \(VString format) ->
+              mkFile cid path format t >> return vunit
+  where mkFile n p f t = withEngine $ openFile n p (wireDesc f) $ Just t
 
--- openSocket :: ChannelId -> Address -> String -> ()
-genBuiltin "openSocket" t = 
-    return $ VFunction $ \(VString cid) ->
-        return $ VFunction $ \(VAddress addr) ->
-            return $ VFunction $ \(VString format) ->
-                modifyStateE_ (bindSocket cid addr format $ Just t) >> return vunit
+-- openSocketEP :: ChannelId -> Address -> String -> ()
+genBuiltin "openSocketEP" t =
+  return $ VFunction $ \(VString cid) ->
+      return $ VFunction $ \(VAddress addr) ->
+          return $ VFunction $ \(VString format) ->
+              mkSocket cid addr format t >> return vunit
+  where mkSocket n a f t = withEngine $ openSocket n a (wireDesc f) $ Just t
 
--- closeFile :: ChannelId -> ()
-genBuiltin "closeFile" t = 
-  return $ VFunction $ \(VString cid) -> modifyStateE_ (releaseFile cid) >> return vunit
+-- closeEP :: ChannelId -> ()
+genBuiltin "closeEP" t =
+  return $ VFunction $ \(VString cid) -> withEngine (close cid) >> return vunit
 
--- closeSocket :: ChannelId -> ()
-genBuiltin "closeSocket" t = 
-  return $ VFunction $ \(VString cid) -> modifyStateE_ (releaseSocket cid) >> return vunit
-
--- TODO: dispatch notifiers
+-- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
-genBuiltin "registerFileDataTrigger" t     = registerNotifier "data"
-genBuiltin "registerFileCloseTrigger" t    = registerNotifier "close"
+genBuiltin "registerFileEPDataTrigger" t     = registerNotifier "data"
+genBuiltin "registerFileEPCloseTrigger" t    = registerNotifier "close"
 
-genBuiltin "registerSocketAcceptTrigger" t = registerNotifier "accept"
-genBuiltin "registerSocketDataTrigger" t   = registerNotifier "data"
-genBuiltin "registerSocketCloseTrigger" t  = registerNotifier "close"
+genBuiltin "registerSocketEPAcceptTrigger" t = registerNotifier "accept"
+genBuiltin "registerSocketEPDataTrigger" t   = registerNotifier "data"
+genBuiltin "registerSocketEPCloseTrigger" t  = registerNotifier "close"
 
 -- <source>HasNext :: () -> Bool
-genBuiltin (channelMethod -> ("HasNext", Just n)) t = return $ VFunction $ \_ -> get >>= checkBuffer n
-  where checkBuffer n state = case lookup n $ getEndpoints state of
-          Just (e, buf, bnd) -> (liftIO . emptyEBuffer) buf >>= return . VBool . not
-          Nothing -> throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
+genBuiltin (channelMethod -> ("HasNext", Just n)) t =
+  return $ VFunction $ \_ -> checkBuffer
+  
+  where checkBuffer = withEngine (hasNext n) >>= maybe invalid (return . VBool)
+        invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Next :: () -> t
 genBuiltin (channelMethod -> ("Next", Just n)) t =
-  return $ VFunction $ \_ -> modifyStateE takeBuffer >>= throwOnError
+  return $ VFunction $ \_ -> withEngine (next n) >>= throwOnError
 
-  where takeBuffer (env, ep, tr) = foldM pop (Nothing, []) ep >>= rebuildState env tr
-        rebuildState env tr (Nothing, nep) = nextError (env, nep, tr)
-        rebuildState env tr (Just v, nep) = return ((env, nep, tr), Right v)
-
-        pop (Nothing, acc) (x, (e, buf, bnd)) =
-          if x /= n then return (Nothing, acc ++ [(x, (e, buf, bnd))])
-          else refreshEBuffer e buf >>= (\(nbuf, vOpt) -> return (vOpt, acc ++ [(x, (e, nbuf, bnd))]))
-
-        pop (Just v, acc) ne = return (Just v, acc ++ [ne])
-  
-        nextError state = return . (state, ) $ Left $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
-        throwOnError (Left x) = throwE x
-        throwOnError (Right x) = return x
-
+  where throwOnError (Just v) = return v
+        throwOnError Nothing =
+          throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
@@ -544,6 +518,17 @@ channelMethod x =
     Just y -> (y, stripSuffix y x)
     Nothing -> (x, Nothing)
   where stripSuffix sfx lst = maybe Nothing (Just . reverse) $ stripPrefix (reverse sfx) (reverse lst)
+
+
+registerNotifier :: Identifier -> Interpretation Value
+registerNotifier n =
+  return $ VFunction $ \cid -> return $ VFunction $ \target ->
+    attach cid n target >> return vunit
+  
+  where attach (VString cid) n (VTuple [VTrigger (trigId, _), VAddress addr]) = 
+          withEndpoints $ attachNotifier_ cid n (addr, trigId, vunit)
+        
+        attach _ _ _ = undefined
 
 
 {- Program initialization methods -}
@@ -558,229 +543,68 @@ initEnvironment = initDecl []
         initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
         initGlobal env _ _ _                   = env
 
-initState :: K3 Declaration -> ITransport Value -> IState
-initState prog tr = (initEnvironment prog, [], tr)
-
-initDeclarations :: K3 Declaration -> IState -> IO (IResult ())
-initDeclarations p s = runInterpretation s $ declaration p
+initState :: K3 Declaration -> IEngine -> IState
+initState prog engine = (initEnvironment prog, engine)
 
 initMessages :: IResult () -> IO (IResult Value)
 initMessages = \case
-    ((Right _, state), ilog) 
+    ((Right _, state), ilog)
       | Just (VFunction f) <- lookup "atInit" $ getEnv state -> runInterpretation state (f vunit)
       | otherwise                                            -> return ((iError "Could not find atInit", state), ilog)
     ((Left err, state), ilog)                                -> return ((Left err, state), ilog)
   where iError = Left . RunTimeInterpretationError
 
-initProgramWithState :: K3 Declaration -> IState -> IO (IResult Value)
-initProgramWithState p s = initDeclarations p s >>= initMessages
+initProgram :: K3 Declaration -> IEngine -> IO (IResult Value)
+initProgram prog engine = (runInterpretation (initState prog engine) $ declaration prog) >>= initMessages
 
 
 {- Standalone (i.e., single peer) evaluation -}
 
-standaloneInterpreter :: (ITransport Value -> IO a) -> IO a
-standaloneInterpreter f = simpleTransport defaultAddress >>= f
+standaloneInterpreter :: (IEngine -> IO a) -> IO a
+standaloneInterpreter f = simpleEngine [defaultAddress] >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
-runExpression e = standaloneInterpreter withTransport
-  where withTransport tr = valueOfInterpretation ([], [], tr) (expression e)
+runExpression e = standaloneInterpreter withEngine
+  where withEngine engine = valueOfInterpretation ([], engine) (expression e)
 
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
 
 runProgramInitializer :: K3 Declaration -> IO ()
-runProgramInitializer p =
-  standaloneInterpreter (return . initState p) >>= initDeclarations p >>= initMessages >>= putIResult
+runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
+
+runProgram :: [Address] -> K3 Declaration -> IO ()
+runProgram peers prog = simpleEngine peers >>= (\e -> runEngine valueWD valueProcessor e prog)
 
 
 {- Message processing -}
 
-processMessage :: Engine Value -> Value -> IState -> ILog -> IO (Either (IResult Value) (IResult Value))
-processMessage e val state ilog =
-  (dequeue . queues) e >>= maybe (return $ terminate $ Right val) dispatch
-  
-  where dispatch (addr, n, val) = maybe (return $ unknownTrigger n) (runTrigger (addr,n,val)) $ lookup n $ getEnv state
+valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
+valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status }
+  where status res = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
         
-        runTrigger (_, _, val) (VTrigger (_, (Just f))) = runInterpretation state (f val) >>= return . Right
-        runTrigger (_, n, _) (VTrigger _)               = return . iError $ "Uninitialized Trigger " ++ n
-        runTrigger (_, n, _) _                          = return . tError $ "Invalid Trigger Value for " ++ n
+        process (addr, n, args) r = 
+          maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
         
-        unknownTrigger n = tError $ "Unknown trigger "++n
-        
-        iError = terminate . Left . RunTimeInterpretationError
-        tError = terminate . Left . RunTimeTypeError
-        terminate x = Left ((x, state), ilog)
+        runTrigger r n a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
+        runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized Trigger " ++ n
+        runTrigger r n a _                      = return . tError r $ "Invalid Trigger Value for " ++ n
+
+        unknownTrigger r n = tError r $ "Unknown trigger " ++ n
+
+        iError r = mkError r . RunTimeInterpretationError
+        tError r = mkError r . RunTimeTypeError
+        mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
 
-runMessages :: Engine Value -> IO (Either (IResult Value) (IResult Value)) -> IO ()
-runMessages e prev = prev >>= \case 
-    Right ((Right val, state), ilog) -> runMessages e $ processMessage e val state ilog
-    Right x -> putIResult x
-    Left x -> putIResult x
+{- Wire descriptions -}
 
+valueWD :: WireDesc Value
+valueWD = WireDesc show read (const True)
 
-runEngine :: Engine Value -> K3 Declaration -> IO ()
-runEngine (Network peers q w t) prog  = undefined
-runEngine e prog = (return $ initState prog $ transport e)
-                      >>= initProgramWithState prog
-                      >>= initNetwork
-                      >>= startNetwork
-                      >>= runMessages e . return . resultAsEither
-  
-  where 
-        initNetwork ((v, st), l) = case e of
-          Simulation _ _ _ -> return ((v, st), l)
-          Network peers _ _ _ -> foldM initPeerEndpoint st peers >>= (\st -> return ((v, st), l))
-
-        initPeerEndpoint state addr = bindSocket ("__node_" ++ show addr) addr "txt" Nothing state
-
-        -- TODO: termination variables?
-        startNetwork res = (startEndpoints $ getEndpoints $ getResultState res) >>= return . (res,)
-        
-        startEndpoints eps = initControl eps >>= (\ctrl -> return (ctrl, mapM (startEndpoint ctrl) eps))
-        
-        initControl eps = newEmptySV >>= (\v -> MSem.new ((numSockets eps)+1) >>= return . (v,))
-
-        startEndpoint _ (n, (File _ _ _, _, _)) = return (n, Nothing)
-        startEndpoint ctrl (n, x) = (forkIO $ runNEndpoint n ctrl x) >>= return . (n,) . Just
-
-        numSockets eps = foldl incrSocket 0 eps
-        incrSocket acc (_, (File _ _ _, _, _)) = acc
-        incrSocket acc (_, (Socket _ _ _, _, _)) = acc-1
-        
-        resultAsEither (res, (ctrl, threads)) = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-
-
--- TODO: dispatch bindings
-runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> (IEndpoint, EndpointBuffer Value, EndpointBindings Value) -> IO ()
-runNEndpoint n (msgAvail, sem) (Socket (NEndpoint (tr,ep)) fmt tOpt, buf, bnds) = do
-  event <- NT.receive ep
-  case event of 
-    NT.ConnectionOpened cid rel addr                 -> rcr buf
-    NT.ConnectionClosed cid                          -> rcr buf
-    NT.Received cid payload                          -> bufferPayload payload >>= (\buf -> writeSV msgAvail () >> rcr buf)
-    NT.ReceivedMulticast maddr payload               -> rcr buf                 -- TODO: should we ignore mcasts?
-    NT.EndPointClosed                                -> MSem.signal sem
-    NT.ErrorEvent (NT.TransportError errCode errMsg) -> MSem.signal sem         -- TODO: log error
-
-  where rcr buf       = runNEndpoint n (msgAvail, sem) (Socket (NEndpoint (tr,ep)) fmt tOpt, buf, bnds)
-        bufferPayload = foldM (\accbuf msg -> evalMsg msg >>= appendMsg accbuf) buf
-        readMsg       = readFormattedString fmt tOpt . BS.unpack
-        evalMsg       = maybe (return Nothing) runExpression . readMsg
-        appendMsg buf = maybe (return buf) (flip appendEBuffer buf)
-
-
-runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simpleEngine peers >>= flip runEngine prog
-
-
-
-{- Endpoint management -}
-
-addEndpoint :: IState -> Identifier -> (IEndpoint, EndpointBuffer Value, EndpointBindings Value) -> IState
-addEndpoint (env, ep, tr) n x = (env, (n,x):ep, tr)
-
-bindFile :: Identifier -> String -> String -> Maybe (K3 Type) -> IState -> IO IState
-bindFile cid path format tOpt ist = do
-    file <- openFile cid path format tOpt
-    return $ addEndpoint ist cid (file, (Exclusive $ Single Nothing), [])
-
-bindSocket :: Identifier -> Address -> String -> Maybe (K3 Type) -> IState -> IO IState
-bindSocket cid addr format tOpt ist = do
-    socket <- openSocket cid addr format tOpt
-    mvar <- newMVar (Multiple [])
-    return $ addEndpoint ist cid (socket, Shared mvar, [])
-
-releaseEndpoint :: (Identifier -> IEndpoint -> IO ()) -> String -> IState -> IO IState
-releaseEndpoint f n (env, ep, tr) = case lookup n ep of
-  Nothing -> return (env, ep, tr)
-  Just (e,_,_) -> f n e >> return (env, removeAssoc ep n, tr)
-
-releaseFile :: String -> IState -> IO IState
-releaseFile = releaseEndpoint closeFile
-
-releaseSocket :: String -> IState -> IO IState
-releaseSocket = releaseEndpoint closeSocket
-
-{- Endpoint buffers -}
-
-wrapEBuffer :: (EndpointBufferContents b -> a) -> EndpointBuffer b -> IO a
-wrapEBuffer f = \case
-  Exclusive c -> return $ f c
-  Shared mvc -> readMVar mvc >>= return . f
-
-modifyEBuffer :: (EndpointBufferContents b -> IO (EndpointBufferContents b, a)) -> EndpointBuffer b -> IO (EndpointBuffer b, a)
-modifyEBuffer f = \case
-  Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
-  Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
-
-emptyEBContents :: EndpointBufferContents a -> Bool
-emptyEBContents (Single x)   = maybe True (\_ -> False) x
-emptyEBContents (Multiple x) = null x
-
-emptyEBuffer :: EndpointBuffer a -> IO Bool
-emptyEBuffer = wrapEBuffer emptyEBContents
-
-readEBContents :: EndpointBufferContents a -> Maybe a
-readEBContents (Single x) = x
-readEBContents (Multiple x) = if null x then Nothing else Just $ head x
-
-readEBuffer :: EndpointBuffer a -> IO (Maybe a)
-readEBuffer = wrapEBuffer readEBContents
-
-appendEBContents :: v -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
-appendEBContents v (Single x) = return (Single $ Just v, x)
-appendEBContents v (Multiple x) = return $ (Multiple $ x++[v], Nothing)
-
-appendEBuffer :: v -> EndpointBuffer v -> IO (EndpointBuffer v)
-appendEBuffer v buf = modifyEBuffer (appendEBContents v) buf >>= return . fst
-
-takeEBContents :: EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
-takeEBContents = \case
-  Single x       -> return (Single Nothing, x)
-  Multiple []    -> return (Multiple [], Nothing)
-  Multiple (h:t) -> return (Multiple t, Just h)
-
-takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
-takeEBuffer = modifyEBuffer $ takeEBContents
-
-refreshEBContents :: IEndpoint -> EndpointBufferContents Value -> IO (EndpointBufferContents Value, Maybe Value)
-refreshEBContents (File h fmt tOpt) c = takeEBContents c >>= refill
-  where refill (c, vOpt) | refillPolicy c = rebuild (File h fmt tOpt) c >>= return . (, vOpt)
-                         | otherwise = return (c, vOpt)
-        
-        rebuild ep (Single _) = readEndpoint ep >>= maybe mkESingle (\e -> runExpression e >>= maybe mkESingle mkSingle)
-        rebuild ep (Multiple x) = readEndpoint ep >>= maybe (mkMulti x) (\e -> runExpression e >>= maybe (mkMulti x) (\y -> mkMulti $ x++[y]))
-        
-        refillPolicy = emptyEBContents
-        
-        mkSingle = return . Single . Just
-        mkESingle = return $ Single Nothing
-        mkMulti x = return $ Multiple x
-
-
-refreshEBContents (Socket _ _ _) c = takeEBContents c
-
-refreshEBuffer :: IEndpoint -> EndpointBuffer Value -> IO (EndpointBuffer Value, Maybe Value)
-refreshEBuffer ep = modifyEBuffer $ refreshEBContents ep
-
-
-{- Endpoint Notifiers -}
-
-registerNotifier :: Identifier -> Interpretation Value
-registerNotifier n =
-  return $ VFunction $ \cid -> return $ VFunction $ \trig -> 
-    modifyStateE_ (attachNotifier n cid trig) >> return vunit
-
-attachNotifier :: Identifier -> Value -> Value -> IState -> IO IState
-attachNotifier n (VString cid) (VTrigger (t,f)) (env,ep,tr) =
-    return (env, map (addNotifierBinding cid n (VTrigger (t,f))) ep, tr)
-  where addNotifierBinding cid n trig (eid, (e, buf, eb)) =
-          if cid /= eid then (eid, (e, buf, eb))
-          else (eid, (e, buf, nubBy (\(a,_) (b,_) -> a == b) $ (n,trig):eb))
-
-attachNotifier _ _ _ _ = undefined
-
+wireDesc :: String -> WireDesc Value
+wireDesc "k3" = valueWD
+wireDesc fmt  = error $ "invalid format " ++ fmt
 
 {- Misc helpers -}
 
@@ -807,9 +631,8 @@ prettyErrorEnv (err, env) = intercalate "\n" ["Error", show err, prettyEnv env]
 prettyEnv :: Show v => IEnvironment v -> String
 prettyEnv env = intercalate "\n" $ ["Environment:"] ++ map show (reverse env)
 
-
 putIResult :: Show a => IResult a -> IO ()
-putIResult ((Left err, (env, ep, tr)), ilog) = putStrLn (prettyErrorEnv (err,env)) >> putTransport tr
-putIResult ((Right val, (env, ep, tr)), ilog) = 
-    putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putTransport tr
+putIResult ((Left err, (env, eng)), ilog)  = putStrLn (prettyErrorEnv (err,env)) >> putEngine eng
+putIResult ((Right val, (env, eng)), ilog) = putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putEngine eng
   where prettyVal = "Value:\n"++show val
+
