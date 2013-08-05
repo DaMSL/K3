@@ -6,12 +6,14 @@
 module Language.K3.TypeSystem.Utils
 ( typeOfOp
 , recordOf
+, RecordConcatenationError(..)
 ) where
 
 import Control.Monad
 import Data.Map as Map
 import Data.Set as Set
 
+import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.TypeSystem.Data
 
@@ -36,17 +38,25 @@ typeOfOp op = case op of
   OApp -> SomeBinaryOperator BinOpApply
   OSnd -> SomeBinaryOperator BinOpSend
 
--- |Concatenates a set of concrete record types.  @Nothing@ is produced if
+data RecordConcatenationError
+  = RecordIdentifierOverlap (Set Identifier)
+  | NonRecordType ShallowType
+  deriving (Eq, Show)
+
+-- |Concatenates a set of concrete record types.  A @Nothing@ is produced if
 --  any of the types are not records (or top) or if the record types overlap.
-recordOf :: [ShallowType] -> Maybe ShallowType
+recordOf :: [ShallowType] -> Either RecordConcatenationError ShallowType
 recordOf = foldM concatRecs (SRecord Map.empty) . Prelude.filter (/=STop)
   where
-    concatRecs :: ShallowType -> ShallowType -> Maybe ShallowType
+    concatRecs :: ShallowType -> ShallowType
+               -> Either RecordConcatenationError ShallowType
     concatRecs t1 t2 =
       case (t1,t2) of
         (SRecord m1, SRecord m2) ->
-          if Set.null $ Set.fromList (Map.keys m1) `Set.intersection`
-                        Set.fromList (Map.keys m2)
-            then Just $ SRecord $ m1 `Map.union` m2
-            else Nothing
-        _ -> Nothing
+          let overlap = Set.fromList (Map.keys m1) `Set.intersection`
+                        Set.fromList (Map.keys m2) in
+          if Set.null overlap
+            then Right $ SRecord $ m1 `Map.union` m2
+            else Left $ RecordIdentifierOverlap overlap
+        (SRecord _, _) -> Left $ NonRecordType t2
+        (_, _) -> Left $ NonRecordType t1

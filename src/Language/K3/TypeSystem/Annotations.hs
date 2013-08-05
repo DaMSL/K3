@@ -8,12 +8,15 @@ module Language.K3.TypeSystem.Annotations
 , concatAnnBodies
 , AnnotationConcatenationError(..)
 , instantiateCollection
+, CollectionInstantiationError(..)
 , isAnnotationSubtypeOf
 ) where
 
 import Control.Applicative
 import Control.Arrow
+import Control.Error.Util
 import Control.Monad
+import Control.Monad.Trans.Either
 import Control.Monad.Trans.Maybe
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -99,20 +102,30 @@ data AnnotationConcatenationError
   | IncompatibleTypeParameters TParamEnv TParamEnv
       -- ^Produced when two annotation types are concatenated and one has a
       --  different set of open type variables than the other.
+  deriving (Eq, Show)
 
 -- |Defines depolarization of annotation members.  If depolarization is not
 --  defined (e.g. because multiple annotations positively define the same
---  identifier), then @Nothing@ is returned.
-depolarize :: [AnnMemType] -> Maybe (ShallowType, ConstraintSet)
+--  identifier), then an appropriate error is returned instead.
+depolarize :: [AnnMemType]
+           -> Either CollectionInstantiationError (ShallowType, ConstraintSet)
 depolarize ms = do
   let ids = Set.toList $ Set.fromList $ map idOf ms -- dedup the list
   pairs <- mapM depolarizePart ids
   let (mt,cs) = (recordOf *** csUnions) $ unzip pairs
-  (,cs) <$> mt
+  case mt of
+    Right t -> return (t,cs)
+    Left (RecordIdentifierOverlap is) ->
+      Left $ MultipleProvisions $ Set.findMin is
+    Left (NonRecordType t) ->
+      error $ "depolarize received non-record type complaint for " ++
+              show t ++ ", which should never happen"
   where
     idOf :: AnnMemType -> Identifier
     idOf (AnnMemType i _ _) = i
-    depolarizePart :: Identifier -> Maybe (ShallowType, ConstraintSet)
+    depolarizePart :: Identifier
+                   -> Either CollectionInstantiationError
+                        (ShallowType, ConstraintSet)
     depolarizePart i =
       let (posqas,negqas) = mconcat $ map extract ms in
       case (Set.size posqas, Set.null negqas) of
@@ -126,7 +139,7 @@ depolarize ms = do
           return ( SRecord $ Map.singleton i posqa
                  , csFromList [ posqa <: qa
                               | qa <- Set.toList negqas ])
-        (_,_) -> Nothing
+        (_,_) -> Left $ MultipleProvisions i
       where
         extract :: AnnMemType -> (Set QVar, Set QVar)
         extract (AnnMemType i' p qa) =
@@ -136,16 +149,19 @@ depolarize ms = do
             Negative -> (Set.empty,Set.singleton qa)
 
 -- |Defines instantiation of collection types.  If the instantiation is not
---  defined (e.g. because depolarization fails), then @Nothing@ is returned.
+--  defined (e.g. because depolarization fails), then the clashing identifiers
+--  are provided instead.
 instantiateCollection :: (FreshVarI m)
-                      => AnnType -> UVar -> m (Maybe (UVar, ConstraintSet))
+                      => AnnType -> UVar
+                      -> m (Either CollectionInstantiationError
+                              (UVar, ConstraintSet))
 instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
-  runMaybeT $ do
+  runEitherT $ do
     -- TODO: consider richer error reporting
     a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
-    (a_c', a_f', a_s') <- liftMaybe readParameters
-    (t_s, cs_s) <- liftMaybe $ depolarize ms1
-    (t_f, cs_f) <- liftMaybe $ depolarize ms2
+    (a_c', a_f', a_s') <- liftEither readParameters
+    (t_s, cs_s) <- liftEither $ depolarize ms1
+    (t_f, cs_f) <- liftEither $ depolarize ms2
     let cs'' = csFromList [ t_s <: a_s
                           , t_f <: a_f'
                           , a_f' <: t_f
@@ -156,14 +172,26 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
                   csUnions [cs',cs_s,cs_f,cs'']
     return (a_s, cs''')
   where
-    liftMaybe :: (Monad m) => Maybe a -> MaybeT m a
-    liftMaybe = MaybeT . return
-    readParameters :: Maybe (UVar, UVar, UVar)
+    liftEither :: (Monad m) => Either a b -> EitherT a m b
+    liftEither = EitherT . return
+    readParameters :: Either CollectionInstantiationError (UVar, UVar, UVar)
     readParameters = do
-      a_c' <- Map.lookup TEnvIdContent p
-      a_f' <- Map.lookup TEnvIdFinal p
-      a_s' <- Map.lookup TEnvIdSelf p
+      a_c' <- readParameter TEnvIdContent
+      a_f' <- readParameter TEnvIdFinal
+      a_s' <- readParameter TEnvIdSelf
       return (a_c', a_f', a_s')
+      where
+        readParameter envId =
+          note (MissingAnnotationTypeParameter envId) $ Map.lookup envId p
+
+data CollectionInstantiationError
+  = MissingAnnotationTypeParameter TEnvId
+      -- ^Indicates that a required annotation parameter (e.g. content) is
+      --  missing from the parameter environment.
+  | MultipleProvisions Identifier
+      -- ^Indicates that the provided identifier is provided by multiple
+      --  implementations.
+  deriving (Eq, Show)
 
 -- |Defines annotation subtyping.
 isAnnotationSubtypeOf :: forall m. (FreshVarI m) => AnnType -> AnnType -> m Bool

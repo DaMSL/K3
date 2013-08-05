@@ -100,7 +100,7 @@ deriveExpression aEnv env expr =
                 _ -> Nothing
           let anns = mapMaybe getAnnIdent $ annotations expr
           let tExpr = foldl (@+) (TC.collection recType) $ map TAnnotation anns
-          deriveTypeExpression aEnv tExpr
+          deriveUnqualifiedTypeExpression aEnv tExpr
     EVariable x -> do
       assertExpr0Children expr
       s <- spanOfExpr expr
@@ -224,9 +224,12 @@ deriveExpression aEnv env expr =
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingVar =<< spanOfExpr expr
       return (a, cs `csUnion` csSing (constr qa <: a))
+    lookupOrFail :: TEnvId -> TypecheckM m QuantType
     lookupOrFail envId =
-      fromMaybe (typecheckError . UnboundEnvironmentIdentifier envId
-                    =<< spanOfExpr expr) $ return <$> Map.lookup envId env
+      fromMaybe (typecheckError =<<
+                  UnboundEnvironmentIdentifier <$> spanOfExpr expr
+                                               <*> return envId)
+              $ return <$> Map.lookup envId env
 
 -- |Obtains the type qualifiers of a given expression.
 qualifiersOfExpr :: K3 Expression -> Set TQual

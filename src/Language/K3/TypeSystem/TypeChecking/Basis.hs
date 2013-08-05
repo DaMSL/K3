@@ -20,22 +20,34 @@ module Language.K3.TypeSystem.TypeChecking.Basis
 , assertExpr6Children
 , assertExpr7Children
 , assertExpr8Children
+, assertTExpr0Children
+, assertTExpr1Children
+, assertTExpr2Children
+, assertTExpr3Children
+, assertTExpr4Children
+, assertTExpr5Children
+, assertTExpr6Children
+, assertTExpr7Children
+, assertTExpr8Children
 ) where
 
 import Control.Applicative
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
+import Data.Char
 import Data.Either
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import Data.Tree
-import Language.Haskell.TH
+import Language.Haskell.TH as TH
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Type as K3T
+import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 
@@ -46,9 +58,27 @@ data TypecheckingError
   = InternalError InternalTypecheckingError
       -- ^Represents an internal typechecking error.  These represent bugs in
       --  the K3 software.
-  | UnboundEnvironmentIdentifier TEnvId Span
+  | UnboundEnvironmentIdentifier Span TEnvId
       -- ^Indicates that, at the given location, the provided identifier is used
       --  but unbound.
+  | UnboundTypeEnvironmentIdentifier Span TEnvId
+      -- ^Indicates that, at the given location, the provided identifier is used
+      --  but unbound.
+  | NonAnnotationAlias Span TEnvId
+      -- ^Indicates that, at the given location, a type annotation was expected
+      --  but the named type alias identifier was bound to something other than
+      --  an annotation.
+  | NonQuantAlias Span TEnvId
+      -- ^Indicates that, at the given location, a quantified type was expected
+      --  but the named type alias identifier was bound to something other than
+      --  a quantified type.
+  | InvalidAnnotationConcatenation Span AnnotationConcatenationError
+      -- ^ Indicates that, at the given location, the concatenation of a set of
+      --   annotation types has failed.
+  | InvalidCollectionInstantiation Span CollectionInstantiationError
+      -- ^ Indicates that, at the given location, the instantiaton of a
+      --   collection type has failed.  This occurs when two different positive
+      --   instances for the same identifier exist; the identifier is provided.
   deriving (Eq, Show)
 
 -- |A data structure representing /internal/ typechecking errors.  These errors
@@ -75,6 +105,19 @@ data InternalTypecheckingError
   | PolymorphicSelfBinding QuantType Span
       -- ^Indicates that the special self binding was bound to a polymorphic
       --  type, which is illegal.
+      -- ^Indicates that there were environment identifiers in the checking
+      --  environments which did not match any node in the AST provided during
+      --  declaration derivation.  The extra identifiers (type and type alias,
+      --  in that order) are included.
+  | InvalidSpansInTypeExpression (K3 K3T.Type)
+      -- ^Indicates that type derivation occurred on a type expression which had
+      --  multiple source span annotations.
+  | InvalidQualifiersOnType (K3 K3T.Type)
+      -- ^Indicates that qualifiers appeared on an expression which should not
+      --  have been qualified.
+  | InvalidTypeExpressionChildCount (K3 K3T.Type)
+      -- ^Indicates that type derivation occurred on a type expression which had
+      --  a number of children inappropriate for its tag.
   deriving (Eq, Show)
   
 -- |A type alias for typechecking environments.
@@ -108,19 +151,20 @@ freshTypecheckingVar s = lift . freshVar =<< return (TVarSourceOrigin s)
 
 -- * Generated routines
 
--- Defines assertExpr0Children through assertExpr8Children
+-- Defines assertExpr0Children through assertExpr8Children and similarly for
+-- assertTExpr#Children
 $(
-  let mkAssertExprChildren :: Int -> Q [Dec]
-      mkAssertExprChildren n = do
-        let fname = mkName $ "assertExpr" ++ show n ++ "Children"
-        let ename = mkName "expr"
+  let mkAssertChildren :: String -> Q TH.Type -> Q TH.Exp -> Int -> Q [Dec]
+      mkAssertChildren typName typ ecType n = do
+        let fname = mkName $ "assert" ++ typName ++ show n ++ "Children"
+        let ename = mkName $ map toLower typName
         let elnames = map (mkName . ("el" ++) . show) [1::Int .. n]
-        let tupTyp = foldl appT (tupleT n) $ replicate n $ [t|K3 Expression|]
+        let tupTyp = foldl appT (tupleT n) $ replicate n $ [t|K3 $(typ)|]
         let signature = sigD fname $
-              [t| (FreshVarI m) => K3 Expression -> TypecheckM m $(tupTyp) |]
+              [t| (FreshVarI m) => K3 $(typ) -> TypecheckM m $(tupTyp) |]
         let badMatch = match wildP (normalB
               [| typecheckError $ InternalError $
-                    InvalidExpressionChildCount $(varE ename) |]
+                    $(ecType) $(varE ename) |]
               ) []
         let goodMatch = match (listP $ map varP elnames) (normalB $
                           appE ([|return|]) $ tupE $ map varE elnames) []
@@ -129,5 +173,14 @@ $(
         let impl = funD fname [cl]
         sequence [signature,impl]
   in
-  concat <$> mapM mkAssertExprChildren [0::Int .. 8]
+  concat <$> mapM (\(tn,t,ec,n) -> mkAssertChildren tn t ec n)
+    [(tn,t,ec,n) | n <- [0::Int .. 8]
+                 , (tn,t,ec) <- [ ( "Expr"
+                                  , [t|Expression|]
+                                  , [|InvalidExpressionChildCount|])
+                                , ( "TExpr"
+                                  , [t|K3T.Type|]
+                                  , [|InvalidTypeExpressionChildCount|])
+                                ]
+    ]
  )
