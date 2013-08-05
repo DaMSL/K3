@@ -24,7 +24,6 @@ import Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Monad.Iface.FreshVar

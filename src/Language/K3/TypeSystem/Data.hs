@@ -208,6 +208,7 @@ data TEnvId
 
 -- |Type alias environment entries.
 data TypeAliasEntry = QuantAlias QuantType | AnnAlias AnnType
+  deriving (Eq, Show)
 
 -- |An alias for type alias environments.
 type TAliasEnv = TEnv TypeAliasEntry

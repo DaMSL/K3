@@ -25,16 +25,15 @@ data Declaration
 
 -- | Annotation declaration members
 data AnnMemDecl
-    = Method      Identifier Polarity                [(Identifier, K3 Type)]
-                  (K3 Type)  (Maybe (K3 Expression))
-    
-    | Lifted      Identifier Polarity
+    = Lifted      Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
+                  Span
     
-    | Attribute   Identifier Polarity
+    | Attribute   Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
+                  Span
     
-    | MAnnotation Identifier Polarity
+    | MAnnotation Polarity Identifier Span
   deriving (Eq, Read, Show)  
 
 -- | Annotation member polarities

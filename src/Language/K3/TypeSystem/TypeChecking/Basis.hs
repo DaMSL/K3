@@ -79,6 +79,12 @@ data TypecheckingError
       -- ^ Indicates that, at the given location, the instantiaton of a
       --   collection type has failed.  This occurs when two different positive
       --   instances for the same identifier exist; the identifier is provided.
+  | InitializerForNegativeAnnotationMember Span
+      -- ^ Indicates that an initializer appears for a negative annotation
+      --   member.
+  | NoInitializerForPositiveAnnotationMember Span
+      -- ^ Indicates that an initializer does not appear for a positive
+      --   annotation member.
   deriving (Eq, Show)
 
 -- |A data structure representing /internal/ typechecking errors.  These errors
@@ -118,6 +124,12 @@ data InternalTypecheckingError
   | InvalidTypeExpressionChildCount (K3 K3T.Type)
       -- ^Indicates that type derivation occurred on a type expression which had
       --  a number of children inappropriate for its tag.
+  | InvalidSpecialBinding TEnvId (Maybe TypeAliasEntry)
+      -- ^Indicates that, during derivation of an annotation member, a type
+      --  alias was bound to a form which could not be understood.
+  | UnresolvedTypeParameters TParamEnv
+      -- ^Indicates that a type parameter environment was non-empty when it was
+      --  expected to be empty.
   deriving (Eq, Show)
   
 -- |A type alias for typechecking environments.

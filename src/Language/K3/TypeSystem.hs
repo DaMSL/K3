@@ -9,6 +9,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
+
 data TypeError = TODO_TypeError -- TODO: TypeError data type
 
 -- |The top level of typechecking in K3.  This routine accepts a role
