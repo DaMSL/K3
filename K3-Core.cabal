@@ -15,6 +15,7 @@ library
         containers,
         either,
         mtl,
+        network,
         network-transport,
         network-transport-tcp,
         parsec,

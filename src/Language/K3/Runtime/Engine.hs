@@ -42,8 +42,10 @@ module Language.K3.Runtime.Engine (
   openSocket,
   close,
   
-  hasNext,
-  next,
+  hasRead,
+  doRead,
+  hasWrite,
+  doWrite,
 
   attachNotifier,
   attachNotifier_,
@@ -72,6 +74,7 @@ import Data.List
 
 import qualified System.IO as SIO
 
+import Network.Socket (withSocketsDo)
 import qualified Network.Transport as NT
 import qualified Network.Transport.TCP as NTTCP
 
@@ -288,7 +291,7 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
       withMVar (endpoints engine)
         (sequence . H.foldlWithKey' (startEndpoint ctrl $ transport engine) []) >>= return . (ctrl,)
 
-    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing e
+    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing "r" e
 
     startEndpoint _ _ acc n (Endpoint {handle = FileH _ _}) = acc ++ [return (n, Nothing)]
     startEndpoint ctrl tr acc n e = acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
@@ -328,12 +331,12 @@ runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (NEndpoint
 {- IO Handle methods -}
 
 -- | Open an external file, with given wire description and file path.
-openFileHandle :: FilePath -> WireDesc a -> IO (IOHandle a)
-openFileHandle p wd = SIO.openFile p SIO.ReadMode >>= return . (FileH wd)
+openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
+openFileHandle p wd mode = SIO.openFile p mode >>= return . (FileH wd)
 
 -- | Open an external socket, with given wire description and address.
-openSocketHandle :: Address -> WireDesc a -> IO (IOHandle a)
-openSocketHandle (host, port) wd = do
+openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
+openSocketHandle (host, port) wd mode = withSocketsDo $ do
     t <- NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO return
     e <- NT.newEndPoint t >>= either throwIO return
     return $ SocketH wd (NEndpoint (t, e))
@@ -373,14 +376,21 @@ getEndpoint n eps = withMVar eps (return . H.lookup n)
 endpointsAndTransport :: Engine a -> (EEndpoints a, ETransport a)
 endpointsAndTransport engine = (endpoints engine, transport engine)
 
-openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> Engine a -> IO ()
-openFile cid path wd tOpt engine = do
-    file <- openFileHandle path wd
+ioMode :: String -> SIO.IOMode
+ioMode "r"  = SIO.ReadMode
+ioMode "w"  = SIO.WriteMode
+ioMode "a"  = SIO.AppendMode
+ioMode "rw" = SIO.ReadWriteMode
+
+openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
+openFile cid path wd tOpt mode engine = do
+    file <- openFileHandle path wd (ioMode mode)
     addEndpoint cid (file, (Exclusive $ Single Nothing), []) (endpoints engine)
 
-openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> Engine a -> IO ()
-openSocket cid addr wd tOpt engine = do
-    socket <- openSocketHandle addr wd
+-- TODO: socket modes
+openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
+openSocket cid addr wd tOpt mode engine = do
+    socket <- openSocketHandle addr wd (ioMode mode)
     mvar <- newMVar (Multiple [])
     addEndpoint cid (socket, Shared mvar, []) (endpoints engine)
 
@@ -395,20 +405,31 @@ close n engine@(endpointsAndTransport -> (eps, tr)) =
   where notifyType (FileH _ _) = FileClose
         notifyType (SocketH _ _) = SocketClose
 
-hasNext :: Identifier -> Engine a -> IO (Maybe Bool)
-hasNext n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n (endpoints engine) >>= \case
+hasRead :: Identifier -> Engine a -> IO (Maybe Bool)
+hasRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n (endpoints engine) >>= \case
   Nothing -> return Nothing
   Just e  -> emptyEBuffer (buffer e) >>= return . Just . not
 
-next :: Identifier -> Engine a -> IO (Maybe a)
-next n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+doRead :: Identifier -> Engine a -> IO (Maybe a)
+doRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
   Just e  -> refresh e
   
-  where refresh e = refreshEBuffer (handle e) (subscribers e, tr) (buffer e) >>= updateAndYield e
-        updateAndYield e (nBuf, vOpt) = addEndpoint n (nep e nBuf) eps >> return vOpt
+  where refresh e = refreshEBuffer (handle e) (buffer e) >>= updateAndYield e
+        
+        updateAndYield e (nBuf, (vOpt, notifyType)) =
+          addEndpoint n (nep e nBuf) eps >> notify notifyType (subscribers e) >> return vOpt
+        
         nep e b = (handle e, b, subscribers e)
 
+        notify Nothing subs   = return ()
+        notify (Just nt) subs = notifySubscribers nt subs tr 
+
+hasWrite :: Identifier -> Engine a -> IO (Maybe Bool)
+hasWrite = undefined
+
+doWrite :: Identifier -> a -> Engine a -> IO ()
+doWrite n arg engine = undefined
 
 {- Endpoint Notifiers -} 
 
@@ -491,26 +512,27 @@ takeEBContents = \case
 takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
 
-refreshEBContents :: IOHandle v -> (EndpointBindings v, ETransport v) -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
-refreshEBContents f@(FileH _ _) (subs,tr) c = takeEBContents c >>= refill
-  where refill (c, vOpt) | refillPolicy c = rebuild f c >>= return . (, vOpt)
-                         | otherwise = return (c, vOpt)
+refreshEBContents :: IOHandle v -> EndpointBufferContents v
+                     -> IO (EndpointBufferContents v, (Maybe v, Maybe EndpointNotification))
 
-        rebuild h (Single _)   = readHandle h >>= maybe mkESingle (\v -> notify >> mkSingle v)
-        rebuild h (Multiple x) = readHandle h >>= maybe (mkMulti x) (\y -> notify >> (mkMulti $ x++[y]))
+refreshEBContents f@(FileH _ _) c = takeEBContents c >>= refill
+  
+  where refill (c, vOpt) | refillPolicy c = readHandle f >>= return . rebuild c >>= (\(x,y) -> return (x, (vOpt, y)))
+                         | otherwise      = return (c, (vOpt, Nothing))
+
+        rebuild (Single _)   = maybe (mkESingle, Nothing) (\c -> (mkSingle c, Just FileData))
+        rebuild (Multiple x) = maybe (mkMulti x, Nothing) (\y -> (mkMulti $ x++[y], Just FileData))
 
         refillPolicy = emptyEBContents
 
-        notify = notifySubscribers FileData subs tr 
+        mkSingle  = Single . Just
+        mkESingle = Single Nothing
+        mkMulti x = Multiple x
 
-        mkSingle  = return . Single . Just
-        mkESingle = return $ Single Nothing
-        mkMulti x = return $ Multiple x
+refreshEBContents (SocketH _ _) c = takeEBContents c >>= (\(x,y) -> return (x, (y, Nothing)))
 
-refreshEBContents (SocketH _ _) _ c = takeEBContents c
-
-refreshEBuffer :: IOHandle v -> (EndpointBindings v, ETransport v) -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
-refreshEBuffer h notices = modifyEBuffer $ refreshEBContents h notices
+refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
+refreshEBuffer h = modifyEBuffer $ refreshEBContents h
 
 
 {- Pretty printing helpers -}

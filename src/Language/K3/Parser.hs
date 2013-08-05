@@ -57,13 +57,13 @@ import Language.K3.Parser.ProgramBuilder
     list of K3 program entry points as role-qualified sources that can be consumed.    
 -}
 
--- source name => bound triggers, qualified source name, go expression
-type SourcesBQG        = [(Identifier, ([Identifier], Identifier, Maybe (K3 Expression)))]
+-- endpoint name => bound triggers, qualified name, initializer expression
+type EndpointsBQG        = [(Identifier, (Maybe [Identifier], Identifier, Maybe (K3 Expression)))]
 
 -- role name, default name
 type DefaultEntries    = [(Identifier, Identifier)] 
 
-type EnvironmentFrame  = (SourcesBQG, DefaultEntries)
+type EnvironmentFrame  = (EndpointsBQG, DefaultEntries)
 type ParserEnvironment = [EnvironmentFrame]
 
 type K3Parser a        = PP.ParsecT String ParserEnvironment Identity a
@@ -201,22 +201,24 @@ dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
     
     mkBody [] body  = EC.lambda "_" body
     mkBody [n] body = EC.lambda n body
-    mkBody ids body =
-      EC.lambda "__x" $ EC.bindAs (EC.variable "__x") (BTuple ids) body
+    mkBody ids body = EC.lambda "__x" $ EC.bindAs (EC.variable "__x") (BTuple ids) body
 
-dEndpoint :: String -> String -> (K3 Type -> K3 Type)
-              -> (K3 Declaration -> DeclParser) -> DeclParser
-dEndpoint kind name typeCstr stateModifier = 
+dEndpoint :: String -> String -> Bool -> DeclParser
+dEndpoint kind name isSource = 
   namedDecl kind name $ join . rule . (mkEndpoint <$>)
-  where rule x = x <*> (colon *> typeExpr) <*> (symbol "=" *> channel)
+  where rule x = x <*> (colon *> typeExpr) <*> (symbol "=" *> (channel isSource))
+        
+        (typeCstr, stateModifier) = 
+          (if isSource then TC.source else TC.sink, trackEndpoint)
+        
         mkEndpoint n t channelCstr =
           stateModifier $ uncurry (DC.endpoint n (typeCstr t)) (channelCstr n t)
 
 dSource :: DeclParser
-dSource = dEndpoint "source" "source" TC.source trackSource
+dSource = dEndpoint "source" "source" True
 
 dSink :: DeclParser
-dSink = dEndpoint "sink" "sink" TC.sink return
+dSink = dEndpoint "sink" "sink" False
 
 dBind :: K3Parser ()
 dBind = (trackBindings =<<) $ mkBind <$> (symbol "~~" *> identifier) <*> bidirectional <*> identifier
@@ -539,20 +541,23 @@ equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
 
 {- Channels -}
-channel :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-channel = choice [value, file, network]
+-- TODO: read/write modes for file/network sinks vs sources.
+
+channel :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+channel isSource = if isSource then choice $ [value]++common else choice common
+  where common = [file isSource, network isSource]
 
 value :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 value = mkValueStream <$> (symbol "value" *> expr)
   where mkValueStream e n t = (Just e, [])
 
-file :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-file = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile argE formatE n t = (,) Nothing $ channelMethods True argE formatE n t
+file :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
+  where mkFile argE formatE n t = channelMethods isSource True argE formatE n t
 
-network :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-network = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork argE formatE n t = (,) Nothing $ channelMethods False argE formatE n t
+network :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
+  where mkNetwork argE formatE n t =  channelMethods isSource False argE formatE n t
 
 
 format :: ExpressionParser
@@ -587,19 +592,21 @@ removeAssoc l a = filter ((a /=) . fst) l
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
-sourceState :: EnvironmentFrame -> SourcesBQG
+sourceState :: EnvironmentFrame -> EndpointsBQG
 sourceState = fst
 
 defaultEntries :: EnvironmentFrame -> DefaultEntries
 defaultEntries = snd
 
-sourceBindings :: SourcesBQG -> [(Identifier, Identifier)]
-sourceBindings s = concat $ map extractBindings s
-  where extractBindings (x,(b,_,_)) = map ((,) x) b
+sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
+sourceBindings s = concatMap extractBindings s
+  where extractBindings (x,(Just b,_,_))  = map ((,) x) b
+        extractBindings (x,(Nothing,_,_)) = []
 
-qualifiedSources :: SourcesBQG -> [Identifier]
-qualifiedSources s = map (second . snd) s
-  where second (_,x,_) = x
+qualifiedSources :: EndpointsBQG -> [Identifier]
+qualifiedSources s = concatMap (qualifiedSourceName . snd) s
+  where qualifiedSourceName (Just _, x, _)  = [x]
+        qualifiedSourceName (Nothing, _, _) = []
 
 addFrame :: ParserEnvironment -> ParserEnvironment
 addFrame env = ([],[]):env
@@ -615,23 +622,30 @@ safePopFrame [] = (([],[]),[])
 safePopFrame (h:t) = (h,t)
 
 -- | Records source bindings in a K3 parsing environment
+--   A parsing error is raised on an attempt to bind to anything other than a source.
 trackBindings :: (Identifier, Identifier) -> K3Parser ()
-trackBindings (src, dest) = PP.getState >>= update src dest
-  where update src dest (safePopFrame -> ((s,d), env)) =
+trackBindings (src, dest) = PP.getState >>= updateBindings src dest
+  where updateBindings src dest (safePopFrame -> ((s,d), env)) =
           case lookup src s of
-            Just (b,q,g) -> PP.putState $ (replaceAssoc s src (dest:b, q, g), d):env
-            Nothing      -> PP.parserFail $ "invalid binding, no source " ++ src
+            Just (Just b, q, g)  -> PP.putState $ (replaceAssoc s src (Just (dest:b), q, g), d):env
+            Just (Nothing, q, g) -> PP.parserFail $ "Invalid binding for endpoint " ++ src
+            Nothing              -> PP.parserFail $ "Invalid binding, no source " ++ src
 
--- | Records declaration identifiers in a K3 parsing environment
-trackSource :: K3 Declaration -> DeclParser
-trackSource d
-  | DGlobal n _ eOpt <- tag d
-  = PP.getState >>= PP.putState . addSourceId n eOpt >> return d
+-- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
+trackEndpoint :: K3 Declaration -> DeclParser
+trackEndpoint d
+  | DGlobal n t eOpt <- tag d, TSource <- tag t = track True n eOpt >> return d
+  | DGlobal n t eOpt <- tag d, TSink <- tag t   = track False n eOpt >> return d
   | otherwise = return d
-  where addSourceId n eOpt (safePopFrame -> ((s,d), env)) =
-          case eOpt of 
-            Just e -> (replaceAssoc s n ([], n, Nothing), d):env
-            Nothing -> (replaceAssoc s n ([], n, Just $ mkRunSourceE n), d):env
+
+  where 
+    track isSource n eOpt = PP.getState >>= PP.putState . addEndpointGoExpr isSource n eOpt
+    addEndpointGoExpr isSource n eOpt (safePopFrame -> ((s,d), env)) =
+          case (eOpt, isSource) of
+            (Just e, True)   -> (replaceAssoc s n (Just [], n, Nothing), d):env
+            (Nothing, True)  -> (replaceAssoc s n (Just [], n, Just $ mkRunSourceE n), d):env
+            (Just e, False)  -> (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
+            (_,_) -> error "Invalid endpoint initializer"
 
 -- | Records defaults in a K3 parsing environment
 trackDefault :: Identifier -> K3Parser ()
@@ -649,12 +663,17 @@ desugarRole n (dl, frame) =
         qualify poppedFrame (safePopFrame -> (frame, env)) =
           case validateSources poppedFrame of
             (ndIds, []) -> PP.putState . (:env) $ concatWithPrefix poppedFrame frame
-            (_, failed) -> PP.parserFail $ "invalid defaults " ++ show poppedFrame
+            (_, failed) -> PP.parserFail $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
 
         validateSources (s,d) = partition ((flip elem $ qualifiedSources s) . snd) d
-        concatWithPrefix (s,d) (s2,d2) = (qualifySources s ++ s2, qualifyDefaults d ++ d2)
-        
-        qualifySources  = map (\(src,(b,q,g)) -> (src, (b, prefix "." n q, g))) 
+        concatWithPrefix (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
+
+        qualifySource (eid, (Just b, q, g)) = (eid, (Just b, prefix "." n q, g))
+        qualifySource x = x
+
         qualifyDefaults = map $ uncurry $ flip (,) . prefix "." n
+
+        qualifyError frame failed = "Frame: " ++ show frame ++ "\nFailed: " ++ show failed
         
         prefix sep x z = if x == "" then z else x ++ sep ++ z
+        

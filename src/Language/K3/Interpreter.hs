@@ -413,13 +413,15 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
 
+replaceTrigger :: Identifier -> Value -> Interpretation()
+replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
+replaceTrigger n _             = throwE $ RunTimeTypeError "Invalid trigger body"
+
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
-
-global n (tag -> TTrigger _) (Just e) = expression e >>= replaceTrigger
-  where replaceTrigger (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
-        replaceTrigger _ = throwE $ RunTimeTypeError "Invalid Trigger Body"
-
-global n (tag -> TSource) (Just e)      = return () -- TODO: should this match sources with empty bodies as well?
+global n (tag -> TTrigger _) (Just e)   = expression e >>= replaceTrigger n
+global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
+global n (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
+global n (tag -> TSource) _             = return ()
 global n t (Just e)                     = expression e >>= modifyE . (:) . (n,)
 global n t Nothing | TFunction <- tag t = builtin n t
 global n t Nothing                      = defaultValue t >>= modifyE . (:) . (n,)
@@ -444,7 +446,7 @@ declaration (tag -> DAnnotation n members)      = annotation n members
 {- Built-in functions -}
 
 ignoreFn e = VFunction $ \_ -> return e
-
+vfun x = return $ VFunction $ x
 
 builtin :: Identifier -> K3 Type -> Interpretation ()
 builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
@@ -456,64 +458,67 @@ genBuiltin "parseArgs" t =
   return $ ignoreFn $ VTuple [VCollection [], VCollection []]
 
 
--- TODO: error handling on all open/close methods.
+-- TODO: channel modes for sinks/sources
+-- TODO: error handling on all open/close/read/write methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
--- TODO: correct element type (rather than function type sig) for openFileEP / openSocketEP
-
--- TODO: rename without "EP"
+-- TODO: correct element type (rather than function type sig) for openFile / openSocket
 
 -- type ChannelId = String
 
--- openFileEP :: ChannelId -> String -> String -> ()
-genBuiltin "openFileEP" t =
-  return $ VFunction $ \(VString cid) ->
-      return $ VFunction $ \(VString path) ->
-          return $ VFunction $ \(VString format) ->
-              mkFile cid path format t >> return vunit
-  where mkFile n p f t = withEngine $ openFile n p (wireDesc f) $ Just t
+-- openFile :: ChannelId -> String -> String -> String -> ()
+genBuiltin "openFile" t =
+  vfun $ \(VString cid) ->
+    vfun $ \(VString path) ->
+      vfun $ \(VString format) ->
+        vfun $ \(VString mode) ->
+          withEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
 
--- openSocketEP :: ChannelId -> Address -> String -> ()
-genBuiltin "openSocketEP" t =
-  return $ VFunction $ \(VString cid) ->
-      return $ VFunction $ \(VAddress addr) ->
-          return $ VFunction $ \(VString format) ->
-              mkSocket cid addr format t >> return vunit
-  where mkSocket n a f t = withEngine $ openSocket n a (wireDesc f) $ Just t
+-- openSocket :: ChannelId -> Address -> String -> String -> ()
+genBuiltin "openSocket" t =
+  vfun $ \(VString cid) ->
+    vfun $ \(VAddress addr) ->
+      vfun $ \(VString format) ->
+        vfun $ \(VString mode) ->
+          withEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
 
--- closeEP :: ChannelId -> ()
-genBuiltin "closeEP" t =
-  return $ VFunction $ \(VString cid) -> withEngine (close cid) >> return vunit
+-- close :: ChannelId -> ()
+genBuiltin "close" t = vfun $ \(VString cid) -> withEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
-genBuiltin "registerFileEPDataTrigger" t     = registerNotifier "data"
-genBuiltin "registerFileEPCloseTrigger" t    = registerNotifier "close"
+genBuiltin "registerFileDataTrigger"     t = registerNotifier "data"
+genBuiltin "registerFileCloseTrigger"    t = registerNotifier "close"
 
-genBuiltin "registerSocketEPAcceptTrigger" t = registerNotifier "accept"
-genBuiltin "registerSocketEPDataTrigger" t   = registerNotifier "data"
-genBuiltin "registerSocketEPCloseTrigger" t  = registerNotifier "close"
+genBuiltin "registerSocketAcceptTrigger" t = registerNotifier "accept"
+genBuiltin "registerSocketDataTrigger"   t = registerNotifier "data"
+genBuiltin "registerSocketCloseTrigger"  t = registerNotifier "close"
 
--- <source>HasNext :: () -> Bool
-genBuiltin (channelMethod -> ("HasNext", Just n)) t =
-  return $ VFunction $ \_ -> checkBuffer
-  
-  where checkBuffer = withEngine (hasNext n) >>= maybe invalid (return . VBool)
+-- <source>HasRead :: () -> Bool
+genBuiltin (channelMethod -> ("HasRead", Just n)) t = vfun $ \_ -> checkChannel
+  where checkChannel = withEngine (hasRead n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
--- <source>Next :: () -> t
-genBuiltin (channelMethod -> ("Next", Just n)) t =
-  return $ VFunction $ \_ -> withEngine (next n) >>= throwOnError
-
+-- <source>Read :: () -> t
+genBuiltin (channelMethod -> ("Read", Just n)) t = vfun $ \_ -> withEngine (doRead n) >>= throwOnError
   where throwOnError (Just v) = return v
         throwOnError Nothing =
           throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
+
+-- <sink>HasWrite :: () -> Bool
+genBuiltin (channelMethod -> ("HasWrite", Just n)) t = vfun $ \_ -> checkChannel
+  where checkChannel = withEngine (hasWrite n) >>= maybe invalid (return . VBool)
+        invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
+
+-- <sink>Write :: t -> ()
+genBuiltin (channelMethod -> ("Write", Just n)) t =
+  vfun $ \arg -> withEngine (doWrite n arg) >> return vunit
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
 
 channelMethod :: String -> (String, Maybe String)
 channelMethod x =
-  case find (flip isSuffixOf x) ["HasNext", "Next"] of
+  case find (flip isSuffixOf x) ["HasRead", "Read", "HasWrite", "Write"] of
     Just y -> (y, stripSuffix y x)
     Nothing -> (x, Nothing)
   where stripSuffix sfx lst = maybe Nothing (Just . reverse) $ stripPrefix (reverse sfx) (reverse lst)
@@ -521,13 +526,14 @@ channelMethod x =
 
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
-  return $ VFunction $ \cid -> return $ VFunction $ \target ->
+  vfun $ \cid -> return $ VFunction $ \target ->
     attach cid n target >> return vunit
   
-  where attach (VString cid) n (VTuple [VTrigger (trigId, _), VAddress addr]) = 
-          withEndpoints $ attachNotifier_ cid n (addr, trigId, vunit)
-        
+  where attach (VString cid) n (targetOfValue -> (addr, tid, v)) = withEndpoints $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
+
+        targetOfValue (VTuple [VTrigger (n, _), VAddress addr]) = (addr, n, vunit)
+        targetOfValue _ = error "Invalid notifier target"
 
 
 {- Program initialization methods -}
@@ -539,6 +545,7 @@ initEnvironment = initDecl []
         initDecl env _                                          = env
 
         initGlobal env n (tag -> TTrigger _) _ = env ++ [(n, VTrigger (n, Nothing))]
+        initGlobal env n (tag -> TSink) _      = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
         initGlobal env _ _ _                   = env
 
@@ -586,8 +593,8 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
           maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
         
         runTrigger r n a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
-        runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized Trigger " ++ n
-        runTrigger r n a _                      = return . tError r $ "Invalid Trigger Value for " ++ n
+        runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
+        runTrigger r n a _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
 
         unknownTrigger r n = tError r $ "Unknown trigger " ++ n
 
@@ -603,7 +610,7 @@ valueWD = WireDesc show read (const True)
 
 wireDesc :: String -> WireDesc Value
 wireDesc "k3" = valueWD
-wireDesc fmt  = error $ "invalid format " ++ fmt
+wireDesc fmt  = error $ "Invalid format " ++ fmt
 
 {- Misc helpers -}
 
