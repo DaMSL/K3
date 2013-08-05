@@ -50,6 +50,15 @@ infix 3 @!=?
 case_addition :: Assertion
 case_addition = (E.binop OAdd (E.constant (CInt 1)) (E.constant (CInt 1))) @!=? (expr <%> "1 + 1")
 
+case_subtraction :: Assertion
+case_subtraction = (E.binop OSub (E.constant (CInt 1)) (E.constant (CInt 1))) @!=? (expr <%> "1 - 1")
+
+case_multiplication :: Assertion
+case_multiplication = (E.binop OMul (E.constant (CInt 1)) (E.constant (CInt 1))) @!=? (expr <%> "1 * 1")
+
+case_division :: Assertion
+case_division = (E.binop ODiv (E.constant (CInt 1)) (E.constant (CInt 1))) @!=? (expr <%> "1 / 1")
+
 case_precedence :: Assertion
 case_precedence = E.binop OAdd (E.constant $ CInt 1) (E.binop OMul (E.constant $ CInt 2) (E.constant $ CInt 3))
     @!=? expr <%> "1 + 2 * 3"
@@ -61,12 +70,15 @@ case_parenthetical =
         ) (
             E.constant $ CInt 3
         )
-   @!=? expr <%> "(1 + 2) * 4"
+   @!=? expr <%> "(1 + 2) * 3"
 
 tests :: [Test]
 tests = [
         testGroup "Arithmetic" [
                 testCase "Addition" case_addition,
+                testCase "Subtraction" case_subtraction,
+                testCase "Multiplication" case_multiplication,
+                testCase "Division" case_division,
                 testCase "Precedence/1" case_precedence,
                 testCase "Parenthetical" case_parenthetical
             ]
