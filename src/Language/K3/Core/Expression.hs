@@ -81,4 +81,4 @@ data instance Annotation Expression
   deriving (Eq, Read, Show)
 
 instance Pretty Expression where
-    prettyLines = (:[]) . show
+    prettyLines _ = (:[]) . show

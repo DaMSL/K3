@@ -55,4 +55,4 @@ data instance Annotation Type
   deriving (Eq, Read, Show)
 
 instance Pretty Type where
-    prettyLines = (:[]) . show
+    prettyLines _ = (:[]) . show

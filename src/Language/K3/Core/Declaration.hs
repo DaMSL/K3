@@ -50,12 +50,13 @@ data instance Annotation Declaration
   deriving (Eq, Read, Show)
 
 instance Pretty Declaration where
-    prettyLines (DGlobal i t me) =
-        ["DGlobal " ++ i]
-        ++ "|": (shift "+- " (maybe "   " (const "|  ") me) $ prettyLines t)
-        ++ fromMaybe [] (fmap (("|":) . shift "`- " "   " . prettyLines) me)
-    prettyLines (DRole i) = ["DRole " ++ i]
-    prettyLines (DAnnotation i amd) = ["DAnnotation " ++ i] ++ concatMap prettyLines amd
+    prettyLines terminal (DGlobal i t me) =
+        ["DGlobal " ++ i, "|"]
+        ++ (if me == Nothing && terminal then (shift "`- " "   ") else (shift "+- " "|  ")) (prettyLines False t)
+        ++ fromMaybe [] (fmap (("|":) . shift "`- " "   " . prettyLines terminal) me)
+      where
+    prettyLines _ (DRole i) = ["DRole " ++ i]
+    prettyLines t (DAnnotation i amd) = ["DAnnotation " ++ i] ++ concatMap (prettyLines t) amd
 
 instance Pretty AnnMemDecl where
-    prettyLines = (:[]) . show
+    prettyLines _ = (:[]) . show
