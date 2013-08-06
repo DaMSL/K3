@@ -52,8 +52,8 @@ data instance Annotation Declaration
 instance Pretty Declaration where
     prettyLines (DGlobal i t me) =
         ["DGlobal " ++ i]
-        ++ (shift "+- " "|  " $ prettyLines t)
-        ++ fromMaybe [] (fmap (shift "`- " "   " . prettyLines) me)
+        ++ "|": (shift "+- " (maybe "   " (const "|  ") me) $ prettyLines t)
+        ++ fromMaybe [] (fmap (("|":) . shift "`- " "   " . prettyLines) me)
     prettyLines (DRole i) = ["DRole " ++ i]
     prettyLines (DAnnotation i amd) = ["DAnnotation " ++ i] ++ concatMap prettyLines amd
 

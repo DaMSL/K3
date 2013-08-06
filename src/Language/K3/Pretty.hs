@@ -27,7 +27,7 @@ instance Pretty a => Pretty (K3 a) where
         payload = prettyLines t
         drawSubTrees [] = []
         drawSubTrees [x] = "|" : shift "`- " "   " (prettyLines x)
-        drawSubTrees (x:xs) = "|" : shift "+- " "   " (prettyLines x) ++ drawSubTrees xs
+        drawSubTrees (x:xs) = "|" : shift "+- " "|  " (prettyLines x) ++ drawSubTrees xs
 
 shift :: String -> String -> [String] -> [String]
 shift first other = zipWith (++) (first : repeat other)
