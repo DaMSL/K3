@@ -264,7 +264,7 @@ annAttribute = Attribute <$> polarity <*> identifier <*  colon
 subAnnotation :: K3Parser (Span -> AnnMemDecl)
 subAnnotation = MAnnotation <$> polarity <* keyword "annotation" <*> identifier
 
-spanOver :: K3Parser (Span -> AnnMemDecl) -> K3Parser AnnMemDecl
+spanOver :: K3Parser (Span -> a) -> K3Parser a
 spanOver parser = uncurry ($) <$> spanned parser
 
 
