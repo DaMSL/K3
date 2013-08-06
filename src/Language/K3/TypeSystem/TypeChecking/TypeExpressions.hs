@@ -104,7 +104,7 @@ deriveTypeExpression aEnv tExpr =
     TAddress -> error "Address type not in specification!" -- TODO
     TSource -> error "Source type not in specification!" -- TODO
     TSink -> error "Sink type not in specification!" -- TODO
-    TTrigger _ -> error "Trigger type expression not in specification!" -- TODO
+    TTrigger -> error "Trigger type expression not in specification!" -- TODO
     TBuiltIn b -> do
       assertTExpr0Children tExpr
       let ei = case b of

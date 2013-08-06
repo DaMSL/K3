@@ -86,8 +86,8 @@ source i = Node (TSource :@: []) [i]
 sink :: K3 Type -> K3 Type
 sink o = Node (TSink :@: []) [o]
 
-trigger :: [(Identifier, K3 Type)] -> K3 Type
-trigger idts = Node (TTrigger ids :@: []) ts where (ids, ts) = unzip idts
+trigger :: K3 Type -> K3 Type
+trigger rt = Node (TTrigger :@: []) [rt]
 
 builtIn :: TypeBuiltIn -> K3 Type
 builtIn bi = Node (TBuiltIn bi :@: []) []

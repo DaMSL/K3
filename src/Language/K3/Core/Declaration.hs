@@ -23,6 +23,9 @@ import Language.K3.Pretty
 -- | Top-Level Declarations
 data Declaration
     = DGlobal     Identifier (K3 Type) (Maybe (K3 Expression))
+    | DTrigger    Identifier (K3 Type) (K3 Expression)
+        -- ^Trigger declaration.  Type is argument type of trigger.  Expression
+        --  must be a function taking that argument type and returning unit.
     | DRole       Identifier
     | DAnnotation Identifier [AnnMemDecl]
   deriving (Eq, Read, Show)
