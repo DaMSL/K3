@@ -166,7 +166,7 @@ channelMethods isFile argE formatE n t  =
         mkStart n = ("Start", TC.unit, Just $ startE n)
         mkFinal n = ("Final", TC.unit, Just $ EC.applyMany closeFn [sourceId n])
 
-        sourceController n = DC.global (ccName n) (TC.trigger []) . Just $
+        sourceController n = DC.trigger (ccName n) TC.unit $
           EC.lambda "_"
             (EC.ifThenElse
               (EC.applyMany (EC.variable $ chName n) [EC.unit])
@@ -240,11 +240,11 @@ declareBuiltins d
           DC.global "closeFile" (TC.function idT TC.unit) Nothing,
           DC.global "closeSocket" (TC.function idT TC.unit) Nothing,
           DC.global "hasNext" (TC.function idT TC.bool) Nothing,
-          DC.global "registerFileDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerFileCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing ]
+          DC.global "registerFileDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerFileCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing ]
 
         peerDecls = [
           DC.global myId TC.address Nothing,

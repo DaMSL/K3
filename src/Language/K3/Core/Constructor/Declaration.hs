@@ -1,6 +1,7 @@
 -- | Constructors for Declarations.
 module Language.K3.Core.Constructor.Declaration (
     global,
+    Language.K3.Core.Constructor.Declaration.trigger,
     endpoint,
     role,
     annotation
@@ -19,6 +20,10 @@ import Language.K3.Core.Constructor.Type
 -- | Create a global declaration.
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
 global i t me = Node (DGlobal i t me :@: []) []
+
+-- | Create a trigger declaration.
+trigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
+trigger i t e = Node (DTrigger i t e :@: []) []
 
 -- | Create an endpoint declaration.
 endpoint :: Identifier -> K3 Type -> Maybe (K3 Expression) -> [K3 Declaration]

@@ -416,7 +416,7 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 
-global n (tag -> TTrigger _) (Just e) = expression e >>= replaceTrigger
+global n (tag -> TTrigger) (Just e) = expression e >>= replaceTrigger
   where replaceTrigger (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
         replaceTrigger _ = throwE $ RunTimeTypeError "Invalid Trigger Body"
 
@@ -433,6 +433,7 @@ role n subDecls = mapM_ declaration subDecls
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n members = undefined
 
+-- TODO: accommodate DTrigger
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
   debugDecl n t $ global n t eO >> mapM_ declaration ch
@@ -539,7 +540,7 @@ initEnvironment = initDecl []
         initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
         initDecl env _                                          = env
 
-        initGlobal env n (tag -> TTrigger _) _ = env ++ [(n, VTrigger (n, Nothing))]
+        initGlobal env n (tag -> TTrigger) _ = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
         initGlobal env _ _ _                   = env
 
