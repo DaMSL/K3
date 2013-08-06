@@ -85,6 +85,17 @@ data TypecheckingError
   | NoInitializerForPositiveAnnotationMember Span
       -- ^ Indicates that an initializer does not appear for a positive
       --   annotation member.
+  | AnnotationDepolarizationFailure Span DepolarizationError
+      -- ^ Indicates that a depolarization error occurred while trying to
+      --   derive over an annotation.
+  | AnnotationConcatenationFailure Span AnnotationConcatenationError
+      -- ^ Indicates that a concatenation error occurred while trying to
+      --   derive over an annotation.
+  | AnnotationSubtypeFailure Span AnnType AnnType
+      -- ^ Indicates that the inferred type of an annotation was not a subtype
+      --   of its declared type signature.  The first annotation type in the
+      --   error is the inferred type; the second annotation type is the
+      --   declared type.
   deriving (Eq, Show)
 
 -- |A data structure representing /internal/ typechecking errors.  These errors
@@ -127,9 +138,19 @@ data InternalTypecheckingError
   | InvalidSpecialBinding TEnvId (Maybe TypeAliasEntry)
       -- ^Indicates that, during derivation of an annotation member, a type
       --  alias was bound to a form which could not be understood.
+  | MissingTypeParameter TParamEnv TEnvId
+      -- ^Indicates that a type parameter environment was missing an environment
+      --  identifier it was expected to have.
   | UnresolvedTypeParameters TParamEnv
       -- ^Indicates that a type parameter environment was non-empty when it was
       --  expected to be empty.
+  | InvalidSpansInDeclaration (K3 Declaration)
+      -- ^Indicates that type derivation occurred on an expression which had
+      --  multiple source span annotations.
+  | NestedRole (K3 Declaration)
+      -- ^Indicates that a role declaration was nested beyond top level.  The
+      --  K3 type system does not have an understanding of roles and so cannot
+      --  typecheck them.
   deriving (Eq, Show)
   
 -- |A type alias for typechecking environments.

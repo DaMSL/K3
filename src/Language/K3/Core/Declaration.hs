@@ -1,5 +1,4 @@
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE EmptyDataDecls #-}
 
 -- | Top-Level Declarations in K3.
 module Language.K3.Core.Declaration (

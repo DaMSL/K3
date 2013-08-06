@@ -19,11 +19,13 @@ import qualified Data.Set as Set
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Basis
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
@@ -68,7 +70,73 @@ deriveDeclaration :: forall m. (FreshVarI m)
                   -> K3 Declaration -- ^The AST of the declaration to check.
                   -> TypecheckM m ()
 deriveDeclaration aEnv env decl =
-  undefined -- TODO
+  case tag decl of
+    DRole _ -> typecheckError $ InternalError $ NestedRole decl
+    DGlobal i tExpr mexpr -> do
+      (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
+      let qt2 = generalize env qa2 cs2
+      -- TODO: the environment entry should be a *subtype* of qt2, not equal;
+      --       equal is more work to check because it really means "equivalent
+      --       w.r.t. alpha renaming of variables"
+      undefined -- TODO
+    DAnnotation i mems -> do
+      s <- spanOfDecl decl
+      entry <- fromMaybe
+                 <$> (typecheckError $
+                        UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i) 
+                 <*> return (Map.lookup (TEnvIdentifier i) aEnv)
+      declared@(AnnType p (AnnBodyType ms1' ms2') _) <- case entry of
+                            AnnAlias ann -> return ann
+                            QuantAlias _ -> typecheckError $
+                              NonAnnotationAlias s $ TEnvIdentifier i
+      (t_h,cs_h) <- either
+                      (typecheckError . AnnotationDepolarizationFailure s)
+                      return
+                    $ depolarize ms2'
+      let getTVar :: TEnvId -> TypecheckM m UVar
+          getTVar ei = fromMaybe <$> typecheckError (InternalError $
+                                                      MissingTypeParameter p ei)
+                                 <*> return (Map.lookup ei p)
+      let singEntry ei a qa = Map.singleton ei $ QuantAlias $
+                                QuantType Set.empty qa $ csSing $ a <: qa 
+      aEnv' <- mappend
+                  <$> (mconcat <$> mapM
+                        (\ei -> singEntry ei <$> getTVar ei
+                                             <*> freshTypecheckingVar s)
+                        [TEnvIdContent, TEnvIdSelf, TEnvIdFinal] )
+                  <*> ((\qa -> Map.singleton TEnvIdHorizon $ QuantAlias $
+                                QuantType Set.empty qa $ csSing $ t_h <: qa)
+                          <$> freshTypecheckingVar s)
+      let env' = mconcat $ map
+                    (\(AnnMemType i' _ qa) -> Map.singleton (TEnvIdentifier i')
+                  $ QuantType Set.empty qa csEmpty) ms1'
+      let (aEnv'',env'') = (aEnv `envMerge` aEnv', env `envMerge` env')
+      (bs,css) <- unzip <$> mapM (deriveAnnotationMember aEnv'' env'') mems
+      (b'',cs'') <- either
+                        (typecheckError . AnnotationConcatenationFailure s)
+                        return
+                      $ concatAnnBodies bs
+      -- TODO: update spec to reflect the following call
+      inst <- instantiateCollection (AnnType p b'' csEmpty) =<<
+                fromMaybe <$> typecheckError (InternalError $
+                                MissingTypeParameter p TEnvIdContent)
+                          <*> return (Map.lookup TEnvIdContent p)
+      (a_s,cs_s) <- either
+                      (typecheckError . InvalidCollectionInstantiation s)
+                      return
+                      inst
+      aP_f <- getTVar TEnvIdFinal
+      aP_h <- getTVar TEnvIdHorizon
+      aP_s <- getTVar TEnvIdSelf
+      let inferred = AnnType p b'' $ csUnions
+                      [ cs''
+                      , cs_h
+                      , cs_s
+                      , csFromList [aP_f <: t_h, t_h <: aP_h, a_s <: aP_s]
+                      , csUnions css
+                      ]
+      join $ unless <$> (inferred `isAnnotationSubtypeOf` declared) <*> 
+                typecheckError (AnnotationSubtypeFailure s inferred declared)
 
 -- |A function to derive a type for an annotation member.
 deriveAnnotationMember :: forall m. (FreshVarI m)
@@ -138,3 +206,16 @@ deriveAnnotationMember aEnv env decl =
       where
         badForm mqt = typecheckError $ InternalError $
                         InvalidSpecialBinding ei mqt
+
+-- |Retrieves the span from the provided expression.  If no such span exists,
+--  an error is produced.
+spanOfDecl :: (FreshVarI m) => K3 Declaration -> TypecheckM m Span
+spanOfDecl decl =
+  let spans = mapMaybe unSpan $ annotations decl in
+  if length spans /= 1
+    then typecheckError $ InternalError $ InvalidSpansInDeclaration decl
+    else return $ head spans
+  where
+    unSpan dann = case dann of
+      DSpan s -> Just s
+      _ -> Nothing

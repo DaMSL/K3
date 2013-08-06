@@ -7,6 +7,8 @@ module Language.K3.TypeSystem.Annotations
 , concatAnnTypes
 , concatAnnBodies
 , AnnotationConcatenationError(..)
+, depolarize
+, DepolarizationError(..)
 , instantiateCollection
 , CollectionInstantiationError(..)
 , isAnnotationSubtypeOf
@@ -108,7 +110,7 @@ data AnnotationConcatenationError
 --  defined (e.g. because multiple annotations positively define the same
 --  identifier), then an appropriate error is returned instead.
 depolarize :: [AnnMemType]
-           -> Either CollectionInstantiationError (ShallowType, ConstraintSet)
+           -> Either DepolarizationError (ShallowType, ConstraintSet)
 depolarize ms = do
   let ids = Set.toList $ Set.fromList $ map idOf ms -- dedup the list
   pairs <- mapM depolarizePart ids
@@ -124,8 +126,7 @@ depolarize ms = do
     idOf :: AnnMemType -> Identifier
     idOf (AnnMemType i _ _) = i
     depolarizePart :: Identifier
-                   -> Either CollectionInstantiationError
-                        (ShallowType, ConstraintSet)
+                   -> Either DepolarizationError (ShallowType, ConstraintSet)
     depolarizePart i =
       let (posqas,negqas) = mconcat $ map extract ms in
       case (Set.size posqas, Set.null negqas) of
@@ -148,6 +149,12 @@ depolarize ms = do
             Positive -> (Set.singleton qa,Set.empty)
             Negative -> (Set.empty,Set.singleton qa)
 
+-- |A type describing an error in depolarization.
+data DepolarizationError
+  = MultipleProvisions Identifier
+      -- ^Indicates that the specified identifier was provided multiple times.
+  deriving (Eq, Show)
+
 -- |Defines instantiation of collection types.  If the instantiation is not
 --  defined (e.g. because depolarization fails), then the clashing identifiers
 --  are provided instead.
@@ -159,9 +166,9 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
   runEitherT $ do
     -- TODO: consider richer error reporting
     a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
-    (a_c', a_f', a_s') <- liftEither readParameters
-    (t_s, cs_s) <- liftEither $ depolarize ms1
-    (t_f, cs_f) <- liftEither $ depolarize ms2
+    (a_c', a_f', a_s') <- EitherT $ return readParameters
+    (t_s, cs_s) <- EitherT $ return $ liftedDepolarize ms1
+    (t_f, cs_f) <- EitherT $ return $ liftedDepolarize ms2
     let cs'' = csFromList [ t_s <: a_s
                           , t_f <: a_f'
                           , a_f' <: t_f
@@ -172,8 +179,13 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
                   csUnions [cs',cs_s,cs_f,cs'']
     return (a_s, cs''')
   where
-    liftEither :: (Monad m) => Either a b -> EitherT a m b
-    liftEither = EitherT . return
+    liftedDepolarize :: [AnnMemType]
+                     -> Either CollectionInstantiationError
+                          (ShallowType, ConstraintSet)
+    liftedDepolarize mems = either
+                              (Left . CollectionDepolarizationError)
+                              Right $
+                              depolarize mems
     readParameters :: Either CollectionInstantiationError (UVar, UVar, UVar)
     readParameters = do
       a_c' <- readParameter TEnvIdContent
@@ -188,9 +200,9 @@ data CollectionInstantiationError
   = MissingAnnotationTypeParameter TEnvId
       -- ^Indicates that a required annotation parameter (e.g. content) is
       --  missing from the parameter environment.
-  | MultipleProvisions Identifier
-      -- ^Indicates that the provided identifier is provided by multiple
-      --  implementations.
+  | CollectionDepolarizationError DepolarizationError
+      -- ^Indicates that collection instantiation induced a depolarization
+      --  error.
   deriving (Eq, Show)
 
 -- |Defines annotation subtyping.
