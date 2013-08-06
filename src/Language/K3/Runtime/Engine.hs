@@ -11,16 +11,13 @@ module Language.K3.Runtime.Engine (
   MessageQueues(..),
   Workers(..),
 
-  NTransports(..),
-  NInTransport(..),
-  NOutTransport(..),
-
   NConnectionPool(..),
   NEndpoint(..),
   NConnection(..),
 
   WireDesc(..),
   
+  EConnectionPools(..),
   ETransport(..),
   EEndpoints(..),
 
@@ -88,17 +85,11 @@ import Language.K3.Parser
 type Address = (String, Int)
 
 
-data Engine a
-  = Simulation { nodes     :: [Address]
-               , queues    :: MessageQueues a
-               , workers   :: Workers
-               , endpoints :: EEndpoints a }
-
-  | Network    { nodes      :: [Address]
-               , queues     :: MessageQueues a
-               , workers    :: Workers
-               , endpoints  :: EEndpoints a
-               , transports :: NTransports }
+data Engine a = Engine { nodes           :: [Address]
+                       , queues          :: MessageQueues a
+                       , workers         :: Workers
+                       , endpoints       :: EEndpoints a
+                       , connectionPools :: EConnectionPools }
 
 {- Message processing -}
 
@@ -127,21 +118,24 @@ type ProcessPool = [Int]
 
 {- Network transports -}
 
-newtype NTransports   = NTransports ([(Address, NInTransport)], NOutTransport)
-newtype NInTransport  = NInTransport NEndpoint
-newtype NOutTransport = NOutTransport NConnectionPool
-
-type NConnectionPool  = [(NEndpoint, Maybe NConnection)]
-newtype NEndpoint     = NEndpoint (LLTransport, LLEndpoint)
-newtype NConnection   = NConnection (Address, LLConnection)
+-- | Connection pools may be initialized without binding an endpoint (e.g., if the program has no 
+--   communication with any other peer or network sink), and are also safely modifiable to enable
+--   their construction on demand.
+newtype NConnectionPool = NConnectionPool (MVar (Maybe (NEndpoint, [(Address, Maybe NConnection)])))
+newtype NEndpoint       = NEndpoint (LLTransport, LLEndpoint)
+newtype NConnection     = NConnection (Address, LLConnection)
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
 type LLEndpoint   = NT.EndPoint
 type LLConnection = NT.Connection
 
+-- | Two pools for outgoing internal (i.e., K3 peer) and external (i..e, network sink) connections
+--   The first is optional capturing simulations that cannot send to peers without name resolution.
+newtype EConnectionPools = EConnectionPools (Maybe NConnectionPool, NConnectionPool)
+
 -- | An interpreter transport that is used to implement message passing.
-data ETransport a = TRSim (MessageQueues a) | TRNet NOutTransport
+data ETransport a = TRSim (MessageQueues a) | TRNet EConnectionPools
 
 -- | A description of a wire format, with serialization of data, deserialization into data, and
 -- validation of deserialized data.
@@ -153,7 +147,7 @@ data WireDesc a = WireDesc { packWith     :: a -> String
 
 data IOHandle a
   = FileH   (WireDesc a) SIO.Handle 
-  | SocketH (WireDesc a) NEndpoint
+  | SocketH (WireDesc a) (Either NEndpoint Address)
 
 -- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
 data EndpointBufferContents a 
@@ -184,6 +178,10 @@ data EndpointNotification
     | SocketClose
   deriving (Eq, Show, Read)
 
+-- | Engine classification
+simulation :: Engine a -> Bool
+simulation (Engine {connectionPools = (EConnectionPools (Nothing, _))}) = True
+simulation _ = False
 
 -- | Queue accessors
 enqueue :: MessageQueues a -> Address -> Identifier -> a -> IO ()
@@ -227,8 +225,8 @@ send (TRSim q) addr n arg = enqueue q addr n arg
 send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as necessary.
 
 transport :: Engine a -> ETransport a
-transport (Simulation _ q _ _) = TRSim q
-transport (Network _ _ _ _ (NTransports (_, otr))) = TRNet otr
+transport e@(Engine {queues = q, connectionPools = c}) | simulation e = TRSim q
+                                                       | otherwise    = TRNet c
 
 {- Engine constructors -}
 
@@ -239,12 +237,14 @@ simpleEngine :: [Address] -> IO (Engine a)
 simpleEngine [addr] = do
   q <- simpleQueues addr
   eps <- newMVar (H.fromList [])
-  return $ Simulation [addr] q Uniprocess eps
+  externalPool <- newMVar Nothing >>= return . NConnectionPool
+  return $ Engine [addr] q Uniprocess eps (EConnectionPools (Nothing, externalPool))
 
 simpleEngine peers = do
   q <- newMVar (H.fromList $ map (,[]) peers)
   eps <- newMVar (H.fromList [])
-  return $ Simulation peers (ManyByPeer q) Uniprocess eps
+  externalPool <- newMVar Nothing >>= return . NConnectionPool
+  return $ Engine peers (ManyByPeer q) Uniprocess eps (EConnectionPools (Nothing, externalPool))
 
 -- TODO: network engine constructor. This should initialize endpoints
 -- for all given address, for incoming trigger invocations.
@@ -272,16 +272,14 @@ runMessages msgPrcsr e status = status >>= \case
   MessagesDone r -> putStrLn $ "Terminated:\n" ++ show r
 
 runEngine :: (Show r, Show e) => WireDesc a -> MessageProcessor prog a r e -> Engine a -> prog -> IO ()
-runEngine peerWd msgPrcsr (Network _ _ _ _ _) prog = undefined
 runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
                                     >>= runNetwork
                                     >>= runMessages msgPrcsr e . return . initStatus
   where
     -- TODO: termination variables?
-    runNetwork res = initNetwork >> (startNEndpoints e) >>= return . (res,)
-    initNetwork = case e of
-      Simulation _ _ _ _ -> return ()
-      Network peers _ _ _ _ -> mapM_ initPeerEndpoint peers
+    runNetwork res = initNetwork e >> (startNEndpoints e) >>= return . (res,)
+    initNetwork e@(Engine {nodes = peers}) | simulation e = return ()
+                                           | otherwise    = mapM_ initPeerEndpoint peers
 
     startNEndpoints engine = initControl (endpoints engine) >>= runNEndpoints engine
     
@@ -297,7 +295,7 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
     startEndpoint ctrl tr acc n e = acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
 
     numSockets eps = withMVar eps (return . H.foldl' incrSocket 0)
-    incrSocket acc (Endpoint {handle = SocketH _ _}) = acc-1
+    incrSocket acc (Endpoint {handle = SocketH _ (Left _)}) = acc-1
     incrSocket acc _ = acc
 
     initStatus (res, (ctrl, threads)) = either Error Result $ status msgPrcsr $ res
@@ -308,7 +306,7 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> ETransport a -> Endpoint a -> IO ()
-runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (NEndpoint (_, ep))), subscribers = subs}) = do
+runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (Left (NEndpoint (_, ep)))), subscribers = subs}) = do
   event <- NT.receive ep
   case event of
     NT.ConnectionOpened cid rel addr                 -> notify SocketAccept >> rcr
@@ -327,9 +325,18 @@ runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (NEndpoint
     unpackMsg      = unpackWith wd . BS.unpack
     notify evt     = notifySubscribers evt subs tr
 
+runNEndpoint n _ _ _ = error $ "Invalid endpoint for network source " ++ n
 
 {- IO Handle methods -}
 
+networkSource :: IOHandle a -> Maybe (LLTransport, LLEndpoint)
+networkSource (SocketH _ (Left (NEndpoint (t,e)))) = Just (t,e)
+networkSource _ = Nothing
+
+networkSink :: IOHandle a -> Maybe Address
+networkSink (SocketH _ (Right addr)) = Just addr
+networkSink _ = Nothing
+ 
 -- | Open an external file, with given wire description and file path.
 openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
 openFileHandle p wd mode = SIO.openFile p mode >>= return . (FileH wd)
@@ -339,12 +346,15 @@ openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
 openSocketHandle (host, port) wd mode = withSocketsDo $ do
     t <- NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO return
     e <- NT.newEndPoint t >>= either throwIO return
-    return $ SocketH wd (NEndpoint (t, e))
+    return $ SocketH wd (Left $ NEndpoint (t, e))
 
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
 closeHandle (FileH _ h) = SIO.hClose h
-closeHandle (SocketH _ (NEndpoint (t, e))) = NT.closeEndPoint e >> NT.closeTransport t
+closeHandle (networkSource -> Just (t,e)) = NT.closeEndPoint e >> NT.closeTransport t
+-- TODO: below, reference count aggregated outgoing connections for garbage collection
+closeHandle (networkSink   -> Just addr) = return () 
+closeHandle _ = error "Invalid IOHandle argument for closeHandle"
 
 -- | Read a single payload from an external.
 readHandle :: IOHandle a -> IO (Maybe a)
@@ -529,7 +539,8 @@ refreshEBContents f@(FileH _ _) c = takeEBContents c >>= refill
         mkESingle = Single Nothing
         mkMulti x = Multiple x
 
-refreshEBContents (SocketH _ _) c = takeEBContents c >>= (\(x,y) -> return (x, (y, Nothing)))
+refreshEBContents (SocketH _ (Left _)) c  = takeEBContents c >>= (\(x,y) -> return (x, (y, Nothing)))
+refreshEBContents (SocketH _ (Right _)) c = error "Invalid buffer refresh for network sink"
 
 refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
 refreshEBuffer h = modifyEBuffer $ refreshEBContents h
@@ -548,14 +559,12 @@ putTransport = \case
   (TRNet otr) -> undefined -- TODO
 
 putEngine :: (Show a) => Engine a -> IO ()
-putEngine = \case
-  e@(Simulation _ q _ _) -> putStrLn (show e) >> putMessageQueues q
-  e@(Network _ q _ _ _)  -> putStrLn (show e) >> putMessageQueues q
+putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q
 
 
 {- Instance implementations -}
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
-  show (Simulation n q _ _) = "Simulation:\n" ++ ("Nodes:\n" ++ show n ++ "\n")
-  show (Network n q _ _ _)  = "Network:\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+  show e@(Engine {nodes = n}) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+                              | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
