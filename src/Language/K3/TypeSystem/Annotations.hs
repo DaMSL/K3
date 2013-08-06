@@ -14,12 +14,10 @@ module Language.K3.TypeSystem.Annotations
 , isAnnotationSubtypeOf
 ) where
 
-import Control.Applicative
 import Control.Arrow
 import Control.Error.Util
 import Control.Monad
 import Control.Monad.Trans.Either
-import Control.Monad.Trans.Maybe
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid

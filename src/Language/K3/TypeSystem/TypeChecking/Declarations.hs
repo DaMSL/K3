@@ -61,6 +61,7 @@ deriveDeclarations aEnv env aEnv' env' decls =
       DGlobal i _ _ -> (Set.singleton i, Set.empty, Set.empty)
       DRole i -> (Set.empty, Set.singleton i, Set.empty)
       DAnnotation i _ -> (Set.empty, Set.empty, Set.singleton i)
+      DTrigger i _ _ -> (Set.singleton i, Set.empty, Set.empty)
 
 -- |A function to check whether a global has the type described in the provided
 --  type environments.
@@ -78,6 +79,8 @@ deriveDeclaration aEnv env decl =
       -- TODO: the environment entry should be a *subtype* of qt2, not equal;
       --       equal is more work to check because it really means "equivalent
       --       w.r.t. alpha renaming of variables"
+      undefined -- TODO
+    DTrigger i tExpr expr -> do
       undefined -- TODO
     DAnnotation i mems -> do
       s <- spanOfDecl decl

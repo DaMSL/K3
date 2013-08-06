@@ -353,6 +353,10 @@ typeBound tsSet pol =
                   map (cmSing a0 (flipBound pol) . UBUVar . fst) bindings ++
                   map (cmSing a0' pol . UBUVar . snd) bindings
       return $ Just (SFunction a0 a0', cm')
+    (mapM matchTrig -> Just bindings) -> do
+      a0 <- freshVar $ TVarBoundGeneralizationOrigin bindings $ flipBound pol
+      let cm' = mconcat $ map (cmSing a0 (flipBound pol) . UBUVar) bindings
+      return $ Just (STrigger a0, cm')
     (mapM matchOption -> Just bindings) -> do
       qa0 <- freshVar $ TVarBoundGeneralizationOrigin bindings pol
       let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
@@ -382,6 +386,10 @@ typeBound tsSet pol =
     matchFunc :: ShallowType -> Maybe (UVar, UVar)
     matchFunc t = case t of
       SFunction a a' -> Just (a,a')
+      _ -> Nothing
+    matchTrig :: ShallowType -> Maybe UVar
+    matchTrig t = case t of
+      STrigger a -> Just a
       _ -> Nothing
     matchOption :: ShallowType -> Maybe QVar
     matchOption t = case t of

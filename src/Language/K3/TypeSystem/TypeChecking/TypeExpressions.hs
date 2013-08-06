@@ -102,9 +102,13 @@ deriveTypeExpression aEnv tExpr =
                     einstcol
       return (a_s, cs_c `csUnion` cs_s)
     TAddress -> error "Address type not in specification!" -- TODO
-    TSource -> error "Source type not in specification!" -- TODO
-    TSink -> error "Sink type not in specification!" -- TODO
-    TTrigger -> error "Trigger type expression not in specification!" -- TODO
+    TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
+    TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
+    TTrigger -> do
+      tExpr' <- assertTExpr1Children tExpr
+      (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+      a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      return (a', cs `csUnion` csSing (STrigger a <: a'))
     TBuiltIn b -> do
       assertTExpr0Children tExpr
       let ei = case b of
