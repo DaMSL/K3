@@ -11,10 +11,14 @@ module Language.K3.Core.Declaration (
     AnnMemDecl(..)
 ) where
 
+import Data.Maybe
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+
+import Language.K3.Pretty
 
 -- | Top-Level Declarations
 data Declaration
@@ -45,4 +49,13 @@ data instance Annotation Declaration
   = DSpan Span
   deriving (Eq, Read, Show)
 
--- | TODO: pretty printing of declaration tree
+instance Pretty Declaration where
+    prettyLines (DGlobal i t me) =
+        ["DGlobal " ++ i]
+        ++ (shift "+- " "|  " $ prettyLines t)
+        ++ fromMaybe [] (fmap (shift "`- " "   " . prettyLines) me)
+    prettyLines (DRole i) = ["DRole " ++ i]
+    prettyLines (DAnnotation i amd) = ["DAnnotation " ++ i] ++ concatMap prettyLines amd
+
+instance Pretty AnnMemDecl where
+    prettyLines = (:[]) . show

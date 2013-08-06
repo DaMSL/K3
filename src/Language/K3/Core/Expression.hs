@@ -9,6 +9,8 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
+import Language.K3.Pretty
+
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression
     = EConstant   Constant
@@ -77,3 +79,6 @@ data instance Annotation Expression
     | ESpan Span
     | EAnnotation Identifier
   deriving (Eq, Read, Show)
+
+instance Pretty Expression where
+    prettyLines = (:[]) . show
