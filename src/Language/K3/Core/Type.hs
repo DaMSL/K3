@@ -10,6 +10,8 @@ module Language.K3.Core.Type
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 
+import Language.K3.Pretty
+
 -- * Basic types
 
 -- | Tags in the Type Tree. Every type can be qualified with a mutability
@@ -51,3 +53,6 @@ data instance Annotation Type
     | TSpan Span
     | TAnnotation Identifier
   deriving (Eq, Read, Show)
+
+instance Pretty Type where
+    prettyLines = (:[]) . show
