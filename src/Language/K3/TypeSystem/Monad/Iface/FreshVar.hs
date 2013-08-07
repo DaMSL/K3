@@ -13,7 +13,6 @@ import Control.Monad.Trans.Maybe
 
 import Language.K3.TypeSystem.Data
 
--- TODO: modify freshVar to take the appropriate inputs
 class (Monad m, Functor m) => FreshVarI m where
   freshVar :: TVarOrigin a -> m (TVar a)
 
