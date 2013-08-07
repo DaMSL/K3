@@ -121,9 +121,10 @@ type ProcessPool = [Int]
 -- | Connection pools may be initialized without binding an endpoint (e.g., if the program has no 
 --   communication with any other peer or network sink), and are also safely modifiable to enable
 --   their construction on demand.
-newtype NConnectionPool = NConnectionPool (MVar (Maybe (NEndpoint, [(Address, Maybe NConnection)])))
-newtype NEndpoint       = NEndpoint (LLTransport, LLEndpoint)
-newtype NConnection     = NConnection (Address, LLConnection)
+type EConnections       = Maybe (NEndpoint, [(Address, NConnection)])
+newtype NConnectionPool = NConnectionPool (MVar EConnections)
+data NEndpoint          = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
+data NConnection        = NConnection { conn :: LLConnection, cAddress :: Address }
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
@@ -147,7 +148,7 @@ data WireDesc a = WireDesc { packWith     :: a -> String
 
 data IOHandle a
   = FileH   (WireDesc a) SIO.Handle 
-  | SocketH (WireDesc a) (Either NEndpoint Address)
+  | SocketH (WireDesc a) (Either NEndpoint NConnection)
 
 -- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
 data EndpointBufferContents a 
@@ -210,10 +211,10 @@ dequeue = \case
 
         someMapMessage f = messageFromMap (uncurry $ rebuildMap f)
         messageFromMap f = f . trySplit . H.toList . H.filter (not . null)
-        rebuildMap f l kvOpt = (H.fromList l, maybe Nothing f kvOpt)
+        rebuildMap f l kvOpt = (H.fromList l, kvOpt >>= f)
 
-        mpMessage (addr, idvs) = maybe Nothing (\(n,val) -> Just (addr,n,val)) $ tryHead idvs
-        mtMessage ((addr, n), vs) = maybe Nothing (\v -> Just (addr,n,v)) $ tryHead vs
+        mpMessage (addr, idvs) = tryHead idvs >>= return . (\(n,val) -> (addr,n,val))
+        mtMessage ((addr, n), vs) = tryHead vs >>= return . (\v -> (addr,n,v))
 
         tryHead l  = if null l then Nothing else Just $ head l
         trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
@@ -227,6 +228,51 @@ send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as
 transport :: Engine a -> ETransport a
 transport e@(Engine {queues = q, connectionPools = c}) | simulation e = TRSim q
                                                        | otherwise    = TRNet c
+
+{- Endpoint, connection and connection pool accessors -}
+newEndpoint :: Address -> IO (Maybe NEndpoint)
+newEndpoint addr@(host, port) = withSocketsDo $ do
+  t <- eitherAsMaybe $ NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters
+  e <- maybe (return Nothing) (eitherAsMaybe . NT.newEndPoint) t
+  return $ t >>= \tr -> e >>= return . flip NEndpoint tr
+  where eitherAsMaybe m = m >>= return . either (\_ -> Nothing) Just
+
+newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
+newConnection addr (endpoint -> ep) =
+    NT.connect ep (epAddr addr) NT.ReliableOrdered NT.defaultConnectHints
+      >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
+  
+  where epAddr (host,port) = NT.EndPointAddress $ BS.pack $ host ++ (show port) ++ ":0"
+    -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
+
+withPool :: NConnectionPool -> (EConnections -> IO a) -> IO a
+withPool (NConnectionPool poolMv) withF = withMVar poolMv withF
+
+modifyPool :: NConnectionPool -> (EConnections -> IO (EConnections, a)) -> IO a
+modifyPool (NConnectionPool poolMv) modifyF = modifyMVar poolMv modifyF
+
+getConnection :: Address -> NConnectionPool -> IO (Maybe NConnection)
+getConnection addr pool = withPool pool $ return . (>>= lookup addr . snd)
+
+addConnection :: Address -> NConnectionPool -> IO (Maybe NConnection)
+addConnection addr pool = modifyPool pool connect 
+  where connect Nothing  = newEndpoint addr >>= initializePool
+        connect (Just p) = connect' p
+
+        initializePool Nothing = return (Nothing, Nothing)
+        initializePool (Just ep) = connect' (ep,[])
+
+        connect' p@(ep,conns) = newConnection addr ep >>= return . maybe (Just p, Nothing) (add p) 
+        add (ep, conns) c = (Just (ep, (addr, c):conns), Just c)
+
+removeConnection :: Address -> NConnectionPool -> IO ()
+removeConnection addr pool = modifyPool pool remove
+  where remove Nothing = return (Nothing, ())
+        remove (Just (ep, conns)) = closeConnection conns >>= return . (,()) . Just . (ep,)
+        closeConnection (matchConnections -> (matches, rest)) =
+          mapM_ ((\c -> NT.close $ conn c) . snd) matches >> return rest
+        matchConnections = partition ((addr ==) . fst)
+
 
 {- Engine constructors -}
 
@@ -291,8 +337,9 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
 
     initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing "r" e
 
-    startEndpoint _ _ acc n (Endpoint {handle = FileH _ _}) = acc ++ [return (n, Nothing)]
-    startEndpoint ctrl tr acc n e = acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
+    startEndpoint ctrl tr acc n e@(Endpoint {handle = (networkSource -> Just _)}) =
+      acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
+    startEndpoint _ _ acc n _ = acc ++ [return (n, Nothing)]
 
     numSockets eps = withMVar eps (return . H.foldl' incrSocket 0)
     incrSocket acc (Endpoint {handle = SocketH _ (Left _)}) = acc-1
@@ -306,7 +353,7 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 runNEndpoint :: Identifier -> (MSampleVar (), MSem Int) -> ETransport a -> Endpoint a -> IO ()
-runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(SocketH wd (Left (NEndpoint (_, ep)))), subscribers = subs}) = do
+runNEndpoint n (msgAvail, sem) tr e@(Endpoint {handle = h@(networkSource -> Just (wd, _, ep)), subscribers = subs}) = do
   event <- NT.receive ep
   case event of
     NT.ConnectionOpened cid rel addr                 -> notify SocketAccept >> rcr
@@ -329,12 +376,12 @@ runNEndpoint n _ _ _ = error $ "Invalid endpoint for network source " ++ n
 
 {- IO Handle methods -}
 
-networkSource :: IOHandle a -> Maybe (LLTransport, LLEndpoint)
-networkSource (SocketH _ (Left (NEndpoint (t,e)))) = Just (t,e)
+networkSource :: IOHandle a -> Maybe (WireDesc a, LLTransport, LLEndpoint)
+networkSource (SocketH wd (Left ep)) = Just (wd, epTransport ep, endpoint ep)
 networkSource _ = Nothing
 
-networkSink :: IOHandle a -> Maybe Address
-networkSink (SocketH _ (Right addr)) = Just addr
+networkSink :: IOHandle a -> Maybe (WireDesc a, NConnection)
+networkSink (SocketH wd (Right conn)) = Just (wd, conn)
 networkSink _ = Nothing
  
 -- | Open an external file, with given wire description and file path.
@@ -342,18 +389,30 @@ openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
 openFileHandle p wd mode = SIO.openFile p mode >>= return . (FileH wd)
 
 -- | Open an external socket, with given wire description and address.
-openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
-openSocketHandle (host, port) wd mode = withSocketsDo $ do
-    t <- NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters >>= either throwIO return
-    e <- NT.newEndPoint t >>= either throwIO return
-    return $ SocketH wd (Left $ NEndpoint (t, e))
+openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe NConnectionPool -> IO (Maybe (IOHandle a))
+openSocketHandle addr wd mode pool = 
+  case mode of 
+    SIO.ReadMode      -> incoming
+    SIO.WriteMode     -> outgoing
+    SIO.AppendMode    -> error "Unsupported network handle mode"
+    SIO.ReadWriteMode -> error "Unsupport network handle mode"
+  
+  where incoming = newEndpoint addr >>= return . (>>= return . SocketH wd . Left)
+        outgoing = establishConnection pool >>= return . (>>= return . SocketH wd . Right)
+
+        establishConnection (Just p) =
+          getConnection addr p >>= \case
+            Nothing -> addConnection addr p
+            Just c  -> return $ Just c
+
+        establishConnection Nothing = error "Invalid outgoing network connection pool"
 
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
 closeHandle (FileH _ h) = SIO.hClose h
-closeHandle (networkSource -> Just (t,e)) = NT.closeEndPoint e >> NT.closeTransport t
--- TODO: below, reference count aggregated outgoing connections for garbage collection
-closeHandle (networkSink   -> Just addr) = return () 
+closeHandle (networkSource -> Just (_,t,e)) = NT.closeEndPoint e >> NT.closeTransport t
+closeHandle (networkSink   -> Just (_,_)) = return () 
+  -- TODO: above, reference count aggregated outgoing connections for garbage collection
 closeHandle _ = error "Invalid IOHandle argument for closeHandle"
 
 -- | Read a single payload from an external.
@@ -369,6 +428,17 @@ readHandle (FileH wd h) = do
 
 readHandle (SocketH wd np) = error "Unsupported: read from Socket"
 
+-- | Write a single payload to a handle
+writeHandle :: a -> IOHandle a -> IO ()
+writeHandle payload (FileH wd h) = do
+    done <- SIO.hIsEOF h
+    if done then return ()
+    else SIO.hPutStrLn h $ packWith wd payload -- TODO: delimiter, as with readHandle
+
+writeHandle payload (SocketH wd (Right (conn -> c))) =
+  NT.send c [BS.pack $ packWith wd payload] >>= return . either (\_ -> ()) id
+
+writeHandle payload (SocketH _ _) = error "Unsupported write operation on network handle"
 
 {- Endpoint accessors -}
 
@@ -397,12 +467,22 @@ openFile cid path wd tOpt mode engine = do
     file <- openFileHandle path wd (ioMode mode)
     addEndpoint cid (file, (Exclusive $ Single Nothing), []) (endpoints engine)
 
--- TODO: socket modes
+
+-- | Socket constructor. 
+--   This initializes the engine's connection pool as necessary.
 openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
-openSocket cid addr wd tOpt mode engine = do
-    socket <- openSocketHandle addr wd (ioMode mode)
+openSocket cid addr wd tOpt (ioMode -> mode) engine = do
+    socket <- openSocketHandle addr wd mode $ getPool mode engine
     mvar <- newMVar (Multiple [])
-    addEndpoint cid (socket, Shared mvar, []) (endpoints engine)
+    maybe (return ()) (\x -> addEndpoint cid (x, Shared mvar, []) (endpoints engine)) socket
+  
+  where getPool SIO.WriteMode (connectionPools -> EConnectionPools (icp, ecp)) =
+          case (take 2 cid, icp) of
+            ("__", Nothing) -> error $ "Invalid simulation internal connection to " ++ cid
+            ("__", Just _)  -> icp
+            _               -> Just ecp
+
+        getPool _ _ = Nothing
 
 close :: String -> Engine a -> IO ()
 close n engine@(endpointsAndTransport -> (eps, tr)) =
@@ -416,7 +496,7 @@ close n engine@(endpointsAndTransport -> (eps, tr)) =
         notifyType (SocketH _ _) = SocketClose
 
 hasRead :: Identifier -> Engine a -> IO (Maybe Bool)
-hasRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n (endpoints engine) >>= \case
+hasRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
   Just e  -> emptyEBuffer (buffer e) >>= return . Just . not
 
@@ -436,10 +516,24 @@ doRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \ca
         notify (Just nt) subs = notifySubscribers nt subs tr 
 
 hasWrite :: Identifier -> Engine a -> IO (Maybe Bool)
-hasWrite = undefined
+hasWrite n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+  Nothing -> return Nothing
+  Just e  -> fullEBuffer (buffer e) >>= return . Just . not
 
 doWrite :: Identifier -> a -> Engine a -> IO ()
-doWrite n arg engine = undefined
+doWrite n arg engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+  Nothing -> return ()
+  Just e  -> write e
+
+  where write e = appendEBuffer arg (buffer e) >>= flushEBuffer (handle e) >>= update e
+        update e (nBuf, notifyType) =
+          addEndpoint n (nep e nBuf) eps >> notify notifyType (subscribers e)
+
+        nep e b = (handle e, b, subscribers e)
+
+        notify Nothing subs   = return ()
+        notify (Just nt) subs = notifySubscribers nt subs tr
+
 
 {- Endpoint Notifiers -} 
 
@@ -499,6 +593,10 @@ emptyEBContents (Multiple x) = null x
 emptyEBuffer :: EndpointBuffer a -> IO Bool
 emptyEBuffer = wrapEBuffer emptyEBContents
 
+-- TODO
+fullEBuffer :: EndpointBuffer a -> IO Bool
+fullEBuffer = error "NYI"
+
 readEBContents :: EndpointBufferContents a -> Maybe a
 readEBContents (Single x) = x
 readEBContents (Multiple x) = if null x then Nothing else Just $ head x
@@ -521,6 +619,10 @@ takeEBContents = \case
 
 takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ takeEBContents
+
+-- TODO
+flushEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe EndpointNotification)
+flushEBuffer = error "NYI"
 
 refreshEBContents :: IOHandle v -> EndpointBufferContents v
                      -> IO (EndpointBufferContents v, (Maybe v, Maybe EndpointNotification))
