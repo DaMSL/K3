@@ -195,7 +195,7 @@ dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
 
 -- syntax: "trigger" id ":" type "=" expr ";"
 dTrigger :: DeclParser
-dTrigger = declError "trigger" $
+dTrigger = declError "trigger" $ DSpan <->
               DC.trigger <$ keyword "trigger" <*> identifier
                          <* colon <*> typeExpr
                          <* symbol "=" <*> expr
