@@ -65,7 +65,8 @@ library
                    Language.K3.TypeSystem.TypeChecking.Expressions,
                    Language.K3.TypeSystem.TypeChecking.Declarations,
                    Language.K3.TypeSystem.TypeChecking.Basis,
-                   Language.K3.TypeSystem.TypeChecking.TypeExpressions
+                   Language.K3.TypeSystem.TypeChecking.TypeExpressions,
+                   Language.K3.Utils.Conditional
 
 test-suite all
     type: exitcode-stdio-1.0

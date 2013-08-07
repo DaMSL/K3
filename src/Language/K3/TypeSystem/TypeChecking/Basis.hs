@@ -91,6 +91,10 @@ data TypecheckingError
       --   of its declared type signature.  The first annotation type in the
       --   error is the inferred type; the second annotation type is the
       --   declared type.
+  | DeclarationSubtypeFailure Span QuantType QuantType
+      -- ^ Indicates that the inferred type of a global declaration was not a
+      --   subtype of its declared type signature.  The first @QuantType@ is the
+      --   inferred type; the second @QuantType@ is the declared type.
   deriving (Eq, Show)
 
 -- |A data structure representing /internal/ typechecking errors.  These errors
@@ -146,6 +150,12 @@ data InternalTypecheckingError
       -- ^Indicates that a role declaration was nested beyond top level.  The
       --  K3 type system does not have an understanding of roles and so cannot
       --  typecheck them.
+  | TypeInEnvironmentDoesNotMatchSignature TEnvId QuantType QuantType
+      -- ^Indicates that a type found in a type environment is not a supertype
+      --  of the type which was inferred from its signature.  This should never
+      --  happen; in practice, these types should be nearly identical.  The
+      --  declared type is the first @QuantType@; the type from the environment
+      --  is the second.
   deriving (Eq, Show)
   
 -- |A type alias for typechecking environments.

@@ -26,9 +26,11 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Polymorphism
+import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.TypeChecking.Basis
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
+import Language.K3.Utils.Conditional
 
 -- |A function to check whether a given pair of environments correctly describes
 --  an AST.  The provided AST must be a Role declaration.
@@ -72,16 +74,45 @@ deriveDeclaration :: forall m. (FreshVarI m)
                   -> TypecheckM m ()
 deriveDeclaration aEnv env decl =
   case tag decl of
+
     DRole _ -> typecheckError $ InternalError $ NestedRole decl
+
     DGlobal i tExpr mexpr -> do
+      s <- spanOfDecl decl
       (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
       let qt2 = generalize env qa2 cs2
-      -- TODO: the environment entry should be a *subtype* of qt2, not equal;
-      --       equal is more work to check because it really means "equivalent
-      --       w.r.t. alpha renaming of variables"
-      undefined -- TODO
+      qt3 <- requireQuantType s i aEnv
+      unlessM (qt2 `isSubtypeOf` qt3) $
+        typecheckError $ InternalError $
+          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
+      whenJust mexpr $ \expr -> do
+        (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
+        qa1 <- freshTypecheckingVar s
+        let qt1 = generalize env qa1 $ csUnion cs1 $ csSing $ a1 <: qa1
+        unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
+          DeclarationSubtypeFailure s qt1 qt2
+
     DTrigger i tExpr expr -> do
-      undefined -- TODO
+      s <- spanOfDecl decl
+      (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
+      (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr
+      let f a cs = do
+                    qa <- freshTypecheckingVar s
+                    a' <- freshTypecheckingVar s
+                    a'' <- freshTypecheckingVar s
+                    return $ generalize env qa $ csUnion cs $ csFromList
+                      [ a <: SFunction a' a''
+                      , a'' <: STuple []
+                      , STrigger a' <: qa]
+      qt1 <- f a1 cs1
+      qt2 <- f a2 cs2
+      qt3 <- requireQuantType s i aEnv
+      unlessM (qt2 `isSubtypeOf` qt3) $
+        typecheckError $ InternalError $
+          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
+      unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
+        DeclarationSubtypeFailure s qt1 qt2
+
     DAnnotation i mems -> do
       s <- spanOfDecl decl
       entry <- envRequire
@@ -91,10 +122,8 @@ deriveDeclaration aEnv env decl =
                             AnnAlias ann -> return ann
                             QuantAlias _ -> typecheckError $
                               NonAnnotationAlias s $ TEnvIdentifier i
-      (t_h,cs_h) <- either
-                      (typecheckError . AnnotationDepolarizationFailure s)
-                      return
-                    $ depolarize ms2'
+      (t_h,cs_h) <- liftEither (AnnotationDepolarizationFailure s) $
+                      depolarize ms2'
       let getTVar :: TEnvId -> TypecheckM m UVar
           getTVar ei = envRequire (InternalError $ MissingTypeParameter p ei)
                           ei p
@@ -111,20 +140,16 @@ deriveDeclaration aEnv env decl =
       let env' = mconcat $ map
                     (\(AnnMemType i' _ qa) -> Map.singleton (TEnvIdentifier i')
                   $ QuantType Set.empty qa csEmpty) ms1'
-      let (aEnv'',env'') = (aEnv `envMerge` aEnv', env `envMerge` env')
+      let aEnv'' = aEnv `envMerge` aEnv'
+      let env'' = env `envMerge` env'
       (bs,css) <- unzip <$> mapM (deriveAnnotationMember aEnv'' env'') mems
-      (b'',cs'') <- either
-                        (typecheckError . AnnotationConcatenationFailure s)
-                        return
-                      $ concatAnnBodies bs
+      (b'',cs'') <- liftEither (AnnotationConcatenationFailure s) $
+                      concatAnnBodies bs
       inst <- instantiateCollection (AnnType p b'' csEmpty) =<<
                 envRequire
                   (InternalError $ MissingTypeParameter p TEnvIdContent)
                   TEnvIdContent p
-      (a_s,cs_s) <- either
-                      (typecheckError . InvalidCollectionInstantiation s)
-                      return
-                      inst
+      (a_s,cs_s) <- liftEither (InvalidCollectionInstantiation s) inst 
       aP_f <- getTVar TEnvIdFinal
       aP_h <- getTVar TEnvIdHorizon
       aP_s <- getTVar TEnvIdSelf
@@ -135,8 +160,14 @@ deriveDeclaration aEnv env decl =
                       , csFromList [aP_f <: t_h, t_h <: aP_h, a_s <: aP_s]
                       , csUnions css
                       ]
-      join $ unless <$> (inferred `isAnnotationSubtypeOf` declared) <*> 
+      unlessM (inferred `isAnnotationSubtypeOf` declared) $ 
                 typecheckError (AnnotationSubtypeFailure s inferred declared)
+  where
+    liftEither :: (Monad m)
+               => (a -> TypecheckingError) -> Either a b -> TypecheckM m b
+    liftEither errF val = case val of
+      Left err -> typecheckError $ errF err
+      Right x -> return x
 
 -- |A function to derive a type for an annotation member.
 deriveAnnotationMember :: forall m. (FreshVarI m)
@@ -146,12 +177,15 @@ deriveAnnotationMember :: forall m. (FreshVarI m)
                        -> TypecheckM m (AnnBodyType, ConstraintSet)
 deriveAnnotationMember aEnv env decl =
   case decl of
+  
     Lifted pol i tExpr mexpr s ->
       let constr x = AnnBodyType [x] [] in
       deriveMember pol i tExpr mexpr s constr
+      
     Attribute pol i tExpr mexpr s ->
       let constr x = AnnBodyType [] [x] in
       deriveMember pol i tExpr mexpr s constr
+      
     MAnnotation pol i s -> do
       p <- mconcat <$>
         mapM (\ei -> Map.singleton ei <$> lookupSpecialVar ei)
@@ -216,3 +250,15 @@ spanOfDecl decl =
   where
     unSpan dann = case dann of
       DSpan s -> Just s
+
+-- |Obtains a quantified type entry from the type environment, generating an
+--  error if it cannot be found.
+requireQuantType :: (FreshVarI m)
+                 => Span -> Identifier -> TAliasEnv -> TypecheckM m QuantType
+requireQuantType s i aEnv = do
+  mqt <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+            (TEnvIdentifier i) aEnv
+  case mqt of
+    QuantAlias qt -> return qt
+    AnnAlias _ -> typecheckError $ NonQuantAlias s $
+                    TEnvIdentifier i
