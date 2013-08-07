@@ -10,6 +10,8 @@ module Language.K3.TypeSystem.TypeChecking.Basis
 , gatherParallelErrors
 , typecheckError
 , freshTypecheckingVar
+, envRequire
+, envRequireM
 
 , assert0Children
 , assert1Children
@@ -26,6 +28,9 @@ import Control.Applicative
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
 import Data.Either
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Maybe
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
@@ -171,6 +176,20 @@ typecheckError = EitherT . return . Left . Seq.singleton
 freshTypecheckingVar :: (FreshVarI m)
                      => Span -> TypecheckM m (TVar a)
 freshTypecheckingVar s = lift . freshVar =<< return (TVarSourceOrigin s)
+
+-- |Retrieves an entry from an environment, producing an error if it cannot be
+--  found.
+envRequire :: (FreshVarI m, Ord a)
+           => TypecheckingError -> a -> Map a b -> TypecheckM m b
+envRequire e = envRequireM $ return e
+
+-- |Retrieves an entry from an environment, producing an error if it cannot be
+--  found.
+envRequireM :: (FreshVarI m, Ord a)
+           => TypecheckM m TypecheckingError -> a -> Map a b -> TypecheckM m b
+envRequireM e k m = fromMaybe <$> (typecheckError =<< e)
+                             <*> return (Map.lookup k m)
+
 
 -- * Generated routines
 

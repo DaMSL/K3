@@ -225,10 +225,9 @@ deriveExpression aEnv env expr =
       return (a, cs `csUnion` csSing (constr qa <: a))
     lookupOrFail :: TEnvId -> TypecheckM m QuantType
     lookupOrFail envId =
-      fromMaybe (typecheckError =<<
-                  UnboundEnvironmentIdentifier <$> spanOfExpr expr
-                                               <*> return envId)
-              $ return <$> Map.lookup envId env
+      envRequireM (UnboundEnvironmentIdentifier <$> spanOfExpr expr
+                                                <*> return envId)
+        envId env
 
 -- |Obtains the type qualifiers of a given expression.
 qualifiersOfExpr :: K3 Expression -> Set TQual

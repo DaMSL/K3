@@ -84,10 +84,9 @@ deriveDeclaration aEnv env decl =
       undefined -- TODO
     DAnnotation i mems -> do
       s <- spanOfDecl decl
-      entry <- fromMaybe
-                 <$> typecheckError
-                        (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i) 
-                 <*> return (Map.lookup (TEnvIdentifier i) aEnv)
+      entry <- envRequire
+                  (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+                  (TEnvIdentifier i) aEnv
       declared@(AnnType p (AnnBodyType ms1' ms2') _) <- case entry of
                             AnnAlias ann -> return ann
                             QuantAlias _ -> typecheckError $
@@ -97,9 +96,8 @@ deriveDeclaration aEnv env decl =
                       return
                     $ depolarize ms2'
       let getTVar :: TEnvId -> TypecheckM m UVar
-          getTVar ei = fromMaybe <$> typecheckError (InternalError $
-                                                      MissingTypeParameter p ei)
-                                 <*> return (Map.lookup ei p)
+          getTVar ei = envRequire (InternalError $ MissingTypeParameter p ei)
+                          ei p
       let singEntry ei a qa = Map.singleton ei $ QuantAlias $
                                 QuantType Set.empty qa $ csSing $ a <: qa 
       aEnv' <- mappend
@@ -120,9 +118,9 @@ deriveDeclaration aEnv env decl =
                         return
                       $ concatAnnBodies bs
       inst <- instantiateCollection (AnnType p b'' csEmpty) =<<
-                fromMaybe <$> typecheckError (InternalError $
-                                MissingTypeParameter p TEnvIdContent)
-                          <*> return (Map.lookup TEnvIdContent p)
+                envRequire
+                  (InternalError $ MissingTypeParameter p TEnvIdContent)
+                  TEnvIdContent p
       (a_s,cs_s) <- either
                       (typecheckError . InvalidCollectionInstantiation s)
                       return
@@ -158,9 +156,8 @@ deriveAnnotationMember aEnv env decl =
       p <- mconcat <$>
         mapM (\ei -> Map.singleton ei <$> lookupSpecialVar ei)
           [TEnvIdContent, TEnvIdFinal, TEnvIdSelf]
-      mann <- fromMaybe <$> typecheckError (UnboundTypeEnvironmentIdentifier s
-                                              $ TEnvIdentifier i)
-                        <*> return (Map.lookup (TEnvIdentifier i) aEnv)
+      mann <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+                (TEnvIdentifier i) aEnv
       ann <- case mann of
                 QuantAlias _ -> typecheckError (NonAnnotationAlias s
                                                   $ TEnvIdentifier i)
@@ -195,19 +192,18 @@ deriveAnnotationMember aEnv env decl =
       return ( constr $ AnnMemType i Negative qa, cs )
     lookupSpecialVar :: TEnvId -> TypecheckM m UVar
     lookupSpecialVar ei = do
-      mqt <- fromMaybe <$> badForm Nothing
-                       <*> return (Map.lookup ei aEnv)
+      mqt <- envRequire (badFormErr Nothing) ei aEnv
+      let badForm = typecheckError $ badFormErr $ Just mqt 
       case mqt of
         QuantAlias (QuantType sas qa cs) -> do
-          unless (Set.null sas) $ badForm $ Just mqt
+          unless (Set.null sas) badForm
           case csToList cs of
             [QualifiedLowerConstraint (CRight a) qa'] | qa == qa' ->
               return a
-            _ -> badForm $ Just mqt
-        AnnAlias _ -> badForm $ Just mqt
+            _ -> badForm
+        AnnAlias _ -> badForm
       where
-        badForm mqt = typecheckError $ InternalError $
-                        InvalidSpecialBinding ei mqt
+        badFormErr mqt = InternalError $ InvalidSpecialBinding ei mqt
 
 -- |Retrieves the span from the provided expression.  If no such span exists,
 --  an error is produced.

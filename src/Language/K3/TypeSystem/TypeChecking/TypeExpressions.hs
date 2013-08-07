@@ -146,8 +146,7 @@ deriveTypeExpression aEnv tExpr =
                                             <*> return ei
     aEnvLookup :: TEnvId -> Span -> TypecheckM m (TEnvId, TypeAliasEntry)
     aEnvLookup ei s =
-      fromMaybe <$> typecheckError (UnboundTypeEnvironmentIdentifier s ei)
-                <*> return ((ei,) <$> Map.lookup ei aEnv)
+      (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier s ei) ei aEnv
 
 -- |Obtains the type qualifiers of a given expression.
 qualifiersOfType :: K3 Type -> Set TQual
