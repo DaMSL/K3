@@ -11,30 +11,20 @@ module Language.K3.TypeSystem.TypeChecking.Basis
 , typecheckError
 , freshTypecheckingVar
 
-, assertExpr0Children
-, assertExpr1Children
-, assertExpr2Children
-, assertExpr3Children
-, assertExpr4Children
-, assertExpr5Children
-, assertExpr6Children
-, assertExpr7Children
-, assertExpr8Children
-, assertTExpr0Children
-, assertTExpr1Children
-, assertTExpr2Children
-, assertTExpr3Children
-, assertTExpr4Children
-, assertTExpr5Children
-, assertTExpr6Children
-, assertTExpr7Children
-, assertTExpr8Children
+, assert0Children
+, assert1Children
+, assert2Children
+, assert3Children
+, assert4Children
+, assert5Children
+, assert6Children
+, assert7Children
+, assert8Children
 ) where
 
 import Control.Applicative
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
-import Data.Char
 import Data.Either
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
@@ -186,18 +176,30 @@ freshTypecheckingVar s = lift . freshVar =<< return (TVarSourceOrigin s)
 
 -- Defines assertExpr0Children through assertExpr8Children and similarly for
 -- assertTExpr#Children
+class ErrorForWrongChildren a where
+  childCountError :: K3 a -> InternalTypecheckingError
+instance ErrorForWrongChildren Expression where
+  childCountError = InvalidExpressionChildCount
+instance ErrorForWrongChildren K3T.Type where
+  childCountError = InvalidTypeExpressionChildCount
 $(
-  let mkAssertChildren :: String -> Q TH.Type -> Q TH.Exp -> Int -> Q [Dec]
-      mkAssertChildren typName typ ecType n = do
-        let fname = mkName $ "assert" ++ typName ++ show n ++ "Children"
-        let ename = mkName $ map toLower typName
+  let mkAssertChildren :: Int -> Q [Dec]
+      mkAssertChildren n = do
+        let fname = mkName $ "assert" ++ show n ++ "Children"
+        let ename = mkName "tree"
         let elnames = map (mkName . ("el" ++) . show) [1::Int .. n]
+        let typN = mkName "a"
+        let mtypN = mkName "m"
+        let typ = varT typN
+        let mtyp = varT mtypN
         let tupTyp = foldl appT (tupleT n) $ replicate n $ [t|K3 $(typ)|]
-        let signature = sigD fname $
-              [t| (FreshVarI m) => K3 $(typ) -> TypecheckM m $(tupTyp) |]
+        ftype <- [t| (FreshVarI $(mtyp), ErrorForWrongChildren $(typ))
+                      => K3 $(typ) -> TypecheckM $(mtyp) $(tupTyp) |]
+        let ftype' = ForallT [PlainTV typN, PlainTV mtypN] [] ftype
+        let signature = sigD fname $ return ftype'
         let badMatch = match wildP (normalB
               [| typecheckError $ InternalError $
-                    $(ecType) $(varE ename) |]
+                    childCountError $(varE ename) |]
               ) []
         let goodMatch = match (listP $ map varP elnames) (normalB $
                           appE ([|return|]) $ tupE $ map varE elnames) []
@@ -206,14 +208,5 @@ $(
         let impl = funD fname [cl]
         sequence [signature,impl]
   in
-  concat <$> mapM (\(tn,t,ec,n) -> mkAssertChildren tn t ec n)
-    [(tn,t,ec,n) | n <- [0::Int .. 8]
-                 , (tn,t,ec) <- [ ( "Expr"
-                                  , [t|Expression|]
-                                  , [|InvalidExpressionChildCount|])
-                                , ( "TExpr"
-                                  , [t|K3T.Type|]
-                                  , [|InvalidTypeExpressionChildCount|])
-                                ]
-    ]
+  concat <$> mapM mkAssertChildren [0::Int .. 8]
  )

@@ -68,7 +68,7 @@ deriveExpression :: forall m. (FreshVarI m)
 deriveExpression aEnv env expr =
   case tag expr of
     EConstant c -> do
-      assertExpr0Children expr
+      assert0Children expr
       case c of
         CBool _ -> do
           a :: UVar <- freshTypecheckingVar =<< spanOfExpr expr
@@ -101,7 +101,7 @@ deriveExpression aEnv env expr =
           let tExpr = foldl (@+) (TC.collection recType) $ map TAnnotation anns
           deriveUnqualifiedTypeExpression aEnv tExpr
     EVariable x -> do
-      assertExpr0Children expr
+      assert0Children expr
       s <- spanOfExpr expr
       qt <- lookupOrFail $ TEnvIdentifier x
       (qa,cs) <- EitherT $ Right <$> polyinstantiate s qt
@@ -125,7 +125,7 @@ deriveExpression aEnv env expr =
       return (a, csUnions css `csUnion`
                   csSing (SRecord (Map.fromList $ zip ids qas) <: a))
     ELambda i -> do
-      expr' <- assertExpr1Children expr
+      expr' <- assert1Children expr
       qa :: QVar <- freshTypecheckingVar =<< spanOfExpr expr
       let env' = Map.insert (TEnvIdentifier i)(QuantType Set.empty qa csEmpty)
                     env
@@ -137,33 +137,33 @@ deriveExpression aEnv env expr =
       a <- freshTypecheckingVar =<< spanOfExpr expr
       case typeOfOp op of
         SomeBinaryOperator binop -> do
-          (expr1, expr2) <- assertExpr2Children expr
+          (expr1, expr2) <- assert2Children expr
           (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
           (a2,cs2) <- deriveUnqualifiedExpression aEnv env expr2
           let cs' = csSing $ BinaryOperatorConstraint a1 binop a2 a
           return (a, csUnions [cs1, cs2, cs'])
     EProject i -> do
-      expr' <- assertExpr1Children expr
+      expr' <- assert1Children expr
       (a', cs) <- deriveUnqualifiedExpression aEnv env expr'
       a <- freshTypecheckingVar =<< spanOfExpr expr
       qa <- freshTypecheckingVar =<< spanOfExpr expr
       return (a, cs `csUnion` csFromList [ a' <: SRecord (Map.singleton i qa)
                                          , qa <: a ])
     ELetIn i -> do
-      (qexpr',expr') <- assertExpr2Children expr
+      (qexpr',expr') <- assert2Children expr
       (qa,cs) <- deriveQualifiedExpression aEnv env qexpr'
       let qt = generalize env qa cs
       let env' = Map.insert (TEnvIdentifier i) qt env
       (a,cs') <- deriveUnqualifiedExpression aEnv env' expr'
       return (a,cs')
     EAssign i -> do
-      expr' <- assertExpr1Children expr
+      expr' <- assert1Children expr
       (a,cs) <- deriveUnqualifiedExpression aEnv env expr'
       (QuantType _ qa _) <- lookupOrFail $ TEnvIdentifier i
       return (a,cs `csUnion` csFromList [a <: qa,
                   MonomorphicQualifiedUpperConstraint qa $ Set.singleton TMut])
     ECaseOf i -> do
-      (expr0,expr1,expr2) <- assertExpr3Children expr
+      (expr0,expr1,expr2) <- assert3Children expr
       (a0,cs0) <- deriveUnqualifiedExpression aEnv env expr0
       qa <- freshTypecheckingVar =<< spanOfExpr expr
       let env' = Map.insert (TEnvIdentifier i) (QuantType Set.empty qa csEmpty)
@@ -174,7 +174,7 @@ deriveExpression aEnv env expr =
       return (a3, csUnions [cs0,cs1,cs2,csFromList
                               [ a0 <: SOption qa, a1 <: a3, a2 <: a3]])
     EBindAs binder -> do
-      (expr1,expr2) <- assertExpr2Children expr
+      (expr1,expr2) <- assert2Children expr
       (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
       let handleBinder :: TypecheckM m (TNormEnv, ConstraintSet)
           handleBinder = case binder of
@@ -202,7 +202,7 @@ deriveExpression aEnv env expr =
       (a2,cs2) <- deriveUnqualifiedExpression aEnv (envMerge env env') expr2
       return (a2, csUnions [cs1,cs2,cs'])
     EIfThenElse -> do
-      (expr1,expr2,expr3) <- assertExpr3Children expr
+      (expr1,expr2,expr3) <- assert3Children expr
       [(a1,cs1),(a2,cs2),(a3,cs3)] <-
           mapM (deriveUnqualifiedExpression aEnv env) [expr1,expr2,expr3]
       a4 <- freshTypecheckingVar =<< spanOfExpr expr
@@ -210,7 +210,7 @@ deriveExpression aEnv env expr =
                               [ a1 <: SBool, a2 <: a4, a3 <: a4 ] ])
     EAddress -> error "No address expression in specification!" -- TODO
     ESelf -> do
-      assertExpr0Children expr
+      assert0Children expr
       qt@(QuantType sas qa cs) <- lookupOrFail TEnvIdSelf
       s <- spanOfExpr expr
       unless (Set.null sas) $
@@ -219,7 +219,7 @@ deriveExpression aEnv env expr =
       return (a, csSing (qa <: a) `csUnion` cs)
   where
     commonSingleContainer constr = do
-      expr' <- assertExpr1Children expr
+      expr' <- assert1Children expr
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingVar =<< spanOfExpr expr
       return (a, cs `csUnion` csSing (constr qa <: a))

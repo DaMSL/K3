@@ -63,7 +63,7 @@ deriveTypeExpression aEnv tExpr =
     TReal -> deriveTypePrimitive SReal
     TString -> deriveTypePrimitive SString
     TFunction -> do
-      (tExpr1, tExpr2) <- assertTExpr2Children tExpr
+      (tExpr1, tExpr2) <- assert2Children tExpr
       (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
       a0 <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
@@ -82,7 +82,7 @@ deriveTypeExpression aEnv tExpr =
       return (a', csUnions css `csUnion`
                   csSing ((SRecord $ Map.fromList $ zip ids qas) <: a'))
     TCollection -> do
-      tExpr' <- assertTExpr1Children tExpr
+      tExpr' <- assert1Children tExpr
       let ais = mapMaybe toAnnotationId $ annotations tExpr
       (a_c,cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
       s <- spanOfTypeExpr tExpr
@@ -105,12 +105,12 @@ deriveTypeExpression aEnv tExpr =
     TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
     TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
     TTrigger -> do
-      tExpr' <- assertTExpr1Children tExpr
+      tExpr' <- assert1Children tExpr
       (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
       a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
       return (a', cs `csUnion` csSing (STrigger a <: a'))
     TBuiltIn b -> do
-      assertTExpr0Children tExpr
+      assert0Children tExpr
       let ei = case b of
                   TSelf -> TEnvIdSelf
                   TStructure -> TEnvIdFinal
@@ -123,11 +123,11 @@ deriveTypeExpression aEnv tExpr =
       return (a, cs `csUnion` csSing (qa <: a))
   where
     deriveTypePrimitive p = do
-      assertTExpr0Children tExpr
+      assert0Children tExpr
       a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
       return (a, csSing $ p <: a)
     commonSingleContainer constr = do
-      tExpr' <- assertTExpr1Children tExpr
+      tExpr' <- assert1Children tExpr
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr'
       a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
       return (a, cs `csUnion` csSing (constr qa <: a))
