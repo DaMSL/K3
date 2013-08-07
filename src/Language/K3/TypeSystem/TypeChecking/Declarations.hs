@@ -85,8 +85,8 @@ deriveDeclaration aEnv env decl =
     DAnnotation i mems -> do
       s <- spanOfDecl decl
       entry <- fromMaybe
-                 <$> (typecheckError $
-                        UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i) 
+                 <$> typecheckError
+                        (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i) 
                  <*> return (Map.lookup (TEnvIdentifier i) aEnv)
       declared@(AnnType p (AnnBodyType ms1' ms2') _) <- case entry of
                             AnnAlias ann -> return ann
@@ -119,7 +119,6 @@ deriveDeclaration aEnv env decl =
                         (typecheckError . AnnotationConcatenationFailure s)
                         return
                       $ concatAnnBodies bs
-      -- TODO: update spec to reflect the following call
       inst <- instantiateCollection (AnnType p b'' csEmpty) =<<
                 fromMaybe <$> typecheckError (InternalError $
                                 MissingTypeParameter p TEnvIdContent)
@@ -221,4 +220,3 @@ spanOfDecl decl =
   where
     unSpan dann = case dann of
       DSpan s -> Just s
-      _ -> Nothing
