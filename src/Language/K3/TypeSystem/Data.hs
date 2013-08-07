@@ -58,8 +58,6 @@ import Language.K3.TypeSystem.Data.Utils
 
 -- * Types
 
--- TODO: data kinds for TVar?
-
 data TVarQualification
   = UnqualifiedTVar
   | QualifiedTVar
