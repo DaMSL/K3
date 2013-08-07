@@ -84,13 +84,13 @@ deriveExpression aEnv env expr =
         CString _ -> do
           a :: UVar <- freshTypecheckingVar =<< spanOfExpr expr
           return (a, csSing $ SString <: a)
-        CNone -> do
+        CNone nm -> do
           a <- freshTypecheckingVar =<< spanOfExpr expr
           qa <- freshTypecheckingVar =<< spanOfExpr expr
-          -- TODO: qualifiersOfExpr is probably wrong here; it would confuse the
-          --       qualifier inside of a None with e.g. the qualifiers of the
-          --       tuple that contained it
-          return (a, csFromList [SOption qa <: a, qualifiersOfExpr expr <: qa ])
+          let qs = case nm of
+                      NoneMut -> Set.singleton TMut
+                      NoneImmut -> Set.singleton TImmut
+          return (a, csFromList [SOption qa <: a, qs <: qa ])
         CEmpty recType -> do
           -- The EAnnotation items on this expression are the annotation
           -- identifiers.

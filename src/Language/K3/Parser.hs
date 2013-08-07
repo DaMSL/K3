@@ -347,6 +347,11 @@ exprQualifier :: K3Parser (Annotation Expression)
 exprQualifier = choice [keyword "immut" >> return EImmutable,
                         keyword "mut" >> return EMutable]
 
+exprNoneQualifier :: K3Parser NoneMutability
+exprNoneQualifier =
+      keyword "immut" *> return NoneImmut
+  <|> keyword "mut" *> return NoneMut
+
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
     myTrace "EASN" (try eAssign),
@@ -406,7 +411,7 @@ eVariable = EC.variable <$> identifier
 {- Complex literals -}
 eOption :: ExpressionParser
 eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
-                  (@+) (EC.constant CNone) <$> (keyword "None" *> exprQualifier)]
+                  keyword "None" *> (EC.constant . CNone <$> exprNoneQualifier)]
 
 eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
