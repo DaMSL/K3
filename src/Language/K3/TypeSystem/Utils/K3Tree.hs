@@ -13,17 +13,12 @@ module Language.K3.TypeSystem.Utils.K3Tree
 ) where
 
 import Control.Applicative
-import Control.Monad
-import Data.Map as Map
-import Data.Set as Set
 import Language.Haskell.TH
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
 import Language.K3.Core.Utils
-import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Utils.TemplateHaskell

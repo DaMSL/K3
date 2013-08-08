@@ -32,8 +32,6 @@ import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
-import Language.K3.TypeSystem.TypeChecking.Monad
-import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
 
 -- |A function to derive the type of a qualified expression.

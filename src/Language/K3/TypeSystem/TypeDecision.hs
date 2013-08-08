@@ -4,21 +4,12 @@
   environment for typechecking.
 -}
 module Language.K3.TypeSystem.TypeDecision
-(
+( typeDecision
 ) where
 
-import Control.Arrow
-import Data.Set (Set)
-import qualified Data.Set as Set
-
 import Language.K3.Core.Annotation
-import Language.K3.Core.Common
 import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
-import Language.K3.Core.Type
-import Language.K3.TypeSystem.ConstraintSetLike
 import Language.K3.TypeSystem.Data
-import Language.K3.TypeSystem.TypeDecision.Data
 
 -- |A function implementing the type decision procedure.  The tree at top level
 --  is expected to be a @DRole@ declaration containing non-role declarations.

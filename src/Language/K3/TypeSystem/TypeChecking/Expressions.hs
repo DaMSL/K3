@@ -12,7 +12,6 @@ module Language.K3.TypeSystem.TypeChecking.Expressions
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Either
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Set (Set)
@@ -27,7 +26,6 @@ import Language.K3.Core.Expression
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
-import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Monad

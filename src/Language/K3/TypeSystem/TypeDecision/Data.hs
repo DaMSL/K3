@@ -11,12 +11,8 @@ import Control.Arrow
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Language.K3.Core.Annotation
-import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
-import Language.K3.TypeSystem.Error
 
 -- |A data structure representing a constraint set which includes stubs.
 data StubbedConstraintSet = StubbedConstraintSet ConstraintSet (Set Stub)

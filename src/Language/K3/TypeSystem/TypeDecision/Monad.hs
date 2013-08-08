@@ -11,7 +11,6 @@ module Language.K3.TypeSystem.TypeDecision.Monad
 import Control.Monad.State
 
 import Language.K3.TypeSystem.Error
-import Language.K3.TypeSystem.TypeDecision.Data
 
 -- |A monad in which type decision takes place.
 type TypeDecideM a = StateT TypeDecideState (Either TypeError) a

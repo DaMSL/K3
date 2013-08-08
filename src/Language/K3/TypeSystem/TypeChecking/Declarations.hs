@@ -25,15 +25,12 @@ import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
-import Language.K3.TypeSystem.Monad.Iface.FreshVar
-import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
-import Language.K3.TypeSystem.Utils.K3Tree
 import Language.K3.Utils.Conditional
 
 -- |A function to check whether a given pair of environments correctly describes
