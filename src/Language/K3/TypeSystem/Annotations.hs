@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts #-}
 {-|
   This module contains functions for annotation types.
 -}
@@ -25,6 +25,8 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 
 import Language.K3.Core.Common
+import Language.K3.TemplateHaskell.Transform
+import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
@@ -34,7 +36,9 @@ import Language.K3.TypeSystem.Utils
 -- |Instantiates an annotation type.  If bindings appear in the parameters
 --  which are not open type variables in the annotation type, they are ignored.
 --  The resulting annotation type may still have open variables.
-instantiateAnnotation :: TParamEnv -> AnnType -> AnnType
+instantiateAnnotation :: ( CSL.ConstraintSetLike e c
+                         , Transform ReplaceVariables c)
+                      => TParamEnv -> AnnType c -> AnnType c
 instantiateAnnotation p (AnnType p' b cs) =
   let substitutions = Map.elems $ Map.intersectionWith (,) p' p in
   let (b',cs') =
@@ -42,18 +46,25 @@ instantiateAnnotation p (AnnType p' b cs) =
   AnnType (Map.difference p' p) b' cs'
 
 -- |Defines concatenation of annotation types.
-concatAnnType :: AnnType -> AnnType
-              -> Either AnnotationConcatenationError AnnType
+concatAnnType :: ( CSL.ConstraintSetLike e c
+                 , CSL.ConstraintSetLikePromotable ConstraintSet c
+                 , Transform ReplaceVariables c)
+              => AnnType c -> AnnType c
+              -> Either AnnotationConcatenationError (AnnType c)
 concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
     let (AnnType p2' b2' cs2') = instantiateAnnotation p1 ann2
     unless (Map.null p2') $ Left $
       IncompatibleTypeParameters p1 p2
     (b3,cs3) <- concatAnnBody b1 b2'
-    return $ AnnType p1 b3 $ csUnions [cs1,cs2',cs3]
+    return $ AnnType p1 b3 $ CSL.unions [cs1,cs2',CSL.promote cs3]
     
 -- |Defines concatenation over numerous annotation types.
-concatAnnTypes :: [AnnType] -> Either AnnotationConcatenationError AnnType
-concatAnnTypes = foldM concatAnnType emptyAnnotation
+concatAnnTypes :: (CSL.ConstraintSetLike e c
+                  , CSL.ConstraintSetLikePromotable ConstraintSet c
+                  , Transform ReplaceVariables c)
+               => [AnnType c] -> Either AnnotationConcatenationError (AnnType c)
+concatAnnTypes = foldM concatAnnType $
+                    AnnType Map.empty (AnnBodyType [] []) CSL.empty
 
 -- |Defines concatenation of annotation body types.
 concatAnnBody :: AnnBodyType -> AnnBodyType
@@ -156,10 +167,12 @@ data DepolarizationError
 -- |Defines instantiation of collection types.  If the instantiation is not
 --  defined (e.g. because depolarization fails), then the clashing identifiers
 --  are provided instead.
-instantiateCollection :: (FreshVarI m)
-                      => AnnType -> UVar
-                      -> m (Either CollectionInstantiationError
-                              (UVar, ConstraintSet))
+instantiateCollection :: ( FreshVarI m, CSL.ConstraintSetLike e c
+                         , CSL.ConstraintSetLikePromotable ConstraintSet c
+                         , Transform ReplaceVariables c
+                         , ConstraintSetType c)
+                      => AnnType c -> UVar
+                      -> m (Either CollectionInstantiationError (UVar, c))
 instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
   runEitherT $ do
     -- TODO: consider richer error reporting
@@ -174,7 +187,7 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
                           , a_s' <: t_s
                           ]
     let cs''' = replaceVariables Map.empty (Map.singleton a_c' a_c) $
-                  csUnions [cs',cs_s,cs_f,cs'']
+                  cs' `CSL.union` CSL.promote (csUnions [cs_s,cs_f,cs''])
     return (a_s, cs''')
   where
     liftedDepolarize :: [AnnMemType]
@@ -204,13 +217,14 @@ data CollectionInstantiationError
   deriving (Eq, Show)
 
 -- |Defines annotation subtyping.
-isAnnotationSubtypeOf :: forall m. (FreshVarI m) => AnnType -> AnnType -> m Bool
+isAnnotationSubtypeOf :: forall m. (FreshVarI m)
+                      => NormalAnnType -> NormalAnnType -> m Bool
 isAnnotationSubtypeOf ann1 ann2 = do
   fun1 <- annToFun ann1
   fun2 <- annToFun ann2
   isSubtypeOf fun1 fun2
   where
-    annToFun :: AnnType -> m QuantType
+    annToFun :: NormalAnnType -> m NormalQuantType
     annToFun ann@(AnnType p (AnnBodyType ms1 ms2) cs) = do
       let origin = TVarAnnotationToFunctionOrigin ann
       let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms

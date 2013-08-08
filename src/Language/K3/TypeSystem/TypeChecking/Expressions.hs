@@ -223,7 +223,7 @@ deriveExpression aEnv env expr =
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingVar =<< spanOfExpr expr
       return (a, cs `csUnion` csSing (constr qa <: a))
-    lookupOrFail :: TEnvId -> TypecheckM m QuantType
+    lookupOrFail :: TEnvId -> TypecheckM m NormalQuantType
     lookupOrFail envId =
       envRequireM (UnboundEnvironmentIdentifier <$> spanOfExpr expr
                                                 <*> return envId)

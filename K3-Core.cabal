@@ -70,6 +70,7 @@ library
                    Language.K3.TypeSystem.Data.TypesAndConstraints,
                    Language.K3.TypeSystem.Data.Convenience,
                    Language.K3.TypeSystem.Data.ConstraintSet,
+                   Language.K3.TypeSystem.TypeDecision,
                    Language.K3.TypeSystem.ConstraintSetLike
 
 test-suite all

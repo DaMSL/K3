@@ -36,7 +36,8 @@ import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Subtyping.ConstraintMap
 
-isSubtypeOf :: forall m. (FreshVarI m) => QuantType -> QuantType -> m Bool
+isSubtypeOf :: forall m. (FreshVarI m)
+            => NormalQuantType -> NormalQuantType -> m Bool
 isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
   -- First, ensure that the type variable sets are disjoint.  If this is not
   -- the case, then perform alpha-renaming as necessary.

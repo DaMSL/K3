@@ -237,6 +237,7 @@ deriveAnnotationMember aEnv env decl =
             _ -> badForm
         AnnAlias _ -> badForm
       where
+        badFormErr :: Maybe NormalTypeAliasEntry -> TypecheckingError
         badFormErr mqt = InternalError $ InvalidSpecialBinding ei mqt
 
 -- |Retrieves the span from the provided expression.  If no such span exists,
@@ -254,7 +255,8 @@ spanOfDecl decl =
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
 requireQuantType :: (FreshVarI m)
-                 => Span -> Identifier -> TAliasEnv -> TypecheckM m QuantType
+                 => Span -> Identifier -> TAliasEnv
+                 -> TypecheckM m NormalQuantType
 requireQuantType s i aEnv = do
   mqt <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
             (TEnvIdentifier i) aEnv

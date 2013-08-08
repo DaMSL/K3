@@ -18,7 +18,7 @@ import Language.K3.TypeSystem.Data.TypesAndConstraints
 import Language.K3.TypeSystem.Data.Utils
 
 -- |A value defining the empty annotation.
-emptyAnnotation :: AnnType
+emptyAnnotation :: NormalAnnType
 emptyAnnotation = AnnType Map.empty (AnnBodyType [] []) csEmpty
   
 -- |A typeclass with convenience instances for constructing constraints.  This

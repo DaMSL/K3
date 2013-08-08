@@ -21,4 +21,3 @@ instance (FreshVarI m, Monad m) => FreshVarI (MaybeT m) where
 
 instance (FreshVarI m, Monad m) => FreshVarI (EitherT e m) where
   freshVar = lift . freshVar
-  

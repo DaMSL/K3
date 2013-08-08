@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs, ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs, ScopedTypeVariables, FlexibleContexts #-}
 {-|
   This module contains functionality related to K3's let-bound polymorphism
   model.
@@ -18,7 +18,9 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Closure
+import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
@@ -27,7 +29,7 @@ import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 -- * Generalization
 
 -- |Generalizes a type to produce a quantified type.
-generalize :: TNormEnv -> QVar -> ConstraintSet -> QuantType
+generalize :: TNormEnv -> QVar -> ConstraintSet -> NormalQuantType
 generalize env qa cs =
   let cs' = calculateClosure cs in
   let reachableQVars = Set.map SomeQVar $ Set.fromList $
@@ -37,7 +39,7 @@ generalize env qa cs =
                                       `Set.difference` freeEnvVars in
   QuantType quantSet qa cs
   where
-    openVars :: QuantType -> Set AnyTVar
+    openVars :: NormalQuantType -> Set AnyTVar
     openVars (QuantType bound var cs'') =
       Set.insert (SomeQVar var) (extractVariables cs'') `Set.difference` bound
 
@@ -75,16 +77,19 @@ reachableFromType t = case t of
 
 -- |Polyinstantiates a quantified type.
 polyinstantiate
-             :: forall m. (FreshVarI m)
+             :: forall m e c.
+                ( FreshVarI m, CSL.ConstraintSetLike e c
+                , CSL.ConstraintSetLikePromotable ConstraintSet c
+                , Transform ReplaceVariables c)
              => Span -- ^The span at which this polyinstantiation occurred.
-             -> QuantType -- ^The type to polyinstantiate.
-             -> m (QVar, ConstraintSet) -- ^The result of polyinstantiation.
+             -> QuantType c -- ^The type to polyinstantiate.
+             -> m (QVar, c) -- ^The result of polyinstantiation.
 polyinstantiate inst (QuantType boundSet qa cs) = do
   (qvarMap,uvarMap) <- mconcat <$> mapM freshMap (Set.toList boundSet)
   let (qa',cs') = replaceVariables qvarMap uvarMap (qa,cs)
-  return (qa', cs' `csUnion`
-               csFromList (map (uncurry PolyinstantiationLineageConstraint)
-                              $ Map.toList qvarMap))
+  return (qa', cs' `CSL.union` CSL.promote
+               (csFromList (map (uncurry PolyinstantiationLineageConstraint)
+                               $ Map.toList qvarMap)))
   where
     freshMap :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
     freshMap var =

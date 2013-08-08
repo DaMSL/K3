@@ -22,18 +22,21 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
+import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Basis
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::
       forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
-                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
-   => TAliasEnv -- ^The relevant type alias environment.
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c, ConstraintSetType c)
+   => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> TypecheckM m (QVar, c)
 deriveQualifiedTypeExpression aEnv tExpr = do
@@ -46,8 +49,9 @@ deriveQualifiedTypeExpression aEnv tExpr = do
 --  raised if any qualifiers appear.
 deriveUnqualifiedTypeExpression ::
       forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
-                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
-   => TAliasEnv -- ^The relevant type alias environment.
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c, ConstraintSetType c)
+   => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> TypecheckM m (UVar, c)
 deriveUnqualifiedTypeExpression aEnv tExpr =
@@ -59,8 +63,9 @@ deriveUnqualifiedTypeExpression aEnv tExpr =
 -- |A function to derive the type of a type expression.
 deriveTypeExpression ::
       forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
-                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
-   => TAliasEnv -- ^The relevant type alias environment.
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c, ConstraintSetType c)
+   => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> TypecheckM m (UVar, c)
 deriveTypeExpression aEnv tExpr =
@@ -108,7 +113,7 @@ deriveTypeExpression aEnv tExpr =
                           spanOfTypeExpr tExpr <*> return err)
                     return
                     einstcol
-      return (a_s, cs_c `CSL.union` CSL.promote cs_s)
+      return (a_s, cs_c `CSL.union` cs_s)
     TAddress -> error "Address type not in specification!" -- TODO
     TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
     TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
@@ -128,7 +133,7 @@ deriveTypeExpression aEnv tExpr =
       qt <- uncurry toQuantType =<< aEnvLookup ei s
       (qa,cs) <- polyinstantiate s qt
       a <- freshTypecheckingVar s
-      return (a, CSL.promote cs `CSL.union` CSL.csingleton (qa <: a))
+      return (a, cs `CSL.union` CSL.csingleton (qa <: a))
   where
     deriveTypePrimitive p = do
       assert0Children tExpr
@@ -142,17 +147,17 @@ deriveTypeExpression aEnv tExpr =
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing
-    toAnnAlias :: TEnvId -> TypeAliasEntry -> TypecheckM m AnnType
+    toAnnAlias :: TEnvId -> TypeAliasEntry c -> TypecheckM m (AnnType c)
     toAnnAlias ei entry = case entry of
       AnnAlias ann -> return ann
       _ -> typecheckError =<< NonAnnotationAlias <$> spanOfTypeExpr tExpr
                                                  <*> return ei
-    toQuantType :: TEnvId -> TypeAliasEntry -> TypecheckM m QuantType
+    toQuantType :: TEnvId -> TypeAliasEntry c -> TypecheckM m (QuantType c)
     toQuantType ei entry = case entry of
       QuantAlias qt -> return qt
       _ -> typecheckError =<< NonQuantAlias <$> spanOfTypeExpr tExpr
                                             <*> return ei
-    aEnvLookup :: TEnvId -> Span -> TypecheckM m (TEnvId, TypeAliasEntry)
+    aEnvLookup :: TEnvId -> Span -> TypecheckM m (TEnvId, TypeAliasEntry c)
     aEnvLookup ei s =
       (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier s ei) ei aEnv
 

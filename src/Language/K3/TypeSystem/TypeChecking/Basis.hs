@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, ScopedTypeVariables, ExistentialQuantification, StandaloneDeriving #-}
 
 {-|
   This module contains basic data types and utilities used in typechecking.
@@ -86,16 +86,17 @@ data TypecheckingError
   | AnnotationConcatenationFailure Span AnnotationConcatenationError
       -- ^ Indicates that a concatenation error occurred while trying to
       --   derive over an annotation.
-  | AnnotationSubtypeFailure Span AnnType AnnType
+  | forall c. (ConstraintSetType c) => AnnotationSubtypeFailure Span (AnnType c) (AnnType c)
       -- ^ Indicates that the inferred type of an annotation was not a subtype
       --   of its declared type signature.  The first annotation type in the
       --   error is the inferred type; the second annotation type is the
       --   declared type.
-  | DeclarationSubtypeFailure Span QuantType QuantType
+  | forall c. (ConstraintSetType c) => DeclarationSubtypeFailure Span (QuantType c) (QuantType c)
       -- ^ Indicates that the inferred type of a global declaration was not a
       --   subtype of its declared type signature.  The first @QuantType@ is the
       --   inferred type; the second @QuantType@ is the declared type.
-  deriving (Eq, Show)
+
+deriving instance Show TypecheckingError
 
 -- |A data structure representing /internal/ typechecking errors.  These errors
 --  should never be seen by a K3 programmer in practice; they should be excluded
@@ -118,7 +119,7 @@ data InternalTypecheckingError
   | InvalidExpressionChildCount (K3 Expression)
       -- ^Indicates that type derivation occurred on an expression which had a
       --  number of children inappropriate for its tag.
-  | PolymorphicSelfBinding QuantType Span
+  | forall c. (ConstraintSetType c) => PolymorphicSelfBinding (QuantType c) Span
       -- ^Indicates that the special self binding was bound to a polymorphic
       --  type, which is illegal.
       -- ^Indicates that there were environment identifiers in the checking
@@ -134,7 +135,7 @@ data InternalTypecheckingError
   | InvalidTypeExpressionChildCount (K3 K3T.Type)
       -- ^Indicates that type derivation occurred on a type expression which had
       --  a number of children inappropriate for its tag.
-  | InvalidSpecialBinding TEnvId (Maybe TypeAliasEntry)
+  | forall c. (ConstraintSetType c) => InvalidSpecialBinding TEnvId (Maybe (TypeAliasEntry c))
       -- ^Indicates that, during derivation of an annotation member, a type
       --  alias was bound to a form which could not be understood.
   | MissingTypeParameter TParamEnv TEnvId
@@ -150,13 +151,14 @@ data InternalTypecheckingError
       -- ^Indicates that a role declaration was nested beyond top level.  The
       --  K3 type system does not have an understanding of roles and so cannot
       --  typecheck them.
-  | TypeInEnvironmentDoesNotMatchSignature TEnvId QuantType QuantType
+  | forall c. (ConstraintSetType c) => TypeInEnvironmentDoesNotMatchSignature TEnvId (QuantType c) (QuantType c)
       -- ^Indicates that a type found in a type environment is not a supertype
       --  of the type which was inferred from its signature.  This should never
       --  happen; in practice, these types should be nearly identical.  The
       --  declared type is the first @QuantType@; the type from the environment
       --  is the second.
-  deriving (Eq, Show)
+  
+deriving instance Show InternalTypecheckingError
   
 -- |A type alias for typechecking environments.
 type TypecheckM m a = EitherT (Seq TypecheckingError) m a
