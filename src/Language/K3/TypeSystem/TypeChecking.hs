@@ -5,11 +5,9 @@
   logic.  That is, it does not generate the environment against which to check;
   it merely checks that environment against the AST.
 -}
-module Language.K3.TypeSystem.TypeChecking
-( module X
-) where
+module Language.K3.TypeSystem.TypeChecking ( module X ) where
 
-import Language.K3.TypeSystem.TypeChecking.Basis as X
 import Language.K3.TypeSystem.TypeChecking.Declarations as X
 import Language.K3.TypeSystem.TypeChecking.Expressions as X
+import Language.K3.TypeSystem.TypeChecking.Monad as X
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions as X

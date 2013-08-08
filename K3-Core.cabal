@@ -64,7 +64,6 @@ library
                    Language.K3.TypeSystem.TypeChecking,
                    Language.K3.TypeSystem.TypeChecking.Expressions,
                    Language.K3.TypeSystem.TypeChecking.Declarations,
-                   Language.K3.TypeSystem.TypeChecking.Basis,
                    Language.K3.TypeSystem.TypeChecking.TypeExpressions,
                    Language.K3.Utils.Conditional,
                    Language.K3.TypeSystem.Data.TypesAndConstraints,
@@ -72,7 +71,17 @@ library
                    Language.K3.TypeSystem.Data.ConstraintSet,
                    Language.K3.TypeSystem.TypeDecision,
                    Language.K3.TypeSystem.ConstraintSetLike,
-                   Language.K3.Core.Utils
+                   Language.K3.TypeSystem.TypeDecision.SkeletalEnvironment,
+                   Language.K3.TypeSystem.TypeDecision.Data,
+                   Language.K3.TypeSystem.TypeDecision.Monad,
+                   Language.K3.Core.Utils,
+                   Language.K3.TypeSystem.Utils.TemplateHaskell,
+                   Language.K3.TypeSystem.TypeDecision.Utils,
+                   Language.K3.TypeSystem.TypeChecking.Monad,
+                   Language.K3.TypeSystem.Monad.Iface.TypeError,
+                   Language.K3.TypeSystem.Error,
+                   Language.K3.TypeSystem.Utils.K3Tree,
+                   Language.K3.TypeSystem.Monad.Utils
 
 test-suite all
     type: exitcode-stdio-1.0

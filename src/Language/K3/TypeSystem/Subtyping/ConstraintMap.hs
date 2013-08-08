@@ -346,23 +346,23 @@ typeBound tsSet pol =
             Negative -> return $ Just (SBottom, mempty)
     [t] -> return $ Just (t, mempty)
     (mapM matchFunc -> Just bindings) -> do
-      a0 <- freshVar $ TVarBoundGeneralizationOrigin (map fst bindings)
+      a0 <- freshUVar $ TVarBoundGeneralizationOrigin (map fst bindings)
                 (flipBound pol)
-      a0' <- freshVar $ TVarBoundGeneralizationOrigin (map snd bindings) pol
+      a0' <- freshUVar $ TVarBoundGeneralizationOrigin (map snd bindings) pol
       let cm' = mconcat $
                   map (cmSing a0 (flipBound pol) . UBUVar . fst) bindings ++
                   map (cmSing a0' pol . UBUVar . snd) bindings
       return $ Just (SFunction a0 a0', cm')
     (mapM matchTrig -> Just bindings) -> do
-      a0 <- freshVar $ TVarBoundGeneralizationOrigin bindings $ flipBound pol
+      a0 <- freshUVar $ TVarBoundGeneralizationOrigin bindings $ flipBound pol
       let cm' = mconcat $ map (cmSing a0 (flipBound pol) . UBUVar) bindings
       return $ Just (STrigger a0, cm')
     (mapM matchOption -> Just bindings) -> do
-      qa0 <- freshVar $ TVarBoundGeneralizationOrigin bindings pol
+      qa0 <- freshQVar $ TVarBoundGeneralizationOrigin bindings pol
       let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SOption qa0, cm')
     (mapM matchIndirection -> Just bindings) -> do
-      qa0 <- freshVar $ TVarBoundGeneralizationOrigin bindings pol
+      qa0 <- freshQVar $ TVarBoundGeneralizationOrigin bindings pol
       let cm' = mconcat $ map (cmSing qa0 pol . QBQVar) bindings
       return $ Just (SIndirection qa0, cm')
     (sameLength <=< mapM matchTuple -> Just (bindings,_)) -> do
@@ -413,7 +413,7 @@ typeBound tsSet pol =
           if length lst == n then Just (lsts,n) else Nothing
     boundForAlignedPosition :: [QVar] -> m (QVar, ConstraintMap)
     boundForAlignedPosition vars = do
-      qa <- freshVar $ TVarBoundGeneralizationOrigin vars pol
+      qa <- freshQVar $ TVarBoundGeneralizationOrigin vars pol
       return (qa, mconcat $ map (cmSing qa pol . QBQVar) vars)
     matchRecord :: ShallowType ->  Maybe (Map Identifier QVar)
     matchRecord t = case t of

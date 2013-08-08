@@ -95,8 +95,8 @@ polyinstantiate inst (QuantType boundSet qa cs) = do
     freshMap var =
       case var of
         SomeQVar qa' -> do
-          qa'' <- freshVar $ TVarPolyinstantiationOrigin qa' inst
+          qa'' <- freshQVar $ TVarPolyinstantiationOrigin qa' inst
           return (Map.singleton qa' qa'', Map.empty)
         SomeUVar a' -> do
-          a'' <- freshVar $ TVarPolyinstantiationOrigin a' inst
+          a'' <- freshUVar $ TVarPolyinstantiationOrigin a' inst
           return (Map.empty, Map.singleton a' a'')

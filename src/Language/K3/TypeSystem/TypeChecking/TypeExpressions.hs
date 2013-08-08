@@ -26,48 +26,55 @@ import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Monad.Iface.TypeError
+import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
-import Language.K3.TypeSystem.TypeChecking.Basis
+import Language.K3.TypeSystem.TypeChecking.Monad
+import Language.K3.TypeSystem.Utils
+import Language.K3.TypeSystem.Utils.K3Tree
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::
-      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c, ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
-   -> TypecheckM m (QVar, c)
+   -> m (QVar, c)
 deriveQualifiedTypeExpression aEnv tExpr = do
   (a,cs) <- deriveTypeExpression aEnv tExpr
   let quals = qualifiersOfType tExpr
-  qa <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+  qa <- freshTypecheckingQVar =<< spanOfTypeExpr tExpr
   return (qa, cs `CSL.union` CSL.promote (csFromList [a <: qa, quals <: qa]))
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
 deriveUnqualifiedTypeExpression ::
-      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c, ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
-   -> TypecheckM m (UVar, c)
+   -> m (UVar, c)
 deriveUnqualifiedTypeExpression aEnv tExpr =
   if Set.null $ qualifiersOfType tExpr
     then deriveTypeExpression aEnv tExpr
-    else typecheckError $ InternalError $ InvalidQualifiersOnType tExpr
-
+    else internalTypeError $ InvalidQualifiersOnType tExpr
 
 -- |A function to derive the type of a type expression.
 deriveTypeExpression ::
-      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c, ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
-   -> TypecheckM m (UVar, c)
+   -> m (UVar, c)
 deriveTypeExpression aEnv tExpr =
   case tag tExpr of
     TBool -> deriveTypePrimitive SBool
@@ -79,36 +86,36 @@ deriveTypeExpression aEnv tExpr =
       (tExpr1, tExpr2) <- assert2Children tExpr
       (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
-      a0 <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a0 <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a0, CSL.unions [cs1, cs2, CSL.csingleton $ SFunction a1 a2 <: a0])
     TOption -> commonSingleContainer SOption
     TIndirection -> commonSingleContainer SIndirection
     TTuple -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
-      a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a, CSL.unions css `CSL.union` CSL.csingleton (STuple qas <: a))
     TRecord ids -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
-      a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a' <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a', CSL.unions css `CSL.union`
                   CSL.csingleton ((SRecord $ Map.fromList $ zip ids qas) <: a'))
     TCollection -> do
-      tExpr' <- assert1Children tExpr
+      tExpr' <- assert1Child tExpr
       let ais = mapMaybe toAnnotationId $ annotations tExpr
       (a_c,cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
       s <- spanOfTypeExpr tExpr
       namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) s) ais
       anns <- mapM (uncurry toAnnAlias) namedAnns
       -- Concatenate the annotations
-      ann <- either (\err -> typecheckError =<<
+      ann <- either (\err -> typeError =<<
                         InvalidAnnotationConcatenation <$>
                           spanOfTypeExpr tExpr <*> return err)
                     return
                   $ concatAnnTypes anns
       einstcol <- instantiateCollection ann a_c
-      (a_s,cs_s) <- either (\err -> typecheckError =<<
+      (a_s,cs_s) <- either (\err -> typeError =<<
                         InvalidCollectionInstantiation <$>
                           spanOfTypeExpr tExpr <*> return err)
                     return
@@ -118,9 +125,9 @@ deriveTypeExpression aEnv tExpr =
     TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
     TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
     TTrigger -> do
-      tExpr' <- assert1Children tExpr
+      tExpr' <- assert1Child tExpr
       (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
-      a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a' <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a', cs `CSL.union` CSL.csingleton (STrigger a <: a'))
     TBuiltIn b -> do
       assert0Children tExpr
@@ -132,32 +139,32 @@ deriveTypeExpression aEnv tExpr =
       s <- spanOfTypeExpr tExpr
       qt <- uncurry toQuantType =<< aEnvLookup ei s
       (qa,cs) <- polyinstantiate s qt
-      a <- freshTypecheckingVar s
+      a <- freshTypecheckingUVar s
       return (a, cs `CSL.union` CSL.csingleton (qa <: a))
   where
     deriveTypePrimitive p = do
       assert0Children tExpr
-      a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a, CSL.csingleton $ p <: a)
     commonSingleContainer constr = do
-      tExpr' <- assert1Children tExpr
+      tExpr' <- assert1Child tExpr
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr'
-      a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
+      a <- freshTypecheckingUVar =<< spanOfTypeExpr tExpr
       return (a, cs `CSL.union` CSL.csingleton (constr qa <: a))
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing
-    toAnnAlias :: TEnvId -> TypeAliasEntry c -> TypecheckM m (AnnType c)
+    toAnnAlias :: TEnvId -> TypeAliasEntry c -> m (AnnType c)
     toAnnAlias ei entry = case entry of
       AnnAlias ann -> return ann
-      _ -> typecheckError =<< NonAnnotationAlias <$> spanOfTypeExpr tExpr
+      _ -> typeError =<< NonAnnotationAlias <$> spanOfTypeExpr tExpr
                                                  <*> return ei
-    toQuantType :: TEnvId -> TypeAliasEntry c -> TypecheckM m (QuantType c)
+    toQuantType :: TEnvId -> TypeAliasEntry c -> m (QuantType c)
     toQuantType ei entry = case entry of
       QuantAlias qt -> return qt
-      _ -> typecheckError =<< NonQuantAlias <$> spanOfTypeExpr tExpr
+      _ -> typeError =<< NonQuantAlias <$> spanOfTypeExpr tExpr
                                             <*> return ei
-    aEnvLookup :: TEnvId -> Span -> TypecheckM m (TEnvId, TypeAliasEntry c)
+    aEnvLookup :: TEnvId -> Span -> m (TEnvId, TypeAliasEntry c)
     aEnvLookup ei s =
       (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier s ei) ei aEnv
 
@@ -172,11 +179,11 @@ qualifiersOfType tExpr = Set.fromList $ mapMaybe unQual $ annotations tExpr
 
 -- |Retrieves the span from the provided expression.  If no such span exists,
 --  an error is produced.
-spanOfTypeExpr :: (FreshVarI m) => K3 Type -> TypecheckM m Span
+spanOfTypeExpr :: (FreshVarI m, TypeErrorI m) => K3 Type -> m Span
 spanOfTypeExpr tExpr =
   let spans = mapMaybe unSpan $ annotations tExpr in
   if length spans /= 1
-    then typecheckError $ InternalError $ InvalidSpansInTypeExpression tExpr
+    then internalTypeError $ InvalidSpansInTypeExpression tExpr
     else return $ head spans
   where
     unSpan eann = case eann of

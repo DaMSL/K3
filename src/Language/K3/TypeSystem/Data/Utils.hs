@@ -7,7 +7,8 @@ module Language.K3.TypeSystem.Data.Utils
 
 {-|
   An unbiased form of @Either@.  This type is meant to represent a sum type
-  which, unlike @Either@, treats both sides equally.
+  which does /not/ have the left-side-error implications that @Either@ does: it
+  is not a monad, for instance.
 -}
 data Coproduct a b
   = CLeft a

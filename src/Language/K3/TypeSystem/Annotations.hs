@@ -176,7 +176,7 @@ instantiateCollection :: ( FreshVarI m, CSL.ConstraintSetLike e c
 instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
   runEitherT $ do
     -- TODO: consider richer error reporting
-    a_s :: UVar <- freshVar $ TVarCollectionInstantiationOrigin ann a_c
+    a_s <- freshUVar $ TVarCollectionInstantiationOrigin ann a_c
     (a_c', a_f', a_s') <- EitherT $ return readParameters
     (t_s, cs_s) <- EitherT $ return $ liftedDepolarize ms1
     (t_f, cs_f) <- EitherT $ return $ liftedDepolarize ms2
@@ -230,10 +230,10 @@ isAnnotationSubtypeOf ann1 ann2 = do
       let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
                             , recordTypeFromMembers Positive ms )
       let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2]
-      let mkFresh n = mapM (const $ freshVar origin) [1::Int .. n]
-      qa :: QVar <- freshVar origin
-      a0 <- freshVar origin
-      a0' <- freshVar origin
+      let mkFresh n = mapM (const $ freshQVar origin) [1::Int .. n]
+      qa <- freshQVar origin
+      a0 <- freshUVar origin
+      a0' <- freshUVar origin
       negVars <- mkFresh $ length negTyps
       posVars <- mkFresh $ length posTyps
       let cs' = csUnions [ cs

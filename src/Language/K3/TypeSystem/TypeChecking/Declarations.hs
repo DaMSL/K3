@@ -24,24 +24,27 @@ import Language.K3.Core.Declaration
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
+import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Monad.Iface.TypeError
+import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.Subtyping
-import Language.K3.TypeSystem.TypeChecking.Basis
 import Language.K3.TypeSystem.TypeChecking.Expressions
+import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
+import Language.K3.TypeSystem.Utils.K3Tree
 import Language.K3.Utils.Conditional
 
 -- |A function to check whether a given pair of environments correctly describes
 --  an AST.  The provided AST must be a Role declaration.
-deriveDeclarations :: forall m. (FreshVarI m)
-                   => TAliasEnv -- ^The existing type alias environment.
+deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
                    -> TNormEnv -- ^The existing type environment.
                    -> TAliasEnv -- ^The type alias environment to check.
                    -> TNormEnv -- ^The type environment to check.
                    -> K3 Declaration -- ^The AST of global declarations to use
                                      --  in the checking process.
-                   -> TypecheckM m ()
+                   -> TypecheckM ()
 deriveDeclarations aEnv env aEnv' env' decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
@@ -56,7 +59,7 @@ deriveDeclarations aEnv env aEnv' env' decls =
         typecheckError $ InternalError $
           ExtraDeclarationsInEnvironments xgIds xaIds 
     (_, _) -> typecheckError $ InternalError $
-                DeclarationsDerivationTypeMismatch decls
+                TopLevelDeclarationNonRole decls
   where
     envKeys m = Set.fromList $ Map.keys m
     idOf decl = case decl of
@@ -67,15 +70,14 @@ deriveDeclarations aEnv env aEnv' env' decls =
 
 -- |A function to check whether a global has the type described in the provided
 --  type environments.
-deriveDeclaration :: forall m. (FreshVarI m)
-                  => TAliasEnv -- ^The type alias environment in which to check.
+deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
                   -> K3 Declaration -- ^The AST of the declaration to check.
-                  -> TypecheckM m ()
+                  -> TypecheckM ()
 deriveDeclaration aEnv env decl =
   case tag decl of
 
-    DRole _ -> typecheckError $ InternalError $ NestedRole decl
+    DRole _ -> typecheckError $ InternalError $ NonTopLevelDeclarationRole decl
 
     DGlobal i tExpr mexpr -> do
       s <- spanOfDecl decl
@@ -87,7 +89,7 @@ deriveDeclaration aEnv env decl =
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
       whenJust mexpr $ \expr -> do
         (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
-        qa1 <- freshTypecheckingVar s
+        qa1 <- freshTypecheckingQVar s
         let qt1 = generalize env qa1 $ csUnion cs1 $ csSing $ a1 <: qa1
         unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
           DeclarationSubtypeFailure s qt1 qt2
@@ -97,9 +99,9 @@ deriveDeclaration aEnv env decl =
       (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr
       let f a cs = do
-                    qa <- freshTypecheckingVar s
-                    a' <- freshTypecheckingVar s
-                    a'' <- freshTypecheckingVar s
+                    qa <- freshTypecheckingQVar s
+                    a' <- freshTypecheckingUVar s
+                    a'' <- freshTypecheckingUVar s
                     return $ generalize env qa $ csUnion cs $ csFromList
                       [ a <: SFunction a' a''
                       , a'' <: STuple []
@@ -124,7 +126,7 @@ deriveDeclaration aEnv env decl =
                               NonAnnotationAlias s $ TEnvIdentifier i
       (t_h,cs_h) <- liftEither (AnnotationDepolarizationFailure s) $
                       depolarize ms2'
-      let getTVar :: TEnvId -> TypecheckM m UVar
+      let getTVar :: TEnvId -> TypecheckM UVar
           getTVar ei = envRequire (InternalError $ MissingTypeParameter p ei)
                           ei p
       let singEntry ei a qa = Map.singleton ei $ QuantAlias $
@@ -132,11 +134,11 @@ deriveDeclaration aEnv env decl =
       aEnv' <- mappend
                   <$> (mconcat <$> mapM
                         (\ei -> singEntry ei <$> getTVar ei
-                                             <*> freshTypecheckingVar s)
+                                             <*> freshTypecheckingQVar s)
                         [TEnvIdContent, TEnvIdSelf, TEnvIdFinal] )
                   <*> ((\qa -> Map.singleton TEnvIdHorizon $ QuantAlias $
                                 QuantType Set.empty qa $ csSing $ t_h <: qa)
-                          <$> freshTypecheckingVar s)
+                          <$> freshTypecheckingQVar s)
       let env' = mconcat $ map
                     (\(AnnMemType i' _ qa) -> Map.singleton (TEnvIdentifier i')
                   $ QuantType Set.empty qa csEmpty) ms1'
@@ -163,18 +165,16 @@ deriveDeclaration aEnv env decl =
       unlessM (inferred `isAnnotationSubtypeOf` declared) $ 
                 typecheckError (AnnotationSubtypeFailure s inferred declared)
   where
-    liftEither :: (Monad m)
-               => (a -> TypecheckingError) -> Either a b -> TypecheckM m b
+    liftEither :: (a -> TypeError) -> Either a b -> TypecheckM b
     liftEither errF val = case val of
       Left err -> typecheckError $ errF err
       Right x -> return x
 
 -- |A function to derive a type for an annotation member.
-deriveAnnotationMember :: forall m. (FreshVarI m)
-                       => TAliasEnv -- ^The relevant type alias environment.
+deriveAnnotationMember :: TAliasEnv -- ^The relevant type alias environment.
                        -> TNormEnv -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
-                       -> TypecheckM m (AnnBodyType, ConstraintSet)
+                       -> TypecheckM (AnnBodyType, ConstraintSet)
 deriveAnnotationMember aEnv env decl =
   case decl of
   
@@ -224,7 +224,7 @@ deriveAnnotationMember aEnv env decl =
       unless (isNothing mexpr) $
         typecheckError $ InitializerForNegativeAnnotationMember s
       return ( constr $ AnnMemType i Negative qa, cs )
-    lookupSpecialVar :: TEnvId -> TypecheckM m UVar
+    lookupSpecialVar :: TEnvId -> TypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
       let badForm = typecheckError $ badFormErr $ Just mqt 
@@ -237,12 +237,12 @@ deriveAnnotationMember aEnv env decl =
             _ -> badForm
         AnnAlias _ -> badForm
       where
-        badFormErr :: Maybe NormalTypeAliasEntry -> TypecheckingError
+        badFormErr :: Maybe NormalTypeAliasEntry -> TypeError
         badFormErr mqt = InternalError $ InvalidSpecialBinding ei mqt
 
 -- |Retrieves the span from the provided expression.  If no such span exists,
 --  an error is produced.
-spanOfDecl :: (FreshVarI m) => K3 Declaration -> TypecheckM m Span
+spanOfDecl :: K3 Declaration -> TypecheckM Span
 spanOfDecl decl =
   let spans = mapMaybe unSpan $ annotations decl in
   if length spans /= 1
@@ -254,9 +254,8 @@ spanOfDecl decl =
 
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
-requireQuantType :: (FreshVarI m)
-                 => Span -> Identifier -> TAliasEnv
-                 -> TypecheckM m NormalQuantType
+requireQuantType :: Span -> Identifier -> TAliasEnv
+                 -> TypecheckM NormalQuantType
 requireQuantType s i aEnv = do
   mqt <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
             (TEnvIdentifier i) aEnv
