@@ -1,7 +1,10 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts #-}
 
 {-|
-  Contains operations related to typechecking of type expressions.
+  Contains operations related to typechecking of type expressions.  These
+  operations are defined in terms of the @ConstraintSetLike@ typeclass and
+  similar abstractions so that they can also be used in the environment decision
+  procedure.
 -}
 module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 ( deriveUnqualifiedTypeExpression
@@ -20,6 +23,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Annotations
+import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Polymorphism
@@ -27,23 +31,25 @@ import Language.K3.TypeSystem.TypeChecking.Basis
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::
-      forall m. (FreshVarI m)
+      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
    => TAliasEnv -- ^The relevant type alias environment.
    -> K3 Type
-   -> TypecheckM m (QVar, ConstraintSet)
+   -> TypecheckM m (QVar, c)
 deriveQualifiedTypeExpression aEnv tExpr = do
   (a,cs) <- deriveTypeExpression aEnv tExpr
   let quals = qualifiersOfType tExpr
   qa <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-  return (qa, cs `csUnion` csFromList [a <: qa, quals <: qa])
+  return (qa, cs `CSL.union` CSL.promote (csFromList [a <: qa, quals <: qa]))
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
 deriveUnqualifiedTypeExpression ::
-      forall m. (FreshVarI m)
+      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
    => TAliasEnv -- ^The relevant type alias environment.
    -> K3 Type
-   -> TypecheckM m (UVar, ConstraintSet)
+   -> TypecheckM m (UVar, c)
 deriveUnqualifiedTypeExpression aEnv tExpr =
   if Set.null $ qualifiersOfType tExpr
     then deriveTypeExpression aEnv tExpr
@@ -51,10 +57,12 @@ deriveUnqualifiedTypeExpression aEnv tExpr =
 
 
 -- |A function to derive the type of a type expression.
-deriveTypeExpression :: forall m. (FreshVarI m)
-                     => TAliasEnv -- ^The relevant type alias environment.
-                     -> K3 Type
-                     -> TypecheckM m (UVar, ConstraintSet)
+deriveTypeExpression ::
+      forall m el c. ( FreshVarI m, CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
+   => TAliasEnv -- ^The relevant type alias environment.
+   -> K3 Type
+   -> TypecheckM m (UVar, c)
 deriveTypeExpression aEnv tExpr =
   case tag tExpr of
     TBool -> deriveTypePrimitive SBool
@@ -67,20 +75,20 @@ deriveTypeExpression aEnv tExpr =
       (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
       a0 <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a0, csUnions [cs1,cs2,csSing $ SFunction a1 a2 <: a0])
+      return (a0, CSL.unions [cs1, cs2, CSL.csingleton $ SFunction a1 a2 <: a0])
     TOption -> commonSingleContainer SOption
     TIndirection -> commonSingleContainer SIndirection
     TTuple -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
       a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a, csUnions css `csUnion` csSing (STuple qas <: a))
+      return (a, CSL.unions css `CSL.union` CSL.csingleton (STuple qas <: a))
     TRecord ids -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
       a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a', csUnions css `csUnion`
-                  csSing ((SRecord $ Map.fromList $ zip ids qas) <: a'))
+      return (a', CSL.unions css `CSL.union`
+                  CSL.csingleton ((SRecord $ Map.fromList $ zip ids qas) <: a'))
     TCollection -> do
       tExpr' <- assert1Children tExpr
       let ais = mapMaybe toAnnotationId $ annotations tExpr
@@ -100,7 +108,7 @@ deriveTypeExpression aEnv tExpr =
                           spanOfTypeExpr tExpr <*> return err)
                     return
                     einstcol
-      return (a_s, cs_c `csUnion` cs_s)
+      return (a_s, cs_c `CSL.union` CSL.promote cs_s)
     TAddress -> error "Address type not in specification!" -- TODO
     TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
     TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
@@ -108,7 +116,7 @@ deriveTypeExpression aEnv tExpr =
       tExpr' <- assert1Children tExpr
       (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
       a' <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a', cs `csUnion` csSing (STrigger a <: a'))
+      return (a', cs `CSL.union` CSL.csingleton (STrigger a <: a'))
     TBuiltIn b -> do
       assert0Children tExpr
       let ei = case b of
@@ -120,17 +128,17 @@ deriveTypeExpression aEnv tExpr =
       qt <- uncurry toQuantType =<< aEnvLookup ei s
       (qa,cs) <- polyinstantiate s qt
       a <- freshTypecheckingVar s
-      return (a, cs `csUnion` csSing (qa <: a))
+      return (a, CSL.promote cs `CSL.union` CSL.csingleton (qa <: a))
   where
     deriveTypePrimitive p = do
       assert0Children tExpr
       a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a, csSing $ p <: a)
+      return (a, CSL.csingleton $ p <: a)
     commonSingleContainer constr = do
       tExpr' <- assert1Children tExpr
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr'
       a <- freshTypecheckingVar =<< spanOfTypeExpr tExpr
-      return (a, cs `csUnion` csSing (constr qa <: a))
+      return (a, cs `CSL.union` CSL.csingleton (constr qa <: a))
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing
