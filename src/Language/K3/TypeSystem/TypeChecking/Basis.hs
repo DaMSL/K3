@@ -14,7 +14,7 @@ module Language.K3.TypeSystem.TypeChecking.Basis
 , envRequireM
 
 , assert0Children
-, assert1Children
+, assert1Child
 , assert2Children
 , assert3Children
 , assert4Children
@@ -42,6 +42,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
+import Language.K3.Core.Utils
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
@@ -216,11 +217,12 @@ instance ErrorForWrongChildren K3T.Type where
 $(
   let mkAssertChildren :: Int -> Q [Dec]
       mkAssertChildren n = do
-        let fname = mkName $ "assert" ++ show n ++ "Children"
-        let ename = mkName "tree"
-        let elnames = map (mkName . ("el" ++) . show) [1::Int .. n]
-        let typN = mkName "a"
-        let mtypN = mkName "m"
+        let suffixString = if n /= 1 then "Children" else "Child"
+        fname <- newName $ "assert" ++ show n ++ suffixString
+        let checkChildrenFnName = mkName $ "check" ++ show n ++ suffixString
+        elnames <- mapM (newName . ("el" ++) . show) [1::Int .. n]
+        typN <- newName "a"
+        mtypN <- newName "m"
         let typ = varT typN
         let mtyp = varT mtypN
         let tupTyp = foldl appT (tupleT n) $ replicate n $ [t|K3 $(typ)|]
@@ -228,14 +230,12 @@ $(
                       => K3 $(typ) -> TypecheckM $(mtyp) $(tupTyp) |]
         let ftype' = ForallT [PlainTV typN, PlainTV mtypN] [] ftype
         let signature = sigD fname $ return ftype'
-        let badMatch = match wildP (normalB
-              [| typecheckError $ InternalError $
-                    childCountError $(varE ename) |]
-              ) []
-        let goodMatch = match (listP $ map varP elnames) (normalB $
-                          appE ([|return|]) $ tupE $ map varE elnames) []
-        let bodyExp = caseE ([|subForest $(varE ename)|]) [goodMatch, badMatch]
-        let cl = clause [varP ename] (normalB bodyExp) []
+        let bodyExp = 
+              [| \tree ->
+                    fromMaybe <$> (typecheckError $ InternalError $
+                                      childCountError tree)
+                              <*> return ($(varE checkChildrenFnName) tree) |]
+        let cl = clause [] (normalB bodyExp) []
         let impl = funD fname [cl]
         sequence [signature,impl]
   in

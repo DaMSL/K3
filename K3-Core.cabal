@@ -71,7 +71,8 @@ library
                    Language.K3.TypeSystem.Data.Convenience,
                    Language.K3.TypeSystem.Data.ConstraintSet,
                    Language.K3.TypeSystem.TypeDecision,
-                   Language.K3.TypeSystem.ConstraintSetLike
+                   Language.K3.TypeSystem.ConstraintSetLike,
+                   Language.K3.Core.Utils
 
 test-suite all
     type: exitcode-stdio-1.0
