@@ -11,13 +11,9 @@ module Language.K3.Runtime.Engine (
   MessageQueues(..),
   Workers(..),
 
-  NConnectionPool(..),
-  NEndpoint(..),
-  NConnection(..),
-
   WireDesc(..),
   
-  EConnectionPools(..),
+  EConnectionState(..),
   ETransport(..),
   EEndpoints(..),
 
@@ -55,6 +51,7 @@ module Language.K3.Runtime.Engine (
 
 ) where
 
+import Control.Arrow
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.MSampleVar
@@ -85,11 +82,19 @@ import Language.K3.Parser
 type Address = (String, Int)
 
 
-data Engine a = Engine { nodes           :: [Address]
+data Engine a = Engine { config          :: EngineConfiguration
+                       , nodes           :: [Address]
                        , queues          :: MessageQueues a
                        , workers         :: Workers
                        , endpoints       :: EEndpoints a
-                       , connectionPools :: EConnectionPools }
+                       , connections     :: EConnectionState
+                       , internalFormat  :: WireDesc a }
+
+{- Configuration parameters -}
+
+data EngineConfiguration = EngineConfiguration { address           :: Address 
+                                               , defaultBufferSpec :: BufferSpec 
+                                               , connectionRetries :: Int }
 
 {- Message processing -}
 
@@ -117,26 +122,32 @@ type ThreadPool  = [Int]
 type ProcessPool = [Int]
 
 {- Network transports -}
-
--- | Connection pools may be initialized without binding an endpoint (e.g., if the program has no 
---   communication with any other peer or network sink), and are also safely modifiable to enable
---   their construction on demand.
-type EConnections       = Maybe (NEndpoint, [(Address, NConnection)])
-newtype NConnectionPool = NConnectionPool (MVar EConnections)
 data NEndpoint          = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
-data NConnection        = NConnection { conn :: LLConnection, cAddress :: Address }
+data NConnection        = NConnection { conn :: LLConnection, cEndpointAddress :: Address }
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
 type LLEndpoint   = NT.EndPoint
 type LLConnection = NT.Connection
 
+-- | Connection pools may be initialized without binding an endpoint (e.g., if the program has no 
+--   communication with any other peer or network sink), and are also safely modifiable to enable
+--   their construction on demand.
+data EConnectionMap = EConnectionMap { anchor :: (Address, Maybe NEndpoint)
+                                     , cache  :: [(Address, NConnection)] }
+
 -- | Two pools for outgoing internal (i.e., K3 peer) and external (i..e, network sink) connections
 --   The first is optional capturing simulations that cannot send to peers without name resolution.
-newtype EConnectionPools = EConnectionPools (Maybe NConnectionPool, NConnectionPool)
+newtype EConnectionState = EConnectionState (Maybe (MVar EConnectionMap), MVar EConnectionMap)
+
 
 -- | An interpreter transport that is used to implement message passing.
-data ETransport a = TRSim (MessageQueues a) | TRNet EConnectionPools
+data ETransport a
+  = TRSim (MessageQueues a) 
+  | TRNet { trConfig      :: EngineConfiguration
+          , trFormat      :: WireDesc a
+          , trEndpoints   :: EEndpoints a
+          , trConnections :: EConnectionState } 
 
 -- | A description of a wire format, with serialization of data, deserialization into data, and
 -- validation of deserialized data.
@@ -150,15 +161,17 @@ data IOHandle a
   = FileH   (WireDesc a) SIO.Handle 
   | SocketH (WireDesc a) (Either NEndpoint NConnection)
 
+data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
+
 -- | Sources buffer the next value, while sinks keep a buffer of values waiting to be flushed.
-data EndpointBufferContents a 
+data BufferContents a 
   = Single (Maybe a)
-  | Multiple [a]
+  | Multiple [a] BufferSpec
 
 -- | Endpoint buffers, which may be used by concurrent workers (shared), or by a single worker thread (exclusive)
 data EndpointBuffer a
-  = Exclusive (EndpointBufferContents a)
-  | Shared    (MVar (EndpointBufferContents a))
+  = Exclusive (BufferContents a) 
+  | Shared    (MVar (BufferContents a))
 
 -- | Endpoint notifications (i.e. triggers attached to open/close/data)
 -- | Currently, notifications can only use a constant (i.e., compile-time value) argument on dispatch
@@ -179,9 +192,90 @@ data EndpointNotification
     | SocketClose
   deriving (Eq, Show, Read)
 
+
+{- Module public API -}
+
+openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
+openFile n path wd tOpt mode (transport -> tr) = openFileInternal n path wd tOpt mode tr
+
+openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
+openSocket n addr wd tOpt mode (transport -> tr) = openSocketInternal n addr wd tOpt mode tr
+
+close :: String -> Engine a -> IO ()
+close n (transport -> tr) = closeInternal n tr
+
+hasRead :: Identifier -> Engine a -> IO (Maybe Bool)
+hasRead n (transport -> tr) = hasReadInternal n tr
+
+doRead :: Identifier -> Engine a -> IO (Maybe a)
+doRead n (transport -> tr) = doReadInternal n tr
+
+hasWrite :: Identifier -> Engine a -> IO (Maybe Bool)
+hasWrite n (transport -> tr) = hasWriteInternal n tr
+
+doWrite :: Identifier -> a -> Engine a -> IO ()
+doWrite n arg (transport -> tr) = doWriteInternal n arg tr
+
+
+{- Helpers -}
+
+connectionId :: Address -> Identifier
+connectionId addr@(host,port) = "__" ++ host ++ show port
+
+{- Engine defaults -}
+defaultAddress :: Address
+defaultAddress = ("127.0.0.1", 40000)
+
+defaultConfig :: EngineConfiguration
+defaultConfig = EngineConfiguration { address           = defaultAddress
+                                    , defaultBufferSpec = bufferSpec
+                                    , connectionRetries = 5 }
+  where
+    bufferSpec = BufferSpec { maxSize = 100, batchSize = 10 }
+
+{- Engine constructors -}
+
+simpleQueues :: Address -> IO (MessageQueues a)
+simpleQueues addr = newMVar (addr, []) >>= return . Peer
+
+simpleEngine :: [Address] -> WireDesc a -> IO (Engine a)
+simpleEngine [addr] internalWd = do
+  q <- simpleQueues addr
+  eps <- newMVar (H.fromList [])
+  externalPool <- newMVar $ emptyConnectionMap $ address defaultConfig
+  return $ Engine defaultConfig [addr] q
+            Uniprocess eps (EConnectionState (Nothing, externalPool)) internalWd
+
+simpleEngine peers internalWd = do
+  q <- newMVar (H.fromList $ map (,[]) peers)
+  eps <- newMVar (H.fromList [])
+  externalPool <- newMVar $ emptyConnectionMap $ address defaultConfig
+  return $ Engine defaultConfig peers (ManyByPeer q)
+            Uniprocess eps (EConnectionState (Nothing, externalPool)) internalWd
+
+-- TODO: network engine constructor. This should initialize endpoints
+-- for all given address, for incoming trigger invocations.
+-- networkEngine :: [Address] -> IO (Engine a)
+
+
+{- Engine extractors -}
+
+internalSendAddress :: Engine a -> Address
+internalSendAddress (address . config -> (host,port)) = (host, port+1)
+
+externalSendAddress :: Engine a -> Address
+externalSendAddress (address . config -> (host,port)) = (host, port+2)
+
+transport :: Engine a -> ETransport a
+transport e@(Engine {queues = q, endpoints = ep, connections = c
+                    , internalFormat = f, config = cfg})
+  | simulation e = TRSim q
+  | otherwise    = TRNet cfg f ep c
+
+
 -- | Engine classification
 simulation :: Engine a -> Bool
-simulation (Engine {connectionPools = (EConnectionPools (Nothing, _))}) = True
+simulation (Engine {connections = (EConnectionState (Nothing, _))}) = True
 simulation _ = False
 
 -- | Queue accessors
@@ -223,80 +317,22 @@ dequeue = \case
 -- | Message passing
 send :: ETransport a ->  Address -> Identifier -> a -> IO ()
 send (TRSim q) addr n arg = enqueue q addr n arg
-send (TRNet otr) addr n arg = undefined -- TODO: establish connection in pool as necessary.
 
-transport :: Engine a -> ETransport a
-transport e@(Engine {queues = q, connectionPools = c}) | simulation e = TRSim q
-                                                       | otherwise    = TRNet c
+send tr@(TRNet cfg wd eps _) addr n arg = trySend (connectionRetries cfg)
+  where 
+    endpointId = getEndpoint n eps >>= \case 
+                    Nothing -> return $ connectionId addr
+                    Just _ -> return n
 
-{- Endpoint, connection and connection pool accessors -}
-newEndpoint :: Address -> IO (Maybe NEndpoint)
-newEndpoint addr@(host, port) = withSocketsDo $ do
-  t <- eitherAsMaybe $ NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters
-  e <- maybe (return Nothing) (eitherAsMaybe . NT.newEndPoint) t
-  return $ t >>= \tr -> e >>= return . flip NEndpoint tr
-  where eitherAsMaybe m = m >>= return . either (\_ -> Nothing) Just
+    trySend 0       = endpointId >>= (send' $ error $ "Failed to connect to " ++ show addr)
+    trySend retries = endpointId >>= (send' $ trySend $ retries - 1)
 
-newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
-newConnection addr (endpoint -> ep) =
-    NT.connect ep (epAddr addr) NT.ReliableOrdered NT.defaultConnectHints
-      >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
-  
-  where epAddr (host,port) = NT.EndPointAddress $ BS.pack $ host ++ (show port) ++ ":0"
-    -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
+    send' retryF eid = getEndpoint eid eps >>= \case 
+      Just c  -> hasWriteInternal eid tr >>= write eid
+      Nothing -> openSocketInternal eid addr wd Nothing "w" tr >> retryF
 
-withPool :: NConnectionPool -> (EConnections -> IO a) -> IO a
-withPool (NConnectionPool poolMv) withF = withMVar poolMv withF
-
-modifyPool :: NConnectionPool -> (EConnections -> IO (EConnections, a)) -> IO a
-modifyPool (NConnectionPool poolMv) modifyF = modifyMVar poolMv modifyF
-
-getConnection :: Address -> NConnectionPool -> IO (Maybe NConnection)
-getConnection addr pool = withPool pool $ return . (>>= lookup addr . snd)
-
-addConnection :: Address -> NConnectionPool -> IO (Maybe NConnection)
-addConnection addr pool = modifyPool pool connect 
-  where connect Nothing  = newEndpoint addr >>= initializePool
-        connect (Just p) = connect' p
-
-        initializePool Nothing = return (Nothing, Nothing)
-        initializePool (Just ep) = connect' (ep,[])
-
-        connect' p@(ep,conns) = newConnection addr ep >>= return . maybe (Just p, Nothing) (add p) 
-        add (ep, conns) c = (Just (ep, (addr, c):conns), Just c)
-
-removeConnection :: Address -> NConnectionPool -> IO ()
-removeConnection addr pool = modifyPool pool remove
-  where remove Nothing = return (Nothing, ())
-        remove (Just (ep, conns)) = closeConnection conns >>= return . (,()) . Just . (ep,)
-        closeConnection (matchConnections -> (matches, rest)) =
-          mapM_ ((\c -> NT.close $ conn c) . snd) matches >> return rest
-        matchConnections = partition ((addr ==) . fst)
-
-
-{- Engine constructors -}
-
-simpleQueues :: Address -> IO (MessageQueues a)
-simpleQueues addr = newMVar (addr, []) >>= return . Peer
-
-simpleEngine :: [Address] -> IO (Engine a)
-simpleEngine [addr] = do
-  q <- simpleQueues addr
-  eps <- newMVar (H.fromList [])
-  externalPool <- newMVar Nothing >>= return . NConnectionPool
-  return $ Engine [addr] q Uniprocess eps (EConnectionPools (Nothing, externalPool))
-
-simpleEngine peers = do
-  q <- newMVar (H.fromList $ map (,[]) peers)
-  eps <- newMVar (H.fromList [])
-  externalPool <- newMVar Nothing >>= return . NConnectionPool
-  return $ Engine peers (ManyByPeer q) Uniprocess eps (EConnectionPools (Nothing, externalPool))
-
--- TODO: network engine constructor. This should initialize endpoints
--- for all given address, for incoming trigger invocations.
--- networkEngine :: [Address] -> IO (Engine a)
-
-
+    write eid (Just True) = doWriteInternal eid arg tr
+    write _ _             = error $ "No write available to " ++ show addr 
 
 {- Wire descriptions -}
 
@@ -317,10 +353,10 @@ runMessages msgPrcsr e status = status >>= \case
   Error e        -> putStrLn $ "Error:\n" ++ show e
   MessagesDone r -> putStrLn $ "Terminated:\n" ++ show r
 
-runEngine :: (Show r, Show e) => WireDesc a -> MessageProcessor prog a r e -> Engine a -> prog -> IO ()
-runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
-                                    >>= runNetwork
-                                    >>= runMessages msgPrcsr e . return . initStatus
+runEngine :: (Show r, Show e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ()
+runEngine msgPrcsr e prog = (initialize msgPrcsr prog e)
+                              >>= runNetwork
+                              >>= runMessages msgPrcsr e . return . initStatus
   where
     -- TODO: termination variables?
     runNetwork res = initNetwork e >> (startNEndpoints e) >>= return . (res,)
@@ -335,7 +371,7 @@ runEngine peerWd msgPrcsr e prog = (initialize msgPrcsr prog e)
       withMVar (endpoints engine)
         (sequence . H.foldlWithKey' (startEndpoint ctrl $ transport engine) []) >>= return . (ctrl,)
 
-    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr peerWd Nothing "r" e
+    initPeerEndpoint addr = openSocket ("__node_" ++ show addr) addr (internalFormat e) Nothing "r" e
 
     startEndpoint ctrl tr acc n e@(Endpoint {handle = (networkSource -> Just _)}) =
       acc ++ [(forkIO $ runNEndpoint n ctrl tr e) >>= return . (n,) . Just]
@@ -389,7 +425,7 @@ openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
 openFileHandle p wd mode = SIO.openFile p mode >>= return . (FileH wd)
 
 -- | Open an external socket, with given wire description and address.
-openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe NConnectionPool -> IO (Maybe (IOHandle a))
+openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe (MVar EConnectionMap) -> IO (Maybe (IOHandle a))
 openSocketHandle addr wd mode pool = 
   case mode of 
     SIO.ReadMode      -> incoming
@@ -398,14 +434,9 @@ openSocketHandle addr wd mode pool =
     SIO.ReadWriteMode -> error "Unsupport network handle mode"
   
   where incoming = newEndpoint addr >>= return . (>>= return . SocketH wd . Left)
-        outgoing = establishConnection pool >>= return . (>>= return . SocketH wd . Right)
-
-        establishConnection (Just p) =
-          getConnection addr p >>= \case
-            Nothing -> addConnection addr p
-            Just c  -> return $ Just c
-
-        establishConnection Nothing = error "Invalid outgoing network connection pool"
+        outgoing = case pool of
+          Just p  -> getEstablishedConnection addr p >>= return . (>>= return . SocketH wd . Right)
+          Nothing -> error "Invalid outgoing network connection pool"
 
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
@@ -440,21 +471,8 @@ writeHandle payload (SocketH wd (Right (conn -> c))) =
 
 writeHandle payload (SocketH _ _) = error "Unsupported write operation on network handle"
 
-{- Endpoint accessors -}
 
-addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings a) -> EEndpoints a -> IO ()
-addEndpoint n (h,b,s) eps = modifyMVar_ eps (return . H.insert n Endpoint {handle=h, buffer=b, subscribers=s})
-
-removeEndpoint :: Identifier -> EEndpoints a -> IO ()
-removeEndpoint n eps = modifyMVar_ eps $ return . H.delete n
-
-getEndpoint :: Identifier -> EEndpoints a -> IO (Maybe (Endpoint a))
-getEndpoint n eps = withMVar eps (return . H.lookup n)
-
-
-{- High-level endpoint accessors -}
-endpointsAndTransport :: Engine a -> (EEndpoints a, ETransport a)
-endpointsAndTransport engine = (endpoints engine, transport engine)
+{- Module API implementation -}
 
 ioMode :: String -> SIO.IOMode
 ioMode "r"  = SIO.ReadMode
@@ -462,31 +480,28 @@ ioMode "w"  = SIO.WriteMode
 ioMode "a"  = SIO.AppendMode
 ioMode "rw" = SIO.ReadWriteMode
 
-openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
-openFile cid path wd tOpt mode engine = do
-    file <- openFileHandle path wd (ioMode mode)
-    addEndpoint cid (file, (Exclusive $ Single Nothing), []) (endpoints engine)
 
+openFileInternal :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> ETransport a -> IO ()
+openFileInternal cid path wd tOpt mode (trEndpoints -> eps) = do
+    file <- openFileHandle path wd (ioMode mode)
+    addEndpoint cid (file, (Exclusive $ Single Nothing), []) eps
 
 -- | Socket constructor. 
 --   This initializes the engine's connection pool as necessary.
-openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
-openSocket cid addr wd tOpt (ioMode -> mode) engine = do
-    socket <- openSocketHandle addr wd mode $ getPool mode engine
-    mvar <- newMVar (Multiple [])
-    maybe (return ()) (\x -> addEndpoint cid (x, Shared mvar, []) (endpoints engine)) socket
+openSocketInternal :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> ETransport a -> IO ()
+openSocketInternal cid addr wd tOpt
+                   (ioMode -> mode)
+                   tr@(trConfig &&& trEndpoints &&& trConnections -> (cfg, (eps, conns))) =
+  do
+    socket <- openSocketHandle addr wd mode $ connections mode
+    mvar <- newMVar (Multiple [] $ defaultBufferSpec cfg)
+    maybe (return ()) (\x -> addEndpoint cid (x, Shared mvar, []) eps) socket
   
-  where getPool SIO.WriteMode (connectionPools -> EConnectionPools (icp, ecp)) =
-          case (take 2 cid, icp) of
-            ("__", Nothing) -> error $ "Invalid simulation internal connection to " ++ cid
-            ("__", Just _)  -> icp
-            _               -> Just ecp
+  where connections SIO.WriteMode = getConnections cid conns
+        connections _             = Nothing
 
-        getPool _ _ = Nothing
-
-close :: String -> Engine a -> IO ()
-close n engine@(endpointsAndTransport -> (eps, tr)) =
-  getEndpoint n eps >>= \case
+closeInternal :: String -> ETransport a -> IO ()
+closeInternal n tr@(trEndpoints -> eps) = getEndpoint n eps >>= \case
   Nothing -> return ()
   Just e  -> closeHandle (handle e) 
             >> removeEndpoint n eps 
@@ -495,13 +510,13 @@ close n engine@(endpointsAndTransport -> (eps, tr)) =
   where notifyType (FileH _ _) = FileClose
         notifyType (SocketH _ _) = SocketClose
 
-hasRead :: Identifier -> Engine a -> IO (Maybe Bool)
-hasRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+hasReadInternal :: Identifier -> ETransport a -> IO (Maybe Bool)
+hasReadInternal n (trEndpoints -> eps) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
   Just e  -> emptyEBuffer (buffer e) >>= return . Just . not
 
-doRead :: Identifier -> Engine a -> IO (Maybe a)
-doRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+doReadInternal :: Identifier -> ETransport a -> IO (Maybe a)
+doReadInternal n tr@(trEndpoints -> eps) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
   Just e  -> refresh e
   
@@ -515,13 +530,13 @@ doRead n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \ca
         notify Nothing subs   = return ()
         notify (Just nt) subs = notifySubscribers nt subs tr 
 
-hasWrite :: Identifier -> Engine a -> IO (Maybe Bool)
-hasWrite n engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+hasWriteInternal :: Identifier -> ETransport a -> IO (Maybe Bool)
+hasWriteInternal n (trEndpoints -> eps) = getEndpoint n eps >>= \case
   Nothing -> return Nothing
   Just e  -> fullEBuffer (buffer e) >>= return . Just . not
 
-doWrite :: Identifier -> a -> Engine a -> IO ()
-doWrite n arg engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>= \case
+doWriteInternal :: Identifier -> a -> ETransport a -> IO ()
+doWriteInternal n arg tr@(trEndpoints -> eps) = getEndpoint n eps  >>= \case
   Nothing -> return ()
   Just e  -> write e
 
@@ -533,6 +548,81 @@ doWrite n arg engine@(endpointsAndTransport -> (eps, tr)) = getEndpoint n eps >>
 
         notify Nothing subs   = return ()
         notify (Just nt) subs = notifySubscribers nt subs tr
+
+
+
+{- Connection and connection pool accessors -}
+
+newEndpoint :: Address -> IO (Maybe NEndpoint)
+newEndpoint addr@(host, port) = withSocketsDo $ do
+  t <- eitherAsMaybe $ NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters
+  e <- maybe (return Nothing) (eitherAsMaybe . NT.newEndPoint) t
+  return $ t >>= \tr -> e >>= return . flip NEndpoint tr
+  where eitherAsMaybe m = m >>= return . either (\_ -> Nothing) Just
+
+newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
+newConnection addr (endpoint -> ep) =
+    NT.connect ep (epAddr addr) NT.ReliableOrdered NT.defaultConnectHints
+      >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
+  
+  where epAddr (host,port) = NT.EndPointAddress $ BS.pack $ host ++ (show port) ++ ":0"
+    -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
+
+emptyConnectionMap :: Address -> EConnectionMap
+emptyConnectionMap addr = EConnectionMap { anchor = (addr, Nothing), cache = [] }
+
+getConnections :: Identifier -> EConnectionState -> Maybe (MVar EConnectionMap)
+getConnections n (EConnectionState (icp, ecp)) =
+  if isPrefixOf "__" n then maybe err Just icp else Just ecp
+  where err = error $ "Invalid internal connection to " ++ n ++ " in a simulation"
+
+withPool :: MVar EConnectionMap -> (EConnectionMap -> IO a) -> IO a
+withPool poolMv withF = withMVar poolMv withF
+
+modifyPool :: MVar EConnectionMap -> (EConnectionMap -> IO (EConnectionMap, a)) -> IO a
+modifyPool poolMv modifyF = modifyMVar poolMv modifyF
+
+getConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
+getConnection addr pool = withPool pool $ return . lookup addr . cache
+
+addConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
+addConnection addr pool = modifyPool pool establishConnection
+  where establishConnection p@(anchor -> (anchorAddr, Nothing)) =
+          newEndpoint anchorAddr >>= \case
+            Nothing -> return (p, Nothing)
+            Just ep -> connect $ EConnectionMap (anchorAddr, Just ep) (cache p)
+        establishConnection p = connect p
+
+        connect p@(anchor -> (anchorAddr, Just ep)) =
+          newConnection addr ep >>= return . maybe (p, Nothing) (add p)
+
+        add p c = (EConnectionMap (anchor p) $ (addr, c):(cache p), Just c)
+
+removeConnection :: Address -> MVar EConnectionMap -> IO ()
+removeConnection addr pool = modifyPool pool remove
+  where remove p@(anchor -> (_, Nothing)) = return (p, ())
+        remove p = closeConnection (cache p) >>= return . (,()) . EConnectionMap (anchor p)
+        closeConnection (matchConnections -> (matches, rest)) =
+          mapM_ ((\c -> NT.close $ conn c) . snd) matches >> return rest
+        matchConnections = partition ((addr ==) . fst)
+
+getEstablishedConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
+getEstablishedConnection addr pool =
+  getConnection addr pool >>= \case
+    Nothing -> addConnection addr pool
+    Just c  -> return $ Just c
+
+
+{- Endpoint accessors -}
+
+addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings a) -> EEndpoints a -> IO ()
+addEndpoint n (h,b,s) eps = modifyMVar_ eps (return . H.insert n Endpoint {handle=h, buffer=b, subscribers=s})
+
+removeEndpoint :: Identifier -> EEndpoints a -> IO ()
+removeEndpoint n eps = modifyMVar_ eps $ return . H.delete n
+
+getEndpoint :: Identifier -> EEndpoints a -> IO (Maybe (Endpoint a))
+getEndpoint n eps = withMVar eps (return . H.lookup n)
 
 
 {- Endpoint Notifiers -} 
@@ -576,72 +666,88 @@ detachNotifier_ eid nt eps = void $ detachNotifier eid nt eps
 
 {- Endpoint buffers -}
 
-wrapEBuffer :: (EndpointBufferContents b -> a) -> EndpointBuffer b -> IO a
+wrapEBuffer :: (BufferContents b -> a) -> EndpointBuffer b -> IO a
 wrapEBuffer f = \case
   Exclusive c -> return $ f c
   Shared mvc -> readMVar mvc >>= return . f
 
-modifyEBuffer :: (EndpointBufferContents b -> IO (EndpointBufferContents b, a)) -> EndpointBuffer b -> IO (EndpointBuffer b, a)
+modifyEBuffer :: (BufferContents b -> IO (BufferContents b, a)) -> EndpointBuffer b -> IO (EndpointBuffer b, a)
 modifyEBuffer f = \case
   Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
   Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
 
-emptyEBContents :: EndpointBufferContents a -> Bool
+emptyEBContents :: BufferContents a -> Bool
 emptyEBContents (Single x)   = maybe True (\_ -> False) x
-emptyEBContents (Multiple x) = null x
+emptyEBContents (Multiple x _) = null x
 
 emptyEBuffer :: EndpointBuffer a -> IO Bool
 emptyEBuffer = wrapEBuffer emptyEBContents
 
--- TODO
-fullEBuffer :: EndpointBuffer a -> IO Bool
-fullEBuffer = error "NYI"
+fullEBContents :: BufferContents a -> Bool
+fullEBContents (Single x) = maybe False (\_ -> True) x
+fullEBContents (Multiple x spec) = length x == maxSize spec
 
-readEBContents :: EndpointBufferContents a -> Maybe a
+fullEBuffer :: EndpointBuffer a -> IO Bool
+fullEBuffer = wrapEBuffer fullEBContents
+
+readEBContents :: BufferContents a -> Maybe a
 readEBContents (Single x) = x
-readEBContents (Multiple x) = if null x then Nothing else Just $ head x
+readEBContents (Multiple x _) = if null x then Nothing else Just $ head x
 
 readEBuffer :: EndpointBuffer a -> IO (Maybe a)
 readEBuffer = wrapEBuffer readEBContents
 
-appendEBContents :: v -> EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
-appendEBContents v (Single x) = return (Single $ Just v, x)
-appendEBContents v (Multiple x) = return $ (Multiple $ x++[v], Nothing)
+appendEBContents :: v -> BufferContents v -> (BufferContents v, Maybe v)
+appendEBContents v c | fullEBContents c = (c, Just v)
+                     | otherwise        = append c
+  where append (Single Nothing)  = (Single $ Just v, Nothing)
+        append (Multiple x spec) = (flip Multiple spec $ x++[v], Nothing)
+        append _ = error "Cannot append to full buffer"
 
 appendEBuffer :: v -> EndpointBuffer v -> IO (EndpointBuffer v)
-appendEBuffer v buf = modifyEBuffer (appendEBContents v) buf >>= return . fst
+appendEBuffer v buf = modifyEBuffer (return . appendEBContents v) buf >>= return . fst
 
-takeEBContents :: EndpointBufferContents v -> IO (EndpointBufferContents v, Maybe v)
+takeEBContents :: BufferContents v -> (BufferContents v, Maybe v)
 takeEBContents = \case
-  Single x       -> return (Single Nothing, x)
-  Multiple []    -> return (Multiple [], Nothing)
-  Multiple (h:t) -> return (Multiple t, Just h)
+  Single x         -> (Single Nothing, x)
+  Multiple [] s    -> (Multiple [] s, Nothing)
+  Multiple (h:t) s -> (Multiple t s, Just h)
 
 takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
-takeEBuffer = modifyEBuffer $ takeEBContents
+takeEBuffer = modifyEBuffer $ return . takeEBContents
 
--- TODO
+flushEBContents :: IOHandle v -> BufferContents v
+                    -> IO (BufferContents v, Maybe EndpointNotification)
+flushEBContents (networkSource -> Just _) _ = error "Invalid buffer flush for network source"
+flushEBContents h c =  case batch c of
+                        ([], nc) -> return (nc, Nothing)
+                        (x, nc)  -> mapM_ (flip writeHandle h) x >> return (nc, notification x)
+  
+  where batch c@(Single Nothing)  = ([], c)
+        batch (Single (Just x)) = ([x], Single Nothing)
+        batch (Multiple x s) = let (a,b) = splitAt (batchSize s) x in (a, Multiple b s)
+        
+        notification [] = Nothing
+        notification _  = Just FileData
+
 flushEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe EndpointNotification)
-flushEBuffer = error "NYI"
+flushEBuffer h = modifyEBuffer $ flushEBContents h
 
-refreshEBContents :: IOHandle v -> EndpointBufferContents v
-                     -> IO (EndpointBufferContents v, (Maybe v, Maybe EndpointNotification))
+refreshEBContents :: IOHandle v -> BufferContents v
+                     -> IO (BufferContents v, (Maybe v, Maybe EndpointNotification))
 
-refreshEBContents f@(FileH _ _) c = takeEBContents c >>= refill
+refreshEBContents f@(FileH _ _) c = refill $ takeEBContents c 
   
   where refill (c, vOpt) | refillPolicy c = readHandle f >>= return . rebuild c >>= (\(x,y) -> return (x, (vOpt, y)))
                          | otherwise      = return (c, (vOpt, Nothing))
 
-        rebuild (Single _)   = maybe (mkESingle, Nothing) (\c -> (mkSingle c, Just FileData))
-        rebuild (Multiple x) = maybe (mkMulti x, Nothing) (\y -> (mkMulti $ x++[y], Just FileData))
+        rebuild (Single _)     = maybe (Single Nothing, Nothing) (\c -> (Single $ Just c, Just FileData))
+        rebuild (Multiple x s) = maybe (Multiple x s, Nothing)   (\y -> (Multiple (x++[y]) s, Just FileData))
 
         refillPolicy = emptyEBContents
 
-        mkSingle  = Single . Just
-        mkESingle = Single Nothing
-        mkMulti x = Multiple x
 
-refreshEBContents (SocketH _ (Left _)) c  = takeEBContents c >>= (\(x,y) -> return (x, (y, Nothing)))
+refreshEBContents (SocketH _ (Left _)) c  = let (x,y) = takeEBContents c in return (x, (y, Nothing))
 refreshEBContents (SocketH _ (Right _)) c = error "Invalid buffer refresh for network sink"
 
 refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
@@ -657,8 +763,8 @@ putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
 
 putTransport :: Show a => ETransport a -> IO ()
 putTransport = \case
-  (TRSim q)   -> putStrLn "Messages:" >> putMessageQueues q
-  (TRNet otr) -> undefined -- TODO
+  (TRSim q)             -> putStrLn "Messages:" >> putMessageQueues q
+  (TRNet cfg wd eps conns) -> putStrLn "Network" -- TODO endpoints, connection state
 
 putEngine :: (Show a) => Engine a -> IO ()
 putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q

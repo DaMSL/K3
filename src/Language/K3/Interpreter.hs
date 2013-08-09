@@ -567,7 +567,7 @@ initProgram prog engine = (runInterpretation (initState prog engine) $ declarati
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
-standaloneInterpreter f = simpleEngine [defaultAddress] >>= f
+standaloneInterpreter f = simpleEngine [defaultAddress] valueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
 runExpression e = standaloneInterpreter withEngine
@@ -580,7 +580,7 @@ runProgramInitializer :: K3 Declaration -> IO ()
 runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 
 runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simpleEngine peers >>= (\e -> runEngine valueWD valueProcessor e prog)
+runProgram peers prog = simpleEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
 
 
 {- Message processing -}
