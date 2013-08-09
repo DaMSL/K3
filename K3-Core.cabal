@@ -82,7 +82,8 @@ library
                    Language.K3.TypeSystem.Error,
                    Language.K3.TypeSystem.Utils.K3Tree,
                    Language.K3.TypeSystem.Monad.Utils,
-                   Language.K3.TypeSystem.Sanity
+                   Language.K3.TypeSystem.Sanity,
+                   Language.K3.TypeSystem.TypeDecision.AnnotationInlining
 
 test-suite all
     type: exitcode-stdio-1.0

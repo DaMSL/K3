@@ -72,7 +72,7 @@ data TypeError
   | MultipleDeclarationBindings Identifier [K3 Declaration]
       -- ^ Indicates that the program binds the same identifier to multiple
       --   declarations.
-  | MultipleAnnotationBindings (K3 Declaration) Identifier [AnnMemDecl]
+  | MultipleAnnotationBindings Identifier [AnnMemDecl]
       -- ^ Indicates that a given annotation binds the same identifier to
       --   multiple annotation declarations.
 
