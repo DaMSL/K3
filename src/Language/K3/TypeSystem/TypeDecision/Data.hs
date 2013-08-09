@@ -8,9 +8,13 @@ module Language.K3.TypeSystem.TypeDecision.Data
 ) where
 
 import Control.Arrow
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Core.Annotation
+import Language.K3.Core.Common
+import Language.K3.Core.Type
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 
@@ -41,3 +45,12 @@ instance CSL.ConstraintSetLike (Coproduct Stub Constraint) StubbedConstraintSet
   unions scs = uncurry StubbedConstraintSet $ csUnions *** Set.unions $
                   unzip $ map extract scs
     where extract (StubbedConstraintSet cs ss) = (cs,ss)
+
+instance CSL.ConstraintSetLikePromotable ConstraintSet StubbedConstraintSet
+    where
+  promote cs = StubbedConstraintSet cs Set.empty
+
+instance Monoid StubbedConstraintSet where
+  mempty = CSL.empty
+  mappend = CSL.union
+  mconcat = CSL.unions

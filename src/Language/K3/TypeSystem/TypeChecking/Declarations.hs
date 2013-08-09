@@ -31,6 +31,7 @@ import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
+import Language.K3.TypeSystem.Utils.K3Tree
 import Language.K3.Utils.Conditional
 
 -- |A function to check whether a given pair of environments correctly describes
@@ -77,7 +78,8 @@ deriveDeclaration aEnv env decl =
     DRole _ -> typecheckError $ InternalError $ NonTopLevelDeclarationRole decl
 
     DGlobal i tExpr mexpr -> do
-      s <- spanOfDecl decl
+      assert0Children decl
+      s <- spanOf decl
       (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
       let qt2 = generalize env qa2 cs2
       qt3 <- requireQuantType s i aEnv
@@ -92,7 +94,7 @@ deriveDeclaration aEnv env decl =
           DeclarationSubtypeFailure s qt1 qt2
 
     DTrigger i tExpr expr -> do
-      s <- spanOfDecl decl
+      s <- spanOf decl
       (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr
       let f a cs = do
@@ -113,7 +115,7 @@ deriveDeclaration aEnv env decl =
         DeclarationSubtypeFailure s qt1 qt2
 
     DAnnotation i mems -> do
-      s <- spanOfDecl decl
+      s <- spanOf decl
       entry <- envRequire
                   (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
                   (TEnvIdentifier i) aEnv
@@ -236,18 +238,6 @@ deriveAnnotationMember aEnv env decl =
       where
         badFormErr :: Maybe NormalTypeAliasEntry -> TypeError
         badFormErr mqt = InternalError $ InvalidSpecialBinding ei mqt
-
--- |Retrieves the span from the provided expression.  If no such span exists,
---  an error is produced.
-spanOfDecl :: K3 Declaration -> TypecheckM Span
-spanOfDecl decl =
-  let spans = mapMaybe unSpan $ annotations decl in
-  if length spans /= 1
-    then typecheckError $ InternalError $ InvalidSpansInDeclaration decl
-    else return $ head spans
-  where
-    unSpan dann = case dann of
-      DSpan s -> Just s
 
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.

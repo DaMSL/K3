@@ -69,6 +69,12 @@ data TypeError
       -- ^ Indicates that the inferred type of a global declaration was not a
       --   subtype of its declared type signature.  The first @QuantType@ is the
       --   inferred type; the second @QuantType@ is the declared type.
+  | MultipleDeclarationBindings Identifier [K3 Declaration]
+      -- ^ Indicates that the program binds the same identifier to multiple
+      --   declarations.
+  | MultipleAnnotationBindings (K3 Declaration) Identifier [AnnMemDecl]
+      -- ^ Indicates that a given annotation binds the same identifier to
+      --   multiple annotation declarations.
 
 deriving instance Show TypeError
 
@@ -95,6 +101,9 @@ data InternalTypeError
   | InvalidTypeExpressionChildCount (K3 K3T.Type)
       -- ^Indicates that type derivation occurred on a type expression which had
       --  a number of children inappropriate for its tag.
+  | InvalidDeclarationChildCount (K3 Declaration)
+      -- ^Indicates that type derivation occurred on a declaration which had a
+      --  number of children inappropriate for its tag.
   | MissingTypeParameter TParamEnv TEnvId
       -- ^Indicates that a type parameter environment was missing an environment
       --  identifier it was expected to have.
@@ -127,6 +136,10 @@ data InternalTypeError
       --  happen; in practice, these types should be nearly identical.  The
       --  declared type is the first @QuantType@; the type from the environment
       --  is the second.
+  | UnexpectedMemberAnnotationDeclaration (K3 Declaration) AnnMemDecl
+      -- ^Indicates that, during type decision, an annotation member contained
+      --  a member annotation declaration.  Such declarations should be inlined
+      --  at the beginning of type decision.
 
 deriving instance Show InternalTypeError
-  
+

@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections #-}
 
 {-|
   A module defining the computational environment in which typechecking
@@ -13,6 +13,7 @@ module Language.K3.TypeSystem.TypeChecking.Monad
 ) where
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Data.Either
@@ -38,9 +39,12 @@ newtype TypecheckM a
   deriving (Monad, Functor, Applicative, MonadState TypecheckState)
   
 -- |Evaluates a typechecking computation.
-runTypecheckM :: TypecheckM a -> Either (Seq TypeError) a
-runTypecheckM x = evalState (runEitherT $ unTypecheckM x)
-                    TypecheckState { nextVarId = 0 }
+runTypecheckM :: Int -> TypecheckM a -> Either (Seq TypeError) (a, Int)
+runTypecheckM firstVarId x =
+  let (ans, st) =
+        runState (runEitherT $ unTypecheckM x)
+          TypecheckState { nextVarId = firstVarId }
+  in (,nextVarId st) <$> ans
 
 getNextVarId :: TypecheckM Int
 getNextVarId = do

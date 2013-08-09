@@ -20,3 +20,12 @@ data TypeError = TODO_TypeError -- TODO: TypeError data type
 typecheck :: K3 Declaration
           -> Either TypeError (ConstraintSet, K3 Declaration)
 typecheck = undefined -- TODO
+{-
+  Steps:
+    1. Sanity checks
+    2. Type decision
+    3. Type checking
+    4. Type simplification
+  TODO:
+    Something about annotating tree nodes with types.
+-}

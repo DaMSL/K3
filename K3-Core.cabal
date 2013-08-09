@@ -81,7 +81,8 @@ library
                    Language.K3.TypeSystem.Monad.Iface.TypeError,
                    Language.K3.TypeSystem.Error,
                    Language.K3.TypeSystem.Utils.K3Tree,
-                   Language.K3.TypeSystem.Monad.Utils
+                   Language.K3.TypeSystem.Monad.Utils,
+                   Language.K3.TypeSystem.Sanity
 
 test-suite all
     type: exitcode-stdio-1.0
