@@ -1,8 +1,10 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Data.Tree
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
@@ -80,5 +82,7 @@ data instance Annotation Expression
     | EAnnotation Identifier
   deriving (Eq, Read, Show)
 
-instance Pretty Expression where
-    prettyLines _ = (:[]) . show
+instance Pretty (K3 Expression) where
+    prettyLines (Node (ETuple :@: as) []) = ["EUnit" ++ drawAnnotations as]
+    prettyLines (Node (tag :@: as) es)
+        = [show tag ++ drawAnnotations as] ++ drawSubTrees es

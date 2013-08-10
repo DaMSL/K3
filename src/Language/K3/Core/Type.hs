@@ -1,11 +1,14 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | Types in K3.
-module Language.K3.Core.Type
-( Type(..)
-, TypeBuiltIn(..)
-, Annotation(..)
+module Language.K3.Core.Type (
+    Type(..),
+    TypeBuiltIn(..),
+    Annotation(..)
 ) where
+
+import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -54,5 +57,8 @@ data instance Annotation Type
     | TAnnotation Identifier
   deriving (Eq, Read, Show)
 
-instance Pretty Type where
-    prettyLines _ = (:[]) . show
+instance Pretty (K3 Type) where
+    prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
+    prettyLines (Node (tag :@: as) ts) =
+        [show tag ++ drawAnnotations as]
+        ++ drawSubTrees ts
