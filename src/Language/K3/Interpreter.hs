@@ -99,7 +99,6 @@ data InterpretationError
 -- | Type synonym for interpreter engine, endpoints and transport
 type IEngine    = Engine Value
 type IEndpoints = EEndpoints Value
-type ITransport = ETransport Value
 
 -- | Type declaration for an Interpretation's state.
 type IState = (IEnvironment Value, IEngine)
@@ -126,9 +125,6 @@ getEngine (_,e) = e
 
 getEndpoints :: IState -> IEndpoints
 getEndpoints = endpoints . getEngine
-
-getTransport :: IState -> ITransport
-getTransport = transport . getEngine
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -174,12 +170,9 @@ withEngine f = get >>= liftIO . f . getEngine
 withEndpoints :: (IEndpoints -> IO a) -> Interpretation a
 withEndpoints f = get >>= liftIO . f . getEndpoints
 
-withTransport :: (ITransport -> IO a) -> Interpretation a
-withTransport f = get >>= liftIO . f . getTransport
-
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
-sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getTransport
+sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getEngine
 
 
 {- Constants -}
@@ -567,7 +560,7 @@ initProgram prog engine = (runInterpretation (initState prog engine) $ declarati
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
-standaloneInterpreter f = simpleEngine [defaultAddress] valueWD >>= f
+standaloneInterpreter f = simulationEngine [defaultAddress] valueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
 runExpression e = standaloneInterpreter withEngine
@@ -580,7 +573,7 @@ runProgramInitializer :: K3 Declaration -> IO ()
 runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 
 runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simpleEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
+runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
 
 
 {- Message processing -}
