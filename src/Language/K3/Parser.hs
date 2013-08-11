@@ -345,7 +345,7 @@ expr = parseError "k3" "expression" $ mkSeq <$> sepBy1 nonSeqExpr (operator ";")
   where mkSeq = foldl1 (EC.binop OSeq)
 
 nonSeqExpr :: ExpressionParser
-nonSeqExpr = myTrace "EOPS" $ buildExpressionParser opTable eApp
+nonSeqExpr = buildExpressionParser opTable eApp
 
 qualifiedExpr :: ExpressionParser
 qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
@@ -356,16 +356,16 @@ exprQualifier = choice [keyword "immut" >> return EImmutable,
 
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
-    myTrace "EASN" (try eAssign),
-    myTrace "ESND" (try eSend),
-    myTrace "ELIT" eLiterals,
-    myTrace "ELAM" eLambda,
-    myTrace "ECND" eCondition,
-    myTrace "ELET" eLet,
-    myTrace "ECAS" eCase,
-    myTrace "EBND" eBind,
-    myTrace "EADR" eAddress,
-    myTrace "ESLF" eSelf           ] <*> optional eSuffix
+    (try eAssign),
+    (try eSend),
+    eLiterals,
+    eLambda,
+    eCondition,
+    eLet,
+    eCase,
+    eBind,
+    eAddress,
+    eSelf  ] <*> optional eSuffix
   where eSuffix  = choice [eAddr >>= return . Left, eProject >>= return . Right]
         eAddr    = colon *> nonSeqExpr  
         eProject = dot *> identifier
@@ -377,22 +377,22 @@ eTerm = ESpan <-> mkTerm <$> choice [
 {- Literals -}
 eLiterals :: ExpressionParser
 eLiterals = choice [ 
-    myTrace "ETRM" eTerminal,
-    myTrace "EOPT" eOption,
-    myTrace "EIND" eIndirection,
-    myTrace "ETON" eTupleOrNested,
-    myTrace "EREC" eRecord,
-    myTrace "EMPT" eEmpty ]
+    eTerminal,
+    eOption,
+    eIndirection,
+    eTupleOrNested,
+    eRecord,
+    eEmpty ]
 
 {- Terminals -}
 eTerminal :: ExpressionParser
-eTerminal = choice [myTrace "ECST" eConstant,
-                    myTrace "EVAR" eVariable]
+eTerminal = choice [eConstant,
+                    eVariable]
 
 eConstant :: ExpressionParser
-eConstant = choice [myTrace "EBOL" eCBool,
-                    myTrace "ENUM" $ try eCNumber,
-                    myTrace "ESTR" eCString]
+eConstant = choice [eCBool,
+                    try eCNumber,
+                    eCString]
 
 eCBool :: ExpressionParser
 eCBool = (EC.constant . CBool) <$>
@@ -493,7 +493,7 @@ eLambda :: ExpressionParser
 eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
 
 eApp :: ExpressionParser
-eApp = myTrace "EAPP" $ try $ mkApp <$> (some $ try eTerm)
+eApp = try $ mkApp <$> (some $ try eTerm)
   where mkApp = foldl1 (EC.binop OApp)
 
 eSend :: ExpressionParser

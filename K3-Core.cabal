@@ -5,7 +5,14 @@ maintainer:     P.C. Shyamshankar <shyam@cs.jhu.edu>, Yanif Ahmad <yanif@cs.jhu.
 build-type:     Simple
 cabal-version:  >=1.8
 
+flag test
+    default: False
+    manual: True
+
 library
+    if flag(test)
+        cpp-options: -DTEST
+
     hs-source-dirs:
         src
 
@@ -91,3 +98,5 @@ test-suite all
         HUnit,
         test-framework,
         test-framework-hunit
+
+    cpp-options: -DTEST

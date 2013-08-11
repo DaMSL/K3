@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DoAndIfThenElse #-}
@@ -5,51 +6,92 @@
 
 -- | A message processing runtime for the K3 interpreter
 module Language.K3.Runtime.Engine (
-  Address(..),
-  WireDesc(..),
+    Address(..)
+  , WireDesc(..)
+  , MessageProcessor(..)
 
-  MessageProcessor(..),
+  , Engine(..)
+  , EngineConfiguration(..)
+  , EEndpoints(..)
 
-  Engine(..),
-  EEndpoints(..),
+  , defaultAddress
+  , defaultConfig
 
-  MessageQueues(..),
-  Workers(..),
+  , simpleQueues
+  , perPeerQueues
+  , perTriggerQueues
 
-  simpleQueues,
-  perPeerQueues,
-  perTriggerQueues,
+  , simulationEngine
+  , networkEngine
 
-  simulationEngine,
-  networkEngine,
+  , exprWD
 
-  exprWD,
+  , runEngine
+  , forkEngine
+  , waitForEngine
+  , terminateEngine
 
-  runEngine,
-  forkEngine,
-  waitForEngine,
-  terminateEngine,
+  , enqueue
+  , dequeue
+  , send
 
-  enqueue,
-  dequeue,
-  send,
-
-  openFile,
-  openSocket,
-  close,
+  , openFile
+  , openSocket
+  , close
   
-  hasRead,
-  doRead,
-  hasWrite,
-  doWrite,
+  , hasRead
+  , doRead
+  , hasWrite
+  , doWrite
 
-  attachNotifier,
-  attachNotifier_,
-  detachNotifier,
-  detachNotifier_,
+  , attachNotifier
+  , attachNotifier_
+  , detachNotifier
+  , detachNotifier_
 
-  putMessageQueues,
-  putEngine
+  , putMessageQueues
+  , putEngine
+
+#ifdef TEST
+  , EngineControl(..)
+  , LoopStatus(..)
+
+  , MessageQueues(..)
+  , Workers(..)
+  , Listeners(..)
+
+  , NConnection(..)
+  , NEndpoint(..)
+
+  , IOHandle(..)
+  , BufferSpec(..)
+  , BufferContents(..)
+
+  , EndpointBuffer(..)
+  , EndpointBindings(..)
+  , EndpointNotification(..)
+  , Endpoint(..)
+
+  , EConnectionMap(..)
+  , EConnectionState(..)
+
+  , emptySingletonBuffer
+  , emptyBoundedBuffer
+  , emptyUnboundedBuffer
+  , singletonBuffer
+  , boundedBuffer
+  , unboundedBuffer
+  , exclusive
+  , shared
+
+  , emptyEBuffer
+  , fullEBuffer
+  , sizeEBuffer
+  , capacityEBuffer
+  , readEBuffer
+  , appendEBuffer
+  , takeEBuffer
+#endif
 
 ) where
 
@@ -87,7 +129,8 @@ import Language.K3.Parser
 -- | Address implementation
 type Address = (String, Int)
 
-
+-- TODO: fix internalFormat. This should WireDesc (Address, Identifier, a) for 
+-- name-based receiver-side trigger dispatch
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc a 
                        , control         :: EngineControl
@@ -399,17 +442,30 @@ runNEndpoint n (msgAvail, netCntr) eg e@(Endpoint {handle = h@(networkSource -> 
     NT.Received cid payload            -> processMsg payload
     NT.ReceivedMulticast maddr payload -> rcrE                     
     NT.EndPointClosed                  -> return ()
-    NT.ErrorEvent err                  -> close n eg >> (putStrLn $ show err)
+    NT.ErrorEvent err                  -> endpointError $ show err
   where
     rcr       = runNEndpoint n (msgAvail, netCntr) eg
     rcrE      = rcr e
     rcrNE buf = rcr $ nep buf
     nep  buf  = Endpoint {handle = h, buffer = buf, subscribers = subs}
 
-    processMsg msg = bufferMsg msg >>= (\buf -> writeSV msgAvail () >> notify SocketData >> rcrNE buf)
-    bufferMsg      = foldM (\b msg -> flip appendEBuffer b $ unpackMsg msg) (buffer e)
+    processMsg msg = bufferMsg msg >>= \case
+      (b, [])       -> writeSV msgAvail () >> notify SocketData >> rcrNE b
+      (b, overflow) -> endpointError $ overflowError overflow
+
+    bufferMsg      = foldM safeAppend (buffer e, []) 
     unpackMsg      = unpackWith wd . BS.unpack
     notify evt     = notifySubscribers evt subs eg
+
+    safeAppend (b,overflow) (unpackMsg -> msg) = case overflow of
+      [] -> (flip appendEBuffer b msg) >>= \case
+              (nb, Nothing)  -> return (nb, [])
+              (nb, Just msg) -> return (nb, [msg])
+      l  -> return (b, msg:l)
+
+    
+    overflowError l = "Endpoint buffer overflow (runNEndpoint, " ++ show (length l) ++ " messages)"
+    endpointError s = close n eg >> putStrLn s
 
 runNEndpoint n _ _ _ = error $ "Invalid endpoint for network source " ++ n
 
@@ -487,7 +543,8 @@ ioMode "rw" = SIO.ReadWriteMode
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
 openFile eid path wd tOpt mode (endpoints -> eps) = do
     file <- openFileHandle path wd (ioMode mode)
-    void $ addEndpoint eid (file, (Exclusive $ Single Nothing), []) eps
+    buf  <- exclusive $ emptySingletonBuffer
+    void $ addEndpoint eid (file, buf, []) eps
 
 
 -- | Socket constructor. 
@@ -502,16 +559,16 @@ openSocket eid addr wd tOpt (ioMode -> mode) eg@(control &&& endpoints -> (ctrl,
         connectionsForMode _             = Nothing
 
         registerEndpoint SIO.ReadMode ioh = do
-          mvar       <- buffer
-          e          <- addEndpoint eid (ioh, Shared mvar, []) eps
+          buf        <- shared buffer
+          e          <- addEndpoint eid (ioh, buf, []) eps
           wkThreadId <- forkEndpoint e
           registerNetworkListener (eid, wkThreadId) eg
 
         registerEndpoint _ ioh = do
-          mvar <- buffer
-          void $ addEndpoint eid (ioh, Shared mvar, []) eps
+          buf  <- shared buffer
+          void $ addEndpoint eid (ioh, buf, []) eps
 
-        buffer         = newMVar (Multiple [] $ defaultBufferSpec $ config eg)
+        buffer         = emptyBoundedBuffer $ defaultBufferSpec $ config eg
         forkEndpoint e = (forkIO $ runNEndpoint eid peerControl eg e) >>= mkWeakThreadId
         peerControl    = (messageReadyV ctrl, networkDoneV ctrl)
 
@@ -562,7 +619,10 @@ doWrite n arg eg@(endpoints -> eps) = getEndpoint n eps  >>= \case
   Nothing -> return ()
   Just e  -> write e
 
-  where write e = appendEBuffer arg (buffer e) >>= flushEBuffer (handle e) >>= update e
+  where write e = appendEBuffer arg (buffer e) >>= \case
+          (nb, Nothing)       -> flushEBuffer (handle e) nb >>= update e
+          (nb, Just overflow) -> overflowError
+
         update e (nBuf, notifyType) =
           addEndpoint n (nep e nBuf) eps >> notify notifyType (subscribers e)
 
@@ -570,6 +630,9 @@ doWrite n arg eg@(endpoints -> eps) = getEndpoint n eps  >>= \case
 
         notify Nothing subs   = return ()
         notify (Just nt) subs = notifySubscribers nt subs eg
+        
+        overflowError = close n eg >> putStrLn "Endpoint buffer overflow (doWrite)"
+
 
 
 {- IO Handle methods -}
@@ -761,6 +824,34 @@ detachNotifier_ eid nt eps = void $ detachNotifier eid nt eps
 
 {- Endpoint buffers -}
 
+emptySingletonBuffer :: BufferContents a
+emptySingletonBuffer = Single Nothing
+
+singletonBuffer :: a -> BufferContents a
+singletonBuffer contents = Single $ Just contents
+
+emptyBoundedBuffer :: BufferSpec -> BufferContents a
+emptyBoundedBuffer spec = Multiple [] spec
+
+boundedBuffer :: BufferSpec -> [a] -> Maybe (BufferContents a)
+boundedBuffer spec contents 
+  | length contents <= maxSize spec = Just $ Multiple contents spec
+  | otherwise                       = Nothing
+
+emptyUnboundedBuffer :: BufferContents a
+emptyUnboundedBuffer = Multiple [] unboundedSpec
+  where unboundedSpec = BufferSpec maxBound (batchSize $ defaultBufferSpec $ defaultConfig)
+
+unboundedBuffer :: [a] -> Maybe (BufferContents a)
+unboundedBuffer = boundedBuffer unboundedSpec
+  where unboundedSpec = BufferSpec maxBound (batchSize $ defaultBufferSpec $ defaultConfig)
+
+exclusive :: BufferContents a -> IO (EndpointBuffer a)
+exclusive c = return $ Exclusive c
+
+shared :: BufferContents a -> IO (EndpointBuffer a)
+shared c = newMVar c >>= return . Shared
+
 wrapEBuffer :: (BufferContents b -> a) -> EndpointBuffer b -> IO a
 wrapEBuffer f = \case
   Exclusive c -> return $ f c
@@ -772,18 +863,32 @@ modifyEBuffer f = \case
   Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
 
 emptyEBContents :: BufferContents a -> Bool
-emptyEBContents (Single x)   = maybe True (\_ -> False) x
+emptyEBContents (Single x)     = maybe True (\_ -> False) x
 emptyEBContents (Multiple x _) = null x
 
 emptyEBuffer :: EndpointBuffer a -> IO Bool
 emptyEBuffer = wrapEBuffer emptyEBContents
 
 fullEBContents :: BufferContents a -> Bool
-fullEBContents (Single x) = maybe False (\_ -> True) x
+fullEBContents (Single x)        = maybe False (\_ -> True) x
 fullEBContents (Multiple x spec) = length x == maxSize spec
 
 fullEBuffer :: EndpointBuffer a -> IO Bool
 fullEBuffer = wrapEBuffer fullEBContents
+
+sizeEBContents :: BufferContents a -> Int
+sizeEBContents (Single x)     = maybe 0 (\_ -> 1) x
+sizeEBContents (Multiple l _) = length l
+
+sizeEBuffer :: EndpointBuffer a -> IO Int
+sizeEBuffer = wrapEBuffer sizeEBContents
+
+capacityEBContents :: BufferContents a -> Int
+capacityEBContents (Single _)        = 1
+capacityEBContents (Multiple _ spec) = maxSize spec
+
+capacityEBuffer :: EndpointBuffer a -> IO Int
+capacityEBuffer = wrapEBuffer capacityEBContents
 
 readEBContents :: BufferContents a -> Maybe a
 readEBContents (Single x) = x
@@ -797,10 +902,10 @@ appendEBContents v c | fullEBContents c = (c, Just v)
                      | otherwise        = append c
   where append (Single Nothing)  = (Single $ Just v, Nothing)
         append (Multiple x spec) = (flip Multiple spec $ x++[v], Nothing)
-        append _ = error "Cannot append to full buffer"
+        append _ = error "Internal append error"
 
-appendEBuffer :: v -> EndpointBuffer v -> IO (EndpointBuffer v)
-appendEBuffer v buf = modifyEBuffer (return . appendEBContents v) buf >>= return . fst
+appendEBuffer :: v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
+appendEBuffer v buf = modifyEBuffer (return . appendEBContents v) buf
 
 takeEBContents :: BufferContents v -> (BufferContents v, Maybe v)
 takeEBContents = \case

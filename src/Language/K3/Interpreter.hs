@@ -180,9 +180,6 @@ sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getEngine
 myAddrId :: Identifier
 myAddrId = "me"
 
-defaultAddress :: Address
-defaultAddress = ("localhost", 10000)
-
 vunit :: Value
 vunit = VTuple []
 
