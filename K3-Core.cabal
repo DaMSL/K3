@@ -21,6 +21,7 @@ library
         parsec,
         parsec-parsers,
         parsers,
+        process,
         SafeSemaphore,
         transformers,
         unordered-containers
