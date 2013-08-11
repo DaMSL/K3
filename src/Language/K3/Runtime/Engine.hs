@@ -71,7 +71,7 @@ import Data.List
 
 import qualified System.IO as SIO
 import System.Process
-import System.Mem.Weak
+import System.Mem.Weak (Weak)
 
 import Network.Socket (withSocketsDo)
 import qualified Network.Transport as NT
@@ -139,7 +139,8 @@ data LoopStatus res err = Result res | Error err | MessagesDone res
 data MessageProcessor prog msg res err =
      MessageProcessor { initialize :: prog -> Engine msg -> IO res
                       , process    :: (Address, Identifier, msg) -> res -> IO res
-                      , status     :: res -> Either err res }
+                      , status     :: res -> Either err res
+                      , finalize   :: res -> IO res }
 
 {- Engine components -}
 
@@ -349,12 +350,18 @@ processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
 runMessages :: (Show r, Show e) => MessageProcessor p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case 
   Result r       -> rcr r
-  Error e        -> putStrLn $ "Error:\n" ++ show e
+  Error e        -> finish "Error:\n" e
   MessagesDone r -> terminate e >>= \case
-                      True -> putMVar (waitV $ control e) () >> (putStrLn $ "Terminated:\n" ++ show r)
+                      True -> finalize msgPrcsr r >>= finish "Terminated:\n"
                       _    -> waitForMessage e >> rcr r
   
-  where rcr = runMessages msgPrcsr e . processMessage msgPrcsr e
+  where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
+        cleanup      = cleanC (connections e) >> cleanE (endpoints e)        
+        finish msg r = cleanup >> putMVar (waitV $ control e) () >> (putStrLn $ msg ++ show r)
+        
+        cleanC (EConnectionState (Nothing, x)) = clearConnections x
+        cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
+        cleanE eps                             = withMVar eps (mapM_ (flip close e) . H.keys)
 
 
 runEngine :: (Show r, Show e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ()
@@ -673,9 +680,6 @@ withConnectionMap connsMV withF = withMVar connsMV withF
 modifyConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO (EConnectionMap, a)) -> IO a
 modifyConnectionMap connsMV modifyF = modifyMVar connsMV modifyF
 
-getConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
-getConnection addr conns = withConnectionMap conns $ return . lookup addr . cache
-
 addConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
 addConnection addr conns = modifyConnectionMap conns establishConnection
   where establishConnection c@(anchor -> (anchorAddr, Nothing)) =
@@ -691,17 +695,29 @@ addConnection addr conns = modifyConnectionMap conns establishConnection
 
 removeConnection :: Address -> MVar EConnectionMap -> IO ()
 removeConnection addr conns = modifyConnectionMap conns remove
-  where remove p@(anchor -> (_, Nothing)) = return (p, ())
-        remove p = closeConnection (cache p) >>= return . (,()) . EConnectionMap (anchor p)
+  where remove cm@(anchor -> (_, Nothing)) = return (cm, ())
+        remove cm = closeConnection (cache cm) >>= return . (,()) . EConnectionMap (anchor cm)
         closeConnection (matchConnections -> (matches, rest)) =
-          mapM_ ((\c -> NT.close $ conn c) . snd) matches >> return rest
+          mapM_ (NT.close . conn . snd) matches >> return rest
         matchConnections = partition ((addr ==) . fst)
+
+getConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
+getConnection addr conns = withConnectionMap conns $ return . lookup addr . cache
 
 getEstablishedConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
 getEstablishedConnection addr conns =
   getConnection addr conns >>= \case
     Nothing -> addConnection addr conns
     Just c  -> return $ Just c
+
+clearConnections :: MVar EConnectionMap -> IO ()
+clearConnections cm = modifyConnectionMap cm clear
+  where clear cm@(EConnectionMap (a, ep) conns) =
+          clearC conns >> clearE ep >> return (EConnectionMap (a, Nothing) [], ())
+        
+        clearC conns     = mapM_ (flip removeConnection cm . fst) conns
+        clearE Nothing   = return ()
+        clearE (Just ep) = NT.closeEndPoint $ endpoint ep
 
 
 {- Endpoint Notifiers -} 

@@ -549,12 +549,18 @@ initMessages :: IResult () -> IO (IResult Value)
 initMessages = \case
     ((Right _, state), ilog)
       | Just (VFunction f) <- lookup "atInit" $ getEnv state -> runInterpretation state (f vunit)
-      | otherwise                                            -> return ((iError "Could not find atInit", state), ilog)
+      | otherwise                                            -> return ((unknownTrigger, state), ilog)
     ((Left err, state), ilog)                                -> return ((Left err, state), ilog)
-  where iError = Left . RunTimeInterpretationError
+  where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
 initProgram :: K3 Declaration -> IEngine -> IO (IResult Value)
 initProgram prog engine = (runInterpretation (initState prog engine) $ declaration prog) >>= initMessages
+
+finalProgram :: IState -> IO (IResult Value)
+finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
+  where runFinal (VFunction f) = f vunit
+        runFinal _             = throwE $ RunTimeTypeError "Invalid atExit trigger"
+        unknownTrigger         = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
 
 {- Standalone (i.e., single peer) evaluation -}
@@ -579,8 +585,10 @@ runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine valu
 {- Message processing -}
 
 valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
-valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status }
-  where status res = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status, finalize = finalize }
+  where 
+        status res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+        finalize res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
         
         process (addr, n, args) r = 
           maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
