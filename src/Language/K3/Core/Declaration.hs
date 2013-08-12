@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | Top-Level Declarations in K3.
 module Language.K3.Core.Declaration (
@@ -10,7 +11,9 @@ module Language.K3.Core.Declaration (
     AnnMemDecl(..)
 ) where
 
+import Data.Functor
 import Data.Maybe
+import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -50,13 +53,15 @@ data instance Annotation Declaration
   = DSpan Span
   deriving (Eq, Read, Show)
 
-instance Pretty Declaration where
-    prettyLines (DGlobal i t me) =
-        ["DGlobal " ++ i]
-        ++ (shift "+- " "|  " $ prettyLines t)
-        ++ fromMaybe [] (fmap (shift "`- " "   " . prettyLines) me)
-    prettyLines (DRole i) = ["DRole " ++ i]
-    prettyLines (DAnnotation i amd) = ["DAnnotation " ++ i] ++ concatMap prettyLines amd
-
-instance Pretty AnnMemDecl where
-    prettyLines = (:[]) . show
+instance Pretty (K3 Declaration) where
+    prettyLines (Node (DGlobal i t me :@: as) ds) =
+        ["DGlobal " ++ i ++ drawAnnotations as, "|"]
+        ++ case (me, ds) of
+            (Nothing, []) -> terminalShift t
+            (Just e, []) ->  nonTerminalShift t ++ ["|"] ++ terminalShift e
+            (Nothing, xs) -> drawSubTrees ds
+            (Just e, xs) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
+    prettyLines (Node (DRole i :@: as) ds) =
+        ["DRole " ++ i ++ " :@: " ++ show as, "|"]
+        ++ drawSubTrees ds
+    prettyLines x = lines $ show x

@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | K3 Program constructor
 module Language.K3.Parser.ProgramBuilder (
@@ -7,6 +8,7 @@ module Language.K3.Parser.ProgramBuilder (
   channelMethods,
   rewriteSource,
   mkRunSourceE,
+  mkRunSinkE,
   declareBuiltins
 ) where
 
@@ -40,26 +42,32 @@ argsId = "args"
 myAddr :: K3 Expression
 myAddr = EC.variable myId
 
-ccName :: Identifier -> Identifier
-ccName n = n++"Controller"
+chrName :: Identifier -> Identifier
+chrName n = n++"HasRead"
 
-chName :: Identifier -> Identifier
-chName n = n++"HasNext"
+crName :: Identifier -> Identifier
+crName n = n++"Read"
+
+chwName :: Identifier -> Identifier
+chwName n = n++"HasWrite"
+
+cwName :: Identifier -> Identifier
+cwName n = n++"Write"
 
 ciName :: Identifier -> Identifier
 ciName n = n++"Init"
 
-cfName :: Identifier -> Identifier
-cfName n = n++"Final"
+csName :: Identifier -> Identifier
+csName n = n++"Start"
 
 cpName :: Identifier -> Identifier
 cpName n = n++"Process"
 
-cnName :: Identifier -> Identifier
-cnName n = n++"Next"
+cfName :: Identifier -> Identifier
+cfName n = n++"Final"
 
-csName :: Identifier -> Identifier
-csName n = n++"Start"
+ccName :: Identifier -> Identifier
+ccName n = n++"Controller"
 
 {- Runtime functions -}
 openFileFn :: K3 Expression
@@ -96,11 +104,23 @@ initId = "atInit"
 exitId :: Identifier
 exitId = "atExit"
 
-goId :: Identifier
-goId = "processRole"
+initDeclId :: Identifier
+initDeclId = "initDecls"
 
-goFn :: K3 Expression
-goFn = EC.variable goId
+initDeclFn :: K3 Expression
+initDeclFn = EC.variable initDeclId
+
+roleId :: Identifier
+roleId = "role"
+
+roleVar :: K3 Expression
+roleVar = EC.variable roleId
+
+roleFnId :: Identifier
+roleFnId = "processRole"
+
+roleFn :: K3 Expression
+roleFn = EC.variable roleFnId
 
 parseArgsId :: Identifier
 parseArgsId = "parseArgs"
@@ -121,22 +141,35 @@ replace_children (Node n _) nc = Node n nc
 -- TODO: replace with Template Haskell
 
 desugarRoleEntries :: K3 Declaration
-                      -> [(Identifier, ([Identifier], Identifier, Maybe (K3 Expression)))]
+                      -> [(Identifier, (Maybe [Identifier], Identifier, Maybe (K3 Expression)))]
                       -> [(Identifier, Identifier)]
                       -> K3 Declaration
-desugarRoleEntries (Node t c) sf df  = Node t $ c ++ (startFn sf df)
-  where startFn sf df = [DC.global goId unitFnT (Just $ mkBody sf df)]
-        mkBody sf df  = EC.lambda "_" $ uncurry (foldl dispatchId) $ defaultAndRestIds sf df
+desugarRoleEntries (Node t c) endpointBQGs roleDefaults  = Node t $ c ++ initializerFns
+  where 
+        (sinkEndpoints, sourceEndpoints) = partition matchSink endpointBQGs
+        matchSink (_,(Nothing, _, _)) = True
+        matchSink _ = False
+
+        initializerFns = [DC.global initDeclId unitFnT (Just $ mkInitDeclBody sinkEndpoints),
+                          DC.global roleFnId unitFnT (Just $ mkRoleBody sourceEndpoints roleDefaults)]
+
+        mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
+
+        sinkInitE acc (_,(Nothing, _, Just e)) = acc ++ [e]
+        sinkInitE acc _ = acc
         
-        defaultAndRestIds sf df = (defaultE sf $ lookup "" df, sf)
+        mkRoleBody sources defaults =
+          EC.lambda "_" $ uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults
+        
+        defaultAndRestIds sources defaults = (defaultE sources $ lookup "" defaults, sources)
         dispatchId elseE (n,(_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE
         
-        eqRole n = EC.binop OEqu (EC.variable "role") (EC.constant $ CString n)
+        eqRole n = EC.binop OEqu roleVar (EC.constant $ CString n)
 
         runE _ (Just goE) = goE
         runE n Nothing    = EC.applyMany (EC.variable $ cpName n) [EC.unit]
 
-        defaultE sf (Just x) = case find ((x ==) . second . snd) sf of
+        defaultE s (Just x) = case find ((x ==) . second . snd) s of
                                 Just (n,(_,_,goE)) -> runE n goE
                                 Nothing -> EC.unit
         defaultE _ Nothing   = EC.unit
@@ -149,49 +182,65 @@ desugarRoleEntries (Node t c) sf df  = Node t $ c ++ (startFn sf df)
 {- Code generation methods-}
 -- TODO: replace with Template Haskell
 
-channelMethods :: Bool -> K3 Expression -> K3 Expression -> Identifier -> K3 Type
-                  -> [K3 Declaration]
-channelMethods isFile argE formatE n t  =
-    (map (mkMethod n)
-      [mkInit argE formatE n, mkStart n, mkFinal n,
-       sourceHasNext, sourceNext t])
-    ++ [sourceController n]
+channelMethods :: Bool -> Bool -> K3 Expression -> K3 Expression -> Identifier -> K3 Type
+                  -> (Maybe (K3 Expression), [K3 Declaration])
+channelMethods isSource isFile argE formatE n t =
+  if isSource then sourceDecls else sinkDecls
+  where 
+    sourceDecls = (Nothing,) $
+      (map (mkMethod n)
+        [mkInit argE formatE n, mkStart n, mkFinal n, sourceHasRead, sourceRead t])
+      ++ [sourceController n]
 
-  where mkMethod n (m,t,eOpt) = DC.global (n++m) (TC.function TC.unit t) eOpt
+    sinkDecls = (Just sinkImpl,) $
+      (map (mkMethod n) [mkInit argE formatE n, mkFinal n, sinkHasWrite, sinkWrite t])
 
-        mkInit argE formatE n = 
-          ("Init", TC.unit, Just $ 
-            EC.applyMany openFn [sourceId n, argE, formatE])
+    mkMethod n (m,t,eOpt) = DC.global (n++m) (TC.function TC.unit t) eOpt
 
-        mkStart n = ("Start", TC.unit, Just $ startE n)
-        mkFinal n = ("Final", TC.unit, Just $ EC.applyMany closeFn [sourceId n])
+    mkInit argE formatE n = 
+      ("Init", TC.unit, Just $ 
+        EC.applyMany openFn [sourceId n, argE, formatE, modeE])
 
-        sourceController n = DC.trigger (ccName n) TC.unit $
-          EC.lambda "_"
-            (EC.ifThenElse
-              (EC.applyMany (EC.variable $ chName n) [EC.unit])
-              (controlE $ EC.applyMany (EC.variable $ cpName n) [EC.unit])
-              EC.unit)
+    mkStart n = ("Start", TC.unit, Just $ startE n)
+    mkFinal n = ("Final", TC.unit, Just $ EC.applyMany closeFn [sourceId n])
 
-        -- External functions
-        sourceHasNext = ("HasNext", TC.bool, Nothing)
-        sourceNext t  = ("Next", t, Nothing)
+    sourceController n = DC.global (ccName n) (TC.trigger TC.unit) . Just $
+      EC.lambda "_"
+        (EC.ifThenElse
+          (EC.applyMany (EC.variable $ chrName n) [EC.unit])
+          (controlE $ EC.applyMany (EC.variable $ cpName n) [EC.unit])
+          EC.unit)
 
-        (openFn, closeFn) = if isFile then (openFileFn, closeFileFn)
-                                      else (openSocketFn, closeSocketFn)
+    sinkImpl =
+      EC.lambda "__msg"
+        (EC.ifThenElse
+          (EC.applyMany (EC.variable $ chwName n) [EC.unit])
+          (EC.applyMany (EC.variable $ cwName n) [EC.variable "__msg"])
+          (EC.unit))
 
-        startE n =
-          if isFile
-          then EC.send (EC.variable (ccName n)) myAddr EC.unit
-          else EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+    -- External functions
+    sourceHasRead = ("HasRead", TC.bool, Nothing)
+    sourceRead t  = ("Read", t, Nothing)
+    sinkHasWrite  = ("HasWrite", TC.bool, Nothing)
+    sinkWrite t   = ("Write", t, Nothing)
 
-        controlE processE =
-          if not isFile
-          then processE
-          else EC.block [processE, (EC.send (EC.variable $ ccName n) myAddr EC.unit)]  
+    (openFn, closeFn) = if isFile then (openFileFn, closeFileFn)
+                                  else (openSocketFn, closeSocketFn)
 
-        sourceId n = string n
-        string n = EC.constant $ CString n
+    modeE = EC.constant . CString $ if isSource then "r" else "w"
+
+    startE n =
+      if isFile
+      then EC.send (EC.variable (ccName n)) myAddr EC.unit
+      else EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+
+    controlE processE =
+      if not isFile
+      then processE
+      else EC.block [processE, (EC.send (EC.variable $ ccName n) myAddr EC.unit)]  
+
+    sourceId n = string n
+    string n = EC.constant $ CString n
 
 -- | Rewrites a source declaration's process method to access and dispatch the next available event to all its bindings
 rewriteSource :: [(Identifier, Identifier)] -> K3 Declaration -> K3 Declaration
@@ -203,7 +252,7 @@ rewriteSource bindings d
 
   | otherwise = d
 
--- | Constructs a top-level dispatch function for a source.
+-- | Constructs a dispatch function declaration for a source.
 mkProcessFn :: [(Identifier, Identifier)] -> Identifier -> Maybe (K3 Expression) -> K3 Declaration
 mkProcessFn bindings n eOpt = 
     DC.global (cpName n) unitFnT (Just $ body bindings n eOpt)
@@ -215,14 +264,18 @@ mkProcessFn bindings n eOpt =
           map (\(_,dest) -> sendNextE dest) $ filter ((n ==) . fst) bindings
         
         nextE _ (Just e) = e
-        nextE n Nothing  = EC.applyMany (EC.variable $ cnName n) [EC.unit]
+        nextE n Nothing  = EC.applyMany (EC.variable $ crName n) [EC.unit]
         sendNextE dest   = EC.send (EC.variable dest) myAddr (EC.variable "next")
         unitFnT          = TC.function TC.unit TC.unit
 
--- | Constructs an top-level expression for running sources.
+-- | Constructs an "atInit" expression for initializing and starting sources.
 mkRunSourceE :: Identifier -> K3 Expression
 mkRunSourceE n = EC.block [EC.applyMany (EC.variable $ ciName n) [EC.unit],
                            EC.applyMany (EC.variable $ csName n) [EC.unit]]
+
+-- | Constructs an "atInit" expression for initializing sinks.
+mkRunSinkE :: Identifier -> K3 Expression
+mkRunSinkE n = EC.applyMany (EC.variable $ ciName n) [EC.unit]
 
 
 -- TODO: at_exit function body
@@ -235,22 +288,21 @@ declareBuiltins d
 
         runtimeDecls = [
           DC.global parseArgsId (mkUnitFnT argT) Nothing,
-          DC.global "openFile" (flip TC.function TC.unit $ TC.tuple [idT, TC.string, TC.string]) Nothing,
-          DC.global "openSocket" (flip TC.function TC.unit $ TC.tuple [idT, TC.address]) Nothing,
-          DC.global "closeFile" (TC.function idT TC.unit) Nothing,
+          DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string, TC.string, TC.string]) Nothing,
+          DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
+          DC.global "closeFile"   (TC.function idT TC.unit) Nothing,
           DC.global "closeSocket" (TC.function idT TC.unit) Nothing,
-          DC.global "hasNext" (TC.function idT TC.bool) Nothing,
-          DC.global "registerFileDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerFileCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
           DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerSocketDataTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerSocketCloseTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing ]
+          DC.global "registerSocketDataTrigger"   (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketCloseTrigger"  (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing ]
 
         peerDecls = [
           DC.global myId TC.address Nothing,
           DC.global peersId (TC.collection TC.address) Nothing,
           DC.global argsId argT Nothing,
-          DC.global "role" TC.string (Just $ EC.constant $ CString "s1")]
+          DC.global roleId TC.string Nothing]
 
         topLevelDecls = [
           DC.global initId unitFnT $ Just atInitE,
@@ -258,7 +310,8 @@ declareBuiltins d
 
         atInitE = EC.lambda "_" $
           EC.block [--EC.assign argsId (EC.applyMany parseArgsFn [EC.unit]),
-                    EC.applyMany goFn [EC.unit]]
+                    EC.applyMany initDeclFn [EC.unit],
+                    EC.applyMany roleFn [EC.unit]]
 
         atExitE = EC.lambda "_" $ EC.tuple []
 

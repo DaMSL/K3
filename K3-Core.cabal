@@ -5,7 +5,14 @@ maintainer:     P.C. Shyamshankar <shyam@cs.jhu.edu>, Yanif Ahmad <yanif@cs.jhu.
 build-type:     Simple
 cabal-version:  >=1.8
 
+flag test
+    default: False
+    manual: True
+
 library
+    if flag(test)
+        cpp-options: -DTEST
+
     hs-source-dirs:
         src
 
@@ -16,11 +23,13 @@ library
         either,
         errors,
         mtl,
+        network,
         network-transport,
         network-transport-tcp,
         parsec,
         parsec-parsers,
         parsers,
+        process,
         SafeSemaphore,
         template-haskell,
         transformers,
@@ -35,18 +44,22 @@ library
         Language.K3.Core.Constructor.Declaration,
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Type,
+        
         Language.K3.Parser,
         Language.K3.Parser.ProgramBuilder,
         Language.K3.Pretty,
         Language.K3.Interpreter,
         Language.K3.Runtime.Dispatch,
         Language.K3.Runtime.Engine,
+        
         Language.K3.Transform.Alpha,
+        
         Language.K3.TemplateHaskell.Reduce,
         Language.K3.TemplateHaskell.ReduceM,
         Language.K3.TemplateHaskell.Transform,
         Language.K3.TemplateHaskell.TransformM,
         Language.K3.TemplateHaskell.Utils,
+        
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Data.Utils,
@@ -54,8 +67,10 @@ library
         Language.K3.TypeSystem.Morphisms.ExtractVariables,
         Language.K3.TypeSystem.Morphisms.ReplaceVariables,
         Language.K3.TypeSystem.Polymorphism
+        Language.K3.TypeSystem
 
     ghc-options: -Wall
+
     other-modules: 
                    Language.K3.TypeSystem.Subtyping,
                    Language.K3.TypeSystem.Subtyping.ConstraintMap,
@@ -97,8 +112,14 @@ test-suite all
         base,
 
         K3-Core,
+
+        bytestring,
+        directory,
+        network-transport,
         parsec,
 
         HUnit,
         test-framework,
         test-framework-hunit
+
+    cpp-options: -DTEST
