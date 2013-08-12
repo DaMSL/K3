@@ -40,18 +40,23 @@ canonicalType tname = do
   info <- reify tname
   case info of
     TyConI dec -> case dec of
-      DataD _ _ tvars _ _ -> do
-        let (typs,bndrs) = unzip $ map perBinding tvars
-        return (applyTypeCon (ConT tname) typs, bndrs)
-        where
-          perBinding :: TyVarBndr -> (Type,TyVarBndr)
-          perBinding tvb = case tvb of
-            PlainTV n -> (VarT n, PlainTV n)
-            KindedTV n k -> (VarT n, KindedTV n k)
+      NewtypeD _ _  tvars _ _ ->
+        simpleTvarsCase tvars
+      DataD _ _ tvars _ _ ->
+        simpleTvarsCase tvars
       TySynD _ bndrs typ -> return (typ,bndrs)
       _ -> error $ "canonicalType: " ++ show dec
               ++ " is not a normal constructor or alias to one"
     _ -> error $ "canonicalType: " ++ show tname ++ " is not a type constructor"
+  where
+    simpleTvarsCase tvars = do
+      let (typs,bndrs) = unzip $ map perBinding tvars
+      return (applyTypeCon (ConT tname) typs, bndrs)
+      where
+        perBinding :: TyVarBndr -> (Type,TyVarBndr)
+        perBinding tvb = case tvb of
+          PlainTV n -> (VarT n, PlainTV n)
+          KindedTV n k -> (VarT n, KindedTV n k)
 
 -- |Determines, for a given @Info@ representing a data type, *all* types of
 --  arguments that any of its constructors could accept.
@@ -71,6 +76,7 @@ getDataArgTypes info = do
 getConstructors :: Info -> Q [Con]
 getConstructors info = case info of
   TyConI dec -> case dec of
+    NewtypeD _ _ _ con _ -> return [con]
     DataD _ _ _ cons _ -> return cons
     TySynD _ _ typ ->
       getConstructors =<< reify (getNameOfType typ)

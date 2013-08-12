@@ -15,7 +15,9 @@
   work.
 -}
 module Language.K3.TypeSystem.TypeDecision.AnnotationInlining
-( inlineAnnotations
+( FlatAnnotation
+, FlatAnnotationDecls
+, inlineAnnotations
 ) where
 
 import Control.Applicative
@@ -46,6 +48,21 @@ data AnnRepr = AnnRepr
                   , memberAnnDecls :: Set (Identifier, TPolarity)
                   , processedMemberAnnDecls :: Set (Identifier, TPolarity)
                   }
+
+-- |A data type which tracks information about an @AnnRepr@ in addition to the
+--  @AnnRepr@ itself.
+type TaggedAnnRepr = (AnnRepr, Span, K3 Declaration)
+
+-- |A type alias describing the representation of annotations internal to the
+--  type decision procedure.  The first list of annotations describes the
+--  lifted attributes; the second list describes the schema attributes.
+type FlatAnnotation = ([AnnMemDecl], [AnnMemDecl])
+-- |A type alias describing the representation of a group of declared
+--  annotations internal to the type decision procedure.  The declaration
+--  included here is solely for error reporting purposes; it indicates the
+--  original declaration (pre-inlining) from which the @FlatAnnotation@ was
+--  derived.
+type FlatAnnotationDecls = Map Identifier (FlatAnnotation, K3 Declaration)
 
 emptyRepr :: AnnRepr
 emptyRepr = AnnRepr Map.empty Map.empty Set.empty Set.empty
@@ -90,7 +107,7 @@ convertAnnotationToRepr mems =
 -- |Given a role AST, converts all annotations contained within to the internal
 --  form.
 convertAstToRepr :: forall m. (TypeErrorI m, Monad m, Functor m)
-                 => K3 Declaration -> m (Map Identifier (AnnRepr, Span))
+                 => K3 Declaration -> m (Map Identifier TaggedAnnRepr)
 convertAstToRepr ast =
   case tag ast of
     DRole _ ->
@@ -98,12 +115,12 @@ convertAstToRepr ast =
       Map.fromList <$> catMaybes <$> mapM declToRepr decls
     _ -> internalTypeError $ TopLevelDeclarationNonRole ast
   where
-    declToRepr :: K3 Declaration -> m (Maybe (Identifier, (AnnRepr, Span)))
+    declToRepr :: K3 Declaration -> m (Maybe (Identifier, TaggedAnnRepr))
     declToRepr decl = case tag decl of
       DAnnotation i mems -> do
         repr <- convertAnnotationToRepr mems
         s <- spanOf decl
-        return $ Just (i, (repr, s))
+        return $ Just (i, (repr, s, decl))
       _ -> return Nothing
 
 -- |Given a map of internal annotation representations, performs closure over
@@ -111,9 +128,9 @@ convertAstToRepr ast =
 --  Because closure may reveal overlapping bindings, this process may fail.
 --  If it does not, every member annotation will have been processed.
 closeReprs :: forall m. (TypeErrorI m, Monad m, Functor m, Applicative m)
-           => Map Identifier (AnnRepr, Span)
+           => Map Identifier TaggedAnnRepr
                 -- ^The current representation of annotations
-           -> m (Map Identifier (AnnRepr, Span))
+           -> m (Map Identifier TaggedAnnRepr)
 closeReprs dict = do
   -- FIXME: This isn't quite an accurate representation of the scenario.  The
   --        annotations from the external environment (in theory obtained from
@@ -124,14 +141,14 @@ closeReprs dict = do
   let progress = any (snd . snd) (Map.toList computed)
   (if progress then closeReprs else return) result
   where
-    updateRepr :: Map Identifier (AnnRepr, Span) -> (AnnRepr, Span)
-               -> m ((AnnRepr, Span), Bool)
-    updateRepr current (repr,s) =
+    updateRepr :: Map Identifier TaggedAnnRepr -> TaggedAnnRepr
+               -> m (TaggedAnnRepr, Bool)
+    updateRepr current (repr,s,decl) =
       let unproc = memberAnnDecls repr Set.\\ processedMemberAnnDecls repr in
-      if Set.null unproc then return ((repr,s), False) else
+      if Set.null unproc then return ((repr,s,decl), False) else
         do
           let (i,pol) = Set.findMin unproc
-          (repr',_) <- 
+          (repr',_,_) <- 
               fromMaybe <$> typeError (UnboundTypeEnvironmentIdentifier s $
                                           TEnvIdentifier i)
                         <*> return (Map.lookup i current)
@@ -142,7 +159,7 @@ closeReprs dict = do
           let newRepr' = newRepr { processedMemberAnnDecls =
                                       Set.insert (i,pol) $
                                         processedMemberAnnDecls newRepr }
-          return ((newRepr',s),True) 
+          return ((newRepr',s,decl),True) 
     negatize :: AnnRepr -> AnnRepr
     negatize (AnnRepr lam sam mad umad) =
       AnnRepr (negMap lam) (negMap sam) (negSet mad) (negSet umad)
@@ -163,11 +180,13 @@ closeReprs dict = do
 --  attributes while the second represents schema attributes.
 inlineAnnotations :: (TypeErrorI m, Monad m, Functor m, Applicative m)
                   => K3 Declaration
-                  -> m (Map Identifier ( Map Identifier AnnMemDecl
-                                       , Map Identifier AnnMemDecl ))
+                  -> m FlatAnnotationDecls
 inlineAnnotations decl = do
   m <- convertAstToRepr decl
   m' <- closeReprs m
   return $ Map.map f m'
   where
-    f x = (liftedAttMap $ fst x, schemaAttMap $ fst x)
+    f (repr,_,decl') =
+        ( ( Map.elems $ liftedAttMap repr
+          , Map.elems $ schemaAttMap repr)
+        , decl')

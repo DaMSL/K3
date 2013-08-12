@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
 
 {-|
   A module used to generalize constraint sets.  This module is used by the
@@ -38,5 +38,5 @@ instance ConstraintSetLike Constraint ConstraintSet where
 class ConstraintSetLikePromotable c1 c2 where
   promote :: c1 -> c2
 
-instance ConstraintSetLikePromotable ConstraintSet ConstraintSet where
+instance ConstraintSetLikePromotable c c where
   promote = id
