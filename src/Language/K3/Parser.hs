@@ -193,17 +193,13 @@ dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
 
+-- syntax: "trigger" id ":" type "=" expr ";"
 dTrigger :: DeclParser
-dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
-  where
-    rule x = x <*> (parens idQTypeList) <*> equateExpr
-    mkTrig name args body =
-      DC.global name (TC.trigger args)
-        (Just $ flip mkBody body $ (fst . unzip) args)
-    
-    mkBody [] body  = EC.lambda "_" body
-    mkBody [n] body = EC.lambda n body
-    mkBody ids body = EC.lambda "__x" $ EC.bindAs (EC.variable "__x") (BTuple ids) body
+dTrigger = declError "trigger" $ DSpan <->
+              DC.trigger <$ keyword "trigger" <*> identifier
+                         <* colon <*> typeExpr
+                         <* symbol "=" <*> expr
+                         <* semi
 
 dEndpoint :: String -> String -> Bool -> DeclParser
 dEndpoint kind name isSource = 

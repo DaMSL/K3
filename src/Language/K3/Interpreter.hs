@@ -408,8 +408,9 @@ replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
 replaceTrigger n _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
+-- FIXME: trigger declarations are no longer globals
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
-global n (tag -> TTrigger _) (Just e)   = expression e >>= replaceTrigger n
+global n (tag -> TTrigger) (Just e)   = expression e >>= replaceTrigger n
 global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
 global n (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 global n (tag -> TSource) _             = return ()
@@ -425,6 +426,7 @@ role n subDecls = mapM_ declaration subDecls
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n members = undefined
 
+-- TODO: accommodate DTrigger
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
   debugDecl n t $ global n t eO >> mapM_ declaration ch
@@ -535,7 +537,8 @@ initEnvironment = initDecl []
         initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
         initDecl env _                                          = env
 
-        initGlobal env n (tag -> TTrigger _) _ = env ++ [(n, VTrigger (n, Nothing))]
+        -- FIXME: triggers are a different form of declaration than globals now
+        initGlobal env n (tag -> TTrigger) _ = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TSink) _      = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
         initGlobal env _ _ _                   = env

@@ -204,7 +204,7 @@ channelMethods isSource isFile argE formatE n t =
     mkStart n = ("Start", TC.unit, Just $ startE n)
     mkFinal n = ("Final", TC.unit, Just $ EC.applyMany closeFn [sourceId n])
 
-    sourceController n = DC.global (ccName n) (TC.trigger []) . Just $
+    sourceController n = DC.global (ccName n) (TC.trigger TC.unit) . Just $
       EC.lambda "_"
         (EC.ifThenElse
           (EC.applyMany (EC.variable $ chrName n) [EC.unit])
@@ -292,11 +292,11 @@ declareBuiltins d
           DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
           DC.global "closeFile"   (TC.function idT TC.unit) Nothing,
           DC.global "closeSocket" (TC.function idT TC.unit) Nothing,
-          DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketDataTrigger"   (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing,
-          DC.global "registerSocketCloseTrigger"  (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger []]) Nothing ]
+          DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketDataTrigger"   (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
+          DC.global "registerSocketCloseTrigger"  (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing ]
 
         peerDecls = [
           DC.global myId TC.address Nothing,
