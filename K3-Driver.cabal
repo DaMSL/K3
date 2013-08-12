@@ -14,6 +14,7 @@ executable k3
     build-depends:
         base,
 
+        mtl,
         optparse-applicative,
         readline,
 
