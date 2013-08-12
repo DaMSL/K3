@@ -161,32 +161,33 @@ data EngineConfiguration = EngineConfiguration { address           :: Address
 
 {- Message processing -}
 
-data EngineControl = EngineControl { terminateV    :: MVar Bool
-                                        -- A concurrent boolean used internally by workers to determine if
-                                        -- they should terminate.
-                                        -- No blocking required, only safe access to a termination boolean
-                                        -- for both workers (readers) and a console (i.e., a single writer)
+data EngineControl = EngineControl {
+    -- | A concurrent boolean used internally by workers to determine if
+    -- they should terminate.
+    -- No blocking required, only safe access to a termination boolean
+    -- for both workers (readers) and a console (i.e., a single writer)
+    terminateV :: MVar Bool,
 
-                                   , messageReadyV :: MSampleVar ()
-                                        -- Blocking required for m workers (i.e., for empty queues during
-                                        -- message processing), with signalling from n producers.
-                                        -- We could use a semaphore, but a MSampleVar should be more lightweight.
-                                        -- That is, we need not track how many messages are available, rather
-                                        -- we need a single wake-up when any producer makes a message available.
-                                        -- TODO: this functionality should be merged with MessageQueues.
+    -- | Blocking required for m workers (i.e., for empty queues during
+    -- message processing), with signalling from n producers.
+    -- We could use a semaphore, but a MSampleVar should be more lightweight.
+    -- That is, we need not track how many messages are available, rather
+    -- we need a single wake-up when any producer makes a message available.
+    -- TODO: this functionality should be merged with MessageQueues.
+    messageReadyV :: MSampleVar (),
 
-                                   , networkDoneV  :: MVar Int
-                                        -- A concurrent counter that will reach 0 once all network listeners have finished.
-                                        -- This is incremented and decremented as listeners are added to the engine, or as
-                                        -- they are removed or complete.
-                                        -- No blocking required, only safe access as part of determining whether to
-                                        -- terminate the engine.
+    -- | A concurrent counter that will reach 0 once all network listeners have finished.
+    -- This is incremented and decremented as listeners are added to the engine, or as
+    -- they are removed or complete.
+    -- No blocking required, only safe access as part of determining whether to
+    -- terminate the engine.
+    networkDoneV :: MVar Int,
 
-                                   , waitV         :: MVar ()
-                                        -- Mutex for external threads to wait on this engine to complete.
-                                        -- External threads should use readMVar on this variable, and this will
-                                        -- be signalled by the last worker thread to finish.
-                                   }
+    -- | Mutex for external threads to wait on this engine to complete.
+    -- External threads should use readMVar on this variable, and this will
+    -- be signalled by the last worker thread to finish.
+    waitV :: MVar ()
+}
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
 
