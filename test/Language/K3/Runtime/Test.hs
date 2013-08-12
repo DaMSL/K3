@@ -1,8 +1,19 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DoAndIfThenElse #-}
+
 module Language.K3.Runtime.Test (tests) where
 
 import Control.Monad
 
+import qualified Data.ByteString.Char8 as BS
+import Data.List
 import Data.Maybe
+
+import qualified Network.Transport as NT
+
+import System.Directory
 
 import Test.HUnit hiding (Test)
 import Test.Framework.Providers.API
@@ -24,12 +35,12 @@ constructBuffer = [
     , testCase "Full shared bounded"       $ optional (full . shared) $ bBuf [1,2,3]
   ]
   where 
-        failed  = assertFailure "Constructor failed"
-        empty b = b >>= emptyEBuffer >>= flip unless failed
-        full b  = b >>= fullEBuffer >>= flip unless failed
-        ebBuf   = emptyBoundedBuffer $ defaultBufferSpec defaultConfig 
-        bBuf l  = boundedBuffer (boundedBufferSpec $ length l) l
-        optional f bOpt = maybe failed f bOpt
+        failed   = assertFailure "Constructor failed"
+        empty b  = b >>= emptyEBuffer >>= flip unless failed
+        full b   = b >>= fullEBuffer >>= flip unless failed
+        ebBuf    = emptyBoundedBuffer $ defaultBufferSpec defaultConfig 
+        bBuf l   = boundedBuffer (boundedBufferSpec $ length l) l
+        optional = maybe failed
         boundedBufferSpec n = BufferSpec n $ min n 10
 
 readBuffer :: [Test]
@@ -42,7 +53,7 @@ readBuffer = [
         failed  = assertFailure "Read buffer failed"
         readEmpty b     = b >>= readEBuffer >>= maybe success (\_ -> failed)
         readValid v b   = b >>= readEBuffer >>= maybe failed (flip unless failed . (v ==))
-        optional f bOpt = maybe failed f bOpt
+        optional        = maybe failed
 
 appendBuffer :: [Test]
 appendBuffer = [
@@ -59,7 +70,7 @@ appendBuffer = [
         testAppendOverflow f    = testAppend (\_ -> True) f
         testAppendBuffer f      = testAppend f (\_ -> True)
         
-        optional f bOpt     = maybe failed f bOpt
+        optional            = maybe failed
         bBuf l sz           = boundedBuffer (boundedBufferSpec sz) l
         boundedBufferSpec n = BufferSpec n $ min n 10
 
@@ -80,7 +91,7 @@ takeBuffer = [
         testTakeResult f      = testTake (\_ -> True) f
         testTakeBuffer f      = testTake f (\_ -> True)
 
-        optional f bOpt     = maybe failed f bOpt
+        optional            = maybe failed
         ebBuf               = emptyBoundedBuffer $ defaultBufferSpec defaultConfig 
         bBuf l sz           = boundedBuffer (boundedBufferSpec sz) l
         boundedBufferSpec n = BufferSpec n $ min n 10
@@ -102,7 +113,64 @@ bufferTests = [
   ]
 
 transportTests :: [Test]
-transportTests = []
+transportTests = [
+      testCase "NEndpoint"   $ withEndpoint "receiver" recvr (\_ -> success)
+    , testCase "NConnection" $ withEndpointPair (\x y -> newConnection (fst x) (snd y) >>= failNothing)
+    
+    , testCase "Send data" $ 
+        let testData = ["hello", "this", "is", "K3"]
+            expected = (:[]) . concatMap id
+              -- Above, NT uses Network.Socket.ByteString.sendMany for its sends.
+              -- This has the effect of concatenating data segments.
+            
+            sendData ep (conn -> c) = NT.send c (map BS.pack testData)
+            
+            recvData (endpoint -> ep) =
+              testRecvSeq ep [ (matchConnectionOpen, Nothing, "connect")
+                             , (matchReceive (expected testData), Just showReceive, "data/1") ]
+
+        in withEndpointPair (\x y -> 
+              newConnection (fst x) (snd y) >>= optional (\c -> 
+                sendData (snd x) c >>= either (\_ -> failed) (\_ -> recvData $ snd x)))
+
+    -- TODO
+    , testCase "Value write description" $ return ()
+    , testCase "Expression wire description" $ return ()
+  ]
+  where success     = return ()
+        failed      = assertFailure "Transport test failed"
+        failedS s   = assertFailure $ "Transport test failed: " ++ s
+        failNothing = flip unless failed . isJust
+
+        parens s    = "(" ++ s ++ ")"
+
+        optional            = maybe failed
+        optionalSnd f (x,y) = optional (f x) y
+
+        recvr = newEndpoint defaultAddress >>= return . (defaultAddress,)
+        sendr = let addr = internalSendAddress defaultAddress in newEndpoint addr >>= return . (addr,)
+
+        withEndpoint n ep f = do
+          (addr, opt) <- ep
+          if not $ isJust opt then failedS $ n ++ " " ++ (parens $ show addr)
+          else f (addr, fromJust opt) >> closeEndpoint (fromJust opt)
+
+        withEndpointPair f = withEndpoint "receiver" recvr (\r -> withEndpoint "sender " sendr (f r))
+
+        matchConnectionOpen (NT.ConnectionOpened _ _ _) = True
+        matchConnectionOpen _ = False
+
+        matchReceive expected (NT.Received _ msgs) = (map BS.unpack msgs == expected)
+        matchReceive _ _ = False
+
+        showReceive (NT.Received _ msgs) = putStrLn $ "Data:\n" ++ (intercalate "\n" $ map BS.unpack msgs)
+        showReceive _ = return ()
+
+        testRecvSeq ep evtSeq = 
+          let testMsg (testF, showF, s) evt = 
+                evt >>= (\e -> maybe (return ()) ($ e) showF >> unless (testF e) (failedS s))
+          in mapM_ (uncurry testMsg) $ zip evtSeq (repeat $ NT.receive ep)
+
 
 connectionTests :: [Test]
 connectionTests = []
@@ -111,17 +179,74 @@ endpointTests :: [Test]
 endpointTests = []
 
 handleTests :: [Test]
-handleTests = []
+handleTests = [
+      testCase "Open readable file" $ 
+        let (n, path) = ("testSource", "data/expr-i.txt") in
+        withSimulation (\eg -> openFile n path exprWD Nothing "r" eg >> failEndpoint n eg)
+
+    , testCase "Open writeable file" $ 
+        let path = "data/out.txt" in
+        withSimulation (openFile "testSink" path exprWD Nothing "w") >> failPath path
+
+    -- TODO
+    , testCase "Open readable socket"  $ return ()
+    , testCase "Open writeable socket" $ return ()
+
+    , testCase "Close file"   $ return ()
+    , testCase "Close socket" $ return ()
+
+    , testCase "Read available"   $ return ()
+    , testCase "Write available"  $ return ()
+
+    , testCase "Read from file"   $ return ()
+    , testCase "Write to file"    $ return ()
+    , testCase "Read from socket" $ return ()
+    , testCase "Write to socket"  $ return ()
+  ]
+  where failed = assertFailure "Handle test failed"
+        
+        failEndpoint n (endpoints -> eps) = getEndpoint n eps >>= flip unless failed . isJust
+        failPath p = doesFileExist p >>= flip unless failed
+        
+        withSimulation f = simulationEngine [defaultAddress] exprWD >>= f
+
+notificationTests :: [Test]
+notificationTests = [
+      testCase "File data notification"  $ return ()
+    , testCase "File close notification" $ return ()
+
+    , testCase "Socket accept notification" $ return ()
+    , testCase "Socket data notification"   $ return ()
+    , testCase "Socket close notification"  $ return ()
+  ]
+  where failed = assertFailure "Notification test failed"
 
 engineTests :: [Test]
-engineTests = []
+engineTests = [
+      testCase "Simulation engine constructor" $ 
+        simulationEngine [defaultAddress] exprWD >>= flip unless failed . simulation
+
+    -- TODO
+    , testCase "Network engine constructor" $ return ()
+
+    , testCase "Queue construction/1" $ return ()
+    , testCase "Queue construction/2" $ return ()
+    , testCase "Queue construction/3" $ return ()
+
+    , testCase "Message enqueuing" $ return ()
+    , testCase "Message dequeuing" $ return ()
+
+    , testCase "Send message" $ return ()
+  ]
+  where failed = assertFailure "Engine test failed"
 
 tests :: [Test]
 tests = [
-    testGroup "Buffers"     bufferTests,
-    testGroup "Transport"   transportTests,
-    testGroup "Connections" connectionTests,
-    testGroup "Endpoints"   endpointTests,
-    testGroup "Handles"     handleTests,
-    testGroup "Engine"      engineTests
+    testGroup "Buffers"       bufferTests,
+    testGroup "Transport"     transportTests,
+    testGroup "Connections"   connectionTests,
+    testGroup "Endpoints"     endpointTests,
+    testGroup "Handles"       handleTests,
+    testGroup "Notifications" notificationTests,
+    testGroup "Engine"        engineTests
   ]

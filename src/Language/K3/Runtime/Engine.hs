@@ -75,6 +75,17 @@ module Language.K3.Runtime.Engine (
   , EConnectionMap(..)
   , EConnectionState(..)
 
+  , internalSendAddress
+  , externalSendAddress
+
+  , simulation
+
+  , newEndpoint
+  , closeEndpoint
+  , getEndpoint
+
+  , newConnection
+
   , emptySingletonBuffer
   , emptyBoundedBuffer
   , emptyUnboundedBuffer
@@ -434,8 +445,8 @@ terminateEngine e = modifyMVar_ (terminateV $ control e) (\_ -> return True)
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 runNEndpoint :: Identifier -> (MSampleVar (), MVar Int) -> Engine a -> Endpoint a -> IO ()
-runNEndpoint n (msgAvail, netCntr) eg e@(Endpoint {handle = h@(networkSource -> Just (wd, _, ep)), subscribers = subs}) = do
-  event <- NT.receive ep
+runNEndpoint n (msgAvail, netCntr) eg e@(Endpoint {handle = h@(networkSource -> Just (wd, ep)), subscribers = subs}) = do
+  event <- NT.receive $ endpoint ep
   case event of
     NT.ConnectionOpened cid rel addr   -> notify SocketAccept >> rcrE
     NT.ConnectionClosed cid            -> rcrE
@@ -637,8 +648,8 @@ doWrite n arg eg@(endpoints -> eps) = getEndpoint n eps  >>= \case
 
 {- IO Handle methods -}
 
-networkSource :: IOHandle a -> Maybe (WireDesc a, LLTransport, LLEndpoint)
-networkSource (SocketH wd (Left ep)) = Just (wd, epTransport ep, endpoint ep)
+networkSource :: IOHandle a -> Maybe (WireDesc a, NEndpoint)
+networkSource (SocketH wd (Left ep)) = Just (wd, ep)
 networkSource _ = Nothing
 
 networkSink :: IOHandle a -> Maybe (WireDesc a, NConnection)
@@ -666,8 +677,8 @@ openSocketHandle addr wd mode conns =
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
 closeHandle (FileH _ h) = SIO.hClose h
-closeHandle (networkSource -> Just (_,t,e)) = NT.closeEndPoint e >> NT.closeTransport t
-closeHandle (networkSink   -> Just (_,_)) = return () 
+closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
+closeHandle (networkSink   -> Just (_,_))  = return () 
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
 closeHandle _ = error "Invalid IOHandle argument for closeHandle"
 
@@ -706,6 +717,9 @@ newEndpoint addr@(host, port) = withSocketsDo $ do
   return $ t >>= \tr -> e >>= return . flip NEndpoint tr
   where eitherAsMaybe m = m >>= return . either (\_ -> Nothing) Just
 
+closeEndpoint :: NEndpoint -> IO ()
+closeEndpoint ep = NT.closeEndPoint (endpoint ep) >> NT.closeTransport (epTransport ep)
+
 emptyEndpoints :: IO (EEndpoints a)
 emptyEndpoints = newMVar (H.fromList [])
 
@@ -722,13 +736,14 @@ getEndpoint n eps = withMVar eps (return . H.lookup n)
 
 {- Connection and connection map accessors -}
 
+llAddress :: Address -> NT.EndPointAddress
+llAddress (host,port) = NT.EndPointAddress $ BS.pack $ host ++ ":" ++ (show port) ++ ":0"
+    -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
+
 newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
 newConnection addr (endpoint -> ep) =
-    NT.connect ep (epAddr addr) NT.ReliableOrdered NT.defaultConnectHints
-      >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
-  
-  where epAddr (host,port) = NT.EndPointAddress $ BS.pack $ host ++ (show port) ++ ":0"
-    -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
+  NT.connect ep (llAddress addr) NT.ReliableOrdered NT.defaultConnectHints
+    >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
 
 emptyConnectionMap :: Address -> IO (MVar EConnectionMap)
 emptyConnectionMap addr = newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
@@ -781,7 +796,7 @@ clearConnections cm = modifyConnectionMap cm clear
         
         clearC conns     = mapM_ (flip removeConnection cm . fst) conns
         clearE Nothing   = return ()
-        clearE (Just ep) = NT.closeEndPoint $ endpoint ep
+        clearE (Just ep) = closeEndpoint ep
 
 
 {- Endpoint Notifiers -} 

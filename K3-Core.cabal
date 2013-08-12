@@ -93,6 +93,10 @@ test-suite all
         base,
 
         K3-Core,
+
+        bytestring,
+        directory,
+        network-transport,
         parsec,
 
         HUnit,
