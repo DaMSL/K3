@@ -28,7 +28,7 @@ data Expression
     | EAssign     Identifier
     | ECaseOf     Identifier
     | EBindAs     Binder
-    | EIfThenElse 
+    | EIfThenElse
     | EAddress
     | ESelf
   deriving (Eq, Read, Show)

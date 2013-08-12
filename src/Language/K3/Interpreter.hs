@@ -48,7 +48,6 @@ import Language.K3.Runtime.Engine
 
 import Language.K3.Pretty
 
-
 -- | K3 Values
 data Value
     = VBool        Bool
@@ -83,7 +82,6 @@ instance Show Value where
   show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
 
 instance Read Value
-
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -175,7 +173,6 @@ withEndpoints f = get >>= liftIO . f . getEndpoints
 sendE :: Address -> Identifier -> Value -> Interpretation ()
 sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getEngine
 
-
 {- Constants -}
 myAddrId :: Identifier
 myAddrId = "me"
@@ -198,7 +195,6 @@ defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= lift
 defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
 defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
 defaultValue _ = undefined
-
 
 -- | Interpretation of Constants.
 constant :: Constant -> Interpretation Value
@@ -401,7 +397,6 @@ expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \ca
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
-
 {- Declaration interpretation -}
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
@@ -435,7 +430,6 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
 
-
 {- Built-in functions -}
 
 ignoreFn e = VFunction $ \_ -> return e
@@ -449,7 +443,6 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 -- parseArgs :: () -> ([String], [(String, String)])
 genBuiltin "parseArgs" t =
   return $ ignoreFn $ VTuple [VCollection [], VCollection []]
-
 
 -- TODO: channel modes for sinks/sources
 -- TODO: error handling on all open/close/read/write methods.
@@ -508,7 +501,6 @@ genBuiltin (channelMethod -> ("Write", Just n)) t =
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
-
 channelMethod :: String -> (String, Maybe String)
 channelMethod x =
   case find (flip isSuffixOf x) ["HasRead", "Read", "HasWrite", "Write"] of
@@ -516,18 +508,16 @@ channelMethod x =
     Nothing -> (x, Nothing)
   where stripSuffix sfx lst = maybe Nothing (Just . reverse) $ stripPrefix (reverse sfx) (reverse lst)
 
-
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
   vfun $ \cid -> return $ VFunction $ \target ->
     attach cid n target >> return vunit
-  
+
   where attach (VString cid) n (targetOfValue -> (addr, tid, v)) = withEndpoints $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
         targetOfValue (VTuple [VTrigger (n, _), VAddress addr]) = (addr, n, vunit)
         targetOfValue _ = error "Invalid notifier target"
-
 
 {- Program initialization methods -}
 
@@ -563,7 +553,6 @@ finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup 
         runFinal _             = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger         = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
-
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
@@ -582,18 +571,17 @@ runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 runProgram :: [Address] -> K3 Declaration -> IO ()
 runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
 
-
 {- Message processing -}
 
 valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status, finalize = finalize }
-  where 
+  where
         status res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
         finalize res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
-        
-        process (addr, n, args) r = 
+
+        process (addr, n, args) r =
           maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
-        
+
         runTrigger r n a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
         runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
         runTrigger r n a _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
@@ -603,7 +591,6 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
         iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
-
 
 {- Wire descriptions -}
 
@@ -629,7 +616,6 @@ removeAssoc l a = filter ((a /=) . fst) l
 
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
-
 
 {- Pretty printing -}
 
