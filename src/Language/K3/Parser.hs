@@ -206,7 +206,6 @@ dTrigger = declError "trigger" $ DSpan <->
               DC.trigger <$ keyword "trigger" <*> identifier
                          <* colon <*> typeExpr
                          <* symbol "=" <*> expr
-                         <* semi
 
 dEndpoint :: String -> String -> Bool -> DeclParser
 dEndpoint kind name isSource = 
