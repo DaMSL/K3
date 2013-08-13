@@ -121,7 +121,7 @@ import Control.Monad.IO.Class
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Functor
-import Data.Hashable (Hashable, hash, hashWithSalt)
+import Data.Hashable (Hashable(..))
 import qualified Data.HashMap.Lazy as H
 import Data.List
 import Data.List.Split (splitOn, wordsBy)
@@ -321,7 +321,6 @@ instance Read Address where
     in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
 
 instance Hashable Address where
-  hash (Address (host,port)) = hash (host, port)
   hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
 
 
