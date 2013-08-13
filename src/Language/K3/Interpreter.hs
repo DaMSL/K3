@@ -46,6 +46,8 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+import qualified Language.K3.Core.Constructor.Type as TC
+
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
@@ -420,8 +422,12 @@ annotation n members = undefined
 -- TODO: accommodate DTrigger
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
-  debugDecl n t $ global n t eO >> mapM_ declaration ch
-  where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+    debugDecl n t $ global n t eO >> mapM_ declaration ch
+    where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+
+declaration (tag &&& children -> (DTrigger i t e, cs)) =
+    debugDecl i t $ global i (TC.trigger t) (Just e) >> mapM_ declaration cs
+    where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
