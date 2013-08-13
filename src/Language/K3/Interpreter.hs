@@ -32,6 +32,7 @@ import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
 import Data.Function
+import Data.Functor
 import Data.IORef
 import Data.List
 import Data.Tree
@@ -44,6 +45,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
 import Language.K3.Pretty
@@ -584,6 +586,50 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
         iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
+
+dispatchValueProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
+dispatchValueProcessor = MessageProcessor {
+    initialize = initialize,
+    process = process,
+    status = status,
+    finalize = finalize
+} where
+    initialize program engine = sequence [initNode node program engine | node <- nodes engine]
+
+    initNode node program engine = do
+        iProgram <- initProgram program engine
+        return (node, iProgram)
+
+    process (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
+        dispatch addr (\s -> runTrigger' s name args)
+
+    runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
+        Nothing -> return (Just (), unknownTrigger s n)
+        Just ft -> runTrigger s n a ft
+
+    runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (Maybe (), IResult Value)
+    runTrigger r n a (VTrigger (_, Just f)) = fmap (Just (),) $ runInterpretation (getResultState r) $ f a
+    runTrigger r n a (VTrigger _)           = fmap (Just (),) $ return . iError r $ "Uninitialized trigger " ++ n
+    runTrigger r n a _                      = fmap (Just (),) $ return . tError r $ "Invalid trigger or sink value for " ++ n
+
+    unknownTrigger r n = tError r $ "Unknown trigger " ++ n
+
+    iError r = mkError r . RunTimeInterpretationError
+    tError r = mkError r . RunTimeTypeError
+    mkError ((_,st), ilog) v = ((Left v, st), ilog)
+
+    status [] = Left []
+    status is@(p:ps) = case sStatus p of
+        Left _ -> Left is
+        Right _ -> Right is
+
+    sStatus (node, res) = either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
+
+    finalize = mapM sFinalize
+
+    sFinalize (node, res) = do
+        res' <- either (const $ return res) (const $ finalProgram $ getResultState res) $ getResultVal res
+        return (node, res')
 
 {- Wire descriptions -}
 
