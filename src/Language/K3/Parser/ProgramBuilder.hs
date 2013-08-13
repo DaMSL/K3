@@ -77,10 +77,10 @@ openSocketFn :: K3 Expression
 openSocketFn  = EC.variable "openSocket"
 
 closeFileFn :: K3 Expression
-closeFileFn   = EC.variable "closeFile"
+closeFileFn   = EC.variable "close"
 
 closeSocketFn :: K3 Expression
-closeSocketFn = EC.variable "closeSocket"
+closeSocketFn = EC.variable "close"
 
 registerFileDataTriggerFn :: K3 Expression
 registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
@@ -291,8 +291,7 @@ declareBuiltins d
           DC.global parseArgsId (mkUnitFnT argT) Nothing,
           DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string, TC.string, TC.string]) Nothing,
           DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
-          DC.global "closeFile"   (TC.function idT TC.unit) Nothing,
-          DC.global "closeSocket" (TC.function idT TC.unit) Nothing,
+          DC.global "close"   (TC.function idT TC.unit) Nothing,
           DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
           DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
           DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
