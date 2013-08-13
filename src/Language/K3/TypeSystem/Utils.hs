@@ -5,6 +5,7 @@
 -}
 module Language.K3.TypeSystem.Utils
 ( typeOfOp
+, typeOfPol
 , recordOf
 , RecordConcatenationError(..)
 ) where
@@ -14,6 +15,7 @@ import Data.Map as Map
 import Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.TypeSystem.Data
 
@@ -37,6 +39,11 @@ typeOfOp op = case op of
   OSeq -> SomeBinaryOperator BinOpSequence
   OApp -> SomeBinaryOperator BinOpApply
   OSnd -> SomeBinaryOperator BinOpSend
+  
+-- |Translates from expression-level polarities.
+typeOfPol :: Polarity -> TPolarity
+typeOfPol Provides = Positive
+typeOfPol Requires = Negative
 
 data RecordConcatenationError
   = RecordIdentifierOverlap (Set Identifier)

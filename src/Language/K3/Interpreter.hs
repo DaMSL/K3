@@ -48,7 +48,6 @@ import Language.K3.Runtime.Engine
 
 import Language.K3.Pretty
 
-
 -- | K3 Values
 data Value
     = VBool        Bool
@@ -83,7 +82,6 @@ instance Show Value where
   show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
 
 instance Read Value
-
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -168,7 +166,6 @@ withEngine f = get >>= liftIO . f . getEngine
 sendE :: Address -> Identifier -> Value -> Interpretation ()
 sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
 
-
 {- Constants -}
 myAddrId :: Identifier
 myAddrId = "me"
@@ -192,7 +189,6 @@ defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>
 defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
 defaultValue _ = undefined
 
-
 -- | Interpretation of Constants.
 constant :: Constant -> Interpretation Value
 constant (CBool b)   = return $ VBool b
@@ -200,7 +196,7 @@ constant (CInt i)    = return $ VInt i
 constant (CByte w)   = return $ VByte w
 constant (CReal r)   = return $ VReal r
 constant (CString s) = return $ VString s
-constant CNone       = return $ VOption Nothing
+constant (CNone _)   = return $ VOption Nothing
 constant (CEmpty _)  = return $ VCollection []
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
@@ -394,15 +390,15 @@ expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \ca
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
-
 {- Declaration interpretation -}
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
 replaceTrigger n _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
+-- FIXME: trigger declarations are no longer globals
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
-global n (tag -> TTrigger _) (Just e)   = expression e >>= replaceTrigger n
+global n (tag -> TTrigger) (Just e)   = expression e >>= replaceTrigger n
 global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
 global n (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 global n (tag -> TSource) _             = return ()
@@ -418,6 +414,7 @@ role n subDecls = mapM_ declaration subDecls
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n members = undefined
 
+-- TODO: accommodate DTrigger
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
   debugDecl n t $ global n t eO >> mapM_ declaration ch
@@ -425,7 +422,6 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
-
 
 {- Built-in functions -}
 
@@ -498,14 +494,12 @@ genBuiltin (channelMethod -> ("Write", Just n)) t =
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
-
 channelMethod :: String -> (String, Maybe String)
 channelMethod x =
   case find (flip isSuffixOf x) ["HasRead", "Read", "HasWrite", "Write"] of
     Just y -> (y, stripSuffix y x)
     Nothing -> (x, Nothing)
   where stripSuffix sfx lst = maybe Nothing (Just . reverse) $ stripPrefix (reverse sfx) (reverse lst)
-
 
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
@@ -518,7 +512,6 @@ registerNotifier n =
         targetOfValue (VTuple [VTrigger (n, _), VAddress addr]) = (addr, n, vunit)
         targetOfValue _ = error "Invalid notifier target"
 
-
 {- Program initialization methods -}
 
 initEnvironment :: K3 Declaration -> IEnvironment Value
@@ -527,7 +520,8 @@ initEnvironment = initDecl []
         initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
         initDecl env _                                          = env
 
-        initGlobal env n (tag -> TTrigger _) _ = env ++ [(n, VTrigger (n, Nothing))]
+        -- FIXME: triggers are a different form of declaration than globals now
+        initGlobal env n (tag -> TTrigger) _ = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TSink) _      = env ++ [(n, VTrigger (n, Nothing))]
         initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
         initGlobal env _ _ _                   = env
@@ -552,7 +546,6 @@ finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup 
         runFinal _             = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger         = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
-
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
@@ -571,18 +564,17 @@ runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 runProgram :: [Address] -> K3 Declaration -> IO ()
 runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
 
-
 {- Message processing -}
 
 valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status, finalize = finalize }
-  where 
+  where
         status res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
         finalize res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
-        
-        process (addr, n, args) r = 
+
+        process (addr, n, args) r =
           maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
-        
+
         runTrigger r n a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
         runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
         runTrigger r n a _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
@@ -592,7 +584,6 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
         iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
-
 
 {- Wire descriptions -}
 
@@ -618,7 +609,6 @@ removeAssoc l a = filter ((a /=) . fst) l
 
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
-
 
 {- Pretty printing -}
 

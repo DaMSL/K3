@@ -53,16 +53,18 @@ closeImmediate cs = csUnions $ do
   (t1,t2) <- csQuery cs QueryAllTypesLowerBoundingTypes
   case (t1,t2) of
     (SFunction a1 a2, SFunction a3 a4) ->
-      give [constraint a2 a4, constraint a3 a1]
+      give [a2 <: a4, a3 <: a1]
+    (STrigger a1, STrigger a2) ->
+      give [a2 <: a1]
     (SOption qa1, SOption qa2) ->
-      give [constraint qa1 qa2]
+      give [qa1 <: qa2]
     (SIndirection qa1, SIndirection qa2) ->
-      give [constraint qa1 qa2]
+      give [qa1 <: qa2]
     (STuple qas1, STuple qas2) | length qas1 == length qas2 ->
-      give $ zipWith constraint qas1 qas2
+      give $ zipWith (<:) qas1 qas2
     (SRecord m1, SRecord m2)
       | Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1 ->
-          give $ Map.elems $ Map.intersectionWith constraint m1 m2
+          give $ Map.elems $ Map.intersectionWith (<:) m1 m2
     _ -> mzero
   where
     give = return . csFromList

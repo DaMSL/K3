@@ -120,6 +120,8 @@ defineHomFuncX fname tname dname = do
             TyConI dec -> case dec of
               DataD _ _ _ cons _ ->
                 map (makeBranch tagName) cons
+              NewtypeD _ _ _ con _ ->
+                [makeBranch tagName con]
               _ -> error $ "defineHomFunc: " ++ show dname
                       ++ " is not a data decl"
             _ -> error $ "defineHomFunc: " ++ show dname

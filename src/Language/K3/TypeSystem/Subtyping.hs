@@ -36,7 +36,8 @@ import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Subtyping.ConstraintMap
 
-isSubtypeOf :: forall m. (FreshVarI m) => QuantType -> QuantType -> m Bool
+isSubtypeOf :: forall m. (FreshVarI m)
+            => NormalQuantType -> NormalQuantType -> m Bool
 isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
   -- First, ensure that the type variable sets are disjoint.  If this is not
   -- the case, then perform alpha-renaming as necessary.
@@ -45,8 +46,8 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
     then do
       -- We're going to recurse on a quantified type which does not overlap in
       -- variable names.
-      uvarMap <- freshVarsFor $ mapMaybe onlyUVar $ Set.toList overlap
-      qvarMap <- freshVarsFor $ mapMaybe onlyQVar $ Set.toList overlap
+      uvarMap <- freshVarsFor freshUVar $ mapMaybe onlyUVar $ Set.toList overlap
+      qvarMap <- freshVarsFor freshQVar $ mapMaybe onlyQVar $ Set.toList overlap
       isSubtypeOf qt1 $ replaceVariables qvarMap uvarMap qt2
     else do
       let cs = cs' `csUnion` cs'' `csUnion` csSing (constraint qa' qa'')
@@ -60,8 +61,9 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
                 && proveAll k' sas' cs''' LowerMode
                 && proveAll k'' sas'' cs''' UpperMode
   where
-    freshVarsFor :: [TVar a] -> m (Map (TVar a) (TVar a))
-    freshVarsFor vars =
+    freshVarsFor :: (TVarOrigin a -> m (TVar a))
+                 -> [TVar a] -> m (Map (TVar a) (TVar a))
+    freshVarsFor freshVar vars =
       Map.fromList <$> mapM (\x -> (x,) <$>
                           freshVar (TVarAlphaRenamingOrigin x)) vars
     proveAll :: (IsConstraintMap cmType)

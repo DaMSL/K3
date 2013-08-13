@@ -36,10 +36,10 @@ data Type
     | TAddress
     | TSource
     | TSink
-    | TTrigger [Identifier]
+    | TTrigger
     | TBuiltIn TypeBuiltIn
   deriving (Eq, Read, Show)
-  
+
 -- | The built-in type references.
 data TypeBuiltIn
     = TSelf

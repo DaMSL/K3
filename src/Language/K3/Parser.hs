@@ -100,8 +100,15 @@ exprError x = parseError "expression" x
 -- TODO: what if source names do not match?
 (<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
   where annotate start x end = x @+ (cstr $ mkSpan start end)
-        mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
-                                           (P.sourceLine e) (P.sourceColumn e)
+
+mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
+                                   (P.sourceLine e) (P.sourceColumn e)
+                                   
+spanned parser = do
+  start <- PP.getPosition
+  result <- parser
+  end <- PP.getPosition
+  return (result, mkSpan start end)
 
 infixl 1 <->
 
@@ -193,17 +200,13 @@ dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
 
+-- syntax: "trigger" id ":" type "=" expr ";"
 dTrigger :: DeclParser
-dTrigger = namedDecl "trigger" "trigger" $ rule . (mkTrig <$>)
-  where
-    rule x = x <*> (parens idQTypeList) <*> equateExpr
-    mkTrig name args body =
-      DC.global name (TC.trigger args)
-        (Just $ flip mkBody body $ (fst . unzip) args)
-    
-    mkBody [] body  = EC.lambda "_" body
-    mkBody [n] body = EC.lambda n body
-    mkBody ids body = EC.lambda "__x" $ EC.bindAs (EC.variable "__x") (BTuple ids) body
+dTrigger = declError "trigger" $ DSpan <->
+              DC.trigger <$ keyword "trigger" <*> identifier
+                         <* colon <*> typeExpr
+                         <* symbol "=" <*> expr
+                         <* semi
 
 dEndpoint :: String -> String -> Bool -> DeclParser
 dEndpoint kind name isSource = 
@@ -241,33 +244,26 @@ dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
-annotationMember = chain <$> polarity <*> member
-  where chain p f = f p
-        member    = choice [annMethod, annLifted, annAttribute, subAnnotation]
+annotationMember =
+  choice $ map spanOver [annLifted, annAttribute, subAnnotation]
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
-annMethod :: K3Parser (Polarity -> AnnMemDecl)
-annMethod = mkMethod <$> identifier <*> parens idQTypeList
-                     <*> (colon *> typeExpr)
-                     <*> choice [Just <$> braces expr, semi >> return Nothing]
-  where mkMethod n args ret body_opt pol = Method n pol args ret body_opt
+annLifted :: K3Parser (Span -> AnnMemDecl)
+annLifted = Lifted <$> polarity <*  keyword "lifted" <*> identifier <* colon
+                   <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
 
-annLifted :: K3Parser (Polarity -> AnnMemDecl)
-annLifted = mkLifted <$> (keyword "lifted" *> identifier)
-                     <*> (colon *> qualifiedTypeExpr)
-                     <*> ((optional equateNSExpr) <* semi)
-  where mkLifted n t e_opt pol = Lifted n pol t e_opt
+annAttribute :: K3Parser (Span -> AnnMemDecl)
+annAttribute = Attribute <$> polarity <*> identifier <*  colon
+                         <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
 
-annAttribute :: K3Parser (Polarity -> AnnMemDecl)
-annAttribute = mkAttribute <$> identifier <*> (colon *> qualifiedTypeExpr)
-                                          <*> ((optional equateNSExpr) <* semi)
-  where mkAttribute n t e_opt pol = Attribute n pol t e_opt
+subAnnotation :: K3Parser (Span -> AnnMemDecl)
+subAnnotation = MAnnotation <$> polarity <* keyword "annotation" <*> identifier
 
-subAnnotation :: K3Parser (Polarity -> AnnMemDecl)
-subAnnotation = MAnnotation <$> (keyword "annotation" *> identifier)
+spanOver :: K3Parser (Span -> a) -> K3Parser a
+spanOver parser = uncurry ($) <$> spanned parser
 
 
 {- Types -}
@@ -354,6 +350,11 @@ exprQualifier :: K3Parser (Annotation Expression)
 exprQualifier = choice [keyword "immut" >> return EImmutable,
                         keyword "mut" >> return EMutable]
 
+exprNoneQualifier :: K3Parser NoneMutability
+exprNoneQualifier =
+      keyword "immut" *> return NoneImmut
+  <|> keyword "mut" *> return NoneMut
+
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
     (try eAssign),
@@ -413,7 +414,7 @@ eVariable = EC.variable <$> identifier
 {- Complex literals -}
 eOption :: ExpressionParser
 eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
-                  (@+) (EC.constant CNone) <$> (keyword "None" *> exprQualifier)]
+                  keyword "None" *> (EC.constant . CNone <$> exprNoneQualifier)]
 
 eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
