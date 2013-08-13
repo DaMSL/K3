@@ -182,7 +182,7 @@ handleTests :: [Test]
 handleTests = [
       testCase "Open readable file" $ 
         let (n, path) = ("testSource", "data/expr-i.txt") in
-        withSimulation (\eg -> openFile n path exprWD Nothing "r" eg >> failEndpoint n eg)
+        withSimulation (\eg -> openFile n path exprWD Nothing "r" eg >> failExternalEndpoint n eg)
 
     , testCase "Open writeable file" $ 
         let path = "data/out.txt" in
@@ -205,7 +205,9 @@ handleTests = [
   ]
   where failed = assertFailure "Handle test failed"
         
-        failEndpoint n (endpoints -> eps) = getEndpoint n eps >>= flip unless failed . isJust
+        failInternalEndpoint n (endpoints -> EEndpointState ieps _) = getEndpoint n ieps >>= flip unless failed . isJust
+        failExternalEndpoint n (endpoints -> EEndpointState _ eeps) = getEndpoint n eeps >>= flip unless failed . isJust
+
         failPath p = doesFileExist p >>= flip unless failed
         
         withSimulation f = simulationEngine [defaultAddress] exprWD >>= f

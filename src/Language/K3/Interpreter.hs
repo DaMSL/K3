@@ -78,7 +78,7 @@ instance Show Value where
   show (VCollection c)         = "VCollection " ++ show c
   show (VIndirection _)        = "VIndirection <opaque>"
   show (VFunction _)           = "VFunction <function>"
-  show (VAddress (host, port)) = "VAddress " ++ host ++ ":" ++ show port
+  show (VAddress addr)         = "VAddress " ++ show addr
   show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>"
   show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
 
@@ -97,9 +97,8 @@ data InterpretationError
     | RunTimeTypeError String
   deriving (Eq, Read, Show)
 
--- | Type synonym for interpreter engine, endpoints and transport
-type IEngine    = Engine Value
-type IEndpoints = EEndpoints Value
+-- | Type synonym for interpreter engine
+type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
 type IState = (IEnvironment Value, IEngine)
@@ -123,9 +122,6 @@ getEnv (x,_) = x
 
 getEngine :: IState -> IEngine
 getEngine (_,e) = e
-
-getEndpoints :: IState -> IEndpoints
-getEndpoints = endpoints . getEngine
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -168,12 +164,9 @@ modifyE f = modify (\(env, eng) -> (f env, eng))
 withEngine :: (IEngine -> IO a) -> Interpretation a
 withEngine f = get >>= liftIO . f . getEngine
 
-withEndpoints :: (IEndpoints -> IO a) -> Interpretation a
-withEndpoints f = get >>= liftIO . f . getEndpoints
-
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
-sendE addr n val = get >>= liftIO . (\tr -> send tr addr n val) . getEngine
+sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
 
 
 {- Constants -}
@@ -449,7 +442,6 @@ genBuiltin "parseArgs" t =
   return $ ignoreFn $ VTuple [VCollection [], VCollection []]
 
 
--- TODO: channel modes for sinks/sources
 -- TODO: error handling on all open/close/read/write methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
 -- TODO: correct element type (rather than function type sig) for openFile / openSocket
@@ -520,7 +512,7 @@ registerNotifier n =
   vfun $ \cid -> return $ VFunction $ \target ->
     attach cid n target >> return vunit
   
-  where attach (VString cid) n (targetOfValue -> (addr, tid, v)) = withEndpoints $ attachNotifier_ cid n (addr, tid, v)
+  where attach (VString cid) n (targetOfValue -> (addr, tid, v)) = withEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
         targetOfValue (VTuple [VTrigger (n, _), VAddress addr]) = (addr, n, vunit)
@@ -605,7 +597,7 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
 {- Wire descriptions -}
 
 valueWD :: WireDesc Value
-valueWD = WireDesc show read (const True)
+valueWD = WireDesc show read (const True) $ Delimiter "\n"
 
 wireDesc :: String -> WireDesc Value
 wireDesc "k3" = valueWD
