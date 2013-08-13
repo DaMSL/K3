@@ -32,7 +32,7 @@ batchOptions :: Parser Mode
 batchOptions = Batch <$ flag' Batch (
             short 'b'
          <> long "batch"
-         <> help "Run in Batch Mode"
+         <> help "Run in Batch Mode (default)"
         )
 
 -- | Options for Interactive Mode.
@@ -74,7 +74,10 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
         | otherwise = n
 
 inputOptions :: Parser FilePath
-inputOptions = fmap (fromMaybe "-") $ optional $ argument str (metavar "FILE")
+inputOptions = fmap (fromMaybe "-") $ optional $ argument str (
+        metavar "FILE"
+     <> help "Initial source declarations to be loaded into the environment."
+    )
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
