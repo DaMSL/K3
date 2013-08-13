@@ -23,7 +23,8 @@ module Language.K3.Interpreter (
   runExpression,
   runExpression_,
 
-  runProgram
+  runProgram,
+  runProgramInitializer
 ) where
 
 import Control.Arrow
