@@ -564,7 +564,7 @@ runProgramInitializer :: K3 Declaration -> IO ()
 runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 
 runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine valueProcessor e prog)
+runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
 
 {- Message processing -}
 
