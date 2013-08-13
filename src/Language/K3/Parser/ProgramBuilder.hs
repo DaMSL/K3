@@ -150,8 +150,9 @@ desugarRoleEntries (Node t c) endpointBQGs roleDefaults  = Node t $ c ++ initial
         matchSink (_,(Nothing, _, _)) = True
         matchSink _ = False
 
-        initializerFns = [DC.global initDeclId unitFnT (Just $ mkInitDeclBody sinkEndpoints),
-                          DC.global roleFnId unitFnT (Just $ mkRoleBody sourceEndpoints roleDefaults)]
+        initializerFns = if null sinkEndpoints then [] else
+            [DC.global initDeclId unitFnT (Just $ mkInitDeclBody sinkEndpoints)]
+         ++ [DC.global roleFnId unitFnT (Just $ mkRoleBody sourceEndpoints roleDefaults)]
 
         mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
 
