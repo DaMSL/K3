@@ -195,11 +195,21 @@ data EngineControl = EngineControl {
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
 
-data MessageProcessor prog msg res err =
-     MessageProcessor { initialize :: prog -> Engine msg -> IO res
-                      , process    :: (Address, Identifier, msg) -> res -> IO res
-                      , status     :: res -> Either err res
-                      , finalize   :: res -> IO res }
+-- | Each backend provides must provide a message processor which can handle the initialization of
+-- the message queues and the dispatch of individual messages to the corresponding triggers.
+data MessageProcessor prog msg res err = MessageProcessor {
+    -- | Initialization of the execution environment.
+    initialize :: prog -> Engine msg -> IO res,
+
+    -- | Process a single message.
+    process    :: (Address, Identifier, msg) -> res -> IO res,
+
+    -- | Query the status of the message processor.
+    status     :: res -> Either err res,
+
+    -- | Clean up the execution environment.
+    finalize   :: res -> IO res
+}
 
 {- Engine components -}
 
@@ -230,7 +240,7 @@ data FrameDesc = Delimiter String | PrefixLength
 -- validation of deserialized data.
 data WireDesc a = WireDesc { packWith     :: a -> String
                            , unpackWith   :: String -> Maybe a
-                           , validateWith :: a -> Bool 
+                           , validateWith :: a -> Bool
                            , frame        :: FrameDesc }
 
 -- | Internal messaging between triggers includes a sender address and
@@ -282,7 +292,7 @@ type EndpointBindings a = [(EndpointNotification, InternalMessage a)]
 
 data Endpoint a b = Endpoint { handle      :: IOHandle a
                              , buffer      :: EndpointBuffer a
-                             , subscribers :: EndpointBindings b } 
+                             , subscribers :: EndpointBindings b }
 
 type EEndpoints a b = MVar (H.HashMap Identifier (Endpoint a b))
 
@@ -317,7 +327,7 @@ instance Show Address where
 instance Read Address where
   readsPrec _ str =
     let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int 
+        tryPort = (readMaybe $ last strl) :: Maybe Int
     in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
 
 instance Hashable Address where
@@ -359,10 +369,10 @@ internalizeWD (WireDesc packF unpackF validateF _) =
            , unpackWith    = unpackInternal
            , validateWith  = \(_,_,a) -> validateF a
            , frame         = PrefixLength }
-  where 
-    packInternal (addr, n, a) = show addr ++ "|" ++ n ++ "|" ++ packF a    
+  where
+    packInternal (addr, n, a) = show addr ++ "|" ++ n ++ "|" ++ packF a
     unpackInternal str =
-        case wordsBy (== '|') str of 
+        case wordsBy (== '|') str of
           [addr, n, aStr] -> unpackF aStr >>= return . ((read addr) :: Address, n,)
           _               -> Nothing
 
@@ -404,7 +414,7 @@ networkEngine peers (internalizeWD -> internalWD) = do
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers       <- newEmptyMVar >>= return . Uniprocess
   listnrs       <- newMVar []
-  q             <- perPeerQueues peers 
+  q             <- perPeerQueues peers
   endpoints     <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   internalConns <- defaultConnectionMap internalSendAddress >>= return . Just
   externalConns <- defaultConnectionMap externalSendAddress
@@ -474,7 +484,7 @@ runMessages msgPrcsr e status = status >>= \case
         cleanC (EConnectionState (Nothing, x)) = clearConnections x
         cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
 
-        cleanE (EEndpointState ieps eeps) =    withMVar ieps (mapM_ (flip closeInternal e) . H.keys) 
+        cleanE (EEndpointState ieps eeps) =    withMVar ieps (mapM_ (flip closeInternal e) . H.keys)
                                             >> withMVar eeps (mapM_ (flip close e) . H.keys)
 
 
@@ -506,12 +516,12 @@ internalListenerProcessor ls@(ListenerState _ (msgAvail, _) _) buf ep eg =
   enqueueEBuffer (queues eg) buf >>= (\buf -> writeSV msgAvail () >> return buf)
 
 externalListenerProcessor :: ListenerProcessor a a
-externalListenerProcessor ls@(ListenerState _ (msgAvail, _) _) buf ep eg = 
+externalListenerProcessor ls@(ListenerState _ (msgAvail, _) _) buf ep eg =
   notifySubscribers SocketData (subscribers ep) eg >> writeSV msgAvail () >> return buf
 
 runNEndpoint :: ListenerState a b -> Endpoint a b -> Engine b -> IO ()
 runNEndpoint ls@(ListenerState n (msgAvail, netCntr) processor)
-             ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) 
+             ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs)
              eg = do
   event <- NT.receive $ endpoint llep
   case event of
@@ -530,7 +540,7 @@ runNEndpoint ls@(ListenerState n (msgAvail, netCntr) processor)
       (b, [])     -> processor ls b ep eg >>= rcrNE
       (b, errors) -> endpointError $ summarize errors
 
-    bufferMsg = foldM safeAppend (buffer ep, []) 
+    bufferMsg = foldM safeAppend (buffer ep, [])
     unpackMsg = unpackWith wd . BS.unpack
 
     safeAppend (b, errors) (unpackMsg -> Just msg) = case errors of
@@ -540,7 +550,7 @@ runNEndpoint ls@(ListenerState n (msgAvail, netCntr) processor)
       l  -> return (b, l++[PropagatedError msg])
 
     safeAppend (b, errors) msg@(unpackMsg -> Nothing) = return (b, errors++[SerializeError msg])
-    
+
     summarize l = "Endpoint message errors (runNEndpoint " ++ n ++ ", " ++ show (length l) ++ " messages)"
     endpointError s = close n eg >> putStrLn s -- TODO: close vs closeInternal
 
@@ -585,7 +595,7 @@ dequeue = \case
 
 -- | Message passing
 send :: Address -> Identifier -> a -> Engine a -> IO ()
-send addr n arg e@(endpoints -> EEndpointState ieps _) 
+send addr n arg e@(endpoints -> EEndpointState ieps _)
   | shortCircuit = enqueue (queues e) addr n arg
   | otherwise    = trySend numRetries
   where
@@ -596,12 +606,12 @@ send addr n arg e@(endpoints -> EEndpointState ieps _)
     trySend i = send' (connectionId addr) $ trySend $ i - 1
 
     send' eid retryF =
-      getEndpoint eid ieps >>= \case 
+      getEndpoint eid ieps >>= \case
         Just c  -> hasWriteInternal eid e >>= write eid
         Nothing -> openSocketInternal eid addr "w" e >> retryF
 
     write eid (Just True) = doWriteInternal eid (addr, n, arg) e
-    write _ _             = error $ "No write available to " ++ show addr 
+    write _ _             = error $ "No write available to " ++ show addr
 
 
 {- Module API implementation -}
@@ -650,7 +660,7 @@ genericClose n endpoints eg = getEndpoint n endpoints >>= \case
   Nothing -> return ()
   Just e  -> closeHandle (handle e)
               >> deregister (networkSource $ handle e)
-              >> removeEndpoint n endpoints 
+              >> removeEndpoint n endpoints
               >> notifySubscribers (notifyType $ handle e) (subscribers e) eg
 
   where deregister = maybe (return ()) (\_ -> deregisterNetworkListener n eg)
@@ -674,7 +684,7 @@ genericDoRead n endpoints eg = getEndpoint n endpoints >>= \case
 
         updateAndYield e (nBuf, (vOpt, notifyType)) =
           addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e) >> return vOpt
-        
+
         nep e b = (handle e, b, subscribers e)
 
         notify Nothing subs   = return ()
@@ -702,7 +712,7 @@ genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
 
         notify Nothing subs   = return ()
         notify (Just nt) subs = notifySubscribers nt subs eg
-        
+
         overflowError = genericClose n endpoints eg >> putStrLn "Endpoint buffer overflow (doWrite)"
 
 
@@ -791,7 +801,7 @@ openSocketHandle addr wd mode conns =
 closeHandle :: IOHandle a -> IO ()
 closeHandle (FileH _ h) = SIO.hClose h
 closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
-closeHandle (networkSink   -> Just (_,_))  = return () 
+closeHandle (networkSink   -> Just (_,_))  = return ()
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
 closeHandle _ = error "Invalid IOHandle argument for closeHandle"
 
