@@ -82,7 +82,7 @@ applyMany f args = foldl (\curried_f arg -> binop OApp curried_f arg) f args
 
 -- | Create a chain of sequential computation.
 block :: [K3 Expression] -> K3 Expression
-block []  = undefined
+block []  = unit
 block [x] = x
 block exprs = foldl (\sq e -> binop OSeq sq e) (head exprs) (tail exprs)
 
