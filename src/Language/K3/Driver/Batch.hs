@@ -4,8 +4,10 @@ import Data.Functor
 
 import System.IO
 
+import Language.K3.Interpreter
 import Language.K3.Parser
 import Language.K3.Pretty
+import Language.K3.Runtime.Engine (defaultAddress)
 
 import Language.K3.Driver.Options
 
@@ -22,4 +24,6 @@ runBatch op = do
 
     case p of
         Left e -> putStrLn e
-        Right q -> putStrLn $ pretty q
+        Right q -> do
+            putStr $ pretty q
+            runProgram [defaultAddress] q
