@@ -305,7 +305,7 @@ tIndirection = tQNested TC.indirection "ind"
 tTupleOrNested :: TypeParser
 tTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> typeExpr), tTuple]]
   where unit = symbol "(" *> symbol ")" >> return (TC.unit)
-        tTuple = commaSep qualifiedTypeExpr >>= return . TC.tuple
+        tTuple = commaSep1 qualifiedTypeExpr >>= return . TC.tuple
         stripSpan t = maybe t (t @-) $ t @~ isSpan
         isSpan (TSpan _) = True
         isSpan _ = False
@@ -355,21 +355,17 @@ exprNoneQualifier =
 eTerm :: ExpressionParser
 eTerm = ESpan <-> mkTerm <$> choice [
     (try eAssign),
-    (try eSend),
+    (try eAddress),
     eLiterals,
     eLambda,
     eCondition,
     eLet,
     eCase,
     eBind,
-    eAddress,
-    eSelf  ] <*> optional eSuffix
-  where eSuffix  = choice [eAddr >>= return . Left, eProject >>= return . Right]
-        eAddr    = colon *> nonSeqExpr  
-        eProject = dot *> identifier
-        mkTerm e Nothing = e
-        mkTerm e (Just (Left e2)) = EC.address e e2
-        mkTerm e (Just (Right x)) = EC.project x e
+    eSelf  ] <*> optional eProject
+  where eProject          = dot *> identifier
+        mkTerm e Nothing  = e
+        mkTerm e (Just x) = EC.project x e
 
 
 {- Literals -}
@@ -378,7 +374,7 @@ eLiterals = choice [
     eTerminal,
     eOption,
     eIndirection,
-    eTupleOrNested,
+    eTuplePrefix,
     eRecord,
     eEmpty ]
 
@@ -416,13 +412,27 @@ eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
 eIndirection :: ExpressionParser
 eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
-eTupleOrNested :: ExpressionParser
-eTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> expr), eTuple]]
-  where unit = symbol "(" *> symbol ")" >> return (EC.tuple [])
-        eTuple = commaSep qualifiedExpr >>= return . EC.tuple
-        stripSpan e = maybe e (e @-) $ e @~ isSpan
+eTuplePrefix :: ExpressionParser
+eTuplePrefix = choice [try unit, eTupleOrSnd]
+  where 
+        unit          = symbol "(" *> symbol ")" >> return (EC.tuple [])
+        eTupleOrSnd   = mkTupOrSnd <$> (parens $ commaSep1 $ choice [try expr, qualifiedExpr]) <*> optional sendSuffix        
+        sendSuffix    = symbol "<-" *> nonSeqExpr
+
+        mkTupOrSnd [e] Nothing    = stripSpan <$> e
+        mkTupOrSnd [e] (Just arg) = EC.binop OSnd e arg
+        mkTupOrSnd l Nothing      = EC.tuple $ map promoteToImmutable l
+        mkTupOrSnd l (Just arg)   = EC.binop OSnd (EC.tuple $ map promoteToImmutable l) arg
+
+        stripSpan e          = maybe e (e @-) $ e @~ isSpan
+        promoteToImmutable e = maybe (e @+ EImmutable) (const e) $ e @~ isQualified
+        
+        -- TODO: move to annotations module
         isSpan (ESpan _) = True
-        isSpan _ = False
+        isSpan _         = False
+        isQualified EImmutable = True
+        isQualified EMutable   = True
+        isQualified _          = False
 
 eRecord :: ExpressionParser
 eRecord = EC.record <$> braces idQExprList
@@ -477,7 +487,6 @@ opTable = [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
               map mkUnOpK  [("not", ONot)],
               map mkBinOpK [("and", OAnd)],
               map mkBinOpK [("or",  OOr)]
-              --map mkBinOp  [(";",   OSeq)]
           ]
 
 {- Terms -}
@@ -493,10 +502,6 @@ eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
 eApp :: ExpressionParser
 eApp = try $ mkApp <$> (some $ try eTerm)
   where mkApp = foldl1 (EC.binop OApp)
-
-eSend :: ExpressionParser
-eSend = mkSend <$> eVariable <* comma <*> eAddress <* symbol "<-" <*> nonSeqExpr
-  where mkSend t addr arg = EC.binop OSnd (EC.tuple [t, addr]) arg
 
 eCondition :: ExpressionParser
 eCondition = EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")

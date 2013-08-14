@@ -302,7 +302,7 @@ declareBuiltins d
           DC.global myId TC.address Nothing,
           DC.global peersId (TC.collection TC.address) Nothing,
           DC.global argsId argT Nothing,
-          DC.global roleId TC.string Nothing]
+          DC.global roleId TC.string (Just $ EC.constant $ CString "s1")]
 
         topLevelDecls = [
           DC.global initId unitFnT $ Just atInitE,
