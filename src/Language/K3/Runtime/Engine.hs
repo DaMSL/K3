@@ -454,9 +454,8 @@ deregisterNetworkListener n (control &&& listeners -> (ctrl, lstnrs)) = do
   modifyMVar_ lstnrs $ return . filter ((n /= ) . fst)
 
 terminate :: Engine a -> IO Bool
-terminate e =  (&&) <$> readMVar (terminateV $ control e)
-                    <*> if waitForNetwork $ config e then networkDone e
-                                                     else return True
+terminate e = (||) <$> ((not (waitForNetwork $ config e) &&) <$> readMVar (terminateV $ control e))
+                   <*> networkDone e
 
 networkDone :: Engine a -> IO Bool
 networkDone e = readMVar (networkDoneV $ control e) >>= return . (0 ==)
