@@ -4,8 +4,6 @@ module Language.K3.Driver.Options where
 import Control.Applicative
 import Options.Applicative
 
-import Data.Maybe
-
 -- | Program Options.
 data Options = Options {
         mode :: Mode,
@@ -17,7 +15,7 @@ data Options = Options {
 
 -- | Modes of Operation.
 data Mode
-    = Batch
+    = Batch { defaultRole :: String }
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -29,10 +27,16 @@ data Verbosity
 
 -- | Options for Batch Mode.
 batchOptions :: Parser Mode
-batchOptions = Batch <$ flag' Batch (
+batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
+        ) *> pure Batch <*> strOption (
+            long "role"
+         <> short 'r'
+         <> metavar "ROLE"
+         <> help "Role to start execution with."
+         <> value ""
         )
 
 -- | Options for Interactive Mode.
@@ -45,9 +49,7 @@ interactiveOptions = flag' Interactive (
 
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
-modeOptions = fmap (fromMaybe Batch) $ optional $
-        batchOptions
-    <|> interactiveOptions
+modeOptions = batchOptions <|> interactiveOptions
 
 -- | Expression-Level flag.
 elvlOptions :: Parser Bool
@@ -74,9 +76,10 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
         | otherwise = n
 
 inputOptions :: Parser FilePath
-inputOptions = fmap (fromMaybe "-") $ optional $ argument str (
+inputOptions = argument str (
         metavar "FILE"
      <> help "Initial source declarations to be loaded into the environment."
+     <> value "-"
     )
 
 -- | Program Options Parsing.
