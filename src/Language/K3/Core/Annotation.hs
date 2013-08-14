@@ -12,7 +12,8 @@ module Language.K3.Core.Annotation (
 
     -- * K3 Instantiations
     (:@:)(..),
-    K3
+    K3,
+    children
 ) where
 
 import Data.List (delete, find)
@@ -130,3 +131,7 @@ instance AConstruct a => AConstruct (Tree a) where
 -- | A K3 source tree contains a tag, along with a list of annotations defined for trees with that
 -- tag.
 type K3 a = Tree (a :@: [Annotation a])
+
+-- | Subtree extraction
+children :: Tree a -> Forest a
+children = subForest
