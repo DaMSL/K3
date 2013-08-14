@@ -142,6 +142,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Parser
+import Language.K3.Pretty
 
 -- | Address implementation
 data Address = Address (String, Int) deriving (Eq)
@@ -321,6 +322,8 @@ data ListenerError a
     | PropagatedError a
 
 
+{- Instance definitions -}
+
 instance Show Address where
   show (Address (host, port)) = host ++ ":" ++ show port
 
@@ -333,6 +336,8 @@ instance Read Address where
 instance Hashable Address where
   hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
 
+instance Pretty Address where
+  prettyLines addr = [show addr]
 
 {- Naming schemes and constants -}
 
@@ -468,7 +473,7 @@ processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
   where term = return $ MessagesDone prevResult
         proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr
 
-runMessages :: (Show r, Show e) => MessageProcessor p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
+runMessages :: (Pretty r, Pretty e) => MessageProcessor p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case
   Result r       -> rcr r
   Error e        -> finish "Error:\n" e
@@ -478,7 +483,7 @@ runMessages msgPrcsr e status = status >>= \case
 
   where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
         cleanup      = cleanC (connections e) >> cleanE (endpoints e)
-        finish msg r = cleanup >> putMVar (waitV $ control e) () >> (putStrLn $ msg ++ show r)
+        finish msg r = cleanup >> putMVar (waitV $ control e) () >> (putStrLn $ msg ++ pretty r)
 
         cleanC (EConnectionState (Nothing, x)) = clearConnections x
         cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
@@ -487,7 +492,7 @@ runMessages msgPrcsr e status = status >>= \case
                                             >> withMVar eeps (mapM_ (flip close e) . H.keys)
 
 
-runEngine :: (Show r, Show e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ()
+runEngine :: (Pretty r, Pretty e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ()
 runEngine msgPrcsr e prog = (initialize msgPrcsr prog e)
                               >>= (\res -> initializeWorker e >> return res)
                               >>= runMessages msgPrcsr e . return . initStatus
@@ -497,7 +502,7 @@ runEngine msgPrcsr e prog = (initialize msgPrcsr prog e)
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
         initializeWorker (workers -> Multiprocess _)      = error $ "Unsupported engine mode: Multiprocess"
 
-forkEngine :: (Show r, Show e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ThreadId
+forkEngine :: (Pretty r, Pretty e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ThreadId
 forkEngine msgPrcsr e prog = forkIO $ runEngine msgPrcsr e prog
 
 waitForEngine :: Engine a -> IO ()
@@ -1117,3 +1122,6 @@ putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q
 instance (Show a) => Show (Engine a) where
   show e@(Engine {nodes = n}) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
                               | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+
+instance (Show a) => Pretty (Engine a) where
+  prettyLines = lines . show

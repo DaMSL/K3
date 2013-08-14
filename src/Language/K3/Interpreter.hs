@@ -86,7 +86,12 @@ instance Show Value where
   show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>"
   show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
 
+-- TODO
 instance Read Value
+
+-- TODO
+instance Pretty Value where
+  prettyLines v = [show v]
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -117,6 +122,16 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 -- | A type capturing the environment resulting from an interpretation
 type REnvironment = Either EnvOnError (IEnvironment Value)
+
+instance Pretty IState where
+  prettyLines (env, engine) = ["Environment:"] ++ map show env ++ (lines $ show engine)
+
+-- TODO: error prettification
+instance (Pretty a) => Pretty (IResult a) where
+  prettyLines ((r, st), l) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
+
+instance (Pretty a) => Pretty [(Address, IResult a)] where
+  prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
 
 {- State and result accessors -}
 
@@ -393,17 +408,25 @@ expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \ca
     VBool False -> expression e
     _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
 
+expression (tag &&& children -> (EAddress, [h, p])) = do
+  hv <- expression h
+  pv <- expression p
+  case (hv, pv) of
+    (VString host, VInt port) -> return $ VAddress $ Address (host, port)
+    _ -> throwE $ RunTimeTypeError "Invalid address"
+
+-- TODO: ESelf
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
+
+debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
 replaceTrigger n _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
--- FIXME: trigger declarations are no longer globals
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
-global n (tag -> TTrigger) (Just e)   = expression e >>= replaceTrigger n
 global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
 global n (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 global n (tag -> TSource) _             = return ()
@@ -419,15 +442,12 @@ role n subDecls = mapM_ declaration subDecls
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n members = undefined
 
--- TODO: accommodate DTrigger
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
     debugDecl n t $ global n t eO >> mapM_ declaration ch
-    where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
-declaration (tag &&& children -> (DTrigger i t e, cs)) =
-    debugDecl i t $ global i (TC.trigger t) (Just e) >> mapM_ declaration cs
-    where debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+declaration (tag &&& children -> (DTrigger n t e, cs)) =
+    debugDecl n t $ (expression e >>= replaceTrigger n) >> mapM_ declaration cs
 
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
@@ -525,15 +545,16 @@ registerNotifier n =
 
 initEnvironment :: K3 Declaration -> IEnvironment Value
 initEnvironment = initDecl []
-  where initDecl env (tag &&& children -> (DGlobal n t eO, ch)) = foldl initDecl (initGlobal env n t eO) ch
+  where initDecl env (tag &&& children -> (DGlobal n t eO, ch)) = foldl initDecl (initGlobal env n t) ch
+        initDecl env (tag &&& children -> (DTrigger n t e, ch)) = foldl initDecl (initTrigger env n) ch
         initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
         initDecl env _                                          = env
 
-        -- FIXME: triggers are a different form of declaration than globals now
-        initGlobal env n (tag -> TTrigger) _ = env ++ [(n, VTrigger (n, Nothing))]
-        initGlobal env n (tag -> TSink) _      = env ++ [(n, VTrigger (n, Nothing))]
-        initGlobal env n (tag -> TFunction) _  = env -- TODO: mutually recursive functions
-        initGlobal env _ _ _                   = env
+        initGlobal env n (tag -> TSink)     = env ++ [(n, VTrigger (n, Nothing))]
+        initGlobal env n (tag -> TFunction) = env -- TODO: mutually recursive functions
+        initGlobal env _ _                  = env
+
+        initTrigger env n                   = env ++ [(n, VTrigger (n, Nothing))]
 
 initState :: K3 Declaration -> IEngine -> IState
 initState prog engine = (initEnvironment prog, engine)
