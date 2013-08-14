@@ -1,5 +1,6 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | K3 Program constructor
 module Language.K3.Parser.ProgramBuilder (
@@ -11,6 +12,8 @@ module Language.K3.Parser.ProgramBuilder (
   mkRunSinkE,
   declareBuiltins
 ) where
+
+import Control.Applicative
 
 import Data.List
 import Data.Tree

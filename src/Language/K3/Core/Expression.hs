@@ -87,6 +87,7 @@ data instance Annotation Expression
     | ELexicalName Identifier
     | EType (K3 Type)
     | ESpan Span
+    | EUID UID
     | EAnnotation Identifier
   deriving (Eq, Read, Show)
 

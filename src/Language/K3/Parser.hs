@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | K3 Parser.
@@ -24,6 +25,7 @@ import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.List
 import Data.String
+import Data.Traversable
 import Data.Tree
 
 import Debug.Trace
@@ -66,8 +68,9 @@ type DefaultEntries    = [(Identifier, Identifier)]
 
 type EnvironmentFrame  = (EndpointsBQG, DefaultEntries)
 type ParserEnvironment = [EnvironmentFrame]
+type ParserState       = (Int, ParserEnvironment)
 
-type K3Parser a        = PP.ParsecT String ParserEnvironment Identity a
+type K3Parser a        = PP.ParsecT String ParserState Identity a
 type TypeParser        = K3Parser (K3 Type)
 type ExpressionParser  = K3Parser (K3 Expression)
 type BinderParser      = K3Parser Binder
@@ -96,8 +99,8 @@ typeError x = parseError "type expression" x
 exprError :: Parsing m => String -> m a -> m a
 exprError x = parseError "expression" x
 
--- Span computation
--- TODO: what if source names do not match?
+-- | Span computation.
+--   TODO: what if source names do not match?
 (<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
   where annotate start x end = x @+ (cstr $ mkSpan start end)
 
@@ -111,6 +114,10 @@ spanned parser = do
   return (result, mkSpan start end)
 
 infixl 1 <->
+infixl 1 #
+
+-- | UID annotation.
+(#) cstr parser = parserWithUID (\uid -> (@+ (cstr $ UID uid)) <$> parser)
 
 {- Language definition constants -}
 k3Operators = [
@@ -156,7 +163,7 @@ keyword = reserve k3Idents
 
 {- Main parsing functions -}
 maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (\_ -> Nothing) Just $ P.runParser p [] "" s
+maybeParser p s = either (\_ -> Nothing) Just $ P.runParser p (0,[]) "" s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
@@ -170,37 +177,66 @@ parseExpressionCSV = maybeParser (mkTuple <$> commaSep1 expr)
         mkTuple x = EC.tuple x
 
 parseK3 :: String -> Either String (K3 Declaration)
-parseK3 s = either (Left . show) Right $ P.runParser program [] "" s
+parseK3 s = either (Left . show) Right $ P.runParser program (0,[]) "" s
 
+
+{- Parsing state helpers -}
+withEnvironment :: (ParserEnvironment -> a) -> K3Parser a
+withEnvironment f = PP.getState >>= return . f . snd
+
+modifyEnvironment :: (ParserEnvironment -> (ParserEnvironment, a)) -> K3Parser a
+modifyEnvironment f = modifyEnvironmentF $ Right . f
+
+modifyEnvironment_ :: (ParserEnvironment -> ParserEnvironment) -> K3Parser ()
+modifyEnvironment_ f = modifyEnvironment $ (,()) . f
+
+modifyEnvironmentF :: (ParserEnvironment -> Either String (ParserEnvironment, a)) -> K3Parser a
+modifyEnvironmentF f = PP.getState >>= (\(x,y) -> case f y of
+  Left errMsg    -> PP.parserFail errMsg
+  Right (nenv,r) -> PP.putState (x, nenv) >> return r)
+
+modifyEnvironmentF_ :: (ParserEnvironment -> Either String ParserEnvironment) -> K3Parser ()
+modifyEnvironmentF_ f = modifyEnvironmentF $ (>>= Right . (,())) . f
+
+parserWithUID :: (Int -> K3Parser a) -> K3Parser a
+parserWithUID f = PP.getState >>= (\(x,y) -> PP.putState (x+1, y) >> f x)
+
+withUID :: (Int -> a) -> K3Parser a
+withUID f = parserWithUID $ return . f
+
+modifyUID :: (Int -> (Int,a)) -> K3Parser a
+modifyUID f = PP.getState >>= (\(old, env) -> let (new, r) = f old in PP.putState (new, env) >> return r)
+
+modifyUID_ :: (Int -> Int) -> K3Parser ()
+modifyUID_ f = modifyUID $ (,()) . f
 
 {- K3 grammar parsers -}
 
 -- TODO: inline testing
 program :: DeclParser
-program = DSpan <-> (rule >>= mkEntryPoints >>= return . declareBuiltins)
+program = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
   where rule = mkProgram <$> endBy (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
-        mkEntryPoints d = PP.getState >>= return . (uncurry $ desugarRoleEntries d) . fst . safePopFrame
+        mkEntryPoints d = withEnvironment $ (uncurry $ desugarRoleEntries d) . fst . safePopFrame
+        mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
 roleBody n = pushBindings >> rule >>= popBindings >>= desugarRole n
   where rule = some declaration >>= return . filterOptions
-        pushBindings = PP.getState >>= PP.putState . addFrame
-        popBindings dl = PP.getState >>= (\env ->
-          (PP.putState . removeFrame) env >> return (dl, currentFrame env))
+        pushBindings = modifyEnvironment_ addFrame
+        popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
         
 
 {- Declarations -}
 declaration :: K3Parser (Maybe (K3 Declaration))
 declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
-  where decls = choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
-        sugaredDecls = choice [dSelector, dBind]
+  where decls        = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
+        sugaredDecls =        choice [dSelector, dBind]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
 
--- syntax: "trigger" id ":" type "=" expr ";"
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
   where rule x = x <* colon <*> typeExpr <*> equateExpr
@@ -265,7 +301,7 @@ spanOver parser = uncurry ($) <$> spanned parser
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = parseError "type" "expression" $ tTermOrFun
+typeExpr = parseError "type" "expression" $ TUID # tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
@@ -334,7 +370,7 @@ myTrace :: String -> K3Parser a -> K3Parser a
 myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
 
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $ mkSeq <$> sepBy1 nonSeqExpr (operator ";")
+expr = parseError "k3" "expression" $ EUID # mkSeq <$> sepBy1 nonSeqExpr (operator ";")
   where mkSeq = foldl1 (EC.binop OSeq)
 
 nonSeqExpr :: ExpressionParser
@@ -640,12 +676,12 @@ safePopFrame (h:t) = (h,t)
 -- | Records source bindings in a K3 parsing environment
 --   A parsing error is raised on an attempt to bind to anything other than a source.
 trackBindings :: (Identifier, Identifier) -> K3Parser ()
-trackBindings (src, dest) = PP.getState >>= updateBindings src dest
+trackBindings (src, dest) = modifyEnvironmentF_ $ updateBindings src dest
   where updateBindings src dest (safePopFrame -> ((s,d), env)) =
           case lookup src s of
-            Just (Just b, q, g)  -> PP.putState $ (replaceAssoc s src (Just (dest:b), q, g), d):env
-            Just (Nothing, q, g) -> PP.parserFail $ "Invalid binding for endpoint " ++ src
-            Nothing              -> PP.parserFail $ "Invalid binding, no source " ++ src
+            Just (Just b, q, g)  -> Right $ (replaceAssoc s src (Just (dest:b), q, g), d):env
+            Just (Nothing, q, g) -> Left  $ "Invalid binding for endpoint " ++ src
+            Nothing              -> Left  $ "Invalid binding, no source " ++ src
 
 -- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
 trackEndpoint :: K3 Declaration -> DeclParser
@@ -655,31 +691,31 @@ trackEndpoint d
   | otherwise = return d
 
   where 
-    track isSource n eOpt = PP.getState >>= PP.putState . addEndpointGoExpr isSource n eOpt
+    track isSource n eOpt = modifyEnvironmentF_ $ addEndpointGoExpr isSource n eOpt
     addEndpointGoExpr isSource n eOpt (safePopFrame -> ((s,d), env)) =
           case (eOpt, isSource) of
-            (Just e, True)   -> (replaceAssoc s n (Just [], n, Nothing), d):env
-            (Nothing, True)  -> (replaceAssoc s n (Just [], n, Just $ mkRunSourceE n), d):env
-            (Just e, False)  -> (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
-            (_,_) -> error "Invalid endpoint initializer"
+            (Just e, True)   -> Right $ (replaceAssoc s n (Just [], n, Nothing), d):env
+            (Nothing, True)  -> Right $ (replaceAssoc s n (Just [], n, Just $ mkRunSourceE n), d):env
+            (Just e, False)  -> Right $ (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
+            (_,_)            -> Left  $ "Invalid endpoint initializer"
 
 -- | Records defaults in a K3 parsing environment
 trackDefault :: Identifier -> K3Parser ()
-trackDefault n = PP.getState >>= PP.putState . updateState n 
+trackDefault n = modifyEnvironment_ $ updateState n 
   where updateState n (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
 
 
 {- Desugaring methods -}
 desugarRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
 desugarRole n (dl, frame) = 
-  PP.getState >>= qualify frame >> (return $ desugarSourceImpl dl frame)
-
+  modifyEnvironmentF_ (qualify frame) >> (return $ desugarSourceImpl dl frame)
+  
   where desugarSourceImpl dl (s,_) = flip map dl $ rewriteSource $ sourceBindings s
         
         qualify poppedFrame (safePopFrame -> (frame, env)) =
           case validateSources poppedFrame of
-            (ndIds, []) -> PP.putState . (:env) $ concatWithPrefix poppedFrame frame
-            (_, failed) -> PP.parserFail $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
+            (ndIds, []) -> Right $ (concatWithPrefix poppedFrame frame):env
+            (_, failed) -> Left  $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
 
         validateSources (s,d) = partition ((flip elem $ qualifiedSources s) . snd) d
         concatWithPrefix (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
@@ -693,3 +729,41 @@ desugarRole n (dl, frame) =
         
         prefix sep x z = if x == "" then z else x ++ sep ++ z
         
+
+-- | Adds UIDs to nodes that do not already have one. 
+--   This ensures every AST node has a UID after parsing, including builtins.
+ensureUIDs :: K3 Declaration -> K3Parser (K3 Declaration)
+ensureUIDs p = traverse (parserWithUID . annotateDecl) p
+  where 
+        annotateDecl d@(dt :@: as) uid =
+          case dt of
+            DGlobal n t eOpt -> do
+              t'    <- annotateType t
+              eOpt' <- maybe (return Nothing) (\e -> annotateExpr e >>= return . Just) eOpt
+              rebuildDecl uid d $ DGlobal n t' eOpt'
+
+            DTrigger n t e -> do
+              t' <- annotateType t
+              e' <- annotateExpr e
+              rebuildDecl uid d $ DTrigger n t' e'
+
+            DRole       n      -> rebuildDecl uid d $ DRole n
+            DAnnotation n mems -> rebuildDecl uid d $ DAnnotation n mems
+
+        rebuildDecl uid d@(_ :@: as) = return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 
+
+        annotateNode test anns node = unlessAnnotated test node (foldl (@+) node anns) 
+        annotateExpr = traverse (\e -> withUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
+        annotateType = traverse (\t -> withUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
+
+        unlessAnnotated test n@(_ :@: as) n' = if test as then n else n'
+
+        -- TODO: move near respective annotation definitions
+        isDUID (DUID _) = True
+        isDUID _        = False
+
+        isEUID (EUID _) = True
+        isEUID _        = False
+
+        isTUID (TUID _) = True
+        isTUID _        = False

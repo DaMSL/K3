@@ -54,6 +54,7 @@ data instance Annotation Type
     | TImmutable
     | TWitness
     | TSpan Span
+    | TUID UID
     | TAnnotation Identifier
   deriving (Eq, Read, Show)
 

@@ -51,6 +51,7 @@ data Polarity = Provides | Requires deriving (Eq, Read, Show)
 -- | Annotations on Declarations.
 data instance Annotation Declaration
   = DSpan Span
+  | DUID UID
   deriving (Eq, Read, Show)
 
 instance Pretty (K3 Declaration) where
