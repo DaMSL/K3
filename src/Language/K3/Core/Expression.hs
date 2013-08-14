@@ -95,3 +95,19 @@ instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) = ["EUnit" ++ drawAnnotations as]
     prettyLines (Node (tag :@: as) es)
         = [show tag ++ drawAnnotations as] ++ drawSubTrees es
+
+{- Expression annotation predicates -}
+
+isESpan :: Annotation Expression -> Bool
+isESpan (ESpan _) = True
+isESpan _         = False
+
+isEQualified :: Annotation Expression -> Bool
+isEQualified EImmutable = True
+isEQualified EMutable   = True
+isEQualified _          = False
+
+isEUID :: Annotation Expression -> Bool
+isEUID (EUID _) = True
+isEUID _        = False
+

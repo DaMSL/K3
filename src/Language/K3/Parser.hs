@@ -342,9 +342,7 @@ tTupleOrNested :: TypeParser
 tTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> typeExpr), tTuple]]
   where unit = symbol "(" *> symbol ")" >> return (TC.unit)
         tTuple = commaSep1 qualifiedTypeExpr >>= return . TC.tuple
-        stripSpan t = maybe t (t @-) $ t @~ isSpan
-        isSpan (TSpan _) = True
-        isSpan _ = False
+        stripSpan t = maybe t (t @-) $ t @~ isTSpan
 
 tRecord :: TypeParser
 tRecord = TC.record <$> (braces . semiSep1) idQType
@@ -460,15 +458,8 @@ eTuplePrefix = choice [try unit, eTupleOrSnd]
         mkTupOrSnd l Nothing      = EC.tuple $ map promoteToImmutable l
         mkTupOrSnd l (Just arg)   = EC.binop OSnd (EC.tuple $ map promoteToImmutable l) arg
 
-        stripSpan e          = maybe e (e @-) $ e @~ isSpan
-        promoteToImmutable e = maybe (e @+ EImmutable) (const e) $ e @~ isQualified
-        
-        -- TODO: move to annotations module
-        isSpan (ESpan _) = True
-        isSpan _         = False
-        isQualified EImmutable = True
-        isQualified EMutable   = True
-        isQualified _          = False
+        stripSpan e          = maybe e (e @-) $ e @~ isESpan
+        promoteToImmutable e = maybe (e @+ EImmutable) (const e) $ e @~ isEQualified
 
 eRecord :: ExpressionParser
 eRecord = EC.record <$> braces idQExprList
@@ -492,12 +483,9 @@ postfix op cstr parser       = Postfix ((pure cstr) <* parser op)
 -- TODO: clean up
 getAnnotations (Node (_ :@: al) _) = al
 
-getSpan l = case find isSpan l of
+getSpan l = case find isESpan l of
               Just (ESpan s) -> s
               Nothing -> Span "<dummy>" 0 0 0 0
-isSpan x = case x of
-            ESpan _ -> True
-            _ -> False
 
 binOpSpan cstr l r = (cstr l r) @+ (ESpan $ coverSpans (getSpan la) (getSpan ra))
   where la = getAnnotations l
@@ -740,30 +728,21 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
             DGlobal n t eOpt -> do
               t'    <- annotateType t
               eOpt' <- maybe (return Nothing) (\e -> annotateExpr e >>= return . Just) eOpt
-              rebuildDecl uid d $ DGlobal n t' eOpt'
+              rebuildDecl d uid $ DGlobal n t' eOpt'
 
             DTrigger n t e -> do
               t' <- annotateType t
               e' <- annotateExpr e
-              rebuildDecl uid d $ DTrigger n t' e'
+              rebuildDecl d uid $ DTrigger n t' e'
 
-            DRole       n      -> rebuildDecl uid d $ DRole n
-            DAnnotation n mems -> rebuildDecl uid d $ DAnnotation n mems
+            DRole       n      -> rebuildDecl d uid $ DRole n
+            DAnnotation n mems -> rebuildDecl d uid $ DAnnotation n mems
 
-        rebuildDecl uid d@(_ :@: as) = return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 
+        rebuildDecl d@(_ :@: as) uid =
+          return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 
 
-        annotateNode test anns node = unlessAnnotated test node (foldl (@+) node anns) 
-        annotateExpr = traverse (\e -> withUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
-        annotateType = traverse (\t -> withUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
+        annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns) 
+        annotateExpr = traverse (\e -> parserWithUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
+        annotateType = traverse (\t -> parserWithUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
 
         unlessAnnotated test n@(_ :@: as) n' = if test as then n else n'
-
-        -- TODO: move near respective annotation definitions
-        isDUID (DUID _) = True
-        isDUID _        = False
-
-        isEUID (EUID _) = True
-        isEUID _        = False
-
-        isTUID (TUID _) = True
-        isTUID _        = False
