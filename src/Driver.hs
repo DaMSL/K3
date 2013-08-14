@@ -13,7 +13,7 @@ dispatch op = do
     putStrLn $ "Input: " ++ show (input op)
 
     case mode op of
-        Batch -> runBatch op
+        Batch r -> putStrLn ("Role: " ++ show r) >> runBatch op
         Interactive -> error "Interactive Mode is not yet implemented."
 
 -- | Top-Level.
