@@ -275,7 +275,7 @@ binary :: Operator -> K3 Expression -> K3 Expression -> Interpretation Value
 
 -- | Standard numeric operators.
 binary OAdd = numeric (+)
-binary OSub = numeric subtract
+binary OSub = numeric (-)
 binary OMul = numeric (*)
 
 -- | Division handled similarly, but accounting zero-division errors.
@@ -629,7 +629,9 @@ dispatchValueProcessor = MessageProcessor {
         return (node, iProgram)
 
     process (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> runTrigger' s name args)
+        dispatch addr (\s -> putStrLn ("processing " ++ show addr ++ " " ++ name) 
+                              >> putStr "args " >> print args
+                              >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
         Nothing -> return (Just (), unknownTrigger s n)
