@@ -670,12 +670,6 @@ wireDesc :: String -> WireDesc Value
 wireDesc "k3" = valueWD
 wireDesc fmt  = error $ "Invalid format " ++ fmt
 
-{- Misc helpers -}
-
--- | Subtree extraction
-children :: Tree a -> Forest a
-children = subForest
-
 -- | Associative lists
 addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 addAssoc l a b = (a,b):l

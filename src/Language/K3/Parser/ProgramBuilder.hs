@@ -128,11 +128,6 @@ parseArgsId = "parseArgs"
 parseArgsFn :: K3 Expression
 parseArgsFn   = EC.variable parseArgsId
 
-
-{- Helpers -}
-children :: K3 a -> [K3 a]
-children (Node _ x) = x
-
 replace_children :: K3 a -> [K3 a] -> K3 a
 replace_children (Node n _) nc = Node n nc
 

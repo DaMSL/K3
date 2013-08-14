@@ -6,13 +6,14 @@
 -- | The K3 Annotation System.
 module Language.K3.Core.Annotation (
     -- * Basic Infrastructure
-    Annotation(..),
+    Annotation,
     AContainer(..),
     AConstruct(..),
 
     -- * K3 Instantiations
     (:@:)(..),
-    K3
+    K3,
+    children
 ) where
 
 import Data.List (delete, find)
@@ -64,7 +65,7 @@ instance AContainer (Maybe a) where
     type IElement (Maybe a) = a
 
     -- | Adding an annotation replaces the existing annotation, if there was one.
-    v @+ v' = Just v'
+    _ @+ v' = Just v'
 
     -- | Removing an annotation only occurs if the exact annotation was already present.
     Just v @- v'
@@ -82,7 +83,7 @@ instance AContainer (Maybe a) where
 instance AContainer [a] where
     type IElement [a] = a
 
-    vs @+ v = (v:vs)
+    vs @+ v = v:vs
     vs @- v = delete v vs
     vs @~ p = find p vs
 
@@ -92,7 +93,7 @@ instance AContainer a => AContainer (Tree a) where
 
     Node a cs @+ v = Node (a @+ v) cs
     Node a cs @- v = Node (a @- v) cs
-    Node a cs @~ f = a @~ f
+    Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
 data a :@: b = a :@: b deriving (Eq, Read, Show)
@@ -103,18 +104,18 @@ instance AContainer a => AContainer (b :@: a) where
 
     (b :@: a) @+ v = b :@: (a @+ v)
     (b :@: a) @- v = b :@: (a @- v)
-    (b :@: a) @~ f = a @~ f
+    (_ :@: a) @~ f = a @~ f
 
 -- | A pair can also act as a construct, where the first element is the tag.
 instance AConstruct (b :@: a) where
     type ITag (b :@: a) = b
     type IContainer (b :@: a) = a
 
-    tag (b :@: a) = b
+    tag (b :@: _) = b
 
-    annotations (b :@: a) = a
+    annotations (_ :@: a) = a
 
-    (b :@: a) @<- a' = (b :@: a')
+    (b :@: _) @<- a' = b :@: a'
 
 -- | A tree can act as a proxy to the construct at its root.
 instance AConstruct a => AConstruct (Tree a) where
@@ -130,3 +131,7 @@ instance AConstruct a => AConstruct (Tree a) where
 -- | A K3 source tree contains a tag, along with a list of annotations defined for trees with that
 -- tag.
 type K3 a = Tree (a :@: [Annotation a])
+
+-- | Subtree extraction
+children :: Tree a -> Forest a
+children = subForest

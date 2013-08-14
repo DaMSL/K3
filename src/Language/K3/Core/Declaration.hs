@@ -64,6 +64,11 @@ instance Pretty (K3 Declaration) where
             (Just e, []) ->  nonTerminalShift t ++ ["|"] ++ terminalShift e
             (Nothing, xs) -> drawSubTrees ds
             (Just e, xs) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
+    prettyLines (Node (DTrigger i t e :@: as) ds) =
+        ["DTrigger " ++ i ++ drawAnnotations as, "|"]
+        ++ nonTerminalShift t ++ ["|"] ++ case ds of
+            [] ->  terminalShift e
+            _ ->  nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
     prettyLines (Node (DRole i :@: as) ds) =
         ["DRole " ++ i ++ " :@: " ++ show as, "|"]
         ++ drawSubTrees ds
