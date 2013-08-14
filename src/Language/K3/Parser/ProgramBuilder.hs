@@ -71,16 +71,13 @@ ccName n = n++"Controller"
 
 {- Runtime functions -}
 openFileFn :: K3 Expression
-openFileFn    = EC.variable "openFile"
+openFileFn = EC.variable "openFile"
 
 openSocketFn :: K3 Expression
-openSocketFn  = EC.variable "openSocket"
+openSocketFn = EC.variable "openSocket"
 
-closeFileFn :: K3 Expression
-closeFileFn   = EC.variable "close"
-
-closeSocketFn :: K3 Expression
-closeSocketFn = EC.variable "close"
+closeFn :: K3 Expression
+closeFn = EC.variable "close"
 
 registerFileDataTriggerFn :: K3 Expression
 registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
@@ -225,8 +222,7 @@ channelMethods isSource isFile argE formatE n t =
     sinkHasWrite  = ("HasWrite", TC.bool, Nothing)
     sinkWrite t   = ("Write", t, Nothing)
 
-    (openFn, closeFn) = if isFile then (openFileFn, closeFileFn)
-                                  else (openSocketFn, closeSocketFn)
+    openFn = if isFile then openFileFn else openSocketFn
 
     modeE = EC.constant . CString $ if isSource then "r" else "w"
 
@@ -291,7 +287,7 @@ declareBuiltins d
           DC.global parseArgsId (mkUnitFnT argT) Nothing,
           DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string, TC.string, TC.string]) Nothing,
           DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
-          DC.global "close"   (TC.function idT TC.unit) Nothing,
+          DC.global "close"       (TC.function idT TC.unit) Nothing,
           DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
           DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
           DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
@@ -302,7 +298,7 @@ declareBuiltins d
           DC.global myId TC.address Nothing,
           DC.global peersId (TC.collection TC.address) Nothing,
           DC.global argsId argT Nothing,
-          DC.global roleId TC.string (Just $ EC.constant $ CString "s1")]
+          DC.global roleId TC.string Nothing]
 
         topLevelDecls = [
           DC.global initId unitFnT $ Just atInitE,
