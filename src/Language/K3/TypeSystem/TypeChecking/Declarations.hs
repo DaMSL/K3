@@ -82,7 +82,7 @@ deriveDeclaration aEnv env decl =
       u <- uidOf decl
       (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
       let qt2 = generalize env qa2 cs2
-      qt3 <- requireQuantType u i aEnv
+      qt3 <- requireQuantType u i env
       unlessM (qt2 `isSubtypeOf` qt3) $
         typecheckError $ InternalError $
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
@@ -107,7 +107,7 @@ deriveDeclaration aEnv env decl =
                       , STrigger a' <: qa]
       qt1 <- f a1 cs1
       qt2 <- f a2 cs2
-      qt3 <- requireQuantType u i aEnv
+      qt3 <- requireQuantType u i env
       unlessM (qt2 `isSubtypeOf` qt3) $
         typecheckError $ InternalError $
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
@@ -241,11 +241,8 @@ deriveAnnotationMember aEnv env decl =
 
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
-requireQuantType :: UID -> Identifier -> TAliasEnv
+requireQuantType :: UID -> Identifier -> TNormEnv
                  -> TypecheckM NormalQuantType
-requireQuantType u i aEnv = do
-  mqt <- envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
-            (TEnvIdentifier i) aEnv
-  case mqt of
-    QuantAlias qt -> return qt
-    AnnAlias _ -> typecheckError $ NonQuantAlias u $ TEnvIdentifier i
+requireQuantType u i env = do
+  envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
+             (TEnvIdentifier i) env
