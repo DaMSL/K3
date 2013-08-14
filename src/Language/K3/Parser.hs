@@ -278,25 +278,26 @@ dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
 annotationMember =
-  choice $ map spanOver [annLifted, annAttribute, subAnnotation]
+  choice $ map uidOver [annLifted, annAttribute, subAnnotation]
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
-annLifted :: K3Parser (Span -> AnnMemDecl)
+annLifted :: K3Parser (UID -> AnnMemDecl)
 annLifted = Lifted <$> polarity <*  keyword "lifted" <*> identifier <* colon
                    <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
 
-annAttribute :: K3Parser (Span -> AnnMemDecl)
+annAttribute :: K3Parser (UID -> AnnMemDecl)
 annAttribute = Attribute <$> polarity <*> identifier <*  colon
                          <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
 
-subAnnotation :: K3Parser (Span -> AnnMemDecl)
+subAnnotation :: K3Parser (UID -> AnnMemDecl)
 subAnnotation = MAnnotation <$> polarity <* keyword "annotation" <*> identifier
 
-spanOver :: K3Parser (Span -> a) -> K3Parser a
-spanOver parser = uncurry ($) <$> spanned parser
+uidOver :: K3Parser (UID -> a) -> K3Parser a
+uidOver parser =
+  parserWithUID $ ap (fmap (. UID) parser) . return
 
 
 {- Types -}

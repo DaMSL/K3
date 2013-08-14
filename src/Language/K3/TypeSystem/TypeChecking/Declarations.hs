@@ -79,51 +79,51 @@ deriveDeclaration aEnv env decl =
 
     DGlobal i tExpr mexpr -> do
       assert0Children decl
-      s <- spanOf decl
+      u <- uidOf decl
       (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
       let qt2 = generalize env qa2 cs2
-      qt3 <- requireQuantType s i aEnv
+      qt3 <- requireQuantType u i aEnv
       unlessM (qt2 `isSubtypeOf` qt3) $
         typecheckError $ InternalError $
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
       whenJust mexpr $ \expr -> do
         (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
-        qa1 <- freshTypecheckingQVar s
+        qa1 <- freshTypecheckingQVar u
         let qt1 = generalize env qa1 $ csUnion cs1 $ csSing $ a1 <: qa1
         unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
-          DeclarationSubtypeFailure s qt1 qt2
+          DeclarationSubtypeFailure u qt1 qt2
 
     DTrigger i tExpr expr -> do
-      s <- spanOf decl
+      u <- uidOf decl
       (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr
       let f a cs = do
-                    qa <- freshTypecheckingQVar s
-                    a' <- freshTypecheckingUVar s
-                    a'' <- freshTypecheckingUVar s
+                    qa <- freshTypecheckingQVar u
+                    a' <- freshTypecheckingUVar u
+                    a'' <- freshTypecheckingUVar u
                     return $ generalize env qa $ csUnion cs $ csFromList
                       [ a <: SFunction a' a''
                       , a'' <: STuple []
                       , STrigger a' <: qa]
       qt1 <- f a1 cs1
       qt2 <- f a2 cs2
-      qt3 <- requireQuantType s i aEnv
+      qt3 <- requireQuantType u i aEnv
       unlessM (qt2 `isSubtypeOf` qt3) $
         typecheckError $ InternalError $
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
       unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
-        DeclarationSubtypeFailure s qt1 qt2
+        DeclarationSubtypeFailure u qt1 qt2
 
     DAnnotation i mems -> do
-      s <- spanOf decl
+      u <- uidOf decl
       entry <- envRequire
-                  (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+                  (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
                   (TEnvIdentifier i) aEnv
       declared@(AnnType p (AnnBodyType ms1' ms2') _) <- case entry of
                             AnnAlias ann -> return ann
                             QuantAlias _ -> typecheckError $
-                              NonAnnotationAlias s $ TEnvIdentifier i
-      (t_h,cs_h) <- liftEither (AnnotationDepolarizationFailure s) $
+                              NonAnnotationAlias u $ TEnvIdentifier i
+      (t_h,cs_h) <- liftEither (AnnotationDepolarizationFailure u) $
                       depolarize ms2'
       let getTVar :: TEnvId -> TypecheckM UVar
           getTVar ei = envRequire (InternalError $ MissingTypeParameter p ei)
@@ -133,24 +133,24 @@ deriveDeclaration aEnv env decl =
       aEnv' <- mappend
                   <$> (mconcat <$> mapM
                         (\ei -> singEntry ei <$> getTVar ei
-                                             <*> freshTypecheckingQVar s)
+                                             <*> freshTypecheckingQVar u)
                         [TEnvIdContent, TEnvIdSelf, TEnvIdFinal] )
                   <*> ((\qa -> Map.singleton TEnvIdHorizon $ QuantAlias $
                                 QuantType Set.empty qa $ csSing $ t_h <: qa)
-                          <$> freshTypecheckingQVar s)
+                          <$> freshTypecheckingQVar u)
       let env' = mconcat $ map
                     (\(AnnMemType i' _ qa) -> Map.singleton (TEnvIdentifier i')
                   $ QuantType Set.empty qa csEmpty) ms1'
       let aEnv'' = aEnv `envMerge` aEnv'
       let env'' = env `envMerge` env'
       (bs,css) <- unzip <$> mapM (deriveAnnotationMember aEnv'' env'') mems
-      (b'',cs'') <- liftEither (AnnotationConcatenationFailure s) $
+      (b'',cs'') <- liftEither (AnnotationConcatenationFailure u) $
                       concatAnnBodies bs
       inst <- instantiateCollection (AnnType p b'' csEmpty) =<<
                 envRequire
                   (InternalError $ MissingTypeParameter p TEnvIdContent)
                   TEnvIdContent p
-      (a_s,cs_s) <- liftEither (InvalidCollectionInstantiation s) inst 
+      (a_s,cs_s) <- liftEither (InvalidCollectionInstantiation u) inst 
       aP_f <- getTVar TEnvIdFinal
       aP_h <- getTVar TEnvIdHorizon
       aP_s <- getTVar TEnvIdSelf
@@ -162,7 +162,7 @@ deriveDeclaration aEnv env decl =
                       , csUnions css
                       ]
       unlessM (inferred `isAnnotationSubtypeOf` declared) $ 
-                typecheckError (AnnotationSubtypeFailure s inferred declared)
+                typecheckError (AnnotationSubtypeFailure u inferred declared)
   where
     liftEither :: (a -> TypeError) -> Either a b -> TypecheckM b
     liftEither errF val = case val of
@@ -177,22 +177,22 @@ deriveAnnotationMember :: TAliasEnv -- ^The relevant type alias environment.
 deriveAnnotationMember aEnv env decl =
   case decl of
   
-    Lifted pol i tExpr mexpr s ->
+    Lifted pol i tExpr mexpr u ->
       let constr x = AnnBodyType [x] [] in
-      deriveMember pol i tExpr mexpr s constr
+      deriveMember pol i tExpr mexpr u constr
       
-    Attribute pol i tExpr mexpr s ->
+    Attribute pol i tExpr mexpr u ->
       let constr x = AnnBodyType [] [x] in
-      deriveMember pol i tExpr mexpr s constr
+      deriveMember pol i tExpr mexpr u constr
       
-    MAnnotation pol i s -> do
+    MAnnotation pol i u -> do
       p <- mconcat <$>
         mapM (\ei -> Map.singleton ei <$> lookupSpecialVar ei)
           [TEnvIdContent, TEnvIdFinal, TEnvIdSelf]
-      mann <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+      mann <- envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
                 (TEnvIdentifier i) aEnv
       ann <- case mann of
-                QuantAlias _ -> typecheckError (NonAnnotationAlias s
+                QuantAlias _ -> typecheckError (NonAnnotationAlias u
                                                   $ TEnvIdentifier i)
                 AnnAlias ann -> return ann
       let (AnnType p' b cs) = instantiateAnnotation p ann
@@ -241,12 +241,11 @@ deriveAnnotationMember aEnv env decl =
 
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
-requireQuantType :: Span -> Identifier -> TAliasEnv
+requireQuantType :: UID -> Identifier -> TAliasEnv
                  -> TypecheckM NormalQuantType
-requireQuantType s i aEnv = do
-  mqt <- envRequire (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)
+requireQuantType u i aEnv = do
+  mqt <- envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
             (TEnvIdentifier i) aEnv
   case mqt of
     QuantAlias qt -> return qt
-    AnnAlias _ -> typecheckError $ NonQuantAlias s $
-                    TEnvIdentifier i
+    AnnAlias _ -> typecheckError $ NonQuantAlias u $ TEnvIdentifier i

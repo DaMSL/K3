@@ -26,13 +26,13 @@ import Language.K3.TypeSystem.Monad.Iface.TypeError
 
 -- |A routine to obtain a fresh variable for a source position in a typechecking
 --  context.
-freshTypecheckingQVar :: (FreshVarI m) => Span -> m (TVar QualifiedTVar)
-freshTypecheckingQVar s = freshQVar =<< return (TVarSourceOrigin s)
+freshTypecheckingQVar :: (FreshVarI m) => UID -> m (TVar QualifiedTVar)
+freshTypecheckingQVar u = freshQVar =<< return (TVarSourceOrigin u)
 
 -- |A routine to obtain a fresh variable for a source position in a typechecking
 --  context.
-freshTypecheckingUVar :: (FreshVarI m) => Span -> m (TVar UnqualifiedTVar)
-freshTypecheckingUVar s = freshUVar =<< return (TVarSourceOrigin s)
+freshTypecheckingUVar :: (FreshVarI m) => UID -> m (TVar UnqualifiedTVar)
+freshTypecheckingUVar u = freshUVar =<< return (TVarSourceOrigin u)
 
 -- |Retrieves an entry from an environment, producing an error if it cannot be
 --  found.

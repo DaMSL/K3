@@ -81,7 +81,7 @@ polyinstantiate
                 ( FreshVarI m, CSL.ConstraintSetLike e c
                 , CSL.ConstraintSetLikePromotable ConstraintSet c
                 , Transform ReplaceVariables c)
-             => Span -- ^The span at which this polyinstantiation occurred.
+             => UID -- ^The span at which this polyinstantiation occurred.
              -> QuantType c -- ^The type to polyinstantiate.
              -> m (QVar, c) -- ^The result of polyinstantiation.
 polyinstantiate inst (QuantType boundSet qa cs) = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE TupleSections, TemplateHaskell #-}
 
 module Language.K3.TypeSystem.Utils.K3Tree
-( spanOf
+( uidOf
 
 , assert0Children
 , assert1Child
@@ -28,29 +28,29 @@ import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Utils.TemplateHaskell
 
--- * Span-related routines
+-- * UID-related routines
 
-class SpanOfTree a where
-  unSpan :: Annotation a -> Maybe Span
-  spanError :: K3 a -> InternalTypeError
-instance SpanOfTree Expression where
-  unSpan tree = case tree of { ESpan s -> Just s; _ -> Nothing }
-  spanError = InvalidSpansInExpression
-instance SpanOfTree K3T.Type where
-  unSpan tree = case tree of { TSpan s -> Just s; _ -> Nothing }
-  spanError = InvalidSpansInTypeExpression
-instance SpanOfTree Declaration where
-  unSpan tree = case tree of { DSpan s -> Just s }
-  spanError = InvalidSpansInDeclaration
+class UidOfTree a where
+  unUid :: Annotation a -> Maybe UID
+  uidError :: K3 a -> InternalTypeError
+instance UidOfTree Expression where
+  unUid tree = case tree of { EUID s -> Just s; _ -> Nothing }
+  uidError = InvalidUIDsInExpression
+instance UidOfTree K3T.Type where
+  unUid tree = case tree of { TUID s -> Just s; _ -> Nothing }
+  uidError = InvalidUIDsInTypeExpression
+instance UidOfTree Declaration where
+  unUid tree = case tree of { DUID s -> Just s; _ -> Nothing }
+  uidError = InvalidUIDsInDeclaration
 
 -- |Retrieves the span from the provided expression.  If no such span exists,
 --  an error is produced.
-spanOf :: (Monad m, TypeErrorI m, SpanOfTree a) => K3 a -> m Span
-spanOf tree =
-  let spans = mapMaybe unSpan $ annotations tree in
-  if length spans /= 1
-    then internalTypeError $ spanError tree
-    else return $ head spans
+uidOf :: (Monad m, TypeErrorI m, UidOfTree a) => K3 a -> m UID
+uidOf tree =
+  let uids = mapMaybe unUid $ annotations tree in
+  if length uids /= 1
+    then internalTypeError $ uidError tree
+    else return $ head uids
 
 -- * Generated routines
 

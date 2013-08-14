@@ -38,13 +38,13 @@ data Declaration
 data AnnMemDecl
     = Lifted      Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
-                  Span
+                  UID
     
     | Attribute   Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
-                  Span
+                  UID
     
-    | MAnnotation Polarity Identifier Span
+    | MAnnotation Polarity Identifier UID
   deriving (Eq, Read, Show)  
 
 -- | Annotation member polarities

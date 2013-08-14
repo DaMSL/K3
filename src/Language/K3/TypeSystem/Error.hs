@@ -25,47 +25,47 @@ data TypeError
       -- ^Represents an internal type error.  These represent bugs in the K3
       --  software; they occur when internal runtime invariants have been
       --  violated.
-  | UnboundEnvironmentIdentifier Span TEnvId
-      -- ^Indicates that, at the given location, the provided identifier is used
+  | UnboundEnvironmentIdentifier UID TEnvId
+      -- ^Indicates that, at the given node, the provided identifier is used
       --  but unbound.
-  | UnboundTypeEnvironmentIdentifier Span TEnvId
-      -- ^Indicates that, at the given location, the provided identifier is used
+  | UnboundTypeEnvironmentIdentifier UID TEnvId
+      -- ^Indicates that, at the given node, the provided identifier is used
       --  but unbound.
-  | NonAnnotationAlias Span TEnvId
-      -- ^Indicates that, at the given location, a type annotation was expected
+  | NonAnnotationAlias UID TEnvId
+      -- ^Indicates that, at the given node, a type annotation was expected
       --  but the named type alias identifier was bound to something other than
       --  an annotation.
-  | NonQuantAlias Span TEnvId
-      -- ^Indicates that, at the given location, a quantified type was expected
+  | NonQuantAlias UID TEnvId
+      -- ^Indicates that, at the given node, a quantified type was expected
       --  but the named type alias identifier was bound to something other than
       --  a quantified type.
-  | InvalidAnnotationConcatenation Span AnnotationConcatenationError
-      -- ^ Indicates that, at the given location, the concatenation of a set of
+  | InvalidAnnotationConcatenation UID AnnotationConcatenationError
+      -- ^ Indicates that, at the given node, the concatenation of a set of
       --   annotation types has failed.
-  | InvalidCollectionInstantiation Span CollectionInstantiationError
-      -- ^ Indicates that, at the given location, the instantiaton of a
+  | InvalidCollectionInstantiation UID CollectionInstantiationError
+      -- ^ Indicates that, at the given node, the instantiaton of a
       --   collection type has failed.  This occurs when two different positive
       --   instances for the same identifier exist; the identifier is provided.
-  | InitializerForNegativeAnnotationMember Span
+  | InitializerForNegativeAnnotationMember UID
       -- ^ Indicates that an initializer appears for a negative annotation
       --   member.
-  | NoInitializerForPositiveAnnotationMember Span
+  | NoInitializerForPositiveAnnotationMember UID
       -- ^ Indicates that an initializer does not appear for a positive
       --   annotation member.
-  | AnnotationDepolarizationFailure Span DepolarizationError
+  | AnnotationDepolarizationFailure UID DepolarizationError
       -- ^ Indicates that a depolarization error occurred while trying to
       --   derive over an annotation.
-  | AnnotationConcatenationFailure Span AnnotationConcatenationError
+  | AnnotationConcatenationFailure UID AnnotationConcatenationError
       -- ^ Indicates that a concatenation error occurred while trying to
       --   derive over an annotation.
   | forall c. (ConstraintSetType c)
-    => AnnotationSubtypeFailure Span (AnnType c) (AnnType c)
+    => AnnotationSubtypeFailure UID (AnnType c) (AnnType c)
       -- ^ Indicates that the inferred type of an annotation was not a subtype
       --   of its declared type signature.  The first annotation type in the
       --   error is the inferred type; the second annotation type is the
       --   declared type.
   | forall c. (ConstraintSetType c)
-    => DeclarationSubtypeFailure Span (QuantType c) (QuantType c)
+    => DeclarationSubtypeFailure UID (QuantType c) (QuantType c)
       -- ^ Indicates that the inferred type of a global declaration was not a
       --   subtype of its declared type signature.  The first @QuantType@ is the
       --   inferred type; the second @QuantType@ is the declared type.
@@ -83,7 +83,7 @@ data InternalTypeError
       -- ^Indicates that the top level of the AST is not a @DRole@ declaration.
   | NonTopLevelDeclarationRole (K3 Declaration)
       -- ^Indicates that a second level of the AST is a @DRole@ declaration.
-  | InvalidSpansInExpression (K3 Expression)
+  | InvalidUIDsInExpression (K3 Expression)
       -- ^Indicates that type derivation occurred on an expression which had
       --  multiple source span annotations.
   | InvalidQualifiersOnExpression (K3 Expression)
@@ -92,7 +92,7 @@ data InternalTypeError
   | InvalidExpressionChildCount (K3 Expression)
       -- ^Indicates that type derivation occurred on an expression which had a
       --  number of children inappropriate for its tag.
-  | InvalidSpansInTypeExpression (K3 K3T.Type)
+  | InvalidUIDsInTypeExpression (K3 K3T.Type)
       -- ^Indicates that type derivation occurred on a type expression which had
       --  multiple source span annotations.
   | InvalidQualifiersOnType (K3 K3T.Type)
@@ -110,7 +110,7 @@ data InternalTypeError
   | UnresolvedTypeParameters TParamEnv
       -- ^Indicates that a type parameter environment was non-empty when it was
       --  expected to be empty.
-  | InvalidSpansInDeclaration (K3 Declaration)
+  | InvalidUIDsInDeclaration (K3 Declaration)
       -- ^Indicates that type derivation occurred on an expression which had
       --  multiple source span annotations.
   | ExtraDeclarationsInEnvironments (Set TEnvId) (Set TEnvId)
@@ -118,7 +118,7 @@ data InternalTypeError
       --  environments which did not match any node in the AST provided during
       --  declaration derivation.  The extra identifiers (type and type alias,
       --  in that order) are included.
-  | forall c. (ConstraintSetType c) => PolymorphicSelfBinding (QuantType c) Span
+  | forall c. (ConstraintSetType c) => PolymorphicSelfBinding (QuantType c) UID
       -- ^Indicates that the special self binding was bound to a polymorphic
       --  type, which is illegal.
       -- ^Indicates that there were environment identifiers in the checking

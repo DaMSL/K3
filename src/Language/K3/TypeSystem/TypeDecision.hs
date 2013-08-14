@@ -52,8 +52,8 @@ typeDecision decl = do
           QuantType Set.empty qa cs
       DTrigger i tExpr _ -> do
         (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr
-        a' <- freshUVar . TVarSourceOrigin =<< spanOf decl'
-        qa <- freshQVar . TVarSourceOrigin =<< spanOf decl'
+        a' <- freshUVar . TVarSourceOrigin =<< uidOf decl'
+        qa <- freshQVar . TVarSourceOrigin =<< uidOf decl'
         let cs' = csFromList [ STrigger a <: a' , a' <: qa ]
         return $ Map.singleton (TEnvIdentifier i) $
           QuantType Set.empty qa $ cs `csUnion` cs'

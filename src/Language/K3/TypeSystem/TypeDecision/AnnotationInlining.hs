@@ -51,7 +51,7 @@ data AnnRepr = AnnRepr
 
 -- |A data type which tracks information about an @AnnRepr@ in addition to the
 --  @AnnRepr@ itself.
-type TaggedAnnRepr = (AnnRepr, Span, K3 Declaration)
+type TaggedAnnRepr = (AnnRepr, UID, K3 Declaration)
 
 -- |A type alias describing the representation of annotations internal to the
 --  type decision procedure.  The first list of annotations describes the
@@ -119,8 +119,8 @@ convertAstToRepr ast =
     declToRepr decl = case tag decl of
       DAnnotation i mems -> do
         repr <- convertAnnotationToRepr mems
-        s <- spanOf decl
-        return $ Just (i, (repr, s, decl))
+        u <- uidOf decl
+        return $ Just (i, (repr, u, decl))
       _ -> return Nothing
 
 -- |Given a map of internal annotation representations, performs closure over

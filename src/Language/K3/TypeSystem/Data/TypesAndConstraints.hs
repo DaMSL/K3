@@ -80,8 +80,8 @@ type ConstraintSetType c = (Show c)
 
 -- |A description of the origin of a given type variable.
 data TVarOrigin (a :: TVarQualification)
-  = TVarSourceOrigin Span -- ^Type variable produced directly from source code.
-  | TVarPolyinstantiationOrigin (TVar a) Span
+  = TVarSourceOrigin UID -- ^Type variable produced directly from source code.
+  | TVarPolyinstantiationOrigin (TVar a) UID
       -- ^Type variable is the result of polyinstantiation at a given source
       --  location.
   | TVarBoundGeneralizationOrigin [TVar a] TPolarity
