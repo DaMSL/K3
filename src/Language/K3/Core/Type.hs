@@ -5,7 +5,10 @@
 module Language.K3.Core.Type (
     Type(..),
     TypeBuiltIn(..),
-    Annotation(..)
+    Annotation(..),
+    
+    isTSpan,
+    isTUID
 ) where
 
 import Data.Tree
@@ -63,3 +66,13 @@ instance Pretty (K3 Type) where
     prettyLines (Node (tag :@: as) ts) =
         [show tag ++ drawAnnotations as]
         ++ drawSubTrees ts
+
+{- Type annotation predicates -}
+
+isTSpan :: Annotation Type -> Bool
+isTSpan (TSpan _) = True
+isTSpan _ = False
+
+isTUID :: Annotation Type -> Bool
+isTUID (TUID _) = True
+isTUID _        = False

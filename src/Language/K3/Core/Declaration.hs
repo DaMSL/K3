@@ -8,7 +8,9 @@ module Language.K3.Core.Declaration (
 
     -- * User defined Annotations
     Polarity(..),
-    AnnMemDecl(..)
+    AnnMemDecl(..),
+
+    isDUID
 ) where
 
 import Data.Functor
@@ -66,3 +68,9 @@ instance Pretty (K3 Declaration) where
         ["DRole " ++ i ++ " :@: " ++ show as, "|"]
         ++ drawSubTrees ds
     prettyLines x = lines $ show x
+
+{- Declaration annotation predicates -}
+
+isDUID :: Annotation Declaration -> Bool
+isDUID (DUID _) = True
+isDUID _        = False
