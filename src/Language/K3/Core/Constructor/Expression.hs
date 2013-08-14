@@ -21,10 +21,12 @@ module Language.K3.Core.Constructor.Expression (
     bindAs,
     ifThenElse,
     address,
-    self
+    self,
+
+    Constant(..),
+    Operator(..)
 ) where
 
-import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
