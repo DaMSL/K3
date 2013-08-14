@@ -1,9 +1,5 @@
 -- | Primary Driver for the K3 Ecosystem.
 
-import Control.Monad
-
-import System.IO
-
 import Options.Applicative
 
 import Language.K3.Driver.Batch
@@ -18,8 +14,10 @@ dispatch op = do
 
     case mode op of
         Batch -> runBatch op
+        Interactive -> error "Interactive Mode is not yet implemented."
 
 -- | Top-Level.
+main :: IO ()
 main = execParser options >>= dispatch
   where
     options = info (helper <*> programOptions) $ fullDesc
