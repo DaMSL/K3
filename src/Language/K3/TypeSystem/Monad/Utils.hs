@@ -44,5 +44,4 @@ envRequire e = envRequireM $ return e
 --  found.
 envRequireM :: (Ord a, Applicative m, Monad m, TypeErrorI m)
             => m TypeError -> a -> Map a b -> m b
-envRequireM e k m = fromMaybe <$> (typeError =<< e)
-                              <*> return (Map.lookup k m)
+envRequireM e k m = maybe (typeError =<< e) return $ Map.lookup k m
