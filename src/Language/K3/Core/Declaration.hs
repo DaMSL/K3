@@ -13,8 +13,6 @@ module Language.K3.Core.Declaration (
     isDUID
 ) where
 
-import Data.Functor
-import Data.Maybe
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -52,9 +50,10 @@ data Polarity = Provides | Requires deriving (Eq, Read, Show)
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
-  = DSpan Span
-  | DUID UID
+    = DSpan Span
+    | DUID UID
   deriving (Eq, Read, Show)
+
 
 instance Pretty (K3 Declaration) where
     prettyLines (Node (DGlobal i t me :@: as) ds) =
@@ -62,8 +61,8 @@ instance Pretty (K3 Declaration) where
         ++ case (me, ds) of
             (Nothing, []) -> terminalShift t
             (Just e, []) ->  nonTerminalShift t ++ ["|"] ++ terminalShift e
-            (Nothing, xs) -> drawSubTrees ds
-            (Just e, xs) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
+            (Nothing, _) -> drawSubTrees ds
+            (Just _, _) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
     prettyLines (Node (DTrigger i t e :@: as) ds) =
         ["DTrigger " ++ i ++ drawAnnotations as, "|"]
         ++ nonTerminalShift t ++ ["|"] ++ case ds of

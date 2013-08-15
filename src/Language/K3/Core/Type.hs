@@ -66,9 +66,7 @@ data instance Annotation Type
 
 instance Pretty (K3 Type) where
     prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
-    prettyLines (Node (tag :@: as) ts) =
-        [show tag ++ drawAnnotations as]
-        ++ drawSubTrees ts
+    prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
 
 {- Type annotation predicates -}
 
