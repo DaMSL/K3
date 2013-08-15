@@ -19,5 +19,6 @@ executable k3
         mtl,
         optparse-applicative,
         readline,
+        split,
 
         K3-Core

@@ -1,6 +1,8 @@
 -- | Options for the K3 Driver
 module Language.K3.Driver.Options where
 
+import Data.List.Split
+
 import Control.Applicative
 import Options.Applicative
 
@@ -15,9 +17,15 @@ data Options = Options {
 
 -- | Modes of Operation.
 data Mode
-    = Batch { defaultRole :: String }
+    = Batch { peerList :: [Peer] }
     | Interactive
   deriving (Eq, Read, Show)
+
+data Peer = Peer {
+    peerRole :: String,
+    peerHost :: String,
+    peerPort :: Int
+} deriving (Eq, Read, Show)
 
 data Verbosity
     = NullV
@@ -31,13 +39,19 @@ batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> strOption (
-            long "role"
-         <> short 'r'
-         <> metavar "ROLE"
-         <> help "Role to start execution with."
-         <> value ""
-        )
+        ) *> pure Batch <*> some peerOptions
+
+peerReader :: String -> Either ParseError Peer
+peerReader peerDesc = case splitOn ":" peerDesc of
+    (role:host:port:_) -> Right $ Peer role host (read port)
+    _ -> Left $ ErrorMsg "Invalid Peer Parse"
+
+peerOptions :: Parser Peer
+peerOptions = nullOption (
+        short 'p'
+     <> long "peer"
+     <> reader peerReader
+    )
 
 -- | Options for Interactive Mode.
 interactiveOptions :: Parser Mode
