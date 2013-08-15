@@ -22,9 +22,9 @@ data Mode
   deriving (Eq, Read, Show)
 
 data Peer = Peer {
-    peerRole :: String,
     peerHost :: String,
-    peerPort :: Int
+    peerPort :: Int,
+    peerVals :: [(String, String)]
 } deriving (Eq, Read, Show)
 
 data Verbosity
@@ -43,7 +43,7 @@ batchOptions = flag' Batch (
 
 peerReader :: String -> Either ParseError Peer
 peerReader peerDesc = case splitOn ":" peerDesc of
-    (role:host:port:_) -> Right $ Peer role host (read port)
+    (host:port:maps) -> Right $ Peer host (read port) [(k, v) | mapping <- maps, let (k:v:_) = splitOn "=" mapping]
     _ -> Left $ ErrorMsg "Invalid Peer Parse"
 
 peerOptions :: Parser Peer

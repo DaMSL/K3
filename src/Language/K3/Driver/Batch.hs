@@ -1,8 +1,11 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+
 module Language.K3.Driver.Batch where
 
 import Control.Arrow
 
+import Data.Maybe
 import Data.Functor
 
 import System.IO
@@ -16,8 +19,7 @@ import qualified Language.K3.Core.Constructor.Type as T
 
 import Language.K3.Interpreter
 import Language.K3.Parser
-import Language.K3.Pretty
-import Language.K3.Runtime.Engine (defaultAddress)
+import Language.K3.Runtime.Engine (Address(..), defaultAddress)
 
 import Language.K3.Driver.Options
 
@@ -36,6 +38,13 @@ setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDe
 
 setDefaultRole d _ _ = d
 
+mkSystemEnv :: [Peer] -> SystemEnvironment
+mkSystemEnv ps = [(address peer, mapping peer) | peer <- ps]
+  where
+    address peer = Address (peerHost peer, peerPort peer)
+    mapping peer = catMaybes [ fmap (k,) pv | (k, v) <- peerVals peer, let pv = parseExpression v ]
+
+
 runBatch :: Options -> IO ()
 runBatch op = do
     h <- openFileOrStdIn $ input op
@@ -45,6 +54,4 @@ runBatch op = do
     case p of
         Left e -> putStrLn e
         Right q -> do
-            let q' = setDefaultRole q "__global" (peerRole . head . peerList $ mode op)
-            putStr $ pretty q'
-            runProgram [defaultAddress] q'
+            runProgram (mkSystemEnv . peerList $ mode op) q
