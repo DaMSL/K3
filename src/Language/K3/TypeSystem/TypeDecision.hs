@@ -11,7 +11,6 @@ import Control.Applicative
 import Control.Monad.Trans.Writer
 import qualified Data.Map as Map
 import Data.Monoid
-import qualified Data.Set as Set
 import Data.Tree
 
 import Language.K3.Core.Annotation
