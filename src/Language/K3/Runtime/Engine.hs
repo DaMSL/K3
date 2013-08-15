@@ -235,13 +235,12 @@ type Listeners   = MVar [(Identifier, Weak ThreadId)]
 
 {- Wire Descriptions -}
 
-data FrameDesc = Delimiter String | PrefixLength
+data FrameDesc = Delimiter String | FixedSize Int | PrefixLength
 
 -- | A description of a wire format, with serialization of data, deserialization into data, and
 -- validation of deserialized data.
 data WireDesc a = WireDesc { packWith     :: a -> String
                            , unpackWith   :: String -> Maybe a
-                           , validateWith :: a -> Bool
                            , frame        :: FrameDesc }
 
 -- | Internal messaging between triggers includes a sender address and
@@ -366,13 +365,12 @@ defaultConfig = EngineConfiguration { address           = defaultAddress
 
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)
-exprWD = WireDesc show read (const True) PrefixLength
+exprWD = WireDesc show (Just . read) PrefixLength
 
 internalizeWD :: WireDesc a -> WireDesc (InternalMessage a)
-internalizeWD (WireDesc packF unpackF validateF _) =
+internalizeWD (WireDesc packF unpackF _) =
   WireDesc { packWith      = packInternal
            , unpackWith    = unpackInternal
-           , validateWith  = \(_,_,a) -> validateF a
            , frame         = PrefixLength }
   where
     packInternal (addr, n, a) = show addr ++ "|" ++ n ++ "|" ++ packF a
@@ -632,6 +630,10 @@ genericOpenFile eid path wd tOpt mode eps eg = do
     file <- openFileHandle path wd (ioMode mode)
     buf  <- exclusive $ emptySingletonBuffer
     void $ addEndpoint eid (file, buf, []) eps
+    case (ioMode mode) of
+      SIO.ReadMode -> void $ genericDoRead eid eps eg -- Prime the file's buffer.
+      _ -> return ()
+    
 
 -- | Socket constructor.
 --   This initializes the engine's connections as necessary.
@@ -815,19 +817,16 @@ readHandle (FileH wd h) = do
     done <- SIO.hIsEOF h
     if done then return Nothing
     else do
+      s <- SIO.hGetLine h
+      return $ unpackWith wd s
       -- TODO: Add proper delimiter support, to avoid delimiting by newline.
-      payload <- unpackWith wd <$> SIO.hGetLine h
-      case payload of
-        Nothing -> return Nothing
-        Just v -> if validateWith wd v then return $ Just v
-                                       else return Nothing
 
 readHandle (SocketH wd np) = error "Unsupported: read from Socket"
 
 -- | Write a single payload to a handle
 writeHandle :: a -> IOHandle a -> IO ()
 writeHandle payload (FileH wd h) = do
-    done <- SIO.hIsEOF h
+    done <- SIO.hIsClosed h
     if done then return ()
     else SIO.hPutStrLn h $ packWith wd payload -- TODO: delimiter, as with readHandle
 

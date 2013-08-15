@@ -8,7 +8,10 @@ module Language.K3.Core.Type (
     Annotation(..),
     
     isTSpan,
-    isTUID
+    isTUID,
+    isTQualified,
+    isTImmutable,
+    isTMutable
 ) where
 
 import Data.Tree
@@ -76,3 +79,16 @@ isTSpan _ = False
 isTUID :: Annotation Type -> Bool
 isTUID (TUID _) = True
 isTUID _        = False
+
+isTQualified :: Annotation Type -> Bool
+isTQualified TImmutable = True
+isTQualified TMutable   = True
+isTQualified _          = False
+
+isTImmutable :: Annotation Type -> Bool
+isTImmutable TImmutable = True
+isTImmutable _          = False
+
+isTMutable :: Annotation Type -> Bool
+isTMutable TMutable = True
+isTMutable _        = False

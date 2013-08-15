@@ -12,12 +12,13 @@ module Language.K3.Parser (
   expr,
   parseType,
   parseExpression,
-  parseExpressionCSV,
+  parseDeclaration,
   parseK3,
   K3Parser
 ) where
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
 
 import Data.Functor.Identity
@@ -162,8 +163,11 @@ keyword = reserve k3Idents
 
 
 {- Main parsing functions -}
+emptyParserState :: ParserState
+emptyParserState = (0,[])
+
 maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (\_ -> Nothing) Just $ P.runParser p (0,[]) "" s
+maybeParser p s = either (const Nothing) Just $ P.runParser p emptyParserState "" s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
@@ -171,13 +175,11 @@ parseType = maybeParser typeExpr
 parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
 
-parseExpressionCSV :: String -> Maybe (K3 Expression)
-parseExpressionCSV = maybeParser (mkTuple <$> commaSep1 expr)
-  where mkTuple [x] = x
-        mkTuple x = EC.tuple x
+parseDeclaration :: String -> Maybe (K3 Declaration)
+parseDeclaration s = either (const Nothing) id $ P.runParser declaration emptyParserState "" s
 
 parseK3 :: String -> Either String (K3 Declaration)
-parseK3 s = either (Left . show) Right $ P.runParser program (0,[]) "" s
+parseK3 s = either (Left . show) Right $ P.runParser program emptyParserState "" s
 
 
 {- Parsing state helpers -}
@@ -234,8 +236,9 @@ declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
         sugaredDecls =        choice [dSelector, dBind]
 
 dGlobal :: DeclParser
-dGlobal = namedDecl "state" "declare" $ rule . (DC.global <$>)
+dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
+        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -285,12 +288,14 @@ polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
 annLifted :: K3Parser (UID -> AnnMemDecl)
-annLifted = Lifted <$> polarity <*  keyword "lifted" <*> identifier <* colon
-                   <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+annLifted = mkLifted <$> polarity <*  keyword "lifted" <*> identifier <* colon
+                     <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+  where mkLifted p n qte eOpt = Lifted p n qte (propagateQualifier qte eOpt)
 
 annAttribute :: K3Parser (UID -> AnnMemDecl)
-annAttribute = Attribute <$> polarity <*> identifier <*  colon
-                         <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+annAttribute = mkAttribute <$> polarity <*> identifier <*  colon
+                           <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+  where mkAttribute p n qte eOpt = Attribute p n qte (propagateQualifier qte eOpt)
 
 subAnnotation :: K3Parser (UID -> AnnMemDecl)
 subAnnotation = MAnnotation <$> polarity <* keyword "annotation" <*> identifier
@@ -747,3 +752,13 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
         annotateType = traverse (\t -> parserWithUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
 
         unlessAnnotated test n@(_ :@: as) n' = if test as then n else n'
+
+
+-- | Propagates a mutability qualifier from a type to an expression.
+--   This is used in desugaring non-function initializers and annotation members.
+propagateQualifier :: K3 Type -> Maybe (K3 Expression) -> Maybe (K3 Expression)
+propagateQualifier qte Nothing  = Nothing
+propagateQualifier qte@(tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> eas))
+  | any isEQualified eas || inApplicable ttag = Just e
+  | otherwise = Just $ if any isTImmutable tas then (e @+ EImmutable) else (e @+ EMutable)
+  where inApplicable = flip elem [TFunction, TTrigger, TSink, TSource]

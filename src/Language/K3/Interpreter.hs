@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
@@ -24,10 +25,17 @@ module Language.K3.Interpreter (
   runExpression_,
 
   runProgram,
-  runProgramInitializer
+  runProgramInitializer,
+
+  showValueSyntax,
+  readValueSyntax,
+
+  valueWD,
+  externalValueWD
+
 ) where
 
-import Control.Arrow
+import Control.Arrow hiding ( (+++) )
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -39,6 +47,13 @@ import Data.List
 import Data.Tree
 import Data.Word (Word8)
 import Debug.Trace
+
+
+import Text.Read hiding (get)
+import qualified GHC.Read as GR (list)
+import qualified Text.Read as TR (lift)
+import Text.ParserCombinators.ReadP as P (skipSpaces)
+import Text.Show
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -69,29 +84,6 @@ data Value
     | VAddress     Address
     | VTrigger     (Identifier, Maybe (Value -> Interpretation Value))
 
--- We can't deriving Show because IORefs aren't showable.
-instance Show Value where
-  show (VBool b)               = "VBool " ++ show b
-  show (VByte b)               = "VByte " ++ show b
-  show (VInt i)                = "VInt " ++ show i
-  show (VReal r)               = "VReal " ++ show r
-  show (VString s)             = "VString " ++ show s
-  show (VOption m)             = "VOption " ++ show m
-  show (VTuple t)              = "VTuple " ++ show t
-  show (VRecord r)             = "VRecord " ++ show r
-  show (VCollection c)         = "VCollection " ++ show c
-  show (VIndirection _)        = "VIndirection <opaque>"
-  show (VFunction _)           = "VFunction <function>"
-  show (VAddress addr)         = "VAddress " ++ show addr
-  show (VTrigger (n, Nothing)) = "VTrigger " ++ n ++ " <uninitialized>"
-  show (VTrigger (n, Just _))  = "VTrigger " ++ n ++ " <function>"
-
--- TODO
-instance Read Value
-
--- TODO
-instance Pretty Value where
-  prettyLines v = [show v]
 
 -- | Interpretation event log.
 type ILog = [String]
@@ -664,10 +656,13 @@ dispatchValueProcessor = MessageProcessor {
 {- Wire descriptions -}
 
 valueWD :: WireDesc Value
-valueWD = WireDesc show read (const True) $ Delimiter "\n"
+valueWD = WireDesc show (Just . read) $ Delimiter "\n"
+
+externalValueWD :: WireDesc Value
+externalValueWD = WireDesc showValueSyntax (Just . readValueSyntax) $ Delimiter "\n"
 
 wireDesc :: String -> WireDesc Value
-wireDesc "k3" = valueWD
+wireDesc "k3" = externalValueWD
 wireDesc fmt  = error $ "Invalid format " ++ fmt
 
 -- | Associative lists
@@ -692,4 +687,240 @@ putIResult :: Show a => IResult a -> IO ()
 putIResult ((Left err, (env, eng)), ilog)  = putStrLn (prettyErrorEnv (err,env)) >> putEngine eng
 putIResult ((Right val, (env, eng)), ilog) = putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putEngine eng
   where prettyVal = "Value:\n"++show val
+
+
+showsPrecTag :: Show a => String -> Int -> a -> ShowS
+showsPrecTag s d v =
+  showParen (d > app_prec) $ showString (s++" ") . showsPrec (app_prec+1) v
+  where app_prec = 10
+
+-- | Verbose stringification of values through show instance.
+--   This produces <tag> placeholders for unshowable values (IORefs and functions)
+instance Show Value where
+  showsPrec d (VBool v)        = showsPrecTag "VBool" d v
+  showsPrec d (VByte v)        = showsPrecTag "VByte" d v
+  showsPrec d (VInt v)         = showsPrecTag "VInt" d v
+  showsPrec d (VReal v)        = showsPrecTag "VReal" d v
+  showsPrec d (VString v)      = showsPrecTag "VString" d v
+  showsPrec d (VOption v)      = showsPrecTag "VOption" d v
+  showsPrec d (VTuple v)       = showsPrecTag "VTuple" d v
+  showsPrec d (VRecord v)      = showsPrecTag "VRecord" d v
+  showsPrec d (VCollection v)  = showsPrecTag "VCollection" d v
+  showsPrec d (VAddress v)     = showsPrecTag "VAddress" d v
+  
+  showsPrec d (VIndirection _) =
+    showParen (d > app_prec) $ showString "VIndirection " . showString "<opaque>"
+    where app_prec = 10
+
+  showsPrec d (VFunction _) =
+    showParen (d > app_prec) $ showString "VFunction " . showString "<function>"
+    where app_prec = 10
+
+  showsPrec d (VTrigger (n, Nothing)) =
+    showParen (d > app_prec) $ showString "VTrigger " . showString n . showString "<uninitialized>"
+    where app_prec = 10
+
+  showsPrec d (VTrigger (n, Just _)) =
+    showParen (d > app_prec) $ showString "VTrigger " . showString n . showString "<function>"
+    where app_prec = 10
+
+-- | Verbose stringification of values through read instance.
+--   This errors on attempting to read unshowable values (IORefs and functions)
+instance Read Value where
+  readPrec = parens $ 
+        (prec app_prec $ do
+          Ident "VBool" <- lexP
+          v <- step readPrec
+          return (VBool v))
+
+    +++ (prec app_prec $ do
+          Ident "VByte" <- lexP
+          v <- step readPrec
+          return (VByte v))
+
+    +++ (prec app_prec $ do
+          Ident "VInt" <- lexP
+          v <- step readPrec
+          return (VInt v))
+
+    +++ (prec app_prec $ do
+          Ident "VReal" <- lexP
+          v <- step readPrec
+          return (VReal v))
+
+    +++ (prec app_prec $ do
+          Ident "VString" <- lexP
+          v <- step readPrec
+          return (VString v))
+
+    +++ (prec app_prec $ do
+          Ident "VOption" <- lexP
+          v <- step readPrec
+          return (VOption v))
+
+    +++ (prec app_prec $ do
+          Ident "VTuple" <- lexP
+          v <- step readPrec
+          return (VTuple v))
+
+    +++ (prec app_prec $ do
+          Ident "VRecord" <- lexP
+          v <- step readPrec
+          return (VRecord v))
+
+    +++ (prec app_prec $ do
+          Ident "VCollection" <- lexP
+          v <- step readPrec
+          return (VCollection v))
+
+    +++ (prec app_prec $ do
+          Ident "VIndirection" <- lexP
+          Ident "<opaque>" <- step readPrec
+          error "Cannot read indirections")
+
+    +++ (prec app_prec $ do
+          Ident "VFunction" <- lexP
+          Ident "<function>" <- step readPrec
+          error "Cannot read functions")
+
+    +++ (prec app_prec $ do
+          Ident "VAddress" <- lexP
+          v <- step readPrec
+          return (VAddress v))
+
+    +++ (prec app_prec $ do
+          Ident "VTrigger" <- lexP
+          Ident n <- lexP
+          Ident "<uninitialized>" <- step readPrec
+          error "Cannot read triggers")
+
+    +++ (prec app_prec $ do
+          Ident "VTrigger" <- lexP
+          Ident n <- lexP
+          Ident "<function>" <- step readPrec
+          error "Cannot read triggers")
+
+    where app_prec = 10
+
+  readListPrec = readListPrecDefault
+
+-- TODO
+instance Pretty Value where
+  prettyLines v = [show v]
+
+
+-- | Syntax-oriented stringification of values.
+showValueSyntax :: Value -> String
+showValueSyntax v = showsValuePrec 0 v ""
+  where
+    showsValuePrec d = \case
+      VBool v        -> showsPrec d v
+      VByte v        -> showChar 'B' . showParen True (showsPrec appPrec1 v)
+      VInt v         -> showsPrec d v
+      VReal v        -> showsPrec d v
+      VString v      -> showsPrec d v
+      VOption vOpt   -> maybe (\s -> "Nothing"++s) 
+                              (\v -> showParen (d > appPrec) $ ("Just " ++) . showsValuePrec appPrec1 v) vOpt
+      VTuple v       -> parens (showsValuePrec $ d+1) v
+      VRecord v      -> braces (showsRecordFieldPrec $ d+1) v
+      VCollection v  -> brackets (showsValuePrec $ d+1) v
+      VIndirection _ -> error "Cannot show indirection"
+      VFunction _    -> error "Cannot show function"
+      VAddress v     -> showsPrec d v
+      VTrigger _     -> error "Cannot show trigger"
+
+    parens   = showCustomList "(" ")" ","
+    braces   = showCustomList "{" "}" ","
+    brackets = showCustomList "[" "]" ","
+
+    showsRecordFieldPrec d (n, v) = showString n . showChar '=' . showsValuePrec d v
+    
+    showCustomList :: String -> String -> String -> (a -> ShowS) -> [a] -> ShowS
+    showCustomList lWrap rWrap sep _     []     s = lWrap ++ rWrap ++ s
+    showCustomList lWrap rWrap sep showF (x:xs) s = lWrap ++ showF x (showl xs)
+      where showl []     = rWrap ++ s
+            showl (y:ys) = sep ++ showF y (showl ys)
+
+    appPrec  = 10
+    appPrec1 = 11  
+
+readValueSyntax :: String -> Value
+readValueSyntax = readSingleParse readValuePrec
+  where
+    readValuePrec = parens $ 
+          (readPrec >>= return . VInt)
+      <++ ((readPrec >>= return . VBool)
+      +++ (readPrec >>= return . VReal)
+      +++ (readPrec >>= return . VString)
+
+      +++ (do
+            Ident "B" <- lexP
+            v <- prec appPrec1 readPrec
+            return (VByte v))
+
+      +++ (do
+            Ident "Just" <- lexP
+            v <- prec appPrec1 readValuePrec
+            return (VOption $ Just v))
+
+      +++ (do
+            Ident "Nothing" <- lexP
+            return (VOption Nothing))
+
+      +++ (prec appPrec $ do
+            v <- step (readParens readValuePrec)
+            return (VTuple v))
+
+      +++ (prec appPrec $ do
+            v <- step (readBraces readRecordFieldPrec)
+            return (VRecord v))
+
+      +++ (prec appPrec $ do
+            v <- step (readBrackets readValuePrec)
+            return (VCollection v))
+
+      +++ (readPrec >>= return . VAddress))
+
+    readRecordFieldPrec = parens $ 
+          (prec appPrec $ do
+            Ident n <- lexP
+            Punc "=" <- lexP
+            v <- step readValuePrec
+            return (n,v))
+
+    readParens   = readCustomList "(" ")" ","
+    readBraces   = readCustomList "{" "}" ","
+    readBrackets = readCustomList "[" "]" ","
+    
+    readSingleParse :: Show a => ReadPrec a -> String -> a
+    readSingleParse readP s =
+      case [ x | (x,"") <- readPrec_to_S read' minPrec s ] of
+        [x] -> x
+        []  -> error "Prelude.read: no parse"
+        l   -> error $ "Prelude.read: ambiguous parse " ++ (concatMap ((++" ") . show) l)
+      where read' = do
+              x <- readP
+              TR.lift P.skipSpaces
+              return x
+
+    readCustomList :: String -> String -> String -> ReadPrec a -> ReadPrec [a]
+    readCustomList lWrap rWrap sep readx =
+      parens
+      ( do Punc lWrap <- lexP
+           (listRest False +++ listNext)
+      )
+     where
+      listRest started =
+        do Punc c <- lexP
+           if c == rWrap then return []
+           else if c == sep then listNext
+           else pfail
+      
+      listNext =
+        do x  <- reset readx
+           xs <- listRest True
+           return (x:xs)
+
+    appPrec = 10
+    appPrec1 = 11  
 
