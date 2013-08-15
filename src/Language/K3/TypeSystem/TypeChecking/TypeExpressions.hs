@@ -14,7 +14,6 @@ module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Control.Applicative
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
 
@@ -46,8 +45,13 @@ deriveQualifiedTypeExpression ::
 deriveQualifiedTypeExpression aEnv tExpr = do
   (a,cs) <- deriveTypeExpression aEnv tExpr
   let quals = qualifiersOfType tExpr
-  qa <- freshTypecheckingQVar =<< uidOf tExpr
-  return (qa, cs `CSL.union` CSL.promote (csFromList [a <: qa, quals <: qa]))
+  if length quals /= 1
+    then internalTypeError $ InvalidQualifiersOnType tExpr
+    else do
+      qa <- freshTypecheckingQVar =<< uidOf tExpr
+      return (qa, cs `CSL.union`
+                  CSL.promote (csFromList
+                    [a <: qa, Set.fromList (concat quals) <: qa]))
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
@@ -60,7 +64,7 @@ deriveUnqualifiedTypeExpression ::
    -> K3 Type
    -> m (UVar, c)
 deriveUnqualifiedTypeExpression aEnv tExpr =
-  if Set.null $ qualifiersOfType tExpr
+  if null $ qualifiersOfType tExpr
     then deriveTypeExpression aEnv tExpr
     else internalTypeError $ InvalidQualifiersOnType tExpr
 
@@ -164,11 +168,12 @@ deriveTypeExpression aEnv tExpr =
     aEnvLookup ei u =
       (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier u ei) ei aEnv
 
--- |Obtains the type qualifiers of a given expression.
-qualifiersOfType :: K3 Type -> Set TQual
-qualifiersOfType tExpr = Set.fromList $ mapMaybe unQual $ annotations tExpr
+-- |Obtains the type qualifiers of a given expression.  Each inner list
+--  represents the results for a single annotation.
+qualifiersOfType :: K3 Type -> [[TQual]]
+qualifiersOfType tExpr = mapMaybe unQual $ annotations tExpr
   where
     unQual eann = case eann of
-      TImmutable -> Just TImmut
-      TMutable -> Just TMut
+      TImmutable -> Just [TImmut]
+      TMutable -> Just [TMut]
       _ -> Nothing

@@ -87,9 +87,8 @@ deriveDeclaration aEnv env decl =
         typecheckError $ InternalError $
           TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
       whenJust mexpr $ \expr -> do
-        (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr
-        qa1 <- freshTypecheckingQVar u
-        let qt1 = generalize env qa1 $ csUnion cs1 $ csSing $ a1 <: qa1
+        (qa1,cs1) <- deriveQualifiedExpression aEnv env expr
+        let qt1 = generalize env qa1 cs1
         unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
           DeclarationSubtypeFailure u qt1 qt2
 
@@ -215,9 +214,9 @@ deriveAnnotationMember aEnv env decl =
       expr <- fromMaybe <$> typecheckError
                             (NoInitializerForPositiveAnnotationMember s)
                         <*> return mexpr
-      (a',cs') <- deriveUnqualifiedExpression aEnv env expr
+      (qa',cs') <- deriveQualifiedExpression aEnv env expr
       return ( constr $ AnnMemType i Positive qa
-             , csUnions [cs,cs',csSing $ a' <: qa] )
+             , csUnions [cs,cs',csSing $ qa' <: qa] )
     deriveNegativeMember i tExpr mexpr s constr = do
       (qa,cs)<- deriveQualifiedTypeExpression aEnv tExpr
       unless (isNothing mexpr) $

@@ -25,6 +25,7 @@ import Language.K3.Core.Expression
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Monad
@@ -41,8 +42,12 @@ deriveQualifiedExpression ::
 deriveQualifiedExpression aEnv env expr = do
   (a,cs) <- deriveExpression aEnv env expr
   let quals = qualifiersOfExpr expr
-  qa <- freshTypecheckingQVar =<< uidOf expr
-  return (qa, cs `csUnion` csFromList [a <: qa, quals <: qa])
+  if length quals /= 1
+    then internalTypeError $ InvalidQualifiersOnExpression expr
+    else do
+      qa <- freshTypecheckingQVar =<< uidOf expr
+      return (qa, cs `csUnion`
+                  csFromList [a <: qa, Set.fromList (concat quals) <: qa])
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
@@ -52,7 +57,7 @@ deriveUnqualifiedExpression ::
    -> K3 Expression
    -> TypecheckM (UVar, ConstraintSet)
 deriveUnqualifiedExpression aEnv env expr =
-  if Set.null $ qualifiersOfExpr expr
+  if null $ qualifiersOfExpr expr
     then deriveExpression aEnv env expr
     else typecheckError $ InternalError $ InvalidQualifiersOnExpression expr
 
@@ -226,11 +231,16 @@ deriveExpression aEnv env expr =
                                                 <*> return envId)
         envId env
 
--- |Obtains the type qualifiers of a given expression.
-qualifiersOfExpr :: K3 Expression -> Set TQual
-qualifiersOfExpr expr = Set.fromList $ mapMaybe unQual $ annotations expr
+-- |Obtains the type qualifiers of a given expression.  If no type qualifier
+--  tags appear, a type error is generated.  The qualifiers are obtained as a
+--  list of lists; each outer list represents the results from a single
+--  qualifier annotation while each inner list represents the qualifiers which
+--  are derived from that annotation.
+qualifiersOfExpr :: K3 Expression -> [[TQual]]
+qualifiersOfExpr expr =
+  mapMaybe unQual $ annotations expr
   where
     unQual eann = case eann of
-      EImmutable -> Just TImmut
-      EMutable -> Just TMut
+      EImmutable -> Just [TImmut]
+      EMutable -> Just [TMut]
       _ -> Nothing
