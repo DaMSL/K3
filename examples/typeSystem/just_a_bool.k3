@@ -1,0 +1,1 @@
+declare b : mut bool = true
