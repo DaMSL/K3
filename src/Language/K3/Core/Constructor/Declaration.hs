@@ -15,8 +15,6 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
-import Language.K3.Core.Constructor.Type
-
 -- | Create a global declaration.
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
 global i t me = Node (DGlobal i t me :@: []) []
@@ -26,9 +24,8 @@ trigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
 trigger i t e = Node (DTrigger i t e :@: []) []
 
 -- | Create an endpoint declaration.
-endpoint :: Identifier -> K3 Type -> Maybe (K3 Expression) -> [K3 Declaration]
-            -> K3 Declaration
-endpoint i t eOpt subDecls = Node (DGlobal i t eOpt :@: []) subDecls
+endpoint :: Identifier -> K3 Type -> Maybe (K3 Expression) -> [K3 Declaration] -> K3 Declaration
+endpoint i t eOpt = Node (DGlobal i t eOpt :@: [])
 
 -- | Define a sequence of declarations to make up a role.
 role :: Identifier -> [K3 Declaration] -> K3 Declaration

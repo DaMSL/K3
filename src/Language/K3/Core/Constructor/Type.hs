@@ -19,7 +19,6 @@ module Language.K3.Core.Constructor.Type (
     builtIn
 ) where
 
-import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -63,7 +62,7 @@ indirection t = Node (TIndirection :@: []) [t]
 
 -- | Tuple type, based on the element types.
 tuple :: [K3 Type] -> K3 Type
-tuple ts = Node (TTuple :@: []) ts
+tuple = Node (TTuple :@: [])
 
 -- | Record type, based on field labels and types.
 record :: [(Identifier, K3 Type)] -> K3 Type
