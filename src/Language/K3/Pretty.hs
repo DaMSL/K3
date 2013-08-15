@@ -15,13 +15,10 @@ module Language.K3.Pretty (
     nonTerminalShift
 ) where
 
-import Data.Tree
-
-import Language.K3.Core.Annotation
-
 class Pretty a where
     prettyLines :: a -> [String]
 
+drawSubTrees :: Pretty a => [a] -> [String]
 drawSubTrees [] = []
 drawSubTrees [x] = "|" : terminalShift x
 drawSubTrees (x:xs) = "|" : nonTerminalShift x ++ drawSubTrees xs
