@@ -31,7 +31,7 @@ module Language.K3.Interpreter (
   readValueSyntax,
 
   valueWD,
-  externalValueWD
+  syntaxValueWD
 
 ) where
 
@@ -110,6 +110,8 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 -- | A type capturing the environment resulting from an interpretation
 type REnvironment = Either EnvOnError (IEnvironment Value)
+
+type SystemEnvironment = [(Address, [(Identifier, K3 Expression)])]
 
 instance Pretty IState where
   prettyLines (env, engine) = ["Environment:"] ++ map show env ++ (lines $ show engine)
@@ -571,7 +573,7 @@ finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup 
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
-standaloneInterpreter f = simulationEngine [defaultAddress] valueWD >>= f
+standaloneInterpreter f = simulationEngine [defaultAddress] syntaxValueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
 runExpression e = standaloneInterpreter withEngine'
@@ -584,7 +586,12 @@ runProgramInitializer :: K3 Declaration -> IO ()
 runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
 
 runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
+runProgram peers prog = simulationEngine peers syntaxValueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
+
+-- TODO: thread sysEnv into program initialization
+--runProgram' :: SystemEnvironment -> K3 Declaration -> IO ()
+--runProgram' sysEnv prog = simulationEngine peers syntaxValueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
+--  where peers = map fst sysEnv
 
 {- Message processing -}
 
@@ -660,11 +667,11 @@ dispatchValueProcessor = MessageProcessor {
 valueWD :: WireDesc Value
 valueWD = WireDesc show (Just . read) $ Delimiter "\n"
 
-externalValueWD :: WireDesc Value
-externalValueWD = WireDesc showValueSyntax (Just . readValueSyntax) $ Delimiter "\n"
+syntaxValueWD :: WireDesc Value
+syntaxValueWD = WireDesc showValueSyntax (Just . readValueSyntax) $ Delimiter "\n"
 
 wireDesc :: String -> WireDesc Value
-wireDesc "k3" = externalValueWD
+wireDesc "k3" = syntaxValueWD
 wireDesc fmt  = error $ "Invalid format " ++ fmt
 
 -- | Associative lists

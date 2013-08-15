@@ -194,7 +194,7 @@ handleTests :: [Test]
 handleTests = [
       testCase "Open readable file" $ 
         let (n, path) = ("testSource", "data/expr-i.txt") in
-        withSimulation (\eg -> openFile n path externalValueWD Nothing "r" eg >> failExternalEndpoint n eg)
+        withSimulation (\eg -> openFile n path syntaxValueWD Nothing "r" eg >> failExternalEndpoint n eg)
 
     , testCase "Open writeable file" $ 
         let (n, path) = ("testSink", "data/out.txt") in
@@ -232,11 +232,11 @@ handleTests = [
         failPath p = doesFileExist p >>= flip unless failed
         failRead   = flip when failed . isNothing
         
-        withSimulation f = simulationEngine [defaultAddress] externalValueWD >>= f
+        withSimulation f = simulationEngine [defaultAddress] syntaxValueWD >>= f
 
         withFile n path mode test f = 
           withSimulation (\eg -> 
-            openFile n path externalValueWD Nothing mode eg 
+            openFile n path syntaxValueWD Nothing mode eg 
               >> f eg >>= (\v -> close n eg >> return v)) >>= test
 
         readAndShowValue n path =
