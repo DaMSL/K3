@@ -20,6 +20,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
+import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.TypeDecision.AnnotationInlining
 import Language.K3.TypeSystem.TypeDecision.Monad
@@ -47,15 +48,24 @@ typeDecision decl = do
     calcExprDecl :: TAliasEnv -> K3 Declaration -> TypeDecideM TNormEnv
     calcExprDecl aEnv decl' = case tag decl' of
       DGlobal i tExpr _ -> do
+        -- First, derive over the type expression
         (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
-        return $ Map.singleton (TEnvIdentifier i) $
-          QuantType Set.empty qa cs
+        -- Then generalize.  Because the type expression can't refer to a normal
+        -- environment, it doesn't matter which one we provide.
+        let qt = generalize Map.empty qa cs
+        -- Generate the environment containing this result
+        return $ Map.singleton (TEnvIdentifier i) qt
       DTrigger i tExpr _ -> do
+        -- First, derive over the type expression
         (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr
+        -- Next, establish an appropriate constraint set for the trigger
         a' <- freshUVar . TVarSourceOrigin =<< uidOf decl'
         qa <- freshQVar . TVarSourceOrigin =<< uidOf decl'
-        let cs' = csFromList [ STrigger a <: a' , a' <: qa ]
-        return $ Map.singleton (TEnvIdentifier i) $
-          QuantType Set.empty qa $ cs `csUnion` cs'
+        let cs' = cs `csUnion` csFromList [ STrigger a <: a' , a' <: qa ]
+        -- Then generalize.  Because the type expression can't refer to a normal
+        -- environment, it doesn't matter which one we provide.
+        let qt = generalize Map.empty qa cs'
+        -- Finally, generate the result
+        return $ Map.singleton (TEnvIdentifier i) qt
       DAnnotation _ _ -> return Map.empty
       DRole _ -> internalTypeError $ NonTopLevelDeclarationRole decl'
