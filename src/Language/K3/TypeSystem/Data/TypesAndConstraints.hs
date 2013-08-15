@@ -74,10 +74,7 @@ instance Eq (TVar a) where
   (==) = (==) `on` tvarId
 instance Ord (TVar a) where
   compare = compare `on` tvarId
-instance Show (TVar a) where
-  show a = case a of
-    QTVar n _ -> "α°" ++ show n
-    UTVar n _ -> "α" ++ show n
+deriving instance Show (TVar a)
 
 -- |A constraint kind describing the constraints pap
 type ConstraintSetType c = (Show c)
@@ -249,27 +246,8 @@ data Constraint
   --       implementation parses "!"
   | MonomorphicQualifiedUpperConstraint QVar (Set TQual)
   | PolyinstantiationLineageConstraint QVar QVar
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
   
-instance Show Constraint where
-  show c = case c of
-    IntermediateConstraint x y -> showIn x ++ " <: " ++ showIn y
-    QualifiedLowerConstraint x y -> showIn x ++ " <: " ++ show y
-    QualifiedUpperConstraint x y -> show x ++ " <: " ++ showIn y
-    QualifiedIntermediateConstraint x y -> showIn x ++ " <: " ++ showIn y
-    BinaryOperatorConstraint a1 op a2 a3 ->
-      show "BinaryOperatorConstraint "
-        ++ show a1 ++ show op ++ show a2 ++ " <: " ++ show a3
-    MonomorphicQualifiedUpperConstraint qa qs ->
-      show qa ++ " <<: " ++ show qs
-    PolyinstantiationLineageConstraint qa1 qa2 ->
-      show qa1 ++ " (> " ++ show qa2
-    where
-      showIn :: (Show a, Show b) => Coproduct a b -> String
-      showIn x = case x of
-                    CLeft y -> show y
-                    CRight y -> show y
-
 -- |A data type representing binary operators in the type system.
 data BinaryOperator
   = BinOpAdd
@@ -297,12 +275,7 @@ data AnyOperator
 --  to help ensure that it is treated abstractly by its users.  This will
 --  permit structural changes for performance optimization in the future.
 data ConstraintSet = ConstraintSet (Set Constraint)
-  deriving (Eq, Ord)
-  
-instance Show ConstraintSet where
-  show (ConstraintSet cs) =
-    let content = concat $ intersperse "," $ map show $ Set.toList cs in
-    "{" ++ content ++ "}"
+  deriving (Eq, Ord, Show)
   
 instance Monoid ConstraintSet where
   mempty = ConstraintSet Set.empty
