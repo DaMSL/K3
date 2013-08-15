@@ -51,6 +51,7 @@ peerOptions = nullOption (
         short 'p'
      <> long "peer"
      <> reader peerReader
+     <> help "Peer configuration in the format role:host:port."
     )
 
 -- | Options for Interactive Mode.
