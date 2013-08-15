@@ -388,7 +388,7 @@ exprNoneQualifier =
   <|> keyword "mut" *> return NoneMut
 
 eTerm :: ExpressionParser
-eTerm = ESpan <-> mkTerm <$> choice [
+eTerm = EUID # (ESpan <-> mkTerm <$> choice [
     (try eAssign),
     (try eAddress),
     eLiterals,
@@ -397,7 +397,7 @@ eTerm = ESpan <-> mkTerm <$> choice [
     eLet,
     eCase,
     eBind,
-    eSelf  ] <*> optional eProject
+    eSelf  ] <*> optional eProject)
   where eProject          = dot *> identifier
         mkTerm e Nothing  = e
         mkTerm e (Just x) = EC.project x e
