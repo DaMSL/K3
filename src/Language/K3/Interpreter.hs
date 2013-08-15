@@ -33,10 +33,8 @@ import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
 import Data.Function
-import Data.Functor
 import Data.IORef
 import Data.List
-import Data.Tree
 import Data.Word (Word8)
 import Debug.Trace
 
@@ -45,8 +43,6 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
-
-import qualified Language.K3.Core.Constructor.Type as TC
 
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
@@ -128,10 +124,10 @@ instance Pretty IState where
 
 -- TODO: error prettification
 instance (Pretty a) => Pretty (IResult a) where
-  prettyLines ((r, st), l) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
+    prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
 
 instance (Pretty a) => Pretty [(Address, IResult a)] where
-  prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
+    prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
 
 {- State and result accessors -}
 
@@ -171,8 +167,8 @@ throwE = Control.Monad.Trans.Either.left
 
 -- | Environment lookup, with a thrown error if unsuccessful.
 lookupE :: Identifier -> Interpretation Value
-lookupE n = get >>= maybe (err n) return . lookup n . getEnv
-  where err n = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
+lookupE n = get >>= maybe err return . lookup n . getEnv
+  where err = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
 -- | Environment modification
 modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
@@ -354,10 +350,8 @@ expression (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . 
 expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= return . VRecord . zip is
 
 -- | Interpretation of function construction.
-expression (tag &&& children -> (ELambda i, [b])) =
-  return $ VFunction $ \v ->
-    modifyE ((i,v):) >> expression b
-      >>= (\rv -> modifyE (deleteBy (\(i,_) (j,_) -> i == j) (i,v)) >> return rv)
+expression (tag &&& children -> (ELambda i, [b])) = return $ VFunction $ \v ->
+    modifyE ((i,v):) >> expression b >>= (\rv -> modifyE (deleteBy ((==) `on` fst) (i,v)) >> return rv)
 
 -- | Interpretation of unary/binary operators.
 expression (tag &&& children -> (EOperate otag, cs))
@@ -420,27 +414,28 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
 
+debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
 debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
-replaceTrigger n _             = throwE $ RunTimeTypeError "Invalid trigger body"
+replaceTrigger _ _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
-global n (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
-global n (tag -> TSource) _             = return ()
-global n t (Just e)                     = expression e >>= modifyE . (:) . (n,)
+global _ (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
+global _ (tag -> TSource) _             = return ()
+global n _ (Just e)                     = expression e >>= modifyE . (:) . (n,)
 global n t Nothing | TFunction <- tag t = builtin n t
 global n t Nothing                      = defaultValue t >>= modifyE . (:) . (n,)
 
 -- TODO: qualify names?
 role :: Identifier -> [K3 Declaration] -> Interpretation ()
-role n subDecls = mapM_ declaration subDecls
+role _ subDecls = mapM_ declaration subDecls
 
 -- TODO
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
-annotation n members = undefined
+annotation _ _ = undefined
 
 declaration :: K3 Declaration -> Interpretation ()
 declaration (tag &&& children -> (DGlobal n t eO, ch)) =
@@ -452,10 +447,15 @@ declaration (tag &&& children -> (DTrigger n t e, cs)) =
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
 declaration (tag -> DAnnotation n members)      = annotation n members
 
+declaration _ = undefined
+
 {- Built-in functions -}
 
-ignoreFn e = VFunction $ \_ -> return e
-vfun x = return $ VFunction $ x
+ignoreFn :: Value -> Value
+ignoreFn = VFunction . const . return
+
+vfun :: (Value -> Interpretation Value) -> Interpretation Value
+vfun = return . VFunction
 
 builtin :: Identifier -> K3 Type -> Interpretation ()
 builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
@@ -463,7 +463,7 @@ builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
 genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
 -- parseArgs :: () -> ([String], [(String, String)])
-genBuiltin "parseArgs" t =
+genBuiltin "parseArgs" _ =
   return $ ignoreFn $ VTuple [VCollection [], VCollection []]
 
 
@@ -490,35 +490,35 @@ genBuiltin "openSocket" t =
           withEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
 
 -- close :: ChannelId -> ()
-genBuiltin "close" t = vfun $ \(VString cid) -> withEngine (close cid) >> return vunit
+genBuiltin "close" _ = vfun $ \(VString cid) -> withEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
-genBuiltin "registerFileDataTrigger"     t = registerNotifier "data"
-genBuiltin "registerFileCloseTrigger"    t = registerNotifier "close"
+genBuiltin "registerFileDataTrigger"     _ = registerNotifier "data"
+genBuiltin "registerFileCloseTrigger"    _ = registerNotifier "close"
 
-genBuiltin "registerSocketAcceptTrigger" t = registerNotifier "accept"
-genBuiltin "registerSocketDataTrigger"   t = registerNotifier "data"
-genBuiltin "registerSocketCloseTrigger"  t = registerNotifier "close"
+genBuiltin "registerSocketAcceptTrigger" _ = registerNotifier "accept"
+genBuiltin "registerSocketDataTrigger"   _ = registerNotifier "data"
+genBuiltin "registerSocketCloseTrigger"  _ = registerNotifier "close"
 
 -- <source>HasRead :: () -> Bool
-genBuiltin (channelMethod -> ("HasRead", Just n)) t = vfun $ \_ -> checkChannel
+genBuiltin (channelMethod -> ("HasRead", Just n)) _ = vfun $ \_ -> checkChannel
   where checkChannel = withEngine (hasRead n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Read :: () -> t
-genBuiltin (channelMethod -> ("Read", Just n)) t = vfun $ \_ -> withEngine (doRead n) >>= throwOnError
+genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> withEngine (doRead n) >>= throwOnError
   where throwOnError (Just v) = return v
         throwOnError Nothing =
           throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 -- <sink>HasWrite :: () -> Bool
-genBuiltin (channelMethod -> ("HasWrite", Just n)) t = vfun $ \_ -> checkChannel
+genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \_ -> checkChannel
   where checkChannel = withEngine (hasWrite n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
-genBuiltin (channelMethod -> ("Write", Just n)) t =
+genBuiltin (channelMethod -> ("Write", Just n)) _ =
   vfun $ \arg -> withEngine (doWrite n arg) >> return vunit
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
@@ -534,24 +534,24 @@ registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
   vfun $ \cid -> return $ VFunction $ \target ->
     attach cid n target >> return vunit
-  
-  where attach (VString cid) n (targetOfValue -> (addr, tid, v)) = withEngine $ attachNotifier_ cid n (addr, tid, v)
+
+  where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = withEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
-        targetOfValue (VTuple [VTrigger (n, _), VAddress addr]) = (addr, n, vunit)
+        targetOfValue (VTuple [VTrigger (m, _), VAddress addr]) = (addr, m, vunit)
         targetOfValue _ = error "Invalid notifier target"
 
 {- Program initialization methods -}
 
 initEnvironment :: K3 Declaration -> IEnvironment Value
 initEnvironment = initDecl []
-  where initDecl env (tag &&& children -> (DGlobal n t eO, ch)) = foldl initDecl (initGlobal env n t) ch
-        initDecl env (tag &&& children -> (DTrigger n t e, ch)) = foldl initDecl (initTrigger env n) ch
-        initDecl env (tag &&& children -> (DRole r, ch))        = foldl initDecl env ch
+  where initDecl env (tag &&& children -> (DGlobal n t _, ch)) = foldl initDecl (initGlobal env n t) ch
+        initDecl env (tag &&& children -> (DTrigger n _ _, ch)) = foldl initDecl (initTrigger env n) ch
+        initDecl env (tag &&& children -> (DRole _, ch))        = foldl initDecl env ch
         initDecl env _                                          = env
 
         initGlobal env n (tag -> TSink)     = env ++ [(n, VTrigger (n, Nothing))]
-        initGlobal env n (tag -> TFunction) = env -- TODO: mutually recursive functions
+        initGlobal env _ (tag -> TFunction) = env -- TODO: mutually recursive functions
         initGlobal env _ _                  = env
 
         initTrigger env n                   = env ++ [(n, VTrigger (n, Nothing))]
@@ -561,10 +561,10 @@ initState prog engine = (initEnvironment prog, engine)
 
 initMessages :: IResult () -> IO (IResult Value)
 initMessages = \case
-    ((Right _, state), ilog)
-      | Just (VFunction f) <- lookup "atInit" $ getEnv state -> runInterpretation state (f vunit)
-      | otherwise                                            -> return ((unknownTrigger, state), ilog)
-    ((Left err, state), ilog)                                -> return ((Left err, state), ilog)
+    ((Right _, s), ilog)
+      | Just (VFunction f) <- lookup "atInit" $ getEnv s -> runInterpretation s (f vunit)
+      | otherwise                                            -> return ((unknownTrigger, s), ilog)
+    ((Left err, s), ilog)                                -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
 initProgram :: K3 Declaration -> IEngine -> IO (IResult Value)
@@ -582,8 +582,8 @@ standaloneInterpreter :: (IEngine -> IO a) -> IO a
 standaloneInterpreter f = simulationEngine [defaultAddress] valueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
-runExpression e = standaloneInterpreter withEngine
-  where withEngine engine = valueOfInterpretation ([], engine) (expression e)
+runExpression e = standaloneInterpreter withEngine'
+  where withEngine' engine = valueOfInterpretation ([], engine) (expression e)
 
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
@@ -597,17 +597,17 @@ runProgram peers prog = simulationEngine peers valueWD >>= (\e -> runEngine disp
 {- Message processing -}
 
 valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
-valueProcessor = MessageProcessor { initialize = initProgram, process = process, status = status, finalize = finalize }
+valueProcessor = MessageProcessor { initialize = initProgram, process = processVP, status = statusVP, finalize = finalizeVP }
   where
-        status res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-        finalize res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+        statusVP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+        finalizeVP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
 
-        process (addr, n, args) r =
+        processVP (_, n, args) r =
           maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
 
-        runTrigger r n a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
-        runTrigger r n a (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
-        runTrigger r n a _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
+        runTrigger r _ a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
+        runTrigger r n _ (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
+        runTrigger r n _ _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
 
         unknownTrigger r n = tError r $ "Unknown trigger " ++ n
 
@@ -615,21 +615,22 @@ valueProcessor = MessageProcessor { initialize = initProgram, process = process,
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
+
 dispatchValueProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 dispatchValueProcessor = MessageProcessor {
-    initialize = initialize,
-    process = process,
-    status = status,
-    finalize = finalize
+    initialize = initializeDVP,
+    process = processDVP,
+    status = statusDVP,
+    finalize = finalizeDVP
 } where
-    initialize program engine = sequence [initNode node program engine | node <- nodes engine]
+    initializeDVP program engine = sequence [initNode node program engine | node <- nodes engine]
 
     initNode node program engine = do
         iProgram <- initProgram program engine
         return (node, iProgram)
 
-    process (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> putStrLn ("processing " ++ show addr ++ " " ++ name) 
+    processDVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
+        dispatch addr (\s -> putStrLn ("processing " ++ show addr ++ " " ++ name)
                               >> putStr "args " >> print args
                               >> runTrigger' s name args)
 
@@ -638,9 +639,9 @@ dispatchValueProcessor = MessageProcessor {
         Just ft -> runTrigger s n a ft
 
     runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (Maybe (), IResult Value)
-    runTrigger r n a (VTrigger (_, Just f)) = fmap (Just (),) $ runInterpretation (getResultState r) $ f a
-    runTrigger r n a (VTrigger _)           = fmap (Just (),) $ return . iError r $ "Uninitialized trigger " ++ n
-    runTrigger r n a _                      = fmap (Just (),) $ return . tError r $ "Invalid trigger or sink value for " ++ n
+    runTrigger r _ a (VTrigger (_, Just f)) = fmap (Just (),) $ runInterpretation (getResultState r) $ f a
+    runTrigger r n _ (VTrigger _)           = fmap (Just (),) $ return . iError r $ "Uninitialized trigger " ++ n
+    runTrigger r n _ _                      = fmap (Just (),) $ return . tError r $ "Invalid trigger or sink value for " ++ n
 
     unknownTrigger r n = tError r $ "Unknown trigger " ++ n
 
@@ -648,14 +649,15 @@ dispatchValueProcessor = MessageProcessor {
     tError r = mkError r . RunTimeTypeError
     mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
-    status [] = Left []
-    status is@(p:ps) = case sStatus p of
+    -- TODO: Fix status computation to use rest of list.
+    statusDVP [] = Left []
+    statusDVP is@(p:_) = case sStatus p of
         Left _ -> Left is
         Right _ -> Right is
 
     sStatus (node, res) = either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
 
-    finalize = mapM sFinalize
+    finalizeDVP = mapM sFinalize
 
     sFinalize (node, res) = do
         res' <- either (const $ return res) (const $ finalProgram $ getResultState res) $ getResultVal res
@@ -689,7 +691,7 @@ prettyEnv :: Show v => IEnvironment v -> String
 prettyEnv env = intercalate "\n" $ ["Environment:"] ++ map show (reverse env)
 
 putIResult :: Show a => IResult a -> IO ()
-putIResult ((Left err, (env, eng)), ilog)  = putStrLn (prettyErrorEnv (err,env)) >> putEngine eng
-putIResult ((Right val, (env, eng)), ilog) = putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putEngine eng
+putIResult ((Left err, (env, eng)), _)  = putStrLn (prettyErrorEnv (err,env)) >> putEngine eng
+putIResult ((Right val, (env, eng)), _) = putStr (concatMap (++"\n\n") [prettyEnv env, prettyVal]) >> putEngine eng
   where prettyVal = "Value:\n"++show val
 
