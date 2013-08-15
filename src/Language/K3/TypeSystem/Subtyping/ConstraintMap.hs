@@ -134,6 +134,11 @@ instance ConstraintMapBoundable QVar QualifiedTVar where
   cmBound = QBQVar
 instance ConstraintMapBoundable (Set TQual) QualifiedTVar where
   cmBound = QBQualSet
+instance (ConstraintMapBoundable a c, ConstraintMapBoundable b c)
+  => ConstraintMapBoundable (Coproduct a b) c where
+  cmBound x = case x of
+                CLeft y -> cmBound y
+                CRight y -> cmBound y
 
 instance Monoid ConstraintMap where
   mempty = ConstraintMap mempty mempty

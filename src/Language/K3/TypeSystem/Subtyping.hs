@@ -52,8 +52,8 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
     else do
       let cs = cs' `csUnion` cs'' `csUnion` csSing (constraint qa' qa'')
       let cs''' = calculateClosure cs
-      let k' = kernel cs'
-      mk'' <- canonicalize $ kernel cs''
+      let k' = kernel $ calculateClosure cs'
+      mk'' <- canonicalize $ kernel $ calculateClosure cs''
       case mk'' of
         Nothing -> return False
         Just k'' ->
@@ -117,8 +117,22 @@ generalPrimitiveSubtype mode visited cm c =
     (IntermediateConstraint (CRight a) (CRight a'),_) | a == a' -> True
     (QualifiedIntermediateConstraint (CRight qa) (CRight qa'),_) | qa == qa' ->
       True
-    -- Visited rule.  If the bound has already been visited, we are finished.
+    -- Revisit rule.  If the bound has already been visited, we are finished.
     _ | c `Set.member` visited -> True
+    -- Known bound rules.  If the bound was already present in the constraint
+    -- map, we are finished.
+    (IntermediateConstraint lb (CRight a),_)
+      | cmBound lb `Set.member` cmBoundsOf a upperBound cm -> True
+    (IntermediateConstraint (CRight a) ub,_)
+      | cmBound ub `Set.member` cmBoundsOf a lowerBound cm -> True
+    (QualifiedIntermediateConstraint lb (CRight qa),_)
+      | cmBound lb `Set.member` cmBoundsOf qa upperBound cm -> True
+    (QualifiedIntermediateConstraint (CRight qa) ub,_)
+      | cmBound ub `Set.member` cmBoundsOf qa lowerBound cm -> True
+    (QualifiedLowerConstraint lb qa,_)
+      | cmBound lb `Set.member` cmBoundsOf qa upperBound cm -> True
+    (QualifiedUpperConstraint qa ub,_)
+      | cmBound ub `Set.member` cmBoundsOf qa lowerBound cm -> True
     -- Decomposition rule.  Perform closure on this constraint and proceed on
     -- each result.
     (IntermediateConstraint (CLeft _) (CLeft _),_) ->
