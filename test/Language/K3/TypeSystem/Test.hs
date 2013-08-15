@@ -22,9 +22,21 @@ import Language.K3.TypeSystem
 
 tests :: IO [Test]
 tests =
-  let files = getDirectoryContents testFilePath in
-  let k3files = filter (".k3" `isSuffixOf`) <$> files in
-  map (\path -> testCase path $ mkDirectSourceTest path) <$> k3files
+  concat <$> sequence
+    [ mkTests "Typecheck" True "success"
+    , mkTests "Type fail" True "failure"
+    ]
+  where
+    mkTests :: String -> Bool -> FilePath -> IO [Test]
+    mkTests name success subdir =
+      let prefix = testFilePath </> subdir in
+      let files = filter (".k3" `isSuffixOf`) <$> getDirectoryContents prefix in
+      sequence    
+        [
+          testGroup name <$>
+            map (\path -> testCase path $ mkDirectSourceTest path success) <$>
+            map (prefix </>) <$> files
+        ]
 
 testFilePath :: FilePath
 testFilePath = "examples" </> "typeSystem"
@@ -32,15 +44,18 @@ testFilePath = "examples" </> "typeSystem"
 -- |This function, when given the path of an example source file, will generate
 --  a test to parse and typecheck it.  The parsed code is submitted directly to
 --  the type system; it is not preprocessed in any way.
-mkDirectSourceTest :: FilePath -> Assertion
-mkDirectSourceTest path = do
-  src <- readFile $ testFilePath </> path
+mkDirectSourceTest :: FilePath -> Bool -> Assertion
+mkDirectSourceTest path success = do
+  src <- readFile path
   case parseSource path src of
     Left err -> assertFailure $ "Parse failure: " ++ show err
     Right decl ->
-      case typecheck Map.empty Map.empty decl of
-        Left errs -> assertFailure $ "Typechecking errors: " ++ show errs
-        Right _ -> assert True
+      case (typecheck Map.empty Map.empty decl, success) of
+        (Left errs, True) ->
+          assertFailure $ "Typechecking errors: " ++ show errs
+        (Right _, True) -> assert True
+        (Left _, False) -> assert True
+        (Right _, False) -> assert "Incorrectly typechecked!"
 
 -- |Parses a top-level source file in K3 *without* processing the AST for
 --  program generation and the like.
