@@ -243,6 +243,6 @@ deriveAnnotationMember aEnv env decl =
 --  error if it cannot be found.
 requireQuantType :: UID -> Identifier -> TNormEnv
                  -> TypecheckM NormalQuantType
-requireQuantType u i env = do
+requireQuantType u i env =
   envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
              (TEnvIdentifier i) env
