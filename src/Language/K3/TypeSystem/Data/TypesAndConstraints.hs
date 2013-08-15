@@ -37,6 +37,7 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 ) where
 
 import Data.Function
+import Data.List
 import Data.Map (Map)
 import Data.Monoid
 import Data.Set (Set)
@@ -75,10 +76,8 @@ instance Ord (TVar a) where
   compare = compare `on` tvarId
 instance Show (TVar a) where
   show a = case a of
-    QTVar n _ -> showN n
-    UTVar n _ -> showN n
-    where
-      showN n = "α" ++ show n
+    QTVar n _ -> "α°" ++ show n
+    UTVar n _ -> "α" ++ show n
 
 -- |A constraint kind describing the constraints pap
 type ConstraintSetType c = (Show c)
@@ -298,7 +297,12 @@ data AnyOperator
 --  to help ensure that it is treated abstractly by its users.  This will
 --  permit structural changes for performance optimization in the future.
 data ConstraintSet = ConstraintSet (Set Constraint)
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
+  
+instance Show ConstraintSet where
+  show (ConstraintSet cs) =
+    let content = concat $ intersperse "," $ map show $ Set.toList cs in
+    "{" ++ content ++ "}"
   
 instance Monoid ConstraintSet where
   mempty = ConstraintSet Set.empty
