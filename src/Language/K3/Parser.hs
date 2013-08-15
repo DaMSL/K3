@@ -494,15 +494,6 @@ uidTagUnOp :: K3Parser (a -> K3 Expression)
             -> K3Parser (a -> K3 Expression)
 uidTagUnOp mg = (\g uid x -> g x @+ EUID uid) <$> mg <*> nextUID
 
-{-
-binary :: forall (m :: * -> *) a b t.
-            Applicative m =>
-            t
-            -> (a -> a -> a)
-            -> Assoc
-            -> (t -> m b)
-            -> Text.Parser.Expression.Operator m a
--}
 binary  op cstr assoc parser =
   Infix (uidTagBinOp $ (pure cstr) <* parser op) assoc
 prefix  op cstr parser       =
@@ -518,15 +509,6 @@ getSpan l = case find isESpan l of
               Just (ESpan s) -> s
               Nothing -> Span "<dummy>" 0 0 0 0
 
-{-
-binOpSpan :: forall t t1 c.
-               (AContainer c, IElement c ~ Annotation Expression) =>
-               (Tree (t1  [Annotation Expression])
-                -> Tree (t  [Annotation Expression]) -> c)
-               -> Tree (t1  [Annotation Expression])
-               -> Tree (t  [Annotation Expression])
-               -> c
--}
 binOpSpan cstr l r = (cstr l r) @+ (ESpan $ coverSpans (getSpan la) (getSpan ra))
   where la = getAnnotations l
         ra = getAnnotations r
@@ -536,14 +518,6 @@ unOpSpan opName cstr e = (cstr e) @+ (ESpan $ prefixSpan $ getSpan al)
   where al = getAnnotations e
         prefixSpan (Span n l1 c1 l2 c2) = Span n l1 (c1-(length opName)) l2 c2
 
-{-
-binaryParseOp :: forall (m :: * -> *) b t.
-                       Applicative m =>
-                       (t, EC.Operator)
-                       -> (t -> m b)
-                       -> Text.Parser.Expression.Operator
-                            m (Tree (Expression  [Annotation Expression]))
--}
 binaryParseOp (opName, opTag) = binary opName (binOpSpan $ EC.binop opTag) AssocLeft
 mkBinOp  x = binaryParseOp x operator
 mkBinOpK x = binaryParseOp x keyword
