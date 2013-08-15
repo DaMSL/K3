@@ -12,20 +12,15 @@ module Language.K3.TypeSystem.TypeDecision.SkeletalEnvironment
 
 import Control.Applicative
 import Control.Arrow
-import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.Writer
 import Data.Map (Map)
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Monoid
 import qualified Data.Traversable as Trav
-import Data.Tree
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Common
 import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations

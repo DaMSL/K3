@@ -15,9 +15,6 @@ import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Language.K3.Core.Annotation
-import Language.K3.Core.Common
-import Language.K3.Core.Type
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
