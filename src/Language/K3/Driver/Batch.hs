@@ -45,6 +45,6 @@ runBatch op = do
     case p of
         Left e -> putStrLn e
         Right q -> do
-            let q' = setDefaultRole q "__global" (defaultRole $ mode op)
+            let q' = setDefaultRole q "__global" (peerRole . head . peerList $ mode op)
             putStr $ pretty q'
             runProgram [defaultAddress] q'
