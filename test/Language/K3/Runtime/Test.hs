@@ -19,7 +19,19 @@ import Test.HUnit hiding (Test)
 import Test.Framework.Providers.API
 import Test.Framework.Providers.HUnit
 
+import Language.K3.Core.Annotation
+import Language.K3.Core.Common
+import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
+
+import qualified Language.K3.Core.Constructor.Type        as TC
+import qualified Language.K3.Core.Constructor.Expression  as EC
+import qualified Language.K3.Core.Constructor.Declaration as DC
+
 import Language.K3.Runtime.Engine
+import Language.K3.Interpreter
+import Language.K3.Pretty
 
 constructBuffer :: [Test]
 constructBuffer = [
@@ -182,24 +194,33 @@ handleTests :: [Test]
 handleTests = [
       testCase "Open readable file" $ 
         let (n, path) = ("testSource", "data/expr-i.txt") in
-        withSimulation (\eg -> openFile n path exprWD Nothing "r" eg >> failExternalEndpoint n eg)
+        withSimulation (\eg -> openFile n path externalValueWD Nothing "r" eg >> failExternalEndpoint n eg)
 
     , testCase "Open writeable file" $ 
-        let path = "data/out.txt" in
-        withSimulation (openFile "testSink" path exprWD Nothing "w") >> failPath path
+        let (n, path) = ("testSink", "data/out.txt") in
+        withFile n path "w" (const $ failPath path) (const $ return ()) 
+
+    , testCase "Write to file" $
+        let (n, path) = ("testSink", "data/out.txt") in
+        withFile n path "w" (const $ failPath path) (doWrite n $ VInt 1)
+
+    , testCase "Read from same file" $
+        let (n, path) = ("testSource", "data/out.txt") in
+        withFile n path "r" failRead (doRead n)
+
+    , testCase "Read simple syntax values from file" $
+        readAndShowValue "testSource" "data/expr-i.txt"
+
+    , testCase "Read complex syntax values from file" $
+        readAndShowValue "testSource" "data/expr-ii.txt"    
 
     -- TODO
     , testCase "Open readable socket"  $ return ()
     , testCase "Open writeable socket" $ return ()
 
-    , testCase "Close file"   $ return ()
-    , testCase "Close socket" $ return ()
-
     , testCase "Read available"   $ return ()
     , testCase "Write available"  $ return ()
 
-    , testCase "Read from file"   $ return ()
-    , testCase "Write to file"    $ return ()
     , testCase "Read from socket" $ return ()
     , testCase "Write to socket"  $ return ()
   ]
@@ -209,8 +230,20 @@ handleTests = [
         failExternalEndpoint n (endpoints -> EEndpointState _ eeps) = getEndpoint n eeps >>= flip unless failed . isJust
 
         failPath p = doesFileExist p >>= flip unless failed
+        failRead   = flip when failed . isNothing
         
-        withSimulation f = simulationEngine [defaultAddress] exprWD >>= f
+        withSimulation f = simulationEngine [defaultAddress] externalValueWD >>= f
+
+        withFile n path mode test f = 
+          withSimulation (\eg -> 
+            openFile n path externalValueWD Nothing mode eg 
+              >> f eg >>= (\v -> close n eg >> return v)) >>= test
+
+        readAndShowValue n path =
+          withFile n path "r" failRead (\eg -> do
+            v <- doRead n eg
+            print v
+            return v)
 
 notificationTests :: [Test]
 notificationTests = [
