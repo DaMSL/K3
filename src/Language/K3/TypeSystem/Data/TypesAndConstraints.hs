@@ -37,7 +37,6 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 ) where
 
 import Data.Function
-import Data.List
 import Data.Map (Map)
 import Data.Monoid
 import Data.Set (Set)
