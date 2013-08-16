@@ -19,7 +19,7 @@ import qualified Language.K3.Core.Constructor.Type as T
 
 import Language.K3.Interpreter
 import Language.K3.Parser
-import Language.K3.Runtime.Engine (Address(..), defaultAddress)
+import Language.K3.Runtime.Engine (Address(..), SystemEnvironment)
 
 import Language.K3.Driver.Options
 
@@ -39,10 +39,11 @@ setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDe
 setDefaultRole d _ _ = d
 
 mkSystemEnv :: [Peer] -> SystemEnvironment
-mkSystemEnv ps = [(address peer, mapping peer) | peer <- ps]
+mkSystemEnv ps = [(address peer, selfAddress peer : mapping peer) | peer <- ps]
   where
-    address peer = Address (peerHost peer, peerPort peer)
-    mapping peer = catMaybes [ fmap (k,) pv | (k, v) <- peerVals peer, let pv = parseExpression v ]
+    address     peer = Address (peerHost peer, peerPort peer)
+    mapping     peer = catMaybes [ fmap (k,) pv | (k, v) <- peerVals peer, let pv = parseExpression v ]
+    selfAddress peer = ("me", E.address (E.constant $ E.CString $ peerHost peer) (E.constant $ E.CInt $ peerPort peer))
 
 
 runBatch :: Options -> IO ()
