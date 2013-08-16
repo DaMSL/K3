@@ -5,3 +5,5 @@ tmp
 /.dist-buildwrapper
 /.settings
 /.project
+
+data/out.txt
