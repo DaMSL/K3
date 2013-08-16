@@ -1,0 +1,9 @@
+declare nodeCounter : mut int = 0
+
+trigger join : () = \_ -> (register, node1:40000) <- 1
+
+trigger register : int = \x -> nodeCounter = nodeCounter + x
+
+source go : () = value ()
+
+~~ go |> join
