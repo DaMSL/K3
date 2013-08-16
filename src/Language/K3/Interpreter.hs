@@ -111,8 +111,6 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 -- | A type capturing the environment resulting from an interpretation
 type REnvironment = Either EnvOnError (IEnvironment Value)
 
-type SystemEnvironment = [(Address, [(Identifier, K3 Expression)])]
-
 instance Pretty IState where
   prettyLines (env, engine) = ["Environment:"] ++ map show env ++ (lines $ show engine)
 
@@ -158,6 +156,10 @@ valueOfInterpretation s i =
 -- till date, and the current state.
 throwE :: InterpretationError -> Interpretation a
 throwE = Control.Monad.Trans.Either.left
+
+-- | Test if a variable is defined in the current interpretation environment.
+elemE :: Identifier -> Interpretation Bool
+elemE n = get >>= return . maybe False (const True) . find ((n == ) . fst) . getEnv
 
 -- | Environment lookup, with a thrown error if unsuccessful.
 lookupE :: Identifier -> Interpretation Value
@@ -416,12 +418,16 @@ replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (
 replaceTrigger _ _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
-global n (tag -> TSink) (Just e)        = expression e >>= replaceTrigger n
-global _ (tag -> TSink) Nothing         = throwE $ RunTimeInterpretationError "Invalid sink trigger"
-global _ (tag -> TSource) _             = return ()
-global n _ (Just e)                     = expression e >>= modifyE . (:) . (n,)
-global n t Nothing | TFunction <- tag t = builtin n t
-global n t Nothing                      = defaultValue t >>= modifyE . (:) . (n,)
+global n t eOpt = elemE n >>= \case
+  True  -> return ()
+  False -> global' n t eOpt
+  where
+    global' n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
+    global' _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Invalid sink trigger"
+    global' _ (tag -> TSource) _           = return ()
+    global' n _ (Just e)                   = expression e >>= modifyE . (:) . (n,)
+    global' n t@(tag -> TFunction) Nothing = builtin n t
+    global' n t Nothing                    = defaultValue t >>= modifyE . (:) . (n,)
 
 -- TODO: qualify names?
 role :: Identifier -> [K3 Declaration] -> Interpretation ()
@@ -537,21 +543,29 @@ registerNotifier n =
 
 {- Program initialization methods -}
 
-initEnvironment :: K3 Declaration -> IEnvironment Value
-initEnvironment = initDecl []
-  where initDecl env (tag &&& children -> (DGlobal n t _, ch)) = foldl initDecl (initGlobal env n t) ch
-        initDecl env (tag &&& children -> (DTrigger n _ _, ch)) = foldl initDecl (initTrigger env n) ch
-        initDecl env (tag &&& children -> (DRole _, ch))        = foldl initDecl env ch
-        initDecl env _                                          = env
+initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> IO IState
+initEnvironment bootstrap decl st = foldM doBootstrap st bootstrap >>= return . flip initDecl decl
+  where initDecl st (tag &&& children -> (DGlobal n t _, ch))  = foldl initDecl (initGlobal st n t) ch
+        initDecl st (tag &&& children -> (DTrigger n _ _, ch)) = foldl initDecl (initTrigger st n) ch
+        initDecl st (tag &&& children -> (DRole _, ch))        = foldl initDecl st ch
+        initDecl st _                                          = st
 
-        initGlobal env n (tag -> TSink)     = env ++ [(n, VTrigger (n, Nothing))]
-        initGlobal env _ (tag -> TFunction) = env -- TODO: mutually recursive functions
-        initGlobal env _ _                  = env
+        initGlobal (env,eg) n (tag -> TSink)     = (env ++ [(n, VTrigger (n, Nothing))], eg)
+        initGlobal (env,eg) _ (tag -> TFunction) = (env, eg) -- TODO: mutually recursive functions
+        initGlobal (env,eg) _ _                  = (env, eg)
 
-        initTrigger env n                   = env ++ [(n, VTrigger (n, Nothing))]
+        initTrigger (env,eg) n                   = (env ++ [(n, VTrigger (n, Nothing))], eg)
 
-initState :: K3 Declaration -> IEngine -> IState
-initState prog engine = (initEnvironment prog, engine)
+        doBootstrap st (n,e) =
+          runInterpretation st (expression e) >>= (\res ->
+            case getResultVal res of
+              Left err -> return st -- TODO: log bootstrap error
+              Right v  -> 
+                let (nst, eg) = getResultState res
+                in return (nst ++ [(n,v)], eg))
+
+initState :: PeerBootstrap -> K3 Declaration -> IEngine -> IO IState
+initState bootstrap prog engine = initEnvironment bootstrap prog ([], engine)
 
 initMessages :: IResult () -> IO (IResult Value)
 initMessages = \case
@@ -561,8 +575,9 @@ initMessages = \case
     ((Left err, s), ilog)                                -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-initProgram :: K3 Declaration -> IEngine -> IO (IResult Value)
-initProgram prog engine = (runInterpretation (initState prog engine) $ declaration prog) >>= initMessages
+initProgram :: PeerBootstrap -> K3 Declaration -> IEngine -> IO (IResult Value)
+initProgram bootstrap prog engine =
+  initState bootstrap prog engine >>= flip runInterpretation (declaration prog) >>= initMessages
 
 finalProgram :: IState -> IO (IResult Value)
 finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
@@ -573,7 +588,7 @@ finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup 
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
-standaloneInterpreter f = simulationEngine [defaultAddress] syntaxValueWD >>= f
+standaloneInterpreter f = simulationEngine defaultSystem syntaxValueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
 runExpression e = standaloneInterpreter withEngine'
@@ -582,81 +597,77 @@ runExpression e = standaloneInterpreter withEngine'
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
 
-runProgramInitializer :: K3 Declaration -> IO ()
-runProgramInitializer p = standaloneInterpreter (initProgram p) >>= putIResult
+runProgramInitializer :: PeerBootstrap -> K3 Declaration -> IO ()
+runProgramInitializer bootstrap p = standaloneInterpreter (initProgram bootstrap p) >>= putIResult
 
-runProgram :: [Address] -> K3 Declaration -> IO ()
-runProgram peers prog = simulationEngine peers syntaxValueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
+runProgram :: SystemEnvironment -> K3 Declaration -> IO ()
+runProgram systemEnv prog =
+  simulationEngine systemEnv syntaxValueWD >>= (\e -> runEngine virtualizedProcessor systemEnv e prog)
 
--- TODO: thread sysEnv into program initialization
---runProgram' :: SystemEnvironment -> K3 Declaration -> IO ()
---runProgram' sysEnv prog = simulationEngine peers syntaxValueWD >>= (\e -> runEngine dispatchValueProcessor e prog)
---  where peers = map fst sysEnv
 
 {- Message processing -}
 
-valueProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
-valueProcessor = MessageProcessor { initialize = initProgram, process = processVP, status = statusVP, finalize = finalizeVP }
-  where
-        statusVP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-        finalizeVP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (IResult Value)
+runTrigger r n a = \case
+  (VTrigger (_, Just f)) -> runInterpretation (getResultState r) $ f a
+  (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
+  _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
 
-        processVP (_, n, args) r =
-          maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
-
-        runTrigger r _ a (VTrigger (_, Just f)) = runInterpretation (getResultState r) $ f a
-        runTrigger r n _ (VTrigger _)           = return . iError r $ "Uninitialized trigger " ++ n
-        runTrigger r n _ _                      = return . tError r $ "Invalid trigger or sink value for " ++ n
-
-        unknownTrigger r n = tError r $ "Unknown trigger " ++ n
-
-        iError r = mkError r . RunTimeInterpretationError
+  where iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
+uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResult Value) (IResult Value)
+uniProcessor = MessageProcessor { initialize = initUP, process = processUP, status = statusUP, finalize = finalizeUP }
+  where
+        initUP [] prog eg = initProgram [] prog eg
+        initUP ((_,inits):t) prog eg = initProgram inits prog eg
 
-dispatchValueProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
-dispatchValueProcessor = MessageProcessor {
-    initialize = initializeDVP,
-    process = processDVP,
-    status = statusDVP,
-    finalize = finalizeDVP
+        statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+        finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+
+        processUP (_, n, args) r =
+          maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
+
+        unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
+
+
+
+virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
+virtualizedProcessor = MessageProcessor {
+    initialize = initializeVP,
+    process = processVP,
+    status = statusVP,
+    finalize = finalizeVP
 } where
-    initializeDVP program engine = sequence [initNode node program engine | node <- nodes engine]
+    initializeVP systemEnv program engine =
+      sequence [initNode node systemEnv program engine | node <- nodes engine]
 
-    initNode node program engine = do
-        iProgram <- initProgram program engine
+    initNode node systemEnv program engine = do
+        initEnv <- return $ maybe [] id $ lookup node systemEnv
+        iProgram <- initProgram initEnv program engine
         return (node, iProgram)
 
-    processDVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
+    processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
         dispatch addr (\s -> putStrLn ("processing " ++ show addr ++ " " ++ name)
                               >> putStr "args " >> print args
                               >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
         Nothing -> return (Just (), unknownTrigger s n)
-        Just ft -> runTrigger s n a ft
+        Just ft -> fmap (Just (),) $ runTrigger s n a ft
 
-    runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (Maybe (), IResult Value)
-    runTrigger r _ a (VTrigger (_, Just f)) = fmap (Just (),) $ runInterpretation (getResultState r) $ f a
-    runTrigger r n _ (VTrigger _)           = fmap (Just (),) $ return . iError r $ "Uninitialized trigger " ++ n
-    runTrigger r n _ _                      = fmap (Just (),) $ return . tError r $ "Invalid trigger or sink value for " ++ n
-
-    unknownTrigger r n = tError r $ "Unknown trigger " ++ n
-
-    iError r = mkError r . RunTimeInterpretationError
-    tError r = mkError r . RunTimeTypeError
-    mkError ((_,st), ilog) v = ((Left v, st), ilog)
+    unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
     -- TODO: Fix status computation to use rest of list.
-    statusDVP [] = Left []
-    statusDVP is@(p:_) = case sStatus p of
+    statusVP [] = Left []
+    statusVP is@(p:_) = case sStatus p of
         Left _ -> Left is
         Right _ -> Right is
 
     sStatus (node, res) = either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
 
-    finalizeDVP = mapM sFinalize
+    finalizeVP = mapM sFinalize
 
     sFinalize (node, res) = do
         res' <- either (const $ return res) (const $ finalProgram $ getResultState res) $ getResultVal res

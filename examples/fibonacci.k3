@@ -5,8 +5,8 @@ trigger start : int = \n -> (fibonacci, me) <- (n, 0, 1)
 trigger fibonacci : (immut int, immut int, immut int) = \x ->
   bind x as (n,a,b) in
   if n <= 1
-  then (result, 127.0.0.1:40000) <- b
-  else (fibonacci, 127.0.0.1:40000) <- (n - 1, b, a + b)
+  then (result, me) <- b
+  else (fibonacci, me) <- (n - 1, b, a + b)
 
 trigger result : int = \x -> final = x
 

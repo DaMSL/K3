@@ -232,7 +232,7 @@ handleTests = [
         failPath p = doesFileExist p >>= flip unless failed
         failRead   = flip when failed . isNothing
         
-        withSimulation f = simulationEngine [defaultAddress] syntaxValueWD >>= f
+        withSimulation f = simulationEngine defaultSystem syntaxValueWD >>= f
 
         withFile n path mode test f = 
           withSimulation (\eg -> 
@@ -259,7 +259,7 @@ notificationTests = [
 engineTests :: [Test]
 engineTests = [
       testCase "Simulation engine constructor" $ 
-        simulationEngine [defaultAddress] exprWD >>= flip unless failed . simulation
+        simulationEngine defaultSystem exprWD >>= flip unless failed . simulation
 
     -- TODO
     , testCase "Network engine constructor" $ return ()

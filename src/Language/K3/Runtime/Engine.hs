@@ -9,6 +9,8 @@ module Language.K3.Runtime.Engine (
     Address(..)
   , FrameDesc(..)
   , WireDesc(..)
+  , PeerBootstrap(..)
+  , SystemEnvironment(..)
   , MessageProcessor(..)
 
   , Engine(..)
@@ -17,6 +19,7 @@ module Language.K3.Runtime.Engine (
 
   , defaultAddress
   , defaultConfig
+  , defaultSystem
 
   , simpleQueues
   , perPeerQueues
@@ -26,6 +29,8 @@ module Language.K3.Runtime.Engine (
   , networkEngine
 
   , exprWD
+
+  , nodes
 
   , runEngine
   , forkEngine
@@ -133,13 +138,16 @@ import System.Mem.Weak (Weak)
 import Text.Read
 
 import Network.Socket (withSocketsDo)
-import qualified Network.Transport as NT
+import qualified Network.Transport     as NT
 import qualified Network.Transport.TCP as NTTCP
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+
+import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Type       as TC
 
 import Language.K3.Parser
 import Language.K3.Pretty
@@ -150,12 +158,13 @@ data Address = Address (String, Int) deriving (Eq)
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
-                       , nodes           :: [Address]
+                       , deployment      :: SystemEnvironment
                        , queues          :: MessageQueues a
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
                        , connections     :: EConnectionState }
+
 
 {- Configuration parameters -}
 
@@ -163,6 +172,13 @@ data EngineConfiguration = EngineConfiguration { address           :: Address
                                                , defaultBufferSpec :: BufferSpec
                                                , connectionRetries :: Int
                                                , waitForNetwork    :: Bool }
+
+-- | A bootstrap environment for a peer.
+type PeerBootstrap = [(Identifier, K3 Expression)]
+
+-- | A system environment, to bootstrap a set of deployed peers.
+type SystemEnvironment = [(Address, PeerBootstrap)]
+
 
 {- Message processing -}
 
@@ -198,9 +214,9 @@ data LoopStatus res err = Result res | Error err | MessagesDone res
 
 -- | Each backend provides must provide a message processor which can handle the initialization of
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
-data MessageProcessor prog msg res err = MessageProcessor {
+data MessageProcessor inits prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
-    initialize :: prog -> Engine msg -> IO res,
+    initialize :: inits -> prog -> Engine msg -> IO res,
 
     -- | Process a single message.
     process    :: (Address, Identifier, msg) -> res -> IO res,
@@ -249,8 +265,8 @@ type InternalMessage a = (Address, Identifier, a)
 
 {- Network state -}
 
-data NEndpoint          = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
-data NConnection        = NConnection { conn :: LLConnection, cEndpointAddress :: Address }
+data NEndpoint   = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
+data NConnection = NConnection { conn :: LLConnection, cEndpointAddress :: Address }
 
 -- | Low-level transport layer, built on network-transport
 type LLTransport  = NT.Transport
@@ -363,6 +379,15 @@ defaultConfig = EngineConfiguration { address           = defaultAddress
   where
     bufferSpec = BufferSpec { maxSize = 100, batchSize = 10 }
 
+defaultSystem :: SystemEnvironment
+defaultSystem = [(defaultAddress, [ ("me", defaultAddressExpr)
+                                  , ("peers", defaultPeersExpr)
+                                  , ("role", defaultRoleExpr)])]
+  where defaultAddressExpr = EC.address (EC.constant $ CString "127.0.0.1") (EC.constant $ CInt 40000)
+        defaultPeersExpr = EC.empty TC.address
+        defaultRoleExpr = EC.constant $ CString ""
+
+
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)
 exprWD = WireDesc show (Just . read) PrefixLength
@@ -396,24 +421,24 @@ perTriggerQueues peers triggerIds =
 -- | Simulation engine constructor.
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
-simulationEngine :: [Address] -> WireDesc a -> IO (Engine a)
-simulationEngine peers (internalizeWD -> internalWD) = do
+simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
+simulationEngine systemEnv (internalizeWD -> internalWD) = do
   ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers         <- newEmptyMVar >>= return . Uniprocess
   listeners       <- newMVar []
-  q               <- case peers of
+  q               <- case deployedNodes systemEnv of
                       [addr] -> simpleQueues addr
-                      _      -> perPeerQueues peers
+                      _      -> perPeerQueues $ deployedNodes systemEnv
   endpoints       <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ defaultConfig
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine defaultConfig internalWD ctrl peers q workers listeners endpoints connState
+  return $ Engine defaultConfig internalWD ctrl systemEnv q workers listeners endpoints connState
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
-networkEngine :: [Address] -> WireDesc a -> IO (Engine a)
-networkEngine peers (internalizeWD -> internalWD) = do
+networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
+networkEngine systemEnv (internalizeWD -> internalWD) = do
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers       <- newEmptyMVar >>= return . Uniprocess
   listnrs       <- newMVar []
@@ -422,12 +447,13 @@ networkEngine peers (internalizeWD -> internalWD) = do
   internalConns <- defaultConnectionMap internalSendAddress >>= return . Just
   externalConns <- defaultConnectionMap externalSendAddress
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine defaultConfig internalWD ctrl peers q workers listnrs endpoints connState
+  engine        <- return $ Engine defaultConfig internalWD ctrl systemEnv q workers listnrs endpoints connState
 
   void $ startNetwork engine
   return engine
 
   where
+    peers                      = deployedNodes systemEnv
     defaultConnectionMap addrF = emptyConnectionMap . addrF . address $ defaultConfig
     startNetwork eg            = mapM_ (runPeerEndpoint eg) peers
     runPeerEndpoint eg addr    = openSocketInternal (peerEndpointId addr) addr "r" eg
@@ -439,6 +465,12 @@ internalSendAddress (Address (host, port)) = Address (host, port+1)
 
 externalSendAddress :: Address -> Address
 externalSendAddress (Address (host, port)) = Address (host, port+2)
+
+deployedNodes :: SystemEnvironment -> [Address]
+deployedNodes = map fst
+
+nodes :: Engine a -> [Address]
+nodes e = deployedNodes $ deployment e
 
 -- | Engine classification
 simulation :: Engine a -> Bool
@@ -466,12 +498,12 @@ networkDone e = readMVar (networkDoneV $ control e) >>= return . (0 ==)
 waitForMessage :: Engine a -> IO ()
 waitForMessage e = readSV (messageReadyV $ control e)
 
-processMessage :: MessageProcessor p a r e -> Engine a -> r -> IO (LoopStatus r e)
+processMessage :: MessageProcessor i p a r e -> Engine a -> r -> IO (LoopStatus r e)
 processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
   where term = return $ MessagesDone prevResult
         proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr
 
-runMessages :: (Pretty r, Pretty e) => MessageProcessor p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
+runMessages :: (Pretty r, Pretty e) => MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case
   Result r       -> rcr r
   Error e        -> finish "Error:\n" e
@@ -490,18 +522,18 @@ runMessages msgPrcsr e status = status >>= \case
                                             >> withMVar eeps (mapM_ (flip close e) . H.keys)
 
 
-runEngine :: (Pretty r, Pretty e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ()
-runEngine msgPrcsr e prog = (initialize msgPrcsr prog e)
-                              >>= (\res -> initializeWorker e >> return res)
-                              >>= runMessages msgPrcsr e . return . initStatus
+runEngine :: (Pretty r, Pretty e) => MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ()
+runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
+                              >>= (\res -> initializeWorker eg >> return res)
+                              >>= runMessages msgPrcsr eg . return . initStatus
   where initStatus = either Error Result . status msgPrcsr
 
         initializeWorker (workers -> Uniprocess workerMV) = tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
         initializeWorker (workers -> Multiprocess _)      = error $ "Unsupported engine mode: Multiprocess"
 
-forkEngine :: (Pretty r, Pretty e) => MessageProcessor prog a r e -> Engine a -> prog -> IO ThreadId
-forkEngine msgPrcsr e prog = forkIO $ runEngine msgPrcsr e prog
+forkEngine :: (Pretty r, Pretty e) => MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId
+forkEngine msgPrcsr inits eg prog = forkIO $ runEngine msgPrcsr inits eg prog
 
 waitForEngine :: Engine a -> IO ()
 waitForEngine = readMVar . waitV . control
@@ -1119,8 +1151,8 @@ putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
-  show e@(Engine {nodes = n}) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
-                              | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+  show e@(nodes -> n) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+                      | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
 
 instance (Show a) => Pretty (Engine a) where
   prettyLines = lines . show
