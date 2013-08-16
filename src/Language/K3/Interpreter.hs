@@ -649,8 +649,8 @@ virtualizedProcessor = MessageProcessor {
         return (node, iProgram)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> putStrLn ("processing " ++ show addr ++ " " ++ name)
-                              >> putStr "args " >> print args
+        dispatch addr (\s -> putStrLn ("Processing " ++ show addr ++ " " ++ name)
+                              >> putStr "Args " >> print args
                               >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of

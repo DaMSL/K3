@@ -503,9 +503,10 @@ processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
   where term = return $ MessagesDone prevResult
         proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr
 
-runMessages :: (Pretty r, Pretty e) => MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
+runMessages :: (Pretty r, Pretty e, Show a) => 
+               MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case
-  Result r       -> rcr r
+  Result r       -> putStrLn "Queues" >> putMessageQueues (queues e) >> rcr r
   Error e        -> finish "Error:\n" e
   MessagesDone r -> terminate e >>= \case
                       True -> finalize msgPrcsr r >>= finish "Terminated:\n"
@@ -522,7 +523,8 @@ runMessages msgPrcsr e status = status >>= \case
                                             >> withMVar eeps (mapM_ (flip close e) . H.keys)
 
 
-runEngine :: (Pretty r, Pretty e) => MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ()
+runEngine :: (Pretty r, Pretty e, Show a) =>
+             MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ()
 runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
                               >>= (\res -> initializeWorker eg >> return res)
                               >>= runMessages msgPrcsr eg . return . initStatus
@@ -532,7 +534,8 @@ runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
         initializeWorker (workers -> Multiprocess _)      = error $ "Unsupported engine mode: Multiprocess"
 
-forkEngine :: (Pretty r, Pretty e) => MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId
+forkEngine :: (Pretty r, Pretty e, Show a) =>
+              MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId
 forkEngine msgPrcsr inits eg prog = forkIO $ runEngine msgPrcsr inits eg prog
 
 waitForEngine :: Engine a -> IO ()
@@ -610,21 +613,24 @@ enqueue (ManyByTrigger qsmv) addr n arg = modifyMVar_ qsmv enqueueToTrigger
 dequeue :: MessageQueues a -> IO (Maybe (Address, Identifier, a))
 dequeue = \case
     (Peer qmv)           -> modifyMVar qmv $ return . someMessage
-    (ManyByPeer qsmv)    -> modifyMVar qsmv $ return . someMapMessage mpMessage
-    (ManyByTrigger qsmv) -> modifyMVar qsmv $ return . someMapMessage mtMessage
+    (ManyByPeer qsmv)    -> modifyMVar qsmv $ return . messageFromMap mpDequeue
+    (ManyByTrigger qsmv) -> modifyMVar qsmv $ return . messageFromMap mtDequeue
 
   where someMessage (addr,l) = case trySplit l of
           (nl, Nothing)      -> ((addr, nl), Nothing)
           (nl, Just (n,val)) -> ((addr, nl), Just (addr,n,val))
 
-        someMapMessage f = messageFromMap (uncurry $ rebuildMap f)
-        messageFromMap f = f . trySplit . H.toList . H.filter (not . null)
-        rebuildMap f l kvOpt = (H.fromList l, kvOpt >>= f)
+        messageFromMap f m = 
+          let chosenKVOpt = snd . trySplit . H.toList . H.filter (not . null) $ m
+          in maybe (m, Nothing) (\kv -> rebuild m (fst kv) $ f kv) chosenKVOpt
 
-        mpMessage (addr, idvs) = tryHead idvs >>= return . (\(n,val) -> (addr,n,val))
-        mtMessage ((addr, n), vs) = tryHead vs >>= return . (\v -> (addr,n,v))
+        rebuild m k (nv, r) = (H.adjust (const nv) k m, r)
 
-        tryHead l  = if null l then Nothing else Just $ head l
+        mpDequeue (addr, [])       = ([], Nothing)
+        mpDequeue (addr, (n,v):t)  = (t, Just (addr, n, v))
+        mtDequeue ((addr, n), [])  = ([], Nothing)
+        mtDequeue ((addr, n), v:t) = (t, Just (addr, n, v))
+
         trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
 
 -- | Message passing
