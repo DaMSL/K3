@@ -9,13 +9,13 @@ module Language.K3.Runtime.Engine (
     Address(..)
   , FrameDesc(..)
   , WireDesc(..)
-  , PeerBootstrap(..)
-  , SystemEnvironment(..)
+  , PeerBootstrap
+  , SystemEnvironment
   , MessageProcessor(..)
 
   , Engine(..)
   , EngineConfiguration(..)
-  , EEndpoints(..)
+  , EEndpoints
 
   , defaultAddress
   , defaultConfig
@@ -41,6 +41,7 @@ module Language.K3.Runtime.Engine (
   , dequeue
   , send
 
+  , openBuiltin
   , openFile
   , openSocket
   , close
@@ -64,7 +65,7 @@ module Language.K3.Runtime.Engine (
 
   , MessageQueues(..)
   , Workers(..)
-  , Listeners(..)
+  , Listeners
 
   , NConnection(..)
   , NEndpoint(..)
@@ -74,7 +75,7 @@ module Language.K3.Runtime.Engine (
   , BufferContents(..)
 
   , EndpointBuffer(..)
-  , EndpointBindings(..)
+  , EndpointBindings
   , EndpointNotification(..)
   , Endpoint(..)
   , EEndpointState(..)
@@ -284,11 +285,13 @@ data EConnectionMap = EConnectionMap { anchor :: (Address, Maybe NEndpoint)
 --   The first is optional capturing simulations that cannot send to peers without name resolution.
 newtype EConnectionState = EConnectionState (Maybe (MVar EConnectionMap), MVar EConnectionMap)
 
-{- Endpoints -}
+{- Endpoints and internal IO handles -}
+data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
-  = FileH   (WireDesc a) SIO.Handle
-  | SocketH (WireDesc a) (Either NEndpoint NConnection)
+  = BuiltinH (WireDesc a) SIO.Handle Builtin
+  | FileH    (WireDesc a) SIO.Handle
+  | SocketH  (WireDesc a) (Either NEndpoint NConnection)
 
 data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
 
@@ -325,7 +328,8 @@ data EndpointNotification
   deriving (Eq, Show, Read)
 
 {- Listeners -}
-type ListenerProcessor a b = ListenerState a b -> EndpointBuffer a -> Endpoint a b -> Engine b -> IO (EndpointBuffer a)
+type ListenerProcessor a b =
+  ListenerState a b -> EndpointBuffer a -> Endpoint a b -> Engine b -> IO (EndpointBuffer a)
 
 data ListenerState a b = ListenerState { name       :: Identifier
                                        , engineSync :: (MSampleVar (), MVar Int)
@@ -506,7 +510,7 @@ processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
 runMessages :: (Pretty r, Pretty e, Show a) => 
                MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case
-  Result r       -> putStrLn "Queues" >> putMessageQueues (queues e) >> rcr r
+  Result r       -> debugQueues e >> rcr r
   Error e        -> finish "Error:\n" e
   MessagesDone r -> terminate e >>= \case
                       True -> finalize msgPrcsr r >>= finish "Terminated:\n"
@@ -514,13 +518,15 @@ runMessages msgPrcsr e status = status >>= \case
 
   where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
         cleanup      = cleanC (connections e) >> cleanE (endpoints e)
-        finish msg r = cleanup >> putMVar (waitV $ control e) () >> (putStrLn $ msg ++ pretty r)
+        finish msg r = putStrLn (msg ++ pretty r)
+                        >> cleanup >> tryPutMVar (waitV $ control e) ()
+                        >> putStrLn "... Finished"
 
-        cleanC (EConnectionState (Nothing, x)) = clearConnections x
+        cleanC (EConnectionState (Nothing, x)) = clearConnections x        
         cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
 
-        cleanE (EEndpointState ieps eeps) =    withMVar ieps (mapM_ (flip closeInternal e) . H.keys)
-                                            >> withMVar eeps (mapM_ (flip close e) . H.keys)
+        cleanE (EEndpointState ieps eeps) =    (withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal e))
+                                            >> (withMVar eeps (return . H.keys) >>= mapM_ (flip close e))
 
 
 runEngine :: (Pretty r, Pretty e, Show a) =>
@@ -532,7 +538,7 @@ runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
 
         initializeWorker (workers -> Uniprocess workerMV) = tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
-        initializeWorker (workers -> Multiprocess _)      = error $ "Unsupported engine mode: Multiprocess"
+        initializeWorker _                                = error $ "Unsupported engine mode: Multiprocess"
 
 forkEngine :: (Pretty r, Pretty e, Show a) =>
               MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId
@@ -549,33 +555,31 @@ terminateEngine e = modifyMVar_ (terminateV $ control e) (\_ -> return True)
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 internalListenerProcessor :: ListenerProcessor (InternalMessage a) a
-internalListenerProcessor ls@(ListenerState _ (msgAvail, _) _) buf ep eg =
+internalListenerProcessor (engineSync -> (msgAvail, _)) buf _ eg =
   enqueueEBuffer (queues eg) buf >>= (\buf -> writeSV msgAvail () >> return buf)
 
 externalListenerProcessor :: ListenerProcessor a a
-externalListenerProcessor ls@(ListenerState _ (msgAvail, _) _) buf ep eg =
+externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep eg =
   notifySubscribers SocketData (subscribers ep) eg >> writeSV msgAvail () >> return buf
 
 runNEndpoint :: ListenerState a b -> Endpoint a b -> Engine b -> IO ()
-runNEndpoint ls@(ListenerState n (msgAvail, netCntr) processor)
-             ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs)
-             eg = do
+runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) eg = do
   event <- NT.receive $ endpoint llep
   case event of
-    NT.ConnectionOpened cid rel addr   -> notifySubscribers SocketAccept subs eg >> rcrE
-    NT.ConnectionClosed cid            -> rcrE
-    NT.Received cid payload            -> processMsg payload
-    NT.ReceivedMulticast maddr payload -> rcrE
-    NT.EndPointClosed                  -> return ()
-    NT.ErrorEvent err                  -> endpointError $ show err
+    NT.ConnectionOpened _ _ _  -> notifySubscribers SocketAccept subs eg >> rcrE
+    NT.ConnectionClosed _      -> rcrE
+    NT.Received _   payload    -> processMsg payload
+    NT.ReceivedMulticast _ _   -> rcrE
+    NT.EndPointClosed          -> return ()
+    NT.ErrorEvent err          -> endpointError $ show err
   where
     rcr       = flip (runNEndpoint ls) eg
     rcrE      = rcr ep
     rcrNE buf = rcr $ Endpoint h buf subs
 
     processMsg msg = bufferMsg msg >>= \case
-      (b, [])     -> processor ls b ep eg >>= rcrNE
-      (b, errors) -> endpointError $ summarize errors
+      (b, [])     -> (processor ls) ls b ep eg >>= rcrNE
+      (_, errors) -> endpointError $ summarize errors
 
     bufferMsg = foldM safeAppend (buffer ep, [])
     unpackMsg = unpackWith wd . BS.unpack
@@ -586,10 +590,10 @@ runNEndpoint ls@(ListenerState n (msgAvail, netCntr) processor)
               (nb, Just msg) -> return (nb, [OverflowError msg])
       l  -> return (b, l++[PropagatedError msg])
 
-    safeAppend (b, errors) msg@(unpackMsg -> Nothing) = return (b, errors++[SerializeError msg])
+    safeAppend (b, errors) msg = return (b, errors++[SerializeError msg])
 
-    summarize l = "Endpoint message errors (runNEndpoint " ++ n ++ ", " ++ show (length l) ++ " messages)"
-    endpointError s = close n eg >> putStrLn s -- TODO: close vs closeInternal
+    summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
+    endpointError s = close (name ls) eg >> putStrLn s -- TODO: close vs closeInternal
 
 runNEndpoint ls _ _ = error $ "Invalid endpoint for network source " ++ (name ls)
 
@@ -626,9 +630,9 @@ dequeue = \case
 
         rebuild m k (nv, r) = (H.adjust (const nv) k m, r)
 
-        mpDequeue (addr, [])       = ([], Nothing)
+        mpDequeue (_, [])          = ([], Nothing)
         mpDequeue (addr, (n,v):t)  = (t, Just (addr, n, v))
-        mtDequeue ((addr, n), [])  = ([], Nothing)
+        mtDequeue (_, [])          = ([], Nothing)
         mtDequeue ((addr, n), v:t) = (t, Just (addr, n, v))
 
         trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
@@ -647,7 +651,7 @@ send addr n arg e@(endpoints -> EEndpointState ieps _)
 
     send' eid retryF =
       getEndpoint eid ieps >>= \case
-        Just c  -> hasWriteInternal eid e >>= write eid
+        Just _  -> hasWriteInternal eid e >>= write eid
         Nothing -> openSocketInternal eid addr "w" e >> retryF
 
     write eid (Just True) = doWriteInternal eid (addr, n, arg) e
@@ -656,28 +660,52 @@ send addr n arg e@(endpoints -> EEndpointState ieps _)
 
 {- Module API implementation -}
 
+builtin :: String -> Builtin
+builtin "stdin"  = Stdin
+builtin "stdout" = Stdout
+builtin "stderr" = Stderr
+builtin s        = error $ "Invalid builtin endpoint: " ++ s
+
+builtinHandle :: Builtin -> SIO.Handle
+builtinHandle Stdin  = SIO.stdin
+builtinHandle Stdout = SIO.stdout
+builtinHandle Stderr = SIO.stderr
+
 ioMode :: String -> SIO.IOMode
 ioMode "r"  = SIO.ReadMode
 ioMode "w"  = SIO.WriteMode
 ioMode "a"  = SIO.AppendMode
 ioMode "rw" = SIO.ReadWriteMode
+ioMode s    = error $ "Invalid IO mode: " ++ s
 
+-- | Builtin endpoint constructor
+genericOpenBuiltin :: Identifier -> Identifier -> WireDesc a -> EEndpoints a b -> Engine b -> IO ()
+genericOpenBuiltin eid (builtin -> b) wd eps _ = do
+    file <- return $ BuiltinH wd bHandle b
+    buf  <- exclusive $ emptySingletonBuffer
+    void $ addEndpoint eid (file, buf, []) eps
+  where bHandle = builtinHandle b
+
+
+-- | File endpoint constructor.
+-- TODO: validation with the given type
 genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String
                    -> EEndpoints a b -> Engine b -> IO ()
-genericOpenFile eid path wd tOpt mode eps eg = do
+genericOpenFile eid path wd _ mode eps eg = do
     file <- openFileHandle path wd (ioMode mode)
     buf  <- exclusive $ emptySingletonBuffer
     void $ addEndpoint eid (file, buf, []) eps
     case (ioMode mode) of
       SIO.ReadMode -> void $ genericDoRead eid eps eg -- Prime the file's buffer.
       _ -> return ()
-    
 
--- | Socket constructor.
+
+-- | Socket endpoint constructor.
 --   This initializes the engine's connections as necessary.
+-- TODO: validation with the given type
 genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String
                      -> ListenerState a b -> EEndpoints a b -> Engine b -> IO ()
-genericOpenSocket eid addr wd tOpt (ioMode -> mode) lstnrState endpoints eg =
+genericOpenSocket eid addr wd _ (ioMode -> mode) lstnrState endpoints eg =
   do
     socket <- openSocketHandle addr wd mode $ connectionsForMode mode
     maybe (return ()) (registerEndpoint mode) socket
@@ -708,14 +736,17 @@ genericClose n endpoints eg = getEndpoint n endpoints >>= \case
               >> notifySubscribers (notifyType $ handle e) (subscribers e) eg
 
   where deregister = maybe (return ()) (\_ -> deregisterNetworkListener n eg)
-        notifyType (FileH _ _) = FileClose
-        notifyType (SocketH _ _) = SocketClose
+        notifyType (BuiltinH _ _ _) = FileClose
+        notifyType (FileH _ _)      = FileClose
+        notifyType (SocketH _ _)    = SocketClose
 
 
 genericHasRead :: Identifier -> EEndpoints a b -> IO (Maybe Bool)
 genericHasRead n endpoints = getEndpoint n endpoints >>= \case
   Nothing -> return Nothing
-  Just e  -> emptyEBuffer (buffer e) >>= return . Just . not
+  Just e  -> case handle e of 
+              BuiltinH _ h Stdin -> SIO.hIsReadable h >>= return . Just
+              _        -> emptyEBuffer (buffer e) >>= return . Just . not
 
 
 genericDoRead :: Identifier -> EEndpoints a b -> Engine b -> IO (Maybe a)
@@ -731,7 +762,7 @@ genericDoRead n endpoints eg = getEndpoint n endpoints >>= \case
 
         nep e b = (handle e, b, subscribers e)
 
-        notify Nothing subs   = return ()
+        notify Nothing _      = return ()
         notify (Just nt) subs = notifySubscribers nt subs eg
 
 genericHasWrite :: Identifier -> EEndpoints a b -> IO (Maybe Bool)
@@ -747,7 +778,7 @@ genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
 
   where write e = appendEBuffer arg (buffer e) >>= \case
           (nb, Nothing)       -> flushEBuffer (handle e) nb >>= update e
-          (nb, Just overflow) -> overflowError
+          (_, Just overflow)  -> overflowError
 
         update e (nBuf, notifyType) =
           addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e)
@@ -761,6 +792,11 @@ genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
 
 
 {- External endpoint methods -}
+
+-- | Open a builtin endpoint.
+--   The wire description must yield a string value for each payload processed.
+openBuiltin :: Identifier -> Identifier -> WireDesc a -> Engine a -> IO ()
+openBuiltin eid bid wd eg = genericOpenBuiltin eid bid wd (externalEndpoints $ endpoints eg) eg
 
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
 openFile eid path wd tOpt mode eg =
@@ -787,6 +823,10 @@ doWrite :: Identifier -> a -> Engine a -> IO ()
 doWrite n arg eg@(endpoints -> eps) = genericDoWrite n arg (externalEndpoints eps) eg
 
 {- Internal endpoint methods -}
+
+openBuiltinInternal :: Identifier -> Identifier -> Engine a -> IO ()
+openBuiltinInternal eid bid eg =
+  genericOpenBuiltin eid bid (internalFormat eg) (internalEndpoints $ endpoints eg) eg
 
 openFileInternal :: Identifier -> String -> String -> Engine a -> IO ()
 openFileInternal eid path mode eg =
@@ -825,7 +865,7 @@ networkSink _ = Nothing
 
 -- | Open an external file, with given wire description and file path.
 openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
-openFileHandle p wd mode = SIO.openFile p mode >>= return . (FileH wd)
+openFileHandle p wd mode = SIO.openFile p mode >>= return . FileH wd
 
 -- | Open an external socket, with given wire description and address.
 openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe (MVar EConnectionMap) -> IO (Maybe (IOHandle a))
@@ -843,35 +883,50 @@ openSocketHandle addr wd mode conns =
 
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
-closeHandle (FileH _ h) = SIO.hClose h
+closeHandle (BuiltinH _ h _) = return () -- Leave open to allow other standard IO.
+closeHandle (FileH _ h)      = SIO.hClose h
 closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
 closeHandle (networkSink   -> Just (_,_))  = return ()
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
+
 closeHandle _ = error "Invalid IOHandle argument for closeHandle"
 
 -- | Read a single payload from an external.
 readHandle :: IOHandle a -> IO (Maybe a)
-readHandle (FileH wd h) = do
-    done <- SIO.hIsEOF h
-    if done then return Nothing
-    else do
-      s <- SIO.hGetLine h
-      return $ unpackWith wd s
-      -- TODO: Add proper delimiter support, to avoid delimiting by newline.
-
-readHandle (SocketH wd np) = error "Unsupported: read from Socket"
+readHandle = \case
+  BuiltinH wd h Stdin -> readIOH wd h
+  FileH wd h          -> readIOH wd h
+  BuiltinH _ _ b      -> error $ "Unsupported: read from " ++ show b
+  SocketH wd np       -> error "Unsupported: read from Socket"
+  where True ? x  = const x  
+        False ? _ = id
+        readIOH wd h = do
+          done <- SIO.hIsEOF h
+          done ? return Nothing $ do
+            s <- SIO.hGetLine h
+            return $ unpackWith wd s
+            -- TODO: Add proper delimiter support, to avoid delimiting by newline.
 
 -- | Write a single payload to a handle
 writeHandle :: a -> IOHandle a -> IO ()
-writeHandle payload (FileH wd h) = do
-    done <- SIO.hIsClosed h
-    if done then return ()
-    else SIO.hPutStrLn h $ packWith wd payload -- TODO: delimiter, as with readHandle
+writeHandle payload = \case
+  BuiltinH wd h Stdout -> writeIOH wd h
+  BuiltinH wd h Stderr -> writeIOH wd h
+  FileH wd h           -> writeIOH wd h
+  
+  SocketH wd (Right (conn -> c)) ->
+    NT.send c [BS.pack $ packWith wd payload] >>= return . either (\_ -> ()) id
+  
+  BuiltinH _ _ b -> error $ "Unsupported: write to " ++ show b 
+  SocketH _ _    -> error "Unsupported write operation on network handle"
 
-writeHandle payload (SocketH wd (Right (conn -> c))) =
-  NT.send c [BS.pack $ packWith wd payload] >>= return . either (\_ -> ()) id
+  where True ? x  = const x  
+        False ? _ = id
+        writeIOH wd h = do
+          done <- SIO.hIsClosed h
+          done ? return () $ SIO.hPutStrLn h $ packWith wd payload
+            -- TODO: delimiter, as with readHandle
 
-writeHandle payload (SocketH _ _) = error "Unsupported write operation on network handle"
 
 {- Endpoint accessors -}
 
@@ -954,17 +1009,21 @@ getEstablishedConnection addr conns =
     Just c  -> return $ Just c
 
 clearConnections :: MVar EConnectionMap -> IO ()
-clearConnections cm = modifyConnectionMap cm clear
-  where clear cm@(EConnectionMap (a, ep) conns) =
-          clearC conns >> clearE ep >> return (EConnectionMap (a, Nothing) [], ())
+clearConnections cm = withConnectionMap cm (\x -> return (snd $ anchor x, cache x)) >>= clear
+  where clear (ep, conns) = clearC conns >> clearE ep
+        clearC conns      = mapM_ (flip removeConnection cm . fst) conns
+        clearE Nothing    = return ()
+        clearE (Just ep)  = closeEndpoint ep
 
-        clearC conns     = mapM_ (flip removeConnection cm . fst) conns
-        clearE Nothing   = return ()
-        clearE (Just ep) = closeEndpoint ep
 
 {- Endpoint Notifiers -}
 
 getNotificationType :: Identifier -> Endpoint a b -> EndpointNotification
+getNotificationType n (handle -> BuiltinH _ _ _) = case n of
+  "data"  -> FileData
+  "close" -> FileClose
+  _ -> error $ "invalid notification type " ++ n
+
 getNotificationType n (handle -> FileH _ _) = case n of
   "data"  -> FileData
   "close" -> FileClose
@@ -1117,8 +1176,11 @@ flushEBuffer h = modifyEBuffer $ flushEBContents h
 refreshEBContents :: IOHandle v -> BufferContents v
                      -> IO (BufferContents v, (Maybe v, Maybe EndpointNotification))
 
-refreshEBContents f@(FileH _ _) c = refill $ takeEBContents c
+-- For now, ignore the buffer for reading from builtins.
+refreshEBContents f@(BuiltinH _ _ _) c =
+  readHandle f >>= (\vOpt -> return (c,(vOpt, maybe Nothing (const $ Just FileData) vOpt)))
 
+refreshEBContents f@(FileH _ _) c = refill $ takeEBContents c
   where refill (c, vOpt) | refillPolicy c = readHandle f >>= return . rebuild c >>= (\(x,y) -> return (x, (vOpt, y)))
                          | otherwise      = return (c, (vOpt, Nothing))
 
@@ -1152,6 +1214,10 @@ putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
 
 putEngine :: (Show a) => Engine a -> IO ()
 putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q
+
+debugQueues :: Show a => Engine a -> IO ()
+debugQueues e = putStrLn "Queues" >> putMessageQueues (queues e)
+
 
 {- Instance implementations -}
 

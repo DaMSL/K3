@@ -4,9 +4,10 @@
 
 -- | K3 Program constructor
 module Language.K3.Parser.ProgramBuilder (
+  EndpointType(..),
   defaultRoleName,
   desugarRoleEntries,
-  channelMethods,
+  endpointMethods,
   rewriteSource,
   mkRunSourceE,
   mkRunSinkE,
@@ -18,6 +19,8 @@ import Control.Applicative
 import Data.List
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -28,6 +31,7 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+data EndpointType = Builtin | File | Network 
 
 {- Names -}
 defaultRoleName :: Identifier
@@ -73,6 +77,9 @@ ccName :: Identifier -> Identifier
 ccName n = n++"Controller"
 
 {- Runtime functions -}
+openBuiltinFn :: K3 Expression
+openBuiltinFn = EC.variable "openBuiltin"
+
 openFileFn :: K3 Expression
 openFileFn = EC.variable "openFile"
 
@@ -178,29 +185,24 @@ desugarRoleEntries (Node t c) endpointBQGs roleDefaults  = Node t $ c ++ initial
 {- Code generation methods-}
 -- TODO: replace with Template Haskell
 
-channelMethods :: Bool -> Bool -> K3 Expression -> K3 Expression -> Identifier -> K3 Type
-                  -> (Maybe (K3 Expression), [K3 Declaration])
-channelMethods isSource isFile argE formatE n t =
+endpointMethods :: Bool -> EndpointType -> K3 Expression -> K3 Expression ->
+                   Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration])
+endpointMethods isSource eType argE formatE n t =
   if isSource then sourceDecls else sinkDecls
   where 
     sourceDecls = (Nothing,) $
-      (map (mkMethod n)
-        [mkInit argE formatE n, mkStart n, mkFinal n, sourceHasRead, sourceRead t])
-      ++ [sourceController n]
+         (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead])
+      ++ [sourceController]
 
-    sinkDecls = (Just sinkImpl,) $
-      (map (mkMethod n) [mkInit argE formatE n, mkFinal n, sinkHasWrite, sinkWrite t])
+    sinkDecls = (Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
-    mkMethod n (m,t,eOpt) = DC.global (n++m) (TC.function TC.unit t) eOpt
+    mkMethod (m,argT,retT,eOpt) = DC.global (n++m) (TC.function argT retT) eOpt
 
-    mkInit argE formatE n = 
-      ("Init", TC.unit, Just $ 
-        EC.applyMany openFn [sourceId n, argE, formatE, modeE])
+    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ openEndpointE)
+    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
+    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ EC.applyMany closeFn [sourceId n])
 
-    mkStart n = ("Start", TC.unit, Just $ startE n)
-    mkFinal n = ("Final", TC.unit, Just $ EC.applyMany closeFn [sourceId n])
-
-    sourceController n = DC.global (ccName n) (TC.trigger TC.unit) . Just $
+    sourceController = DC.trigger (ccName n) TC.unit $
       EC.lambda "_"
         (EC.ifThenElse
           (EC.applyMany (EC.variable $ chrName n) [EC.unit])
@@ -215,33 +217,41 @@ channelMethods isSource isFile argE formatE n t =
           (EC.unit))
 
     -- External functions
-    sourceHasRead = ("HasRead", TC.bool, Nothing)
-    sourceRead t  = ("Read", t, Nothing)
-    sinkHasWrite  = ("HasWrite", TC.bool, Nothing)
-    sinkWrite t   = ("Write", t, Nothing)
+    sourceHasRead = ("HasRead",  TC.unit, TC.bool, Nothing)
+    sourceRead    = ("Read",     TC.unit, t,       Nothing)
+    sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)
+    sinkWrite     = ("Write",    t,       TC.unit, Nothing)
 
-    openFn = if isFile then openFileFn else openSocketFn
+    openEndpointE = case eType of
+      Builtin -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
+      File    -> openFnE openFileFn
+      Network -> openFnE openSocketFn
+
+    openFnE openFn = EC.applyMany openFn [sourceId n, argE, formatE, modeE]
 
     modeE = EC.constant . CString $ if isSource then "r" else "w"
 
-    startE n =
-      if isFile
-      then EC.send (EC.variable (ccName n)) myAddr EC.unit
-      else EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+    startE = case eType of
+      Builtin -> fileStartE
+      File    -> fileStartE
+      Network -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
 
-    controlE processE =
-      if not isFile
-      then processE
-      else EC.block [processE, (EC.send (EC.variable $ ccName n) myAddr EC.unit)]  
+    fileStartE = EC.send (EC.variable (ccName n)) myAddr EC.unit
 
-    sourceId n = string n
-    string n = EC.constant $ CString n
+    controlE processE = case eType of
+      Builtin -> fileControlE processE
+      File    -> fileControlE processE
+      Network -> processE
+
+    fileControlE processE =
+      EC.block [processE, (EC.send (EC.variable $ ccName n) myAddr EC.unit)]
+
+    sourceId n = EC.constant $ CString n
 
 -- | Rewrites a source declaration's process method to access and dispatch the next available event to all its bindings
 rewriteSource :: [(Identifier, Identifier)] -> K3 Declaration -> K3 Declaration
 rewriteSource bindings d
   | DGlobal src t eOpt <- tag d
-  , Just _ <- lookup src bindings
   , TSource <- tag t
   = replace_children d $ (children d) ++ [mkProcessFn bindings src eOpt]
 
@@ -283,7 +293,8 @@ declareBuiltins d
 
         runtimeDecls = [
           DC.global parseArgsId (mkUnitFnT argT) Nothing,
-          DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string, TC.string, TC.string]) Nothing,
+          DC.global "openBuiltin" (flip TC.function TC.unit $ TC.tuple [idT, TC.string,  TC.string]) Nothing,
+          DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string,  TC.string, TC.string]) Nothing,
           DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
           DC.global "close"       (TC.function idT TC.unit) Nothing,
           DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,

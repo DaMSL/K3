@@ -40,7 +40,7 @@ import Text.Parser.Expression
 import Text.Parser.Token
 import Text.Parser.Token.Style
 
-import Text.Parser.Parsec
+import Text.Parser.Parsec()
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -52,7 +52,6 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
-import Language.K3.Pretty
 import Language.K3.Parser.ProgramBuilder
 
 {- Type synonyms for parser return types -}
@@ -102,12 +101,15 @@ exprError x = parseError "expression" x
 
 -- | Span computation.
 --   TODO: what if source names do not match?
+(<->) :: (AContainer a, Eq (IElement a)) => (Span -> IElement a) -> K3Parser a -> K3Parser a
 (<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
   where annotate start x end = x @+ (cstr $ mkSpan start end)
 
+mkSpan :: P.SourcePos -> P.SourcePos -> Span
 mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
                                    (P.sourceLine e) (P.sourceColumn e)
                                    
+spanned :: K3Parser a -> K3Parser (a, Span)
 spanned parser = do
   start <- PP.getPosition
   result <- parser
@@ -134,7 +136,7 @@ k3Keywords = [
     "immut", "mut", "witness", "option", "ind" , "collection",
     "self", "structure", "horizon", "content",
     {- Declarations -}
-    "declare", "trigger", "source", "fun",
+    "declare", "trigger", "source", "sink", "fun",
     {- Expressions -}
     "let", "in", "if", "then", "else", "case", "of", "bind", "as",
     "and", "or", "not",
@@ -154,6 +156,9 @@ k3Ops = emptyOps { _styleReserved = set k3Operators }
 k3Idents :: TokenParsing m => IdentifierStyle m
 k3Idents = emptyIdents { _styleReserved = set k3Keywords }
 
+comment :: (TokenParsing m, Monad m) => m ()
+comment = buildSomeSpaceParser whiteSpace k3CommentStyle
+
 operator :: (TokenParsing m, Monad m) => String -> m ()
 operator = reserve k3Ops
 
@@ -168,8 +173,11 @@ keyword = reserve k3Idents
 emptyParserState :: ParserState
 emptyParserState = (0,[])
 
+runK3Parser :: K3Parser a -> String -> Either P.ParseError a
+runK3Parser p s = P.runParser p emptyParserState "" s
+
 maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (const Nothing) Just $ P.runParser p emptyParserState "" s
+maybeParser p s = either (const Nothing) Just $ runK3Parser p s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
@@ -178,10 +186,10 @@ parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
 
 parseDeclaration :: String -> Maybe (K3 Declaration)
-parseDeclaration s = either (const Nothing) id $ P.runParser declaration emptyParserState "" s
+parseDeclaration s = either (const Nothing) id $ runK3Parser declaration s
 
 parseK3 :: String -> Either String (K3 Declaration)
-parseK3 s = either (Left . show) Right $ P.runParser program emptyParserState "" s
+parseK3 s = either (Left . show) Right $ runK3Parser program s
 
 
 {- Parsing state helpers -}
@@ -603,29 +611,34 @@ equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
 
 {- Channels -}
--- TODO: read/write modes for file/network sinks vs sources.
 
 channel :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 channel isSource = if isSource then choice $ [value]++common else choice common
-  where common = [file isSource, network isSource]
+  where common = [builtin isSource, file isSource, network isSource]
 
 value :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 value = mkValueStream <$> (symbol "value" *> expr)
   where mkValueStream e n t = (Just e, [])
 
+builtin :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+builtin isSource = mkBuiltin <$> builtinChannels <*> format
+  where mkBuiltin idE formatE n t = endpointMethods isSource Builtin idE formatE n t
+
 file :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile argE formatE n t = channelMethods isSource True argE formatE n t
+  where mkFile argE formatE n t = endpointMethods isSource File argE formatE n t
 
 network :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork argE formatE n t =  channelMethods isSource False argE formatE n t
+  where mkNetwork argE formatE n t =  endpointMethods isSource Network argE formatE n t
 
+builtinChannels :: ExpressionParser
+builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
+  where ch s = try (symbol s >> return (EC.constant $ CString s))
 
 format :: ExpressionParser
-format = choice [symbol "csv" >> return (EC.constant $ CString "csv"),
-                 symbol "txt" >> return (EC.constant $ CString "txt"),
-                 symbol "bin" >> return (EC.constant $ CString "bin")]
+format = choice [fmt "k3"]
+  where fmt s = try (symbol s >> return (EC.constant $ CString s))
 
 
 

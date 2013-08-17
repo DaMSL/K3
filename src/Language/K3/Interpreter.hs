@@ -46,12 +46,10 @@ import Data.List
 import Data.Word (Word8)
 import Debug.Trace
 
-
+import qualified System.IO          as SIO (stdout, hFlush)
 import Text.Read hiding (get)
-import qualified GHC.Read as GR (list)
-import qualified Text.Read as TR (lift)
+import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
-import Text.Show
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -179,9 +177,6 @@ sendE :: Address -> Identifier -> Value -> Interpretation ()
 sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
 
 {- Constants -}
-myAddrId :: Identifier
-myAddrId = "me"
-
 vunit :: Value
 vunit = VTuple []
 
@@ -306,7 +301,7 @@ binary OApp = \f x -> do
 
   case f' of
       VFunction b -> b x'
-      _ -> throwE $ RunTimeTypeError "Invalid Function Application"
+      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application\n" ++ pretty f
 
 -- | Message Passing
 binary OSnd = \target x -> do
@@ -410,24 +405,20 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
 
-debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
-debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
-
 replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction f) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
 replaceTrigger _ _             = throwE $ RunTimeTypeError "Invalid trigger body"
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
+global n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
+global _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Invalid sink trigger"
+global _ (tag -> TSource) _           = return ()
+global n t@(tag -> TFunction) Nothing = builtin n t
 global n t eOpt = elemE n >>= \case
   True  -> return ()
-  False -> global' n t eOpt
-  where
-    global' n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
-    global' _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Invalid sink trigger"
-    global' _ (tag -> TSource) _           = return ()
-    global' n _ (Just e)                   = expression e >>= modifyE . (:) . (n,)
-    global' n t@(tag -> TFunction) Nothing = builtin n t
-    global' n t Nothing                    = defaultValue t >>= modifyE . (:) . (n,)
+  False -> case eOpt of
+              Just e  -> expression e >>= modifyE . (:) . (n,)
+              Nothing -> defaultValue t >>= modifyE . (:) . (n,)
 
 -- TODO: qualify names?
 role :: Identifier -> [K3 Declaration] -> Interpretation ()
@@ -472,6 +463,13 @@ genBuiltin "parseArgs" _ =
 -- TODO: correct element type (rather than function type sig) for openFile / openSocket
 
 -- type ChannelId = String
+
+-- openBuilting :: ChannelId -> String -> ()
+genBuiltin "openBuiltin" _ =
+  vfun $ \(VString cid) -> 
+    vfun $ \(VString builtinId) ->
+      vfun $ \(VString format) -> 
+        withEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
@@ -559,7 +557,7 @@ initEnvironment bootstrap decl st = foldM doBootstrap st bootstrap >>= return . 
         doBootstrap st (n,e) =
           runInterpretation st (expression e) >>= (\res ->
             case getResultVal res of
-              Left err -> return st -- TODO: log bootstrap error
+              Left _ -> return st -- TODO: log bootstrap error
               Right v  -> 
                 let (nst, eg) = getResultState res
                 in return (nst ++ [(n,v)], eg))
@@ -571,7 +569,7 @@ initMessages :: IResult () -> IO (IResult Value)
 initMessages = \case
     ((Right _, s), ilog)
       | Just (VFunction f) <- lookup "atInit" $ getEnv s -> runInterpretation s (f vunit)
-      | otherwise                                            -> return ((unknownTrigger, s), ilog)
+      | otherwise                                        -> return ((unknownTrigger, s), ilog)
     ((Left err, s), ilog)                                -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
@@ -609,7 +607,11 @@ runProgram systemEnv prog =
 
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (IResult Value)
 runTrigger r n a = \case
-  (VTrigger (_, Just f)) -> runInterpretation (getResultState r) $ f a
+  (VTrigger (_, Just f)) -> putStrLn ("Running trigger " ++ n)
+                            >> SIO.hFlush SIO.stdout
+                            >> runInterpretation (getResultState r) (f a)
+                            >>= (\r -> putStrLn ("... done") >> return r)
+
   (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
   _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
 
@@ -621,13 +623,15 @@ uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResu
 uniProcessor = MessageProcessor { initialize = initUP, process = processUP, status = statusUP, finalize = finalizeUP }
   where
         initUP [] prog eg = initProgram [] prog eg
-        initUP ((_,inits):t) prog eg = initProgram inits prog eg
+        initUP ((_,inits):_) prog eg = initProgram inits prog eg
 
         statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
         finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
 
         processUP (_, n, args) r =
-          maybe (return $ unknownTrigger r n) (runTrigger r n args) $ lookup n $ getEnv $ getResultState r
+          maybe (return $ unknownTrigger r n) (run r n args) $ lookup n $ getEnv $ getResultState r
+
+        run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
 
         unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
@@ -646,12 +650,13 @@ virtualizedProcessor = MessageProcessor {
     initNode node systemEnv program engine = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program engine
+        --
+        debugResult node iProgram
+        --
         return (node, iProgram)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> putStrLn ("Processing " ++ show addr ++ " " ++ name)
-                              >> putStr "Args " >> print args
-                              >> runTrigger' s name args)
+        dispatch addr (\s -> debugDispatch addr name args s >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
         Nothing -> return (Just (), unknownTrigger s n)
@@ -709,6 +714,25 @@ putIResult ((Right val, (env, eng)), _) = putStr (concatMap (++"\n\n") [prettyEn
   where prettyVal = "Value:\n"++show val
 
 
+{- Debugging helpers -}
+debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
+debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+
+debugResult :: Address -> IResult Value -> IO ()
+debugResult addr r = do
+  void $ putStrLn $ "=========== " ++ show addr
+  void $ print r
+  void $ putStrLn "============"
+
+debugDispatch :: Address -> Identifier -> Value -> IResult Value -> IO ()
+debugDispatch addr name args r = do
+  void $ putStrLn ("Processing " ++ show addr ++ " " ++ name)
+  void $ putStrLn "Args:"
+  void $ print args
+  void $ debugResult addr r
+  void $ putStrLn "=========="
+
+{- Show/print methods -}
 showsPrecTag :: Show a => String -> Int -> a -> ShowS
 showsPrecTag s d v =
   showParen (d > app_prec) $ showString (s++" ") . showsPrec (app_prec+1) v
@@ -810,13 +834,13 @@ instance Read Value where
 
     +++ (prec app_prec $ do
           Ident "VTrigger" <- lexP
-          Ident n <- lexP
+          Ident _ <- lexP
           Ident "<uninitialized>" <- step readPrec
           error "Cannot read triggers")
 
     +++ (prec app_prec $ do
           Ident "VTrigger" <- lexP
-          Ident n <- lexP
+          Ident _ <- lexP
           Ident "<function>" <- step readPrec
           error "Cannot read triggers")
 
@@ -856,7 +880,7 @@ showValueSyntax v = showsValuePrec 0 v ""
     showsRecordFieldPrec d (n, v) = showString n . showChar '=' . showsValuePrec d v
     
     showCustomList :: String -> String -> String -> (a -> ShowS) -> [a] -> ShowS
-    showCustomList lWrap rWrap sep _     []     s = lWrap ++ rWrap ++ s
+    showCustomList lWrap rWrap _ _     []     s   = lWrap ++ rWrap ++ s
     showCustomList lWrap rWrap sep showF (x:xs) s = lWrap ++ showF x (showl xs)
       where showl []     = rWrap ++ s
             showl (y:ys) = sep ++ showF y (showl ys)
@@ -926,8 +950,9 @@ readValueSyntax = readSingleParse readValuePrec
     readCustomList :: String -> String -> String -> ReadPrec a -> ReadPrec [a]
     readCustomList lWrap rWrap sep readx =
       parens
-      ( do Punc lWrap <- lexP
-           (listRest False +++ listNext)
+      ( do Punc c <- lexP
+           if c == lWrap 
+           then (listRest False +++ listNext) else pfail
       )
      where
       listRest started =
