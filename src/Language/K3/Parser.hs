@@ -14,7 +14,8 @@ module Language.K3.Parser (
   parseExpression,
   parseDeclaration,
   parseK3,
-  K3Parser
+  K3Parser,
+  ensureUIDs
 ) where
 
 import Control.Applicative
@@ -338,7 +339,7 @@ tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
 
 tTermOrFun :: TypeParser
 tTermOrFun = 
-  choice [try (TSpan <-> TC.function <$> tTerm <* symbol "->" <*> typeExpr), tTerm]
+  choice [try (TSpan <-> TC.function <$> (TUID # tTerm) <* symbol "->" <*> typeExpr), tTerm]
 
 tPrimitive :: TypeParser
 tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
@@ -358,10 +359,11 @@ tIndirection :: TypeParser
 tIndirection = tQNested TC.indirection "ind"
 
 tTupleOrNested :: TypeParser
-tTupleOrNested = choice [try unit, parens $ choice [try (stripSpan <$> typeExpr), tTuple]]
+tTupleOrNested = choice [try unit, parens $ choice [try (stripMetas <$> typeExpr), tTuple]]
   where unit = symbol "(" *> symbol ")" >> return (TC.unit)
         tTuple = commaSep1 qualifiedTypeExpr >>= return . TC.tuple
-        stripSpan t = maybe t (t @-) $ t @~ isTSpan
+        stripMetas t = stripMetaOf isTSpan $ stripMetaOf isTUID t
+        stripMetaOf f t = maybe t (t @-) $ t @~ f
 
 tRecord :: TypeParser
 tRecord = TC.record <$> (braces . semiSep1) idQType

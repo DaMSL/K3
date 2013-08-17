@@ -3,6 +3,7 @@ module Language.K3.TypeSystem.Test
 ) where
 
 import Control.Applicative
+import Control.Monad
 import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
@@ -19,6 +20,8 @@ import Language.K3.Core.Constructor.Declaration
 import Language.K3.Core.Declaration
 import Language.K3.Parser
 import Language.K3.TypeSystem
+
+import Debug.Trace
 
 tests :: IO [Test]
 tests =
@@ -61,5 +64,7 @@ mkDirectSourceTest path success = do
 --  program generation and the like.
 parseSource :: String -> String -> Either ParseError (K3 Declaration)
 parseSource name src =
-  let parser = PPrim.many declaration in
-  role "__global" <$> catMaybes <$> runParser parser (0,[]) name src
+  let parser = join $ mapM ensureUIDs <$>
+                  catMaybes <$> PPrim.many declaration in
+  let tree = role "__global" <$> runParser parser (0,[]) name src in
+  trace (show tree) tree
