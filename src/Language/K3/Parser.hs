@@ -342,13 +342,12 @@ tTermOrFun =
   choice [try (TSpan <-> TC.function <$> (TUID # tTerm) <* symbol "->" <*> typeExpr), tTerm]
 
 tPrimitive :: TypeParser
-tPrimitive = choice $ map tConst ["bool", "int", "real", "string"]
-  where tConst x   = keyword x >> return (typeCstr x)
-        typeCstr x = case x of
-                      "bool"    -> TC.bool
-                      "int"     -> TC.int
-                      "real"    -> TC.real
-                      "string"  -> TC.string
+tPrimitive = choice $ map tConst [ ("bool",    TC.bool)
+                                 , ("int",     TC.int)
+                                 , ("real",    TC.real)
+                                 , ("string",  TC.string)
+                                 , ("address", TC.address) ]
+  where tConst (x, f)  = keyword x >> return f
 
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
 
@@ -517,7 +516,7 @@ getAnnotations (Node (_ :@: al) _) = al
 
 getSpan l = case find isESpan l of
               Just (ESpan s) -> s
-              Nothing -> Span "<dummy>" 0 0 0 0
+              _ -> Span "<dummy>" 0 0 0 0
 
 binOpSpan cstr l r = (cstr l r) @+ (ESpan $ coverSpans (getSpan la) (getSpan ra))
   where la = getAnnotations l
@@ -620,7 +619,7 @@ channel isSource = if isSource then choice $ [value]++common else choice common
 
 value :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 value = mkValueStream <$> (symbol "value" *> expr)
-  where mkValueStream e n t = (Just e, [])
+  where mkValueStream e _ _ = (Just e, [])
 
 builtin :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
 builtin isSource = mkBuiltin <$> builtinChannels <*> format
@@ -678,7 +677,7 @@ defaultEntries = snd
 sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
 sourceBindings s = concatMap extractBindings s
   where extractBindings (x,(Just b,_,_))  = map ((,) x) b
-        extractBindings (x,(Nothing,_,_)) = []
+        extractBindings (_,(Nothing,_,_)) = []
 
 qualifiedSources :: EndpointsBQG -> [Identifier]
 qualifiedSources s = concatMap (qualifiedSourceName . snd) s
@@ -705,7 +704,7 @@ trackBindings (src, dest) = modifyEnvironmentF_ $ updateBindings src dest
   where updateBindings src dest (safePopFrame -> ((s,d), env)) =
           case lookup src s of
             Just (Just b, q, g)  -> Right $ (replaceAssoc s src (Just (dest:b), q, g), d):env
-            Just (Nothing, q, g) -> Left  $ "Invalid binding for endpoint " ++ src
+            Just (Nothing, _, _) -> Left  $ "Invalid binding for endpoint " ++ src
             Nothing              -> Left  $ "Invalid binding, no source " ++ src
 
 -- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
@@ -719,9 +718,9 @@ trackEndpoint d
     track isSource n eOpt = modifyEnvironmentF_ $ addEndpointGoExpr isSource n eOpt
     addEndpointGoExpr isSource n eOpt (safePopFrame -> ((s,d), env)) =
           case (eOpt, isSource) of
-            (Just e, True)   -> Right $ (replaceAssoc s n (Just [], n, Nothing), d):env
+            (Just _, True)   -> Right $ (replaceAssoc s n (Just [], n, Nothing), d):env
             (Nothing, True)  -> Right $ (replaceAssoc s n (Just [], n, Just $ mkRunSourceE n), d):env
-            (Just e, False)  -> Right $ (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
+            (Just _, False)  -> Right $ (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
             (_,_)            -> Left  $ "Invalid endpoint initializer"
 
 -- | Records defaults in a K3 parsing environment
@@ -739,7 +738,7 @@ desugarRole n (dl, frame) =
         
         qualify poppedFrame (safePopFrame -> (frame, env)) =
           case validateSources poppedFrame of
-            (ndIds, []) -> Right $ (concatWithPrefix poppedFrame frame):env
+            (_, []) -> Right $ (concatWithPrefix poppedFrame frame):env
             (_, failed) -> Left  $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
 
         validateSources (s,d) = partition ((flip elem $ qualifiedSources s) . snd) d
@@ -760,7 +759,7 @@ desugarRole n (dl, frame) =
 ensureUIDs :: K3 Declaration -> K3Parser (K3 Declaration)
 ensureUIDs p = traverse (parserWithUID . annotateDecl) p
   where 
-        annotateDecl d@(dt :@: as) uid =
+        annotateDecl d@(dt :@: _) uid =
           case dt of
             DGlobal n t eOpt -> do
               t'    <- annotateType t
@@ -788,8 +787,8 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 -- | Propagates a mutability qualifier from a type to an expression.
 --   This is used in desugaring non-function initializers and annotation members.
 propagateQualifier :: K3 Type -> Maybe (K3 Expression) -> Maybe (K3 Expression)
-propagateQualifier qte Nothing  = Nothing
-propagateQualifier qte@(tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> eas))
+propagateQualifier _ Nothing  = Nothing
+propagateQualifier (tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> eas))
   | any isEQualified eas || inApplicable ttag = Just e
   | otherwise = Just $ if any isTImmutable tas then (e @+ EImmutable) else (e @+ EMutable)
   where inApplicable = flip elem [TFunction, TTrigger, TSink, TSource]

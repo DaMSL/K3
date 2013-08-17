@@ -24,6 +24,7 @@ module Language.K3.Interpreter (
   runExpression,
   runExpression_,
 
+  runNetwork,
   runProgram,
   runProgramInitializer,
 
@@ -36,6 +37,7 @@ module Language.K3.Interpreter (
 ) where
 
 import Control.Arrow hiding ( (+++) )
+import Control.Concurrent (ThreadId)
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -598,9 +600,26 @@ runExpression_ e = runExpression e >>= putStrLn . show
 runProgramInitializer :: PeerBootstrap -> K3 Declaration -> IO ()
 runProgramInitializer bootstrap p = standaloneInterpreter (initProgram bootstrap p) >>= putIResult
 
+
+{- Distributed program execution -}
+
+-- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO ()
 runProgram systemEnv prog =
   simulationEngine systemEnv syntaxValueWD >>= (\e -> runEngine virtualizedProcessor systemEnv e prog)
+
+-- | Single-machine network deployment.
+--   Takes a system deployment and forks a network engine for each peer.
+runNetwork :: SystemEnvironment -> K3 Declaration -> IO [(Address, IEngine, ThreadId)]
+runNetwork systemEnv prog =
+  let nodeBootstraps = map (:[]) systemEnv in do
+    engines       <- mapM (flip networkEngine syntaxValueWD) nodeBootstraps
+    namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
+    engineThreads <- mapM fork namedEngines
+    return engineThreads
+  where
+    pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
+    fork (addr, engine, bootstrap) = forkEngine virtualizedProcessor bootstrap engine prog >>= return . (addr, engine,)
 
 
 {- Message processing -}
@@ -958,7 +977,7 @@ readValueSyntax = readSingleParse readValuePrec
       listRest started =
         do Punc c <- lexP
            if c == rWrap then return []
-           else if c == sep then listNext
+           else if c == sep && started then listNext
            else pfail
       
       listNext =

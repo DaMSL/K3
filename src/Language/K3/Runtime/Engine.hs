@@ -31,6 +31,7 @@ module Language.K3.Runtime.Engine (
   , exprWD
 
   , nodes
+  , statistics
 
   , runEngine
   , forkEngine
@@ -83,10 +84,15 @@ module Language.K3.Runtime.Engine (
   , EConnectionMap(..)
   , EConnectionState(..)
 
+  , connectionId
+  , peerEndpointId
+
   , internalSendAddress
   , externalSendAddress
 
   , simulation
+
+  , cleanupEngine
 
   , newEndpoint
   , closeEndpoint
@@ -131,6 +137,8 @@ import Data.Hashable (Hashable(..))
 import qualified Data.HashMap.Lazy as H
 import Data.List
 import Data.List.Split (splitOn, wordsBy)
+
+import Debug.Trace
 
 import qualified System.IO as SIO
 import System.Process
@@ -476,6 +484,22 @@ deployedNodes = map fst
 nodes :: Engine a -> [Address]
 nodes e = deployedNodes $ deployment e
 
+numQueuedMessages :: MessageQueues a -> IO Int
+numQueuedMessages = \case
+    Peer qmv           -> withMVar qmv $ return . count
+    ManyByPeer qsmv    -> withMVar qsmv $ return . sumListSizes
+    ManyByTrigger qsmv -> withMVar qsmv $ return . sumListSizes
+  where
+    count        = length . snd
+    sumListSizes = H.foldl' (\acc msgs -> acc + length msgs) 0
+
+numEndpoints :: EEndpointState a -> IO Int
+numEndpoints es = count (internalEndpoints es) >>= (\ni -> count (externalEndpoints es) >>= return . (ni +))
+  where count ep = withMVar ep (return . H.size)
+
+statistics :: Engine a -> IO (Int,Int)
+statistics e = numQueuedMessages (queues e) >>= (\nm -> numEndpoints (endpoints e) >>= return . (nm,))
+
 -- | Engine classification
 simulation :: Engine a -> Bool
 simulation (Engine {connections = (EConnectionState (Nothing, _))}) = True
@@ -517,16 +541,9 @@ runMessages msgPrcsr e status = status >>= \case
                       _    -> waitForMessage e >> rcr r
 
   where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
-        cleanup      = cleanC (connections e) >> cleanE (endpoints e)
         finish msg r = putStrLn (msg ++ pretty r)
-                        >> cleanup >> tryPutMVar (waitV $ control e) ()
+                        >> cleanupEngine e >> tryPutMVar (waitV $ control e) ()
                         >> putStrLn "... Finished"
-
-        cleanC (EConnectionState (Nothing, x)) = clearConnections x        
-        cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
-
-        cleanE (EEndpointState ieps eeps) =    (withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal e))
-                                            >> (withMVar eeps (return . H.keys) >>= mapM_ (flip close e))
 
 
 runEngine :: (Pretty r, Pretty e, Show a) =>
@@ -548,7 +565,19 @@ waitForEngine :: Engine a -> IO ()
 waitForEngine = readMVar . waitV . control
 
 terminateEngine :: Engine a -> IO ()
-terminateEngine e = modifyMVar_ (terminateV $ control e) (\_ -> return True)
+terminateEngine e = 
+       modifyMVar_ (terminateV $ control e) (const $ return True)
+    >> writeSV (messageReadyV $ control e) ()
+
+cleanupEngine :: Engine a -> IO ()
+cleanupEngine e = cleanC (connections e) >> cleanE (endpoints e)
+  where
+    cleanC (EConnectionState (Nothing, x)) = clearConnections x        
+    cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
+
+    cleanE (EEndpointState ieps eeps) =
+         (withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal e))
+      >> (withMVar eeps (return . H.keys) >>= mapM_ (flip close e))
 
 {- Network endpoint execution -}
 
@@ -616,9 +645,9 @@ enqueue (ManyByTrigger qsmv) addr n arg = modifyMVar_ qsmv enqueueToTrigger
 -- TODO: efficient queue modification rather than toList / fromList
 dequeue :: MessageQueues a -> IO (Maybe (Address, Identifier, a))
 dequeue = \case
-    (Peer qmv)           -> modifyMVar qmv $ return . someMessage
-    (ManyByPeer qsmv)    -> modifyMVar qsmv $ return . messageFromMap mpDequeue
-    (ManyByTrigger qsmv) -> modifyMVar qsmv $ return . messageFromMap mtDequeue
+    Peer qmv           -> modifyMVar qmv $ return . someMessage
+    ManyByPeer qsmv    -> modifyMVar qsmv $ return . messageFromMap mpDequeue
+    ManyByTrigger qsmv -> modifyMVar qsmv $ return . messageFromMap mtDequeue
 
   where someMessage (addr,l) = case trySplit l of
           (nl, Nothing)      -> ((addr, nl), Nothing)
@@ -777,15 +806,15 @@ genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
   Just e  -> write e
 
   where write e = appendEBuffer arg (buffer e) >>= \case
-          (nb, Nothing)       -> flushEBuffer (handle e) nb >>= update e
-          (_, Just overflow)  -> overflowError
+          (nb, Nothing) -> flushEBuffer (handle e) nb >>= update e
+          (_, Just _)   -> overflowError
 
         update e (nBuf, notifyType) =
           addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e)
 
         nep e b = (handle e, b, subscribers e)
 
-        notify Nothing subs   = return ()
+        notify Nothing _      = return ()
         notify (Just nt) subs = notifySubscribers nt subs eg
 
         overflowError = genericClose n endpoints eg >> putStrLn "Endpoint buffer overflow (doWrite)"
@@ -834,6 +863,7 @@ openFileInternal eid path mode eg =
 
 openSocketInternal :: Identifier -> Address -> String -> Engine a -> IO ()
 openSocketInternal eid addr mode eg@(control -> ctrl) =
+  trace ("Opening socket for "++eid) $
   genericOpenSocket eid addr (internalFormat eg) Nothing mode lstnrState (internalEndpoints $ endpoints eg) eg
   where lstnrState = ListenerState eid (messageReadyV ctrl, networkDoneV ctrl) internalListenerProcessor
 
@@ -883,7 +913,7 @@ openSocketHandle addr wd mode conns =
 
 -- | Close an external.
 closeHandle :: IOHandle a -> IO ()
-closeHandle (BuiltinH _ h _) = return () -- Leave open to allow other standard IO.
+closeHandle (BuiltinH _ _ _) = return () -- Leave open to allow other standard IO.
 closeHandle (FileH _ h)      = SIO.hClose h
 closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
 closeHandle (networkSink   -> Just (_,_))  = return ()
@@ -897,7 +927,7 @@ readHandle = \case
   BuiltinH wd h Stdin -> readIOH wd h
   FileH wd h          -> readIOH wd h
   BuiltinH _ _ b      -> error $ "Unsupported: read from " ++ show b
-  SocketH wd np       -> error "Unsupported: read from Socket"
+  SocketH _ _         -> error "Unsupported: read from Socket"
   where True ? x  = const x  
         False ? _ = id
         readIOH wd h = do
@@ -986,8 +1016,10 @@ addConnection addr conns = modifyConnectionMap conns establishConnection
             Just ep -> connect $ EConnectionMap (anchorAddr, Just ep) (cache c)
         establishConnection c = connect c
 
-        connect conns@(anchor -> (anchorAddr, Just ep)) =
+        connect conns@(anchor -> (_, Just ep)) =
           newConnection addr ep >>= return . maybe (conns, Nothing) (add conns)
+
+        connect _ = error "Invalid connection map, no anchor endpoint found."
 
         add conns c = (EConnectionMap (anchor conns) $ (addr, c):(cache conns), Just c)
 
@@ -1022,18 +1054,20 @@ getNotificationType :: Identifier -> Endpoint a b -> EndpointNotification
 getNotificationType n (handle -> BuiltinH _ _ _) = case n of
   "data"  -> FileData
   "close" -> FileClose
-  _ -> error $ "invalid notification type " ++ n
+  _ -> error $ "Invalid notification type " ++ n
 
 getNotificationType n (handle -> FileH _ _) = case n of
   "data"  -> FileData
   "close" -> FileClose
-  _ -> error $ "invalid notification type " ++ n
+  _ -> error $ "Invalid notification type " ++ n
 
 getNotificationType n (handle -> SocketH _ _) = case n of
   "accept" -> SocketAccept
   "data"   -> SocketData
   "close"  -> SocketClose
-  _ -> error $ "invalid notification type " ++ n
+  _ -> error $ "Invalid notification type " ++ n
+
+getNotificationType _ _ = error "Invalid endpoint handle for notifications"
 
 notifySubscribers :: EndpointNotification -> EndpointBindings a -> Engine a -> IO ()
 notifySubscribers nt subs eg = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
@@ -1190,7 +1224,7 @@ refreshEBContents f@(FileH _ _) c = refill $ takeEBContents c
         refillPolicy = emptyEBContents
 
 refreshEBContents (SocketH _ (Left _)) c  = let (x,y) = takeEBContents c in return (x, (y, Nothing))
-refreshEBContents (SocketH _ (Right _)) c = error "Invalid buffer refresh for network sink"
+refreshEBContents (SocketH _ (Right _)) _ = error "Invalid buffer refresh for network sink"
 
 refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
 refreshEBuffer h = modifyEBuffer $ refreshEBContents h
@@ -1213,7 +1247,9 @@ putMessageQueues (ManyByPeer qs)    = readMVar qs >>= putStrLn . show
 putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
 
 putEngine :: (Show a) => Engine a -> IO ()
-putEngine e@(Engine {queues = q})= putStrLn (show e) >> putMessageQueues q
+putEngine e@(Engine {queues = q}) =
+       putStrLn (show e) 
+    >> putStrLn "Queues:" >> putMessageQueues q
 
 debugQueues :: Show a => Engine a -> IO ()
 debugQueues e = putStrLn "Queues" >> putMessageQueues (queues e)

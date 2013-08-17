@@ -5,11 +5,16 @@
 
 module Language.K3.Runtime.Test (tests) where
 
+import Control.Concurrent
+import Control.Concurrent.MVar
 import Control.Monad
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.HashMap.Lazy as H
 import Data.List
 import Data.Maybe
+
+import Debug.Trace
 
 import qualified Network.Transport as NT
 
@@ -256,32 +261,124 @@ notificationTests = [
   ]
   where failed = assertFailure "Notification test failed"
 
-engineTests :: [Test]
-engineTests = [
-      testCase "Simulation engine constructor" $ 
-        simulationEngine defaultSystem exprWD >>= flip unless failed . simulation
-
+engineComponentTests :: [Test]
+engineComponentTests = [
     -- TODO
-    , testCase "Network engine constructor" $ return ()
-
-    , testCase "Queue construction/1" $ return ()
+      testCase "Queue construction/1" $ return ()
     , testCase "Queue construction/2" $ return ()
     , testCase "Queue construction/3" $ return ()
 
     , testCase "Message enqueuing" $ return ()
     , testCase "Message dequeuing" $ return ()
+  ]
 
-    , testCase "Send message" $ return ()
+engineTests :: [Test]
+engineTests = [
+      testCase "Simulation engine constructor" $ do
+        eg <- simulationEngine defaultSystem format
+        void $ cleanupEngine eg
+        unless (simulation eg) failed
+
+    , testCase "Network engine constructor" $ 
+        withEngine (networkEngine defaultSystem format) id (validPeerEndpoint defaultAddress)
+
+    , testCase "Virtualized simulation constructor" $ 
+        buildMultiNodeSystem simulationEngine validMessageQueue >>= cleanupEngine . fst
+
+    , testCase "Virtualized network constructor" $ 
+        buildMultiNodeSystem networkEngine validPeerEndpoint >>= cleanupEngine . fst
+
+    , testCase "Multi-engine network constructor" $ 
+        buildMultiEngineSystem testSystem networkEngine validPeerEndpoint
+          >>= mapM_ (cleanupEngine . snd)
+
+    , testCase "Simulation send message" $ 
+        withEngine (buildMultiNodeSystem simulationEngine validMessageQueue) fst sendMessages
+
+    , testCase "Network send message (short-circuited)" $
+        withEngine (buildMultiNodeSystem networkEngine validMessageQueue) fst sendMessages
+
+    , testCase "Network send message (over connection)" $
+        buildMultiEngineSystem testSystem networkEngine validPeerEndpoint
+          >>= (\negs -> sendMultiEngineMessages negs >> mapM_ (cleanupEngine . snd) negs)
+
+    , testCase "Network message received" $ return ()
   ]
   where failed = assertFailure "Engine test failed"
+        
+        format = syntaxValueWD
+
+        withEngine engine extract f = engine >>= (\eg -> f eg >> cleanupEngine (extract eg))
+
+        validMessages  count eg = statistics eg >>= (flip unless failed) . (count <=) . fst
+        validEndpoints count eg = statistics eg >>= (flip unless failed) . (count <=) . snd
+
+        validMessageQueue addr eg = case queues eg of
+          Peer mv          -> withMVar mv $ flip unless failed . (addr ==) . fst
+          ManyByPeer mv    -> withMVar mv $ flip unless failed . elem addr . H.keys
+          ManyByTrigger mv -> withMVar mv $ flip unless failed . elem addr . map fst . H.keys
+        
+        validPeerEndpoint addr = validInternalEndpoint (peerEndpointId addr)
+
+        validInternalEndpoint n eg =
+          getEndpoint n (internalEndpoints $ endpoints eg) 
+            >>= flip unless failed . (maybe False (const True))
+
+        validExternalEndpoint n eg =
+          getEndpoint n (externalEndpoints $ endpoints eg) 
+            >>= flip unless failed . (maybe False (const True))
+
+        testNode1  = defaultAddress
+        testNode2  = Address ("127.0.0.1", 50000)
+        testSystem = [(testNode1, []), (testNode2, [])]
+
+        testTrigger = "dummyTrigger"
+        testValue   = readValueSyntax "1"
+
+        buildMultiNodeSystem engineF testF = do
+          eg <- engineF testSystem format 
+          void $ testF testNode1 eg
+          void $ testF testNode2 eg
+          return (eg, [testNode1, testNode2])
+
+        buildMultiEngineSystem sysEnv engineF testF = 
+          let nodes = map fst sysEnv in do
+            engines <- mapM (flip engineF format . (:[])) sysEnv
+            nodesAndEngines <- return $ zip nodes engines
+            void $ foldM (\_ (addr,e) -> testF addr e) () nodesAndEngines
+            return nodesAndEngines
+
+        sendMessages (eg, nodes) =
+          let msgsToSend = 5 in do
+            void $ unless (length nodes > 1) failed
+            replicateM_ msgsToSend $ send (nodes !! 0) testTrigger testValue eg
+            void $ validMessages msgsToSend eg
+            void $ putEngine eg
+
+        sendMultiEngineMessages nodesAndEngines 
+          | length nodesAndEngines < 2 = failed
+          | otherwise =
+            let msgsToSend = 5
+                (sAddr, sender) = nodesAndEngines !! 0
+                (rAddr, recvr)  = nodesAndEngines !! 1
+            in do
+              replicateM_ msgsToSend $ send rAddr testTrigger testValue sender
+              void $ threadDelay 1000
+              void $ validMessages msgsToSend recvr
+              void $ putEngine recvr
+              (msgs, eps) <- statistics recvr
+              void $ putStrLn $ "Stats: " ++ show (msgs,eps)
+
+
 
 tests :: [Test]
 tests = [
-    testGroup "Buffers"       bufferTests,
-    testGroup "Transport"     transportTests,
-    testGroup "Connections"   connectionTests,
-    testGroup "Endpoints"     endpointTests,
-    testGroup "Handles"       handleTests,
-    testGroup "Notifications" notificationTests,
-    testGroup "Engine"        engineTests
+    testGroup "Buffers"            bufferTests,
+    testGroup "Transport"          transportTests,
+    testGroup "Connections"        connectionTests,
+    testGroup "Endpoints"          endpointTests,
+    testGroup "Handles"            handleTests,
+    testGroup "Notifications"      notificationTests,
+    testGroup "Engine components"  engineComponentTests,
+    testGroup "Engine"             engineTests
   ]
