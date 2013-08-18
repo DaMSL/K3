@@ -109,3 +109,7 @@ isEQualified _          = False
 isEUID :: Annotation Expression -> Bool
 isEUID (EUID _) = True
 isEUID _        = False
+
+isEAnnotation :: Annotation Expression -> Bool
+isEAnnotation (EAnnotation _) = True
+isEAnnotation _               = False

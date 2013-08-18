@@ -11,7 +11,8 @@ module Language.K3.Core.Type (
     isTUID,
     isTQualified,
     isTImmutable,
-    isTMutable
+    isTMutable,
+    isTAnnotation
 ) where
 
 import Data.Tree
@@ -90,3 +91,7 @@ isTImmutable _          = False
 isTMutable :: Annotation Type -> Bool
 isTMutable TMutable = True
 isTMutable _        = False
+
+isTAnnotation :: Annotation Type -> Bool
+isTAnnotation (TAnnotation _) = True
+isTAnnotation _               = False
