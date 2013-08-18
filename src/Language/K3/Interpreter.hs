@@ -259,6 +259,10 @@ emptyAnnotatedCollection :: Identifier -> Value
 emptyAnnotatedCollection comboId = VCollection ([], comboId)
 
 {- Identifiers -}
+annotationSelfId :: Identifier
+annotationSelfId = "self"
+  -- This is a keyword in the language, thus no binding to it can exist beforehand.
+
 annotationComboId :: [Identifier] -> Identifier
 annotationComboId annIds = intercalate ";" annIds
 
@@ -308,6 +312,7 @@ constant (CReal r)   = return $ VReal r
 constant (CString s) = return $ VString s
 constant (CNone _)   = return $ VOption Nothing
 constant (CEmpty _)  = return $ emptyCollection
+  -- TODO: above, initialize ad-hoc annotation combination, and create a collection with the proper combo id.
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -518,7 +523,8 @@ expression (tag &&& children -> (EAddress, [h, p])) = do
     (VString host, VInt port) -> return $ VAddress $ Address (host, port)
     _ -> throwE $ RunTimeTypeError "Invalid address"
 
--- TODO: ESelf
+expression (tag -> ESelf) = lookupE annotationSelfId
+
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 {- Declaration interpretation -}
@@ -552,16 +558,26 @@ global n t@(tag -> TCollection) eOpt = elemE n >>= \case
     composedAnnotation anns = case annotationComboIdT anns of
       Nothing      -> return Nothing
       Just comboId -> tryLookupACombo comboId 
-                        >>= (\cOpt -> initializeComposition anns cOpt >> return (Just comboId))
+                        >>= (\cOpt -> initializeComposition comboId anns cOpt >> return (Just comboId))
 
-    initializeComposition anns = \case
+    initializeComposition comboId anns = \case
       Nothing -> mapM (\x -> lookupADef x >>= return . (x,)) (annotationNamesT anns)
-                  >>= \namedDefs -> modifyACombos ((:) $ (n, mkNamespace namedDefs))
+                  >>= \namedDefs -> modifyACombos ((:) $ (comboId, mkNamespace comboId namedDefs))
       Just _  -> return ()
 
-    mkNamespace namedAnnDefs =
-      let global = concatMap snd namedAnnDefs
-      in CollectionNamespace global namedAnnDefs
+    mkNamespace comboId namedAnnDefs =
+      let defsWithBindings = map (fmap $ map $ extendBindings comboId) namedAnnDefs
+          global           = concatMap snd defsWithBindings
+      in CollectionNamespace global defsWithBindings
+
+    extendBindings comboId (n, VFunction f) = (n,) $ VFunction $ \x -> do
+        ns <- lookupACombo comboId
+        bindings <- return $ collectionNS ns ++ [(annotationSelfId, VRecord $ collectionNS ns)]
+        void $ modifyE (bindings ++) 
+        result <- f x
+        foldM (flip removeE) result bindings
+
+    extendBindings _ nv = nv
 
 global n t eOpt = elemE n >>= \case
   True  -> return ()
@@ -586,34 +602,33 @@ declaration (tag -> DAnnotation n members)      = annotation n members
 declaration _ = undefined
 
 {- Annotations -}
-annotationMember :: Bool -> AnnMemDecl -> (K3 Expression -> Bool) -> Interpretation (Maybe (Identifier, Value))
-annotationMember matchLifted annMem match = case (matchLifted, annMem) of
+annotationMember :: Bool -> (K3 Expression -> Bool) -> AnnMemDecl -> Interpretation (Maybe (Identifier, Value))
+annotationMember matchLifted matchF annMem = case (matchLifted, annMem) of
   (True, Lifted Provides n t Nothing  uid)     -> providesError "lifted attribute" n
   (True, Lifted Provides n t (Just e) uid)     -> interpretExpr n e
   (False, Attribute Provides n t Nothing  uid) -> providesError "attribute" n
   (False, Attribute Provides n t (Just e) uid) -> interpretExpr n e
   _ -> return Nothing
-  where interpretExpr n e = if match e then expression e >>= return . Just . (n,) else return Nothing
+  where interpretExpr n e = if matchF e then expression e >>= return . Just . (n,) else return Nothing
         providesError kind n = error $ "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
--- TODO: add current members to the interpretation environment when initializing non-functions
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n memberDecls = do
-  void $ initializeMembers liftedAttrFuns
-  void $ initializeMembers liftedAttrs
-  void $ initializeMembers attrFuns
-  void $ initializeMembers attrs
-  where initializeMembers (isLifted, matchF) =
-          filterMapMOpt (flip (annotationMember isLifted) matchF) memberDecls >>= addBindings
+  bindings <- foldM initializeMembers [] [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
+  void $ foldM (flip removeE) () bindings
+  void $ modifyADefs $ (:) (n,bindings)
+
+  where initializeMembers initEnv spec = foldM (memberWithBindings spec) initEnv memberDecls
+
+        memberWithBindings (isLifted, matchF) accEnv mem =
+          annotationMember isLifted matchF mem 
+            >>= maybe (return accEnv) (\nv -> modifyE (nv:) >> return (nv:accEnv))
 
         (liftedAttrFuns, liftedAttrs) = ((True, matchFunction), (True, not . matchFunction))
         (attrFuns, attrs)             = ((False, matchFunction), (False, not . matchFunction))
 
         matchFunction (tag -> ELambda _) = True
         matchFunction _ = False
-
-        filterMapMOpt f l = mapM (\m -> f m >>= return . maybe [] (:[])) l >>= return . concat
-        addBindings bindings = modifyADefs $ (:) (n,bindings)
 
 
 {- Built-in functions -}
