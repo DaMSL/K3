@@ -13,6 +13,7 @@ module Language.K3.Core.Declaration (
     isDUID
 ) where
 
+import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -56,22 +57,51 @@ data instance Annotation Declaration
 
 
 instance Pretty (K3 Declaration) where
-    prettyLines (Node (DGlobal i t me :@: as) ds) =
-        ["DGlobal " ++ i ++ drawAnnotations as, "|"]
-        ++ case (me, ds) of
-            (Nothing, []) -> terminalShift t
-            (Just e, []) ->  nonTerminalShift t ++ ["|"] ++ terminalShift e
-            (Nothing, _) -> drawSubTrees ds
-            (Just _, _) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
-    prettyLines (Node (DTrigger i t e :@: as) ds) =
-        ["DTrigger " ++ i ++ drawAnnotations as, "|"]
-        ++ nonTerminalShift t ++ ["|"] ++ case ds of
-            [] ->  terminalShift e
-            _ ->  nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
-    prettyLines (Node (DRole i :@: as) ds) =
-        ["DRole " ++ i ++ " :@: " ++ show as, "|"]
-        ++ drawSubTrees ds
-    prettyLines x = lines $ show x
+  prettyLines (Node (DGlobal i t me :@: as) ds) =
+    ["DGlobal " ++ i ++ drawAnnotations as, "|"]
+    ++ case (me, ds) of
+      (Nothing, []) -> terminalShift t
+      (Just e, []) ->  nonTerminalShift t ++ ["|"] ++ terminalShift e
+      (Nothing, _) -> drawSubTrees ds
+      (Just _, _) -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
+    
+  prettyLines (Node (DTrigger i t e :@: as) ds) =
+    ["DTrigger " ++ i ++ drawAnnotations as, "|"]
+    ++ nonTerminalShift t ++ ["|"] ++ case ds of
+      [] ->  terminalShift e
+      _ ->  nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
+    
+  prettyLines (Node (DRole i :@: as) ds) =
+    ["DRole " ++ i ++ " :@: " ++ show as, "|"]
+    ++ drawSubTrees ds
+    
+  prettyLines (Node (DAnnotation i members :@: as) ds) =
+    ["DAnnotation " ++ i ++ drawAnnotations as, "|"]
+    ++ drawAnnotationMembers members
+    ++ drawSubTrees ds
+
+    where drawAnnotationMembers []  = []
+          drawAnnotationMembers [x] = terminalShift x
+          drawAnnotationMembers x   = 
+            (concatMap nonTerminalShift $ init x) ++ (terminalShift $ last x)
+
+
+instance Pretty AnnMemDecl where
+  prettyLines (Lifted      pol n t eOpt uid) =
+    ["Lifted " ++ intercalate " " [show pol, n, show uid], "|"]
+    ++ case eOpt of
+        Nothing -> terminalShift t
+        Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
+  
+  prettyLines (Attribute   pol n t eOpt uid) =
+    ["Attribute " ++ intercalate " " [show pol, n, show uid], "|"]
+    ++ case eOpt of
+        Nothing -> terminalShift t
+        Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
+  
+  prettyLines (MAnnotation pol n uid) =
+    ["MAnnotation " ++ intercalate " " [show pol, n, show uid]]
+
 
 {- Declaration annotation predicates -}
 
