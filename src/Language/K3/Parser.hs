@@ -295,7 +295,7 @@ dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
 annotationMember =
-  choice $ map uidOver [annLifted, annAttribute, subAnnotation]
+  choice $ map uidOver [try annLifted, try annAttribute, subAnnotation]
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
