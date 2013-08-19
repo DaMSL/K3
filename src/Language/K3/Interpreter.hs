@@ -263,6 +263,10 @@ annotationSelfId :: Identifier
 annotationSelfId = "self"
   -- This is a keyword in the language, thus no binding to it can exist beforehand.
 
+annotationDataId :: Identifier
+annotationDataId = "data"
+  -- TODO: make this a keyword in the syntax.
+
 annotationComboId :: [Identifier] -> Identifier
 annotationComboId annIds = intercalate ";" annIds
 
@@ -311,8 +315,8 @@ constant (CByte w)   = return $ VByte w
 constant (CReal r)   = return $ VReal r
 constant (CString s) = return $ VString s
 constant (CNone _)   = return $ VOption Nothing
-constant (CEmpty _)  = return $ emptyCollection
-  -- TODO: above, initialize ad-hoc annotation combination, and create a collection with the proper combo id.
+constant (CEmpty t)  = (getComposedAnnotation $ annotations t) 
+                        >>= return . maybe emptyCollection emptyAnnotatedCollection 
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -463,12 +467,25 @@ expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
     VRecord vr -> maybe (unknownField i) return $ lookup i vr
 
     VCollection (v,cid) ->
-      if null cid then unannotatedCollection
-      else lookupACombo cid >>= maybe (unknownCollectionMember i) return . lookup i . collectionNS
+      if null cid then unannotatedCollection else do
+        cns <- lookupACombo cid 
+        case lookup i $ collectionNS cns of
+          Nothing            -> unknownCollectionMember i
+          Just (VFunction f) -> wrapDataBinding f (VCollection (v,cid))
+          Just v             -> return v
 
     _ -> throwE $ RunTimeTypeError "Invalid Record Projection"
   
-  where unknownField i            = throwE $ RunTimeTypeError $ "Unknown record field " ++ i
+  where 
+        wrapDataBinding f v = 
+          let dv = (annotationDataId, v)
+          in return $ VFunction $ \x ->  modifyE (dv:) >> f x >>= removeE dv
+          -- TODO: this copies the whole collection. Change a collection's
+          -- implementation to be an IORef [Value], which also better
+          -- represents the implementation of its data segment as a
+          -- pointer to a chunk/page.
+
+        unknownField i            = throwE $ RunTimeTypeError $ "Unknown record field " ++ i
         unannotatedCollection     = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
         unknownCollectionMember i = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i
 
@@ -540,8 +557,8 @@ global _ (tag -> TSource) _           = return ()
 global n (tag -> TFunction) _         = return () -- Functions have already been initialized.
 
 global n t@(tag -> TCollection) eOpt = elemE n >>= \case
-  True  -> void . composedAnnotation $ annotations t
-  False -> (composedAnnotation $ annotations t) >>= initializeCollection eOpt . maybe "" id
+  True  -> void . getComposedAnnotation $ annotations t
+  False -> (getComposedAnnotation $ annotations t) >>= initializeCollection eOpt . maybe "" id
   where
     initializeCollection eOpt comboId = case eOpt of
       Nothing -> modifyE ((n, emptyAnnotatedCollection comboId):)
@@ -554,30 +571,6 @@ global n t@(tag -> TCollection) eOpt = elemE n >>= \case
 
     collInitError = throwE . RunTimeTypeError $ "Invalid annotations on collection initializer for " ++ n
     collValError  = throwE . RunTimeTypeError $ "Invalid collection value " ++ n
-
-    composedAnnotation anns = case annotationComboIdT anns of
-      Nothing      -> return Nothing
-      Just comboId -> tryLookupACombo comboId 
-                        >>= (\cOpt -> initializeComposition comboId anns cOpt >> return (Just comboId))
-
-    initializeComposition comboId anns = \case
-      Nothing -> mapM (\x -> lookupADef x >>= return . (x,)) (annotationNamesT anns)
-                  >>= \namedDefs -> modifyACombos ((:) $ (comboId, mkNamespace comboId namedDefs))
-      Just _  -> return ()
-
-    mkNamespace comboId namedAnnDefs =
-      let defsWithBindings = map (fmap $ map $ extendBindings comboId) namedAnnDefs
-          global           = concatMap snd defsWithBindings
-      in CollectionNamespace global defsWithBindings
-
-    extendBindings comboId (n, VFunction f) = (n,) $ VFunction $ \x -> do
-        ns <- lookupACombo comboId
-        bindings <- return $ collectionNS ns ++ [(annotationSelfId, VRecord $ collectionNS ns)]
-        void $ modifyE (bindings ++) 
-        result <- f x
-        foldM (flip removeE) result bindings
-
-    extendBindings _ nv = nv
 
 global n t eOpt = elemE n >>= \case
   True  -> return ()
@@ -602,26 +595,54 @@ declaration (tag -> DAnnotation n members)      = annotation n members
 declaration _ = undefined
 
 {- Annotations -}
-annotationMember :: Bool -> (K3 Expression -> Bool) -> AnnMemDecl -> Interpretation (Maybe (Identifier, Value))
-annotationMember matchLifted matchF annMem = case (matchLifted, annMem) of
-  (True, Lifted Provides n t Nothing  uid)     -> providesError "lifted attribute" n
-  (True, Lifted Provides n t (Just e) uid)     -> interpretExpr n e
-  (False, Attribute Provides n t Nothing  uid) -> providesError "attribute" n
+
+getComposedAnnotation :: [Annotation Type] -> Interpretation (Maybe Identifier)
+getComposedAnnotation anns = case annotationComboIdT anns of
+  Nothing      -> return Nothing
+  Just comboId -> tryLookupACombo comboId 
+                    >>= (\cOpt -> initializeComposition comboId anns cOpt >> return (Just comboId))
+  where
+    initializeComposition comboId anns = \case
+      Nothing -> mapM (\x -> lookupADef x >>= return . (x,)) (annotationNamesT anns)
+                  >>= (trace ("Adding annotation combo " ++ comboId) $ 
+                        modifyACombos . (:) . (comboId,) . mkNamespace comboId)
+      Just _  -> return ()
+
+    mkNamespace comboId namedAnnDefs =
+      let defsWithBindings = map (fmap $ map $ extendBindings comboId) namedAnnDefs
+          global           = concatMap snd defsWithBindings
+      in CollectionNamespace global defsWithBindings
+
+    extendBindings comboId (n, VFunction f) = (n,) $ VFunction $ \x -> do
+        ns <- lookupACombo comboId
+        bindings <- return $ collectionNS ns ++ [(annotationSelfId, VRecord $ collectionNS ns)]
+        void $ modifyE (bindings ++) 
+        result <- f x
+        foldM (flip removeE) result bindings
+
+    extendBindings _ nv = nv
+
+
+annotationMember :: Identifier -> Bool -> (K3 Expression -> Bool) -> AnnMemDecl 
+                    -> Interpretation (Maybe (Identifier, Value))
+annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
+  (True,  Lifted Provides n t (Just e) uid)    -> interpretExpr n e
   (False, Attribute Provides n t (Just e) uid) -> interpretExpr n e
+  (True,  Lifted Provides n t Nothing  uid)    -> builtinLiftedAttribute annId n t uid
+  (False, Attribute Provides n t Nothing  uid) -> builtinAttribute annId n t uid 
   _ -> return Nothing
   where interpretExpr n e = if matchF e then expression e >>= return . Just . (n,) else return Nothing
-        providesError kind n = error $ "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
 annotation :: Identifier -> [AnnMemDecl] -> Interpretation ()
 annotation n memberDecls = do
   bindings <- foldM initializeMembers [] [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
   void $ foldM (flip removeE) () bindings
-  void $ modifyADefs $ (:) (n,bindings)
+  trace ("Adding annotation definition " ++ n) $ void $ modifyADefs $ (:) (n,bindings)
 
   where initializeMembers initEnv spec = foldM (memberWithBindings spec) initEnv memberDecls
 
         memberWithBindings (isLifted, matchF) accEnv mem =
-          annotationMember isLifted matchF mem 
+          annotationMember n isLifted matchF mem 
             >>= maybe (return accEnv) (\nv -> modifyE (nv:) >> return (nv:accEnv))
 
         (liftedAttrFuns, liftedAttrs) = ((True, matchFunction), (True, not . matchFunction))
@@ -729,6 +750,86 @@ registerNotifier n =
 
         targetOfValue (VTuple [VTrigger (m, _), VAddress addr]) = (addr, m, vunit)
         targetOfValue _ = error "Invalid notifier target"
+
+
+{- Builtin annotation members -}
+providesError :: String -> Identifier -> a
+providesError kind n = error $ 
+  "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
+
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
+                          -> Interpretation (Maybe (Identifier, Value))
+builtinLiftedAttribute annId n t uid 
+  | annId == "Collection" && n == "add"     = return $ Just (n, addFn)
+  | annId == "Collection" && n == "combine" = return $ Just (n, combineFn)
+  | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
+  | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
+  | annId == "Collection" && n == "split"   = return $ Just (n, splitFn)
+  | otherwise = providesError "lifted attribute" n
+
+  where addFn = valWithCollection $ \el v compId -> return $ VCollection (v++[el], compId)
+
+        combineFn = valWithCollection $ \other v compId -> 
+          flip (matchCollection collectionError) other (\v' compId' -> 
+            if compId == compId' then return $ VCollection(v++v', compId) else combineError)
+
+        splitFn = valWithCollection (\_ (splitImpl -> (l,r)) compId ->
+                    return $ VTuple [VCollection(l, compId), VCollection(r, compId)])
+        
+        foldFn = VFunction $ \f -> flip (matchFunction foldFnError) f $
+          \f' -> return $ valWithCollection (\accInit v _ -> foldM (curryFoldFn f') accInit v)
+
+        curryFoldFn :: (Value -> Interpretation Value) -> Value -> Value -> Interpretation Value
+        curryFoldFn f' acc v = do
+          f'' <- f' acc
+          (matchFunction curryFnError) ($ v) f''
+
+        extFn = valWithCollection $ \f v compId  -> 
+          case f of 
+            VFunction f' -> do
+              vals <- mapM f' v
+              case vals of 
+                [] -> return $ VCollection ([], compId)
+                _  -> maybe combineError return $ flip foldl1 (map Just vals) combine'
+            _ -> extError
+
+        combine' Nothing _ = Nothing
+        combine' _ Nothing = Nothing
+        
+        combine' (Just acc) (Just cv) =
+          flip (matchCollection Nothing) acc $ \v1 cid1 -> 
+          flip (matchCollection Nothing) cv  $ \v2 cid2 -> 
+          if cid1 == cid2 then Just $ VCollection(v1++v2, cid1) else Nothing
+
+        valWithCollection :: (Value -> [Value] -> Identifier -> Interpretation Value) -> Value
+        valWithCollection f =
+          VFunction $ \arg -> lookupE annotationDataId >>= matchCollection collectionError (f arg)
+
+        matchCollection :: a -> ([Value] -> Identifier -> a) -> Value -> a
+        matchCollection err f =
+          \case
+            VCollection (v, compId) -> f v compId
+            _ -> err
+
+        matchFunction :: a -> ((Value -> Interpretation Value) -> a) -> Value -> a
+        matchFunction err f = 
+          \case 
+            VFunction f' -> f f'
+            _ -> err
+
+        splitImpl l = if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
+        threshold = 10
+
+        extError        = throwE $ RunTimeTypeError "Invalid function argument for ext"
+        foldFnError     = throwE $ RunTimeTypeError "Invalid fold function"
+        curryFnError    = throwE $ RunTimeTypeError "Invalid curried function"
+        combineError    = throwE $ RunTimeTypeError "Mismatched collection types for combine"
+        collectionError = throwE $ RunTimeTypeError "Invalid collection"
+
+
+builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
+                    -> Interpretation (Maybe (Identifier, Value))
+builtinAttribute annId n t uid = providesError "attribute" n
 
 {- Program initialization methods -}
 
