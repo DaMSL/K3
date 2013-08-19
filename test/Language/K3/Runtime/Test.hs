@@ -302,6 +302,11 @@ engineTests = [
         buildMultiEngineSystem testSystem networkEngine validPeerEndpoint
           >>= (\negs -> sendMultiEngineMessages negs >> mapM_ (cleanupEngine . snd) negs)
 
+    , testCase "Incast network pattern" $
+        buildMultiEngineSystem (mkSysEnv 5 defaultAddress 1000) networkEngine validPeerEndpoint
+          >>= (\negs -> sendManyMsgsToOne negs >> mapM_ (cleanupEngine . snd) negs)
+
+    -- TODO
     , testCase "Network message received" $ return ()
   ]
   where failed = assertFailure "Engine test failed"
@@ -335,6 +340,11 @@ engineTests = [
         testTrigger = "dummyTrigger"
         testValue   = readValueSyntax "1"
 
+        mkSysEnv numNodes (Address (host,port)) portStep = 
+          let aux acc 0 = acc
+              aux acc n = aux ((Address (host, port + portStep * (n-1))):acc) $ n-1
+          in map (,[]) $ aux [] numNodes
+
         buildMultiNodeSystem engineF testF = do
           eg <- engineF testSystem format 
           void $ testF testNode1 eg
@@ -355,20 +365,31 @@ engineTests = [
             void $ validMessages msgsToSend eg
             void $ putEngine eg
 
+        pushMessages repeatCount (numMsgs, msgAction) recvr = do
+            replicateM_ repeatCount msgAction
+            void $ threadDelay 500000
+            void $ validMessages (repeatCount * numMsgs) recvr
+            void $ putEngine recvr
+            (msgs, eps) <- statistics recvr
+            void $ putStrLn $ "Stats: " ++ show (msgs,eps)
+
         sendMultiEngineMessages nodesAndEngines 
           | length nodesAndEngines < 2 = failed
           | otherwise =
             let msgsToSend = 5
                 (sAddr, sender) = nodesAndEngines !! 0
                 (rAddr, recvr)  = nodesAndEngines !! 1
-            in do
-              replicateM_ msgsToSend $ send rAddr testTrigger testValue sender
-              void $ threadDelay 1000
-              void $ validMessages msgsToSend recvr
-              void $ putEngine recvr
-              (msgs, eps) <- statistics recvr
-              void $ putStrLn $ "Stats: " ++ show (msgs,eps)
+                msgAction       = send rAddr testTrigger testValue sender
+            in pushMessages msgsToSend (1, msgAction) recvr
 
+        sendManyMsgsToOne nodesAndEngines
+          | length nodesAndEngines < 2 = failed
+          | otherwise =
+            let msgsToSend = 5
+                (rAddr, recvr) = nodesAndEngines !! 0
+                senders        = tail nodesAndEngines
+                msgAction      = mapM_ (send rAddr testTrigger testValue . snd) senders
+            in pushMessages msgsToSend (length senders, msgAction) recvr
 
 
 tests :: [Test]
