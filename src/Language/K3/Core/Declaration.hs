@@ -83,7 +83,8 @@ instance Pretty (K3 Declaration) where
     where drawAnnotationMembers []  = []
           drawAnnotationMembers [x] = terminalShift x
           drawAnnotationMembers x   = 
-            (concatMap nonTerminalShift $ init x) ++ (terminalShift $ last x)
+               (concatMap (\y -> nonTerminalShift y ++ ["|"]) $ init x)
+            ++ (terminalShift $ last x)
 
 
 instance Pretty AnnMemDecl where
