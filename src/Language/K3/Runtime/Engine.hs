@@ -399,6 +399,12 @@ defaultSystem = [(defaultAddress, [ ("me", defaultAddressExpr)
         defaultPeersExpr = EC.empty TC.address
         defaultRoleExpr = EC.constant $ CString ""
 
+{- Configurations -}
+configureWithAddress :: Address -> EngineConfiguration
+configureWithAddress addr = EngineConfiguration addr bufSpec connRetries wforNet
+  where bufSpec = defaultBufferSpec defaultConfig
+        connRetries = connectionRetries defaultConfig
+        wforNet = waitForNetwork defaultConfig
 
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)
@@ -435,6 +441,7 @@ perTriggerQueues peers triggerIds =
 --   to ensure it cannot send internal messages.
 simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
 simulationEngine systemEnv (internalizeWD -> internalWD) = do
+  config          <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers         <- newEmptyMVar >>= return . Uniprocess
   listeners       <- newMVar []
@@ -442,31 +449,32 @@ simulationEngine systemEnv (internalizeWD -> internalWD) = do
                       [addr] -> simpleQueues addr
                       _      -> perPeerQueues $ deployedNodes systemEnv
   endpoints       <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
-  externalConns   <- emptyConnectionMap . externalSendAddress . address $ defaultConfig
+  externalConns   <- emptyConnectionMap . externalSendAddress . address $ config
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine defaultConfig internalWD ctrl systemEnv q workers listeners endpoints connState
+  return $ Engine config internalWD ctrl systemEnv q workers listeners endpoints connState
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
 networkEngine systemEnv (internalizeWD -> internalWD) = do
+  config        <- return $ configureWithAddress $ head peers
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers       <- newEmptyMVar >>= return . Uniprocess
   listnrs       <- newMVar []
   q             <- perPeerQueues peers
   endpoints     <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
-  internalConns <- defaultConnectionMap internalSendAddress >>= return . Just
-  externalConns <- defaultConnectionMap externalSendAddress
+  internalConns <- emptyConns internalSendAddress config >>= return . Just
+  externalConns <- emptyConns externalSendAddress config
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine defaultConfig internalWD ctrl systemEnv q workers listnrs endpoints connState
+  engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState
 
   void $ startNetwork engine
   return engine
 
   where
     peers                      = deployedNodes systemEnv
-    defaultConnectionMap addrF = emptyConnectionMap . addrF . address $ defaultConfig
+    emptyConns addrF config    = emptyConnectionMap . addrF . address $ config
     startNetwork eg            = mapM_ (runPeerEndpoint eg) peers
     runPeerEndpoint eg addr    = openSocketInternal (peerEndpointId addr) addr "r" eg
 
@@ -863,7 +871,6 @@ openFileInternal eid path mode eg =
 
 openSocketInternal :: Identifier -> Address -> String -> Engine a -> IO ()
 openSocketInternal eid addr mode eg@(control -> ctrl) =
-  trace ("Opening socket for "++eid) $
   genericOpenSocket eid addr (internalFormat eg) Nothing mode lstnrState (internalEndpoints $ endpoints eg) eg
   where lstnrState = ListenerState eid (messageReadyV ctrl, networkDoneV ctrl) internalListenerProcessor
 
@@ -992,14 +999,16 @@ llAddress addr = NT.EndPointAddress $ BS.pack $ show addr ++ ":0"
 newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
 newConnection addr (endpoint -> ep) =
   NT.connect ep (llAddress addr) NT.ReliableOrdered NT.defaultConnectHints
-    >>= return . either (\_ -> Nothing) (Just . flip NConnection addr)
+    >>= either connectionError connectionSuccess
+  where connectionSuccess   = return . Just . flip NConnection addr
+        connectionError err = return Nothing
 
 emptyConnectionMap :: Address -> IO (MVar EConnectionMap)
 emptyConnectionMap addr = newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
 
 getConnections :: Identifier -> EConnectionState -> Maybe (MVar EConnectionMap)
 getConnections n (EConnectionState (icp, ecp)) =
-  if externalEndpointId n then maybe err Just icp else Just ecp
+  if externalEndpointId n then Just ecp else maybe err Just icp
   where err = error $ "Invalid internal connection to " ++ n ++ " in a simulation"
 
 withConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO a) -> IO a
