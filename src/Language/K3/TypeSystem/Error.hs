@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, StandaloneDeriving #-}
+{-# LANGUAGE ExistentialQuantification, StandaloneDeriving, ConstraintKinds, FlexibleInstances #-}
 
 {-|
   A module describing the types of errors which may occur during typing.  These
@@ -9,6 +9,9 @@ module Language.K3.TypeSystem.Error
 , InternalTypeError(..)
 ) where
 
+import qualified Data.Foldable as Foldable
+import Data.List.Split
+import Data.Sequence (Seq)
 import Data.Set (Set)
 
 import Language.K3.Core.Annotation
@@ -16,8 +19,10 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
-import Language.K3.TypeSystem.Annotations
+import Language.K3.Pretty
+import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Subtyping.Error
 
 -- |A data structure representing typechecking errors.
 data TypeError
@@ -59,13 +64,13 @@ data TypeError
       -- ^ Indicates that a concatenation error occurred while trying to
       --   derive over an annotation.
   | forall c. (ConstraintSetType c)
-    => AnnotationSubtypeFailure UID (AnnType c) (AnnType c)
+    => AnnotationSubtypeFailure UID (AnnType c) (AnnType c) -- TODO:SubtypeError
       -- ^ Indicates that the inferred type of an annotation was not a subtype
       --   of its declared type signature.  The first annotation type in the
       --   error is the inferred type; the second annotation type is the
       --   declared type.
   | forall c. (ConstraintSetType c)
-    => DeclarationSubtypeFailure UID (QuantType c) (QuantType c)
+    => DeclarationSubtypeFailure UID (QuantType c) (QuantType c) SubtypeError
       -- ^ Indicates that the inferred type of a global declaration was not a
       --   subtype of its declared type signature.  The first @QuantType@ is the
       --   inferred type; the second @QuantType@ is the declared type.
@@ -77,6 +82,25 @@ data TypeError
       --   multiple annotation declarations.
 
 deriving instance Show TypeError
+
+instance Pretty TypeError where
+  prettyLines e = case e of
+    DeclarationSubtypeFailure n qt1 qt2 e' ->
+      ["DeclarationSubtypeFailure at node "] %+
+      prettyLines n %+
+      [":"] %$
+      indent 2 (
+        ["  "] %+ prettyLines qt1 %$
+        ["≤ "] %+ prettyLines qt2 %$
+        ["because "] %+ prettyLines e')
+    _ -> splitOn "\n" $ show e
+
+instance Pretty (Seq TypeError) where
+  prettyLines = prettyLines . Foldable.toList
+  
+instance Pretty [TypeError] where
+  prettyLines es =
+    ["[ "] %+ foldl (%$) [] (map prettyLines es) +% ["] "]
 
 data InternalTypeError
   = TopLevelDeclarationNonRole (K3 Declaration)
@@ -131,6 +155,7 @@ data InternalTypeError
       --  alias was bound to a form which could not be understood.
   | forall c. (ConstraintSetType c)
     => TypeInEnvironmentDoesNotMatchSignature TEnvId (QuantType c) (QuantType c)
+          SubtypeError
       -- ^Indicates that a type found in a type environment is not a supertype
       --  of the type which was inferred from its signature.  This should never
       --  happen; in practice, these types should be nearly identical.  The
@@ -140,6 +165,8 @@ data InternalTypeError
       -- ^Indicates that, during type decision, an annotation member contained
       --  a member annotation declaration.  Such declarations should be inlined
       --  at the beginning of type decision.
+  | PrimitiveSubtypeInvariantViolated InternalPrimitiveSubtypeError
+      -- ^Indicates that primitive subtyping has failed in some way.
 
 deriving instance Show InternalTypeError
 

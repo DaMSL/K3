@@ -15,6 +15,7 @@ import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Pretty
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
@@ -29,6 +30,9 @@ data StubbedConstraintSet = StubbedConstraintSet ConstraintSet (Set Stub)
 --  unknown type or type variable.
 newtype Stub = Stub Int
   deriving (Eq, Ord, Show)
+  
+instance Pretty Stub where
+  prettyLines (Stub n) = ["stub " ++ show n]
 
 -- |Obtains all stubs from a stubbed constraint set.
 stubsOf :: StubbedConstraintSet -> Set Stub
@@ -65,6 +69,13 @@ instance Monoid StubbedConstraintSet where
   mempty = CSL.empty
   mappend = CSL.union
   mconcat = CSL.unions
+
+instance Pretty StubbedConstraintSet where
+  prettyLines scs =
+    ["{ "] %+
+    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $
+      map prettyLines $ CSL.toList scs) %+
+    [" }"]
 
 $(concat <$> mapM (defineHomInstance ''ReplaceVariables)
                       [''StubbedConstraintSet, ''Stub])

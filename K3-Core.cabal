@@ -102,6 +102,9 @@ library
         Language.K3.TypeSystem.TypeDecision.AnnotationInlining,
         Language.K3.TypeSystem.TypeDecision.StubReplacement
     ghc-options: -Wall
+    other-modules: 
+                   Language.K3.TypeSystem.Subtyping.Error,
+                   Language.K3.TypeSystem.Annotations.Error
 
 test-suite all
     type: exitcode-stdio-1.0

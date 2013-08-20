@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, DataKinds, KindSignatures, StandaloneDeriving, ConstraintKinds, ScopedTypeVariables #-}
+{-# LANGUAGE GADTs, DataKinds, KindSignatures, StandaloneDeriving, ConstraintKinds, ScopedTypeVariables, FlexibleInstances #-}
 
 module Language.K3.TypeSystem.Data.TypesAndConstraints
 ( TVarQualification(..)
@@ -37,12 +37,15 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 ) where
 
 import Data.Function
+import Data.List
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Data.Utils
 
 -- * Types
@@ -64,6 +67,11 @@ data TVar (a :: TVarQualification) where
         -> TVarOrigin UnqualifiedTVar
         -> TVar UnqualifiedTVar
 
+instance Pretty (TVar a) where
+  prettyLines v = case v of
+    QTVar n _ -> ["å" ++ show n]
+    UTVar n _ -> ["α" ++ show n]
+
 tvarId :: TVar a -> Int
 tvarId a = case a of
             QTVar n _ -> n
@@ -76,7 +84,7 @@ instance Ord (TVar a) where
 deriving instance Show (TVar a)
 
 -- |A constraint kind describing the constraints pap
-type ConstraintSetType c = (Show c)
+type ConstraintSetType c = (Pretty c, Show c)
 
 -- |A description of the origin of a given type variable.
 data TVarOrigin (a :: TVarQualification)
@@ -114,6 +122,11 @@ data AnyTVar
   | SomeUVar UVar
   deriving (Eq, Ord, Show)
 
+instance Pretty AnyTVar where
+  prettyLines sa = case sa of
+                    SomeQVar qa -> prettyLines qa
+                    SomeUVar a -> prettyLines a
+
 -- |A function to match only qualified type variables.
 onlyQVar :: AnyTVar -> Maybe QVar
 onlyQVar sa = case sa of
@@ -133,6 +146,15 @@ someVar a = case a of
 -- |Type qualifiers.
 data TQual = TMut | TImmut
   deriving (Eq, Ord, Read, Show)
+
+instance Pretty TQual where
+  prettyLines q = case q of
+                    TMut -> ["mut"]
+                    TImmut -> ["immut"]
+
+instance Pretty (Set TQual) where
+  prettyLines qs =
+    ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList qs) %+ ["}"]
   
 -- |A set of all qualifiers.
 allQuals :: Set TQual
@@ -146,6 +168,15 @@ data QuantType c
       --  over which the type is polymorphic, the variable describing the type,
       --  and the set of constraints on that variable
   deriving (Eq, Ord, Show)
+
+instance (Pretty c) => Pretty (QuantType c) where
+  prettyLines (QuantType sas qa cs) =
+    ["∀{"] %+
+    sequenceBoxes maxWidth "," (map prettyLines $ Set.toList sas) %+
+    ["}. "] %+
+    prettyLines qa %+
+    ["\\"] %/
+    prettyLines cs
   
 -- |A type alias for normal quantified types (which use normal constraint sets).
 type NormalQuantType = QuantType ConstraintSet
@@ -188,6 +219,24 @@ data ShallowType
   | STop
   | SBottom
   deriving (Eq, Ord, Show)
+  
+instance Pretty ShallowType where
+  prettyLines t = case t of
+    SFunction a a' -> prettyLines a %+ ["->"] %+ prettyLines a'
+    STrigger a' -> ["trigger"] %+ prettyLines a'
+    SBool -> ["bool"]
+    SInt -> ["int"]
+    SReal -> ["real"]
+    SString -> ["string"]
+    SOption qa -> ["option"] %+ prettyLines qa
+    SIndirection qa -> ["ind"] %+ prettyLines qa
+    STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]
+    SRecord rows ->
+      let rowBox (i,qa) = [i] %+ prettyLines qa in
+      ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) %+
+      ["}"]
+    STop -> ["⊤"]
+    SBottom -> ["⊥"]
 
 -- |A simple data type for polarities.  Polarities are monoidal by XOR.  The
 --  empty polarity is positive.
@@ -247,6 +296,23 @@ data Constraint
   | PolyinstantiationLineageConstraint QVar QVar
   deriving (Eq, Ord, Show)
   
+instance Pretty Constraint where
+  prettyLines c =
+    case c of
+      IntermediateConstraint ta1 ta2 -> binPretty ta1 ta2
+      QualifiedLowerConstraint ta qa -> binPretty ta qa
+      QualifiedUpperConstraint qa ta -> binPretty qa ta
+      QualifiedIntermediateConstraint qv1 qv2 -> binPretty qv1 qv2
+      BinaryOperatorConstraint a1 op a2 a3 ->
+        prettyLines a1 %+ prettyLines op %+ prettyLines a2 %+ ["<:"] %+
+        prettyLines a3
+      MonomorphicQualifiedUpperConstraint qa qs ->
+        prettyLines qa %+ ["<:"] %+ prettyLines qs
+      PolyinstantiationLineageConstraint qa1 qa2 ->
+        prettyLines qa1 %+ ["<<:"] %+ prettyLines qa2
+    where
+      binPretty x y = prettyLines x %+ ["<:"] %+ prettyLines y
+  
 -- |A data type representing binary operators in the type system.
 data BinaryOperator
   = BinOpAdd
@@ -262,6 +328,22 @@ data BinaryOperator
   | BinOpApply
   | BinOpSend
   deriving (Eq, Ord, Read, Show)
+  
+instance Pretty BinaryOperator where
+  prettyLines op = (case op of
+      BinOpAdd -> "+"
+      BinOpSubtract -> "-"
+      BinOpMultiply -> "*"
+      BinOpDivide -> "/"
+      BinOpEquals -> "=="
+      BinOpGreater -> ">"
+      BinOpLess -> "<"
+      BinOpGreaterEq -> ">="
+      BinOpLessEq -> "<="
+      BinOpSequence -> ";"
+      BinOpApply -> ""
+      BinOpSend -> "<-"
+    ):[]
   
 -- |A data type representing some form of operator.
 data AnyOperator
@@ -280,3 +362,10 @@ instance Monoid ConstraintSet where
   mempty = ConstraintSet Set.empty
   mappend (ConstraintSet cs1) (ConstraintSet cs2) =
     ConstraintSet $ Set.union cs1 cs2
+
+instance Pretty ConstraintSet where
+  prettyLines (ConstraintSet cs) =
+    ["{ "] %+
+    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $
+        map prettyLines $ Set.toList cs) +%
+    [" }"]

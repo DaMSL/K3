@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections #-}
+{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections, StandaloneDeriving #-}
 
 {-|
   This module represents the implementation of the Subtyping section of the K3
@@ -7,38 +7,49 @@
   this writing, the paper can be found at
   @http://pl.cs.jhu.edu/papers/sas96.pdf@.
   
-  This module defines a computable function, @isSubtypeOf@, which will determine
-  if one polymorphic constrained type is a subtype of another using a
-  /conservative/ approximation as outlined in the paper above.  Whether a
-  computable function exists to calculate the precise answer to this relation
-  is unknown as of the time of this writing.  The approximation provided here
-  fails in cases where the proof of subtyping proceeds by exhaustive enumeration
-  of cases in the type system; in practice, this does not appear to be an
-  impediment to use.
+  This module defines a function @checkSubtype@ which will produce either
+  @Nothing@ if its first argument can be proven to be a subtype of its second or
+  @Just@ a @SubtypeError@ otherwise.  Whether a computable function exists to
+  calculate the precise answer to this question is unknown at the time of this
+  writing.  The approximation provided here fails in cases where the proof of
+  subtyping proceeds by exhaustive enumeration of cases in the type system; in
+  practice, this does not appear to be an impediment to use.
 -}
 module Language.K3.TypeSystem.Subtyping
-( isSubtypeOf
+( module Language.K3.TypeSystem.Subtyping.Error
+, checkSubtype
 ) where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans
+import Control.Monad.Trans.Either
+import Data.Either
+import qualified Data.Foldable as Foldable
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
+import qualified Data.Traversable as Trav
 
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Subtyping.ConstraintMap
+import Language.K3.TypeSystem.Subtyping.Error
 
-isSubtypeOf :: forall m. (FreshVarI m)
-            => NormalQuantType -> NormalQuantType -> m Bool
-isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
+checkSubtype :: forall m. (TypeErrorI m, FreshVarI m)
+             => NormalQuantType -> NormalQuantType
+             -> m (Either SubtypeError ())
+checkSubtype qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
   -- First, ensure that the type variable sets are disjoint.  If this is not
   -- the case, then perform alpha-renaming as necessary.
   let overlap = sas' `Set.intersection` sas'' in
@@ -48,18 +59,19 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
       -- variable names.
       uvarMap <- freshVarsFor freshUVar $ mapMaybe onlyUVar $ Set.toList overlap
       qvarMap <- freshVarsFor freshQVar $ mapMaybe onlyQVar $ Set.toList overlap
-      isSubtypeOf qt1 $ replaceVariables qvarMap uvarMap qt2
+      checkSubtype qt1 $ replaceVariables qvarMap uvarMap qt2
     else do
+      -- Proceed to calculate the approximation as defined in the spec.
       let cs = cs' `csUnion` cs'' `csUnion` csSing (constraint qa' qa'')
       let cs''' = calculateClosure cs
       let k' = kernel $ calculateClosure cs'
       mk'' <- canonicalize $ kernel $ calculateClosure cs''
       case mk'' of
-        Nothing -> return False
+        Nothing -> undefined -- TODO
         Just k'' ->
-          return $ consistent cs'''
-                && proveAll k' sas' cs''' LowerMode
-                && proveAll k'' sas'' cs''' UpperMode
+          if consistent cs'''
+            then proveAll k' k'' (sas' `Set.union` sas'') cs'''
+            else return $ Left $ InconsistentSubtypeClosure cs'''
   where
     freshVarsFor :: (TVarOrigin a -> m (TVar a))
                  -> [TVar a] -> m (Map (TVar a) (TVar a))
@@ -68,15 +80,26 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
                           freshVar (TVarAlphaRenamingOrigin x)) vars
     proveAll :: (IsConstraintMap cmType)
              => cmType
+             -> CanonicalConstraintMap
              -> Set AnyTVar
              -> ConstraintSet
-             -> PrimitiveSubtypeMode cmType
-             -> Bool
-    proveAll cm sas cs mode =
-      all (generalPrimitiveSubtype mode Set.empty cm) constraints
+             -> m (Either SubtypeError ())
+    proveAll cm1 cm2 vars cs = do
+      xs <- mapM checkPrimitiveSubtype constraints
+      return $ mconcat <$> sequence xs
       where
+        checkPrimitiveSubtype :: Constraint
+                              -> m (Either SubtypeError ())
+        checkPrimitiveSubtype c =
+          case primitiveSubtype Set.empty cm1 cm2 c of
+            Left (PrimitiveSubtypeFailureByInternalError ie) ->
+              internalTypeError $ PrimitiveSubtypeInvariantViolated ie
+            Left (PrimitiveSubtypeFailureByErrors errs) ->
+              return $ Left $ UnprovablePrimitiveSubtype 
+                  (cmToConstraintMap cm1) (cmToConstraintMap cm2) c errs
+            Right () -> return $ Right ()
         constraints :: [Constraint]
-        constraints = concatMap constraintsFrom (Set.toList sas)
+        constraints = concatMap constraintsFrom $ Set.toList vars
         constraintsFrom :: AnyTVar -> [Constraint]
         constraintsFrom sa =
           case sa of
@@ -84,12 +107,176 @@ isSubtypeOf qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
               csQuery cs (QueryBoundingConstraintsByQVar qa)
             SomeUVar a ->
               csQuery cs (QueryBoundingConstraintsByUVar a)
-              
--- |A data type describing the modes of primitive subtyping.
-data PrimitiveSubtypeMode cmType where
-  LowerMode :: PrimitiveSubtypeMode ConstraintMap
-  UpperMode :: PrimitiveSubtypeMode CanonicalConstraintMap
 
+-- |An ADT describing the manners in which @primitiveSubtype@ can fail.
+data PrimitiveSubtypeFailure
+  = PrimitiveSubtypeFailureByErrors (Seq PrimitiveSubtypeError)
+  | PrimitiveSubtypeFailureByInternalError InternalPrimitiveSubtypeError
+  deriving (Show)
+
+failPlus :: PrimitiveSubtypeFailure -> PrimitiveSubtypeFailure
+         -> PrimitiveSubtypeFailure
+failPlus x y = case (x,y) of
+  (PrimitiveSubtypeFailureByInternalError _, _) -> x
+  (_, PrimitiveSubtypeFailureByInternalError _) -> y
+  (PrimitiveSubtypeFailureByErrors es1, PrimitiveSubtypeFailureByErrors es2) ->
+    PrimitiveSubtypeFailureByErrors $ es1 Seq.>< es2
+
+{-|
+  An implementation of the primitive subtyping relation.  This function will
+  determine if a proof of primitive subtyping can be constructed from the
+  provided information, generating a @SubtypeError@ if it cannot.  Note that
+  this function only operates on simple subtype constraints; binary operator
+  constraints and other similar forms will generate an error.  It is the
+  responsibility of the caller to filter as necessary.
+  
+  This function requires the invariant that all type variables appearing in the
+  @Constraint@ appear in a key in one of the @ConstraintMap@s.  This is largely
+  satisfied by the fact that constraint closure does not introduce new type
+  variables.
+-}
+primitiveSubtype :: forall cmType. (IsConstraintMap cmType)
+                 => Set Constraint
+                 -> cmType
+                 -> CanonicalConstraintMap
+                 -> Constraint
+                 -> Either PrimitiveSubtypeFailure ()
+primitiveSubtype visited cm1 cm2 c =
+  case c of
+    -- Several forms of constraint aren't subject to primitive subtyping.
+    BinaryOperatorConstraint{} -> failHard
+    MonomorphicQualifiedUpperConstraint{} -> failHard
+    PolyinstantiationLineageConstraint{} -> failHard
+    -- Reflexivity rule.  We use the documented invariant to avoid checking for
+    -- the presence of the variable in the constraint maps.
+    IntermediateConstraint (CRight a) (CRight a') | a == a' ->
+      success
+    QualifiedIntermediateConstraint (CRight qa) (CRight qa') | qa == qa' ->
+      success
+    -- Revisit rule.  If the bound has already been visited, we are finished.
+    _ | c `Set.member` visited -> success
+    -- Known bound rules.  If the bound was already present in the constraint
+    -- map, we are finished.
+    IntermediateConstraint lb (CRight a)
+      | knownBound lb a upperBound -> success
+    IntermediateConstraint (CRight a) ub
+      | knownBound ub a lowerBound -> success
+    QualifiedIntermediateConstraint lb (CRight qa)
+      | knownBound lb qa upperBound -> success
+    QualifiedIntermediateConstraint (CRight qa) ub
+      | knownBound ub qa lowerBound -> success
+    QualifiedLowerConstraint lb qa
+      | knownBound lb qa upperBound -> success
+    QualifiedUpperConstraint qa ub
+      | knownBound ub qa lowerBound -> success
+    -- Decomposition rule.  Perform closure on this constraint and proceed on
+    -- each result.
+    IntermediateConstraint (CLeft t1) (CLeft t2) ->
+      let cs = calculateClosure $ csSing c in
+      let cs' = filter (==c) $ csToList cs in
+      if inconsistent cs
+        then failSoft $ InconsistentSubtypeTypeDecomposition t1 t2
+        else requireAll $ map recurse cs'
+    -- Qualifier Decomposition.
+    QualifiedIntermediateConstraint (CLeft qs1) (CLeft qs2) ->
+      unless (qs1 `Set.isSubsetOf` qs2) $ failSoft $
+        InconsistentSubtypeQualifierDecomposition qs1 qs2
+    -- Bound rules.
+    IntermediateConstraint (CLeft t) (CRight a) ->
+      twoBoundRules upperBound a t
+    IntermediateConstraint (CRight a) (CLeft t) ->
+      twoBoundRules lowerBound a t
+    IntermediateConstraint (CRight a1) (CRight a2) ->
+      requireOne [ twoBoundRules lowerBound a1 a2
+                 , twoBoundRules upperBound a2 a1 ]
+    QualifiedIntermediateConstraint (CLeft qs) (CRight qa) ->
+      twoBoundRules upperBound qa qs
+    QualifiedIntermediateConstraint (CRight qa) (CLeft qs) ->
+      twoBoundRules lowerBound qa qs
+    QualifiedIntermediateConstraint (CRight qa1) (CRight qa2) ->
+      requireOne [ twoBoundRules lowerBound qa1 qa2
+                 , twoBoundRules upperBound qa2 qa1 ]
+    QualifiedLowerConstraint (CLeft t) qa ->
+      twoBoundRules lowerBound qa t
+    QualifiedLowerConstraint (CRight a) qa ->
+      requireOne [ twoBoundRules lowerBound a qa
+                 , twoBoundRules upperBound qa a ]
+    QualifiedUpperConstraint qa (CLeft t) ->
+      twoBoundRules upperBound qa t
+    QualifiedUpperConstraint qa (CRight a) ->
+      requireOne [ twoBoundRules lowerBound qa a
+                 , twoBoundRules upperBound a qa ]
+  where
+    recurse = primitiveSubtype (Set.insert c visited) cm1 cm2
+    success = return ()
+    failSoft :: PrimitiveSubtypeError -> Either PrimitiveSubtypeFailure ()
+    failSoft = Left . PrimitiveSubtypeFailureByErrors . Seq.singleton
+    failHard = error $ "Primitive subtyping was called on incorrect form of "
+                    ++ "constraint (this should never happen!): "
+                    ++ show c
+    requireAll :: [Either PrimitiveSubtypeFailure ()]
+               -> Either PrimitiveSubtypeFailure ()
+    requireAll xs =
+      let (errs,_) = partitionEithers xs in
+      unless (null errs) $ Left $ foldl1 failPlus errs
+    requireOne :: [Either PrimitiveSubtypeFailure ()]
+               -> Either PrimitiveSubtypeFailure ()
+    requireOne xs = do
+      let (errs',succs) = partitionEithers xs
+      errs <- mapM getErrors errs'
+      when (null succs) $
+        failSoft $ DisjunctiveSubtypeProofFailure $ concat $
+                  fmap Foldable.toList errs
+      where
+        getErrors :: PrimitiveSubtypeFailure
+                  -> Either PrimitiveSubtypeFailure (Seq PrimitiveSubtypeError)
+        getErrors psf = case psf of
+          PrimitiveSubtypeFailureByInternalError _ -> Left psf
+          PrimitiveSubtypeFailureByErrors errs -> Right errs
+    knownBound :: (ConstraintMapBoundable b q, Ord (VarBound q))
+               => b -> TVar q -> TPolarity -> Bool
+    knownBound bound v boundSide =
+      let f :: (IsConstraintMap cmt) => cmt -> Bool
+          f cm = cmBound bound `Set.member` cmBoundsOf v boundSide cm in
+      f cm1 || f cm2
+    -- |Generally represents the bound rules in the specification.
+    --  Two polarities appear in this function's arguments.  The first polarity
+    --  controls the variance of this rule: when @pol@ is @Positive@, the
+    --  "Right" rules are used and the constraint is contracting; when @pol@ is
+    --  @Negative@, the "Left" rules are used and the constraint is expanding.
+    --  The second polarity together with the variable and generic bound
+    --  represent a constraint; when @boundDir@ is @lowerBound@, @v@ is a lower
+    --  bound of @bnd@; when @boundDir@ is @upperBound@, the opposite is true.
+    generalBoundRule :: forall cmt q.
+                        (IsConstraintMap cmt, BoundsToConstraint q)
+                     => TPolarity
+                     -> cmt
+                     -> TPolarity
+                     -> TVar q
+                     -> VarBound q
+                     -> Either PrimitiveSubtypeFailure ()
+    generalBoundRule pol cm boundDir v bnd =
+      let bounds = Set.toList $ cmBoundsOf v (pol `mappend` boundDir) cm in
+      requireOne $ map checkOneBound bounds
+      where
+        checkOneBound :: VarBound q -> Either PrimitiveSubtypeFailure ()
+        checkOneBound bnd' = case boundsToConstraint boundDir bnd bnd' of
+                                Just c' -> recurse c'
+                                Nothing -> return ()
+                                  -- The nothing case occurs when the provided
+                                  -- bound can't be used to construct the
+                                  -- constraint
+    twoBoundRules :: forall q c.
+                     (BoundsToConstraint q, ConstraintMapBoundable c q)
+                  => TPolarity -> TVar q -> c
+                  -> Either PrimitiveSubtypeFailure ()
+    twoBoundRules boundDir v rawBnd =
+      let bnd = cmBound rawBnd in
+      let leftResult = generalBoundRule Negative cm1 boundDir v bnd in
+      let rightResult = generalBoundRule Positive cm2 boundDir v bnd in
+      requireOne [leftResult, rightResult]
+
+{-
 -- |A general implementation for both primitive subtyping relations.  This
 --  function accepts a mode describing which relation to represent.  This
 --  function evaluates to @True@ if a proof of primitive subtyping can be found
@@ -289,3 +476,4 @@ generalPrimitiveSubtype mode visited cm c =
         -- which we can't always assume.  Qual sets are handled in a different
         -- case match in the primary function.
         (QTVar{}, QBQualSet _, _) -> Nothing
+-}

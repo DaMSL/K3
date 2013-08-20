@@ -83,14 +83,14 @@ deriveDeclaration aEnv env decl =
       (qa2,cs2) <- deriveQualifiedTypeExpression aEnv tExpr
       let qt2 = generalize env qa2 cs2
       qt3 <- requireQuantType u i env
-      unlessM (qt2 `isSubtypeOf` qt3) $
+      whenLeftM (checkSubtype qt2 qt3) $ \err ->
         typecheckError $ InternalError $
-          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
+          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3 err
       whenJust mexpr $ \expr -> do
         (qa1,cs1) <- deriveQualifiedExpression aEnv env expr
         let qt1 = generalize env qa1 cs1
-        unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
-          DeclarationSubtypeFailure u qt1 qt2
+        whenLeftM (checkSubtype qt1 qt2) $ \err ->
+          typecheckError $ DeclarationSubtypeFailure u qt1 qt2 err
 
     DTrigger i tExpr expr -> do
       u <- uidOf decl
@@ -107,11 +107,11 @@ deriveDeclaration aEnv env decl =
       qt1 <- f a1 cs1
       qt2 <- f a2 cs2
       qt3 <- requireQuantType u i env
-      unlessM (qt2 `isSubtypeOf` qt3) $
+      whenLeftM (checkSubtype qt2 qt3) $ \err ->
         typecheckError $ InternalError $
-          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3
-      unlessM (qt1 `isSubtypeOf` qt2) $ typecheckError $
-        DeclarationSubtypeFailure u qt1 qt2
+          TypeInEnvironmentDoesNotMatchSignature (TEnvIdentifier i) qt2 qt3 err
+      whenLeftM (checkSubtype qt1 qt2) $ \err -> typecheckError $
+        DeclarationSubtypeFailure u qt1 qt2 err
 
     DAnnotation i mems -> do
       u <- uidOf decl

@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts, ConstraintKinds #-}
 
 {-|
   Contains operations related to typechecking of type expressions.  These
@@ -49,9 +49,7 @@ deriveQualifiedTypeExpression aEnv tExpr = do
     then internalTypeError $ InvalidQualifiersOnType tExpr
     else do
       qa <- freshTypecheckingQVar =<< uidOf tExpr
-      return (qa, cs `CSL.union`
-                  CSL.promote (csFromList
-                    [a <: qa, Set.fromList (concat quals) <: qa]))
+      return (qa, CSL.unions [cs, a ~= qa, Set.fromList (concat quals) ~= qa])
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
@@ -89,20 +87,20 @@ deriveTypeExpression aEnv tExpr =
       (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
       (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
       a0 <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a0, CSL.unions [cs1, cs2, CSL.csingleton $ SFunction a1 a2 <: a0])
+      return (a0, CSL.unions [cs1, cs2, SFunction a1 a2 ~= a0])
     TOption -> commonSingleContainer SOption
     TIndirection -> commonSingleContainer SIndirection
     TTuple -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
       a <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a, CSL.unions css `CSL.union` CSL.csingleton (STuple qas <: a))
+      return (a, CSL.unions css `CSL.union` (STuple qas ~= a))
     TRecord ids -> do
       (qas,css) <- unzip <$>
                     mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
       a' <- freshTypecheckingUVar =<< uidOf tExpr
       return (a', CSL.unions css `CSL.union`
-                  CSL.csingleton ((SRecord $ Map.fromList $ zip ids qas) <: a'))
+                  ((SRecord $ Map.fromList $ zip ids qas) ~= a'))
     TCollection -> do
       tExpr' <- assert1Child tExpr
       let ais = mapMaybe toAnnotationId $ annotations tExpr
@@ -130,7 +128,7 @@ deriveTypeExpression aEnv tExpr =
       tExpr' <- assert1Child tExpr
       (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
       a' <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a', cs `CSL.union` CSL.csingleton (STrigger a <: a'))
+      return (a', cs `CSL.union` (STrigger a ~= a'))
     TBuiltIn b -> do
       assert0Children tExpr
       let ei = case b of
@@ -142,17 +140,17 @@ deriveTypeExpression aEnv tExpr =
       qt <- uncurry toQuantType =<< aEnvLookup ei u
       (qa,cs) <- polyinstantiate u qt
       a <- freshTypecheckingUVar u
-      return (a, cs `CSL.union` CSL.csingleton (qa <: a))
+      return (a, cs `CSL.union` (qa ~= a))
   where
     deriveTypePrimitive p = do
       assert0Children tExpr
       a <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a, CSL.csingleton $ p <: a)
+      return (a, p ~= a)
     commonSingleContainer constr = do
       tExpr' <- assert1Child tExpr
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr'
       a <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a, cs `CSL.union` CSL.csingleton (constr qa <: a))
+      return (a, cs `CSL.union` (constr qa ~= a))
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing

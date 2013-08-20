@@ -28,6 +28,8 @@ module Language.K3.TypeSystem.Subtyping.ConstraintMap
 , kernel
 , isContractive
 , canonicalize
+
+, BoundsToConstraint(..)
 ) where
 
 import Control.Applicative
@@ -48,7 +50,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 
--- * Constraint map data struccture and operations
+-- * Constraint map data structure and operations
 
 -- |A data structure representing a constraint map: K in the grammar presented
 --  in the Subtyping section of the specification.  We use positive polarity to
@@ -147,19 +149,21 @@ instance Monoid ConstraintMap where
     where
       f :: (Ord k, Ord a) => Map k (Set a) -> Map k (Set a) -> Map k (Set a)
       f = Map.unionWith Set.union
-
+      
 -- * Canonical constraint map structure and operations
 
 -- |A data structure representing a canonical constraint map.  Canonical
 --  constraint maps admit fewer operations but guarantee that each type variable
 --  has exactly one concrete bound of each form (type or qualifier set).
 newtype CanonicalConstraintMap = CanonicalConstraintMap ConstraintMap
+  deriving (Show)
 
 -- * Operations which work on both canonical and regular constraint maps.
 
 class IsConstraintMap m where
   cmBoundsOf :: TVar a -> TPolarity -> m -> Set (VarBound a)
   cmAddVarBound :: AnyTVar -> TPolarity -> AnyTVar -> m -> m
+  cmToConstraintMap :: m -> ConstraintMap
 
 instance IsConstraintMap ConstraintMap where
   cmBoundsOf sa pol cm = fromMaybe Set.empty $ Map.lookup (sa,pol) $
@@ -173,11 +177,13 @@ instance IsConstraintMap ConstraintMap where
             (SomeUVar a, SomeUVar a') -> cmSing a pol $ UBUVar a'
     in
     cm `mappend` cm'
+  cmToConstraintMap = id
                         
 instance IsConstraintMap CanonicalConstraintMap where
   cmBoundsOf sa pol (CanonicalConstraintMap cm) = cmBoundsOf sa pol cm
   cmAddVarBound sa pol sa' (CanonicalConstraintMap cm) =
     CanonicalConstraintMap $ cmAddVarBound sa pol sa' cm
+  cmToConstraintMap (CanonicalConstraintMap cm) = cm
 
 -- * Constraint map operations
 
@@ -499,6 +505,44 @@ canonicalize theCm =
             Nothing -> m
             Just bnds ->
               Map.insert (sa',pol) (Set.filter isConc bnds) m
+
+-- * Utility operations related to constraint maps
+
+-- |A typeclass generally describing how bounds can be constructed into
+--  constraints.
+class BoundsToConstraint q where
+  boundsToConstraint :: TPolarity -> VarBound q -> VarBound q
+                     -> Maybe Constraint
+
+instance BoundsToConstraint QualifiedTVar where
+  boundsToConstraint Negative x y = boundsToConstraint Positive y x
+  boundsToConstraint Positive x y = case (x,y) of
+    (QBType t1, QBType t2) -> Just $ t1 <: t2
+    (QBType t, QBUVar a) -> Just $ t <: a
+    (QBType t, QBQVar qa) -> Just $ t <: qa
+    (QBType _, QBQualSet _) -> Nothing
+    (QBUVar a, QBType t) -> Just $ a <: t
+    (QBUVar a1, QBUVar a2) -> Just $ a1 <: a2
+    (QBUVar a, QBQVar qa) -> Just $ a <: qa
+    (QBUVar a, QBQualSet _) -> Nothing
+    (QBQVar qa, QBType t) -> Just $ qa <: t
+    (QBQVar qa, QBUVar a) -> Just $ qa <: a
+    (QBQVar qa1, QBQVar qa2) -> Just $ qa1 <: qa2
+    (QBQVar qa, QBQualSet qs) -> Just $ qa <: qs
+    (QBQualSet qs, QBType t) -> Nothing
+    (QBQualSet qs, QBUVar a) -> Nothing
+    (QBQualSet qs, QBQVar qa) -> Just $ qs <: qa
+    (QBQualSet qs1, QBQualSet qs2) -> Just $ qs1 <: qs2
+instance BoundsToConstraint UnqualifiedTVar where
+  boundsToConstraint pol x y = boundsToConstraint pol (f x) (f y)
+    where
+      f :: UVarBound -> QVarBound
+      f bnd = case bnd of
+              UBType t -> QBType t
+              UBUVar a -> QBUVar a
+              UBQVar qa -> QBQVar qa
+
+    
 
 -- Some convenient Template Haskell -------------------------------------------
 $(  

@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds #-}
 {-|
   This module contains functions for annotation types.
 -}
@@ -6,12 +6,10 @@ module Language.K3.TypeSystem.Annotations
 ( instantiateAnnotation
 , concatAnnTypes
 , concatAnnBodies
-, AnnotationConcatenationError(..)
 , depolarize
-, DepolarizationError(..)
 , instantiateCollection
-, CollectionInstantiationError(..)
 , isAnnotationSubtypeOf
+, module Language.K3.TypeSystem.Annotations.Error
 ) where
 
 import Control.Arrow
@@ -27,8 +25,10 @@ import Data.Set (Set)
 import Language.K3.Core.Common
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
+import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.Utils
@@ -105,16 +105,6 @@ concatAnnMembers ms1 ms2 = do
         (Negative,Positive) -> return $ csSing $ qa2 <: qa1
         (Positive,Positive) -> Left $ OverlappingPositiveMember i1
 
--- |A data type describing the errors which can occur in concatenation.
-data AnnotationConcatenationError
-  = OverlappingPositiveMember Identifier
-      -- ^Produced when two annotation members attempt to define the same
-      --  identifier in a positive context.
-  | IncompatibleTypeParameters TParamEnv TParamEnv
-      -- ^Produced when two annotation types are concatenated and one has a
-      --  different set of open type variables than the other.
-  deriving (Eq, Show)
-
 -- |Defines depolarization of annotation members.  If depolarization is not
 --  defined (e.g. because multiple annotations positively define the same
 --  identifier), then an appropriate error is returned instead.
@@ -157,12 +147,6 @@ depolarize ms = do
             _ | i /= i' -> (Set.empty,Set.empty)
             Positive -> (Set.singleton qa,Set.empty)
             Negative -> (Set.empty,Set.singleton qa)
-
--- |A type describing an error in depolarization.
-data DepolarizationError
-  = MultipleProvisions Identifier
-      -- ^Indicates that the specified identifier was provided multiple times.
-  deriving (Eq, Show)
 
 -- |Defines instantiation of collection types.  If the instantiation is not
 --  defined (e.g. because depolarization fails), then the clashing identifiers
@@ -207,22 +191,17 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
         readParameter envId =
           note (MissingAnnotationTypeParameter envId) $ Map.lookup envId p
 
-data CollectionInstantiationError
-  = MissingAnnotationTypeParameter TEnvId
-      -- ^Indicates that a required annotation parameter (e.g. content) is
-      --  missing from the parameter environment.
-  | CollectionDepolarizationError DepolarizationError
-      -- ^Indicates that collection instantiation induced a depolarization
-      --  error.
-  deriving (Eq, Show)
-
 -- |Defines annotation subtyping.
-isAnnotationSubtypeOf :: forall m. (FreshVarI m)
+isAnnotationSubtypeOf :: forall m. (FreshVarI m, TypeErrorI m)
                       => NormalAnnType -> NormalAnnType -> m Bool
 isAnnotationSubtypeOf ann1 ann2 = do
   fun1 <- annToFun ann1
   fun2 <- annToFun ann2
-  isSubtypeOf fun1 fun2
+  isSubtype <- checkSubtype fun1 fun2
+  -- TODO: report the errors in the Left below in a meaningful way
+  case isSubtype of
+    Left _ -> return False
+    Right _ -> return True
   where
     annToFun :: NormalAnnType -> m NormalQuantType
     annToFun ann@(AnnType p (AnnBodyType ms1 ms2) cs) = do
