@@ -62,7 +62,7 @@ checkSubtype qt1@(QuantType sas' qa' cs') qt2@(QuantType sas'' qa'' cs'') =
       checkSubtype qt1 $ replaceVariables qvarMap uvarMap qt2
     else do
       -- Proceed to calculate the approximation as defined in the spec.
-      let cs = cs' `csUnion` cs'' `csUnion` csSing (constraint qa' qa'')
+      let cs = csUnions [cs', cs'', csSing $ qa' <: qa'']
       let cs''' = calculateClosure cs
       let k' = kernel $ calculateClosure cs'
       mk'' <- canonicalize $ kernel $ calculateClosure cs''

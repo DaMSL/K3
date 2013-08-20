@@ -1,9 +1,12 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Language.K3.TypeSystem.Subtyping.Error
 ( SubtypeError(..)
 , PrimitiveSubtypeError(..)
 , InternalPrimitiveSubtypeError(..)
 ) where
 
+import qualified Data.Foldable as Foldable
 import Data.List.Split
 import Data.Sequence (Seq)
 import Data.Set (Set)
@@ -26,7 +29,21 @@ data SubtypeError
 
 instance Pretty SubtypeError where
   prettyLines e = case e of
+    UnprovablePrimitiveSubtype cm1 cm2 c pses ->
+      ["UnprovablePrimitiveSubtype: "] %+ prettyLines c %$
+      indent 2 (
+        ["  using "] %+ prettyLines cm1 %$
+        ["    and "] %+ prettyLines cm2 %$
+        ["because "] %+ prettyLines pses
+      )
     _ -> splitOn "\n" $ show e
+
+instance Pretty (Seq PrimitiveSubtypeError) where
+  prettyLines = prettyLines . Foldable.toList
+
+instance Pretty [PrimitiveSubtypeError] where
+  prettyLines pses =
+    ["[ "] %+ foldl1 (%$) (map prettyLines pses) +% [" ]"]
 
 -- |A data type describing the ways in which a primitive subtyping check may
 --  fail.
@@ -41,6 +58,10 @@ data PrimitiveSubtypeError
       -- ^Indicates that every attempt to show a given constraint was implied
       --  has failed.  The provided list of errors determines 
   deriving (Show)
+
+instance Pretty PrimitiveSubtypeError where
+  prettyLines e = case e of
+    _ -> splitOn "\n" $ show e
 
 -- |A data type describing how primitive subtype errors can fail due to internal
 --  inconsistencies.  If these errors occur, they represent a bug in the K3

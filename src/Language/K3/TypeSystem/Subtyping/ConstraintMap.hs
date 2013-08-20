@@ -45,13 +45,14 @@ import qualified Data.Traversable as Trav
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.Pretty
 import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 
 -- * Constraint map data structure and operations
-
+ 
 -- |A data structure representing a constraint map: K in the grammar presented
 --  in the Subtyping section of the specification.  We use positive polarity to
 --  represent <= and negative polarity to represent >=.  That is, the
@@ -61,6 +62,23 @@ data ConstraintMap
   = ConstraintMap (Map (UVar, TPolarity) (Set UVarBound))
                   (Map (QVar, TPolarity) (Set QVarBound))
   deriving (Eq, Ord, Show)
+  
+instance Pretty ConstraintMap where
+  prettyLines (ConstraintMap um qm) =
+    ["{ "] %+
+    (sequenceBoxes 80 (", ") (concatMap prettyTuple (Map.toList um) ++
+                              concatMap prettyTuple (Map.toList qm))) +%
+    [" }"]
+    where
+      prettyTuple :: (Pretty (VarBound q))
+                  => ((TVar q, TPolarity), (Set (VarBound q)))
+                  -> [[String]]
+      prettyTuple ((v,pol), bnds) =
+        map (\bnd -> prettyLines v %+ prettyPol pol %+ prettyLines bnd)
+          $ Set.toList bnds
+      prettyPol :: TPolarity -> [String]
+      prettyPol Positive = [" ≤ "]
+      prettyPol Negative = [" ≥ "]
 
 -- |Represents the lower bound operator <=.
 lowerBound :: TPolarity
@@ -89,6 +107,19 @@ data instance VarBound QualifiedTVar
 
 type UVarBound = VarBound UnqualifiedTVar
 type QVarBound = VarBound QualifiedTVar
+
+instance Pretty UVarBound where
+  prettyLines bnd = case bnd of
+    UBType t -> prettyLines t
+    UBUVar a -> prettyLines a
+    UBQVar qa -> prettyLines qa
+
+instance Pretty QVarBound where
+  prettyLines bnd = case bnd of
+    QBType t -> prettyLines t
+    QBUVar a -> prettyLines a
+    QBQVar qa -> prettyLines qa
+    QBQualSet qs -> prettyLines qs
 
 isQConcrete :: QVarBound -> Bool
 isQConcrete bnd = case bnd of
