@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections, StandaloneDeriving #-}
+{-# LANGUAGE GADTs, ScopedTypeVariables, FlexibleContexts, Rank2Types, TupleSections #-}
 
 {-|
   This module represents the implementation of the Subtyping section of the K3
