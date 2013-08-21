@@ -1282,29 +1282,26 @@ enqueueEBContents q = \case
 enqueueEBuffer :: MessageQueues a -> EndpointBuffer (InternalMessage a) -> IO (EndpointBuffer (InternalMessage a))
 enqueueEBuffer q = modifyEBuffer_ $ enqueueEBContents q
 
-
 {- Pretty printing helpers -}
 
 putMessageQueues :: Show a => MessageQueues a -> IO ()
-putMessageQueues (Peer q)           = readMVar q >>= putStrLn . show
-putMessageQueues (ManyByPeer qs)    = readMVar qs >>= putStrLn . show
+putMessageQueues (Peer q) = readMVar q >>= putStrLn . show
+putMessageQueues (ManyByPeer qs) = readMVar qs >>= putStrLn . show
 putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
 
-putEngine :: (Show a) => Engine a -> IO ()
-putEngine e@(Engine {queues = q}) =
-       putStrLn (show e) 
-    >> putStrLn "Queues:" >> putMessageQueues q
+putEngine :: Show w => EngineM w ()
+putEngine = ask >>= liftIO . print >> debugQueues
 
-debugQueues :: Show a => Engine a -> IO ()
-debugQueues e = putStrLn "Queues" >> putMessageQueues (queues e)
-
+debugQueues :: Show w => EngineM w ()
+debugQueues = (liftIO $ putStrLn "Queues:") >> putMessageQueues . queues <$> ask
 
 {- Instance implementations -}
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
-  show e@(nodes -> n) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
-                      | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+    show e@(nodes -> n)
+        | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+        | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
 
 instance (Show a) => Pretty (Engine a) where
-  prettyLines = lines . show
+    prettyLines = lines . show
