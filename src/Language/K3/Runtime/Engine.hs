@@ -180,7 +180,7 @@ data EngineError = EngineError
 
 type EngineT e r m a = EitherT e (ReaderT r m) a
 
-type EngineM b a = EngineT EngineError (Engine b) IO a
+type EngineM w a = EngineT EngineError (Engine b) IO a
 
 runEngineT :: EngineT e r m a -> r -> m (Either e a)
 runEngineT s r = flip runReaderT r $ runEitherT s
@@ -518,54 +518,76 @@ numEndpoints :: EEndpointState a -> IO Int
 numEndpoints es = count (internalEndpoints es) >>= (\ni -> count (externalEndpoints es) >>= return . (ni +))
   where count ep = withMVar ep (return . H.size)
 
-statistics :: Engine a -> IO (Int,Int)
-statistics e = numQueuedMessages (queues e) >>= (\nm -> numEndpoints (endpoints e) >>= return . (nm,))
+statistics :: EngineM w (Int, Int)
+statistics = do
+    engine <- ask
+    nqm <- queues <$> engine
+    nep <- endpoints <$> engine
+    return (nqm, nep)
 
--- | Engine classification
-simulation :: Engine a -> Bool
-simulation (Engine {connections = (EConnectionState (Nothing, _))}) = True
-simulation _ = False
+simulation :: EngineM w Bool
+simulation = ask >>= \case
+    Engine { connections = (EConnectionState (Nothing, _)) } -> True
+    _ -> False
 
 {- Message processing and engine control -}
-registerNetworkListener :: (Identifier, Weak ThreadId) -> Engine a -> IO ()
-registerNetworkListener x (control &&& listeners -> (ctrl, lstnrs)) = do
-  modifyMVar_ (networkDoneV ctrl) $ return . (1+)
-  modifyMVar_ lstnrs $ return . (x:)
+registerNetworkListener :: (Identifier, Weak ThreadId) -> EngineM w ()
+registerNetworkListener iwt = do
+    engine <- ask
+    liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . succ
+    liftIO $ modifyMVar_ (listeners engine) $ return . (iwt:)
 
-deregisterNetworkListener :: Identifier -> Engine a -> IO ()
-deregisterNetworkListener n (control &&& listeners -> (ctrl, lstnrs)) = do
-  modifyMVar_ (networkDoneV ctrl) $ return . flip (-) 1
-  modifyMVar_ lstnrs $ return . filter ((n /= ) . fst)
+deregisterNetworkListener :: Identifier -> EngineM w ()
+deregisterNetworkListener n = do
+    engine <- ask
+    liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . pred
+    liftIO $ modifyMVar_ (listeners engine) $ return . ((n /=) . fst)
 
-terminate :: Engine a -> IO Bool
-terminate e = (||) <$> ((not (waitForNetwork $ config e) &&) <$> readMVar (terminateV $ control e))
-                   <*> networkDone e
+terminate :: EngineM w Bool
+terminate = do
+    engine <- ask
+    terminate <- liftIO $ readMVar (terminateV $ control engine)
+    done <- networkDone engine
+    return $ done || not (waitForNetwork $ config engine) && terminate
 
-networkDone :: Engine a -> IO Bool
-networkDone e = readMVar (networkDoneV $ control e) >>= return . (0 ==)
+networkDone :: EngineM w Bool
+networkDone = do
+    engine <- ask
+    done <- liftIO . readMVar . networkDoneV $ control engine
+    return $ done == 0
 
-waitForMessage :: Engine a -> IO ()
-waitForMessage e = readSV (messageReadyV $ control e)
+waitForMessage :: EngineM w ()
+waitForMessage = do
+    engine <- ask
+    liftIO $ readSV (messageRaedV $ control engine)
 
-processMessage :: MessageProcessor i p a r e -> Engine a -> r -> IO (LoopStatus r e)
-processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc
-  where term = return $ MessagesDone prevResult
-        proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr
+-- | Process a single message within the engine, given the message processor to use, and the
+-- previous message result. Return the status of the loop.
+processMessage :: MessageProcessor i p w r e -> r -> EngineM w (LoopStates r e)
+processMessage mp pr = do
+    engine <- ask
+    message <- dequeue $ queues engine
+    return $ maybe terminate' process' message
+  where
+    terminate' = return $ MessagesDone pr
+    process' m = do
+        nextResult <- process mp m pr
+        return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show a) => 
-               MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
-runMessages msgPrcsr e status = status >>= \case
-  Result r       -> debugQueues e >> rcr r
-  Error e        -> finish "Error:\n" e
-  MessagesDone r -> terminate e >>= \case
-                      True -> finalize msgPrcsr r >>= finish "Terminated:\n"
-                      _    -> waitForMessage e >> rcr r
-
-  where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
-        finish msg r = putStrLn (msg ++ pretty r)
-                        >> cleanupEngine e >> tryPutMVar (waitV $ control e) ()
-                        >> putStrLn "... Finished"
-
+runMessages :: (Pretty r, Pretty e, Show w) =>
+    MessageProcessor i p w r e -> Engine w (LoopStatus r e) -> EngineM ()
+runMessages mp status = ask >>= \engine -> status >>= \case
+    Result r -> debugQueues engine >> processMessage mp >>= runMessages mp
+    Error e -> die "Error:\n" e
+    MessagesDone r -> terminate engine >>= \case
+        True -> finalize mp r >>= die "Terminated:\n"
+        _ -> waitForMessage engine >> recurse r
+  where
+    die msg r = do
+        putStrLn (msg ++ pretty r)
+        cleanupEngine engine
+        liftIO $ tryPutMVar (waitV $ control engine) ()
+        liftIO $ putStrLn "Finished."
 
 runEngine :: (Pretty r, Pretty e, Show a) =>
              MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ()
