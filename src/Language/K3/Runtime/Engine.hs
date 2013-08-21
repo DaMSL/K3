@@ -129,7 +129,9 @@ import qualified Control.Concurrent.MSem as MSem
 import Control.Concurrent.MSem (MSem)
 import Control.Exception (throwIO)
 import Control.Monad
+import Control.Monad.Reader
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Either
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Functor
@@ -174,6 +176,17 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , endpoints       :: EEndpointState a
                        , connections     :: EConnectionState }
 
+data EngineError = EngineError
+
+type EngineT e r m a = EitherT e (ReaderT r m) a
+
+type EngineM b a = EngineT EngineError (Engine b) IO a
+
+runEngineT :: EngineT e r m a -> r -> m (Either e a)
+runEngineT s r = flip runReaderT r $ runEitherT s
+
+runEngineM :: EngineStep b a -> Engine b -> IO (Either EngineError a)
+runEngineM = runEngineStepT
 
 {- Configuration parameters -}
 
