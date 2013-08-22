@@ -8,7 +8,6 @@ module Language.K3.TypeSystem.Annotations
 , concatAnnBodies
 , depolarize
 , instantiateCollection
-, isAnnotationSubtypeOf
 , module Language.K3.TypeSystem.Annotations.Error
 ) where
 
@@ -30,7 +29,6 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
-import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.Utils
 
 -- |Instantiates an annotation type.  If bindings appear in the parameters
@@ -190,49 +188,3 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
       where
         readParameter envId =
           note (MissingAnnotationTypeParameter envId) $ Map.lookup envId p
-
--- |Defines annotation subtyping.
-isAnnotationSubtypeOf :: forall m. (FreshVarI m, TypeErrorI m)
-                      => NormalAnnType -> NormalAnnType -> m Bool
-isAnnotationSubtypeOf ann1 ann2 = do
-  fun1 <- annToFun ann1
-  fun2 <- annToFun ann2
-  isSubtype <- checkSubtype fun1 fun2
-  -- TODO: report the errors in the Left below in a meaningful way
-  case isSubtype of
-    Left _ -> return False
-    Right _ -> return True
-  where
-    annToFun :: NormalAnnType -> m NormalQuantType
-    annToFun ann@(AnnType p (AnnBodyType ms1 ms2) cs) = do
-      let origin = TVarAnnotationToFunctionOrigin ann
-      let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
-                            , recordTypeFromMembers Positive ms )
-      let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2]
-      let mkFresh n = mapM (const $ freshQVar origin) [1::Int .. n]
-      qa <- freshQVar origin
-      a0 <- freshUVar origin
-      a0' <- freshUVar origin
-      negVars <- mkFresh $ length negTyps
-      posVars <- mkFresh $ length posTyps
-      let cs' = csUnions [ cs
-                         , csFromList [ SFunction a0 a0' <: qa
-                                      , a0 <: STuple negVars
-                                      , STuple posVars <: a0'
-                                      ]
-                         , csFromList $ zipWith constraint negVars negTyps
-                         , csFromList $ zipWith constraint posTyps posVars
-                         ]
-      let sas = Set.unions [ Set.singleton $ someVar qa
-                           , Set.fromList $ map someVar negVars
-                           , Set.fromList $ map someVar posVars
-                           , Set.fromList $ map someVar $ Map.elems p ]
-      return $ QuantType sas qa cs'
-      where
-        recordTypeFromMembers :: TPolarity -> [AnnMemType] -> ShallowType
-        recordTypeFromMembers pol ms =
-          SRecord $ Map.unions $ map memberToRecordEntry ms
-          where
-            memberToRecordEntry :: AnnMemType -> Map Identifier QVar
-            memberToRecordEntry (AnnMemType i pol' qa) =
-              if pol == pol' then Map.singleton i qa else Map.empty

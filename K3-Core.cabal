@@ -46,22 +46,18 @@ library
         Language.K3.Core.Constructor.Declaration,
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Type,
-        
         Language.K3.Parser,
         Language.K3.Parser.ProgramBuilder,
         Language.K3.Pretty,
         Language.K3.Interpreter,
         Language.K3.Runtime.Dispatch,
         Language.K3.Runtime.Engine,
-        
         Language.K3.Transform.Alpha,
-        
         Language.K3.TemplateHaskell.Reduce,
         Language.K3.TemplateHaskell.ReduceM,
         Language.K3.TemplateHaskell.Transform,
         Language.K3.TemplateHaskell.TransformM,
         Language.K3.TemplateHaskell.Utils,
-        
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Data.Utils,
@@ -71,9 +67,6 @@ library
         Language.K3.TypeSystem.Polymorphism,
         Language.K3.TypeSystem,
         Language.K3.TypeSystem.Environment,
-
-        Language.K3.TypeSystem.Subtyping,
-        Language.K3.TypeSystem.Subtyping.ConstraintMap,
         Language.K3.TypeSystem.Annotations,
         Language.K3.TypeSystem.Utils,
         Language.K3.TypeSystem.TypeChecking,
@@ -102,9 +95,7 @@ library
         Language.K3.TypeSystem.TypeDecision.AnnotationInlining,
         Language.K3.TypeSystem.TypeDecision.StubReplacement
     ghc-options: -Wall
-    other-modules: 
-                   Language.K3.TypeSystem.Subtyping.Error,
-                   Language.K3.TypeSystem.Annotations.Error
+    other-modules: Language.K3.TypeSystem.Annotations.Error
 
 test-suite all
     type: exitcode-stdio-1.0

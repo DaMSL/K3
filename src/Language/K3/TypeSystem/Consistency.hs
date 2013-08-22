@@ -5,14 +5,18 @@
 module Language.K3.TypeSystem.Consistency
 ( consistent
 , inconsistent
+, closureConsistent
 ) where
 
 import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
 
+import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
+
+-- TODO: generate more specific errors when closure fails
 
 consistent :: ConstraintSet -> Bool
 consistent = not . inconsistent
@@ -56,3 +60,6 @@ inconsistent cs = any isInconsistent (csToList cs)
       (SRecord m1, SRecord m2) ->
         not $ Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1
       _ -> False
+
+closureConsistent :: ConstraintSet -> Bool
+closureConsistent cs = consistent $ calculateClosure cs
