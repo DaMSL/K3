@@ -6,7 +6,9 @@
 -}
 module Language.K3.Logger.Config
 ( configureLogging
+, parseInstruction
 , configureLoggingHandlers
+, configureByInstruction
 ) where
 
 import Control.Applicative ((<$>))
@@ -24,20 +26,22 @@ import System.Log.Logger
 --   an error occurs, a message is printed before False is returned.
 configureLogging :: [String] -> IO Bool
 configureLogging configs =
-  case mapM parseConfig configs of
+  case mapM parseInstruction configs of
     Left err -> do
       putStrLn $ "Logging configuration error: " ++ err
       return False
     Right steps -> do
-      mapM_ configure steps
+      mapM_ configureByInstruction steps
       return True
-  where
-    configure :: (String, Priority) -> IO ()
-    configure (loggerName, prio) =
-      updateGlobalLogger loggerName $ setLevel prio
+      
+-- |Given a module name and a priority, sets that module to log only messages
+--  of that priority and higher.
+configureByInstruction :: (String, Priority) -> IO ()
+configureByInstruction (loggerName, prio) =
+  updateGlobalLogger loggerName $ setLevel prio
   
-parseConfig :: String -> Either String (String, Priority)
-parseConfig str =
+parseInstruction :: String -> Either String (String, Priority)
+parseInstruction str =
   let elems = splitOn ":" str in
   case elems of
     _:_:_:_ -> Left $ "Too many colons: " ++ str

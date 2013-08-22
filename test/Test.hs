@@ -1,7 +1,14 @@
 import Control.Applicative
 import Control.Monad
+import Data.Maybe
+import Data.Monoid
+import System.Environment
+import System.Exit
 import Test.Framework
 import Test.Framework.Runners.Console
+
+import Language.K3.Logger
+import Language.K3.Test.Options
 
 import qualified Language.K3.Parser.Test as Parser
 import qualified Language.K3.Runtime.Test as Runtime
@@ -14,5 +21,23 @@ tests = sequence
   , testGroup "Type system" <$> TypeSystem.tests
   ]
 
+-- |The main for the K3 unit tests.  We accept more options than the default
+--  test runner, so we have to bolt into the side of test-framework and parse
+--  its options.  This is accomplished by building our own getOpt options (as
+--  a record structure of @Maybe@ values) and tupling it with the option
+--  structure from test-framework.
 main :: IO ()
-main = defaultMain =<< tests
+main = do
+  args <- getArgs
+  result <- parseOptions args
+  case result of
+    Left (msg,exitcode) -> do
+      putStrLn msg
+      exitWith exitcode
+    Right (tfOpts,k3tOpts) -> do
+      -- First, process K3 tester options
+      let loggerSettings = fromJust $ loggerInstructions k3tOpts
+      mconcat <$> mapM configureByInstruction loggerSettings
+      -- Then run the test-framework main
+      tests' <- tests
+      defaultMainWithOpts tests' tfOpts

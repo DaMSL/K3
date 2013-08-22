@@ -94,13 +94,15 @@ library
         Language.K3.TypeSystem.Monad.Utils,
         Language.K3.TypeSystem.Sanity,
         Language.K3.TypeSystem.TypeDecision.AnnotationInlining,
-        Language.K3.TypeSystem.TypeDecision.StubReplacement
+        Language.K3.TypeSystem.TypeDecision.StubReplacement,
+        Language.K3.TypeSystem.Annotations.Error,
+        Language.K3.Utils.Either,
+        Language.K3.Logger,
+        Language.K3.Logger.Config,
+        Language.K3.Logger.Generators,
+        Language.K3.Logger.Operations
+
     ghc-options: -Wall
-    other-modules: 
-                   Language.K3.TypeSystem.Annotations.Error,
-                   Language.K3.Utils.Either,
-                   Language.K3.Logger,
-                   Language.K3.Logger.Operations
 
 test-suite all
     type: exitcode-stdio-1.0
@@ -119,8 +121,10 @@ test-suite all
         containers,
         directory,
         filepath,
+        hslogger,
         network-transport,
         parsec,
+        transformers,
         unordered-containers,
 
         HUnit,
