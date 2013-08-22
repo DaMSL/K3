@@ -127,10 +127,6 @@ data InternalTypeError
   | forall c. (ConstraintSetType c) => PolymorphicSelfBinding (QuantType c) UID
       -- ^Indicates that the special self binding was bound to a polymorphic
       --  type, which is illegal.
-      -- ^Indicates that there were environment identifiers in the checking
-      --  environments which did not match any node in the AST provided during
-      --  declaration derivation.  The extra identifiers (type and type alias,
-      --  in that order) are included.
   | forall c. (ConstraintSetType c)
     => InvalidSpecialBinding TEnvId (Maybe (TypeAliasEntry c))
       -- ^Indicates that, during derivation of an annotation member, a type
