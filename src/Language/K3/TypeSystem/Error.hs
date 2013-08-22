@@ -75,6 +75,7 @@ deriving instance Show TypeError
 
 instance Pretty TypeError where
   prettyLines e = case e of
+    InternalError ie -> ["InternalError: "] %+ prettyLines ie
     _ -> splitOn "\n" $ show e
 
 instance Pretty (Seq TypeError) where
@@ -141,3 +142,14 @@ data InternalTypeError
 
 deriving instance Show InternalTypeError
 
+instance Pretty InternalTypeError where
+  prettyLines e = case e of
+    InvalidUIDsInDeclaration decl -> invalidUID "declaration" decl
+    InvalidUIDsInTypeExpression tExpr -> invalidUID "type expression" tExpr
+    InvalidUIDsInExpression expr -> invalidUID "expression" expr
+    _ -> splitOn "\n" $ show e
+    where
+      invalidUID name tree =
+        ["Invalid UIDs in "++name++": "] %$ indent 2 (
+            prettyLines tree
+          )
