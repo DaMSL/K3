@@ -1,0 +1,3 @@
+declare f : immut ((immut int,immut int) -> int) =
+    \x ->   bind x as (y,z) in
+            y + z
