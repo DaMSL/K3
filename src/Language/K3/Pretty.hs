@@ -4,6 +4,7 @@
 -- | Pretty Printing for K3 Trees.
 module Language.K3.Pretty (
     pretty,
+    boxToString,
 
     Pretty(..),
 
@@ -36,7 +37,10 @@ import Data.Char
 -- TODO: Maybe we want a type alias TextBox for [String]?  Or even a newtype?
 
 pretty :: Pretty a => a -> String
-pretty = unlines . map removeTrailingWhitespace . prettyLines
+pretty = boxToString . prettyLines
+
+boxToString :: [String] -> String
+boxToString = unlines . map removeTrailingWhitespace
 
 removeTrailingWhitespace :: String -> String
 removeTrailingWhitespace s = case s of

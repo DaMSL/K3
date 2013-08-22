@@ -23,6 +23,7 @@ library
         either,
         errors,
         hashable,
+        hslogger,
         mtl,
         network,
         network-transport,
@@ -97,7 +98,9 @@ library
     ghc-options: -Wall
     other-modules: 
                    Language.K3.TypeSystem.Annotations.Error,
-                   Language.K3.Utils.Either
+                   Language.K3.Utils.Either,
+                   Language.K3.Logger,
+                   Language.K3.Logger.Operations
 
 test-suite all
     type: exitcode-stdio-1.0
