@@ -180,13 +180,13 @@ data EngineError = EngineError
 
 type EngineT e r m a = EitherT e (ReaderT r m) a
 
-type EngineM w a = EngineT EngineError (Engine b) IO a
+type EngineM a b = EngineT EngineError (Engine a) IO b
 
 runEngineT :: EngineT e r m a -> r -> m (Either e a)
 runEngineT s r = flip runReaderT r $ runEitherT s
 
-runEngineM :: EngineStep b a -> Engine b -> IO (Either EngineError a)
-runEngineM = runEngineStepT
+runEngineM :: EngineM a b -> Engine a -> IO (Either EngineError b)
+runEngineM = runEngineT
 
 {- Configuration parameters -}
 
@@ -505,8 +505,8 @@ deployedNodes = map fst
 nodes :: Engine a -> [Address]
 nodes e = deployedNodes $ deployment e
 
-numQueuedMessages :: MessageQueues a -> IO Int
-numQueuedMessages = \case
+numQueuedMessages :: MessageQueues b -> EngineM a Int
+numQueuedMessages = liftIO . \case
     Peer qmv           -> withMVar qmv $ return . count
     ManyByPeer qsmv    -> withMVar qsmv $ return . sumListSizes
     ManyByTrigger qsmv -> withMVar qsmv $ return . sumListSizes
@@ -514,56 +514,56 @@ numQueuedMessages = \case
     count        = length . snd
     sumListSizes = H.foldl' (\acc msgs -> acc + length msgs) 0
 
-numEndpoints :: EEndpointState a -> IO Int
-numEndpoints es = count (internalEndpoints es) >>= (\ni -> count (externalEndpoints es) >>= return . (ni +))
-  where count ep = withMVar ep (return . H.size)
+numEndpoints :: EEndpointState b -> EngineM a Int
+numEndpoints es = (+) <$> (count $ externalEndpoints es) <*> (count $ internalEndpoints es)
+  where count ep = liftIO $ withMVar ep (return . H.size)
 
-statistics :: EngineM w (Int, Int)
+statistics :: EngineM a (Int, Int)
 statistics = do
     engine <- ask
     nqm <- queues <$> engine
     nep <- endpoints <$> engine
     return (nqm, nep)
 
-simulation :: EngineM w Bool
+simulation :: EngineM a Bool
 simulation = ask >>= \case
     Engine { connections = (EConnectionState (Nothing, _)) } -> True
     _ -> False
 
 {- Message processing and engine control -}
-registerNetworkListener :: (Identifier, Weak ThreadId) -> EngineM w ()
+registerNetworkListener :: (Identifier, Weak ThreadId) -> EngineM a ()
 registerNetworkListener iwt = do
     engine <- ask
     liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . succ
     liftIO $ modifyMVar_ (listeners engine) $ return . (iwt:)
 
-deregisterNetworkListener :: Identifier -> EngineM w ()
+deregisterNetworkListener :: Identifier -> EngineM a ()
 deregisterNetworkListener n = do
     engine <- ask
     liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . pred
     liftIO $ modifyMVar_ (listeners engine) $ return . ((n /=) . fst)
 
-terminate :: EngineM w Bool
+terminate :: EngineM a Bool
 terminate = do
     engine <- ask
     terminate <- liftIO $ readMVar (terminateV $ control engine)
     done <- networkDone engine
     return $ done || not (waitForNetwork $ config engine) && terminate
 
-networkDone :: EngineM w Bool
+networkDone :: EngineM a Bool
 networkDone = do
     engine <- ask
     done <- liftIO . readMVar . networkDoneV $ control engine
     return $ done == 0
 
-waitForMessage :: EngineM w ()
+waitForMessage :: EngineM a ()
 waitForMessage = do
     engine <- ask
-    liftIO $ readSV (messageRaedV $ control engine)
+    liftIO $ readSV (messageReadyV $ control engine)
 
 -- | Process a single message within the engine, given the message processor to use, and the
 -- previous message result. Return the status of the loop.
-processMessage :: MessageProcessor i p w r e -> r -> EngineM w (LoopStates r e)
+processMessage :: MessageProcessor i p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
     message <- dequeue $ queues engine
@@ -574,19 +574,19 @@ processMessage mp pr = do
         nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show w) =>
-    MessageProcessor i p w r e -> Engine w (LoopStatus r e) -> EngineM ()
+runMessages :: (Pretty r, Pretty e, Show a) =>
+    MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
     Result r -> debugQueues engine >> processMessage mp >>= runMessages mp
-    Error e -> die "Error:\n" e
+    Error e -> die "Error:\n" e (control engine)
     MessagesDone r -> terminate engine >>= \case
-        True -> finalize mp r >>= die "Terminated:\n"
-        _ -> waitForMessage engine >> recurse r
+        True -> finalize mp r >>= die "Terminated:\n" (control engine)
+        _ -> waitForMessage engine >> processMessage mp >>= runMessages mp
   where
-    die msg r = do
+    die msg r cntrl = do
         putStrLn (msg ++ pretty r)
-        cleanupEngine engine
-        liftIO $ tryPutMVar (waitV $ control engine) ()
+        cleanupEngine
+        liftIO $ tryPutMVar (waitV cntrl) ()
         liftIO $ putStrLn "Finished."
 
 runEngine :: (Pretty r, Pretty e, Show a) =>
@@ -600,30 +600,28 @@ runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
         initializeWorker _                                = error $ "Unsupported engine mode: Multiprocess"
 
-forkEngine :: (Pretty r, Pretty e, Show w) => MessageProcessor i p w r e -> i -> p -> EngineM w ThreadId
-forkEngine mp is p = liftIO . forkIO $ runEngine mp is eg p
+forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ThreadId
+forkEngine mp is p = liftIO . forkIO $ runEngine mp is p
 
-waitForEngine :: EngineM w ()
+waitForEngine :: EngineM a ()
 waitForEngine = liftIO . readMVar . waitV . control <$> ask
 
-terminateEngine :: EngineM w ()
+terminateEngine :: EngineM a ()
 terminateEngine = do
     engine <- ask
     liftIO $ modifyMVar_ (terminate $ control engine) (const $ return True)
     liftIO $ writeSV (messageReadyV $ control engine) ()
 
-cleanupEngine :: EngineM w ()
+cleanupEngine :: EngineM a ()
 cleanupEngine = do
     engine <- ask
-    cleanC $ connections e
-    cleanE $ endpoints e
-  where
-    cleanC (EConnectionState (Nothing, y)) = clearConnections y
-    cleanC (EConnectionState (Just x, y)) = clearConnections x >> clearConnections y
+    case connections engine of
+        EConnectionState (Nothing, y) -> clearConnections y
+        EConnectionState (Just x, y) -> clearConnections >> clearConnections y
 
-    cleanE (EEndpointState ieps eeps) =
-         (withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal e))
-      >> (withMVar eeps (return . H.keys) >>= mapM_ (flip close e))
+    let EEndpointState ieps eeps = endpoints in do
+        withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal engine)
+        withMVar eeps (return . H.keys) >>= mapM_ (flip close engine)
 
 {- Network endpoint execution -}
 
@@ -1292,10 +1290,10 @@ putMessageQueues (Peer q) = readMVar q >>= putStrLn . show
 putMessageQueues (ManyByPeer qs) = readMVar qs >>= putStrLn . show
 putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
 
-putEngine :: Show w => EngineM w ()
+putEngine :: Show a => EngineM a ()
 putEngine = ask >>= liftIO . print >> debugQueues
 
-debugQueues :: Show w => EngineM w ()
+debugQueues :: Show a => EngineM a ()
 debugQueues = (liftIO $ putStrLn "Queues:") >> putMessageQueues . queues <$> ask
 
 {- Instance implementations -}
