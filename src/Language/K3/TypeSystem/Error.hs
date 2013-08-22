@@ -69,17 +69,31 @@ data TypeError
   | MultipleAnnotationBindings Identifier [AnnMemDecl]
       -- ^ Indicates that a given annotation binds the same identifier to
       --   multiple annotation declarations.
-  | DeclarationClosureInconsistency Identifier [ConsistencyError]
+  | DeclarationClosureInconsistency
+      Identifier
+      ConstraintSet
+      AnyTVar
+      AnyTVar
+      [ConsistencyError]
       -- ^ Indicates that the specified declaration's closure was inconsistent.
+      --   The first qualified variable is the inferred type of the expression;
+      --   the second qualified variable is the declared type.
 
 deriving instance Show TypeError
 
 instance Pretty TypeError where
   prettyLines e = case e of
     InternalError ie -> ["InternalError: "] %+ prettyLines ie
-    DeclarationClosureInconsistency i ces ->
+    DeclarationClosureInconsistency i cs sa1 sa2 ces ->
       ["Inconsistency in closure of " ++ i ++ ": "] %$
-        indent 2 (prettyLines ces)
+        indent 2 (
+          ["Type "] %+ prettyLines sa1 %+ [" is not a subtype of "] %+
+            prettyLines sa2 %$
+          ["Constraint set:"] %$
+            indent 2 (prettyLines cs) %$
+          ["Errors:"] %$
+            indent 2 (prettyLines ces)
+        )
     _ -> splitOn "\n" $ show e
 
 instance Pretty (Seq TypeError) where

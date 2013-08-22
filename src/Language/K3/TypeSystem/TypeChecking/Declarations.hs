@@ -23,6 +23,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.TypeSystem.Annotations
+import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
@@ -99,10 +100,11 @@ deriveDeclaration aEnv env decl =
       qt2 <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u qt2
       cs' <- csf v1 v2
-      either (typecheckError . DeclarationClosureInconsistency i .
-                Foldable.toList)
+      let cs'' = calculateClosure $ csUnions [cs1,cs2,cs']
+      either (typecheckError . DeclarationClosureInconsistency i cs''
+                                  (someVar v1) (someVar v2) . Foldable.toList)
              return
-           $ checkClosureConsistent $ csUnions [cs1,cs2,cs']
+           $ checkConsistent cs''
       return i
 
 -- |A function to derive a type for an annotation member.
