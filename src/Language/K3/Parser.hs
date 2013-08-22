@@ -2,6 +2,8 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | K3 Parser.
 module Language.K3.Parser (
@@ -120,10 +122,25 @@ spanned parser = do
 infixl 1 <->
 infixl 1 #
 
--- | UID annotation.
-(#) :: (Eq (IElement a), AContainer a)
-    => (UID -> IElement a) -> K3Parser a -> K3Parser a
-(#) cstr parser = parserWithUID (\uid -> (@+ (cstr $ UID uid)) <$> parser)
+-- Some code for UID annotation.  Abusing typeclasses into ad-hoc polymorphism.
+-- |Ensures that the provided parser generates an element with a UID.
+ensureUID :: (Eq (IElement a), AContainer a)
+          => (IElement a -> Bool) -> (UID -> IElement a) -> K3Parser a
+          -> K3Parser a
+ensureUID matcher constructor parser = do
+  x <- parser
+  case x @~ matcher of
+    Just _ -> return x
+    Nothing -> (\uid -> x @+ constructor uid) <$> nextUID
+
+class (Eq (IElement a), AContainer a) => UIDAttachable a where
+  (#) :: (UID -> IElement a) -> K3Parser a -> K3Parser a
+instance UIDAttachable (K3 Expression) where
+  (#) = ensureUID isEUID
+instance UIDAttachable (K3 Type) where
+  (#) = ensureUID isTUID
+instance UIDAttachable (K3 Declaration) where
+  (#) = ensureUID isDUID
 
 {- Language definition constants -}
 k3Operators = [
