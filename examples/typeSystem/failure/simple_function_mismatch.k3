@@ -1,0 +1,1 @@
+declare f : immut (int -> bool) = \x -> 0
