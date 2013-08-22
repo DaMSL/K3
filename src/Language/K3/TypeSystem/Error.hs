@@ -21,6 +21,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Annotations.Error
+import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data
 
 -- |A data structure representing typechecking errors.
@@ -68,7 +69,7 @@ data TypeError
   | MultipleAnnotationBindings Identifier [AnnMemDecl]
       -- ^ Indicates that a given annotation binds the same identifier to
       --   multiple annotation declarations.
-  | DeclarationClosureInconsistency Identifier -- TODO: closure error arg too
+  | DeclarationClosureInconsistency Identifier [ConsistencyError]
       -- ^ Indicates that the specified declaration's closure was inconsistent.
 
 deriving instance Show TypeError

@@ -12,6 +12,7 @@ module Language.K3.TypeSystem.TypeChecking.Declarations
 import Control.Arrow
 import Control.Applicative
 import Control.Monad
+import qualified Data.Foldable as Foldable
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
@@ -98,8 +99,10 @@ deriveDeclaration aEnv env decl =
       qt2 <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u qt2
       cs' <- csf v1 v2
-      unless (closureConsistent $ csUnions [cs1,cs2,cs']) $
-        typecheckError $ DeclarationClosureInconsistency i
+      either (typecheckError . DeclarationClosureInconsistency i .
+                Foldable.toList)
+             return
+           $ checkClosureConsistent $ csUnions [cs1,cs2,cs']
       return i
 
 -- |A function to derive a type for an annotation member.
