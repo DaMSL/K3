@@ -600,23 +600,26 @@ runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
         initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
         initializeWorker _                                = error $ "Unsupported engine mode: Multiprocess"
 
-forkEngine :: (Pretty r, Pretty e, Show a) =>
-              MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId
-forkEngine msgPrcsr inits eg prog = forkIO $ runEngine msgPrcsr inits eg prog
+forkEngine :: (Pretty r, Pretty e, Show w) => MessageProcessor i p w r e -> i -> p -> EngineM w ThreadId
+forkEngine mp is p = liftIO . forkIO $ runEngine mp is eg p
 
-waitForEngine :: Engine a -> IO ()
-waitForEngine = readMVar . waitV . control
+waitForEngine :: EngineM w ()
+waitForEngine = liftIO . readMVar . waitV . control <$> ask
 
-terminateEngine :: Engine a -> IO ()
-terminateEngine e = 
-       modifyMVar_ (terminateV $ control e) (const $ return True)
-    >> writeSV (messageReadyV $ control e) ()
+terminateEngine :: EngineM w ()
+terminateEngine = do
+    engine <- ask
+    liftIO $ modifyMVar_ (terminate $ control engine) (const $ return True)
+    liftIO $ writeSV (messageReadyV $ control engine) ()
 
-cleanupEngine :: Engine a -> IO ()
-cleanupEngine e = cleanC (connections e) >> cleanE (endpoints e)
+cleanupEngine :: EngineM w ()
+cleanupEngine = do
+    engine <- ask
+    cleanC $ connections e
+    cleanE $ endpoints e
   where
-    cleanC (EConnectionState (Nothing, x)) = clearConnections x        
-    cleanC (EConnectionState (Just x, y))  = clearConnections x >> clearConnections y
+    cleanC (EConnectionState (Nothing, y)) = clearConnections y
+    cleanC (EConnectionState (Just x, y)) = clearConnections x >> clearConnections y
 
     cleanE (EEndpointState ieps eeps) =
          (withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal e))
