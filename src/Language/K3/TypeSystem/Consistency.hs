@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-|
   This module implements the constraint set consistency checking routines from
   the specification.
@@ -10,6 +11,7 @@ module Language.K3.TypeSystem.Consistency
 
 import Control.Applicative
 import Control.Monad
+import Data.List.Split
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
@@ -18,6 +20,7 @@ import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
@@ -38,6 +41,17 @@ data ConsistencyError
   | TopUpperBound ShallowType
       -- ^Indicates that a type appeared as an upper bound of top.
   deriving (Show)
+
+instance Pretty [ConsistencyError] where
+  prettyLines ces = ["["] %$ indent 2 (foldl1 (%$) $ map prettyLines ces)
+                          %$ ["]"]
+
+instance Pretty ConsistencyError where
+  prettyLines ce = case ce of
+    ImmediateInconsistency t1 t2 ->
+      ["Immediate inconsistency: "] %+
+        prettyLines t1 %+ [" <: "] %+ prettyLines t2
+    _ -> splitOn "\n" $ show ce
 
 type ConsistencyCheck = Either (Seq ConsistencyError) ()
 

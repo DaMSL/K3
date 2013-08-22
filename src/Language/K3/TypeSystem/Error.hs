@@ -77,6 +77,9 @@ deriving instance Show TypeError
 instance Pretty TypeError where
   prettyLines e = case e of
     InternalError ie -> ["InternalError: "] %+ prettyLines ie
+    DeclarationClosureInconsistency i ces ->
+      ["Inconsistency in closure of " ++ i ++ ": "] %$
+        indent 2 (prettyLines ces)
     _ -> splitOn "\n" $ show e
 
 instance Pretty (Seq TypeError) where
