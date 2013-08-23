@@ -89,20 +89,16 @@ polyinstantiate
              -> QuantType c -- ^The type to polyinstantiate.
              -> m (QVar, c) -- ^The result of polyinstantiation.
 polyinstantiate inst qt@(QuantType boundSet qa cs) = do
-  {-
   _debug $ boxToString $
     ["Polyinstantiating quantified type: "] %+ prettyLines qt
-  -}
   (qvarMap,uvarMap) <- mconcat <$> mapM freshMap (Set.toList boundSet)
   let (qa',cs') = replaceVariables qvarMap uvarMap (qa,cs)
   let cs'' = cs' `CSL.union` CSL.promote
                (csFromList (map (uncurry PolyinstantiationLineageConstraint)
                                $ Map.toList qvarMap))
-  {-
   _debug $ boxToString $
     ["Polyinstantiated "] %+ prettyLines qt %$
       indent 2 (["to: "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'')
-  -}
   return (qa',cs'')
   where
     freshMap :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
