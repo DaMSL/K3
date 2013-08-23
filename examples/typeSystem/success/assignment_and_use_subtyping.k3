@@ -1,0 +1,5 @@
+declare x : immut int =
+    let r = mut {x:immut 4, y:immut 5} in
+    let junk = immut (r = {x:immut 8, z:immut ()}) in
+    r.x
+

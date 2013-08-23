@@ -1,0 +1,5 @@
+declare x : immut int =
+    let y = mut () in
+    let junk = immut (y = 4) in
+    y
+
