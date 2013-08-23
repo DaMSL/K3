@@ -11,6 +11,7 @@ module Language.K3.Logger.Operations
 , k3logMPretty
 ) where
 
+import Control.DeepSeq
 import System.IO.Unsafe
 import System.Log
 import System.Log.Logger
@@ -24,9 +25,11 @@ k3logI :: String -- ^The name of the module doing the logging.
        -> String -- ^The message to log.
        -> a -- ^The value to use as the result of the logging expression.
        -> a
-k3logI moduleName logLevel message value = unsafePerformIO $ do
-  logM moduleName logLevel message
-  return value
+k3logI moduleName logLevel message value =
+  deepseq message $!
+  unsafePerformIO $! do
+    logM moduleName logLevel message
+    return value
   
 -- |A function to log a pretty-printable value along with a prefix message.
 k3logIPretty :: (Pretty a)
@@ -40,8 +43,8 @@ k3logIPretty moduleName logLevel prefix value =
 
 -- |A function to log a message in a monad.
 k3logM :: (Monad m) => String -> Priority -> String -> m ()
-k3logM moduleName logLevel message = return $ unsafePerformIO $
-  logM moduleName logLevel message
+k3logM moduleName logLevel message =
+  k3logI moduleName logLevel message $ return ()
 
 -- |A function to log a pretty-printable value in a monad.
 k3logMPretty :: (Monad m, Pretty a)
