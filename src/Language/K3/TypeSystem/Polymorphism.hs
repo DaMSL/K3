@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GADTs, ScopedTypeVariables, FlexibleContexts, TemplateHaskell #-}
 {-|
   This module contains functionality related to K3's let-bound polymorphism
   model.
@@ -18,6 +18,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Closure
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
@@ -25,6 +27,8 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
+
+$(loggingFunctions)
 
 -- * Generalization
 
@@ -78,18 +82,28 @@ reachableFromType t = case t of
 -- |Polyinstantiates a quantified type.
 polyinstantiate
              :: forall m e c.
-                ( FreshVarI m, CSL.ConstraintSetLike e c
+                ( Show c, Pretty c, FreshVarI m, CSL.ConstraintSetLike e c
                 , CSL.ConstraintSetLikePromotable ConstraintSet c
                 , Transform ReplaceVariables c)
              => UID -- ^The span at which this polyinstantiation occurred.
              -> QuantType c -- ^The type to polyinstantiate.
              -> m (QVar, c) -- ^The result of polyinstantiation.
-polyinstantiate inst (QuantType boundSet qa cs) = do
+polyinstantiate inst qt@(QuantType boundSet qa cs) = do
+  {-
+  _debug $ boxToString $
+    ["Polyinstantiating quantified type: "] %+ prettyLines qt
+  -}
   (qvarMap,uvarMap) <- mconcat <$> mapM freshMap (Set.toList boundSet)
   let (qa',cs') = replaceVariables qvarMap uvarMap (qa,cs)
-  return (qa', cs' `CSL.union` CSL.promote
+  let cs'' = cs' `CSL.union` CSL.promote
                (csFromList (map (uncurry PolyinstantiationLineageConstraint)
-                               $ Map.toList qvarMap)))
+                               $ Map.toList qvarMap))
+  {-
+  _debug $ boxToString $
+    ["Polyinstantiated "] %+ prettyLines qt %$
+      indent 2 (["to: "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'')
+  -}
+  return (qa',cs'')
   where
     freshMap :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
     freshMap var =

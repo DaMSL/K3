@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections, TemplateHaskell #-}
 
 {-|
   A module defining the computational environment in which typechecking
@@ -19,10 +19,14 @@ import Data.Either
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Data.TypesAndConstraints
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
+
+$(loggingFunctions)
 
 -- |The state of the typechecking monad.
 data TypecheckState
@@ -52,8 +56,22 @@ getNextVarId = do
   return $ nextVarId s
 
 instance FreshVarI TypecheckM where
-  freshQVar origin = QTVar <$> getNextVarId <*> return origin
-  freshUVar origin = UTVar <$> getNextVarId <*> return origin
+  freshQVar = freshVar QTVar
+  freshUVar = freshVar UTVar
+  
+freshVar :: (Int -> TVarOrigin q -> TVar q) -> TVarOrigin q
+         -> TypecheckM (TVar q)
+freshVar cnstr origin = do
+  varId <- getNextVarId
+  let ret = cnstr varId origin
+  {-
+  case origin of
+    TVarPolyinstantiationOrigin v _ ->
+      _debug $ boxToString $
+        ["Polyinstantiated "] %+ prettyLines v %+ [" as "] %+ prettyLines ret
+    _ -> return ()
+  -}
+  return ret
   
 instance TypeErrorI TypecheckM where
   typeError = typecheckError

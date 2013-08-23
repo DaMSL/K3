@@ -7,9 +7,12 @@
 -}
 module Language.K3.TypeSystem.Data.ConstraintSet
 ( csEmpty
+, csNull
 , csSing
 , csFromList
 , csToList
+, csFromSet
+, csToSet
 , csSubset
 , csUnion
 , csUnions
@@ -30,6 +33,9 @@ import Language.K3.TypeSystem.Data.Utils
 csEmpty :: ConstraintSet
 csEmpty = ConstraintSet Set.empty
 
+csNull :: ConstraintSet -> Bool
+csNull (ConstraintSet cs) = Set.null cs
+
 csSing :: Constraint -> ConstraintSet
 csSing = ConstraintSet . Set.singleton
 
@@ -38,6 +44,12 @@ csFromList = ConstraintSet . Set.fromList
 
 csToList :: ConstraintSet -> [Constraint]
 csToList (ConstraintSet cs) = Set.toList cs
+
+csFromSet :: Set Constraint -> ConstraintSet
+csFromSet s = ConstraintSet s
+
+csToSet :: ConstraintSet -> Set Constraint
+csToSet (ConstraintSet s) = s
 
 csSubset :: ConstraintSet -> ConstraintSet -> Bool
 csSubset (ConstraintSet a) (ConstraintSet b) = Set.isSubsetOf a b
@@ -66,20 +78,22 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (ShallowType,ShallowType)
   QueryAllBinaryOperations ::
     ConstraintSetQuery (UVar,BinaryOperator,UVar,UVar)
-  QueryAllQualOrVarLowerBoundingQualOrVar ::
-    ConstraintSetQuery (QualOrVar, QualOrVar)
+  QueryAllQualOrVarLowerBoundingQVar ::
+    ConstraintSetQuery (QualOrVar, QVar)
   QueryAllTypeOrVarLowerBoundingQVar ::
     ConstraintSetQuery (TypeOrVar, QVar)
   QueryAllQVarLowerBoundingQVar ::
     ConstraintSetQuery (QVar, QVar)
+  QueryAllMonomorphicQualifiedUpperConstraint ::
+    ConstraintSetQuery (QVar, Set TQual)
   QueryTypeOrVarByUVarLowerBound ::
     UVar -> ConstraintSetQuery TypeOrVar
   QueryTypeByUVarUpperBound ::
     UVar -> ConstraintSetQuery ShallowType
   QueryTypeByQVarUpperBound ::
     QVar -> ConstraintSetQuery ShallowType
-  QueryQualOrVarByQualOrVarLowerBound ::
-    QualOrVar -> ConstraintSetQuery QualOrVar
+  QueryQualOrVarByQVarLowerBound ::
+    QVar -> ConstraintSetQuery QualOrVar
   QueryTypeOrVarByQVarLowerBound ::
     QVar -> ConstraintSetQuery TypeOrVar
   QueryTypeOrVarByQVarUpperBound ::
@@ -90,6 +104,9 @@ data ConstraintSetQuery r where
     UVar -> ConstraintSetQuery Constraint
   QueryBoundingConstraintsByQVar ::
     QVar -> ConstraintSetQuery Constraint
+  QueryPolyLineageByOrigin ::
+    QVar -> ConstraintSetQuery QVar
+  -- TODO: QueryOpaqueBounds :: Opaque -> (ShallowType, ShallowType)
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
@@ -108,15 +125,19 @@ csQuery (ConstraintSet csSet) query =
     QueryAllBinaryOperations -> do
       BinaryOperatorConstraint a1 op a2 a3 <- cs
       return (a1,op,a2,a3)
-    QueryAllQualOrVarLowerBoundingQualOrVar -> do
+    QueryAllQualOrVarLowerBoundingQVar -> do
       QualifiedIntermediateConstraint qv1 qv2 <- cs
-      return (qv1,qv2)
+      CRight qa <- return qv2 -- guard $ "of the form QVar"
+      return (qv1,qa)
     QueryAllTypeOrVarLowerBoundingQVar -> do
       QualifiedLowerConstraint ta qa <- cs
       return (ta,qa)
     QueryAllQVarLowerBoundingQVar -> do
       QualifiedIntermediateConstraint (CRight qa1) (CRight qa2) <- cs
       return (qa1, qa2)
+    QueryAllMonomorphicQualifiedUpperConstraint -> do
+      MonomorphicQualifiedUpperConstraint qa qs <- cs
+      return (qa, qs)
     QueryTypeOrVarByUVarLowerBound a -> do
       IntermediateConstraint (CRight a') ta <- cs
       guard $ a == a'
@@ -129,10 +150,10 @@ csQuery (ConstraintSet csSet) query =
       QualifiedLowerConstraint (CLeft t) qa' <- cs
       guard $ qa == qa'
       return t
-    QueryQualOrVarByQualOrVarLowerBound qa -> do
-      QualifiedIntermediateConstraint qa1 qa2 <- cs
-      guard $ qa == qa1
-      return qa2
+    QueryQualOrVarByQVarLowerBound qa -> do
+      QualifiedIntermediateConstraint qv1 qv2 <- cs
+      guard $ (CRight qa) == qv1
+      return qv2
     QueryTypeOrVarByQVarLowerBound qa -> do
       QualifiedUpperConstraint qa' ta <- cs
       guard $ qa == qa'
@@ -177,3 +198,7 @@ csQuery (ConstraintSet csSet) query =
         guard $ qa == qa'
         return c
       )
+    QueryPolyLineageByOrigin qa -> do
+      PolyinstantiationLineageConstraint qa1 qa2 <- cs
+      guard $ qa == qa2
+      return qa1

@@ -17,8 +17,8 @@ import System.Log.Logger
 
 import Language.K3.Pretty
 
--- |A function, similar to @Debug.Trace@, to log a messge in K3 in an inline
---  fashion.
+-- |A function, similar to @Debug.Trace.trace@, to log a messge in K3 in an
+--  inline fashion.
 k3logI :: String -- ^The name of the module doing the logging.
        -> Priority -- ^The logging level.
        -> String -- ^The message to log.

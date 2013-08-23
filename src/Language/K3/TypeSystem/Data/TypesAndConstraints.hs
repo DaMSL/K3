@@ -3,6 +3,7 @@
 module Language.K3.TypeSystem.Data.TypesAndConstraints
 ( TVarQualification(..)
 , TVar(..)
+, tvarId
 , ConstraintSetType
 , TVarOrigin(..)
 , QVar
