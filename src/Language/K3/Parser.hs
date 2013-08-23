@@ -791,4 +791,4 @@ propagateQualifier _ Nothing  = Nothing
 propagateQualifier (tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> eas))
   | any isEQualified eas || inApplicable ttag = Just e
   | otherwise = Just $ if any isTImmutable tas then (e @+ EImmutable) else (e @+ EMutable)
-  where inApplicable = flip elem [TFunction, TTrigger, TSink, TSource]
+  where inApplicable = flip elem [TTrigger, TSink, TSource]
