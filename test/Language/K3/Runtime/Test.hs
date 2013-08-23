@@ -338,7 +338,7 @@ engineTests = [
         testSystem = [(testNode1, []), (testNode2, [])]
 
         testTrigger = "dummyTrigger"
-        testValue   = readValueSyntax "1"
+        testValue   = unpackValueSyntax "1"
 
         mkSysEnv numNodes (Address (host,port)) portStep = 
           let aux acc 0 = acc
@@ -361,7 +361,7 @@ engineTests = [
         sendMessages (eg, nodes) =
           let msgsToSend = 5 in do
             void $ unless (length nodes > 1) failed
-            replicateM_ msgsToSend $ send (nodes !! 0) testTrigger testValue eg
+            replicateM_ msgsToSend $ (testValue >>= \v -> send (nodes !! 0) testTrigger v eg)
             void $ validMessages msgsToSend eg
             void $ putEngine eg
 
@@ -379,7 +379,7 @@ engineTests = [
             let msgsToSend = 5
                 (sAddr, sender) = nodesAndEngines !! 0
                 (rAddr, recvr)  = nodesAndEngines !! 1
-                msgAction       = send rAddr testTrigger testValue sender
+                msgAction       = testValue >>= \x -> send rAddr testTrigger x sender
             in pushMessages msgsToSend (1, msgAction) recvr
 
         sendManyMsgsToOne nodesAndEngines
@@ -388,7 +388,7 @@ engineTests = [
             let msgsToSend = 5
                 (rAddr, recvr) = nodesAndEngines !! 0
                 senders        = tail nodesAndEngines
-                msgAction      = mapM_ (send rAddr testTrigger testValue . snd) senders
+                msgAction      = mapM_ (\(_,sAddr) -> testValue >>= \y -> send rAddr testTrigger y sAddr) senders
             in pushMessages msgsToSend (length senders, msgAction) recvr
 
 
