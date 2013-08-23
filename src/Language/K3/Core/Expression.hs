@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
@@ -113,3 +114,13 @@ isEUID _        = False
 isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
+
+{- Expression utilities -}
+
+-- | Retrieves all free variables in an expression. 
+freeVariables :: K3 Expression -> [Identifier]
+freeVariables e = foldMapTree extractVariable [] e
+  where 
+    extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
+    extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
+    extractVariable chAcc _ = concat chAcc
