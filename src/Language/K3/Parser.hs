@@ -447,19 +447,23 @@ exprNoneQualifier = exprSuffixError "option qualifier" $
   <|> keyword "mut"   *> return NoneMut
 
 eTerm :: ExpressionParser
-eTerm = EUID # (ESpan <-> mkTerm <$> choice [
-    (try eAssign),
-    (try eAddress),
-    eLiterals,
-    eLambda,
-    eCondition,
-    eLet,
-    eCase,
-    eBind,
-    eSelf  ] <*> optional eProject)
-  where eProject          = dot *> identifier
-        mkTerm e Nothing  = e
-        mkTerm e (Just x) = EC.project x e
+eTerm = do
+  e <- EUID # (ESpan <-> rawTerm)
+  mi <- optional eProject
+  case mi of
+    Nothing -> return e
+    Just i -> EUID # return (EC.project i e) -- TODO: span
+  where
+    rawTerm = choice [ (try eAssign),
+                       (try eAddress),
+                       eLiterals,
+                       eLambda,
+                       eCondition,
+                       eLet,
+                       eCase,
+                       eBind,
+                       eSelf  ] -- <*> optional eProject)
+    eProject = dot *> identifier
 
 
 {- Literals -}
