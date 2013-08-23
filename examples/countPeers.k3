@@ -8,3 +8,4 @@ trigger register : int = \x -> nodeCounter = nodeCounter + x
 source go : () = value ()
 
 ~~ go |> join
+

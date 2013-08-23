@@ -13,7 +13,10 @@ module Language.K3.Core.Annotation (
     -- * K3 Instantiations
     (:@:)(..),
     K3,
-    children
+
+    children,
+    foldMapTree,
+    foldTree
 ) where
 
 import Data.List (delete, find)
@@ -132,6 +135,20 @@ instance AConstruct a => AConstruct (Tree a) where
 -- tag.
 type K3 a = Tree (a :@: [Annotation a])
 
+{- Tree utilities -}
+
 -- | Subtree extraction
 children :: Tree a -> Forest a
 children = subForest
+
+-- | Fold over a tree, recurring independently over each child.
+--   The result is produced by transforming independent subresults in bottom-up fashion.
+foldMapTree :: ([b] -> Tree a -> b) -> b -> Tree a -> b
+foldMapTree f x n@(Node _ []) = f [x] n
+foldMapTree f x n@(Node _ ch) = flip f n $ map (foldMapTree f x) ch
+
+-- | Fold over a tree, threading the accumulator between children.
+foldTree :: (b -> Tree a -> b) -> b -> Tree a -> b
+foldTree f x n@(Node _ []) = f x n
+foldTree f x n@(Node _ ch) = flip f n $ foldl (foldTree f) x ch
+

@@ -1,0 +1,1 @@
+declare a : immut (int -> (immut int, immut int));
