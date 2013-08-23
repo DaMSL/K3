@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts, ConstraintKinds #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts, ConstraintKinds, TemplateHaskell #-}
 
 {-|
   Contains operations related to typechecking of type expressions.  These
@@ -21,6 +21,8 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
@@ -32,6 +34,8 @@ import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.Utils.K3Tree
+
+$(loggingFunctions)
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::
@@ -75,72 +79,80 @@ deriveTypeExpression ::
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (UVar, c)
-deriveTypeExpression aEnv tExpr =
-  case tag tExpr of
-    TBool -> deriveTypePrimitive SBool
-    TByte -> undefined "No Byte type in spec!"
-    TInt -> deriveTypePrimitive SInt
-    TReal -> deriveTypePrimitive SReal
-    TString -> deriveTypePrimitive SString
-    TFunction -> do
-      (tExpr1, tExpr2) <- assert2Children tExpr
-      (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
-      (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
-      a0 <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a0, CSL.unions [cs1, cs2, SFunction a1 a2 ~= a0])
-    TOption -> commonSingleContainer SOption
-    TIndirection -> commonSingleContainer SIndirection
-    TTuple -> do
-      (qas,css) <- unzip <$>
-                    mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
-      a <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a, CSL.unions css `CSL.union` (STuple qas ~= a))
-    TRecord ids -> do
-      (qas,css) <- unzip <$>
-                    mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
-      a' <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a', CSL.unions css `CSL.union`
-                  ((SRecord $ Map.fromList $ zip ids qas) ~= a'))
-    TCollection -> do
-      tExpr' <- assert1Child tExpr
-      let ais = mapMaybe toAnnotationId $ annotations tExpr
-      (a_c,cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
-      u <- uidOf tExpr
-      namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
-      anns <- mapM (uncurry toAnnAlias) namedAnns
-      -- Concatenate the annotations
-      ann <- either (\err -> typeError =<<
-                        InvalidAnnotationConcatenation <$>
-                          uidOf tExpr <*> return err)
-                    return
-                  $ concatAnnTypes anns
-      einstcol <- instantiateCollection ann a_c
-      (a_s,cs_s) <- either (\err -> typeError =<<
-                        InvalidCollectionInstantiation <$>
-                          uidOf tExpr <*> return err)
-                    return
-                    einstcol
-      return (a_s, cs_c `CSL.union` cs_s)
-    TAddress -> error "Address type not in specification!" -- TODO
-    TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
-    TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
-    TTrigger -> do
-      tExpr' <- assert1Child tExpr
-      (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
-      a' <- freshTypecheckingUVar =<< uidOf tExpr
-      return (a', cs `CSL.union` (STrigger a ~= a'))
-    TBuiltIn b -> do
-      assert0Children tExpr
-      let ei = case b of
-                  TSelf -> TEnvIdSelf
-                  TStructure -> TEnvIdFinal
-                  THorizon -> TEnvIdHorizon
-                  TContent -> TEnvIdContent
-      u <- uidOf tExpr
-      qt <- uncurry toQuantType =<< aEnvLookup ei u
-      (qa,cs) <- polyinstantiate u qt
-      a <- freshTypecheckingUVar u
-      return (a, cs `CSL.union` (qa ~= a))
+deriveTypeExpression aEnv tExpr = do
+  _debug $ boxToString $ ["Interpreting type expression:"] %+ prettyLines tExpr
+  (a, cs) <-
+      case tag tExpr of
+        TBool -> deriveTypePrimitive SBool
+        TByte -> undefined "No Byte type in spec!"
+        TInt -> deriveTypePrimitive SInt
+        TReal -> deriveTypePrimitive SReal
+        TString -> deriveTypePrimitive SString
+        TFunction -> do
+          (tExpr1, tExpr2) <- assert2Children tExpr
+          (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
+          (a2,cs2) <- deriveUnqualifiedTypeExpression aEnv tExpr2
+          a0 <- freshTypecheckingUVar =<< uidOf tExpr
+          return (a0, CSL.unions [cs1, cs2, SFunction a1 a2 ~= a0])
+        TOption -> commonSingleContainer SOption
+        TIndirection -> commonSingleContainer SIndirection
+        TTuple -> do
+          (qas,css) <- unzip <$>
+                        mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
+          a <- freshTypecheckingUVar =<< uidOf tExpr
+          return (a, CSL.unions css `CSL.union` (STuple qas ~= a))
+        TRecord ids -> do
+          (qas,css) <- unzip <$>
+                        mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
+          a' <- freshTypecheckingUVar =<< uidOf tExpr
+          return (a', CSL.unions css `CSL.union`
+                      ((SRecord $ Map.fromList $ zip ids qas) ~= a'))
+        TCollection -> do
+          tExpr' <- assert1Child tExpr
+          let ais = mapMaybe toAnnotationId $ annotations tExpr
+          (a_c,cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+          u <- uidOf tExpr
+          namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
+          anns <- mapM (uncurry toAnnAlias) namedAnns
+          -- Concatenate the annotations
+          ann <- either (\err -> typeError =<<
+                            InvalidAnnotationConcatenation <$>
+                              uidOf tExpr <*> return err)
+                        return
+                      $ concatAnnTypes anns
+          einstcol <- instantiateCollection ann a_c
+          (a_s,cs_s) <- either (\err -> typeError =<<
+                            InvalidCollectionInstantiation <$>
+                              uidOf tExpr <*> return err)
+                        return
+                        einstcol
+          return (a_s, cs_c `CSL.union` cs_s)
+        TAddress -> error "Address type not in specification!" -- TODO
+        TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
+        TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
+        TTrigger -> do
+          tExpr' <- assert1Child tExpr
+          (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+          a' <- freshTypecheckingUVar =<< uidOf tExpr
+          return (a', cs `CSL.union` (STrigger a ~= a'))
+        TBuiltIn b -> do
+          assert0Children tExpr
+          let ei = case b of
+                      TSelf -> TEnvIdSelf
+                      TStructure -> TEnvIdFinal
+                      THorizon -> TEnvIdHorizon
+                      TContent -> TEnvIdContent
+          u <- uidOf tExpr
+          qt <- uncurry toQuantType =<< aEnvLookup ei u
+          (qa,cs) <- polyinstantiate u qt
+          a <- freshTypecheckingUVar u
+          return (a, cs `CSL.union` (qa ~= a))
+  _debug $ boxToString $
+    ["Interpreted type expression:"] %$ indent 2 (
+        ["Type expression: "] %+ prettyLines tExpr %$
+        ["Interpreted type: "] %+ prettyLines a %+ ["\\"] %+ prettyLines cs
+      )
+  return (a,cs)
   where
     deriveTypePrimitive p = do
       assert0Children tExpr
