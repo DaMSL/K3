@@ -800,15 +800,15 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lstnrState endpoints eg =
         forkEndpoint e = forkIO (runNEndpoint lstnrState e eg) >>= mkWeakThreadId
 
 
-genericClose :: String -> EEndpoints a b -> Engine b -> IO ()
-genericClose n endpoints eg = getEndpoint n endpoints >>= \case
+genericClose :: String -> EEndpoints a b -> EngineM b ()
+genericClose n endpoints = getEndpoint n endpoints >>= \case
   Nothing -> return ()
   Just e  -> closeHandle (handle e)
               >> deregister (networkSource $ handle e)
               >> removeEndpoint n endpoints
-              >> notifySubscribers (notifyType $ handle e) (subscribers e) eg
+              >> notifySubscribers (notifyType $ handle e) (subscribers e) <$> ask
 
-  where deregister = maybe (return ()) (\_ -> deregisterNetworkListener n eg)
+  where deregister = maybe (return ()) (\_ -> deregisterNetworkListener n <$> ask)
         notifyType (BuiltinH _ _ _) = FileClose
         notifyType (FileH _ _)      = FileClose
         notifyType (SocketH _ _)    = SocketClose
@@ -1003,28 +1003,28 @@ writeHandle payload = \case
 
 {- Endpoint accessors -}
 
-newEndpoint :: Address -> IO (Maybe NEndpoint)
-newEndpoint (Address (host, port)) = withSocketsDo $ do
+newEndpoint :: Address -> EngineM a (Maybe NEndpoint)
+newEndpoint (Address (host, port)) = liftIO . withSocketsDo $ do
   t <- eitherAsMaybe $ NTTCP.createTransport host (show port) NTTCP.defaultTCPParameters
   e <- maybe (return Nothing) (eitherAsMaybe . NT.newEndPoint) t
   return $ t >>= \tr -> e >>= return . flip NEndpoint tr
   where eitherAsMaybe m = m >>= return . either (\_ -> Nothing) Just
 
-closeEndpoint :: NEndpoint -> IO ()
-closeEndpoint ep = NT.closeEndPoint (endpoint ep) >> NT.closeTransport (epTransport ep)
+closeEndpoint :: NEndpoint -> EngineM a ()
+closeEndpoint ep = liftIO $ NT.closeEndPoint (endpoint ep) >> NT.closeTransport (epTransport ep)
 
-emptyEndpoints :: IO (EEndpoints a b)
-emptyEndpoints = newMVar (H.fromList [])
+emptyEndpoints :: EngineM b (EEndpoints a b)
+emptyEndpoints = liftIO $ newMVar (H.fromList [])
 
-addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b -> IO (Endpoint a b)
+addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b -> EngineM b (Endpoint a b)
 addEndpoint n (h,b,s) eps = modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
   where rebuild e m = return (H.insert n e m, e)
 
-removeEndpoint :: Identifier -> EEndpoints a b -> IO ()
-removeEndpoint n eps = modifyMVar_ eps $ return . H.delete n
+removeEndpoint :: Identifier -> EEndpoints a b -> EngineM b ()
+removeEndpoint n eps = liftIO $ modifyMVar_ eps $ return . H.delete n
 
-getEndpoint :: Identifier -> EEndpoints a b -> IO (Maybe (Endpoint a b))
-getEndpoint n eps = withMVar eps (return . H.lookup n)
+getEndpoint :: Identifier -> EEndpoints a b -> EngineM b (Maybe (Endpoint a b))
+getEndpoint n eps = liftIO $ withMVar eps (return . H.lookup n)
 
 {- Connection and connection map accessors -}
 
