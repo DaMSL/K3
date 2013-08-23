@@ -547,7 +547,7 @@ terminate :: EngineM a Bool
 terminate = do
     engine <- ask
     terminate <- liftIO $ readMVar (terminateV $ control engine)
-    done <- networkDone engine
+    done <- networkDone
     return $ done || not (waitForNetwork $ config engine) && terminate
 
 networkDone :: EngineM a Bool
@@ -566,25 +566,27 @@ waitForMessage = do
 processMessage :: MessageProcessor i p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
-    message <- dequeue $ queues engine
-    return $ maybe terminate' process' message
+    message <- liftIO $ dequeue $ queues engine
+    maybe terminate' process' message
   where
     terminate' = return $ MessagesDone pr
     process' m = do
-        nextResult <- process mp m pr
+        nextResult <- liftIO $ process mp m pr
         return $ either Error Result (status mp nextResult)
 
 runMessages :: (Pretty r, Pretty e, Show a) =>
     MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
-    Result r -> debugQueues engine >> processMessage mp >>= runMessages mp
+    Result r -> debugQueues >> runMessages mp (processMessage mp r)
     Error e -> die "Error:\n" e (control engine)
-    MessagesDone r -> terminate engine >>= \case
-        True -> finalize mp r >>= die "Terminated:\n" (control engine)
-        _ -> waitForMessage engine >> processMessage mp >>= runMessages mp
+    MessagesDone r -> terminate >>= \case
+        True -> do
+            fr <- liftIO $ finalize mp r
+            die "Terminated:\n" fr (control engine)
+        _ -> waitForMessage >> runMessages mp (processMessage mp r)
   where
     die msg r cntrl = do
-        putStrLn (msg ++ pretty r)
+        liftIO $ putStrLn (msg ++ pretty r)
         cleanupEngine
         liftIO $ tryPutMVar (waitV cntrl) ()
         liftIO $ putStrLn "Finished."
