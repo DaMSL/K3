@@ -8,6 +8,7 @@ module Language.K3.Test.Options
 import Control.Applicative
 import Control.Arrow
 import Data.Either
+import Data.List
 import Data.Maybe
 import Data.Monoid
 import System.Console.GetOpt
@@ -30,10 +31,12 @@ parseOptions args = do
   let optDescrs = map (liftOptDescr $ Right . (,mempty)) optionsDescription
                ++ map (liftOptDescr ((Just mempty,) <$>)) k3testOptions
   let (results,nonOpts,errs) = getOpt Permute optDescrs args
-  -- TODO: when nonOpts is non-empty
+  let extrasErr =
+        if null nonOpts then [] else
+              ["Unrecognized arguments: " ++ unwords nonOpts]
   -- Smash out the result as errors
   let (errs',parsedOptions) = partitionEithers results
-  let errs'' = concat $ errs ++ map (++"\n") errs'
+  let errs'' = concat $ errs ++ map (++"\n") (errs' ++ extrasErr)
   -- Inline the defaults
   let (mtfOpts, k3tOpts) = mconcat $ (Just mempty,defaultOptions):parsedOptions
   -- Now figure out what to do with them
