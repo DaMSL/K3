@@ -234,7 +234,7 @@ instance Pretty ShallowType where
     SIndirection qa -> ["ind "] %+ prettyLines qa
     STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]
     SRecord rows ->
-      let rowBox (i,qa) = [i] %+ prettyLines qa in
+      let rowBox (i,qa) = [i++":"] %+ prettyLines qa in
       ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) %+
       ["}"]
     STop -> ["⊤"]
