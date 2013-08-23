@@ -439,7 +439,7 @@ eTerm = do
                        eLet,
                        eCase,
                        eBind,
-                       eSelf  ] -- <*> optional eProject)
+                       eSelf  ]
     eProject = dot *> identifier
 
 
