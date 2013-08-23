@@ -526,7 +526,7 @@ statistics = do
     return (nqm, nep)
 
 simulation :: EngineM a Bool
-simulation = ask >>= \case
+simulation = ask >>= return . \case
     Engine { connections = (EConnectionState (Nothing, _)) } -> True
     _ -> False
 
