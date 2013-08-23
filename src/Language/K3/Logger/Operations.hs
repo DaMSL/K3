@@ -40,8 +40,8 @@ k3logIPretty moduleName logLevel prefix value =
 
 -- |A function to log a message in a monad.
 k3logM :: (Monad m) => String -> Priority -> String -> m ()
-k3logM moduleName logLevel message =
-  k3logI moduleName logLevel message $ return ()
+k3logM moduleName logLevel message = return $ unsafePerformIO $
+  logM moduleName logLevel message
 
 -- |A function to log a pretty-printable value in a monad.
 k3logMPretty :: (Monad m, Pretty a)
