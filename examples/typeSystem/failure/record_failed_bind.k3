@@ -1,0 +1,1 @@
+declare x : immut () = bind {x:immut 3} as {y:z} in z
