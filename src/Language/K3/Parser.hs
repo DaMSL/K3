@@ -382,7 +382,7 @@ tTupleOrNested = choice [try unit, parens $ choice [try (stripMetas <$> typeExpr
         stripMetaOf f t = maybe t (t @-) $ t @~ f
 
 tRecord :: TypeParser
-tRecord = TC.record <$> (braces . semiSep1) idQType
+tRecord = TC.record <$> (braces . commaSep1) idQType
 
 tCollection :: TypeParser
 tCollection = mkCollectionType <$> (keyword "collection" *> tRecord)
