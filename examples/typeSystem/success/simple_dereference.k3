@@ -1,0 +1,1 @@
+declare f : immut ((ind immut int) -> int) = \x -> bind x as ind y in y
