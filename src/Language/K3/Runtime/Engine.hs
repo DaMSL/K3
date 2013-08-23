@@ -591,16 +591,16 @@ runMessages mp status = ask >>= \engine -> status >>= \case
         liftIO $ tryPutMVar (waitV cntrl) ()
         liftIO $ putStrLn "Finished."
 
-runEngine :: (Pretty r, Pretty e, Show a) =>
-             MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ()
-runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg)
-                              >>= (\res -> initializeWorker eg >> return res)
-                              >>= runMessages msgPrcsr eg . return . initStatus
-  where initStatus = either Error Result . status msgPrcsr
+runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
+runEngine mp is p = do
+    engine <- ask
+    result <- liftIO $ initialize mp is p engine -- TODO: Make MessageProcessor components return EngineM a b
+    liftIO $ case workers engine of
+        Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
+        Multithreaded _ -> error "Unsupported engine mode: Multithreaded"
+        _ -> error "Unsupported engine mode: Multiprocess"
 
-        initializeWorker (workers -> Uniprocess workerMV) = tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
-        initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded"
-        initializeWorker _                                = error $ "Unsupported engine mode: Multiprocess"
+    runMessages mp (return . either Error Result $ status mp result)
 
 forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ThreadId
 forkEngine mp is p = liftIO . forkIO $ runEngine mp is p
