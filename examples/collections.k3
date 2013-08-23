@@ -1,18 +1,27 @@
 annotation Collection {
-  provides lifted add     : immut (int -> collection { x : immut int } @ {Collection});
+  provides lifted peek    : immut (() -> option immut content);
+  provides lifted slice   : immut (int -> self);
 
-  provides lifted combine : immut (collection { x : immut int } @ {Collection}
-                                   -> collection { x : immut int } @ {Collection});
+  provides lifted insert  : immut (content -> ());
+  provides lifted delete  : immut (content -> ());
+  provides lifted update  : immut (content -> content -> ());
 
-  provides lifted split   : immut (collection { x : immut int } @ {Collection}
-                                   -> (immut collection { x : immut int } @ {Collection},
-                                       immut collection { x : immut int } @ {Collection}));
+  provides lifted iterate : immut ((content -> ()) -> ());  
 
-  provides lifted ext     : immut ((int -> collection { x : immut int } @ {Collection})
-                                   -> collection { x : immut int } @ {Collection});
+  provides lifted combine : immut (self -> self);
+  provides lifted split   : immut (self -> (immut self, immut self));
 
-  provides lifted fold    : immut ((int -> int -> int) -> int -> int);
+  provides lifted map     : immut ((content -> int) -> collection { elem : immut int } @ {Collection});
+
+  provides lifted fold    : immut ((int -> content -> int) -> int -> int);
+
+  provides lifted groupBy : immut ((content -> int) -> (int -> content -> int) -> int
+                                    -> collection { key : immut int; value : immut int } @ {Collection});
+
+  provides lifted ext     : immut ((content -> collection { elem : immut int } @ {Collection}) 
+                                    -> collection { elem : immut int } @ {Collection});
 }
+
 
 declare myCollection : immut collection { x : immut int } @ { Collection }
 declare c1 : immut collection { x : immut int } @ { Collection }
@@ -20,12 +29,13 @@ declare c2 : immut collection { x : immut int } @ { Collection }
 
 declare y : mut int = 0
 
-trigger t : int = \x -> 
-  (myCollection = myCollection.add x;
-   c1 = c1.add x;
-   c2 = c2.add (x + 1);
-   myCollection = c1.combine c2;
-   y = myCollection.fold (\a -> (\b -> a + b)) 0)
+trigger t : int = \x -> (
+  myCollection.insert x;
+  c1.insert x;
+  c2.insert (x + 1);
+  myCollection = c1.combine c2;
+  y = myCollection.fold (\a -> (\b -> a + b)) 0 
+)
 
 source s1 : int = value 5
 

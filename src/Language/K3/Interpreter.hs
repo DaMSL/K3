@@ -162,19 +162,6 @@ type CInitializer v = () -> Interpretation (MVar (Collection v))
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
-{- Instances -}
-instance Pretty IState where
-  prettyLines (_, vEnv, aEnv, engine) =
-       ["Environment:"] ++ map show vEnv
-    ++ ["Annotations:"] ++ (lines $ show aEnv)
-    ++ (lines $ show engine)
-
--- TODO: error prettification
-instance (Pretty a) => Pretty (IResult a) where
-    prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
-
-instance (Pretty a) => Pretty [(Address, IResult a)] where
-    prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
 
 {- State and result accessors -}
 
@@ -277,17 +264,26 @@ sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
 vunit :: Value
 vunit = VTuple []
 
-emptyCollectionBody :: Identifier -> Interpretation (MVar (Collection Value))
-emptyCollectionBody n = liftIO $ newMVar $ Collection (CollectionNamespace [] []) [] n
+emptyCollectionNamespace :: CollectionNamespace Value
+emptyCollectionNamespace = CollectionNamespace [] []
+
+emptyCollectionBody :: Identifier -> Collection Value
+emptyCollectionBody n = Collection emptyCollectionNamespace [] n
+
+defaultCollectionBody :: [Value] -> Collection Value
+defaultCollectionBody v = Collection emptyCollectionNamespace v collectionAnnotationId
 
 emptyAnnotatedCollection :: Identifier -> Interpretation Value
-emptyAnnotatedCollection n = emptyCollectionBody n >>= return . VCollection 
+emptyAnnotatedCollection n = liftIO (newMVar $ emptyCollectionBody n) >>= return . VCollection 
 
 emptyCollection :: Interpretation Value
 emptyCollection = emptyAnnotatedCollection ""
 
 
 {- Identifiers -}
+collectionAnnotationId :: Identifier
+collectionAnnotationId = "Collection"
+
 annotationSelfId :: Identifier
 annotationSelfId = "self"
   -- This is a keyword in the language, thus no binding to it can exist beforehand.
@@ -690,7 +686,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkInitializer :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitializer Value
     mkInitializer comboId namedAnnDefs = const $ do
-      newCMV <- emptyCollectionBody comboId
+      newCMV <- liftIO . newMVar $ emptyCollectionBody comboId
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
       return newCMV
@@ -874,11 +870,18 @@ providesError kind n = error $
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
 builtinLiftedAttribute annId n t uid 
-  | annId == "Collection" && n == "add"     = return $ Just (n, addFn)
+  | annId == "Collection" && n == "peek"    = return $ Just (n, peekFn)
+  | annId == "Collection" && n == "slice"   = return $ Just (n, sliceFn)
+  | annId == "Collection" && n == "insert"  = return $ Just (n, insertFn)
+  | annId == "Collection" && n == "delete"  = return $ Just (n, deleteFn)
+  | annId == "Collection" && n == "update"  = return $ Just (n, updateFn)
   | annId == "Collection" && n == "combine" = return $ Just (n, combineFn)
   | annId == "Collection" && n == "split"   = return $ Just (n, splitFn)
-  | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
+  | annId == "Collection" && n == "iterate" = return $ Just (n, iterateFn)
+  | annId == "Collection" && n == "map"     = return $ Just (n, mapFn)
   | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
+  | annId == "Collection" && n == "groupBy" = return $ Just (n, groupByFn)
+  | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
   | otherwise = providesError "lifted attribute" n
 
   where 
@@ -887,9 +890,32 @@ builtinLiftedAttribute annId n t uid
           c'            <- copyCstr newC
           return $ VCollection c'
 
-        addFn = valWithCollection $ 
-          \el (Collection ns ds extId) -> copy (Collection ns (ds++[el]) extId)
+        -- | Collection accessor implementation
+        peekFn = valWithCollection $ \_ (Collection ns ds extId) -> 
+          case ds of
+            []    -> return $ VOption Nothing
+            (h:t) -> return . VOption $ Just h
 
+        -- TODO: pattern as input
+        sliceFn = valWithCollection $ \_ (Collection ns ds extId) -> copy (Collection ns ds extId)
+
+        -- | Collection modifier implementation
+        insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
+        deleteFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (deleteCollection el)
+        updateFn = valWithCollectionMV $ \old cmv -> ivfun $ \new -> modifyCollection cmv (updateCollection old new)
+
+        modifyCollection cmv f = liftIO (modifyMVar_ cmv f) >> return vunit
+
+        insertCollection v    (Collection ns ds extId) = return $ Collection ns (ds++[v]) extId
+        deleteCollection v    (Collection ns ds extId) = return $ Collection ns (delete v ds) extId
+        updateCollection v v' (Collection ns ds extId) = return $ Collection ns ((delete v ds)++[v']) extId
+
+        -- | Collection effector implementation
+        iterateFn = valWithCollection $ \f (Collection ns ds extId) -> 
+          flip (matchFunction iterateFnError) f $
+          \f' -> mapM_ (withClosure f') ds >> return vunit
+
+        -- | Collection transformer implementation
         combineFn = valWithCollection $ \other (Collection ns ds extId) ->
           flip (matchCollection collectionError) other $ 
             \(Collection ns' ds' extId') ->
@@ -902,25 +928,39 @@ builtinLiftedAttribute annId n t uid
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
 
+        mapFn = valWithCollection $ \f (Collection ns ds extId) ->
+          flip (matchFunction mapFnError) f $ 
+            \f' -> mapM (withClosure f') ds >>= 
+            \ds' -> copy (defaultCollectionBody ds')
+
         foldFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction foldFnError) f $
             \f' -> ivfun $ \accInit -> foldM (curryFoldFn f') accInit ds
 
-        curryFoldFn :: (Value -> Interpretation Value, Closure Value) -> Value -> Value -> Interpretation Value
-        curryFoldFn f' acc v = do
-          f'' <- withClosure f' acc
-          (matchFunction curryFnError) (flip withClosure v) f''
+        curryFoldFn f' acc v = withClosure f' acc >>= (matchFunction curryFnError) (flip withClosure v)
+
+        -- TODO: replace assoc lists with a hashmap.
+        groupByFn = valWithCollection $ \gb (Collection ns ds extId) ->
+          flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
+          flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
+            do
+              kvPairs   <- foldM (groupByElement gb' f' accInit) [] ds
+              kvRecords <- return $ map (\(k,v) -> VRecord [("key", k), ("value", v)]) kvPairs
+              copy (defaultCollectionBody kvRecords)
+
+        groupByElement gb' f' accInit acc v = do
+          k <- withClosure gb' v
+          case lookup k acc of
+            Nothing         -> curryFoldFn f' accInit v    >>= return . (acc++) . (:[]) . (k,)
+            Just partialAcc -> curryFoldFn f' partialAcc v >>= return . replaceAssoc acc k 
 
         extFn = valWithCollection $ \f (Collection ns ds extId) -> 
           flip (matchFunction extError) f $ 
           \f' -> do
                     vals <- mapM (withClosure f') ds
                     case vals of
-                      []    -> copy (Collection ns [] extId)
+                      []    -> copy (defaultCollectionBody [])
                       (h:t) -> foldM combine' (Just h) (map Just t) >>= maybe combineError return
-
-        withClosure :: (Value -> Interpretation Value, Closure Value) -> Value -> Interpretation Value
-        withClosure (f, cl) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
 
         combine' :: Maybe Value -> Maybe Value -> Interpretation (Maybe Value)
         combine' Nothing _ = return Nothing
@@ -933,14 +973,26 @@ builtinLiftedAttribute annId n t uid
           if extId1 /= extId2 then return Nothing
           else copy (Collection ns1 (ds1++ds2) extId1) >>= return . Just
 
+
+        -- | Collection implementation helpers.
+        withClosure :: (Value -> Interpretation Value, Closure Value) -> Value -> Interpretation Value
+        withClosure (f, cl) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
+
         valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Value
         valWithCollection f = vfun $ \arg -> 
           lookupE annotationSelfId >>= matchCollection collectionError (f arg)
 
+        valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Value
+        valWithCollectionMV f = vfun $ \arg -> 
+          lookupE annotationSelfId >>= matchCollectionMV collectionError (f arg)
+
         matchCollection :: Interpretation a -> (Collection Value -> Interpretation a) -> Value -> Interpretation a
-        matchCollection err f = \case
-                                  VCollection cmv -> liftIO (readMVar cmv) >>= f
-                                  _ -> err
+        matchCollection err f (VCollection cmv) = liftIO (readMVar cmv) >>= f
+        matchCollection err _  _ =  err
+
+        matchCollectionMV :: Interpretation a -> (MVar (Collection Value) -> Interpretation a) -> Value -> Interpretation a
+        matchCollectionMV err f (VCollection cmv) = f cmv
+        matchCollectionMV err _ _ = err
 
         matchFunction :: a -> ((Value -> Interpretation Value, Closure Value) -> a) -> Value -> a
         matchFunction err f = 
@@ -951,11 +1003,14 @@ builtinLiftedAttribute annId n t uid
         splitImpl l = if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
         threshold = 10
 
-        extError        = throwE $ RunTimeTypeError "Invalid function argument for ext"
-        foldFnError     = throwE $ RunTimeTypeError "Invalid fold function"
-        curryFnError    = throwE $ RunTimeTypeError "Invalid curried function"
-        combineError    = throwE $ RunTimeTypeError "Mismatched collection types for combine"
-        collectionError = throwE $ RunTimeTypeError "Invalid collection"
+        collectionError  = throwE $ RunTimeTypeError "Invalid collection"
+        combineError     = throwE $ RunTimeTypeError "Mismatched collection types for combine"
+        iterateFnError   = throwE $ RunTimeTypeError "Invalid iterate function"
+        mapFnError       = throwE $ RunTimeTypeError "Invalid map function"
+        foldFnError      = throwE $ RunTimeTypeError "Invalid fold function"
+        partitionFnError = throwE $ RunTimeTypeError "Invalid grouping function"
+        curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"
+        extError         = throwE $ RunTimeTypeError "Invalid function argument for ext"
 
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
@@ -1199,6 +1254,36 @@ debugDispatch addr name args r = do
   void $ debugResult addr r
   void $ putStrLn "=========="
 
+
+{- Instances -}
+instance Pretty IState where
+  prettyLines (_, vEnv, aEnv, engine) =
+       ["Environment:"] ++ map show vEnv
+    ++ ["Annotations:"] ++ (lines $ show aEnv)
+    ++ (lines $ show engine)
+
+-- TODO: error prettification
+instance (Pretty a) => Pretty (IResult a) where
+    prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
+
+instance (Pretty a) => Pretty [(Address, IResult a)] where
+    prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
+
+{- Value equality -}
+instance Eq Value where
+  VBool v        == VBool v'        = v == v'
+  VByte b        == VByte b'        = b == b'
+  VInt  v        == VInt  v'        = v == v'
+  VReal v        == VReal v'        = v == v'
+  VString v      == VString v'      = v == v'
+  VOption v      == VOption v'      = v == v'
+  VTuple v       == VTuple v'       = all (uncurry (==)) $ zip v v'
+  VRecord v      == VRecord v'      = all (uncurry (==)) $ zip v v'
+  VAddress v     == VAddress v'     = v == v'  
+  VCollection  v == VCollection v'  = v == v'
+  VIndirection v == VIndirection v' = v == v'  
+  _              == _               = False
+
 {- Show/print methods -}
 showsPrecTag :: Show a => String -> Int -> a -> ShowS
 showsPrecTag s d v = showsPrecTagF s d $ showsPrec (appPrec+1) v
@@ -1208,7 +1293,6 @@ showsPrecTagF :: String -> Int -> ShowS -> ShowS
 showsPrecTagF s d showF =
   showParen (d > appPrec) $ showString (s++" ") . showF
   where appPrec = 10
-
 
 -- | Verbose stringification of values through show instance.
 --   This produces <tag> placeholders for unshowable values (IORefs and functions)
