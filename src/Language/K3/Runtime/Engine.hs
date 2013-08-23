@@ -611,17 +611,17 @@ waitForEngine = liftIO . readMVar . waitV . control <$> ask
 terminateEngine :: EngineM a ()
 terminateEngine = do
     engine <- ask
-    liftIO $ modifyMVar_ (terminate $ control engine) (const $ return True)
+    liftIO $ modifyMVar_ (terminateV $ control engine) (const $ return True)
     liftIO $ writeSV (messageReadyV $ control engine) ()
 
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
     engine <- ask
-    case connections engine of
+    liftIO $ case connections engine of
         EConnectionState (Nothing, y) -> clearConnections y
-        EConnectionState (Just x, y) -> clearConnections >> clearConnections y
+        EConnectionState (Just x, y) -> clearConnections x >> clearConnections y
 
-    let EEndpointState ieps eeps = endpoints in do
+    let EEndpointState ieps eeps = endpoints engine in liftIO $ do
         withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal engine)
         withMVar eeps (return . H.keys) >>= mapM_ (flip close engine)
 
