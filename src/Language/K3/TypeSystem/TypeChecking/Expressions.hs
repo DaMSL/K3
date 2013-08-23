@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
 
 {-|
   A module containing the typechecking routines for expressions.  This module is
@@ -22,6 +22,8 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
@@ -32,6 +34,8 @@ import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
+
+$(loggingFunctions)
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedExpression ::
@@ -68,6 +72,8 @@ deriveExpression :: TAliasEnv -- ^The relevant type alias environment.
                  -> K3 Expression
                  -> TypecheckM (UVar, ConstraintSet)
 deriveExpression aEnv env expr =
+  _debugI (boxToString $ ["Deriving type for expression: "] %+
+                        prettyLines expr) $
   case tag expr of
     EConstant c -> do
       assert0Children expr

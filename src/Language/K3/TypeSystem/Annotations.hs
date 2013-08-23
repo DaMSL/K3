@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds #-}
 {-|
   This module contains functions for annotation types.
 -}
@@ -6,12 +6,9 @@ module Language.K3.TypeSystem.Annotations
 ( instantiateAnnotation
 , concatAnnTypes
 , concatAnnBodies
-, AnnotationConcatenationError(..)
 , depolarize
-, DepolarizationError(..)
 , instantiateCollection
-, CollectionInstantiationError(..)
-, isAnnotationSubtypeOf
+, module Language.K3.TypeSystem.Annotations.Error
 ) where
 
 import Control.Arrow
@@ -27,10 +24,11 @@ import Data.Set (Set)
 import Language.K3.Core.Common
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
+import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
+import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
-import Language.K3.TypeSystem.Subtyping
 import Language.K3.TypeSystem.Utils
 
 -- |Instantiates an annotation type.  If bindings appear in the parameters
@@ -105,16 +103,6 @@ concatAnnMembers ms1 ms2 = do
         (Negative,Positive) -> return $ csSing $ qa2 <: qa1
         (Positive,Positive) -> Left $ OverlappingPositiveMember i1
 
--- |A data type describing the errors which can occur in concatenation.
-data AnnotationConcatenationError
-  = OverlappingPositiveMember Identifier
-      -- ^Produced when two annotation members attempt to define the same
-      --  identifier in a positive context.
-  | IncompatibleTypeParameters TParamEnv TParamEnv
-      -- ^Produced when two annotation types are concatenated and one has a
-      --  different set of open type variables than the other.
-  deriving (Eq, Show)
-
 -- |Defines depolarization of annotation members.  If depolarization is not
 --  defined (e.g. because multiple annotations positively define the same
 --  identifier), then an appropriate error is returned instead.
@@ -158,12 +146,6 @@ depolarize ms = do
             Positive -> (Set.singleton qa,Set.empty)
             Negative -> (Set.empty,Set.singleton qa)
 
--- |A type describing an error in depolarization.
-data DepolarizationError
-  = MultipleProvisions Identifier
-      -- ^Indicates that the specified identifier was provided multiple times.
-  deriving (Eq, Show)
-
 -- |Defines instantiation of collection types.  If the instantiation is not
 --  defined (e.g. because depolarization fails), then the clashing identifiers
 --  are provided instead.
@@ -206,54 +188,3 @@ instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
       where
         readParameter envId =
           note (MissingAnnotationTypeParameter envId) $ Map.lookup envId p
-
-data CollectionInstantiationError
-  = MissingAnnotationTypeParameter TEnvId
-      -- ^Indicates that a required annotation parameter (e.g. content) is
-      --  missing from the parameter environment.
-  | CollectionDepolarizationError DepolarizationError
-      -- ^Indicates that collection instantiation induced a depolarization
-      --  error.
-  deriving (Eq, Show)
-
--- |Defines annotation subtyping.
-isAnnotationSubtypeOf :: forall m. (FreshVarI m)
-                      => NormalAnnType -> NormalAnnType -> m Bool
-isAnnotationSubtypeOf ann1 ann2 = do
-  fun1 <- annToFun ann1
-  fun2 <- annToFun ann2
-  isSubtypeOf fun1 fun2
-  where
-    annToFun :: NormalAnnType -> m NormalQuantType
-    annToFun ann@(AnnType p (AnnBodyType ms1 ms2) cs) = do
-      let origin = TVarAnnotationToFunctionOrigin ann
-      let mkPosNegRecs ms = ( recordTypeFromMembers Negative ms
-                            , recordTypeFromMembers Positive ms )
-      let (negTyps,posTyps) = unzip $ map mkPosNegRecs [ms1,ms2]
-      let mkFresh n = mapM (const $ freshQVar origin) [1::Int .. n]
-      qa <- freshQVar origin
-      a0 <- freshUVar origin
-      a0' <- freshUVar origin
-      negVars <- mkFresh $ length negTyps
-      posVars <- mkFresh $ length posTyps
-      let cs' = csUnions [ cs
-                         , csFromList [ SFunction a0 a0' <: qa
-                                      , a0 <: STuple negVars
-                                      , STuple posVars <: a0'
-                                      ]
-                         , csFromList $ zipWith constraint negVars negTyps
-                         , csFromList $ zipWith constraint posTyps posVars
-                         ]
-      let sas = Set.unions [ Set.singleton $ someVar qa
-                           , Set.fromList $ map someVar negVars
-                           , Set.fromList $ map someVar posVars
-                           , Set.fromList $ map someVar $ Map.elems p ]
-      return $ QuantType sas qa cs'
-      where
-        recordTypeFromMembers :: TPolarity -> [AnnMemType] -> ShallowType
-        recordTypeFromMembers pol ms =
-          SRecord $ Map.unions $ map memberToRecordEntry ms
-          where
-            memberToRecordEntry :: AnnMemType -> Map Identifier QVar
-            memberToRecordEntry (AnnMemType i pol' qa) =
-              if pol == pol' then Map.singleton i qa else Map.empty

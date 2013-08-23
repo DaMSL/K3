@@ -19,6 +19,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Constructor.Declaration
 import Language.K3.Core.Declaration
 import Language.K3.Parser
+import Language.K3.Pretty
 import Language.K3.TypeSystem
 
 import Debug.Trace
@@ -27,7 +28,7 @@ tests :: IO [Test]
 tests =
   concat <$> sequence
     [ mkTests "Typecheck" True "success"
-    , mkTests "Type fail" True "failure"
+    , mkTests "Type fail" False "failure"
     ]
   where
     mkTests :: String -> Bool -> FilePath -> IO [Test]
@@ -55,7 +56,7 @@ mkDirectSourceTest path success = do
     Right decl ->
       case (typecheck Map.empty Map.empty decl, success) of
         (Left errs, True) ->
-          assertFailure $ "Typechecking errors: " ++ show errs
+          assertFailure $ "Typechecking errors: " ++ pretty errs
         (Right _, True) -> assert True
         (Left _, False) -> assert True
         (Right _, False) -> assert "Incorrectly typechecked!"
@@ -67,4 +68,4 @@ parseSource name src =
   let parser = join $ mapM ensureUIDs <$>
                   catMaybes <$> PPrim.many declaration in
   let tree = role "__global" <$> runParser parser (0,[]) name src in
-  trace (show tree) tree
+  tree

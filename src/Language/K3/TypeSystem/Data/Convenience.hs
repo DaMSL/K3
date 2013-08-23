@@ -7,12 +7,15 @@ module Language.K3.TypeSystem.Data.Convenience
 ( emptyAnnotation
 , ConstraintConstructor2(..)
 , (<:)
+, constraintEquiv
+, (~=)
 ) where
 
 import Control.Applicative
 import qualified Data.Map as Map
 import Data.Set (Set)
 
+import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data.ConstraintSet
 import Language.K3.TypeSystem.Data.TypesAndConstraints
 import Language.K3.TypeSystem.Data.Utils
@@ -31,6 +34,22 @@ class ConstraintConstructor2 a b where
 infix 7 <:
 (<:) :: (ConstraintConstructor2 a b) => a -> b -> Constraint
 (<:) = constraint
+
+-- |A function which generates a constraint equivalence.
+constraintEquiv :: ( ConstraintConstructor2 a b
+                   , ConstraintConstructor2 b a
+                   , CSL.ConstraintSetLike e c)
+                => a -> b -> c
+constraintEquiv x y =
+  CSL.union (CSL.csingleton $ x <: y) (CSL.csingleton $ y <: x)
+
+-- |An infix synonym for @constraintEquiv@.
+infix 7 ~=
+(~=) :: ( ConstraintConstructor2 a b
+        , ConstraintConstructor2 b a
+        , CSL.ConstraintSetLike e c)
+     => a -> b -> c
+(~=) = constraintEquiv
 
 {-
   The following Template Haskell creates various instances for the constraint

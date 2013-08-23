@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, StandaloneDeriving #-}
+{-# LANGUAGE ExistentialQuantification, StandaloneDeriving, ConstraintKinds, FlexibleInstances #-}
 
 {-|
   A module describing the types of errors which may occur during typing.  These
@@ -9,6 +9,9 @@ module Language.K3.TypeSystem.Error
 , InternalTypeError(..)
 ) where
 
+import qualified Data.Foldable as Foldable
+import Data.List.Split
+import Data.Sequence (Seq)
 import Data.Set (Set)
 
 import Language.K3.Core.Annotation
@@ -16,7 +19,9 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
-import Language.K3.TypeSystem.Annotations
+import Language.K3.Pretty
+import Language.K3.TypeSystem.Annotations.Error
+import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data
 
 -- |A data structure representing typechecking errors.
@@ -58,25 +63,45 @@ data TypeError
   | AnnotationConcatenationFailure UID AnnotationConcatenationError
       -- ^ Indicates that a concatenation error occurred while trying to
       --   derive over an annotation.
-  | forall c. (ConstraintSetType c)
-    => AnnotationSubtypeFailure UID (AnnType c) (AnnType c)
-      -- ^ Indicates that the inferred type of an annotation was not a subtype
-      --   of its declared type signature.  The first annotation type in the
-      --   error is the inferred type; the second annotation type is the
-      --   declared type.
-  | forall c. (ConstraintSetType c)
-    => DeclarationSubtypeFailure UID (QuantType c) (QuantType c)
-      -- ^ Indicates that the inferred type of a global declaration was not a
-      --   subtype of its declared type signature.  The first @QuantType@ is the
-      --   inferred type; the second @QuantType@ is the declared type.
   | MultipleDeclarationBindings Identifier [K3 Declaration]
       -- ^ Indicates that the program binds the same identifier to multiple
       --   declarations.
   | MultipleAnnotationBindings Identifier [AnnMemDecl]
       -- ^ Indicates that a given annotation binds the same identifier to
       --   multiple annotation declarations.
+  | DeclarationClosureInconsistency
+      Identifier
+      ConstraintSet
+      AnyTVar
+      AnyTVar
+      [ConsistencyError]
+      -- ^ Indicates that the specified declaration's closure was inconsistent.
+      --   The first qualified variable is the inferred type of the expression;
+      --   the second qualified variable is the declared type.
 
 deriving instance Show TypeError
+
+instance Pretty TypeError where
+  prettyLines e = case e of
+    InternalError ie -> ["InternalError: "] %+ prettyLines ie
+    DeclarationClosureInconsistency i cs sa1 sa2 ces ->
+      ["Inconsistency in closure of " ++ i ++ ": "] %$
+        indent 2 (
+          ["Type "] %+ prettyLines sa1 %+ [" is not a subtype of "] %+
+            prettyLines sa2 %$
+          ["Constraint set:"] %$
+            indent 2 (prettyLines cs) %$
+          ["Errors:"] %$
+            indent 2 (prettyLines ces)
+        )
+    _ -> splitOn "\n" $ show e
+
+instance Pretty (Seq TypeError) where
+  prettyLines = prettyLines . Foldable.toList
+  
+instance Pretty [TypeError] where
+  prettyLines es =
+    ["[ "] %+ foldl (%$) [] (map prettyLines es) +% ["] "]
 
 data InternalTypeError
   = TopLevelDeclarationNonRole (K3 Declaration)
@@ -113,29 +138,17 @@ data InternalTypeError
   | InvalidUIDsInDeclaration (K3 Declaration)
       -- ^Indicates that type derivation occurred on an expression which had
       --  multiple source span annotations.
-  | ExtraDeclarationsInEnvironments (Set TEnvId) (Set TEnvId)
+  | ExtraDeclarationsInEnvironments (Set TEnvId)
       -- ^Indicates that there were environment identifiers in the checking
       --  environments which did not match any node in the AST provided during
-      --  declaration derivation.  The extra identifiers (type and type alias,
-      --  in that order) are included.
+      --  declaration derivation.  The extra identifiers are included.
   | forall c. (ConstraintSetType c) => PolymorphicSelfBinding (QuantType c) UID
       -- ^Indicates that the special self binding was bound to a polymorphic
       --  type, which is illegal.
-      -- ^Indicates that there were environment identifiers in the checking
-      --  environments which did not match any node in the AST provided during
-      --  declaration derivation.  The extra identifiers (type and type alias,
-      --  in that order) are included.
   | forall c. (ConstraintSetType c)
     => InvalidSpecialBinding TEnvId (Maybe (TypeAliasEntry c))
       -- ^Indicates that, during derivation of an annotation member, a type
       --  alias was bound to a form which could not be understood.
-  | forall c. (ConstraintSetType c)
-    => TypeInEnvironmentDoesNotMatchSignature TEnvId (QuantType c) (QuantType c)
-      -- ^Indicates that a type found in a type environment is not a supertype
-      --  of the type which was inferred from its signature.  This should never
-      --  happen; in practice, these types should be nearly identical.  The
-      --  declared type is the first @QuantType@; the type from the environment
-      --  is the second.
   | UnexpectedMemberAnnotationDeclaration (K3 Declaration) AnnMemDecl
       -- ^Indicates that, during type decision, an annotation member contained
       --  a member annotation declaration.  Such declarations should be inlined
@@ -143,3 +156,14 @@ data InternalTypeError
 
 deriving instance Show InternalTypeError
 
+instance Pretty InternalTypeError where
+  prettyLines e = case e of
+    InvalidUIDsInDeclaration decl -> invalidUID "declaration" decl
+    InvalidUIDsInTypeExpression tExpr -> invalidUID "type expression" tExpr
+    InvalidUIDsInExpression expr -> invalidUID "expression" expr
+    _ -> splitOn "\n" $ show e
+    where
+      invalidUID name tree =
+        ["Invalid UIDs in "++name++": "] %$ indent 2 (
+            prettyLines tree
+          )
