@@ -541,7 +541,7 @@ deregisterNetworkListener :: Identifier -> EngineM a ()
 deregisterNetworkListener n = do
     engine <- ask
     liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . pred
-    liftIO $ modifyMVar_ (listeners engine) $ return . ((n /=) . fst)
+    liftIO $ modifyMVar_ (listeners engine) $ return . filter ((n /=) . fst)
 
 terminate :: EngineM a Bool
 terminate = do
