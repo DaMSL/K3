@@ -521,8 +521,8 @@ numEndpoints es = (+) <$> (count $ externalEndpoints es) <*> (count $ internalEn
 statistics :: EngineM a (Int, Int)
 statistics = do
     engine <- ask
-    nqm <- queues <$> engine
-    nep <- endpoints <$> engine
+    nqm <- numQueuedMessages $ queues engine
+    nep <- numEndpoints $ endpoints engine
     return (nqm, nep)
 
 simulation :: EngineM a Bool
