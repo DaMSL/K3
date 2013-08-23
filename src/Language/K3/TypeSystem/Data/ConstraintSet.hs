@@ -72,8 +72,8 @@ csUnions css = ConstraintSet $ Set.unions $ map (\(ConstraintSet s) -> s) css
   constraints.
 -}
 data ConstraintSetQuery r where
-  QueryAllTypesLowerBoundingUVars ::
-    ConstraintSetQuery (ShallowType,UVar)
+  QueryAllTypesLowerBoundingAnyVars ::
+    ConstraintSetQuery (ShallowType,AnyTVar)
   QueryAllTypesLowerBoundingTypes ::
     ConstraintSetQuery (ShallowType,ShallowType)
   QueryAllBinaryOperations ::
@@ -86,8 +86,8 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (QVar, QVar)
   QueryAllMonomorphicQualifiedUpperConstraint ::
     ConstraintSetQuery (QVar, Set TQual)
-  QueryTypeOrVarByUVarLowerBound ::
-    UVar -> ConstraintSetQuery TypeOrVar
+  QueryTypeOrAnyVarByAnyVarLowerBound ::
+    AnyTVar -> ConstraintSetQuery UVarBound
   QueryTypeByUVarUpperBound ::
     UVar -> ConstraintSetQuery ShallowType
   QueryTypeByQVarUpperBound ::
@@ -116,9 +116,12 @@ csQuery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
 csQuery (ConstraintSet csSet) query =
   let cs = Set.toList csSet in
   case query of
-    QueryAllTypesLowerBoundingUVars -> do
-      IntermediateConstraint (CLeft t) (CRight a) <- cs
-      return (t,a)
+    QueryAllTypesLowerBoundingAnyVars -> do
+      c <- cs
+      case c of
+        IntermediateConstraint (CLeft t) (CRight a) -> return (t,someVar a)
+        QualifiedLowerConstraint (CLeft t) qa -> return (t,someVar qa)
+        _ -> mzero
     QueryAllTypesLowerBoundingTypes -> do
       IntermediateConstraint (CLeft t) (CLeft t') <- cs
       return (t,t')
@@ -138,10 +141,25 @@ csQuery (ConstraintSet csSet) query =
     QueryAllMonomorphicQualifiedUpperConstraint -> do
       MonomorphicQualifiedUpperConstraint qa qs <- cs
       return (qa, qs)
-    QueryTypeOrVarByUVarLowerBound a -> do
-      IntermediateConstraint (CRight a') ta <- cs
-      guard $ a == a'
-      return ta
+    QueryTypeOrAnyVarByAnyVarLowerBound sa ->
+      case sa of
+        SomeUVar a -> do
+          c <- cs
+          case c of
+            IntermediateConstraint (CRight a') ta | a == a' ->
+              return $ CLeft ta
+            QualifiedLowerConstraint (CRight a') qa | a == a' ->
+              return $ CRight qa
+            _ -> mzero
+        SomeQVar qa -> do
+          c <- cs
+          case c of
+            QualifiedUpperConstraint qa' ta | qa == qa' ->
+              return $ CLeft ta
+            QualifiedIntermediateConstraint (CRight qa') (CRight qa'')
+                | qa == qa' ->
+              return $ CRight qa''
+            _ -> mzero
     QueryTypeByUVarUpperBound a -> do
       IntermediateConstraint (CLeft t) (CRight a') <- cs
       guard $ a == a'

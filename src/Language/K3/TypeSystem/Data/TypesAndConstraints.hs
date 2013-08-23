@@ -31,6 +31,7 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 , TParamEnv
 , TypeOrVar
 , QualOrVar
+, UVarBound
 , BinaryOperator(..)
 , AnyOperator(..)
 , Constraint(..)
@@ -280,6 +281,8 @@ type TParamEnv = TEnv UVar
 type TypeOrVar = Coproduct ShallowType UVar
 -- |A type alias describing a type qualifier or qualified variable.
 type QualOrVar = Coproduct (Set TQual) QVar
+-- |A type alias describing a type or any kind of variable.
+type UVarBound = Coproduct TypeOrVar QVar
 
 
 -- * Constraints

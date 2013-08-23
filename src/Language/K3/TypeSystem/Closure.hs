@@ -68,9 +68,11 @@ calculateClosureStep cs =
 -- |Performs closure for transitivity.
 closeTransitivity :: ConstraintSet -> ConstraintSet
 closeTransitivity cs = csFromList $ do
-  (t,a) <- csQuery cs QueryAllTypesLowerBoundingUVars
-  ta <- csQuery cs $ QueryTypeOrVarByUVarLowerBound a
-  return $ t <: ta
+  (t,sa) <- csQuery cs QueryAllTypesLowerBoundingAnyVars
+  bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarLowerBound sa
+  return $ case bnd of
+    CLeft ta -> t <: ta
+    CRight qa -> t <: qa
   
 -- |Performs immediate type closure.  This routine calculates the closure for
 --  all immediate type-to-type constraints.
