@@ -1,0 +1,1 @@
+let x : immut int = {x:immut 4}.x
