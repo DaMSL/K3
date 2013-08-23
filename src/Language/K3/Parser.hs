@@ -572,8 +572,13 @@ eLambda :: ExpressionParser
 eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
 
 eApp :: ExpressionParser
-eApp = try $ mkApp <$> (some $ try eTerm)
-  where mkApp = foldl1 (EC.binop OApp)
+eApp = do
+  eTerms <- some (try eTerm) -- Have m [a], need [m a], ambivalent to effects
+  try $ foldl1 mkApp $ map return eTerms
+  where
+    mkApp :: ExpressionParser -> ExpressionParser -> ExpressionParser
+    mkApp x y = EUID # EC.binop OApp <$> x <*> y
+      -- TODO: spans as well
 
 eCondition :: ExpressionParser
 eCondition = EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
