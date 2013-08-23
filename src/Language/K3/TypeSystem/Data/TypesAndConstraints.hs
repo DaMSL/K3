@@ -225,13 +225,13 @@ data ShallowType
 instance Pretty ShallowType where
   prettyLines t = case t of
     SFunction a a' -> prettyLines a %+ ["->"] %+ prettyLines a'
-    STrigger a' -> ["trigger"] %+ prettyLines a'
+    STrigger a' -> ["trigger "] %+ prettyLines a'
     SBool -> ["bool"]
     SInt -> ["int"]
     SReal -> ["real"]
     SString -> ["string"]
-    SOption qa -> ["option"] %+ prettyLines qa
-    SIndirection qa -> ["ind"] %+ prettyLines qa
+    SOption qa -> ["option "] %+ prettyLines qa
+    SIndirection qa -> ["ind "] %+ prettyLines qa
     STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]
     SRecord rows ->
       let rowBox (i,qa) = [i] %+ prettyLines qa in
