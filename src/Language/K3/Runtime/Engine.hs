@@ -234,7 +234,10 @@ data MessageProcessor inits prog msg res err = MessageProcessor {
     status     :: res -> Either err res,
 
     -- | Clean up the execution environment.
-    finalize   :: res -> IO res
+    finalize   :: res -> IO res,
+
+    -- | Generate an execution report
+    report     :: Either err res -> IO ()
 }
 
 {- Engine components -}
@@ -264,8 +267,8 @@ data FrameDesc = Delimiter String | FixedSize Int | PrefixLength
 
 -- | A description of a wire format, with serialization of data, deserialization into data, and
 -- validation of deserialized data.
-data WireDesc a = WireDesc { packWith     :: a -> String
-                           , unpackWith   :: String -> Maybe a
+data WireDesc a = WireDesc { packWith     :: a -> IO String
+                           , unpackWith   :: String -> IO (Maybe a)
                            , frame        :: FrameDesc }
 
 -- | Internal messaging between triggers includes a sender address and
@@ -408,7 +411,7 @@ configureWithAddress addr = EngineConfiguration addr bufSpec connRetries wforNet
 
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)
-exprWD = WireDesc show (Just . read) PrefixLength
+exprWD = WireDesc (return . show) (return . Just . read) PrefixLength
 
 internalizeWD :: WireDesc a -> WireDesc (InternalMessage a)
 internalizeWD (WireDesc packF unpackF _) =
@@ -416,11 +419,11 @@ internalizeWD (WireDesc packF unpackF _) =
            , unpackWith    = unpackInternal
            , frame         = PrefixLength }
   where
-    packInternal (addr, n, a) = show addr ++ "|" ++ n ++ "|" ++ packF a
+    packInternal (addr, n, a) = packF a >>= return . ((show addr ++ "|" ++ n ++ "|") ++)
     unpackInternal str =
         case wordsBy (== '|') str of
-          [addr, n, aStr] -> unpackF aStr >>= return . ((read addr) :: Address, n,)
-          _               -> Nothing
+          [addr, n, aStr] -> unpackF aStr >>= return . maybe Nothing (Just . ((read addr) :: Address, n,))
+          _               -> return Nothing
 
 {- Queue constructors -}
 simpleQueues :: Address -> IO (MessageQueues a)
@@ -543,15 +546,13 @@ runMessages :: (Pretty r, Pretty e, Show a) =>
                MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO ()
 runMessages msgPrcsr e status = status >>= \case
   Result r       -> debugQueues e >> rcr r
-  Error e        -> finish "Error:\n" e
+  Error e        -> finish e >> report msgPrcsr (Left e)
   MessagesDone r -> terminate e >>= \case
-                      True -> finalize msgPrcsr r >>= finish "Terminated:\n"
+                      True -> finalize msgPrcsr r >>= finish >> report msgPrcsr (Right r)
                       _    -> waitForMessage e >> rcr r
 
-  where rcr          = runMessages msgPrcsr e . processMessage msgPrcsr e
-        finish msg r = putStrLn (msg ++ pretty r)
-                        >> cleanupEngine e >> tryPutMVar (waitV $ control e) ()
-                        >> putStrLn "... Finished"
+  where rcr      = runMessages msgPrcsr e . processMessage msgPrcsr e
+        finish r = cleanupEngine e >> tryPutMVar (waitV $ control e) ()
 
 
 runEngine :: (Pretty r, Pretty e, Show a) =>
@@ -621,13 +622,14 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) eg = do
     bufferMsg = foldM safeAppend (buffer ep, [])
     unpackMsg = unpackWith wd . BS.unpack
 
-    safeAppend (b, errors) (unpackMsg -> Just msg) = case errors of
+    safeAppend (b, errors) payload =
+      unpackMsg payload >>= maybe (serializeError b errors payload) (\msg -> case errors of
       [] -> (flip appendEBuffer b msg) >>= \case
               (nb, Nothing)  -> return (nb, [])
               (nb, Just msg) -> return (nb, [OverflowError msg])
-      l  -> return (b, l++[PropagatedError msg])
+      l  -> return (b, l++[PropagatedError msg]))
 
-    safeAppend (b, errors) msg = return (b, errors++[SerializeError msg])
+    serializeError b errors msg = return (b, errors++[SerializeError msg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
     endpointError s = close (name ls) eg >> putStrLn s -- TODO: close vs closeInternal
@@ -941,7 +943,7 @@ readHandle = \case
           done <- SIO.hIsEOF h
           done ? return Nothing $ do
             s <- SIO.hGetLine h
-            return $ unpackWith wd s
+            unpackWith wd s
             -- TODO: Add proper delimiter support, to avoid delimiting by newline.
 
 -- | Write a single payload to a handle
@@ -952,7 +954,7 @@ writeHandle payload = \case
   FileH wd h           -> writeIOH wd h
   
   SocketH wd (Right (conn -> c)) ->
-    NT.send c [BS.pack $ packWith wd payload] >>= return . either (\_ -> ()) id
+    packWith wd payload >>= NT.send c . (:[]) . BS.pack >>= return . either (\_ -> ()) id
   
   BuiltinH _ _ b -> error $ "Unsupported: write to " ++ show b 
   SocketH _ _    -> error "Unsupported write operation on network handle"
@@ -961,7 +963,7 @@ writeHandle payload = \case
         False ? _ = id
         writeIOH wd h = do
           done <- SIO.hIsClosed h
-          done ? return () $ SIO.hPutStrLn h $ packWith wd payload
+          done ? return () $ packWith wd payload >>= SIO.hPutStrLn h
             -- TODO: delimiter, as with readHandle
 
 
@@ -1268,8 +1270,8 @@ debugQueues e = putStrLn "Queues" >> putMessageQueues (queues e)
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
-  show e@(nodes -> n) | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
-                      | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+  show e@(nodes -> n) | simulation e = "Engine (simulation):\n" ++ "Nodes:\n" ++ show n
+                      | otherwise    = "Engine (network):\n"    ++ "Nodes:\n" ++ show n
 
 instance (Show a) => Pretty (Engine a) where
   prettyLines = lines . show
