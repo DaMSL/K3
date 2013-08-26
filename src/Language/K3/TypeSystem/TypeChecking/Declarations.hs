@@ -64,7 +64,7 @@ deriveDeclarations aEnv env aEnv' env' decls =
 --  type environments.
 deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
-                  -> K3 Declaration -- ^The AST of the declaration to check.
+                  -> K3 Declaration -- ^The AST of the declaration to check.retr
                   -> TypecheckM Identifier
 deriveDeclaration aEnv env decl =
   case tag decl of
@@ -90,7 +90,35 @@ deriveDeclaration aEnv env decl =
               , a4 <: STuple []
               , qa2 <: STrigger a3 ]
 
-    DAnnotation i mems ->
+    DAnnotation i mems -> do
+      u <- uidOf decl
+      ann@(AnnType p (AnnBodyType ms1 ms2) cs) <-
+          aEnvRequireAnn u (TEnvIdentifier i) aEnv
+      a_C <- pEnvRequire TEnvIdContent p
+      a_F <- pEnvRequire TEnvIdFinal p
+      a_S <- pEnvRequire TEnvIdSelf p
+      a_H <- freshTypecheckingUVar u
+      inst <- instantiateCollection ann a_C
+      (t_S,cs_S) <- either (typecheckError . InvalidCollectionInstantiation u)
+                        return inst
+      (t_H,cs_H) <- either (typecheckError . AnnotationDepolarizationFailure u)
+                        return $ depolarize ms2
+      aEnv' <- mconcat <$> mapM (\(i,a) ->
+                    (\qa -> Map.singleton i $ QuantType Set.empty qa $
+                            csFromList [qa <: a, a <: qa]) <$>
+                                freshTypecheckingQVar u)
+                  [ (TEnvIdContent, a_C), (TEnvIdFinal, a_F)
+                  , (TEnvIdHorizon, a_H), (TEnvIdSelf, a_S) ]
+      qa_S' <- freshTypecheckingQVar u
+      let env' = Map.singleton TEnvIdSelf
+                    (QuantType Set.empty qa_S' $ csSing $ a_S <: qa_S')
+                 `mappend`
+                 mconcat (map (\(AnnMemType i _ qa') ->
+                                  Map.singleton (TEnvIdentifier i) $
+                                    QuantType Set.empty qa' csEmpty) ms1)
+--      let cs' = csUnions
+--                  [ cs , cs_S , cs_H , csSing $ a_F <: a_H
+--                  , a_H ~= t_H, t_S ~= a_S,  
       undefined -- TODO: annotation typechecking implementation
   where
     basicDeclaration i expr deriv csf = do
@@ -182,5 +210,5 @@ deriveAnnotationMember aEnv env decl =
 requireQuantType :: UID -> Identifier -> TNormEnv
                  -> TypecheckM NormalQuantType
 requireQuantType u i env =
-  envRequire (UnboundTypeEnvironmentIdentifier u $ TEnvIdentifier i)
+  envRequire (UnboundEnvironmentIdentifier u $ TEnvIdentifier i)
              (TEnvIdentifier i) env
