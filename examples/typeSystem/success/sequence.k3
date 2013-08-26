@@ -1,0 +1,1 @@
+declare x : immut bool = 4; true
