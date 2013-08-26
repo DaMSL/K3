@@ -871,7 +871,6 @@ builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
 builtinLiftedAttribute annId n t uid 
   | annId == "Collection" && n == "peek"    = return $ Just (n, peekFn)
-  | annId == "Collection" && n == "slice"   = return $ Just (n, sliceFn)
   | annId == "Collection" && n == "insert"  = return $ Just (n, insertFn)
   | annId == "Collection" && n == "delete"  = return $ Just (n, deleteFn)
   | annId == "Collection" && n == "update"  = return $ Just (n, updateFn)
@@ -879,6 +878,7 @@ builtinLiftedAttribute annId n t uid
   | annId == "Collection" && n == "split"   = return $ Just (n, splitFn)
   | annId == "Collection" && n == "iterate" = return $ Just (n, iterateFn)
   | annId == "Collection" && n == "map"     = return $ Just (n, mapFn)
+  | annId == "Collection" && n == "filter"  = return $ Just (n, filterFn)
   | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
   | annId == "Collection" && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
@@ -895,9 +895,6 @@ builtinLiftedAttribute annId n t uid
           case ds of
             []    -> return $ VOption Nothing
             (h:t) -> return . VOption $ Just h
-
-        -- TODO: pattern as input
-        sliceFn = valWithCollection $ \_ (Collection ns ds extId) -> copy (Collection ns ds extId)
 
         -- | Collection modifier implementation
         insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
@@ -930,8 +927,13 @@ builtinLiftedAttribute annId n t uid
 
         mapFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction mapFnError) f $ 
-            \f' -> mapM (withClosure f') ds >>= 
+            \f'  -> mapM (withClosure f') ds >>= 
             \ds' -> copy (defaultCollectionBody ds')
+
+        filterFn = valWithCollection $ \f (Collection ns ds extId) ->
+          flip (matchFunction filterFnError) f $
+            \f'  -> filterM (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
+            \ds' -> copy (Collection ns ds' extId)
 
         foldFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction foldFnError) f $
@@ -995,10 +997,13 @@ builtinLiftedAttribute annId n t uid
         matchCollectionMV err _ _ = err
 
         matchFunction :: a -> ((Value -> Interpretation Value, Closure Value) -> a) -> Value -> a
-        matchFunction err f = 
-          \case 
-            VFunction f' -> f f'
-            _ -> err
+        matchFunction err f (VFunction f') = f f'
+        matchFunction err _ _ = err
+
+        matchBool :: Interpretation Bool -> Value -> Interpretation Bool
+        matchBool err (VBool b) = return b
+        matchBool err _ = err
+
 
         splitImpl l = if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
         threshold = 10
@@ -1007,6 +1012,8 @@ builtinLiftedAttribute annId n t uid
         combineError     = throwE $ RunTimeTypeError "Mismatched collection types for combine"
         iterateFnError   = throwE $ RunTimeTypeError "Invalid iterate function"
         mapFnError       = throwE $ RunTimeTypeError "Invalid map function"
+        filterFnError    = throwE $ RunTimeTypeError "Invalid filter function"
+        filterValError   = throwE $ RunTimeTypeError "Invalid filter function result"
         foldFnError      = throwE $ RunTimeTypeError "Invalid fold function"
         partitionFnError = throwE $ RunTimeTypeError "Invalid grouping function"
         curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"

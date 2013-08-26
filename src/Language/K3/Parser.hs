@@ -97,10 +97,16 @@ declError :: Parsing m => String -> m a -> m a
 declError x = parseError "declaration" x
 
 typeError :: Parsing m => String -> m a -> m a
-typeError x = parseError "type expression" x
+typeError x = parseError x "type"
+
+typeExprError :: Parsing m => String -> m a -> m a
+typeExprError x = parseError "type expression" x
 
 exprError :: Parsing m => String -> m a -> m a
 exprError x = parseError "expression" x
+
+exprSuffixError :: Parsing m => String -> m a -> m a
+exprSuffixError x = parseError x "expression"
 
 -- | Span computation.
 --   TODO: what if source names do not match?
@@ -264,7 +270,7 @@ roleBody n = pushBindings >> rule >>= popBindings >>= desugarRole n
 declaration :: K3Parser (Maybe (K3 Declaration))
 declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
   where decls        = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
-        sugaredDecls =        choice [dSelector, dBind]
+        sugaredDecls =        choice [dSelector, dFeed]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
@@ -292,12 +298,13 @@ dSource = dEndpoint "source" "source" True
 dSink :: DeclParser
 dSink = dEndpoint "sink" "sink" False
 
-dBind :: K3Parser ()
-dBind = (trackBindings =<<) $ mkBind <$> (symbol "~~" *> identifier) <*> bidirectional <*> identifier
-  where mkBind id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
-        bidirectional = choice [symbol "|>" >> return True,
-                                symbol "<|" >> return False]
-
+dFeed :: K3Parser ()
+dFeed = prefix $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identifier
+  where feedSym             = choice [symbol "feed", symbol "~~"]
+        bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
+        mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
+        prefix p            = (trackBindings =<<) $ declError "feed" $ p
+        
 dRole :: DeclParser
 dRole = chainedNamedBraceDecl n n roleBody DC.role
   where n = "role"
@@ -311,42 +318,48 @@ dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
-annotationMember =
-  choice $ map uidOver [try annLifted, try annAttribute, subAnnotation]
+annotationMember = 
+  memberError $ mkMember <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+  where 
+        liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
+                                  <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+        
+        subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
+        
+        mkMember p (Left (Just _,  n, qte, eOpt, uid)) = Lifted p n qte (propagateQualifier qte eOpt) uid
+        mkMember p (Left (Nothing, n, qte, eOpt, uid)) = Attribute p n qte (propagateQualifier qte eOpt) uid
+        mkMember p (Right (n, uid))                    = MAnnotation p n uid
+        
+        mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
+        mkSub n uid              = Right (n, uid)
+
+        memberError = parseError "annotation" "member"
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
-annLifted :: K3Parser (UID -> AnnMemDecl)
-annLifted = mkLifted <$> polarity <*  keyword "lifted" <*> identifier <* colon
-                     <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
-  where mkLifted p n qte eOpt = Lifted p n qte (propagateQualifier qte eOpt)
-
-annAttribute :: K3Parser (UID -> AnnMemDecl)
-annAttribute = mkAttribute <$> polarity <*> identifier <*  colon
-                           <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
-  where mkAttribute p n qte eOpt = Attribute p n qte (propagateQualifier qte eOpt)
-
-subAnnotation :: K3Parser (UID -> AnnMemDecl)
-subAnnotation = MAnnotation <$> polarity <* keyword "annotation" <*> identifier
-
 uidOver :: K3Parser (UID -> a) -> K3Parser a
-uidOver parser =
-  parserWithUID $ ap (fmap (. UID) parser) . return
+uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
 
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = parseError "type" "expression" $ TUID # tTermOrFun
+typeExpr = typeError "expression" $ TUID # tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = flip (@+) <$> typeQualifier <*> typeExpr
+qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
+
+{- Parenthesized version of qualified types.
+qualifiedTypeExpr :: TypeParser
+qualifiedTypeExpr = typeExprError "qualified" $ 
+  choice [parens $ qualifiedTypeExpr
+         , flip (@+) <$> typeQualifier <*> typeExpr]
+-}
 
 typeQualifier :: K3Parser (Annotation Type)
-typeQualifier = parseError "type" "qualifier" $
-                  choice [keyword "immut" >> return TImmutable,
-                          keyword "mut" >> return TMutable]
+typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmutable,
+                                                keyword "mut"   >> return TMutable]
 
 {- Type terms -}
 tTerm :: TypeParser
@@ -355,42 +368,51 @@ tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
                            tBuiltIn ]
 
 tTermOrFun :: TypeParser
-tTermOrFun = 
-  choice [try (TSpan <-> TC.function <$> (TUID # tTerm) <* symbol "->" <*> typeExpr), tTerm]
+tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" *> typeExpr)
+  where mkTermOrFun t (Just rt) = TC.function t rt
+        mkTermOrFun t Nothing   = clean t
+        clean t                 = stripAnnot isTSpan $ stripAnnot isTUID t
+        stripAnnot f t          = maybe t (t @-) $ t @~ f
 
 tPrimitive :: TypeParser
-tPrimitive = choice $ map tConst [ ("bool",    TC.bool)
-                                 , ("int",     TC.int)
-                                 , ("real",    TC.real)
-                                 , ("string",  TC.string)
-                                 , ("address", TC.address) ]
-  where tConst (x, f)  = keyword x >> return f
+tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
+                                              , ("int",     TC.int)
+                                              , ("real",    TC.real)
+                                              , ("string",  TC.string)
+                                              , ("address", TC.address) ]
+  where tConst (x, f) = keyword x >> return f
+        tPrimError    = typeExprError "primitive"
 
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
 
 tOption :: TypeParser
-tOption = tQNested TC.option "option"
+tOption = typeExprError "option" $ tQNested TC.option "option"
 
 tIndirection :: TypeParser
-tIndirection = tQNested TC.indirection "ind"
+tIndirection = typeExprError "indirection" $ tQNested TC.indirection "ind"
 
 tTupleOrNested :: TypeParser
-tTupleOrNested = choice [try unit, parens $ choice [try (stripMetas <$> typeExpr), tTuple]]
-  where unit = symbol "(" *> symbol ")" >> return (TC.unit)
-        tTuple = commaSep1 qualifiedTypeExpr >>= return . TC.tuple
-        stripMetas t = stripMetaOf isTSpan $ stripMetaOf isTUID t
-        stripMetaOf f t = maybe t (t @-) $ t @~ f
+tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), parens $ tupErr tTuple]
+  where unit             = typeExprError "unit" $ symbol "(" *> symbol ")" >> return (TC.unit)
+        tTuple           = mkTypeTuple <$> qualifiedTypeExpr <* comma <*> commaSep1 qualifiedTypeExpr
+        mkTypeTuple t tl = TC.tuple $ t:tl     
+        
+        clean t          = stripAnnot isTSpan $ stripAnnot isTUID t
+        stripAnnot f t   = maybe t (t @-) $ t @~ f
+        nestErr          = typeExprError "nested"
+        tupErr           = typeExprError "tuple"
 
 tRecord :: TypeParser
-tRecord = TC.record <$> (braces . commaSep1) idQType
+tRecord = typeExprError "record" $ TC.record <$> (braces . commaSep1) idQType
 
 tCollection :: TypeParser
-tCollection = mkCollectionType <$> (keyword "collection" *> tRecord)
-                               <*> (option [] (symbol "@" *> tAnnotations))
+tCollection = cErr $ mkCollectionType <$> (keyword "collection" *> tRecord)
+                                      <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
+        cErr = typeExprError "collection"
 
 tBuiltIn :: TypeParser
-tBuiltIn = choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
+tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
               [ ("self",TSelf)
               , ("structure",TStructure)
               , ("horizon",THorizon)
@@ -411,16 +433,17 @@ nonSeqExpr :: ExpressionParser
 nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
 
 qualifiedExpr :: ExpressionParser
-qualifiedExpr = flip (@+) <$> exprQualifier <*> expr
+qualifiedExpr = exprError "qualified" $ flip (@+) <$> (option EImmutable exprQualifier) <*> expr
 
 exprQualifier :: K3Parser (Annotation Expression)
-exprQualifier = choice [keyword "immut" >> return EImmutable,
-                        keyword "mut" >> return EMutable]
+exprQualifier = exprSuffixError "qualifier" $
+      keyword "immut" *> return EImmutable 
+  <|> keyword "mut"   *> return EMutable
 
 exprNoneQualifier :: K3Parser NoneMutability
-exprNoneQualifier =
+exprNoneQualifier = exprSuffixError "option qualifier" $
       keyword "immut" *> return NoneImmut
-  <|> keyword "mut" *> return NoneMut
+  <|> keyword "mut"   *> return NoneMut
 
 eTerm :: ExpressionParser
 eTerm = do
@@ -458,9 +481,9 @@ eTerminal = choice [eConstant,
                     eVariable]
 
 eConstant :: ExpressionParser
-eConstant = choice [eCBool,
-                    try eCNumber,
-                    eCString]
+eConstant = exprError "constant" $ choice [eCBool,
+                                           try eCNumber,
+                                           eCString]
 
 eCBool :: ExpressionParser
 eCBool = (EC.constant . CBool) <$>
@@ -476,36 +499,36 @@ eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
 
 eVariable :: ExpressionParser
-eVariable = EC.variable <$> identifier
+eVariable = exprError "variable" $ EC.variable <$> identifier
 
 {- Complex literals -}
 eOption :: ExpressionParser
-eOption = choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
-                  keyword "None" *> (EC.constant . CNone <$> exprNoneQualifier)]
+eOption = exprError "option" $
+  choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
+          keyword "None" *> (EC.constant . CNone <$> exprNoneQualifier)]
 
 eIndirection :: ExpressionParser
-eIndirection = EC.indirect <$> (keyword "ind" *> qualifiedExpr)
+eIndirection = exprError "indirection" $ EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
 eTuplePrefix :: ExpressionParser
-eTuplePrefix = choice [try unit, eTupleOrSnd]
-  where 
-        unit          = symbol "(" *> symbol ")" >> return (EC.tuple [])
-        eTupleOrSnd   = mkTupOrSnd <$> (parens $ commaSep1 $ choice [try expr, qualifiedExpr]) <*> optional sendSuffix        
+eTuplePrefix = choice [try unit, try eNested, eTupleOrSnd]
+  where unit          = symbol "(" *> symbol ")" >> return (EC.tuple [])
+        eNested       = stripSpan  <$> parens expr
+        eTupleOrSnd   = mkTupOrSnd <$> (parens $ commaSep1 qualifiedExpr) <*> optional sendSuffix        
         sendSuffix    = symbol "<-" *> nonSeqExpr
 
         mkTupOrSnd [e] Nothing    = stripSpan <$> e
         mkTupOrSnd [e] (Just arg) = EC.binop OSnd e arg
-        mkTupOrSnd l Nothing      = EC.tuple $ map promoteToImmutable l
-        mkTupOrSnd l (Just arg)   = EC.binop OSnd (EC.tuple $ map promoteToImmutable l) arg
+        mkTupOrSnd l Nothing      = EC.tuple l
+        mkTupOrSnd l (Just arg)   = EC.binop OSnd (EC.tuple l) arg
 
-        stripSpan e          = maybe e (e @-) $ e @~ isESpan
-        promoteToImmutable e = maybe (e @+ EImmutable) (const e) $ e @~ isEQualified
+        stripSpan e               = maybe e (e @-) $ e @~ isESpan
 
 eRecord :: ExpressionParser
-eRecord = EC.record <$> braces idQExprList
+eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
-eEmpty = mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
+eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
 
@@ -520,15 +543,12 @@ uidTagBinOp :: K3Parser (a -> b -> K3 Expression)
 uidTagBinOp mg = (\g uid x y -> g x y @+ EUID uid) <$> mg <*> nextUID
 
 uidTagUnOp :: K3Parser (a -> K3 Expression)
-            -> K3Parser (a -> K3 Expression)
+           -> K3Parser (a -> K3 Expression)
 uidTagUnOp mg = (\g uid x -> g x @+ EUID uid) <$> mg <*> nextUID
 
-binary  op cstr assoc parser =
-  Infix (uidTagBinOp $ (pure cstr) <* parser op) assoc
-prefix  op cstr parser       =
-  Prefix  (uidTagUnOp $ (pure cstr) <* parser op)
-postfix op cstr parser       =
-  Postfix (uidTagUnOp $ (pure cstr) <* parser op)
+binary  op cstr assoc parser = Infix   (uidTagBinOp $ (pure cstr) <* parser op) assoc
+prefix  op cstr parser       = Prefix  (uidTagUnOp  $ (pure cstr) <* parser op)
+postfix op cstr parser       = Postfix (uidTagUnOp  $ (pure cstr) <* parser op)
 
 -- Temporary hack to annotate operator spans
 -- TODO: clean up
@@ -577,7 +597,7 @@ iArrow k   = iPrefix k <* symbol "->"
 iArrowS s  = symbol s *> identifier <* symbol "->"
 
 eLambda :: ExpressionParser
-eLambda = EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
+eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
 
 eApp :: ExpressionParser
 eApp = do
@@ -585,42 +605,42 @@ eApp = do
   try $ foldl1 mkApp $ map return eTerms
   where
     mkApp :: ExpressionParser -> ExpressionParser -> ExpressionParser
-    mkApp x y = EUID # EC.binop OApp <$> x <*> y
-      -- TODO: spans as well
+    mkApp x y = EUID # binOpSpan (EC.binop OApp) <$> x <*> y
 
 eCondition :: ExpressionParser
-eCondition = EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
+eCondition = exprError "conditional" $EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
 
 eAssign :: ExpressionParser
-eAssign = EC.assign <$> identifier <*> equateNSExpr
+eAssign = exprError "assign" $ EC.assign <$> identifier <*> equateNSExpr
 
 eLet :: ExpressionParser
-eLet = EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
+eLet = exprError "let" $ EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
 
 eCase :: ExpressionParser
-eCase = mkCase <$> ((nsPrefix "case") <* keyword "of")
-               <*> (braces eCaseSome) <*> (braces eCaseNone)
+eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
+                                  <*> (braces eCaseSome) <*> (braces eCaseNone)
   where eCaseSome = (,) <$> (iArrow "Some") <*> expr
         eCaseNone = (keyword "None" >> symbol "->") *> expr
         mkCase e (x, s) n = EC.caseOf e x s n
 
 eBind :: ExpressionParser
-eBind = EC.bindAs <$> (nsPrefix "bind") <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
+eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind") 
+                                     <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
 
 eBinder :: BinderParser
-eBinder = choice [bindInd, bindTup, bindRec]
+eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
 
 bindInd = BIndirection <$> iPrefix "ind"
 bindTup = BTuple <$> parens idList
 bindRec = BRecord <$> braces idPairList
 
 eAddress :: ExpressionParser
-eAddress = EC.address <$> ipAddress <* colon <*> port
+eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
   where ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
         port = EC.constant . CInt . fromIntegral <$> natural
 
 eSelf :: ExpressionParser
-eSelf = keyword "self" >> return EC.self
+eSelf = exprError "self" $ keyword "self" >> return EC.self
 
 {- Identifiers and their list forms -}
 idList      = commaSep identifier
