@@ -675,22 +675,22 @@ runNEndpoint ls _ _ = error $ "Invalid endpoint for network source " ++ (name ls
 {- Message passing -}
 
 -- | Queue accessors
-enqueue :: MessageQueues a -> Address -> Identifier -> a -> IO ()
-enqueue (Peer qmv) addr n arg = modifyMVar_ qmv enqueueIfValid
+enqueue :: MessageQueues a -> Address -> Identifier -> a -> EngineM a ()
+enqueue (Peer qmv) addr n arg = liftIO $ modifyMVar_ qmv enqueueIfValid
   where enqueueIfValid (addr', q)
           | addr == addr' = return (addr, q++[(n,arg)])
           | otherwise = return (addr', q)  -- TODO: should this be more noisy, i.e. logged?
 
-enqueue (ManyByPeer qsmv) addr n arg = modifyMVar_ qsmv enqueueToNode
-  where enqueueToNode qs = return $ H.adjust (++[(n,arg)]) addr qs
+enqueue (ManyByPeer qsmv) addr n arg = liftIO $ modifyMVar_ qsmv enqueueToNode
+  where enqueueToNode qs = return $ H.adjust (++ [(n, arg)]) addr qs
 
-enqueue (ManyByTrigger qsmv) addr n arg = modifyMVar_ qsmv enqueueToTrigger
-  where enqueueToTrigger qs = return $ H.adjust (++[arg]) (addr, n) qs
+enqueue (ManyByTrigger qsmv) addr n arg = liftIO $ modifyMVar_ qsmv enqueueToTrigger
+  where enqueueToTrigger qs = return $ H.adjust (++ [arg]) (addr, n) qs
 
 -- TODO: fair peer traversal
 -- TODO: efficient queue modification rather than toList / fromList
-dequeue :: MessageQueues a -> IO (Maybe (Address, Identifier, a))
-dequeue = \case
+dequeue :: MessageQueues a -> EngineM a (Maybe (Address, Identifier, a))
+dequeue = liftIO . \case
     Peer qmv           -> modifyMVar qmv $ return . someMessage
     ManyByPeer qsmv    -> modifyMVar qsmv $ return . messageFromMap mpDequeue
     ManyByTrigger qsmv -> modifyMVar qsmv $ return . messageFromMap mtDequeue
