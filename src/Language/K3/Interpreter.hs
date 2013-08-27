@@ -1218,15 +1218,6 @@ wireDesc :: String -> WireDesc Value
 wireDesc "k3" = syntaxValueWD
 wireDesc fmt  = error $ "Invalid format " ++ fmt
 
--- | Associative lists
-addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-addAssoc l a b = (a,b):l
-
-removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
-removeAssoc l a = filter ((a /=) . fst) l
-
-replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
 {- Pretty printing -}
 
