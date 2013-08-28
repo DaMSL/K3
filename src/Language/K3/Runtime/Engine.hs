@@ -869,32 +869,34 @@ genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
 
 -- | Open a builtin endpoint.
 --   The wire description must yield a string value for each payload processed.
-openBuiltin :: Identifier -> Identifier -> WireDesc a -> Engine a -> IO ()
-openBuiltin eid bid wd eg = genericOpenBuiltin eid bid wd (externalEndpoints $ endpoints eg) eg
+openBuiltin :: Identifier -> Identifier -> WireDesc a -> EngineM a ()
+openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoints . endpoints
 
-openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
-openFile eid path wd tOpt mode eg =
-  genericOpenFile eid path wd tOpt mode (externalEndpoints $ endpoints eg) eg
+openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
+openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
-openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> Engine a -> IO ()
-openSocket eid addr wd tOpt mode eg@(control -> ctrl) =
-  genericOpenSocket eid addr wd tOpt mode lstnrState (externalEndpoints $ endpoints eg) eg
-  where lstnrState = ListenerState eid (messageReadyV ctrl, networkDoneV ctrl) externalListenerProcessor
+openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
+openSocket eid addr wd tOpt mode = do
+    engine <- ask
+    let eep = externalEndpoints $ endpoints engine
+    let ctl = control engine
+    let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) externalListenerProcessor
+    genericOpenSocket eid addr wd tOpt mode lst eep
 
-close :: String -> Engine a -> IO ()
-close n eg@(endpoints -> eps) = genericClose n (externalEndpoints eps) eg
+close :: String -> EngineM a ()
+close n = ask >>= genericClose n . externalEndpoints . endpoints
 
-hasRead :: Identifier -> Engine a -> IO (Maybe Bool)
-hasRead n (endpoints -> eps) = genericHasRead n (externalEndpoints eps)
+hasRead :: Identifier -> EngineM a (Maybe Bool)
+hasRead n = ask >>= genericHasRead n . externalEndpoints . endpoints
 
-hasWrite :: Identifier -> Engine a -> IO (Maybe Bool)
-hasWrite n (endpoints -> eps) = genericHasWrite n (externalEndpoints eps)
+hasWrite :: Identifier -> EngineM a (Maybe Bool)
+hasWrite n = ask >>= genericHasWrite n . externalEndpoints . endpoints
 
-doRead :: Identifier -> Engine a -> IO (Maybe a)
-doRead n eg@(endpoints -> eps) = genericDoRead n (externalEndpoints eps) eg
+doRead :: Identifier -> EngineM a (Maybe a)
+doRead n = ask >>= genericDoRead n . externalEndpoints . endpoints
 
-doWrite :: Identifier -> a -> Engine a -> IO ()
-doWrite n arg eg@(endpoints -> eps) = genericDoWrite n arg (externalEndpoints eps) eg
+doWrite :: Identifier -> a -> EngineM a ()
+doWrite n arg = ask >>= genericDoWrite n arg . externalEndpoints . endpoints
 
 {- Internal endpoint methods -}
 
@@ -916,25 +918,25 @@ openSocketInternal :: Identifier -> Address -> String -> EngineM a ()
 openSocketInternal eid addr mode = do
     engine <- ask
     let ife = internalFormat engine
-    let iep = internalEndpoints engine
+    let iep = internalEndpoints $ endpoints engine
     let ctl = control engine
     let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) internalListenerProcessor
-    genericOpenSocket eid addr ife Nothing mode lstnrState
+    genericOpenSocket eid addr ife Nothing mode lst iep
 
 closeInternal :: String -> EngineM a ()
-closeInternal n = genericClose n $ internalEndpoints . endpoints <$> ask 
+closeInternal n = ask >>= genericClose n . internalEndpoints . endpoints
 
 hasReadInternal :: Identifier -> EngineM a (Maybe Bool)
-hasReadInternal n = genericHasRead n $ internalEndpoints . endpoints <$> ask
+hasReadInternal n = ask >>= genericHasRead n . internalEndpoints . endpoints
 
 hasWriteInternal :: Identifier -> EngineM a (Maybe Bool)
-hasWriteInternal n genericHasWrite n $ internalEndpoints . endpoints <$> ask
+hasWriteInternal n = ask >>= genericHasWrite n . internalEndpoints . endpoints
 
 doReadInternal :: Identifier -> EngineM a (Maybe (InternalMessage a))
-doReadInternal n = genericDoRead n $ internalEndpoints . endpoints <$> ask
+doReadInternal n = ask >>= genericDoRead n . internalEndpoints . endpoints
 
 doWriteInternal :: Identifier -> InternalMessage a -> EngineM a ()
-doWriteInternal n arg = genericDoWrite n arg $ internalEndpoints . endpoints <$> ask
+doWriteInternal n arg = ask >>= genericDoWrite n arg . internalEndpoints . endpoints
 
 {- IO Handle methods -}
 
