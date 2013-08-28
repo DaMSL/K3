@@ -1306,7 +1306,10 @@ putEngine :: Show a => EngineM a ()
 putEngine = ask >>= liftIO . print >> debugQueues
 
 debugQueues :: Show a => EngineM a ()
-debugQueues = (liftIO $ putStrLn "Queues:") >> putMessageQueues . queues <$> ask
+debugQueues = do
+    engine <- ask
+    liftIO $ putStrLn "Queues: "
+    liftIO $ putMessageQueues (queues engine)
 
 {- Instance implementations -}
 
