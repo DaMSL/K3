@@ -1312,9 +1312,12 @@ debugQueues = (liftIO $ putStrLn "Queues:") >> putMessageQueues . queues <$> ask
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
-    show e@(nodes -> n)
-        | simulation e = "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
-        | otherwise    = "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+    show engine = case engine of
+        (Engine { connections = (EConnectionState (Nothing, _)) }) ->
+            "Engine (simulation):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+        _ -> "Engine (network):\n" ++ ("Nodes:\n" ++ show n ++ "\n")
+      where
+        n = map fst $ deployment engine
 
 instance (Show a) => Pretty (Engine a) where
     prettyLines = lines . show
