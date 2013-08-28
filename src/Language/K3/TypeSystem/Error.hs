@@ -78,6 +78,19 @@ data TypeError
       -- ^ Indicates that the specified declaration's closure was inconsistent.
       --   The first qualified variable is the inferred type of the expression;
       --   the second qualified variable is the declared type.
+  | AnnotationClosureInconsistencyInternal
+      Identifier
+      [ConsistencyError]
+      -- ^ Indicates that an annotation is internally inconsistent.   This does
+      --   not suggest that a signature fails to match an expression; this
+      --   instead occurs when an expression cannot be inferred a consistent
+      --   type (e.g. "provides x : int = 4 + true").
+  | AnnotationClosureInconsistency
+      Identifier
+      [ConsistencyError]
+      -- ^ Indicates that an annotation is inconsistent with its environment
+      --   type.  This suggests that, while the expression of a member has a
+      --   consistent type, it does not match the type of its signature.
 
 deriving instance Show TypeError
 
@@ -153,6 +166,14 @@ data InternalTypeError
       -- ^Indicates that, during type decision, an annotation member contained
       --  a member annotation declaration.  Such declarations should be inlined
       --  at the beginning of type decision.
+  | MissingNegativeAnnotationMemberInEnvironment Identifier [Identifier]
+      -- ^Indicates that an annotation type in the environment did not include
+      --  a negative member that was inferred from its body.  The first
+      --  argument names the annotation; the second names the missing members.
+  | MissingPositiveAnnotationMemberInInferredType Identifier Identifier
+      -- ^Indicates that an annotation was inferred a type that did not include
+      --  a positive member that was found in the environment.  The first
+      --  argument names the annotation; the second names the missing member.
 
 deriving instance Show InternalTypeError
 

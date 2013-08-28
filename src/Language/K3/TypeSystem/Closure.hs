@@ -45,10 +45,8 @@ calculateClosureStep cs =
       , (closeQualifiedWrite, "Qualified Write")
       , (closeMonomorphicTransitivity, "Monomorphic Transitivity")
       , (closeMonomorphicBounding, "Monomorphic Bounding")
-      {- TODO:
       , (opaqueLowerBound, "Opaque Lower Bound")
       , (opaqueUpperBound, "Opaque Upper Bound")
-      -}
       ]
     applyClosureFunction (fn, name) =
       let cs' = fn cs in
@@ -138,4 +136,16 @@ closeMonomorphicBounding cs = csFromList $ do
   (qa2,qs) <- csQuery cs QueryAllMonomorphicQualifiedUpperConstraint
   return $ qa2 <: qs
 
--- TODO: opaque bound functions
+opaqueLowerBound :: ConstraintSet -> ConstraintSet
+opaqueLowerBound cs = csFromList $ do
+  (oa,t) <- csQuery cs QueryAllOpaqueLowerBoundedConstraints
+  guard $ SOpaque oa /= t
+  (_,ub) <- csQuery cs $ QueryOpaqueBounds oa
+  return $ ub <: t
+
+opaqueUpperBound :: ConstraintSet -> ConstraintSet
+opaqueUpperBound cs = csFromList $ do
+  (t,oa) <- csQuery cs QueryAllOpaqueUpperBoundedConstraints
+  guard $ SOpaque oa /= t
+  (lb,_) <- csQuery cs $ QueryOpaqueBounds oa
+  return $ t <: lb

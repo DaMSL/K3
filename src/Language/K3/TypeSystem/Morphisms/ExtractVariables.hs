@@ -44,8 +44,17 @@ $(
                 , ''Coproduct
                 , ''TQual
                 , ''ShallowType
+                , ''OpaqueID
+                , ''OpaqueOrigin
+                , ''OpaqueVar
                 , ''TPolarity
                 ]
+ )
+ 
+$(concat <$> mapM (defineReduceEmptyInstance [t|VariableReduction|]
+                      ''ExtractVariables)
+                [ ''UID
+                ]                
  )
  
 $(

@@ -91,7 +91,7 @@ constructTypeForDecl ((lAtts,sAtts),decl) = do
   -- Calculate the type of self and the corresponding constraints
   (lAttTs, scs_S) <- second mconcat <$> unzip <$>
                       gatherParallelSkelErrors (map (memDeclToMemType p) lAtts)
-  let b = AnnBodyType sAttTs lAttTs
+  let b = AnnBodyType lAttTs sAttTs
   let annType = AnnType p b csEmpty
   inst <- lift $ instantiateCollection annType aP_c
   (a_S,cs_S) <- liftEither (InvalidCollectionInstantiation u) inst
