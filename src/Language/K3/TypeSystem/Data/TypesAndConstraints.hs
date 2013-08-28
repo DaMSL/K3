@@ -325,6 +325,11 @@ instance Pretty TEnvId where
 --  underlying quantified and annotation types.
 data TypeAliasEntry c = QuantAlias (QuantType c) | AnnAlias (AnnType c)
   deriving (Eq, Show)
+
+instance (Pretty c) => Pretty (TypeAliasEntry c) where
+  prettyLines tae = case tae of
+    QuantAlias qt -> prettyLines qt
+    AnnAlias ann -> prettyLines ann
   
 -- |A type alias for normal alias entries (those which use normal constraint
 --  sets).

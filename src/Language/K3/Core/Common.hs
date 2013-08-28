@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
     Identifier,

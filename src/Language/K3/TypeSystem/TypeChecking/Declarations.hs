@@ -155,8 +155,11 @@ deriveDeclaration aEnv env decl =
                 concatAnnBodies bs
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
-          indent 2 (prettyLines b' %+ [" \\ "] %$ prettyLines cs''') 
+          indent 2 (prettyLines b' +% [" \\ "] %$ prettyLines cs''') 
       let allCs = csUnions $ cs':cs''':cs''s
+      _debug $ boxToString $
+        ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
+          indent 2 (prettyLines allCs)
       {-
         It remains to show the two forall conditions at the end of the
         annotation rule.  These conditions can be considerably simplified due to
@@ -168,7 +171,7 @@ deriveDeclaration aEnv env decl =
       -- (1) consistency-checking the constraints and (2) ensuring that each
       -- inferred negative identifier is reported in the environment.
       either (typecheckError . AnnotationClosureInconsistencyInternal iAnn
-                  . Foldable.toList) return $ checkConsistent allCs
+                  . Foldable.toList) return $ checkClosureConsistent allCs
       let negIdentsFor ms =
             Set.fromList $ map fst $ mapMaybe (digestMemFromPol Negative) ms
       let missingNegatives = (negIdentsFor ms1 `Set.union` negIdentsFor ms2)
@@ -191,10 +194,14 @@ deriveDeclaration aEnv env decl =
                   Nothing -> typecheckError $ InternalError $
                     MissingPositiveAnnotationMemberInInferredType iAnn i
             csFromList <$> gatherParallelErrors (map (uncurry mkCs) sig)
-      allWithMemCs <- csUnion <$> genConstraints ms1 ms1'
-                              <*> genConstraints ms2 ms2'
+      wiringCs <- csUnion <$> genConstraints ms1 ms1'
+                          <*> genConstraints ms2 ms2'
+      _debug $ boxToString $
+        ["Annotation " ++ iAnn ++ " positive wiring constraints:"] %$
+          indent 2 (prettyLines wiringCs)
       either (typecheckError . AnnotationClosureInconsistency iAnn .
-                Foldable.toList) return $ checkConsistent allWithMemCs
+                Foldable.toList) return $ checkClosureConsistent $
+                  csUnion allCs wiringCs
       return iAnn
   where
     basicDeclaration i expr deriv csf = do

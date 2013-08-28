@@ -19,6 +19,7 @@ module Language.K3.Pretty (
     hconcatTop,
     hconcatBottom,
     vconcat,
+    vconcats,
     boxWidth,
     boxHeight,
     maxWidth,
@@ -95,6 +96,9 @@ mkSameLength x y f =
 
 vconcat :: [String] -> [String] -> [String]
 vconcat x y = x ++ y
+
+vconcats :: [[String]] -> [String]
+vconcats = concat
 
 boxWidth :: [String] -> Int
 boxWidth = maximum . map length
