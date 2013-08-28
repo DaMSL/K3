@@ -732,7 +732,6 @@ send addr n arg e@(endpoints -> EEndpointState ieps _)
     write eid (Just True) = doWriteInternal eid (addr, n, arg) e
     write _ _             = error $ "No write available to " ++ show addr
 
-
 {- Module API implementation -}
 
 builtin :: String -> Builtin
@@ -899,34 +898,43 @@ doWrite n arg eg@(endpoints -> eps) = genericDoWrite n arg (externalEndpoints ep
 
 {- Internal endpoint methods -}
 
-openBuiltinInternal :: Identifier -> Identifier -> Engine a -> IO ()
-openBuiltinInternal eid bid eg =
-  genericOpenBuiltin eid bid (internalFormat eg) (internalEndpoints $ endpoints eg) eg
+openBuiltinInternal :: Identifier -> Identifier -> EngineM a ()
+openBuiltinInternal eid bid = do
+    engine <- ask
+    let ife = internalFormat engine
+    let iep = internalEndpoints $ endpoints engine
+    genericOpenBuiltin eid bid ife iep
 
-openFileInternal :: Identifier -> String -> String -> Engine a -> IO ()
-openFileInternal eid path mode eg =
-  genericOpenFile eid path (internalFormat eg) Nothing mode (internalEndpoints $ endpoints eg) eg
+openFileInternal :: Identifier -> String -> String -> EngineM a ()
+openFileInternal eid path mode = do
+    engine <- ask
+    let ife = internalFormat engine
+    let iep = internalEndpoints $ endpoints engine
+    genericOpenFile eid path ife Nothing mode iep
 
-openSocketInternal :: Identifier -> Address -> String -> Engine a -> IO ()
-openSocketInternal eid addr mode eg@(control -> ctrl) =
-  genericOpenSocket eid addr (internalFormat eg) Nothing mode lstnrState (internalEndpoints $ endpoints eg) eg
-  where lstnrState = ListenerState eid (messageReadyV ctrl, networkDoneV ctrl) internalListenerProcessor
+openSocketInternal :: Identifier -> Address -> String -> EngineM a ()
+openSocketInternal eid addr mode = do
+    engine <- ask
+    let ife = internalFormat engine
+    let iep = internalEndpoints engine
+    let ctl = control engine
+    let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) internalListenerProcessor
+    genericOpenSocket eid addr ife Nothing mode lstnrState
 
-closeInternal :: String -> Engine a -> IO ()
-closeInternal n eg@(endpoints -> eps) = genericClose n (internalEndpoints eps) eg
+closeInternal :: String -> EngineM a ()
+closeInternal n = genericClose n $ internalEndpoints . endpoints <$> ask 
 
-hasReadInternal :: Identifier -> Engine a -> IO (Maybe Bool)
-hasReadInternal n (endpoints -> eps) = genericHasRead n (internalEndpoints eps)
+hasReadInternal :: Identifier -> EngineM a (Maybe Bool)
+hasReadInternal n = genericHasRead n $ internalEndpoints . endpoints <$> ask
 
-hasWriteInternal :: Identifier -> Engine a -> IO (Maybe Bool)
-hasWriteInternal n (endpoints -> eps) = genericHasWrite n (internalEndpoints eps)
+hasWriteInternal :: Identifier -> EngineM a (Maybe Bool)
+hasWriteInternal n genericHasWrite n $ internalEndpoints . endpoints <$> ask
 
-doReadInternal :: Identifier -> Engine a -> IO (Maybe (InternalMessage a))
-doReadInternal n eg@(endpoints -> eps) = genericDoRead n (internalEndpoints eps) eg
+doReadInternal :: Identifier -> EngineM a (Maybe (InternalMessage a))
+doReadInternal n = genericDoRead n $ internalEndpoints . endpoints <$> ask
 
-doWriteInternal :: Identifier -> InternalMessage a -> Engine a -> IO ()
-doWriteInternal n arg eg@(endpoints -> eps) = genericDoWrite n arg (internalEndpoints eps) eg
-
+doWriteInternal :: Identifier -> InternalMessage a -> EngineM a ()
+doWriteInternal n arg = genericDoWrite n arg $ internalEndpoints . endpoints <$> ask
 
 {- IO Handle methods -}
 
