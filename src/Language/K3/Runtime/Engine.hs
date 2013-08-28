@@ -1130,24 +1130,24 @@ notifySubscribers :: EndpointNotification -> EndpointBindings a -> Engine a -> I
 notifySubscribers nt subs eg = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
   where notify (addr, tid, msg) = send addr tid msg eg
 
-modifySubscribers :: Identifier -> (Endpoint a b -> EndpointBindings b) -> EEndpoints a b -> IO Bool
+modifySubscribers :: Identifier -> (Endpoint a b -> EndpointBindings b) -> EEndpoints a b -> EngineM b Bool
 modifySubscribers eid f eps = getEndpoint eid eps >>= maybe (return False) updateSub
   where updateSub e = (addEndpoint eid (nep e $ f e) eps) >> return True
         nep e subs = (handle e, buffer e, subs)
 
-attachNotifier :: Identifier -> Identifier -> InternalMessage a -> Engine a -> IO Bool
-attachNotifier eid nt msg (endpoints -> EEndpointState _ eeps) = modifySubscribers eid newSubs eeps
+attachNotifier :: Identifier -> Identifier -> InternalMessage a -> EngineM a Bool
+attachNotifier eid nt msg = endpoints <$> ask >>= \(EEndpointState _ eeps) -> modifySubscribers eid newSubs eeps
   where newSubs e = nubBy (\(a,_) (b,_) -> a == b) $ (getNotificationType nt e, msg):(subscribers e)
 
-attachNotifier_ :: Identifier -> Identifier -> InternalMessage a -> Engine a -> IO ()
-attachNotifier_ eid nt msg eg = void $ attachNotifier eid nt msg eg
+attachNotifier_ :: Identifier -> Identifier -> InternalMessage a -> EngineM a ()
+attachNotifier_ eid nt msg = void $ attachNotifier eid nt msg
 
-detachNotifier :: Identifier -> Identifier -> Engine a -> IO Bool
-detachNotifier eid nt (endpoints -> EEndpointState _ eeps) = modifySubscribers eid newSubs eeps
+detachNotifier :: Identifier -> Identifier -> EngineM a Bool
+detachNotifier eid nt = endpoints <$> ask >>= \(EEndpointState _ eeps) -> modifySubscribers eid newSubs eeps
   where newSubs e = filter (((getNotificationType nt e) /= ) . fst) $ subscribers e
 
-detachNotifier_ :: Identifier -> Identifier -> Engine a -> IO ()
-detachNotifier_ eid nt eg = void $ detachNotifier eid nt eg
+detachNotifier_ :: Identifier -> Identifier -> EngineM a ()
+detachNotifier_ eid nt = void $ detachNotifier eid nt
 
 
 {- Endpoint buffers -}
