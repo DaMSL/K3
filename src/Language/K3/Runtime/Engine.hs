@@ -953,7 +953,8 @@ openFileHandle :: FilePath -> WireDesc a -> SIO.IOMode -> IO (IOHandle a)
 openFileHandle p wd mode = SIO.openFile p mode >>= return . FileH wd
 
 -- | Open an external socket, with given wire description and address.
-openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe (MVar EConnectionMap) -> IO (Maybe (IOHandle a))
+openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe (MVar EConnectionMap)
+    -> EngineM a (Maybe (IOHandle a))
 openSocketHandle addr wd mode conns =
   case mode of
     SIO.ReadMode      -> incoming
@@ -967,9 +968,9 @@ openSocketHandle addr wd mode conns =
           Nothing -> error "Invalid outgoing network connection map"
 
 -- | Close an external.
-closeHandle :: IOHandle a -> IO ()
+closeHandle :: IOHandle a -> EngineM b ()
 closeHandle (BuiltinH _ _ _) = return () -- Leave open to allow other standard IO.
-closeHandle (FileH _ h)      = SIO.hClose h
+closeHandle (FileH _ h)      = liftIO $ SIO.hClose h
 closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
 closeHandle (networkSink   -> Just (_,_))  = return ()
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
