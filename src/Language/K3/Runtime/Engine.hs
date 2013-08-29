@@ -1028,8 +1028,9 @@ closeEndpoint ep = liftIO $ NT.closeEndPoint (endpoint ep) >> NT.closeTransport 
 emptyEndpoints :: EngineM b (EEndpoints a b)
 emptyEndpoints = liftIO $ newMVar (H.fromList [])
 
-addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b -> EngineM b (Endpoint a b)
-addEndpoint n (h,b,s) eps = modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
+addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b
+    -> EngineM b (Endpoint a b)
+addEndpoint n (h,b,s) eps = liftIO $ modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
   where rebuild e m = return (H.insert n e m, e)
 
 removeEndpoint :: Identifier -> EEndpoints a b -> EngineM b ()
@@ -1044,15 +1045,15 @@ llAddress :: Address -> NT.EndPointAddress
 llAddress addr = NT.EndPointAddress $ BS.pack $ show addr ++ ":0"
     -- TODO: above, check if it is safe to always use ":0" for NT.EndPointAddress
 
-newConnection :: Address -> NEndpoint -> IO (Maybe NConnection)
-newConnection addr (endpoint -> ep) =
+newConnection :: Address -> NEndpoint -> EngineM a (Maybe NConnection)
+newConnection addr (endpoint -> ep) = liftIO $
   NT.connect ep (llAddress addr) NT.ReliableOrdered NT.defaultConnectHints
     >>= either connectionError connectionSuccess
   where connectionSuccess   = return . Just . flip NConnection addr
         connectionError err = return Nothing
 
-emptyConnectionMap :: Address -> IO (MVar EConnectionMap)
-emptyConnectionMap addr = newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
+emptyConnectionMap :: Address -> EngineM a (MVar EConnectionMap)
+emptyConnectionMap addr = liftIO $ newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
 
 getConnections :: Identifier -> EConnectionState -> Maybe (MVar EConnectionMap)
 getConnections n (EConnectionState (icp, ecp)) =
@@ -1062,48 +1063,49 @@ getConnections n (EConnectionState (icp, ecp)) =
 withConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO a) -> IO a
 withConnectionMap connsMV withF = withMVar connsMV withF
 
-modifyConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO (EConnectionMap, a)) -> IO a
-modifyConnectionMap connsMV modifyF = modifyMVar connsMV modifyF
+modifyConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO (EConnectionMap, a)) -> EngineM b a
+modifyConnectionMap connsMV modifyF = liftIO $ modifyMVar connsMV modifyF
 
-addConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
-addConnection addr conns = modifyConnectionMap conns establishConnection
-  where establishConnection c@(anchor -> (anchorAddr, Nothing)) =
-          newEndpoint anchorAddr >>= \case
-            Nothing -> return (c, Nothing)
-            Just ep -> connect $ EConnectionMap (anchorAddr, Just ep) (cache c)
-        establishConnection c = connect c
+-- TODO: Verify exception-safety of this translation to EngineM.
+addConnection addr conns = do
+    c@(anchor -> (anchorAddr, Nothing)) <- liftIO $ readMVar conns
+    nep <- newEndpoint anchorAddr
 
-        connect conns@(anchor -> (_, Just ep)) =
-          newConnection addr ep >>= return . maybe (conns, Nothing) (add conns)
+    case nep of
+        Nothing -> return Nothing
+        Just ep -> do
+            nc <- newConnection addr ep
+            let ec = EConnectionMap (anchorAddr, Just ep) (cache c)
+            case nc of
+                Nothing -> do
+                    void . liftIO $ swapMVar conns ec
+                    return Nothing
+                Just c' -> do
+                    void . liftIO $ swapMVar conns  (EConnectionMap (anchor c) ((addr, c'):(cache c)))
+                    return (Just c')
 
-        connect _ = error "Invalid connection map, no anchor endpoint found."
-
-        add conns c = (EConnectionMap (anchor conns) $ (addr, c):(cache conns), Just c)
-
-removeConnection :: Address -> MVar EConnectionMap -> IO ()
-removeConnection addr conns = modifyConnectionMap conns remove
+removeConnection :: Address -> MVar EConnectionMap -> EngineM a ()
+removeConnection addr conns = modifyConnectionMap conns (liftIO . remove)
   where remove cm@(anchor -> (_, Nothing)) = return (cm, ())
         remove cm = closeConnection (cache cm) >>= return . (,()) . EConnectionMap (anchor cm)
         closeConnection (matchConnections -> (matches, rest)) =
           mapM_ (NT.close . conn . snd) matches >> return rest
         matchConnections = partition ((addr ==) . fst)
 
-getConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
-getConnection addr conns = withConnectionMap conns $ return . lookup addr . cache
+getConnection :: Address -> MVar EConnectionMap -> EngineM a (Maybe NConnection)
+getConnection addr conns = liftIO $ withConnectionMap conns $ return . lookup addr . cache
 
-getEstablishedConnection :: Address -> MVar EConnectionMap -> IO (Maybe NConnection)
-getEstablishedConnection addr conns =
-  getConnection addr conns >>= \case
+getEstablishedConnection :: Address -> MVar EConnectionMap -> EngineM a (Maybe NConnection)
+getEstablishedConnection addr conns = getConnection addr conns >>= \case
     Nothing -> addConnection addr conns
     Just c  -> return $ Just c
 
-clearConnections :: MVar EConnectionMap -> IO ()
-clearConnections cm = withConnectionMap cm (\x -> return (snd $ anchor x, cache x)) >>= clear
+clearConnections :: MVar EConnectionMap -> EngineM a ()
+clearConnections cm = liftIO (withConnectionMap cm (\x -> return (snd $ anchor x, cache x))) >>= clear
   where clear (ep, conns) = clearC conns >> clearE ep
         clearC conns      = mapM_ (flip removeConnection cm . fst) conns
         clearE Nothing    = return ()
         clearE (Just ep)  = closeEndpoint ep
-
 
 {- Endpoint Notifiers -}
 
