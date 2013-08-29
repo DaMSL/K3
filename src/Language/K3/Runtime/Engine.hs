@@ -120,7 +120,7 @@ module Language.K3.Runtime.Engine (
 
 ) where
 
-import Control.Arrow
+import Control.Arrow hiding (left)
 import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.MVar
@@ -146,7 +146,7 @@ import qualified System.IO as SIO
 import System.Process
 import System.Mem.Weak (Weak)
 
-import Text.Read
+import Text.Read hiding (lift)
 
 import Network.Socket (withSocketsDo)
 import qualified Network.Transport     as NT
@@ -1133,9 +1133,9 @@ getNotificationType n (handle -> SocketH _ _) = case n of
 
 getNotificationType _ _ = error "Invalid endpoint handle for notifications"
 
-notifySubscribers :: EndpointNotification -> EndpointBindings a -> Engine a -> IO ()
-notifySubscribers nt subs eg = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
-  where notify (addr, tid, msg) = send addr tid msg eg
+notifySubscribers :: EndpointNotification -> EndpointBindings a -> EngineM a ()
+notifySubscribers nt subs = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
+  where notify (addr, tid, msg) = send addr tid msg
 
 modifySubscribers :: Identifier -> (Endpoint a b -> EndpointBindings b) -> EEndpoints a b -> EngineM b Bool
 modifySubscribers eid f eps = getEndpoint eid eps >>= maybe (return False) updateSub
@@ -1293,14 +1293,23 @@ refreshEBContents (SocketH _ (Right _)) _ = error "Invalid buffer refresh for ne
 refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
 refreshEBuffer h = modifyEBuffer $ refreshEBContents h
 
-enqueueEBContents :: MessageQueues a -> BufferContents (InternalMessage a) -> IO (BufferContents (InternalMessage a))
+enqueueEBContents :: MessageQueues a -> BufferContents (InternalMessage a)
+    -> EngineM a (BufferContents (InternalMessage a))
 enqueueEBContents q = \case
   Single Nothing             -> return emptySingletonBuffer
   Single (Just (addr, n, v)) -> enqueue q addr n v >> return emptySingletonBuffer
   Multiple x spec            -> mapM_ (\(addr, n, v) -> enqueue q addr n v) x >> return (emptyBoundedBuffer spec)
 
-enqueueEBuffer :: MessageQueues a -> EndpointBuffer (InternalMessage a) -> IO (EndpointBuffer (InternalMessage a))
-enqueueEBuffer q = modifyEBuffer_ $ enqueueEBContents q
+enqueueEBuffer :: MessageQueues a -> EndpointBuffer (InternalMessage a)
+    -> EngineM a (EndpointBuffer (InternalMessage a))
+enqueueEBuffer q = modifyEBuffer'_ $ enqueueEBContents q
+
+modifyEBuffer' :: (BufferContents b -> EngineM c (BufferContents b, a)) -> EndpointBuffer b
+    -> EngineM c (EndpointBuffer b, a)
+modifyEBuffer' f (Exclusive c) = f c >>= \(a, b) -> return (Exclusive a, b)
+modifyEBuffer' f (Shared mvc) = modifyMVE mvc f >>= return . (Shared mvc,)
+
+modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return . fst
 
 {- Pretty printing helpers -}
 
@@ -1331,3 +1340,13 @@ instance (Show a) => Show (Engine a) where
 
 instance (Show a) => Pretty (Engine a) where
     prettyLines = lines . show
+
+modifyMVE :: MVar a -> (a -> EngineM b (a, c)) -> EngineM b c
+modifyMVE v f = do
+    engine <- ask
+    result <- liftIO $ modifyMVar v $ \c -> runEngineM (f c) engine >>= return . \case
+        Left e -> (c, Left e)
+        Right (r, x) -> (r, Right (r, x))
+    case result of
+        Left e -> left e
+        Right (r, x) -> return x
