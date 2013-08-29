@@ -1069,20 +1069,24 @@ modifyConnectionMap connsMV modifyF = liftIO $ modifyMVar connsMV modifyF
 -- TODO: Verify exception-safety of this translation to EngineM.
 addConnection addr conns = do
     c@(anchor -> (anchorAddr, Nothing)) <- liftIO $ readMVar conns
-    nep <- newEndpoint anchorAddr
 
-    case nep of
-        Nothing -> return Nothing
-        Just ep -> do
-            nc <- newConnection addr ep
-            let ec = EConnectionMap (anchorAddr, Just ep) (cache c)
-            case nc of
-                Nothing -> do
-                    void . liftIO $ swapMVar conns ec
-                    return Nothing
-                Just c' -> do
-                    void . liftIO $ swapMVar conns  (EConnectionMap (anchor c) ((addr, c'):(cache c)))
-                    return (Just c')
+    case c of
+        (anchor -> (anchorAddr, Nothing)) -> newEndpoint anchorAddr >>= \case
+            Nothing -> return Nothing
+            Just ep -> connect $ EConnectionMap (anchorAddr, Just ep) (cache c)
+        _ -> connect c
+  where
+    connect :: EConnectionMap -> EngineM a (Maybe NConnection)
+    connect c@(anchor -> (_, Just ep)) = do
+        nc <- newConnection addr ep
+        case nc of
+            Nothing -> return Nothing
+            Just c' -> liftIO $ swapMVar conns (add c c') >> return (Just c')
+
+    connection _ = error "Invalid connection map, no anchor endpoint found."
+
+    add cs c = EConnectionMap (anchor cs) $ (addr, c):(cache cs)
+
 
 removeConnection :: Address -> MVar EConnectionMap -> EngineM a ()
 removeConnection addr conns = modifyConnectionMap conns (liftIO . remove)
