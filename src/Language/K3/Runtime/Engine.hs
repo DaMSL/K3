@@ -814,35 +814,30 @@ genericClose n endpoints = getEndpoint n endpoints >>= \case
         notifyType (FileH _ _)      = FileClose
         notifyType (SocketH _ _)    = SocketClose
 
-
-genericHasRead :: Identifier -> EEndpoints a b -> IO (Maybe Bool)
+genericHasRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
 genericHasRead n endpoints = getEndpoint n endpoints >>= \case
-  Nothing -> return Nothing
-  Just e  -> case handle e of 
-              BuiltinH _ h Stdin -> SIO.hIsReadable h >>= return . Just
-              _        -> emptyEBuffer (buffer e) >>= return . Just . not
+    Nothing -> return Nothing
+    Just e  -> case handle e of
+        BuiltinH _ h Stdin -> liftIO (SIO.hIsReadable h) >>= return . Just
+        _ -> liftIO (emptyEBuffer (buffer e)) >>= return . Just . not
 
+genericDoRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe a)
+genericDoRead n endpoints = getEndpoint n endpoints >>= maybe (return Nothing) refresh
+  where
+    refresh e = liftIO (refreshEBuffer (handle e) (buffer e)) >>= updateAndYield e
 
-genericDoRead :: Identifier -> EEndpoints a b -> Engine b -> IO (Maybe a)
-genericDoRead n endpoints eg = getEndpoint n endpoints >>= \case
+    updateAndYield e (nBuf, (vOpt, notifyType)) = do
+      addEndpoint n (handle e, nBuf, subscribers e) endpoints
+      notify notifyType (subscribers e)
+      return vOpt
 
-  Nothing -> return Nothing
-  Just e  -> refresh e
+    notify Nothing _      = return ()
+    notify (Just nt) subs = notifySubscribers nt subs
 
-  where refresh e = refreshEBuffer (handle e) (buffer e) >>= updateAndYield e
-
-        updateAndYield e (nBuf, (vOpt, notifyType)) =
-          addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e) >> return vOpt
-
-        nep e b = (handle e, b, subscribers e)
-
-        notify Nothing _      = return ()
-        notify (Just nt) subs = notifySubscribers nt subs eg
-
-genericHasWrite :: Identifier -> EEndpoints a b -> IO (Maybe Bool)
+genericHasWrite :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
 genericHasWrite n endpoints = getEndpoint n endpoints >>= \case
-  Nothing -> return Nothing
-  Just e  -> fullEBuffer (buffer e) >>= return . Just . not
+    Nothing -> return Nothing
+    Just e -> liftIO (fullEBuffer (buffer e)) >>= return . Just . not
 
 genericDoWrite :: Identifier -> a -> EEndpoints a b -> EngineM b ()
 genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) write
