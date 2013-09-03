@@ -844,26 +844,21 @@ genericHasWrite n endpoints = getEndpoint n endpoints >>= \case
   Nothing -> return Nothing
   Just e  -> fullEBuffer (buffer e) >>= return . Just . not
 
+genericDoWrite :: Identifier -> a -> EEndpoints a b -> EngineM b ()
+genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) write
+  where
+    write e = liftIO (appendEBuffer arg (buffer e)) >>= \case
+        (nb, Nothing) -> liftIO (flushEBuffer (handle e) nb) >>= update e
+        (_, Just _)   -> overflowError
 
-genericDoWrite :: Identifier -> a -> EEndpoints a b -> Engine b -> IO ()
-genericDoWrite n arg endpoints eg = getEndpoint n endpoints  >>= \case
-  Nothing -> return ()
-  Just e  -> write e
+    update e (nBuf, notifyType) = addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e)
 
-  where write e = appendEBuffer arg (buffer e) >>= \case
-          (nb, Nothing) -> flushEBuffer (handle e) nb >>= update e
-          (_, Just _)   -> overflowError
+    nep e b = (handle e, b, subscribers e)
 
-        update e (nBuf, notifyType) =
-          addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e)
+    notify Nothing _ = return ()
+    notify (Just nt) subs = notifySubscribers nt subs
 
-        nep e b = (handle e, b, subscribers e)
-
-        notify Nothing _      = return ()
-        notify (Just nt) subs = notifySubscribers nt subs eg
-
-        overflowError = genericClose n endpoints eg >> putStrLn "Endpoint buffer overflow (doWrite)"
-
+    overflowError = genericClose n endpoints >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
 
 {- External endpoint methods -}
 
