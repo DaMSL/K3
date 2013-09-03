@@ -482,14 +482,15 @@ networkEngine systemEnv (internalizeWD -> internalWD) = do
   connState     <- return $ EConnectionState (internalConns, externalConns)
   engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState
 
-  void $ startNetwork engine
+  -- TODO: Verify correctness.
+  void $ runEngineM startNetwork engine
   return engine
 
   where
     peers                      = deployedNodes systemEnv
     emptyConns addrF config    = emptyConnectionMap . addrF . address $ config
-    startNetwork eg            = mapM_ (runPeerEndpoint eg) peers
-    runPeerEndpoint eg addr    = openSocketInternal (peerEndpointId addr) addr "r" eg
+    startNetwork = mapM_ runPeerEndpoint peers
+    runPeerEndpoint addr = openSocketInternal (peerEndpointId addr) addr "r"
 
 {- Engine extractors -}
 
@@ -1030,8 +1031,8 @@ newEndpoint (Address (host, port)) = liftIO . withSocketsDo $ do
 closeEndpoint :: NEndpoint -> EngineM a ()
 closeEndpoint ep = liftIO $ NT.closeEndPoint (endpoint ep) >> NT.closeTransport (epTransport ep)
 
-emptyEndpoints :: EngineM b (EEndpoints a b)
-emptyEndpoints = liftIO $ newMVar (H.fromList [])
+emptyEndpoints :: IO (EEndpoints a b)
+emptyEndpoints = newMVar (H.fromList [])
 
 addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b
     -> EngineM b (Endpoint a b)
@@ -1057,7 +1058,7 @@ newConnection addr (endpoint -> ep) = liftIO $
   where connectionSuccess   = return . Just . flip NConnection addr
         connectionError err = return Nothing
 
-emptyConnectionMap :: Address -> EngineM a (MVar EConnectionMap)
+emptyConnectionMap :: Address -> IO (MVar EConnectionMap)
 emptyConnectionMap addr = liftIO $ newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
 
 getConnections :: Identifier -> EConnectionState -> Maybe (MVar EConnectionMap)
