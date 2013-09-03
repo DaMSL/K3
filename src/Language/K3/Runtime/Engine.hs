@@ -604,7 +604,7 @@ runEngine mp is p = do
     runMessages mp (return . either Error Result $ status mp result)
 
 forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ThreadId
-forkEngine mp is p = liftIO . forkIO $ runEngine mp is p
+forkEngine mp is p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp is p) engine
 
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
@@ -643,40 +643,36 @@ externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep = do
     liftIO $ writeSV msgAvail ()
     return buf
 
-runNEndpoint :: ListenerState a b -> Endpoint a b -> Engine b -> IO ()
-runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) eg = do
-  event <- NT.receive $ endpoint llep
-  case event of
-    NT.ConnectionOpened _ _ _  -> notifySubscribers SocketAccept subs eg >> rcrE
-    NT.ConnectionClosed _      -> rcrE
-    NT.Received _   payload    -> processMsg payload
-    NT.ReceivedMulticast _ _   -> rcrE
-    NT.EndPointClosed          -> return ()
-    NT.ErrorEvent err          -> endpointError $ show err
+runNEndpoint :: ListenerState a b -> Endpoint a b -> EngineM b ()
+runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
+    event <- liftIO $ NT.receive $ endpoint llep
+    case event of
+        NT.ConnectionOpened _ _ _  -> notifySubscribers SocketAccept subs >> runNEndpoint ls ep
+        NT.ConnectionClosed _      -> runNEndpoint ls ep
+        NT.Received _   payload    -> processMsg payload
+        NT.ReceivedMulticast _ _   -> runNEndpoint ls ep
+        NT.EndPointClosed          -> return ()
+        NT.ErrorEvent err          -> endpointError $ show err
   where
-    rcr       = flip (runNEndpoint ls) eg
-    rcrE      = rcr ep
-    rcrNE buf = rcr $ Endpoint h buf subs
-
-    processMsg msg = bufferMsg msg >>= \case
-      (b, [])     -> (processor ls) ls b ep eg >>= rcrNE
-      (_, errors) -> endpointError $ summarize errors
+    processMsg msg = liftIO (bufferMsg msg) >>= \case
+        (b, [])     -> (processor ls) ls b ep >>= \buf -> runNEndpoint ls (Endpoint h buf subs)
+        (_, errors) -> endpointError $ summarize errors
 
     bufferMsg = foldM safeAppend (buffer ep, [])
     unpackMsg = unpackWith wd . BS.unpack
 
     safeAppend (b, errors) (unpackMsg -> Just msg) = case errors of
-      [] -> (flip appendEBuffer b msg) >>= \case
-              (nb, Nothing)  -> return (nb, [])
-              (nb, Just msg) -> return (nb, [OverflowError msg])
-      l  -> return (b, l++[PropagatedError msg])
+        [] -> (flip appendEBuffer b msg) >>= \case
+                (nb, Nothing)  -> return (nb, [])
+                (nb, Just msg) -> return (nb, [OverflowError msg])
+        l  -> return (b, l++[PropagatedError msg])
 
     safeAppend (b, errors) msg = return (b, errors++[SerializeError msg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
-    endpointError s = close (name ls) eg >> putStrLn s -- TODO: close vs closeInternal
+    endpointError s = close (name ls) >> (liftIO $ putStrLn s) -- TODO: close vs closeInternal
 
-runNEndpoint ls _ _ = error $ "Invalid endpoint for network source " ++ (name ls)
+runNEndpoint ls _ = error $ "Invalid endpoint for network source " ++ (name ls)
 
 {- Message passing -}
 
@@ -812,7 +808,7 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
 
     forkEndpoint e = do
         engine <- ask
-        tid <- liftIO $ forkIO $ runNEndpoint lst e engine
+        tid <- liftIO $ forkIO $ void $ runEngineM (runNEndpoint lst e) engine
         liftIO $ mkWeakThreadId tid
 
 genericClose :: String -> EEndpoints a b -> EngineM b ()
