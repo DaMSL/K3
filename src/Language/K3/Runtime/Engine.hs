@@ -753,66 +753,72 @@ ioMode "rw" = SIO.ReadWriteMode
 ioMode s    = error $ "Invalid IO mode: " ++ s
 
 -- | Builtin endpoint constructor
-genericOpenBuiltin :: Identifier -> Identifier -> WireDesc a -> EEndpoints a b -> Engine b -> IO ()
-genericOpenBuiltin eid (builtin -> b) wd eps _ = do
-    file <- return $ BuiltinH wd bHandle b
-    buf  <- exclusive $ emptySingletonBuffer
-    void $ addEndpoint eid (file, buf, []) eps
-  where bHandle = builtinHandle b
+genericOpenBuiltin :: Identifier -> Identifier -> WireDesc a -> EEndpoints a b -> EngineM b ()
+genericOpenBuiltin eid (builtin -> b) wd eps = do
+    let file = BuiltinH wd (builtinHandle b) b
+    let buffer = Exclusive emptySingletonBuffer
+    void $ addEndpoint eid (file, buffer, []) eps
 
 
 -- | File endpoint constructor.
 -- TODO: validation with the given type
-genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String
-                   -> EEndpoints a b -> Engine b -> IO ()
-genericOpenFile eid path wd _ mode eps eg = do
-    file <- openFileHandle path wd (ioMode mode)
-    buf  <- exclusive $ emptySingletonBuffer
-    void $ addEndpoint eid (file, buf, []) eps
-    case (ioMode mode) of
-      SIO.ReadMode -> void $ genericDoRead eid eps eg -- Prime the file's buffer.
-      _ -> return ()
-
+genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EEndpoints a b
+    -> EngineM b ()
+genericOpenFile eid path wd _ mode eps = do
+    file <- liftIO $ openFileHandle path wd (ioMode mode)
+    let buffer = Exclusive emptySingletonBuffer
+    void $ addEndpoint eid (file, buffer, []) eps
+    case ioMode mode of
+        SIO.ReadMode -> void $ genericDoRead eid eps -- Prime the file's buffer.
+        _ -> return ()
 
 -- | Socket endpoint constructor.
 --   This initializes the engine's connections as necessary.
 -- TODO: validation with the given type
 genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String
-                     -> ListenerState a b -> EEndpoints a b -> Engine b -> IO ()
-genericOpenSocket eid addr wd _ (ioMode -> mode) lstnrState endpoints eg =
-  do
-    socket <- openSocketHandle addr wd mode $ connectionsForMode mode
+    -> ListenerState a b -> EEndpoints a b -> EngineM b ()
+genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
+    engine <- ask
+    cfm <- case mode of
+        SIO.WriteMode -> getConnections eid (connections engine)
+        _ -> Nothing
+    socket <- liftIO $ openSocketHandle addr wd mode cfm
+    case socket of
+        Nothing -> return ()
+        Just s' -> do
+            buffer <- liftIO $ shared . emptyBoundedBuffer . defaultBufferSpec $ config engine
+            ep <- addEndpoint eid (s', buffer, []) endpoints
+            wkThreadId <- forkEndpoint ep
+            registerNetworkListener (eid, wkThreadId)
+
     maybe (return ()) (registerEndpoint mode) socket
+  where
+    registerEndpoint SIO.ReadMode ioh = do
+        buf <- shared <$> buffer
+        e <- addEndpoint eid (ioh, buf, []) endpoints
+        wkThreadId <- forkEndpoint e
+        ask >>= registerNetworkListener (eid, wkThreadId)
 
-  where connectionsForMode SIO.WriteMode = getConnections eid $ connections eg
-        connectionsForMode _             = Nothing
+    registerEndpoint _ ioh = do
+        buf  <- shared buffer
+        void $ addEndpoint eid (ioh, buf, []) endpoints
 
-        registerEndpoint SIO.ReadMode ioh = do
-          buf        <- shared buffer
-          e          <- addEndpoint eid (ioh, buf, []) endpoints
-          wkThreadId <- forkEndpoint e
-          registerNetworkListener (eid, wkThreadId) eg
-
-        registerEndpoint _ ioh = do
-          buf  <- shared buffer
-          void $ addEndpoint eid (ioh, buf, []) endpoints
-
-        buffer         = emptyBoundedBuffer $ defaultBufferSpec $ config eg
-        forkEndpoint e = forkIO (runNEndpoint lstnrState e eg) >>= mkWeakThreadId
-
+    buffer         = ask >>= emptyBoundedBuffer . defaultBufferSpec . config
+    forkEndpoint e = ask >>= forkIO . runNEndpoint lst e >>= mkWeakThreadId
 
 genericClose :: String -> EEndpoints a b -> EngineM b ()
 genericClose n endpoints = getEndpoint n endpoints >>= \case
-  Nothing -> return ()
-  Just e  -> closeHandle (handle e)
-              >> deregister (networkSource $ handle e)
-              >> removeEndpoint n endpoints
-              >> notifySubscribers (notifyType $ handle e) (subscribers e) <$> ask
-
-  where deregister = maybe (return ()) (\_ -> deregisterNetworkListener n <$> ask)
-        notifyType (BuiltinH _ _ _) = FileClose
-        notifyType (FileH _ _)      = FileClose
-        notifyType (SocketH _ _)    = SocketClose
+    Nothing -> return ()
+    Just e  -> do
+        closeHandle (handle e)
+        deregister (networkSource $ handle e)
+        removeEndpoint n endpoints
+        notifySubscribers (notifyType $ handle e) (subscribers e)
+  where
+    deregister = maybe (return ()) (const $ deregisterNetworkListener n)
+    notifyType (BuiltinH _ _ _) = FileClose
+    notifyType (FileH _ _)      = FileClose
+    notifyType (SocketH _ _)    = SocketClose
 
 genericHasRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
 genericHasRead n endpoints = getEndpoint n endpoints >>= \case
