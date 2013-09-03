@@ -713,23 +713,26 @@ dequeue = liftIO . \case
         trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
 
 -- | Message passing
-send :: Address -> Identifier -> a -> Engine a -> IO ()
-send addr n arg e@(endpoints -> EEndpointState ieps _)
-  | shortCircuit = enqueue (queues e) addr n arg
-  | otherwise    = trySend numRetries
-  where
-    shortCircuit = simulation e || elem addr (nodes e)
-    numRetries   = connectionRetries $ config e
+send :: Address -> Identifier -> a -> EngineM a ()
+send addr n arg = do
+    engine <- ask
 
+    shortCircuit <- (elem addr (nodes engine) ||) <$> simulation
+
+    if shortCircuit
+        then enqueue (queues engine) addr n arg
+        else trySend (connectionRetries $ config engine)
+  where
     trySend 0 = send' (connectionId addr) $ error $ "Failed to connect to " ++ show addr
     trySend i = send' (connectionId addr) $ trySend $ i - 1
 
-    send' eid retryF =
-      getEndpoint eid ieps >>= \case
-        Just _  -> hasWriteInternal eid e >>= write eid
-        Nothing -> openSocketInternal eid addr "w" e >> retryF
+    send' eid retryF = do
+        EEndpointState ieps _ <- endpoints <$> ask
+        getEndpoint eid ieps >>= \case
+            Just _  -> hasWriteInternal eid >>= write eid
+            Nothing -> openSocketInternal eid addr "w" >> retryF
 
-    write eid (Just True) = doWriteInternal eid (addr, n, arg) e
+    write eid (Just True) = doWriteInternal eid (addr, n, arg)
     write _ _             = error $ "No write available to " ++ show addr
 
 {- Module API implementation -}
