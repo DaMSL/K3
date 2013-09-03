@@ -350,7 +350,7 @@ data EndpointNotification
 
 {- Listeners -}
 type ListenerProcessor a b =
-  ListenerState a b -> EndpointBuffer a -> Endpoint a b -> Engine b -> IO (EndpointBuffer a)
+  ListenerState a b -> EndpointBuffer a -> Endpoint a b -> EngineM b (EndpointBuffer a)
 
 data ListenerState a b = ListenerState { name       :: Identifier
                                        , engineSync :: (MSampleVar (), MVar Int)
@@ -566,7 +566,7 @@ waitForMessage = do
 processMessage :: MessageProcessor i p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
-    message <- liftIO $ dequeue $ queues engine
+    message <- dequeue $ queues engine
     maybe terminate' process' message
   where
     terminate' = return $ MessagesDone pr
@@ -606,7 +606,7 @@ forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i ->
 forkEngine mp is p = liftIO . forkIO $ runEngine mp is p
 
 waitForEngine :: EngineM a ()
-waitForEngine = liftIO . readMVar . waitV . control <$> ask
+waitForEngine = ask >>= liftIO . readMVar . waitV . control
 
 terminateEngine :: EngineM a ()
 terminateEngine = do
@@ -617,25 +617,30 @@ terminateEngine = do
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
     engine <- ask
-    liftIO $ case connections engine of
+    case connections engine of
         EConnectionState (Nothing, y) -> clearConnections y
         EConnectionState (Just x, y) -> clearConnections x >> clearConnections y
 
-    let EEndpointState ieps eeps = endpoints engine in liftIO $ do
-        withMVar ieps (return . H.keys) >>= mapM_ (flip closeInternal engine)
-        withMVar eeps (return . H.keys) >>= mapM_ (flip close engine)
+    let EEndpointState ieps eeps = endpoints engine in do
+        liftIO (withMVar ieps (return . H.keys)) >>= mapM_ closeInternal
+        liftIO (withMVar eeps (return . H.keys)) >>= mapM_ close
 
 {- Network endpoint execution -}
 
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 internalListenerProcessor :: ListenerProcessor (InternalMessage a) a
-internalListenerProcessor (engineSync -> (msgAvail, _)) buf _ eg =
-  enqueueEBuffer (queues eg) buf >>= (\buf -> writeSV msgAvail () >> return buf)
+internalListenerProcessor (engineSync -> (msgAvail, _)) buf _ = do
+    engine <- ask
+    buffer <- enqueueEBuffer (queues engine) buf
+    liftIO $ writeSV msgAvail ()
+    return buffer
 
 externalListenerProcessor :: ListenerProcessor a a
-externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep eg =
-  notifySubscribers SocketData (subscribers ep) eg >> writeSV msgAvail () >> return buf
+externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep = do
+    notifySubscribers SocketData (subscribers ep)
+    liftIO $ writeSV msgAvail ()
+    return buf
 
 runNEndpoint :: ListenerState a b -> Endpoint a b -> Engine b -> IO ()
 runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) eg = do
