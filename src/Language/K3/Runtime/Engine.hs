@@ -779,32 +779,32 @@ genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> S
     -> ListenerState a b -> EEndpoints a b -> EngineM b ()
 genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
     engine <- ask
-    cfm <- case mode of
-        SIO.WriteMode -> getConnections eid (connections engine)
-        _ -> Nothing
-    socket <- liftIO $ openSocketHandle addr wd mode cfm
-    case socket of
-        Nothing -> return ()
-        Just s' -> do
-            buffer <- liftIO $ shared . emptyBoundedBuffer . defaultBufferSpec $ config engine
-            ep <- addEndpoint eid (s', buffer, []) endpoints
-            wkThreadId <- forkEndpoint ep
-            registerNetworkListener (eid, wkThreadId)
+    let cfm = case mode of
+            SIO.WriteMode -> getConnections eid (connections engine)
+            _ -> Nothing
+    socket <- openSocketHandle addr wd mode cfm
 
     maybe (return ()) (registerEndpoint mode) socket
+
   where
     registerEndpoint SIO.ReadMode ioh = do
-        buf <- shared <$> buffer
+        engine <- ask
+        let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
+        buf <- liftIO $ shared t
         e <- addEndpoint eid (ioh, buf, []) endpoints
         wkThreadId <- forkEndpoint e
-        ask >>= registerNetworkListener (eid, wkThreadId)
+        registerNetworkListener (eid, wkThreadId)
 
     registerEndpoint _ ioh = do
-        buf  <- shared buffer
+        engine <- ask
+        let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
+        buf <- liftIO $ shared t
         void $ addEndpoint eid (ioh, buf, []) endpoints
 
-    buffer         = ask >>= emptyBoundedBuffer . defaultBufferSpec . config
-    forkEndpoint e = ask >>= forkIO . runNEndpoint lst e >>= mkWeakThreadId
+    forkEndpoint e = do
+        engine <- ask
+        tid <- liftIO $ forkIO $ runNEndpoint lst e engine
+        liftIO $ mkWeakThreadId tid
 
 genericClose :: String -> EEndpoints a b -> EngineM b ()
 genericClose n endpoints = getEndpoint n endpoints >>= \case
@@ -950,7 +950,7 @@ openFileHandle p wd mode = SIO.openFile p mode >>= return . FileH wd
 
 -- | Open an external socket, with given wire description and address.
 openSocketHandle :: Address -> WireDesc a -> SIO.IOMode -> Maybe (MVar EConnectionMap)
-    -> EngineM a (Maybe (IOHandle a))
+    -> EngineM b (Maybe (IOHandle a))
 openSocketHandle addr wd mode conns =
   case mode of
     SIO.ReadMode      -> incoming
