@@ -31,8 +31,13 @@ data CodeGenerationError = CodeGenerationError String
 
 type SymbolCounters = [(Identifier, Int)]
 type RecordLabels   = [Identifier]
+type RecordSpec     = [(Identifier, HS.Type, Maybe HS.Exp)]
+type RecordSpecs    = [(Identifier, RecordSpec)]
 
-type CGState = (SymbolCounters, RecordLabels)
+data AnnotationState = AnnotationState { annotationSpecs  :: RecordSpecs
+                                       , compositionSpecs :: RecordSpecs }
+
+type CGState = (SymbolCounters, RecordLabels, AnnotationState)
 
 -- | The code generation monad. This supports CG errors, and stateful operation
 --   for symbol generation and type-directed declarations (e.g., record and collection types)
@@ -40,6 +45,7 @@ type CodeGeneration = EitherT CodeGenerationError (State CGState)
 
 data HaskellEmbedding
     = HProgram      HS.Module
+    | HModule       [HS.Decl]
     | HDeclaration  HS.Decl
     | HExpression   HS.Exp
     | HType         HS.Type
@@ -51,17 +57,23 @@ runCodeGeneration s = flip runState s . runEitherT
 
 {- Code generation state accessors -}
 getSymbolCounters :: CGState -> SymbolCounters
-getSymbolCounters (x,_) = x
+getSymbolCounters (x,_,_) = x
 
 modifySymbolCounters :: (SymbolCounters -> (a, SymbolCounters)) -> CGState -> (a, CGState)
-modifySymbolCounters f (x,y) = (r, (nx, y))
+modifySymbolCounters f (x,y,z) = (r, (nx, y, z))
   where (r,nx) = f x
 
 getRecordLabels :: CGState -> RecordLabels
-getRecordLabels (_,x) = x
+getRecordLabels (_,x,_) = x
 
 modifyRecordLabels :: (RecordLabels -> RecordLabels) -> CGState -> CGState 
-modifyRecordLabels f (x,y) = (x, f y)
+modifyRecordLabels f (x,y,z) = (x, f y, z)
+
+getAnnotationState :: CGState -> AnnotationState
+getAnnotationState (_,_,x) = x
+
+modifyAnnotationState :: (AnnotationState -> AnnotationState) -> CGState -> CGState
+modifyAnnotationState f (x,y,z) = (x, y, f z)
 
 
 {- Code generator monad methods -}
@@ -76,6 +88,49 @@ gensymCG n = state $ modifySymbolCounters $ \c -> modifyAssoc c n incrSym
 
 addLabel :: Identifier -> CodeGeneration ()
 addLabel n = modify $ modifyRecordLabels $ nub . (n:)
+
+getAnnotationSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
+getAnnotationSpec n = get >>= return . lookup n . annotationSpecs . getAnnotationState
+
+getCompositionSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
+getCompositionSpec n = get >>= return . lookup n . compositionSpecs . getAnnotationState
+
+modifyAnnotationSpecs :: (RecordSpecs -> RecordSpecs) -> CodeGeneration ()
+modifyAnnotationSpecs f =
+  modify $ modifyAnnotationState (\s -> AnnotationState (f $ annotationSpecs s) (compositionSpecs s))
+
+modifyCompositionSpecs :: (RecordSpecs -> RecordSpecs) -> CodeGeneration ()
+modifyCompositionSpecs f =
+  modify $ modifyAnnotationState (\s -> AnnotationState (annotationSpecs s) (f $ compositionSpecs s))
+
+
+{- Symbols and identifiers -}
+
+-- TODO
+gensym :: Identifier -> Identifier
+gensym = id
+
+-- TODO: duplicate of interpreter. Move into common utils.
+annotationNamesT :: [Annotation Type] -> [Identifier]
+annotationNamesT anns = map extractId $ filter isTAnnotation anns
+  where extractId (TAnnotation n) = n
+        extractId _ = error "Invalid named annotation"
+
+annotationNamesE :: [Annotation Expression] -> [Identifier]
+annotationNamesE anns = map extractId $ filter isEAnnotation anns
+  where extractId (EAnnotation n) = n
+        extractId _ = error "Invalid named annotation"
+
+annotationComboId :: [Identifier] -> Identifier
+annotationComboId annIds = intercalate ";" annIds
+
+annotationComboIdT :: [Annotation Type] -> Maybe Identifier
+annotationComboIdT (annotationNamesT -> [])  = Nothing
+annotationComboIdT (annotationNamesT -> ids) = Just $ annotationComboId ids
+
+annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
+annotationComboIdE (annotationNamesE -> [])  = Nothing
+annotationComboIdE (annotationNamesE -> ids) = Just $ annotationComboId ids
 
 
 {- Code generation annotations -}
@@ -92,11 +147,6 @@ isStore :: Annotation Expression -> Bool
 isStore (EEmbedding IOStore) = True
 isStore _ = False
 
-
-{- Type embedding -}
-
-cType :: K3 Type -> HaskellEmbedding
-cType _ = undefined
 
 -- | Purity annotation extraction
 structureQualifier :: PStructure -> PQualifier
@@ -150,18 +200,27 @@ seqDoError :: a
 seqDoError = error "Invalid do-expression arguments"
 
 
+{- Type embedding -}
+
+cType :: K3 Type -> HaskellEmbedding
+cType (tag -> TBool)       = HType $ HS.TyCon "Bool"
+cType (tag -> TByte)       = HType $ HS.TyCon "Word8"
+cType (tag -> TInt)        = HType $ HS.TyCon "Int"
+cType (tag -> TReal)       = HType $ HS.TyCon "Double"
+cType (tag -> TString)     = HType $ HS.TyCon "String"
+cType (tag -> TOption)     = undefined
+cType (tag -> TCollection) = undefined
+cType (tag -> TAddress)    = undefined
+cType _ = undefined
+
+
+
 {- Analysis -}
 
 -- | Attaches purity annotations to a K3 expression tree.
 purifyExpression :: K3 Expression -> K3 Expression
 purifyExpression = undefined
 
-
-{- Symbols -}
-
--- TODO
-gensym :: Identifier -> Identifier
-gensym = id
 
 {- Load-store wrappers -}
 
@@ -255,6 +314,26 @@ applyE f subE = prefixDoE (concat contexts) $ f args
 unwrapE :: K3 Expression -> (Expression, [Annotation Expression], [K3 Expression])
 unwrapE ((tag &&& annotations) &&& children -> ((e, anns), ch)) = (e, anns, ch)
 
+
+-- | Default values for specific types
+-- TODO
+defaultValue :: K3 Type -> CodeGeneration HaskellEmbedding
+defaultValue (tag -> TBool)       = undefined
+defaultValue (tag -> TByte)       = undefined
+defaultValue (tag -> TInt)        = undefined
+defaultValue (tag -> TReal)       = undefined
+defaultValue (tag -> TString)     = undefined
+defaultValue (tag -> TOption)     = undefined
+defaultValue (tag -> TCollection) = undefined
+defaultValue (tag -> TAddress)    = undefined
+
+defaultValue (tag &&& children -> (TIndirection, [x])) = undefined
+defaultValue (tag &&& children -> (TTuple, ch))        = undefined
+defaultValue (tag &&& children -> (TRecord ids, ch))   = undefined
+defaultValue _ = undefined
+
+
+{- Expression code generation -}
 
 unary :: Operator -> K3 Expression -> CodeGeneration HS.Exp
 unary op e = do
@@ -360,6 +439,7 @@ expression' (tag &&& children -> (ETuple, cs)) = do
 
 -- | Record constructor
 -- TODO: records need heterogeneous lists. Find another encoding (e.g., Dynamic/HList).
+-- TODO: record labels used in ad-hoc records
 expression' (tag &&& children -> (ERecord is, cs)) = do
   cs' <- mapM expression' cs
   return $ applyE (buildRecordE is) cs'
@@ -501,18 +581,108 @@ expression' _ = throwCG $ CodeGenerationError "Invalid expression"
 expression :: K3 Expression -> CodeGeneration HaskellEmbedding
 expression e = expression' e >>= return . HExpression
 
-global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration HaskellEmbedding
-global _ _ _ = undefined
+mkNamedDecl :: Identifier -> HS.Exp -> CodeGeneration (Maybe HaskellEmbedding)
+mkNamedDecl n initE = return . Just . HDeclaration $ HB.nameBind HL.noLoc n initE
+
+-- TODO: type signatures for globals, since these are top-level declarations?
+-- TODO: mutable globals?
+global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration (Maybe HaskellEmbedding)
+global n (tag -> TSink) (Just e)      = expression' e >>= mkNamedDecl n
+global _ (tag -> TSink) Nothing       = throwCG $ CodeGenerationError "Invalid sink trigger"
+global _ (tag -> TSource) _           = return Nothing
+
+-- TODO: create composition record types
+-- TODO: two-level namespaces.
+-- TODO: cyclic scoping
+global n t@(tag -> TCollection) eOpt =
+  getCompositionSpec composedName >>= \case 
+    Nothing -> composeAnnotations >>= (\spec -> modifyCompositionSpecs (spec:) >> initializeCollection spec eOpt)
+    Just spec -> initializeCollection spec eOpt
+
+  where anns            = annotations t
+        annotationNames = annotationNamesT anns
+        composedName    = annotationComboIdT anns
+
+        composeAnnotations = mapM lookupAnnotation annotationNames >>= composeSpec composedName
+        lookupAnnotation n = getAnnotationSpec n >>= maybe (invalidAnnotation n) return
+
+        composeSpec comboId annSpecs = 
+          let cSpec = concat annSpecs in
+          if length cSpec == length $ nub $ map fst annSpecs
+          then (comboId, concat cSpec) else compositionError n
+
+        -- TODO: use spec to declare top-level type for global?
+        initializeCollection spec Nothing = mkNamedDecl n $ defaultValue t
+        initializeCollection spec (Just e) = expression' e >>= mkNamedDecl n
+        
+        compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
+        invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
+
+global n t (Just e) = expression' e >>= mkNamedDecl n
+global n t Nothing  = defaultValue t >>= mkNamedDecl n
 
 trigger :: Identifier -> K3 Type -> K3 Expression -> CodeGeneration HaskellEmbedding
-trigger _ _ _ = undefined
+trigger n t e = expression' e >>= HDeclaration . mkNamedDecl n
+
+annotation :: Identifier -> [AnnMemDecl] -> CodeGeneration ()
+annotation n memberDecls =
+  foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
+  where initializeMember annId acc m = annotationMember annId m >>= return $ (acc++) . (:[])
+
+-- TODO: distinguish lifted and regular attributes
+annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
+annotationMember annId = \case
+  Lifted    Provides n t (Just e) uid -> memberSpec n t e
+  Attribute Provides n t (Just e) uid -> memberSpec n t e
+  Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid
+  Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid
+  where memberSpec n t e = (n, extractType $ cType t, expression' e)
+        extractType (HType t) = t
+        extractType _ = throwCG $ CodeGenerationError "Invalid annotation member type"
+
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> (Identifier, HS.Type, Maybe HS.Exp)
+builtinLiftedAttribute annId n t uid = undefined
+
+builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> (Identifier, HS.Type, Maybe HS.Exp)
+builtinAttribute annId n t uid = undefined
 
 declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
-declaration = error "NYI"
+declaration decl = case tag decl &&& children decl of
+  (DGlobal n t eO, ch) -> do 
+    dOpt <- global n t eO
+    subM <- mapM declaration ch
+    return . HModule $ concatMap extractDeclarations subM ++ (maybe [] (:[]) dOpt)
+  
+  (DTrigger n t e, cs) -> do
+    Just (HDeclaration d) <- expression' e >>= mkNamedDecl n
+    subM <- mapM declaration cs
+    return . HModule $ concatMap extractDeclarations subM ++ [d]
+  
+  (DRole r, ch) -> do
+    subM <- mapM declaration subDecls
+    return . HModule $ concatMap extractDeclarations subM
+      -- TODO: qualify names?
+
+  (DAnnotation n members, []) -> annotation n members
+
+  _ -> throwCG $ CodeGenerationError "Invalid declaration"
+
+  where extractDeclarations (HModule decls) = decls
+        extractDeclarations (HDeclaration d) = [d]
+        extractDeclarations _ = error "Invalid declaration"
+
 
 -- | Top-level code generation function, returning a Haskell module.
-generate :: K3 Declaration -> CodeGeneration HaskellEmbedding
-generate _ = error "NYI"
+-- TODO: record label, type and default constructor generation
+generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
+generate progName p = declaration d >>= mkProgram
+  where mkProgram (HModule decls) =
+          HProgram (HS.Module HL.noLoc progName pragmas warning exps mkImports declsWithRecords)
+        mkImports = []
+        pragmas = []
+        warning = Nothing
+        exps = Nothing
+        declsWithRecords = decls -- TODO
 
 compile :: CodeGeneration HaskellEmbedding -> String
 compile _ = error "NYI"
