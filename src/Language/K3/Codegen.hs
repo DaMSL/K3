@@ -14,10 +14,6 @@ import qualified Language.K3.Codegen.Haskell as HG
 class Compilable a where
   cType       :: K3 Type -> a
   expression  :: K3 Expression -> a
-  global      :: Identifier -> K3 Type -> Maybe (K3 Expression) -> a
-  trigger     :: Identifier -> K3 Type -> K3 Expression -> a
-  annotation  :: Identifier -> [AnnMemDecl] -> a
-  role        :: Identifier -> [K3 Declaration] -> a
   declaration :: K3 Declaration -> a
   
   generate    :: K3 Declaration -> a
@@ -32,10 +28,6 @@ data IdentityEmbedding
 instance Compilable IdentityEmbedding where
   cType t         = IdType t
   expression e    = IdExpression e
-  global n t eOpt = IdDecl (DC.global n t eOpt)
-  trigger n t e   = IdDecl (DC.trigger n t e)
-  annotation n ml = IdDecl (DC.annotation n ml)
-  role n ch       = IdDecl (DC.role n ch)
   declaration d   = IdDec d
 
   generate    = undefined
@@ -46,10 +38,6 @@ instance Compilable IdentityEmbedding where
 instance Compilable (CodeGeneration HaskellEmbedding) where
   cType       = HG.cType
   expression  = HG.expression
-  global      = HG.global
-  trigger     = HG.trigger
-  annotation  = HG.annotation
-  role        = HG.role
   declaration = HG.declaration
 
   generate    = HG.generate
