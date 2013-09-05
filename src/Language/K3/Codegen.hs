@@ -12,7 +12,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 import qualified Language.K3.Codegen.Haskell as HG
 
 class Compilable a where
-  cType       :: K3 Type -> a
+  typ         :: K3 Type -> a
   expression  :: K3 Expression -> a
   declaration :: K3 Declaration -> a
   
@@ -26,7 +26,7 @@ data IdentityEmbedding
   | IdType       (K3 Type)
 
 instance Compilable IdentityEmbedding where
-  cType t         = IdType t
+  typ t           = IdType t
   expression e    = IdExpression e
   declaration d   = IdDec d
 
@@ -36,7 +36,7 @@ instance Compilable IdentityEmbedding where
 
 -- | Haskell code generation.
 instance Compilable (CodeGeneration HaskellEmbedding) where
-  cType       = HG.cType
+  typ         = HG.typ
   expression  = HG.expression
   declaration = HG.declaration
 

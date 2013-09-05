@@ -4,10 +4,18 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- TODO:
+-- Sends
+-- HList record labels
+-- Record data types for annotated collections
+-- Top-level type declarations for globals
+-- Determine if purify expression and annotations are needed
+
 -- | K3-to-Haskell code generation.
 module Language.K3.Codegen.Haskell where
 
 import Control.Arrow
+import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Monad.Trans.Either
@@ -25,13 +33,13 @@ import qualified Language.Haskell.Exts.Build  as HB
 import qualified Language.Haskell.Exts.SrcLoc as HL
 import qualified Language.Haskell.Exts.Syntax as HS
 
-import Language.Haskell.Exts.QQ (hs)
+import Language.Haskell.Exts.QQ (hs,dec,ty)
 
 data CodeGenerationError = CodeGenerationError String
 
 type SymbolCounters = [(Identifier, Int)]
 type RecordLabels   = [Identifier]
-type RecordSpec     = [(Identifier, HS.Type, Maybe HS.Exp)]
+type RecordSpec     = [(Identifier, HS.Type, Maybe HS.Exp)] -- TODO: separate lifted vs regular attrs.
 type RecordSpecs    = [(Identifier, RecordSpec)]
 
 data AnnotationState = AnnotationState { annotationSpecs  :: RecordSpecs
@@ -49,6 +57,7 @@ data HaskellEmbedding
     | HDeclaration  HS.Decl
     | HExpression   HS.Exp
     | HType         HS.Type
+    | HNoRepr
     deriving (Eq, Show)
 
 -- | Runs the code generation monad, yielding a possibly erroneous result, and a final state.
@@ -106,7 +115,7 @@ modifyCompositionSpecs f =
 
 {- Symbols and identifiers -}
 
--- TODO
+-- TODO: remove, including call sites
 gensym :: Identifier -> Identifier
 gensym = id
 
@@ -202,18 +211,64 @@ seqDoError = error "Invalid do-expression arguments"
 
 {- Type embedding -}
 
-cType :: K3 Type -> HaskellEmbedding
-cType (tag -> TBool)       = HType $ HS.TyCon "Bool"
-cType (tag -> TByte)       = HType $ HS.TyCon "Word8"
-cType (tag -> TInt)        = HType $ HS.TyCon "Int"
-cType (tag -> TReal)       = HType $ HS.TyCon "Double"
-cType (tag -> TString)     = HType $ HS.TyCon "String"
-cType (tag -> TOption)     = undefined
-cType (tag -> TCollection) = undefined
-cType (tag -> TAddress)    = undefined
-cType _ = undefined
+tyApp :: Identifier -> HS.Type -> HS.Type
+tyApp n t = HS.TyApp (HS.TyCon . HS.UnQual $ HB.name n) t
 
+unitType :: HS.Type
+unitType = HS.TyCon $ HS.Special HS.UnitCon
 
+maybeType :: HS.Type -> HS.Type
+maybeType t = tyApp "Maybe" t
+
+tupleType :: [HS.Type] -> HS.Type
+tupleType = HS.TyTuple HS.Boxed
+
+indirectionType :: HS.Type -> HS.Type
+indirectionType t = tyApp "MVar" t
+
+funType :: HS.Type -> HS.Type -> HS.Type
+funType a r = HS.TyFun a r
+
+-- TODO: convert identifier to named type signature either here, or at call sites.
+collectionType :: Identifier -> HS.Type
+collectionType tCon = HS.TyCon $ HS.UnQual $ HB.name tCon
+
+typ :: K3 Type -> CodeGeneration HaskellEmbedding
+typ t = typ' t >>= return . HType
+
+typ' :: K3 Type -> CodeGeneration HS.Type
+typ' (tag -> TBool)       = return [ty| Bool    |]
+typ' (tag -> TByte)       = return [ty| Word8   |]
+typ' (tag -> TInt)        = return [ty| Int     |]
+typ' (tag -> TReal)       = return [ty| Double  |]
+typ' (tag -> TString)     = return [ty| String  |]
+typ' (tag -> TAddress)    = return [ty| Address |]
+
+typ' (tag &&& children -> (TOption,[x])) = typ' x >>= return . maybeType
+typ' (tag -> TOption)                    = throwCG $ CodeGenerationError "Invalid option type"
+
+typ' (tag &&& children -> (TTuple, ch)) = mapM typ' ch >>= return . tupleType
+
+typ' (tag &&& children -> (TIndirection, [x])) = typ' x >>= return . indirectionType
+typ' (tag -> TIndirection)                     = throwCG $ CodeGenerationError "Invalid indirection type"
+
+typ' (tag &&& children -> (TFunction, [a,r])) = mapM typ' [a,r] >>= \chT -> return $ funType (head chT) (last chT)
+typ' (tag -> TFunction)                       = throwCG $ CodeGenerationError "Invalid function type"
+
+typ' (tag &&& children -> (TSink, [x])) = typ' x >>= return . flip funType unitType
+typ' (tag -> TSink)                     = throwCG $ CodeGenerationError "Invalid sink type"
+
+typ' (tag &&& children -> (TTrigger, [x])) = typ' x >>= return . flip funType unitType
+typ' (tag -> TTrigger)                     = throwCG $ CodeGenerationError "Invalid trigger type"
+
+-- TODO
+typ' (tag &&& children -> (TRecord ids, ch)) = throwCG $ CodeGenerationError "Records types not implemented"
+
+-- TODO: use collectionType above on annotation composition identifier
+typ' (tag &&& children -> (TCollection, [x])) = throwCG $ CodeGenerationError "Collection types not implemented"
+typ' (tag -> TCollection)                     = throwCG $ CodeGenerationError "Invalid collection type"
+
+typ' _                    = undefined
 
 {- Analysis -}
 
@@ -318,19 +373,32 @@ unwrapE ((tag &&& annotations) &&& children -> ((e, anns), ch)) = (e, anns, ch)
 -- | Default values for specific types
 -- TODO
 defaultValue :: K3 Type -> CodeGeneration HaskellEmbedding
-defaultValue (tag -> TBool)       = undefined
-defaultValue (tag -> TByte)       = undefined
-defaultValue (tag -> TInt)        = undefined
-defaultValue (tag -> TReal)       = undefined
-defaultValue (tag -> TString)     = undefined
-defaultValue (tag -> TOption)     = undefined
-defaultValue (tag -> TCollection) = undefined
-defaultValue (tag -> TAddress)    = undefined
+defaultValue t = defaultValue' t >>= return . HExpression
 
-defaultValue (tag &&& children -> (TIndirection, [x])) = undefined
-defaultValue (tag &&& children -> (TTuple, ch))        = undefined
-defaultValue (tag &&& children -> (TRecord ids, ch))   = undefined
-defaultValue _ = undefined
+defaultValue' :: K3 Type -> CodeGeneration HS.Exp
+defaultValue' (tag -> TBool)       = return [hs| False |]
+defaultValue' (tag -> TByte)       = return [hs| (0 :: Word8) |]
+defaultValue' (tag -> TInt)        = return [hs| (0 :: Int) |]
+defaultValue' (tag -> TReal)       = return [hs| (0 :: Double) |]
+defaultValue' (tag -> TString)     = return [hs| "" |]
+defaultValue' (tag -> TAddress)    = return [hs| defaultAddress |]
+
+defaultValue' (tag &&& children -> (TOption, [x])) = defaultValue' x >>= \xD -> return [hs| Just $xD |]
+defaultValue' (tag -> TOption)                     = throwCG $ CodeGenerationError "Invalid option type"
+
+defaultValue' (tag &&& children -> (TTuple, ch)) = mapM defaultValue' ch >>= return . HB.tuple 
+
+defaultValue' (tag &&& children -> (TIndirection, [x])) = defaultValue' x >>= \xD -> return [hs| newMVar $xD |]
+defaultValue' (tag -> TIndirection)                     = throwCG $ CodeGenerationError "Invalid indirection type"
+
+-- TODO
+defaultValue' (tag &&& children -> (TRecord ids, ch))   = throwCG $ CodeGenerationError "Default records not implemented"
+defaultValue' (tag &&& children -> (TCollection, [x]))  = throwCG $ CodeGenerationError "Default collections not implemented"
+
+defaultValue' (tag -> TFunction) = throwCG $ CodeGenerationError "No default available for a function"
+defaultValue' (tag -> TTrigger)  = throwCG $ CodeGenerationError "No default available for a trigger"
+defaultValue' (tag -> TSink)     = throwCG $ CodeGenerationError "No default available for a sink"
+defaultValue' (tag -> TSource)   = throwCG $ CodeGenerationError "No default available for a source"
 
 
 {- Expression code generation -}
@@ -581,53 +649,78 @@ expression' _ = throwCG $ CodeGenerationError "Invalid expression"
 expression :: K3 Expression -> CodeGeneration HaskellEmbedding
 expression e = expression' e >>= return . HExpression
 
-mkNamedDecl :: Identifier -> HS.Exp -> CodeGeneration (Maybe HaskellEmbedding)
-mkNamedDecl n initE = return . Just . HDeclaration $ HB.nameBind HL.noLoc n initE
+mkNamedDecl :: Identifier -> HS.Exp -> CodeGeneration HaskellEmbedding
+mkNamedDecl n initE = return . HDeclaration $ HB.nameBind HL.noLoc (HB.name n) initE
 
--- TODO: type signatures for globals, since these are top-level declarations?
--- TODO: mutable globals?
-global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration (Maybe HaskellEmbedding)
-global n (tag -> TSink) (Just e)      = expression' e >>= mkNamedDecl n
-global _ (tag -> TSink) Nothing       = throwCG $ CodeGenerationError "Invalid sink trigger"
-global _ (tag -> TSource) _           = return Nothing
+mkTypedDecl :: Identifier -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
+mkTypedDecl n nType nInit = return . HDeclaration $ 
+  HS.PatBind HL.noLoc (HB.pvar $ HB.name n) (Just nType) (HS.UnGuardedRhs nInit) HB.noBinds
+
+mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
+mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
+  []           -> mkTypedDecl n nType nInit
+  
+  [TMutable]   -> mkTypedDecl n (indirectionType nType) [hs| Just ( $nInit ) |]
+    -- assumes no IO actions are present in the initializer.
+  
+  [TImmutable] -> mkTypedDecl n nType nInit
+  _            -> throwCG $ CodeGenerationError "Ambiguous global declaration qualifier"
+
+globalWithDefault :: Identifier -> [Annotation Type] -> HS.Type -> Maybe (K3 Expression) -> CodeGeneration HS.Exp
+                     -> CodeGeneration HaskellEmbedding
+globalWithDefault n anns t eOpt defaultE = do
+  e' <- case eOpt of
+          Nothing -> defaultE
+          Just e  -> expression' e
+  mkGlobalDecl n anns t e'
+
+global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration HaskellEmbedding
+global _ (tag -> TSource) _ = return HNoRepr
 
 -- TODO: create composition record types
 -- TODO: two-level namespaces.
 -- TODO: cyclic scoping
 global n t@(tag -> TCollection) eOpt =
-  getCompositionSpec composedName >>= \case 
-    Nothing -> composeAnnotations >>= (\spec -> modifyCompositionSpecs (spec:) >> initializeCollection spec eOpt)
-    Just spec -> initializeCollection spec eOpt
+  case composedName of
+    Nothing      -> return HNoRepr
+    Just comboId -> testAndAddComposition comboId $ flip initializeCollection eOpt
 
   where anns            = annotations t
         annotationNames = annotationNamesT anns
         composedName    = annotationComboIdT anns
 
-        composeAnnotations = mapM lookupAnnotation annotationNames >>= composeSpec composedName
+        testAndAddComposition comboId f = 
+          getCompositionSpec comboId >>= \case 
+            Nothing   -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:) >> f spec
+            Just spec -> f (comboId, spec)
+
+        composeAnnotations comboId = mapM lookupAnnotation annotationNames >>= composeSpec comboId
         lookupAnnotation n = getAnnotationSpec n >>= maybe (invalidAnnotation n) return
 
         composeSpec comboId annSpecs = 
-          let cSpec = concat annSpecs in
-          if length cSpec == length $ nub $ map fst annSpecs
-          then (comboId, concat cSpec) else compositionError n
+          let cSpec  = concat annSpecs
+              cNames = concat $ map (map (\(x,y,z) -> x)) annSpecs
+          in
+          if length cSpec == (length $ nub cNames)
+          then return (comboId, cSpec)
+          else compositionError n
 
-        -- TODO: use spec to declare top-level type for global?
-        initializeCollection spec Nothing = mkNamedDecl n $ defaultValue t
-        initializeCollection spec (Just e) = expression' e >>= mkNamedDecl n
+        -- TODO: implement combo id <-> record constructor mapping
+        initializeCollection (comboId,_) eOpt = 
+          globalWithDefault n anns (collectionType comboId) eOpt (defaultValue' t)
         
         compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
         invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
 
-global n t (Just e) = expression' e >>= mkNamedDecl n
-global n t Nothing  = defaultValue t >>= mkNamedDecl n
+global n t eOpt = typ' t >>= \t' -> globalWithDefault n (annotations t) t' eOpt (defaultValue' t)
 
 trigger :: Identifier -> K3 Type -> K3 Expression -> CodeGeneration HaskellEmbedding
-trigger n t e = expression' e >>= HDeclaration . mkNamedDecl n
+trigger n t e = expression' e >>= mkNamedDecl n
 
 annotation :: Identifier -> [AnnMemDecl] -> CodeGeneration ()
 annotation n memberDecls =
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
-  where initializeMember annId acc m = annotationMember annId m >>= return $ (acc++) . (:[])
+  where initializeMember annId acc m = annotationMember annId m >>= return . (acc++) . (:[])
 
 -- TODO: distinguish lifted and regular attributes
 annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
@@ -636,53 +729,57 @@ annotationMember annId = \case
   Attribute Provides n t (Just e) uid -> memberSpec n t e
   Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid
   Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid
-  where memberSpec n t e = (n, extractType $ cType t, expression' e)
-        extractType (HType t) = t
-        extractType _ = throwCG $ CodeGenerationError "Invalid annotation member type"
+  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . (n, t',) . Just)
 
-builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> (Identifier, HS.Type, Maybe HS.Exp)
-builtinLiftedAttribute annId n t uid = undefined
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
+builtinLiftedAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
 
-builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> (Identifier, HS.Type, Maybe HS.Exp)
-builtinAttribute annId n t uid = undefined
+builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
+builtinAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin attributes not implemented"
 
 declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
-declaration decl = case tag decl &&& children decl of
+declaration decl = case (tag &&& children) decl of
   (DGlobal n t eO, ch) -> do 
-    dOpt <- global n t eO
+    d    <- global n t eO
     subM <- mapM declaration ch
-    return . HModule $ concatMap extractDeclarations subM ++ (maybe [] (:[]) dOpt)
+    return . HModule $ concatMap extractDeclarations $ subM ++ [d]
   
   (DTrigger n t e, cs) -> do
-    Just (HDeclaration d) <- expression' e >>= mkNamedDecl n
-    subM <- mapM declaration cs
+    HDeclaration d <- expression' e >>= mkNamedDecl n
+    subM           <- mapM declaration cs
     return . HModule $ concatMap extractDeclarations subM ++ [d]
   
   (DRole r, ch) -> do
-    subM <- mapM declaration subDecls
+    subM <- mapM declaration ch
     return . HModule $ concatMap extractDeclarations subM
       -- TODO: qualify names?
 
-  (DAnnotation n members, []) -> annotation n members
+  (DAnnotation n members, []) -> annotation n members >> return HNoRepr
 
   _ -> throwCG $ CodeGenerationError "Invalid declaration"
 
-  where extractDeclarations (HModule decls) = decls
+  where extractDeclarations (HModule decls)  = decls
         extractDeclarations (HDeclaration d) = [d]
+        extractDeclarations HNoRepr          = []
         extractDeclarations _ = error "Invalid declaration"
 
 
 -- | Top-level code generation function, returning a Haskell module.
 -- TODO: record label, type and default constructor generation
 generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
-generate progName p = declaration d >>= mkProgram
-  where mkProgram (HModule decls) =
-          HProgram (HS.Module HL.noLoc progName pragmas warning exps mkImports declsWithRecords)
+generate progName p = declaration p >>= mkProgram
+  where 
+        mkProgram (HModule decls) = return . HProgram $
+          HS.Module HL.noLoc (HS.ModuleName progName) pragmas warning exps mkImports
+            $ declsWithRecords decls
+        
+        mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
+
         mkImports = []
-        pragmas = []
-        warning = Nothing
-        exps = Nothing
-        declsWithRecords = decls -- TODO
+        pragmas   = []
+        warning   = Nothing
+        exps      = Nothing
+        declsWithRecords decls = decls -- TODO
 
 compile :: CodeGeneration HaskellEmbedding -> String
 compile _ = error "NYI"

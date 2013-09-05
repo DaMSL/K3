@@ -324,7 +324,7 @@ defaultValue (tag -> TInt)        = return $ VInt 0
 defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
 defaultValue (tag -> TOption)     = return $ VOption Nothing
-defaultValue (tag -> TCollection) = emptyCollection
+defaultValue (tag -> TCollection) = emptyCollection -- TODO: annotations from type
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection

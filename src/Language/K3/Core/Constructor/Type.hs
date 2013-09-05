@@ -83,10 +83,10 @@ source :: K3 Type -> K3 Type
 source i = Node (TSource :@: []) [i]
 
 sink :: K3 Type -> K3 Type
-sink o = Node (TSink :@: []) [o]
+sink at = Node (TSink :@: []) [at]
 
 trigger :: K3 Type -> K3 Type
-trigger rt = Node (TTrigger :@: []) [rt]
+trigger at = Node (TTrigger :@: []) [at]
 
 builtIn :: TypeBuiltIn -> K3 Type
 builtIn bi = Node (TBuiltIn bi :@: []) []
