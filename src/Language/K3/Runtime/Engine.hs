@@ -238,16 +238,16 @@ data LoopStatus res err = Result res | Error err | MessagesDone res
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
 data MessageProcessor inits prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
-    initialize :: inits -> prog -> Engine msg -> IO res,
+    initialize :: inits -> prog -> EngineM msg res,
 
     -- | Process a single message.
-    process    :: (Address, Identifier, msg) -> res -> IO res,
+    process    :: (Address, Identifier, msg) -> res -> EngineM msg res,
 
     -- | Query the status of the message processor.
     status     :: res -> Either err res,
 
     -- | Clean up the execution environment.
-    finalize   :: res -> IO res
+    finalize   :: res -> EngineM msg res
 }
 
 {- Engine components -}
@@ -572,7 +572,7 @@ processMessage mp pr = do
   where
     terminate' = return $ MessagesDone pr
     process' m = do
-        nextResult <- liftIO $ process mp m pr
+        nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
 runMessages :: (Pretty r, Pretty e, Show a) =>
@@ -582,7 +582,7 @@ runMessages mp status = ask >>= \engine -> status >>= \case
     Error e -> die "Error:\n" e (control engine)
     MessagesDone r -> terminate >>= \case
         True -> do
-            fr <- liftIO $ finalize mp r
+            fr <- finalize mp r
             die "Terminated:\n" fr (control engine)
         _ -> waitForMessage >> runMessages mp (processMessage mp r)
   where
@@ -595,7 +595,7 @@ runMessages mp status = ask >>= \engine -> status >>= \case
 runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
 runEngine mp is p = do
     engine <- ask
-    result <- liftIO $ initialize mp is p engine -- TODO: Make MessageProcessor components return EngineM a b
+    result <- initialize mp is p
     liftIO $ case workers engine of
         Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
         Multithreaded _ -> error "Unsupported engine mode: Multithreaded"
