@@ -5,11 +5,10 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- TODO:
--- Sends
 -- HList record labels
--- Record data types for annotated collections
--- Top-level type declarations for globals
 -- Determine if purify expression and annotations are needed
+-- Module imports
+-- Main function and arg processing
 
 -- | K3-to-Haskell code generation.
 module Language.K3.Codegen.Haskell where
@@ -53,8 +52,7 @@ type CodeGeneration = EitherT CodeGenerationError (State CGState)
 
 data HaskellEmbedding
     = HProgram      HS.Module
-    | HModule       [HS.Decl]
-    | HDeclaration  HS.Decl
+    | HDeclarations [HS.Decl]
     | HExpression   HS.Exp
     | HType         HS.Type
     | HNoRepr
@@ -115,9 +113,18 @@ modifyCompositionSpecs f =
 
 {- Symbols and identifiers -}
 
+engineModuleId :: Identifier
+engineModuleId = "E"
+
 -- TODO: remove, including call sites
 gensym :: Identifier -> Identifier
 gensym = id
+
+compositionReprId :: Identifier -> Identifier
+compositionReprId n = "C"++n++"_Repr"
+
+compositionTypeId :: Identifier -> Identifier
+compositionTypeId n = "C"++n
 
 -- TODO: duplicate of interpreter. Move into common utils.
 annotationNamesT :: [Annotation Type] -> [Identifier]
@@ -211,6 +218,14 @@ seqDoError = error "Invalid do-expression arguments"
 
 {- Type embedding -}
 
+argType :: K3 Type -> CodeGeneration (K3 Type)
+argType (tag &&& children -> (TFunction, [a,_])) = return a
+argType _ = throwCG $ CodeGenerationError "Invalid function type"
+
+returnType :: K3 Type -> CodeGeneration (K3 Type)
+returnType (tag &&& children -> (TFunction, [_,r])) = return r
+returnType _ = throwCG $ CodeGenerationError "Invalid function type"
+
 namedType :: Identifier -> HS.Type
 namedType n = HS.TyCon . HS.UnQual $ HB.name n
 
@@ -218,7 +233,10 @@ tyApp :: Identifier -> HS.Type -> HS.Type
 tyApp n t = HS.TyApp (namedType n) t
 
 unitType :: HS.Type
-unitType = HS.TyCon $ HS.Special HS.UnitCon
+unitType = [ty| () |]
+
+boolType :: HS.Type
+boolType = [ty| Bool |]
 
 maybeType :: HS.Type -> HS.Type
 maybeType t = tyApp "Maybe" t
@@ -235,12 +253,18 @@ funType a r = HS.TyFun a r
 listType :: HS.Type -> HS.Type
 listType = HS.TyList 
 
-ioType :: HS.Type -> HS.Type
-ioType t = tyApp "IO" t
+monadicType :: Identifier -> HS.Type -> HS.Type
+monadicType m t = tyApp m t
 
--- TODO: convert identifier to named type signature either here, or at call sites.
-collectionType :: Identifier -> HS.Type
-collectionType tCon = HS.TyCon $ HS.UnQual $ HB.name tCon
+ioType :: HS.Type -> HS.Type
+ioType t = monadicType "IO" t
+
+engineType :: HS.Type -> HS.Type
+engineType t = monadicType "EngineM" t
+
+collectionType :: Identifier -> HS.Type -> HS.Type
+collectionType comboId elType =
+  HS.TyApp (HS.TyCon . HS.UnQual . HB.name $ compositionTypeId comboId) elType
 
 typ :: K3 Type -> CodeGeneration HaskellEmbedding
 typ t = typ' t >>= return . HType
@@ -273,9 +297,12 @@ typ' (tag -> TTrigger)                     = throwCG $ CodeGenerationError "Inva
 -- TODO
 typ' (tag &&& children -> (TRecord ids, ch)) = throwCG $ CodeGenerationError "Records types not implemented"
 
--- TODO: use collectionType above on annotation composition identifier
-typ' (tag &&& children -> (TCollection, [x])) = throwCG $ CodeGenerationError "Collection types not implemented"
-typ' (tag -> TCollection)                     = throwCG $ CodeGenerationError "Invalid collection type"
+typ' t@(tag &&& children -> (TCollection, [x])) = 
+  case annotationComboIdT $ annotations t of
+    Just comboId -> typ' x >>= return . collectionType comboId
+    Nothing      -> throwCG $ CodeGenerationError "Unannotated collection"
+
+typ' (tag -> TCollection) = throwCG $ CodeGenerationError "Invalid collection type"
 
 typ' _                    = undefined
 
@@ -289,7 +316,7 @@ purifyExpression = undefined
 {- Load-store wrappers -}
 
 doStoreE :: HS.Exp -> HS.Exp
-doStoreE e = [hs| newMVar ( $e ) |]
+doStoreE e = [hs| liftIO ( newMVar ( $e ) ) |]
 
 doBindE :: Identifier -> HS.Exp -> HS.Exp
 doBindE n e = [hs| do
@@ -299,7 +326,7 @@ doBindE n e = [hs| do
 
 doLoadE :: Identifier -> HS.Exp -> HS.Exp
 doLoadE n e = [hs| do
-                      ((nN)) <- readMVar ( $e )
+                      ((nN)) <- liftIO $ readMVar ( $e )
                       $nE |]
   where (nN, nE) = (HB.name n, HB.var $ HB.name n)
 
@@ -308,7 +335,7 @@ doLoadNameE n = HB.doE [bindE, HB.qualStmt rE]
   where r = gensym n
         nE = HB.var $ HB.name n
         rE = HB.var $ HB.name r
-        bindE = HB.genStmt HL.noLoc (HB.pvar $ HB.name r) [hs| readMVar $nE |]
+        bindE = HB.genStmt HL.noLoc (HB.pvar $ HB.name r) [hs| liftIO ( readMVar $nE ) |]
 
 loadNameE :: [Annotation Expression] -> Identifier -> HS.Exp
 loadNameE anns n = case (qualifier anns, load anns) of
@@ -396,7 +423,7 @@ defaultValue' (tag -> TOption)                     = throwCG $ CodeGenerationErr
 
 defaultValue' (tag &&& children -> (TTuple, ch)) = mapM defaultValue' ch >>= return . HB.tuple 
 
-defaultValue' (tag &&& children -> (TIndirection, [x])) = defaultValue' x >>= \xD -> return [hs| newMVar $xD |]
+defaultValue' (tag &&& children -> (TIndirection, [x])) = defaultValue' x >>= \xD -> return [hs| liftIO ( newMVar $xD ) |]
 defaultValue' (tag -> TIndirection)                     = throwCG $ CodeGenerationError "Invalid indirection type"
 
 -- TODO
@@ -424,24 +451,24 @@ binary op e e' = do
   eE  <- expression' e
   eE' <- expression' e'
   return $ case op of 
-    OAdd -> doBinary True "+"  [eE, eE']
-    OSub -> doBinary True "-"  [eE, eE']
-    OMul -> doBinary True "*"  [eE, eE']
-    ODiv -> doBinary True "/"  [eE, eE']
-    OAnd -> doBinary True "&&" [eE, eE']
-    OOr  -> doBinary True "||" [eE, eE']
-    OEqu -> doBinary True "==" [eE, eE']
-    ONeq -> doBinary True "/=" [eE, eE']
-    OLth -> doBinary True "<"  [eE, eE']
-    OLeq -> doBinary True "<=" [eE, eE']
-    OGth -> doBinary True ">"  [eE, eE']
-    OGeq -> doBinary True ">=" [eE, eE']
-    OApp -> applyE applyFn     [eE, eE']
-    OSnd -> undefined -- TODO: invoke engine's send function
-    OSeq -> doBinary True ">>" [eE, eE']
+    OAdd -> doInfx "+"     [eE, eE']
+    OSub -> doInfx "-"     [eE, eE']
+    OMul -> doInfx "*"     [eE, eE']
+    ODiv -> doInfx "/"     [eE, eE']
+    OAnd -> doInfx "&&"    [eE, eE']
+    OOr  -> doInfx "||"    [eE, eE']
+    OEqu -> doInfx "=="    [eE, eE']
+    ONeq -> doInfx "/="    [eE, eE']
+    OLth -> doInfx "<"     [eE, eE']
+    OLeq -> doInfx "<="    [eE, eE']
+    OGth -> doInfx ">"     [eE, eE']
+    OGeq -> doInfx ">="    [eE, eE']
+    OSeq -> doInfx ">>"    [eE, eE']
+    OApp -> applyE applyFn [eE, eE']
+    OSnd -> [hs| let (addr,n) = $eE in sendE addr n $eE' |] -- TODO: wrap $eE' in Data.Dynamic
     _    -> error "Invalid binary operator"
 
-  where doBinary infx opStr args = applyE (doOpF infx opStr) args
+  where doInfx opStr args = applyE (doOpF True opStr) args
         doOpF infx opStr = if infx then infixBinary opStr else appBinary $ HB.function opStr 
 
         infixBinary op [a,b] = HB.infixApp a (HB.op $ HB.sym op) b
@@ -451,7 +478,7 @@ binary op e e' = do
         appBinary _ _     = error "Invalid binary function app arguments"
 
         applyFn [a,b] = HB.appFun a [b]
-        applyFn _ = error "Invalid function application"
+        applyFn _     = error "Invalid function application"
 
 
 -- | Record embedding
@@ -492,6 +519,7 @@ expression' (tag &&& annotations -> (EConstant c, anns)) =
     constantE (CEmpty _) as = HB.eList -- TODO: annotations
 
 -- | Variables
+-- TODO: bypass variable lookup for trigger names
 expression' (tag &&& annotations -> (EVariable i, anns)) = return $ loadNameE anns i
 
 -- | Unary option constructor
@@ -504,7 +532,7 @@ expression' (tag -> ESome) = throwCG $ CodeGenerationError "Invalid option expre
 -- | Indirection constructor
 expression' (tag &&& children -> (EIndirect, [x])) = do
   x' <- expression' x
-  return $ chainReturnE x' $ \e -> [hs| newMVar ( $e ) |]
+  return $ chainReturnE x' $ \e -> [hs| liftIO ( newMVar ( $e ) ) |]
 
 expression' (tag -> EIndirect) = throwCG $ CodeGenerationError "Invalid indirection expression"
 
@@ -548,7 +576,7 @@ expression' (tag &&& children -> (ELetIn i, [e, b])) = do
   b'       <- expression' b
   e'       <- expression' e
   subE     <- return $ storeE (annotations e) e'
-  letDecls <- return [HB.nameBind HL.noLoc (HB.name i) subE]
+  letDecls <- return [namedVal i subE]
   return $ HB.letE letDecls b'
 
 expression' (tag -> ELetIn _) = throwCG $ CodeGenerationError "Invalid let expression"
@@ -558,7 +586,7 @@ expression' (tag -> ELetIn _) = throwCG $ CodeGenerationError "Invalid let expre
 -- TODO: chainReturnE for e?
 expression' (tag &&& children -> (EAssign i, [e])) = do
   e' <- expression' e
-  return $ [hs| modifyMVar_ $iE (const $e') |]
+  return $ [hs| liftIO ( modifyMVar_ $iE (const $e') ) |]
   where iE = HB.var $ HB.name i
 
 expression' (tag -> EAssign _) = throwCG $ CodeGenerationError "Invalid assignment"
@@ -581,7 +609,7 @@ expression' (tag &&& children -> (ECaseOf i, [e, s, n])) = do
                                         Nothing -> $nE |]
 
         mutableCase eE sE nE nj = [hs| case $eE of
-                                         Just ((nj)) -> let __i__ = newMVar $(HB.var nj) in ( $sE )
+                                         Just ((nj)) -> let __i__ = liftIO $ newMVar $(HB.var nj) in ( $sE )
                                          Nothing -> $nE |]
 
 
@@ -610,7 +638,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       tNames     <- mapM renameBinding $ zip ids $ eStructure ids
       mutNames   <- return $ filter (uncurry (/=)) tNames
       mutPat     <- return $ HB.pvarTuple $ map (HB.name . fst) mutNames
-      mutVars    <- return $ HB.tuple $ map (\(_,x) -> [hs| newMVar ( $(HB.var $ HB.name x) ) |]) mutNames
+      mutVars    <- return $ HB.tuple $ map (\(_,x) -> [hs| liftIO ( newMVar ( $(HB.var $ HB.name x) ) ) |]) mutNames
       tupPat     <- return $ HB.pvarTuple $ map (HB.name . snd) tNames      
       return $ 
         chainReturnE e'  $ \eE -> 
@@ -632,8 +660,8 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
 
     bindRecordField acc ((a,b), q) = return $ seqDoE acc $ doBindE a $ recordField q b
 
-    recordField PImmutable x  = recordFieldLookupE (HB.function "id") x recordVarE
-    recordField PMutable x    = recordFieldLookupE (HB.function "newMVar") x recordVarE
+    recordField PImmutable x  = recordFieldLookupE [hs| id |] x recordVarE
+    recordField PMutable x    = recordFieldLookupE [hs| (liftIO . newMVar) |] x recordVarE
     (recordId, recordVarE)    = let x = "__record" in (x, HB.var $ HB.name x)
 
 expression' (tag -> EBindAs _) = throwCG $ CodeGenerationError "Invalid bind expression"
@@ -653,16 +681,17 @@ expression' (tag -> ESelf) = undefined
 
 expression' _ = throwCG $ CodeGenerationError "Invalid expression"
 
-
 expression :: K3 Expression -> CodeGeneration HaskellEmbedding
 expression e = expression' e >>= return . HExpression
 
+
+{- Declarations -}
+
 mkNamedDecl :: Identifier -> HS.Exp -> CodeGeneration HaskellEmbedding
-mkNamedDecl n initE = return . HDeclaration $ HB.nameBind HL.noLoc (HB.name n) initE
+mkNamedDecl n initE = return . HDeclarations . (:[]) $ namedVal n initE
 
 mkTypedDecl :: Identifier -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
-mkTypedDecl n nType nInit = return . HDeclaration $ 
-  HS.PatBind HL.noLoc (HB.pvar $ HB.name n) (Just nType) (HS.UnGuardedRhs nInit) HB.noBinds
+mkTypedDecl n nType nInit = return . HDeclarations $ [ typeSig n nType , namedVal n nInit]
 
 mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
 mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
@@ -682,13 +711,14 @@ globalWithDefault n anns t eOpt defaultE = do
           Just e  -> expression' e
   mkGlobalDecl n anns t e'
 
+
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration HaskellEmbedding
 global _ (tag -> TSource) _ = return HNoRepr
 
--- TODO: create composition record types
+global n t@(tag -> TFunction) Nothing = builtin n t
+
 -- TODO: two-level namespaces.
--- TODO: cyclic scoping
-global n t@(tag -> TCollection) eOpt =
+global n t@(tag &&& children -> (TCollection, [x])) eOpt =
   case composedName of
     Nothing      -> return HNoRepr
     Just comboId -> testAndAddComposition comboId $ flip initializeCollection eOpt
@@ -715,29 +745,121 @@ global n t@(tag -> TCollection) eOpt =
 
         -- TODO: implement combo id <-> record constructor mapping
         initializeCollection (comboId,_) eOpt = 
-          globalWithDefault n anns (collectionType comboId) eOpt (defaultValue' t)
+          typ' x >>= return . collectionType comboId >>=
+          \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
         
         compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
         invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
 
+global n t@(tag -> TCollection) eOpt = throwCG . CodeGenerationError $ "Invalid global collection"
+
 global n t eOpt = typ' t >>= \t' -> globalWithDefault n (annotations t) t' eOpt (defaultValue' t)
+
 
 trigger :: Identifier -> K3 Type -> K3 Expression -> CodeGeneration HaskellEmbedding
 trigger n t e = expression' e >>= mkNamedDecl n
 
+
 annotation :: Identifier -> [AnnMemDecl] -> CodeGeneration ()
 annotation n memberDecls =
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
-  where initializeMember annId acc m = annotationMember annId m >>= return . (acc++) . (:[])
+  where initializeMember annId acc m = annotationMember annId m >>= return . maybe acc ((acc++) . (:[]))
 
 -- TODO: distinguish lifted and regular attributes
-annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Identifier, HS.Type, HS.Exp)
+annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Maybe (Identifier, HS.Type, HS.Exp))
 annotationMember annId = \case
   Lifted    Provides n t (Just e) uid -> memberSpec n t e
   Attribute Provides n t (Just e) uid -> memberSpec n t e
-  Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid
-  Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid
-  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . (n, t',))
+  Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid >>= return . Just
+  Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid >>= return . Just
+  _                                   -> return Nothing
+  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . Just . (n, t',))
+
+
+{- Builtins -}
+
+-- TODO: separate into type sig and fun bind
+
+-- TODO: TriggerId type
+-- TODO: wrap unit value in Data.Dynamic
+genNotifier :: Identifier -> String -> CodeGeneration HaskellEmbedding
+genNotifier n evt = mkTypedDecl n
+  [ty| Identifier -> TriggerId -> EngineM () |] 
+  [hs| \cid (target, addr) -> attachNotifier_ cid $(HB.strE evt) (addr,target,()) |]
+
+builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
+builtin "parseArgs" _ = undefined -- TODO
+
+builtin "openBuiltin" _ = mkTypedDecl "openBuiltin"
+  [ty| Identifier -> Identifier -> String -> EngineM () |]
+  [hs| \cid builtinId format -> E.openBuiltin cid builtinId (wireDesc format) |]
+
+builtin "openFile" t = mkTypedDecl "openFile"
+  [ty| Identifier -> String -> String -> String -> EngineM () |]
+  [hs| \cid path format mode -> E.openFile cid path (wireDesc format) mode |]
+
+builtin "openSocket" t = mkTypedDecl "openSocket"
+  [ty| Identifier -> Address -> String -> String -> EngineM () |]
+  [hs| \cid addr format mode -> E.openSocket cid addr (wireDesc format) mode |]
+
+builtin "close" _ = mkTypedDecl "close"
+  [ty| Identifier -> EngineM () |]
+  [hs| \cid -> E.close cid |]
+
+builtin "registerFileDataTrigger"     _ = genNotifier "registerFileDataTrigger"     "data"
+builtin "registerFileCloseTrigger"    _ = genNotifier "registerFileCloseTrigger"    "close"
+builtin "registerSocketAcceptTrigger" _ = genNotifier "registerSocketAcceptTrigger" "accept"
+builtin "registerSocketDataTrigger"   _ = genNotifier "registerSocketDataTrigger"   "data"
+builtin "registerSocketCloseTrigger"  _ = genNotifier "registerSocketCloseTrigger"  "close"
+
+builtin (channelMethod -> ("HasRead", Just n)) _  =
+  let fnId = n++"HasRead" 
+      fnTy = funType unitType $ engineType boolType
+  in return . HDeclarations $
+    [ typeSig fnId fnTy
+    , constFun fnId $     
+        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "hasRead") $ HB.strE n ]
+
+-- TODO: convert from dynamic
+builtin (channelMethod -> ("Read", Just n)) t = do
+  fnId <- return $ n++"Read"
+  rt   <- returnType t >>= typ'
+  fnTy <- return $ funType unitType $ engineType rt
+  return . HDeclarations $
+    [ typeSig fnId fnTy
+    , constFun fnId $
+        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "doRead") $ HB.strE n  ]
+
+builtin (channelMethod -> ("HasWrite", Just n)) _ =
+  let fnId = n++"HasWrite" 
+      fnTy = funType unitType $ engineType boolType
+  in return . HDeclarations $
+    [ typeSig fnId fnTy
+    , constFun fnId $ 
+        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "hasWrite") $ HB.strE n ]       
+
+-- TODO: convert to dynamic for the engine
+builtin (channelMethod -> ("Write", Just n)) t = do
+  argId <- return $ "v"
+  fnId  <- return $ n++"Write"
+  at    <- argType t >>= typ'
+  fnTy  <- return $ funType at $ engineType unitType
+  return . HDeclarations $
+    [ typeSig fnId fnTy
+    , simpleFun fnId argId $
+        HB.appFun (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "doWrite") $ 
+          [HB.strE n, HB.var $ HB.name argId] ]
+
+builtin n t = throwCG . CodeGenerationError $ "Invalid builtin function " ++ n
+
+-- TODO: duplicated from interpreter. Factorize.
+channelMethod :: String -> (String, Maybe String)
+channelMethod x =
+  case find (flip isSuffixOf x) ["HasRead", "Read", "HasWrite", "Write"] of
+    Just y -> (y, stripSuffix y x)
+    Nothing -> (x, Nothing)
+  where stripSuffix sfx lst = maybe Nothing (Just . reverse) $ stripPrefix (reverse sfx) (reverse lst)
+
 
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
 builtinLiftedAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
@@ -745,37 +867,38 @@ builtinLiftedAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin li
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
 builtinAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin attributes not implemented"
 
+
+{- Top-level functions -}
+
 declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
 declaration decl = case (tag &&& children) decl of
   (DGlobal n t eO, ch) -> do 
-    d    <- global n t eO
-    subM <- mapM declaration ch
-    return . HModule $ concatMap extractDeclarations $ [d] ++ subM
+    HDeclarations d <- global n t eO
+    decls           <- mapM (declaration >=> extractDeclarations) ch
+    return . HDeclarations $ d ++ concat decls
   
   (DTrigger n t e, cs) -> do
-    HDeclaration d <- expression' e >>= mkNamedDecl n
-    subM           <- mapM declaration cs
-    return . HModule $ [d] ++ concatMap extractDeclarations subM
+    HDeclarations d <- expression' e >>= mkNamedDecl n
+    decls           <- mapM (declaration >=> extractDeclarations) cs
+    return . HDeclarations $ d ++ concat decls
   
   (DRole r, ch) -> do
-    subM <- mapM declaration ch
-    return . HModule $ concatMap extractDeclarations subM
+    decls <- mapM (declaration >=> extractDeclarations) ch
+    return . HDeclarations $ concat decls
       -- TODO: qualify names?
 
   (DAnnotation n members, []) -> annotation n members >> return HNoRepr
 
   _ -> throwCG $ CodeGenerationError "Invalid declaration"
 
-  where extractDeclarations (HModule decls)  = decls
-        extractDeclarations (HDeclaration d) = [d]
-        extractDeclarations HNoRepr          = []
-        extractDeclarations _ = error "Invalid declaration"
+  where extractDeclarations (HDeclarations decls) = return decls
+        extractDeclarations HNoRepr               = return []
+        extractDeclarations _ = throwCG $ CodeGenerationError "Invalid declaration"
 
 generateCollectionCompositions :: CodeGeneration [HS.Decl]
 generateCollectionCompositions =
   get >>= mapM generateComposition . compositionSpecs . getAnnotationState >>= return . concat
   where
-    -- TODO: self
     generateComposition (comboId, spec) =
       let n            = comboId -- TODO: name manipulation as necessary (e.g., shortening)
 
@@ -784,7 +907,7 @@ generateCollectionCompositions =
           contentTyId  = "a"
           contentTyVar = HS.TyVar $ HB.name contentTyId
 
-          reprId       = "C"++n++"_Repr"
+          reprId       = compositionReprId n
           reprDeriving = [(HS.UnQual $ HB.name "Eq", [])]
           reprTyVars   = [HS.UnkindedVar $ HB.name contentTyId]
           recFields    = map generateRecFieldTy spec ++ [([HB.name dataId], HS.UnBangedTy $ listType contentTyVar)]
@@ -792,14 +915,14 @@ generateCollectionCompositions =
           reprConDecl  = [HS.QualConDecl HL.noLoc [] [] reprRecDecl]
           reprDecl     = HS.DataDecl HL.noLoc HS.DataType [] (HB.name reprId) reprTyVars reprConDecl reprDeriving
     
-          typeId       = "C"++n
+          typeId       = compositionTypeId n
           typeDecl     = HS.TypeDecl HL.noLoc (HB.name typeId) [] $ indirectionType (namedType reprId)
           typeExpr     = tyApp typeId contentTyVar
 
           dataFieldExpr varE       = [hs| $(HB.var $ HB.name dataId) $varE |]
           implFields  fieldF       = mapM fieldF spec
           implConExpr dataE fieldF = implFields fieldF >>= return . (++[dataE]) >>= return . HB.appFun (HS.Con $ HS.UnQual $ HB.name reprId)
-          implExpr    dataE fieldF = implConExpr dataE fieldF >>= \fieldsE -> return [hs| newMVar ( $fieldsE ) |]
+          implExpr    dataE fieldF = implConExpr dataE fieldF >>= \fieldsE -> return [hs| liftIO ( newMVar ( $fieldsE ) ) |]
 
           initConId    = "c"++n
           initArg      = "l"
@@ -828,27 +951,42 @@ generateCollectionCompositions =
     generateRecFieldTy (n, ty, _)     = ([HB.name n], HS.UnBangedTy ty)
     generateRecConFieldExpr (_, _, e) = return e
     copyFieldExpr varE (n,_,_)        = return [hs| $(HB.var $ HB.name n) $varE |] 
-    
-    typeSig n t     = HS.TypeSig HL.noLoc [HB.name n] t
-    simpleFun n a e = HB.simpleFun HL.noLoc (HB.name n) (HB.name a) e
-      
+
 
 -- | Top-level code generation function, returning a Haskell module.
 -- TODO: record label, type and default constructor generation
+-- TODO: message processor definition
+-- TODO: main, argument processing, engine import
 generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
 generate progName p = declaration p >>= mkProgram
   where 
-        mkProgram (HModule decls) = programDecls decls
-          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName progName) pragmas warning exps mkImports
+        mkProgram (HDeclarations decls) = programDecls decls
+          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName progName) pragmas warning expts impts
         
         mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
 
-        mkImports = []
         pragmas   = []
         warning   = Nothing
-        exps      = Nothing
+        impts     = []
+        expts     = Nothing
         
         programDecls decls = generateCollectionCompositions >>= return . (++ decls)
 
 compile :: CodeGeneration HaskellEmbedding -> String
 compile _ = error "NYI"
+
+
+
+{- Expression constructors -}
+
+typeSig :: Identifier -> HS.Type -> HS.Decl
+typeSig n t     = HS.TypeSig HL.noLoc [HB.name n] t
+
+namedVal :: Identifier -> HS.Exp -> HS.Decl
+namedVal n e = HB.nameBind HL.noLoc (HB.name n) e
+
+simpleFun :: Identifier -> Identifier -> HS.Exp -> HS.Decl
+simpleFun n a e = HB.simpleFun HL.noLoc (HB.name n) (HB.name a) e
+
+constFun :: Identifier -> HS.Exp -> HS.Decl
+constFun n e = HS.FunBind [HS.Match HL.noLoc (HB.name n) [HB.wildcard] Nothing (HS.UnGuardedRhs e) HB.noBinds]
