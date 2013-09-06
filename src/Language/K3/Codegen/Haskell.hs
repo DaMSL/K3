@@ -7,7 +7,6 @@
 -- TODO:
 -- HList record labels
 -- Determine if purify expression and annotations are needed
--- Module imports
 -- Main function and arg processing
 
 -- | K3-to-Haskell code generation.
@@ -36,7 +35,9 @@ import Language.Haskell.Exts.QQ (hs,dec,ty)
 
 data CodeGenerationError = CodeGenerationError String
 
-type SymbolCounters = [(Identifier, Int)]
+type SymbolCounters     = [(Identifier, Int)]
+type TriggerIdentifiers = [Identifier]
+
 type RecordLabels   = [Identifier]
 type RecordSpec     = [(Identifier, HS.Type, HS.Exp)] -- TODO: separate lifted vs regular attrs.
 type RecordSpecs    = [(Identifier, RecordSpec)]
@@ -44,7 +45,7 @@ type RecordSpecs    = [(Identifier, RecordSpec)]
 data AnnotationState = AnnotationState { annotationSpecs  :: RecordSpecs
                                        , compositionSpecs :: RecordSpecs }
 
-type CGState = (SymbolCounters, RecordLabels, AnnotationState)
+type CGState = (SymbolCounters, TriggerIdentifiers, RecordLabels, AnnotationState)
 
 -- | The code generation monad. This supports CG errors, and stateful operation
 --   for symbol generation and type-directed declarations (e.g., record and collection types)
@@ -64,23 +65,29 @@ runCodeGeneration s = flip runState s . runEitherT
 
 {- Code generation state accessors -}
 getSymbolCounters :: CGState -> SymbolCounters
-getSymbolCounters (x,_,_) = x
+getSymbolCounters (x,_,_,_) = x
 
 modifySymbolCounters :: (SymbolCounters -> (a, SymbolCounters)) -> CGState -> (a, CGState)
-modifySymbolCounters f (x,y,z) = (r, (nx, y, z))
-  where (r,nx) = f x
+modifySymbolCounters f (w,x,y,z) = (r, (nw, x, y, z))
+  where (r,nw) = f w
+
+getTriggerIdentifiers :: CGState -> TriggerIdentifiers
+getTriggerIdentifiers (_,x,_,_) = x
+
+modifyTriggerIdentifiers :: (TriggerIdentifiers -> TriggerIdentifiers) -> CGState -> CGState
+modifyTriggerIdentifiers f (w,x,y,z) = (w, f x, y, z)
 
 getRecordLabels :: CGState -> RecordLabels
-getRecordLabels (_,x,_) = x
+getRecordLabels (_,_,x,_) = x
 
 modifyRecordLabels :: (RecordLabels -> RecordLabels) -> CGState -> CGState 
-modifyRecordLabels f (x,y,z) = (x, f y, z)
+modifyRecordLabels f (w,x,y,z) = (w, x, f y, z)
 
 getAnnotationState :: CGState -> AnnotationState
-getAnnotationState (_,_,x) = x
+getAnnotationState (_,_,_,x) = x
 
 modifyAnnotationState :: (AnnotationState -> AnnotationState) -> CGState -> CGState
-modifyAnnotationState f (x,y,z) = (x, y, f z)
+modifyAnnotationState f (w,x,y,z) = (w, x, y, f z)
 
 
 {- Code generator monad methods -}
@@ -93,8 +100,14 @@ gensymCG n = state $ modifySymbolCounters $ \c -> modifyAssoc c n incrSym
   where incrSym Nothing  = (n ++ show (0::Int), 1)
         incrSym (Just i) = (n ++ show i, i+1)
 
-addLabel :: Identifier -> CodeGeneration ()
-addLabel n = modify $ modifyRecordLabels $ nub . (n:)
+getTriggerIdsCG :: CodeGeneration TriggerIdentifiers
+getTriggerIdsCG = get >>= return . getTriggerIdentifiers
+
+modifyTriggerIdsCG :: (TriggerIdentifiers -> TriggerIdentifiers) -> CodeGeneration ()
+modifyTriggerIdsCG f = modify $ modifyTriggerIdentifiers f
+
+addRecordLabel :: Identifier -> CodeGeneration ()
+addRecordLabel n = modify $ modifyRecordLabels $ nub . (n:)
 
 getAnnotationSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
 getAnnotationSpec n = get >>= return . lookup n . annotationSpecs . getAnnotationState
@@ -113,8 +126,17 @@ modifyCompositionSpecs f =
 
 {- Symbols and identifiers -}
 
-engineModuleId :: Identifier
-engineModuleId = "E"
+engineModuleAliasId :: Identifier
+engineModuleAliasId = "E"
+
+engineValueTypeId :: Identifier
+engineValueTypeId = "Dynamic"
+
+triggerTypeId :: Identifier
+triggerTypeId = "Trigger"
+
+triggerConId :: Identifier
+triggerConId = "Trigger"
 
 -- TODO: remove, including call sites
 gensym :: Identifier -> Identifier
@@ -247,11 +269,14 @@ tupleType = HS.TyTuple HS.Boxed
 indirectionType :: HS.Type -> HS.Type
 indirectionType t = tyApp "MVar" t
 
+listType :: HS.Type -> HS.Type
+listType = HS.TyList 
+
 funType :: HS.Type -> HS.Type -> HS.Type
 funType a r = HS.TyFun a r
 
-listType :: HS.Type -> HS.Type
-listType = HS.TyList 
+triggerType :: HS.Type -> HS.Type
+triggerType a = tyApp triggerTypeId $ funType a unitType
 
 monadicType :: Identifier -> HS.Type -> HS.Type
 monadicType m t = tyApp m t
@@ -260,11 +285,11 @@ ioType :: HS.Type -> HS.Type
 ioType t = monadicType "IO" t
 
 engineType :: HS.Type -> HS.Type
-engineType t = monadicType "EngineM" t
+engineType t = HS.TyApp (monadicType "EngineM" $ namedType engineValueTypeId) t
 
 collectionType :: Identifier -> HS.Type -> HS.Type
-collectionType comboId elType =
-  HS.TyApp (HS.TyCon . HS.UnQual . HB.name $ compositionTypeId comboId) elType
+collectionType comboId elType = HS.TyApp (namedType $ compositionTypeId comboId) elType
+
 
 typ :: K3 Type -> CodeGeneration HaskellEmbedding
 typ t = typ' t >>= return . HType
@@ -375,6 +400,14 @@ extractReturnE (HS.Do stmts) = case (init stmts, last stmts) of
   _ -> blockError
 
 extractReturnE e = ([], e)
+
+-- | Ensures that a do-expression returns a value.
+ensureReturnE :: HS.Exp -> HS.Exp
+ensureReturnE (HS.Do []) = blockError
+ensureReturnE (HS.Do stmts) = case (init stmts, last stmts) of
+  ([], HS.Qualifier e) -> [hs| return e |]
+  (c, HS.Qualifier e)  -> HS.Do $ c ++ [ HS.Qualifier [hs| return $e |] ]
+  _ -> blockError
 
 -- | Prepends a sequence of do-block statements to an expression.
 prefixDoE :: [HS.Stmt] -> HS.Exp -> HS.Exp
@@ -516,7 +549,7 @@ expression' (tag &&& annotations -> (EConstant c, anns)) =
     constantE (CReal r)   _ = HS.Lit $ HS.PrimDouble $ toRational r
     constantE (CString s) _ = HB.strE s
     constantE (CNone _)   _ = [hs| Nothing |]
-    constantE (CEmpty _) as = HB.eList -- TODO: annotations
+    constantE (CEmpty _) as = HB.eList -- TODO: use empty collection for comboId
 
 -- | Variables
 -- TODO: bypass variable lookup for trigger names
@@ -715,7 +748,16 @@ globalWithDefault n anns t eOpt defaultE = do
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CodeGeneration HaskellEmbedding
 global _ (tag -> TSource) _ = return HNoRepr
 
-global n t@(tag -> TFunction) Nothing = builtin n t
+-- | Generate builtin functions, e.g., wrappers of the engine API.
+global n t@(tag -> TFunction) Nothing  = builtin n t
+
+-- | Functions, like triggers, operate in the EngineM monad.
+global n t@(tag -> TFunction) (Just e) = do
+  at <- argType t >>= typ'
+  rt <- returnType t >>= typ'
+  t' <- return $ funType at $ engineType rt
+  e' <- expression' e
+  mkGlobalDecl n (annotations t) t' $ ensureReturnE e'
 
 -- TODO: two-level namespaces.
 global n t@(tag &&& children -> (TCollection, [x])) eOpt =
@@ -743,7 +785,6 @@ global n t@(tag &&& children -> (TCollection, [x])) eOpt =
           then return (comboId, cSpec)
           else compositionError n
 
-        -- TODO: implement combo id <-> record constructor mapping
         initializeCollection (comboId,_) eOpt = 
           typ' x >>= return . collectionType comboId >>=
           \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
@@ -755,9 +796,18 @@ global n t@(tag -> TCollection) eOpt = throwCG . CodeGenerationError $ "Invalid 
 
 global n t eOpt = typ' t >>= \t' -> globalWithDefault n (annotations t) t' eOpt (defaultValue' t)
 
-
+-- | Triggers are implemented as functions that operate in the EngineM monad.
 trigger :: Identifier -> K3 Type -> K3 Expression -> CodeGeneration HaskellEmbedding
-trigger n t e = expression' e >>= mkNamedDecl n
+trigger n t e = do
+  e' <- expression' e
+  t' <- typ' t
+  void $ modifyTriggerIdsCG (n:)
+  return . HDeclarations $
+    [ typeSig n . triggerType . funType t' $ engineType unitType
+    , namedVal n $ triggerImpl (HB.strE n) e' ]
+  where 
+    triggerImpl hndlE implE = 
+      HB.appFun (HS.Con $ HS.UnQual $ HB.name triggerConId) [hndlE, implE]
 
 
 annotation :: Identifier -> [AnnMemDecl] -> CodeGeneration ()
@@ -778,32 +828,29 @@ annotationMember annId = \case
 
 {- Builtins -}
 
--- TODO: separate into type sig and fun bind
-
--- TODO: TriggerId type
 -- TODO: wrap unit value in Data.Dynamic
 genNotifier :: Identifier -> String -> CodeGeneration HaskellEmbedding
 genNotifier n evt = mkTypedDecl n
-  [ty| Identifier -> TriggerId -> EngineM () |] 
-  [hs| \cid (target, addr) -> attachNotifier_ cid $(HB.strE evt) (addr,target,()) |]
+  [ty| Identifier -> Trigger a -> EngineM Dynamic () |] 
+  [hs| \cid (trig, addr) -> attachNotifier_ cid $(HB.strE evt) (addr, handle trig, ()) |]
 
 builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
 builtin "parseArgs" _ = undefined -- TODO
 
 builtin "openBuiltin" _ = mkTypedDecl "openBuiltin"
-  [ty| Identifier -> Identifier -> String -> EngineM () |]
+  [ty| Identifier -> Identifier -> String -> EngineM Dynamic () |]
   [hs| \cid builtinId format -> E.openBuiltin cid builtinId (wireDesc format) |]
 
 builtin "openFile" t = mkTypedDecl "openFile"
-  [ty| Identifier -> String -> String -> String -> EngineM () |]
+  [ty| Identifier -> String -> String -> String -> EngineM Dynamic () |]
   [hs| \cid path format mode -> E.openFile cid path (wireDesc format) mode |]
 
 builtin "openSocket" t = mkTypedDecl "openSocket"
-  [ty| Identifier -> Address -> String -> String -> EngineM () |]
+  [ty| Identifier -> Address -> String -> String -> EngineM Dynamic () |]
   [hs| \cid addr format mode -> E.openSocket cid addr (wireDesc format) mode |]
 
 builtin "close" _ = mkTypedDecl "close"
-  [ty| Identifier -> EngineM () |]
+  [ty| Identifier -> EngineM Dynamic () |]
   [hs| \cid -> E.close cid |]
 
 builtin "registerFileDataTrigger"     _ = genNotifier "registerFileDataTrigger"     "data"
@@ -818,7 +865,7 @@ builtin (channelMethod -> ("HasRead", Just n)) _  =
   in return . HDeclarations $
     [ typeSig fnId fnTy
     , constFun fnId $     
-        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "hasRead") $ HB.strE n ]
+        HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "hasRead") $ HB.strE n ]
 
 -- TODO: convert from dynamic
 builtin (channelMethod -> ("Read", Just n)) t = do
@@ -828,7 +875,7 @@ builtin (channelMethod -> ("Read", Just n)) t = do
   return . HDeclarations $
     [ typeSig fnId fnTy
     , constFun fnId $
-        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "doRead") $ HB.strE n  ]
+        HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "doRead") $ HB.strE n  ]
 
 builtin (channelMethod -> ("HasWrite", Just n)) _ =
   let fnId = n++"HasWrite" 
@@ -836,7 +883,7 @@ builtin (channelMethod -> ("HasWrite", Just n)) _ =
   in return . HDeclarations $
     [ typeSig fnId fnTy
     , constFun fnId $ 
-        HB.app (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "hasWrite") $ HB.strE n ]       
+        HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "hasWrite") $ HB.strE n ]       
 
 -- TODO: convert to dynamic for the engine
 builtin (channelMethod -> ("Write", Just n)) t = do
@@ -847,7 +894,7 @@ builtin (channelMethod -> ("Write", Just n)) t = do
   return . HDeclarations $
     [ typeSig fnId fnTy
     , simpleFun fnId argId $
-        HB.appFun (HB.qvar (HS.ModuleName engineModuleId) $ HB.name "doWrite") $ 
+        HB.appFun (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "doWrite") $ 
           [HB.strE n, HB.var $ HB.name argId] ]
 
 builtin n t = throwCG . CodeGenerationError $ "Invalid builtin function " ++ n
@@ -878,7 +925,7 @@ declaration decl = case (tag &&& children) decl of
     return . HDeclarations $ d ++ concat decls
   
   (DTrigger n t e, cs) -> do
-    HDeclarations d <- expression' e >>= mkNamedDecl n
+    HDeclarations d <- trigger n t e
     decls           <- mapM (declaration >=> extractDeclarations) cs
     return . HDeclarations $ d ++ concat decls
   
@@ -929,19 +976,19 @@ generateCollectionCompositions =
           initVar      = HB.var $ HB.name initArg
           initPvar     = HB.pvar $ HB.name initArg
           initCon      = implExpr initVar generateRecConFieldExpr >>= \implE -> return $
-                         [ typeSig initConId $ funType (listType contentTyVar) $ ioType typeExpr
+                         [ typeSig initConId $ funType (listType contentTyVar) $ engineType typeExpr
                          , simpleFun initConId initArg implE ]
 
           emptyConId   = "empty"++n
           emptyCon     = implExpr HB.eList generateRecConFieldExpr >>= \implE -> return $
-                         [ typeSig emptyConId $ ioType typeExpr
-                         , HB.nameBind HL.noLoc (HB.name emptyConId) implE ]
+                         [ typeSig emptyConId $ engineType typeExpr
+                         , namedVal emptyConId implE ]
 
           copyConId    = "copy"++n
           copyArg      = "c"
           copyVar      = HB.var $ HB.name copyArg
           copyCon      = implExpr (dataFieldExpr copyVar) (copyFieldExpr copyVar) >>= \implE -> return $
-                         [ typeSig copyConId $ funType typeExpr $ ioType typeExpr
+                         [ typeSig copyConId $ funType typeExpr $ engineType typeExpr
                          , simpleFun copyConId copyArg implE ]
 
           constructorDecls = (\x y z -> x ++ y ++ z) <$> initCon <*> emptyCon <*> copyCon
@@ -955,8 +1002,7 @@ generateCollectionCompositions =
 
 -- | Top-level code generation function, returning a Haskell module.
 -- TODO: record label, type and default constructor generation
--- TODO: message processor definition
--- TODO: main, argument processing, engine import
+-- TODO: main, argument processing
 generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
 generate progName p = declaration p >>= mkProgram
   where 
@@ -967,10 +1013,72 @@ generate progName p = declaration p >>= mkProgram
 
         pragmas   = []
         warning   = Nothing
-        impts     = []
         expts     = Nothing
         
-        programDecls decls = generateCollectionCompositions >>= return . (++ decls)
+        programDecls decls =
+          generateCollectionCompositions >>= \comboDecls -> 
+            generateDispatch >>= return . ((preDecls ++ comboDecls ++ decls) ++) . postDecls
+
+        impts = [ imprtDecl "Control.Concurrent"         False Nothing
+                , imprtDecl "Control.Concurrent.MVar"    False Nothing
+                , imprtDecl "Control.Monad"              False Nothing
+                , imprtDecl "Data.Dynamic"               False Nothing
+                , imprtDecl "Language.K3.Common"         False Nothing
+                , imprtDecl "Language.K3.Runtime.Engine" True  (Just engineModuleAliasId) ]
+
+        preDecls = 
+          [ [dec| data Trigger a = Trigger { handle :: Identifier, impl :: a} |] 
+          , [dec| type RuntimeStatus = Either EngineError () |] ]
+
+        postDecls dispatchDecl =
+          [ 
+            -- TODO
+            [dec| compiledWD :: WireDesc Dynamic |]
+          , [dec| compiledWD = undefined |]
+
+          , [dec| compiledMsgPrcsr :: MessageProcessor SystemEnvironment () Dynamic RuntimeStatus EngineError |]
+          , [dec| compiledMsgPrcsr = MessageProcessor {
+                                         initialize = initializeRT
+                                       , process    = processRT
+                                       , status     = statusRT
+                                       , finalize   = finalizeRT
+                                       , report     = reportRT
+                                     }
+                    where
+                      initializeRT _ _ _ = atInit ()
+                      finalizeRT _ = atExit ()
+                      
+                      statusRT rts = either id (const rts) rts
+                                            
+                      reportRT (Left err) = print err
+                      reportRT (Right _)  = return ()
+
+                      processRT (addr, n, msg) rts = dispatch addr n msg
+            |]
+
+          , [dec| dispatch :: Address -> Identifier -> Dynamic -> EngineM Dynamic () |]
+
+          , dispatchDecl
+
+          , [dec| main = do
+                    sysEnv <- parseArgs
+                    engine <- networkEngine sysEnv compiledWD
+                    void $ runEngine compiledMsgPrcsr sysEnv engine ()
+                |] ]
+
+        (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
+        dispatchNV    = dispatchVars !! 1
+        dispatchMsgV  = dispatchVars !! 2
+        
+        generateDispatch = do
+          alts <- dispatchCaseAlts
+          return . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
+
+        -- TODO: convert from dynamic into the argument type
+        dispatchCaseAlts = do
+          trigIds <- getTriggerIdsCG
+          return $ map (\n -> HB.alt HL.noLoc (HB.strP n) $ HB.app (HB.function n) dispatchMsgV) trigIds
+
 
 compile :: CodeGeneration HaskellEmbedding -> String
 compile _ = error "NYI"
@@ -980,7 +1088,7 @@ compile _ = error "NYI"
 {- Expression constructors -}
 
 typeSig :: Identifier -> HS.Type -> HS.Decl
-typeSig n t     = HS.TypeSig HL.noLoc [HB.name n] t
+typeSig n t = HS.TypeSig HL.noLoc [HB.name n] t
 
 namedVal :: Identifier -> HS.Exp -> HS.Decl
 namedVal n e = HB.nameBind HL.noLoc (HB.name n) e
@@ -990,3 +1098,12 @@ simpleFun n a e = HB.simpleFun HL.noLoc (HB.name n) (HB.name a) e
 
 constFun :: Identifier -> HS.Exp -> HS.Decl
 constFun n e = HS.FunBind [HS.Match HL.noLoc (HB.name n) [HB.wildcard] Nothing (HS.UnGuardedRhs e) HB.noBinds]
+
+multiFun :: Identifier -> [Identifier] -> HS.Exp -> HS.Decl
+multiFun n a e = HB.sfun HL.noLoc (HB.name n) (map HB.name a) (HS.UnGuardedRhs e) HB.noBinds
+
+imprtDecl :: Identifier -> Bool -> Maybe Identifier -> HS.ImportDecl
+imprtDecl m q alias = HS.ImportDecl HL.noLoc (HS.ModuleName m) q src pkg (maybe Nothing (Just . HS.ModuleName) alias) specs
+  where src   = False
+        pkg   = Nothing
+        specs = Nothing
