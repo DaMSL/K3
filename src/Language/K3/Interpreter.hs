@@ -96,10 +96,10 @@ data InterpretationError
 type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
-type IState = (IEnvironment Value, AEnvironment Value, IEngine)
+type IState = (IEnvironment Value, AEnvironment Value)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IO))
+type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)
@@ -120,9 +120,10 @@ type REnvironment = Either EnvOnError (IEnvironment Value)
 --  The second mapping is used to store concrete annotation combinations used at
 --  collection instances (once for all instances), and defines namespaces containing
 --  bindings that are introduced to the interpretation environment when invoking members.
-data AEnvironment v = 
-  AEnvironment { definitions  :: AnnotationDefinitions v
-               , realizations :: AnnotationCombinations v }
+data AEnvironment v = AEnvironment {
+        definitions  :: AnnotationDefinitions v,
+        realizations :: AnnotationCombinations v
+    }
     deriving (Read, Show)
 
 type AnnotationDefinitions v  = [(Identifier, IEnvironment v)]
@@ -134,18 +135,15 @@ type AnnotationCombinations v = [(Identifier, CollectionNamespace v)]
 --   
 -- TODO: for now, we assume names are unambiguous and keep everything as a global name.
 -- Check with Zach on the typechecker status for annotation-specific names.
-data CollectionNamespace v = 
-        CollectionNamespace { collectionNS :: IEnvironment v
-                            , annotationNS :: [(Identifier, IEnvironment v)] }
-     deriving (Read, Show)
-
-
+data CollectionNamespace v = CollectionNamespace {
+        collectionNS :: IEnvironment v,
+        annotationNS :: [(Identifier, IEnvironment v)]
+    }
+  deriving (Read, Show)
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (vEnv, aEnv, engine) =    ["Environment:"] ++ map show vEnv
-                                     ++ ["Annotations:"] ++ (lines $ show aEnv)
-                                     ++ (lines $ show engine)
+  prettyLines (vEnv, aEnv) =    ["Environment:"] ++ map show vEnv ++ ["Annotations:"] ++ (lines $ show aEnv)
 
 -- TODO: error prettification
 instance (Pretty a) => Pretty (IResult a) where
@@ -157,22 +155,22 @@ instance (Pretty a) => Pretty [(Address, IResult a)] where
 {- State and result accessors -}
 
 emptyState :: IEngine -> IState
-emptyState engine = ([], AEnvironment [] [], engine)
+emptyState engine = ([], AEnvironment [] [])
 
 getEnv :: IState -> IEnvironment Value
-getEnv (x,_,_) = x
+getEnv (x,_) = x
 
 getAnnotEnv :: IState -> AEnvironment Value
-getAnnotEnv (_,x,_) = x
+getAnnotEnv (_,x) = x
 
 getEngine :: IState -> IEngine
 getEngine (_,_,e) = e
 
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
-modifyStateEnv f (x,y,z) = (f x, y, z)
+modifyStateEnv f (x,y) = (f x, y)
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (x,y,z) = (x, f y, z)
+modifyStateAEnv f (x,y) = (x, f y)
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -183,8 +181,8 @@ getResultVal ((x, _), _) = x
 {- Interpretation Helpers -}
 
 -- | Run an interpretation to get a value or error, resulting environment and event log.
-runInterpretation :: IState -> Interpretation a -> IO (IResult a)
-runInterpretation s = runWriterT . flip runStateT s . runEitherT
+runInterpretation :: Engine Value -> IState -> Interpretation a -> IO (Either EngineError (IResult a))
+runInterpretation e s = flip runEngineM e . runWriterT . flip runStateT s . runEitherT
 
 -- | Run an interpretation and extract the resulting environment
 envOfInterpretation :: IState -> Interpretation a -> IO REnvironment

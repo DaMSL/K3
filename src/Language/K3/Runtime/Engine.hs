@@ -19,6 +19,7 @@ module Language.K3.Runtime.Engine (
   , EngineM
   , runEngineT
   , runEngineM
+  , EngineError
 
   , EngineConfiguration(..)
   , EEndpoints
