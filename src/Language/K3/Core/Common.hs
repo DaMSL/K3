@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
