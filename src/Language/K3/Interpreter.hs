@@ -1585,8 +1585,8 @@ unpackValueSyntax = readSingleParse unpackValue
     readSingleParse readP s =
       case [ x | (x,"") <- readPrec_to_S read' minPrec s ] of
         [x] -> x
-        []  -> error "Prelude.read: no parse"
-        l   -> error $ "Prelude.read: ambiguous parse (" ++ (show $ length l) ++ " variants)"
+        []  -> error "Interpreter.unpackValue: no parse"
+        l   -> error $ "Interpreter.unpackValue: ambiguous parse (" ++ (show $ length l) ++ " variants)"
       where read' = do
               x <- readP
               TR.lift P.skipSpaces
