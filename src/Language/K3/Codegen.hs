@@ -1,13 +1,14 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 -- | K3 code generation interface.
 module Language.K3.Codegen where
 
+import Language.K3.Core.Common
+import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
-
-import qualified Language.K3.Core.Constructor.Type        as TC
-import qualified Language.K3.Core.Constructor.Expression  as EC
-import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import qualified Language.K3.Codegen.Haskell as HG
 
@@ -16,8 +17,8 @@ class Compilable a where
   expression  :: K3 Expression -> a
   declaration :: K3 Declaration -> a
   
-  generate    :: K3 Declaration -> a
-  compile     :: a -> String
+  generate    :: Identifier -> K3 Declaration -> a
+  compile     :: a -> Either String String
 
 -- | Generates K3 code, essentially a pretty printer.
 data IdentityEmbedding
@@ -28,18 +29,17 @@ data IdentityEmbedding
 instance Compilable IdentityEmbedding where
   typ t           = IdType t
   expression e    = IdExpression e
-  declaration d   = IdDec d
+  declaration d   = IdDecl d
 
-  generate    = undefined
-  compile     = undefined
-
+  generate        = undefined
+  compile         = undefined
 
 -- | Haskell code generation.
-instance Compilable (CodeGeneration HaskellEmbedding) where
+instance Compilable (HG.CodeGeneration HG.HaskellEmbedding) where
   typ         = HG.typ
   expression  = HG.expression
   declaration = HG.declaration
 
   generate    = HG.generate
-  compile     = HG.stringify
+  compile     = HG.compile
 

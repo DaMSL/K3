@@ -105,7 +105,8 @@ library
         Language.K3.Logger.Generators,
         Language.K3.Logger.Operations,
         Language.K3.Core.Annotation.Codegen,
-        Language.K3.Codegen.Haskell
+        Language.K3.Codegen.Haskell,
+        Language.K3.Codegen
 
     ghc-options: -Wall
 
