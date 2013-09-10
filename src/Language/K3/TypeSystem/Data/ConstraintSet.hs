@@ -86,6 +86,10 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (QVar, QVar)
   QueryAllMonomorphicQualifiedUpperConstraint ::
     ConstraintSetQuery (QVar, Set TQual)
+  QueryAllOpaqueLowerBoundedConstraints ::
+    ConstraintSetQuery (OpaqueVar, ShallowType)
+  QueryAllOpaqueUpperBoundedConstraints ::
+    ConstraintSetQuery (ShallowType, OpaqueVar)
   QueryTypeOrAnyVarByAnyVarLowerBound ::
     AnyTVar -> ConstraintSetQuery UVarBound
   QueryTypeByUVarUpperBound ::
@@ -106,7 +110,8 @@ data ConstraintSetQuery r where
     QVar -> ConstraintSetQuery Constraint
   QueryPolyLineageByOrigin ::
     QVar -> ConstraintSetQuery QVar
-  -- TODO: QueryOpaqueBounds :: Opaque -> (ShallowType, ShallowType)
+  QueryOpaqueBounds ::
+    OpaqueVar -> ConstraintSetQuery (ShallowType, ShallowType) -- lower, upper
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
@@ -141,6 +146,12 @@ csQuery (ConstraintSet csSet) query =
     QueryAllMonomorphicQualifiedUpperConstraint -> do
       MonomorphicQualifiedUpperConstraint qa qs <- cs
       return (qa, qs)
+    QueryAllOpaqueLowerBoundedConstraints -> do
+      IntermediateConstraint (CLeft (SOpaque oa)) (CLeft t) <- cs
+      return (oa, t)
+    QueryAllOpaqueUpperBoundedConstraints -> do
+      IntermediateConstraint (CLeft t) (CLeft (SOpaque oa)) <- cs
+      return (t, oa)
     QueryTypeOrAnyVarByAnyVarLowerBound sa ->
       case sa of
         SomeUVar a -> do
@@ -220,3 +231,8 @@ csQuery (ConstraintSet csSet) query =
       PolyinstantiationLineageConstraint qa1 qa2 <- cs
       guard $ qa == qa2
       return qa1
+    QueryOpaqueBounds oa -> do
+      OpaqueBoundConstraint oa' lb ub <- cs
+      guard $ oa == oa'
+      return (lb,ub)
+

@@ -20,6 +20,9 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 , NormalAnnType
 , AnnBodyType(..)
 , AnnMemType(..)
+, OpaqueID(..)
+, OpaqueOrigin(..)
+, OpaqueVar(..)
 , ShallowType(..)
 , TPolarity(..)
 , TEnv
@@ -56,6 +59,8 @@ data TVarQualification
   = UnqualifiedTVar
   | QualifiedTVar
   deriving (Eq, Ord, Read, Show)
+
+-- TODO: change TVar arguments so that origin is first (for consistency)
 
 -- |A data structure representing type variables.  The first argument for each
 --  constructor is an index uniquely identifying the type variable.   The
@@ -191,6 +196,14 @@ data AnnType c
       --  bindings for the annotation type, the body of the annotation type, and
       --  the set of constraints which apply to that body.
   deriving (Eq, Ord, Show)
+
+instance (Pretty c) => Pretty (AnnType c) where
+  prettyLines (AnnType p b cs) =
+    ["Λ"] %+ prettyMap p +% ["."] %$ prettyLines b +% ["\\"] %$ prettyLines cs
+    where
+      prettyMap m = sequenceBoxes maxWidth "," $
+                      map prettyElem $ Map.toList m
+      prettyElem (k,v) = prettyLines k %+ ["→"] %+ prettyLines v
   
 -- |A type alias for normal annotation types (which use normal constraint sets).
 type NormalAnnType = AnnType ConstraintSet
@@ -202,9 +215,41 @@ data AnnBodyType
       --  the annotation: lifted attributes first, schema attributes second.
   deriving (Eq, Ord, Show)
 
+instance Pretty AnnBodyType where
+  prettyLines (AnnBodyType ms1 ms2) =
+    ["〈 "] %+ prettyLines ms1 %$ [", "] %+ prettyLines ms2 +% [" 〉"]
+
 -- |Annotation member types.
 data AnnMemType = AnnMemType Identifier TPolarity QVar
   deriving (Eq, Ord, Show)
+
+instance Pretty [AnnMemType] where
+  prettyLines ms = intersperseBoxes [", "] $ map prettyLines ms
+
+instance Pretty AnnMemType where
+  prettyLines (AnnMemType i pol qa) =
+    [i ++ " "] %+ prettyLines pol %+ [": "] %+ prettyLines qa
+
+-- |A wrapper type for opaque type IDs.
+newtype OpaqueID = OpaqueID Int
+  deriving (Eq, Ord, Show)
+
+-- |A data type describing the origins of opaque variables.
+data OpaqueOrigin
+  = OpaqueSourceOrigin UID
+      -- ^Opaque variable produced directly from a type expression in source.
+  | OpaqueAnnotationOrigin UID
+      -- ^The opaque variable was constructed as part of typechecking an
+      --  annotation.
+  deriving (Eq, Ord, Show)
+
+-- |A data type for opaque variables; these act as concrete types and are used
+--  for declared polymorphism.
+data OpaqueVar = OpaqueVar OpaqueOrigin OpaqueID
+  deriving (Eq, Ord, Show)
+
+instance Pretty OpaqueVar where
+  prettyLines (OpaqueVar _ (OpaqueID n)) = ["α*" ++ show n]
   
 -- |Shallow types
 data ShallowType
@@ -220,6 +265,7 @@ data ShallowType
   | SRecord (Map Identifier QVar)
   | STop
   | SBottom
+  | SOpaque OpaqueVar
   deriving (Eq, Ord, Show)
   
 instance Pretty ShallowType where
@@ -239,11 +285,17 @@ instance Pretty ShallowType where
       ["}"]
     STop -> ["⊤"]
     SBottom -> ["⊥"]
+    SOpaque ao -> prettyLines ao
 
 -- |A simple data type for polarities.  Polarities are monoidal by XOR.  The
 --  empty polarity is positive.
 data TPolarity = Positive | Negative
   deriving (Eq, Ord, Read, Show)
+
+instance Pretty TPolarity where
+  prettyLines pol = case pol of
+                      Positive -> ["+"]
+                      Negative -> ["-"]
 
 instance Monoid TPolarity where
   mempty = Positive
@@ -261,10 +313,23 @@ data TEnvId
   | TEnvIdSelf
   deriving (Eq, Ord, Read, Show)
 
+instance Pretty TEnvId where
+  prettyLines i = case i of
+    TEnvIdentifier i' -> [i']
+    TEnvIdContent -> ["content"]
+    TEnvIdHorizon -> ["horizon"]
+    TEnvIdFinal -> ["structure"]
+    TEnvIdSelf -> ["self"]
+
 -- |Type alias environment entries.  The type parameter is passed to the
 --  underlying quantified and annotation types.
 data TypeAliasEntry c = QuantAlias (QuantType c) | AnnAlias (AnnType c)
   deriving (Eq, Show)
+
+instance (Pretty c) => Pretty (TypeAliasEntry c) where
+  prettyLines tae = case tae of
+    QuantAlias qt -> prettyLines qt
+    AnnAlias ann -> prettyLines ann
   
 -- |A type alias for normal alias entries (those which use normal constraint
 --  sets).
@@ -284,7 +349,6 @@ type QualOrVar = Coproduct (Set TQual) QVar
 -- |A type alias describing a type or any kind of variable.
 type UVarBound = Coproduct TypeOrVar QVar
 
-
 -- * Constraints
 
 -- |A data type to describe constraints.
@@ -298,6 +362,7 @@ data Constraint
   --       implementation parses "!"
   | MonomorphicQualifiedUpperConstraint QVar (Set TQual)
   | PolyinstantiationLineageConstraint QVar QVar
+  | OpaqueBoundConstraint OpaqueVar ShallowType ShallowType
   deriving (Eq, Ord, Show)
   
 instance Pretty Constraint where
@@ -314,6 +379,9 @@ instance Pretty Constraint where
         prettyLines qa %+ ["<:"] %+ prettyLines qs
       PolyinstantiationLineageConstraint qa1 qa2 ->
         prettyLines qa1 %+ ["<<:"] %+ prettyLines qa2
+      OpaqueBoundConstraint oa lb ub ->
+        ["("] %+ prettyLines lb %+ ["≤"] %+ prettyLines oa %+ ["≤"] %+
+          prettyLines ub %+ [")"]
     where
       binPretty x y = prettyLines x %+ ["<:"] %+ prettyLines y
   

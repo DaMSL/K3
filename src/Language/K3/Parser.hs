@@ -403,7 +403,7 @@ tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), 
         tupErr           = typeExprError "tuple"
 
 tRecord :: TypeParser
-tRecord = typeExprError "record" $ TC.record <$> (braces . semiSep1) idQType
+tRecord = typeExprError "record" $ TC.record <$> (braces . commaSep1) idQType
 
 tCollection :: TypeParser
 tCollection = cErr $ mkCollectionType <$> (keyword "collection" *> tRecord)
@@ -427,11 +427,10 @@ myTrace :: String -> K3Parser a -> K3Parser a
 myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
 
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $ EUID # mkSeq <$> sepBy1 nonSeqExpr (operator ";")
-  where mkSeq = foldl1 (EC.binop OSeq)
+expr = parseError "k3" "expression" $ buildExpressionParser fullOpTable eApp
 
 nonSeqExpr :: ExpressionParser
-nonSeqExpr = buildExpressionParser opTable eApp
+nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
 
 qualifiedExpr :: ExpressionParser
 qualifiedExpr = exprError "qualified" $ flip (@+) <$> (option EImmutable exprQualifier) <*> expr
@@ -462,7 +461,7 @@ eTerm = do
                        eLet,
                        eCase,
                        eBind,
-                       eSelf  ] -- <*> optional eProject)
+                       eSelf  ]
     eProject = dot *> identifier
 
 
@@ -576,14 +575,19 @@ unaryParseOp (opName, opTag) = prefix opName (unOpSpan opName $ EC.unop opTag)
 mkUnOp  x = unaryParseOp x operator
 mkUnOpK x = unaryParseOp x keyword
 
-opTable = [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
-              map mkBinOp  [("+",   OAdd), ("-",  OSub)],
-              map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
-              map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
-              map mkUnOpK  [("not", ONot)],
-              map mkBinOpK [("and", OAnd)],
-              map mkBinOpK [("or",  OOr)]
-          ]
+nonSeqOpTable =
+  [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+      map mkBinOp  [("+",   OAdd), ("-",  OSub)],
+      map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
+      map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
+      map mkUnOpK  [("not", ONot)],
+      map mkBinOpK [("and", OAnd)],
+      map mkBinOpK [("or",  OOr)]
+  ]
+
+fullOpTable = nonSeqOpTable ++
+  [   map mkBinOp  [(";",   OSeq)]
+  ]
 
 {- Terms -}
 nsPrefix k = keyword k *> nonSeqExpr

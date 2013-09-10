@@ -122,8 +122,15 @@ isEAnnotation _               = False
 
 -- | Retrieves all free variables in an expression. 
 freeVariables :: K3 Expression -> [Identifier]
-freeVariables e = foldMapTree extractVariable [] e
+freeVariables = foldMapTree extractVariable []
   where 
     extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs bs)  = filter (`notElem` bindings bs) $ concat chAcc
+    extractVariable chAcc (tag -> ELetIn i)  = filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> ECaseOf i)  = filter (/= i) $ let [s, n] = chAcc in filter (/= i) s ++ n
     extractVariable chAcc _ = concat chAcc
+
+    bindings (BIndirection i) = [i]
+    bindings (BTuple is) = is
+    bindings (BRecord ivs) = fst (unzip ivs)

@@ -1,0 +1,1 @@
+declare f : immut (bool -> int) = \b -> if b then 4 else 8

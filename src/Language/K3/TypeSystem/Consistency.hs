@@ -29,6 +29,12 @@ import Language.K3.Utils.Either
 data ConsistencyError
   = ImmediateInconsistency ShallowType ShallowType
       -- ^Indicates that two types were immediately inconsistent.
+  | UnboundedOpaqueVariable OpaqueVar
+      -- ^Indicates that no bounds have been defined for an opaque variable
+      --  which appears in the constraint set.
+  | MultipleOpaqueBounds OpaqueVar [(ShallowType,ShallowType)]
+      -- ^Indicates that an opaque variable exists in the constraint set and is
+      --  bounded by multiple opaque bounding constraints.
   | UnsatisfiedRecordBound ShallowType ShallowType
       -- ^Indicates that a record type lower bound met a record type upper
       --  bound and was not a correct subtype.
@@ -55,8 +61,6 @@ instance Pretty ConsistencyError where
 
 type ConsistencyCheck = Either (Seq ConsistencyError) ()
 
--- TODO: add consistency check for opaque bounds
-
 -- |Determines whether a constraint set is consistent or not.  If it is, an
 --  appropriate consistency error is generated.
 checkConsistent :: ConstraintSet -> ConsistencyCheck
@@ -71,6 +75,8 @@ checkConsistent cs =
           genErr $ ImmediateInconsistency t1 t2
         when (t1 == STop && t2 /= STop) $ genErr $ TopUpperBound t2
         when (t1 /= SBottom && t2 == SBottom) $ genErr $ BottomLowerBound t1
+        checkOpaqueBounds t1
+        checkOpaqueBounds t2
         checkRecordInconsistent t1 t2
       QualifiedIntermediateConstraint (CLeft q1) (CLeft q2) ->
         when (q1 `Set.isProperSubsetOf` q2) $
@@ -96,14 +102,25 @@ checkConsistent cs =
       (SRecord _, SRecord _) -> False
       (STop, _) -> False
       (SBottom, _) -> False
+      (SOpaque _, _) -> False
       (_, STop) -> False
       (_, SBottom) -> False
+      (_, SOpaque _) -> False
       (_, _) -> True -- differently-shaped types!
     checkRecordInconsistent :: ShallowType -> ShallowType -> ConsistencyCheck
     checkRecordInconsistent t1 t2 = case (t1,t2) of
       (SRecord m1, SRecord m2) ->
         unless (Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1) $
           genErr $ UnsatisfiedRecordBound t1 t2
+      _ -> return ()
+    checkOpaqueBounds :: ShallowType -> ConsistencyCheck
+    checkOpaqueBounds t = case t of
+      SOpaque oa ->
+        let bounds = csQuery cs $ QueryOpaqueBounds oa in
+        case bounds of
+          [] -> genErr $ UnboundedOpaqueVariable oa
+          _:_:_ -> genErr $ MultipleOpaqueBounds oa bounds
+          _:_ -> return ()
       _ -> return ()
     genErr :: ConsistencyError -> ConsistencyCheck
     genErr = Left . Seq.singleton

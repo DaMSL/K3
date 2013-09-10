@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 
 module Language.K3.TypeSystem
 ( typecheck
@@ -12,6 +12,8 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
@@ -20,6 +22,8 @@ import Language.K3.TypeSystem.TypeChecking
 import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeDecision
 import Language.K3.TypeSystem.TypeDecision.Monad
+
+$(loggingFunctions)
 
 -- |Describes a typechecking result.  This result carries an annotated
 --  declaration tree and a set of constraints over those declarations.  It also
@@ -43,6 +47,8 @@ typecheck :: TAliasEnv -- ^The environment defining existing type bindings.
           -> K3 Declaration -- ^The top-level AST to check.
           -> Either (Seq TypeError) TypecheckResult
 typecheck aEnv env decl = do
+  _debug $ boxToString $ ["Performing typechecking for AST:"] %$
+                            indent 2 (prettyLines decl)
   -- 1. Simple sanity checks for consistency.
   either (Left . Seq.singleton) Right $ unSanityM (sanityCheck decl)
   -- 2. Decide the types that should be assigned.

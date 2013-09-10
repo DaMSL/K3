@@ -23,6 +23,7 @@ import Language.K3.Logger
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Data.TypesAndConstraints
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 
@@ -58,6 +59,9 @@ getNextVarId = do
 instance FreshVarI TypecheckM where
   freshQVar = freshVar QTVar
   freshUVar = freshVar UTVar
+
+instance FreshOpaqueI TypecheckM where
+  freshOVar origin = OpaqueVar origin . OpaqueID <$> getNextVarId
   
 freshVar :: (Int -> TVarOrigin q -> TVar q) -> TVarOrigin q
          -> TypecheckM (TVar q)

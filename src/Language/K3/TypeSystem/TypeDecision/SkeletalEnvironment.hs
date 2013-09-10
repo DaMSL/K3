@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances, FlexibleInstances, TemplateHaskell #-}
 {-|
   A module containing the routines necessary to construct a skeletal environment
   for the type decision prodecure.
@@ -22,6 +22,8 @@ import qualified Data.Traversable as Trav
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
+import Language.K3.Logger
+import Language.K3.Pretty
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
@@ -33,6 +35,8 @@ import Language.K3.TypeSystem.TypeDecision.Data
 import Language.K3.TypeSystem.TypeDecision.Monad
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
+
+$(loggingFunctions)
 
 -- |A type alias for skeletal type alias environments.
 type TSkelAliasEnv = TEnv (TypeAliasEntry StubbedConstraintSet)
@@ -62,13 +66,25 @@ constructSkeletalAEnv :: FlatAnnotationDecls -> TypeDecideSkelM TSkelAliasEnv
 constructSkeletalAEnv anns = do
   -- First, get a structure for each declaration
   base <- Trav.mapM constructTypeForDecl anns
+  _debug $ boxToString $
+    ["Base skeletal environment: "] %+ indent 2 (
+        vconcats $ map (\(k,(b,p,scs)) -> [k] %+ [" → "] %+
+                          prettyLines (AnnType p b scs)) $
+                      Map.toList base
+      )
   -- Next, join all of the constraint sets together (because each annotation can
   -- refer to the others) and make an environment from it.
   let scs = CSL.unions $ map ((\(_,_,scs') -> scs') . snd) $ Map.toList base
-  return $ Map.fromList $
-            map (\(i,(b,p,_)) ->
-                (TEnvIdentifier i, AnnAlias $ AnnType p b scs)) $
-              Map.toList base
+  let aEnv = Map.fromList $
+              map (\(i,(b,p,_)) ->
+                  (TEnvIdentifier i, AnnAlias $ AnnType p b scs)) $
+                Map.toList base
+  _debug $ boxToString $
+    ["Skeletal environment: "] %+ indent 2 (
+        vconcats $ map (\(k,v) -> prettyLines k %+ [" → "] %+ prettyLines v) $
+                      Map.toList aEnv
+      )
+  return aEnv
 
 -- |Constructs a skeletal type environment for a single declaration.
 constructTypeForDecl :: (FlatAnnotation, K3 Declaration)
@@ -91,7 +107,7 @@ constructTypeForDecl ((lAtts,sAtts),decl) = do
   -- Calculate the type of self and the corresponding constraints
   (lAttTs, scs_S) <- second mconcat <$> unzip <$>
                       gatherParallelSkelErrors (map (memDeclToMemType p) lAtts)
-  let b = AnnBodyType sAttTs lAttTs
+  let b = AnnBodyType lAttTs sAttTs
   let annType = AnnType p b csEmpty
   inst <- lift $ instantiateCollection annType aP_c
   (a_S,cs_S) <- liftEither (InvalidCollectionInstantiation u) inst

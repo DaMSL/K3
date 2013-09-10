@@ -40,6 +40,9 @@ $(
                 , ''Coproduct
                 , ''TQual
                 , ''ShallowType
+                , ''OpaqueID
+                , ''OpaqueOrigin
+                , ''OpaqueVar
                 , ''QuantType
                 , ''AnyTVar
                 , ''AnnBodyType
@@ -47,7 +50,12 @@ $(
                 , ''TPolarity
                 ]
  )
- 
+
+$(concat <$> mapM (defineTransformIdentityInstance ''ReplaceVariables)
+                [ ''UID
+                ]                
+ )
+
 $(
   concat <$> mapM (defineTransformFunctorInstance ''ReplaceVariables)
                 [ [t|Map Identifier|]

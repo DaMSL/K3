@@ -1,0 +1,6 @@
+declare f : immut ((option immut int) -> int) =
+    \mi -> case mi of {Some n -> n}{None -> 4}
+
+declare v : immut {x : immut int, y : immut int} =
+    {x : immut (f (Some immut 5)), y : immut (f None immut)}
+

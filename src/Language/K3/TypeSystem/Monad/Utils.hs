@@ -9,6 +9,8 @@ module Language.K3.TypeSystem.Monad.Utils
 , freshTypecheckingUVar
 , envRequire
 , envRequireM
+, aEnvRequireAnn
+, pEnvRequire
 ) where
 
 import Control.Applicative
@@ -45,3 +47,16 @@ envRequire e = envRequireM $ return e
 envRequireM :: (Ord a, Applicative m, Monad m, TypeErrorI m)
             => m TypeError -> a -> Map a b -> m b
 envRequireM e k m = maybe (typeError =<< e) return $ Map.lookup k m
+
+aEnvRequireAnn :: (Applicative m, Monad m, TypeErrorI m)
+               => UID -> TEnvId -> TAliasEnv -> m NormalAnnType
+aEnvRequireAnn u i aEnv = do
+  entry <- envRequire (UnboundTypeEnvironmentIdentifier u i) i aEnv
+  case entry of
+    AnnAlias annType -> return annType
+    QuantAlias _ -> typeError $ NonAnnotationAlias u i
+
+pEnvRequire :: (Applicative m, Monad m, TypeErrorI m)
+            => TEnvId -> TParamEnv -> m UVar
+pEnvRequire i p = do
+  envRequire (InternalError $ MissingTypeParameter p i) i p
