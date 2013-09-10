@@ -14,6 +14,12 @@ module Language.K3.Runtime.Engine (
   , MessageProcessor(..)
 
   , Engine(..)
+
+  , EngineT
+  , EngineM
+  , runEngineT
+  , runEngineM
+
   , EngineConfiguration(..)
   , EEndpoints
 
@@ -178,9 +184,9 @@ data Engine a = Engine { config          :: EngineConfiguration
 
 data EngineError = EngineError
 
-type EngineT e r m a = EitherT e (ReaderT r m) a
+type EngineT e r m = EitherT e (ReaderT r m)
 
-type EngineM a b = EngineT EngineError (Engine a) IO b
+type EngineM a = EngineT EngineError (Engine a) IO
 
 runEngineT :: EngineT e r m a -> r -> m (Either e a)
 runEngineT s r = flip runReaderT r $ runEitherT s
