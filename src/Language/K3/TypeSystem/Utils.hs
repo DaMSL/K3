@@ -6,7 +6,7 @@
 module Language.K3.TypeSystem.Utils
 ( typeOfOp
 , typeOfPol
-, recordOf
+, recordConcat
 , RecordConcatenationError(..)
 ) where
 
@@ -47,23 +47,33 @@ typeOfPol Requires = Negative
 
 data RecordConcatenationError
   = RecordIdentifierOverlap (Set Identifier)
+  | RecordOpaqueOverlap (Set OpaqueVar)
   | NonRecordType ShallowType
   deriving (Eq, Show)
 
 -- |Concatenates a set of concrete record types.  A @Nothing@ is produced if
 --  any of the types are not records (or top) or if the record types overlap.
-recordOf :: [ShallowType] -> Either RecordConcatenationError ShallowType
-recordOf = foldM concatRecs (SRecord Map.empty) . Prelude.filter (/=STop)
+recordConcat :: [ShallowType] -> Either RecordConcatenationError ShallowType
+recordConcat = foldM concatRecs (SRecord Map.empty Set.empty) .
+                  Prelude.filter (/=STop)
   where
+    -- |A function to concatenate two record types.  The first argument is the
+    --  record type accumulated so far; the second argument is a record type to
+    --  include.  The result is either a new record type or an error in
+    --  concatenation.
     concatRecs :: ShallowType -> ShallowType
                -> Either RecordConcatenationError ShallowType
     concatRecs t1 t2 =
       case (t1,t2) of
-        (SRecord m1, SRecord m2) ->
-          let overlap = Set.fromList (Map.keys m1) `Set.intersection`
-                        Set.fromList (Map.keys m2) in
-          if Set.null overlap
-            then Right $ SRecord $ m1 `Map.union` m2
-            else Left $ RecordIdentifierOverlap overlap
-        (SRecord _, _) -> Left $ NonRecordType t2
+        (SRecord m1 oas1, SRecord m2 oas2) ->
+          let labelOverlap = Set.fromList (Map.keys m1) `Set.intersection`
+                             Set.fromList (Map.keys m2) in
+          let opaqueOverlap = oas1 `Set.intersection` oas2 in
+          if Set.null labelOverlap
+            then
+              if Set.null opaqueOverlap
+                then Right $ SRecord (m1 `Map.union` m2) (oas1 `Set.union` oas2)
+                else Left $ RecordOpaqueOverlap opaqueOverlap
+            else Left $ RecordIdentifierOverlap labelOverlap
+        (SRecord _ _, _) -> Left $ NonRecordType t2
         (_, _) -> Left $ NonRecordType t1

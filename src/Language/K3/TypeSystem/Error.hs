@@ -23,6 +23,7 @@ import Language.K3.Pretty
 import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Utils
 
 -- |A data structure representing typechecking errors.
 data TypeError
@@ -91,6 +92,12 @@ data TypeError
       -- ^ Indicates that an annotation is inconsistent with its environment
       --   type.  This suggests that, while the expression of a member has a
       --   consistent type, it does not match the type of its signature.
+  | RecordSignatureError UID RecordConcatenationError
+      -- ^ Indicates that a type signature contained a record type which
+      --   produced a concatenation error when it was interpreted.
+  | DuplicateIdentifiersInRecordExpression UID (Set Identifier)
+      -- ^ Indicates that a record expression contained duplicate identifiers
+      --   (e.g. @{x=5,x=4}@).
 
 deriving instance Show TypeError
 
@@ -174,6 +181,10 @@ data InternalTypeError
       -- ^Indicates that an annotation was inferred a type that did not include
       --  a positive member that was found in the environment.  The first
       --  argument names the annotation; the second names the missing member.
+  | HorizonTypeConstructionError (K3 Declaration) RecordConcatenationError
+      -- ^Indicates that something went wrong while constructing the horizon
+      --  type for an annotation derivation.  (This should never happen because
+      --  the concatenation is with record containing only a fresh opaque.)
 
 deriving instance Show InternalTypeError
 

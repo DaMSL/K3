@@ -111,7 +111,7 @@ depolarize :: [AnnMemType]
 depolarize ms = do
   let ids = Set.toList $ Set.fromList $ map idOf ms -- dedup the list
   pairs <- mapM depolarizePart ids
-  let (mt,cs) = (recordOf *** csUnions) $ unzip pairs
+  let (mt,cs) = (recordConcat *** csUnions) $ unzip pairs
   case mt of
     Right t -> return (t,cs)
     Left (RecordIdentifierOverlap is) ->
@@ -128,13 +128,15 @@ depolarize ms = do
       let (posqas,negqas) = mconcat $ map extract ms in
       case (Set.size posqas, Set.null negqas) of
         (0,True) -> return (STop, csEmpty)
-        (0,False) -> return ( SRecord $ Map.singleton i $ Set.findMin negqas
+        (0,False) -> return ( SRecord
+                                (Map.singleton i $ Set.findMin negqas)
+                                Set.empty
                             , csFromList [ qa1 <: qa2
                                          | qa1 <- Set.toList negqas
                                          , qa2 <- Set.toList negqas ])
         (1,_) ->
           let posqa = Set.findMin posqas in
-          return ( SRecord $ Map.singleton i posqa
+          return ( SRecord (Map.singleton i posqa) Set.empty
                  , csFromList [ posqa <: qa
                               | qa <- Set.toList negqas ])
         (_,_) -> Left $ MultipleProvisions i

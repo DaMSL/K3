@@ -88,12 +88,31 @@ closeImmediate cs = csUnions $ do
       give [qa1 <: qa2]
     (STuple qas1, STuple qas2) | length qas1 == length qas2 ->
       give $ zipWith (<:) qas1 qas2
-    (SRecord m1, SRecord m2)
-      | Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1 ->
+    (SRecord m1 oas1, SRecord m2 oas2)
+      | Set.null oas1 && Set.null oas2 &&
+        Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1 ->
           give $ Map.elems $ Map.intersectionWith (<:) m1 m2
     _ -> mzero
   where
     give = return . csFromList
+    
+-- |Performs closure for opaque-extended records in a lower-bounding position.
+closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
+closeLowerBoundingExtendedRecord cs = csUnions $ do
+  (SRecord m oas, t) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  oa <- Set.toList oas
+  guard $ t /= SOpaque oa
+  (t_L, t_U) <- csQuery cs $ QueryOpaqueBounds oa
+  undefined -- TODO: RecordConcat
+
+-- |Performs closure for opaque-extended records in an upper-bounding position.
+closeUpperBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
+closeUpperBoundingExtendedRecord cs = csUnions $ do
+  (t,SRecord m oas) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  moa <- Nothing : map Just (Set.toList oas) {- Nothing adds base record -}
+  case moa of
+    Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty
+    Just oa -> {-Opaque case -} return $ csSing $ t <: SOpaque oa
   
 -- |Performs binary operation closure.
 closeBinaryOperations :: ConstraintSet -> ConstraintSet

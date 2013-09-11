@@ -24,6 +24,8 @@ import Language.K3.Pretty
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Utils
+import Language.K3.Utils.Conditional
 import Language.K3.Utils.Either
 
 data ConsistencyError
@@ -38,6 +40,9 @@ data ConsistencyError
   | UnsatisfiedRecordBound ShallowType ShallowType
       -- ^Indicates that a record type lower bound met a record type upper
       --  bound and was not a correct subtype.
+  | ConflictingRecordConcatenation RecordConcatenationError
+      -- ^Indicates that a record type was concatenated in such a way that an
+      --  overlap occurred.
   | IncompatibleTypeQualifiers (Set TQual) (Set TQual)
       -- ^Indicates that a set of type qualifiers was insufficient.
   | IncorrectBinaryOperatorArguments BinaryOperator ShallowType ShallowType
@@ -78,6 +83,7 @@ checkConsistent cs =
         checkOpaqueBounds t1
         checkOpaqueBounds t2
         checkRecordInconsistent t1 t2
+        checkConcatenationInconsistent t1
       QualifiedIntermediateConstraint (CLeft q1) (CLeft q2) ->
         when (q1 `Set.isProperSubsetOf` q2) $
           genErr $ IncompatibleTypeQualifiers q1 q2
@@ -99,7 +105,7 @@ checkConsistent cs =
       (SOption _,SOption _) -> False
       (SIndirection _,SIndirection _) -> False
       (STuple xs, STuple xs') -> length xs /= length xs'
-      (SRecord _, SRecord _) -> False
+      (SRecord _ _, SRecord _ _) -> False
       (STop, _) -> False
       (SBottom, _) -> False
       (SOpaque _, _) -> False
@@ -109,9 +115,20 @@ checkConsistent cs =
       (_, _) -> True -- differently-shaped types!
     checkRecordInconsistent :: ShallowType -> ShallowType -> ConsistencyCheck
     checkRecordInconsistent t1 t2 = case (t1,t2) of
-      (SRecord m1, SRecord m2) ->
+      (SRecord m1 _, SRecord m2 oas2) | Set.null oas2 ->
         unless (Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1) $
           genErr $ UnsatisfiedRecordBound t1 t2
+      _ -> return ()
+    checkConcatenationInconsistent :: ShallowType -> ConsistencyCheck
+    checkConcatenationInconsistent t = case t of
+      SRecord m oas ->
+        mconcat <$> gatherParallelErrors (do
+          oa <- Set.toList oas
+          (_,t_U) <- csQuery cs $ QueryOpaqueBounds oa
+          case recordConcat [SRecord m oas, t_U] of
+            Left err -> return $ genErr $ ConflictingRecordConcatenation err
+            Right _ -> return $ Right ()
+        )
       _ -> return ()
     checkOpaqueBounds :: ShallowType -> ConsistencyCheck
     checkOpaqueBounds t = case t of

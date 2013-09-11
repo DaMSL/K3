@@ -24,8 +24,8 @@ import Control.Monad
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.TypeSystem.Data.Coproduct
 import Language.K3.TypeSystem.Data.TypesAndConstraints
-import Language.K3.TypeSystem.Data.Utils
 
 -- TODO: Implement a considerably more efficient underlying data structure for
 -- constraint sets.
