@@ -24,6 +24,8 @@ library
         either,
         errors,
         hashable,
+        haskell-src-exts,
+        haskell-src-exts-qq,
         hslogger,
         mtl,
         network,
@@ -101,7 +103,10 @@ library
         Language.K3.Logger,
         Language.K3.Logger.Config,
         Language.K3.Logger.Generators,
-        Language.K3.Logger.Operations
+        Language.K3.Logger.Operations,
+        Language.K3.Core.Annotation.Codegen,
+        Language.K3.Codegen.Haskell,
+        Language.K3.Codegen
 
     ghc-options: -Wall
     other-modules: Language.K3.TypeSystem.Monad.Iface.FreshOpaque

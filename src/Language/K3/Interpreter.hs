@@ -324,7 +324,7 @@ defaultValue (tag -> TInt)        = return $ VInt 0
 defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
 defaultValue (tag -> TOption)     = return $ VOption Nothing
-defaultValue (tag -> TCollection) = emptyCollection
+defaultValue (tag -> TCollection) = emptyCollection -- TODO: annotations from type
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
@@ -1218,15 +1218,6 @@ wireDesc :: String -> WireDesc Value
 wireDesc "k3" = syntaxValueWD
 wireDesc fmt  = error $ "Invalid format " ++ fmt
 
--- | Associative lists
-addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-addAssoc l a b = (a,b):l
-
-removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
-removeAssoc l a = filter ((a /=) . fst) l
-
-replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
 {- Pretty printing -}
 
@@ -1594,8 +1585,8 @@ unpackValueSyntax = readSingleParse unpackValue
     readSingleParse readP s =
       case [ x | (x,"") <- readPrec_to_S read' minPrec s ] of
         [x] -> x
-        []  -> error "Prelude.read: no parse"
-        l   -> error $ "Prelude.read: ambiguous parse (" ++ (show $ length l) ++ " variants)"
+        []  -> error "Interpreter.unpackValue: no parse"
+        l   -> error $ "Interpreter.unpackValue: ambiguous parse (" ++ (show $ length l) ++ " variants)"
       where read' = do
               x <- readP
               TR.lift P.skipSpaces

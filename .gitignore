@@ -1,10 +1,12 @@
 dist*
 tmp
 .ghci
+.cabal-sandbox
 
 /.dist-buildwrapper
 /.settings
 /.project
 
 data/out.txt
+cabal.sandbox.config
 *.swp

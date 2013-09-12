@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 {-|
-  Contains utilities for manipulating the core K3 data strucutres.
+  Contains utilities for manipulating the core K3 data structures.
 -}
 module Language.K3.Core.Utils
 ( check0Children

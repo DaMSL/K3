@@ -9,6 +9,8 @@ import Data.Tree
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Codegen
+
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
@@ -90,6 +92,7 @@ data instance Annotation Expression
     | ESpan Span
     | EUID UID
     | EAnnotation Identifier
+    | EEmbedding EmbeddingAnnotation
   deriving (Eq, Read, Show)
 
 instance Pretty (K3 Expression) where
