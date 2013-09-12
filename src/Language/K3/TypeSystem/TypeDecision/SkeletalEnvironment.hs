@@ -115,7 +115,7 @@ constructTypeForDecl ((lAtts,sAtts),decl) = do
   (a_S,cs_S) <- liftEither (InvalidCollectionInstantiation u) inst
   -- Construct an appropriate stubbed constraint set
   let cs = csUnions [cs_S,cs_Hp,csFromList
-                      [aP_f <: a_Hp, a_S <: aP_s] ]
+                      [aP_f <: a_Hp, aP_f <: aP_c, a_S <: aP_s] ]
   let scs = CSL.unions [scs_H, scs_S, CSL.promote cs]
   -- We now have a result for a single annotation
   return (b,p,scs)
