@@ -282,8 +282,10 @@ instance Pretty ShallowType where
     SRecord rows oas ->
       let rowBox (i,qa) = [i++":"] %+ prettyLines qa in
       ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) +%
-      ["} & {"] %+
-      intersperseBoxes [","] (map prettyLines $ sort $ Set.toList oas) +% ["}"]
+      ["}"] %+
+      if Set.null oas then [] else
+        ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
+                                            Set.toList oas) +% ["}"]
     STop -> ["⊤"]
     SBottom -> ["⊥"]
     SOpaque ao -> prettyLines ao

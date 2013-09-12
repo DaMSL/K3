@@ -140,10 +140,10 @@ deriveDeclaration aEnv env decl =
                                     QuantType Set.empty qa' csEmpty) ms1)
       let cs' = csUnions
                   [ cs , cs_S , cs_H , csSing $ a_F <: a_H
-                  , a_H ~= t'_H, csSing $ t_S <: a_S, SOpaque oa_C ~= a_C
-                  , SOpaque oa_F ~= a_F
+                  , a_H ~= t'_H, csSing $ t_S <: a_S
                   , csFromList
-                      [ OpaqueBoundConstraint oa_F SBottom t'_H
+                      [ SOpaque oa_C <: a_C, SOpaque oa_F <: a_F
+                      , OpaqueBoundConstraint oa_F SBottom t'_H
                       , OpaqueBoundConstraint oa_C SBottom $
                           SRecord Map.empty Set.empty
                       ]
