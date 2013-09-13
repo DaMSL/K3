@@ -157,9 +157,6 @@ getEnv (x,_) = x
 getAnnotEnv :: IState -> AEnvironment Value
 getAnnotEnv (_,x) = x
 
-getEngine :: IState -> IEngine
-getEngine (_,_,e) = e
-
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
 modifyStateEnv f (x,y) = (f x, y)
 
@@ -186,6 +183,10 @@ valueOfInterpretation s i = runInterpretation s i >>= return . either (const $ N
 -- till date, and the current state.
 throwE :: InterpretationError -> Interpretation a
 throwE = Control.Monad.Trans.Either.left
+
+-- | Lift an engine computation to an interpretation.
+liftEngine :: EngineM Value b -> Interpretation b
+liftEngine = lift . lift . lift
 
 -- | Test if a variable is defined in the current interpretation environment.
 elemE :: Identifier -> Interpretation Bool
@@ -224,10 +225,6 @@ modifyACombos f = modifyA (\aEnv -> AEnvironment (definitions aEnv) (f $ realiza
 -- | Environment binding removal
 removeE :: (Identifier, Value) -> a -> Interpretation a
 removeE (n,v) r = modifyE (deleteBy ((==) `on` fst) (n,v)) >> return r
-
--- | Accessor methods to compute with engine contents
-withEngine :: (IEngine -> IO a) -> Interpretation a
-withEngine f = get >>= liftIO . f . getEngine
 
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
