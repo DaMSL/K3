@@ -26,7 +26,6 @@ module Language.K3.Interpreter (
 
   runNetwork,
   runProgram,
-  runProgramInitializer,
 
   showValueSyntax,
   readValueSyntax,
@@ -37,6 +36,7 @@ module Language.K3.Interpreter (
 ) where
 
 import Control.Arrow hiding ( (+++) )
+import Control.Concurrent (ThreadId)
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Either
@@ -878,10 +878,6 @@ runExpression e = standaloneInterpreter (withEngine')
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
 
-runProgramInitializer :: PeerBootstrap -> K3 Declaration -> IO ()
-runProgramInitializer bootstrap p = standaloneInterpreter (initProgram bootstrap p) >>= putIResult
-
-
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
@@ -892,7 +888,7 @@ runProgram systemEnv prog = do
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: SystemEnvironment -> K3 Declaration -> IO [(Address, IEngine, ThreadId)]
+runNetwork :: SystemEnvironment -> K3 Declaration -> IO [Either EngineError (Address, ThreadId)]
 runNetwork systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in do
     engines       <- mapM (flip networkEngine syntaxValueWD) nodeBootstraps
@@ -901,8 +897,7 @@ runNetwork systemEnv prog =
     return engineThreads
   where
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
-    fork (addr, engine, bootstrap) = forkEngine virtualizedProcessor bootstrap engine prog >>= return . (addr, engine,)
-
+    fork (addr, engine, bootstrap) = flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog >>= return . (addr,)
 
 {- Message processing -}
 
@@ -1013,16 +1008,6 @@ prettyErrorEnv (err, env) = intercalate "\n" ["Error", show err, prettyEnv env]
 
 prettyEnv :: Show v => IEnvironment v -> String
 prettyEnv env = intercalate "\n" $ ["Environment:"] ++ map show (reverse env)
-
-putIResult :: Show a => IResult a -> IO ()
-putIResult ((Left err, st), _)  =
-  putStrLn (prettyErrorEnv (err, getEnv st)) >> putEngine (getEngine st)
-
-putIResult ((Right val, st), _) = 
-     putStr (concatMap (++"\n\n") [prettyEnv $ getEnv st, prettyVal])
-  >> putEngine (getEngine st)
-  where prettyVal = "Value:\n"++show val
-
 
 {- Debugging helpers -}
 debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
