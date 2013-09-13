@@ -228,7 +228,7 @@ removeE (n,v) r = modifyE (deleteBy ((==) `on` fst) (n,v)) >> return r
 
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
-sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
+sendE addr n val = liftEngine $ send addr n val
 
 {- Constants -}
 vunit :: Value
@@ -662,8 +662,8 @@ genBuiltin "parseArgs" _ =
 genBuiltin "openBuiltin" _ =
   vfun $ \(VString cid) -> 
     vfun $ \(VString builtinId) ->
-      vfun $ \(VString format) -> 
-        withEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
+      vfun $ \(VString format) ->
+        liftEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
@@ -671,7 +671,7 @@ genBuiltin "openFile" t =
     vfun $ \(VString path) ->
       vfun $ \(VString format) ->
         vfun $ \(VString mode) ->
-          withEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
@@ -679,10 +679,10 @@ genBuiltin "openSocket" t =
     vfun $ \(VAddress addr) ->
       vfun $ \(VString format) ->
         vfun $ \(VString mode) ->
-          withEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
 
 -- close :: ChannelId -> ()
-genBuiltin "close" _ = vfun $ \(VString cid) -> withEngine (close cid) >> return vunit
+genBuiltin "close" _ = vfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
@@ -695,23 +695,23 @@ genBuiltin "registerSocketCloseTrigger"  _ = registerNotifier "close"
 
 -- <source>HasRead :: () -> Bool
 genBuiltin (channelMethod -> ("HasRead", Just n)) _ = vfun $ \_ -> checkChannel
-  where checkChannel = withEngine (hasRead n) >>= maybe invalid (return . VBool)
+  where checkChannel = liftEngine (hasRead n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Read :: () -> t
-genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> withEngine (doRead n) >>= throwOnError
+genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> liftEngine (doRead n) >>= throwOnError
   where throwOnError (Just v) = return v
         throwOnError Nothing =
           throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 -- <sink>HasWrite :: () -> Bool
 genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \_ -> checkChannel
-  where checkChannel = withEngine (hasWrite n) >>= maybe invalid (return . VBool)
+  where checkChannel = liftEngine (hasWrite n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
-  vfun $ \arg -> withEngine (doWrite n arg) >> return vunit
+  vfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
@@ -727,7 +727,7 @@ registerNotifier n =
   vfun $ \cid -> vfun $ \target -> attach cid n target >> return vunit
 
   where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = 
-          withEngine $ attachNotifier_ cid n (addr, tid, v)
+          liftEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
         targetOfValue (VTuple [VTrigger (m, _), VAddress addr]) = (addr, m, vunit)
