@@ -948,14 +948,15 @@ virtualizedProcessor = MessageProcessor {
     status = statusVP,
     finalize = finalizeVP
 } where
-    initializeVP systemEnv program engine =
-      sequence [initNode node systemEnv program engine | node <- nodes engine]
+    initializeVP systemEnv program = do
+        engine <- ask
+        sequence [initNode node systemEnv program | node <- nodes engine]
 
-    initNode node systemEnv program engine = do
+    initNode node systemEnv program = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
-        iProgram <- initProgram initEnv program engine
+        iProgram <- initProgram initEnv program
         --
-        debugResult node iProgram
+        liftIO $ debugResult node iProgram
         --
         return (node, iProgram)
 
