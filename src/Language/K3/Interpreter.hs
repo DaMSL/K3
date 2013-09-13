@@ -184,16 +184,9 @@ getResultVal ((x, _), _) = x
 runInterpretation :: Engine Value -> IState -> Interpretation a -> IO (Either EngineError (IResult a))
 runInterpretation e s = flip runEngineM e . runWriterT . flip runStateT s . runEitherT
 
--- | Run an interpretation and extract the resulting environment
-envOfInterpretation :: IState -> Interpretation a -> IO REnvironment
-envOfInterpretation s i = runInterpretation s i >>= \case
-                                  ((Right _, st), _) -> return $ Right $ getEnv st
-                                  ((Left err, st), _) -> return $ Left (err, getEnv st)
-
 -- | Run an interpretation and extract its value.
 valueOfInterpretation :: IState -> Interpretation a -> IO (Maybe a)
-valueOfInterpretation s i =
-  runInterpretation s i >>= return . either (const $ Nothing) Just . fst . fst
+valueOfInterpretation s i = runInterpretation s i >>= return . either (const $ Nothing) Just . fst . fst
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
