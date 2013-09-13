@@ -37,7 +37,7 @@ module Language.K3.Interpreter (
 ) where
 
 import Control.Arrow hiding ( (+++) )
-import Control.Concurrent (ThreadId)
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -49,7 +49,7 @@ import Data.Word (Word8)
 import Debug.Trace
 
 import qualified System.IO          as SIO (stdout, hFlush)
-import Text.Read hiding (get)
+import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
 
@@ -107,9 +107,6 @@ type IResult a = ((Either InterpretationError a, IState), ILog)
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment Value)
 
--- | A type capturing the environment resulting from an interpretation
-type REnvironment = Either EnvOnError (IEnvironment Value)
-
 
 {- Annotations -}
 
@@ -153,9 +150,6 @@ instance (Pretty a) => Pretty [(Address, IResult a)] where
     prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
 
 {- State and result accessors -}
-
-emptyState :: IEngine -> IState
-emptyState engine = ([], AEnvironment [] [])
 
 getEnv :: IState -> IEnvironment Value
 getEnv (x,_) = x
