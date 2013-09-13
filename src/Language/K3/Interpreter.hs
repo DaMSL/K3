@@ -175,9 +175,12 @@ getResultVal ((x, _), _) = x
 runInterpretation :: Engine Value -> IState -> Interpretation a -> IO (Either EngineError (IResult a))
 runInterpretation e s = flip runEngineM e . runWriterT . flip runStateT s . runEitherT
 
+runInterpretation' :: IState -> Interpretation a -> EngineM Value (IResult a)
+runInterpretation' s = runWriterT . flip runStateT s . runEitherT
+
 -- | Run an interpretation and extract its value.
-valueOfInterpretation :: IState -> Interpretation a -> IO (Maybe a)
-valueOfInterpretation s i = runInterpretation s i >>= return . either (const $ Nothing) Just . fst . fst
+valueOfInterpretation :: IState -> Interpretation a -> EngineM Value (Maybe a)
+valueOfInterpretation s i = runInterpretation' s i >>= return . either (const $ Nothing) Just . fst . fst
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
@@ -815,7 +818,7 @@ builtinAttribute annId n t uid = providesError "attribute" n
 
 {- Program initialization methods -}
 
-initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> IO IState
+initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> EngineM Value IState
 initEnvironment bootstrap decl st =
   foldM (\st -> uncurry $ initializeExpr st) st bootstrap >>= flip initDecl decl
   where 
@@ -838,25 +841,25 @@ initEnvironment bootstrap decl st =
     initFunction st n t Nothing  = initializeBinding st (builtin n t)
 
     initializeExpr st n e = initializeBinding st (expression e >>= modifyE . (:) . (n,))
-    initializeBinding st interp = runInterpretation st interp >>= return . getResultState
+    initializeBinding st interp = runInterpretation' st interp >>= return . getResultState
 
-initState :: PeerBootstrap -> K3 Declaration -> IEngine -> IO IState
-initState bootstrap prog engine = initEnvironment bootstrap prog (emptyState engine)
+initState :: PeerBootstrap -> K3 Declaration -> EngineM Value IState
+initState bootstrap prog = initEnvironment bootstrap prog ([], AEnvironment [] [])
 
-initMessages :: IResult () -> IO (IResult Value)
+initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
     ((Right _, s), ilog)
-      | Just (VFunction f) <- lookup "atInit" $ getEnv s -> runInterpretation s (f vunit)
+      | Just (VFunction f) <- lookup "atInit" $ getEnv s -> runInterpretation' s (f vunit)
       | otherwise                                        -> return ((unknownTrigger, s), ilog)
     ((Left err, s), ilog)                                -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-initProgram :: PeerBootstrap -> K3 Declaration -> IEngine -> IO (IResult Value)
-initProgram bootstrap prog engine =
-  initState bootstrap prog engine >>= flip runInterpretation (declaration prog) >>= initMessages
+initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
+initProgram bootstrap prog =
+  initState bootstrap prog >>= flip runInterpretation' (declaration prog) >>= initMessages
 
-finalProgram :: IState -> IO (IResult Value)
-finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
+finalProgram :: IState -> EngineM Value (IResult Value)
+finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
   where runFinal (VFunction f) = f vunit
         runFinal _             = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger         = throwE $ RunTimeTypeError "Could not find atExit trigger"
@@ -867,8 +870,10 @@ standaloneInterpreter :: (IEngine -> IO a) -> IO a
 standaloneInterpreter f = simulationEngine defaultSystem syntaxValueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
-runExpression e = standaloneInterpreter withEngine'
-  where withEngine' engine = valueOfInterpretation (emptyState engine) (expression e)
+runExpression e = standaloneInterpreter (withEngine')
+  where
+    withEngine' engine = flip runEngineM engine (valueOfInterpretation ([], AEnvironment [] []) (expression e))
+        >>= return . either (const Nothing) id
 
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
@@ -900,15 +905,17 @@ runNetwork systemEnv prog =
 
 {- Message processing -}
 
-runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (IResult Value)
+runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
-  (VTrigger (_, Just f)) -> putStrLn ("Running trigger " ++ n)
-                            >> SIO.hFlush SIO.stdout
-                            >> runInterpretation (getResultState r) (f a)
-                            >>= (\r -> putStrLn ("... done") >> return r)
+    (VTrigger (_, Just f)) -> do
+        liftIO $ putStrLn ("Running trigger " ++ n)
+        liftIO $ SIO.hFlush SIO.stdout
+        r <- runInterpretation' (getResultState r) (f a)
+        liftIO $ putStrLn ("... done")
+        return r
 
-  (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
-  _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
+    (VTrigger _) -> return . iError r $ "Uninitialized trigger " ++ n
+    _ -> return . tError r $ "Invalid trigger or sink value for " ++ n
 
   where iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
