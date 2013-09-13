@@ -120,11 +120,12 @@ deriveTypeExpression aEnv tExpr = do
           namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
           anns <- mapM (uncurry toAnnAlias) namedAnns
           -- Concatenate the annotations
+          concattedAnns <- concatAnnTypes anns
           ann <- either (\err -> typeError =<<
                             InvalidAnnotationConcatenation <$>
                               uidOf tExpr <*> return err)
                         return
-                      $ concatAnnTypes anns
+                        concattedAnns
           einstcol <- instantiateCollection ann a_c
           (a_s,cs_s) <- either (\err -> typeError =<<
                             InvalidCollectionInstantiation <$>

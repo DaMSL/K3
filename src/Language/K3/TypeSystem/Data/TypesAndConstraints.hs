@@ -115,6 +115,9 @@ data TVarOrigin (a :: TVarQualification)
     => TVarAnnotationToFunctionOrigin (AnnType c)
       -- ^Type variable was created to model an annotation as a function for the
       --  purposes of subtyping.
+  | TVarEmptyAnnotationOrigin
+      -- ^Type variable was created to represent a fresh empty annotation
+      --  (which is used when annotations are concatenated).
 
 deriving instance Show (TVarOrigin a)
 

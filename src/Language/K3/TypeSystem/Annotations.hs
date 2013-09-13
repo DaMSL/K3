@@ -57,12 +57,28 @@ concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
     return $ AnnType p1 b3 $ CSL.unions [cs1,cs2',CSL.promote cs3]
     
 -- |Defines concatenation over numerous annotation types.
-concatAnnTypes :: (CSL.ConstraintSetLike e c
+concatAnnTypes :: ( CSL.ConstraintSetLike e c
                   , CSL.ConstraintSetLikePromotable ConstraintSet c
-                  , Transform ReplaceVariables c)
-               => [AnnType c] -> Either AnnotationConcatenationError (AnnType c)
-concatAnnTypes = foldM concatAnnType $
-                    AnnType Map.empty (AnnBodyType [] []) CSL.empty
+                  , Transform ReplaceVariables c, FreshVarI m)
+               => [AnnType c]
+               -> m (Either AnnotationConcatenationError (AnnType c))
+concatAnnTypes typs = do
+  emptyAnn <- emptyAnnType
+  return $ foldM concatAnnType emptyAnn typs
+
+-- |Defines a fresh empty annotation type.
+emptyAnnType :: ( CSL.ConstraintSetLike e c
+                , CSL.ConstraintSetLikePromotable ConstraintSet c
+                , FreshVarI m)
+             => m (AnnType c)
+emptyAnnType = do
+  a_C <- freshUVar TVarEmptyAnnotationOrigin
+  a_F <- freshUVar TVarEmptyAnnotationOrigin
+  a_S <- freshUVar TVarEmptyAnnotationOrigin
+  return $ AnnType (Map.fromList
+            [ (TEnvIdContent, a_C)
+            , (TEnvIdFinal, a_F)
+            , (TEnvIdSelf, a_S) ]) (AnnBodyType [] []) CSL.empty
 
 -- |Defines concatenation of annotation body types.
 concatAnnBody :: AnnBodyType -> AnnBodyType

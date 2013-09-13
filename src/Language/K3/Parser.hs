@@ -403,11 +403,13 @@ tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), 
         tupErr           = typeExprError "tuple"
 
 tRecord :: TypeParser
-tRecord = typeExprError "record" $ TC.record <$> (braces . commaSep1) idQType
+tRecord = typeExprError "record" $ ( TUID # ) $
+            TC.record <$> (braces . commaSep) idQType
 
 tCollection :: TypeParser
-tCollection = cErr $ mkCollectionType <$> (keyword "collection" *> tRecord)
-                                      <*> (option [] (symbol "@" *> tAnnotations))
+tCollection = cErr $ TUID #
+                 mkCollectionType <$> (keyword "collection" *> tRecord)
+                                  <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
 

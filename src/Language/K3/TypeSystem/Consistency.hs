@@ -62,6 +62,9 @@ instance Pretty ConsistencyError where
     ImmediateInconsistency t1 t2 ->
       ["Immediate inconsistency: "] %+
         prettyLines t1 %+ [" <: "] %+ prettyLines t2
+    UnsatisfiedRecordBound t1 t2 ->
+      ["Unsatisfied record bound: "] %+
+        prettyLines t1 %+ [" <: "] %+ prettyLines t2
     _ -> splitOn "\n" $ show ce
 
 type ConsistencyCheck = Either (Seq ConsistencyError) ()
