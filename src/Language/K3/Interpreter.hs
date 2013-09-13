@@ -886,8 +886,9 @@ runProgramInitializer bootstrap p = standaloneInterpreter (initProgram bootstrap
 
 -- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO ()
-runProgram systemEnv prog =
-  simulationEngine systemEnv syntaxValueWD >>= (\e -> runEngine virtualizedProcessor systemEnv e prog)
+runProgram systemEnv prog = do
+    engine <- simulationEngine systemEnv syntaxValueWD
+    void $ flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
