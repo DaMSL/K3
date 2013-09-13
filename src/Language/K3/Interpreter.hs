@@ -922,22 +922,24 @@ runTrigger r n a = \case
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
 uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResult Value) (IResult Value)
-uniProcessor = MessageProcessor { initialize = initUP, process = processUP, status = statusUP, finalize = finalizeUP }
-  where
-        initUP [] prog eg = initProgram [] prog eg
-        initUP ((_,inits):_) prog eg = initProgram inits prog eg
+uniProcessor = MessageProcessor {
+    initialize = initUP,
+    process = processUP,
+    status = statusUP,
+    finalize = finalizeUP
+} where
+    initUP [] prog = initProgram [] prog
+    initUP ((_,is):_) prog = initProgram is prog
 
-        statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-        finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+    statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+    finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
 
-        processUP (_, n, args) r =
-          maybe (return $ unknownTrigger r n) (run r n args) $ lookup n $ getEnv $ getResultState r
+    processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
+        lookup n $ getEnv $ getResultState r
 
-        run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
+    run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
 
-        unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
-
-
+    unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
 virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 virtualizedProcessor = MessageProcessor {
