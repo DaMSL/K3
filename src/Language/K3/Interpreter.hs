@@ -1033,8 +1033,8 @@ debugResult addr r = do
   void $ print r
   void $ putStrLn "============"
 
-debugDispatch :: Address -> Identifier -> Value -> IResult Value -> IO ()
-debugDispatch addr name args r = do
+debugDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
+debugDispatch addr name args r = liftIO $ do
   void $ putStrLn ("Processing " ++ show addr ++ " " ++ name)
   void $ putStrLn "Args:"
   void $ print args
