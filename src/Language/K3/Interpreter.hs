@@ -223,6 +223,19 @@ lookupE :: Identifier -> Interpretation Value
 lookupE n = get >>= maybe err return . lookup n . getEnv
   where err = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
+-- | Environment modification
+modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
+modifyE f = modify $ modifyStateEnv f
+
+-- | Environment binding removal
+removeE :: (Identifier, Value) -> a -> Interpretation a
+removeE (n,v) r = modifyE (deleteBy ((==) `on` fst) (n,v)) >> return r
+
+-- | Environment binding replacement
+replaceE :: Identifier -> Value -> Interpretation ()
+replaceE n v = modifyE $ map (\(n',v') -> if n == n' then (n,v) else (n',v'))
+
+
 lookupADef :: Identifier -> Interpretation (IEnvironment Value)
 lookupADef n = get >>= maybe err return . lookup n . definitions . getAnnotEnv
   where err = throwE $ RunTimeTypeError $ "Unknown annotation definition: '" ++ n ++ "'"
@@ -234,10 +247,6 @@ lookupACombo n = tryLookupACombo n >>= maybe err return
 tryLookupACombo :: Identifier -> Interpretation (Maybe (CollectionBinders Value))
 tryLookupACombo n = get >>= return . lookup n . realizations . getAnnotEnv
 
--- | Environment modification
-modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()
-modifyE f = modify $ modifyStateEnv f
-
 -- | Annotation environment modification
 modifyA :: (AEnvironment Value -> AEnvironment Value) -> Interpretation ()
 modifyA f = modify $ modifyStateAEnv f
@@ -248,17 +257,15 @@ modifyADefs f = modifyA (\aEnv -> AEnvironment (f $ definitions aEnv) (realizati
 modifyACombos :: (AnnotationCombinations Value -> AnnotationCombinations Value) -> Interpretation ()
 modifyACombos f = modifyA (\aEnv -> AEnvironment (definitions aEnv) (f $ realizations aEnv))
 
--- | Environment binding removal
-removeE :: (Identifier, Value) -> a -> Interpretation a
-removeE (n,v) r = modifyE (deleteBy ((==) `on` fst) (n,v)) >> return r
-
 -- | Accessor methods to compute with engine contents
 withEngine :: (IEngine -> IO a) -> Interpretation a
 withEngine f = get >>= liftIO . f . getEngine
 
+
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
 sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
+
 
 {- Constants -}
 vunit :: Value
@@ -535,21 +542,36 @@ expression (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
 expression (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
 -- | Interpretation of Binding.
--- TODO: update values of bind targets on exiting the bind expression
 expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> case (b, b') of
     (BIndirection i, VIndirection r) -> 
-      (modifyE . (:) $ (i, VIndirection r)) >> expression f >>= removeE (i, VIndirection r)
+      (modifyE . (:) $ (i, VIndirection r)) >> expression f >>= refreshBinding >>= removeE (i, VIndirection r)
     
     (BTuple ts, VTuple vs) ->
-      (modifyE . (++) $ zip ts vs) >> expression f >>= flip (foldM (flip removeE)) (zip ts vs)
+      (modifyE . (++) $ zip ts vs) >> expression f >>= refreshBinding >>= removeAllE (zip ts vs)
     
     (BRecord ids, VRecord ivs) -> do
         let (idls, idbs) = unzip $ sortBy (compare `on` fst) ids
         let (ivls, ivvs) = unzip $ sortBy (compare `on` fst) ivs
         if idls == ivls
-            then modifyE ((++) (zip idbs ivvs)) >> expression f >>= flip (foldM (flip removeE)) (zip idbs ivvs)
+            then modifyE ((++) (zip idbs ivvs)) >> expression f >>= refreshBinding >>= removeAllE (zip idbs ivvs)
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
     _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
+  
+  where bindId = case tag e of
+                  EVariable i -> Just i
+                  _           -> Nothing
+
+        removeAllE = flip (foldM (flip removeE))
+
+        refreshBinding r = const (return r) =<< case (bindId, b) of
+          (Just i, BIndirection j) -> modifyIndirection =<< (,) <$> lookupE i <*> lookupE j
+          (Just i, BTuple ts)      -> mapM lookupE ts >>= replaceE i . VTuple
+          (Just i, BRecord ids)    -> mapM (\(s,t) -> lookupE t >>= return . (s,)) ids >>= replaceE i . VRecord
+          (_,_)                    -> return ()
+
+        modifyIndirection (VIndirection r, v) = liftIO $ writeIORef r v
+        modifyIndirection _ = throwE $ RunTimeTypeError "Invalid indirection value"
+
 expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
 
 -- | Interpretation of If-Then-Else constructs.

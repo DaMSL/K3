@@ -1,0 +1,20 @@
+declare a : ind mut int = ind mut 5
+declare b : (mut int, mut bool) = (mut 7, mut false) 
+declare c : { m : mut int, n : mut bool } = { m:9, n:false }
+
+trigger t : int = \x -> (
+  bind a as ind y in (
+    y = x
+  );
+  bind b as (u,v) in (
+    u = x;
+    v = true
+  );
+  bind c as {m:s,n:t} in (
+    s = x;
+    t = true
+  )
+)
+
+source s1 : int = value 100
+~~ s1 |> t

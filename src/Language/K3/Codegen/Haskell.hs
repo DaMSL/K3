@@ -271,8 +271,14 @@ returnType _ = throwCG $ CodeGenerationError "Invalid function type"
 namedType :: Identifier -> HS.Type
 namedType n = HS.TyCon . HS.UnQual $ HB.name n
 
+qNamedType :: Identifier -> Identifier -> HS.Type
+qNamedType m n = HS.TyCon . HS.Qual (HS.ModuleName m) $ HB.name n
+
 tyApp :: Identifier -> HS.Type -> HS.Type
 tyApp n t = HS.TyApp (namedType n) t
+
+qTyApp :: Identifier -> Identifier -> HS.Type -> HS.Type
+qTyApp m n t = HS.TyApp (qNamedType m n) t
 
 unitType :: HS.Type
 unitType = [ty| () |]
@@ -296,19 +302,22 @@ funType :: HS.Type -> HS.Type -> HS.Type
 funType a r = HS.TyFun a r
 
 triggerType :: HS.Type -> HS.Type
-triggerType a = tyApp triggerTypeId $ funType a unitType
+triggerType a = tyApp triggerTypeId $ funType a $ engineType unitType
+
+collectionType :: Identifier -> HS.Type -> HS.Type
+collectionType comboId elType = HS.TyApp (namedType $ compositionTypeId comboId) elType
 
 monadicType :: Identifier -> HS.Type -> HS.Type
 monadicType m t = tyApp m t
+
+qMonadicType :: Identifier -> Identifier -> HS.Type -> HS.Type
+qMonadicType mdule m t = qTyApp mdule m t
 
 ioType :: HS.Type -> HS.Type
 ioType t = monadicType "IO" t
 
 engineType :: HS.Type -> HS.Type
-engineType t = HS.TyApp (monadicType "EngineM" $ namedType engineValueTypeId) t
-
-collectionType :: Identifier -> HS.Type -> HS.Type
-collectionType comboId elType = HS.TyApp (namedType $ compositionTypeId comboId) elType
+engineType t = HS.TyApp (qMonadicType engineModuleAliasId "EngineM" $ namedType engineValueTypeId) t
 
 
 typ :: K3 Type -> CodeGeneration HaskellEmbedding
@@ -349,7 +358,14 @@ typ' t@(tag &&& children -> (TCollection, [x])) =
 
 typ' (tag -> TCollection) = throwCG $ CodeGenerationError "Invalid collection type"
 
-typ' _                    = undefined
+-- TODO
+{-
+typ' (tag -> TBuiltin TSelf)      = throwCG $ CodeGenerationError "Cannot generate Self type"
+typ' (tag -> TBuiltin TContent)   = throwCG $ CodeGenerationError "Cannot generate Content type"
+typ' (tag -> TBuiltin THorizon)   = throwCG $ CodeGenerationError "Cannot generate Horizon type"
+typ' (tag -> TBuiltin TStructure) = throwCG $ CodeGenerationError "Cannot generate Structure type"
+-}
+typ' _ = throwCG $ CodeGenerationError "Cannot generate Haskell type"
 
 {- Analysis -}
 
@@ -357,6 +373,10 @@ typ' _                    = undefined
 purifyExpression :: K3 Expression -> K3 Expression
 purifyExpression = undefined
 
+
+{- Expressions -}
+sendFnE :: HS.Exp
+sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "sendE"
 
 {- Load-store wrappers -}
 
@@ -525,7 +545,8 @@ binary op e e' = do
     OSeq -> doInfx ">>"    [eE, eE']
     OApp -> applyE applyFn [eE, eE']
     OSnd -> [hs| let (addr,trig) = $eE in
-                  (liftIO $ ishow $eE') >>= sendE addr ( __triggerHandleFnId__ trig )|]
+                  (liftIO $ ishow $eE')
+                  >>= $sendFnE addr ( __triggerHandleFnId__ trig )|]
     _    -> error "Invalid binary operator"
 
   where doInfx opStr args = applyE (doOpF True opStr) args
@@ -759,7 +780,7 @@ mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGene
 mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
   []           -> mkTypedDecl n nType nInit
   
-  [TMutable]   -> mkTypedDecl n (indirectionType nType) [hs| Just ( $nInit ) |]
+  [TMutable]   -> mkTypedDecl n (ioType $ indirectionType nType) [hs| newMVar ( $nInit ) |]
     -- assumes no IO actions are present in the initializer.
   
   [TImmutable] -> mkTypedDecl n nType nInit
@@ -832,8 +853,7 @@ trigger n t e = do
   t' <- typ' t
   void $ modifyTriggerDispatchCG ((n,t'):)
   return . HDeclarations $
-    [ typeSig n . triggerType . funType t' $ engineType unitType
-    , namedVal n $ triggerImpl (HB.strE n) e' ]
+    [ typeSig n $ triggerType t', namedVal n $ triggerImpl (HB.strE n) e' ]
   where 
     triggerImpl hndlE implE = 
       HB.appFun (HS.Con $ HS.UnQual $ HB.name triggerConId) [hndlE, implE]
@@ -859,7 +879,7 @@ annotationMember annId = \case
 
 genNotifier :: Identifier -> String -> CodeGeneration HaskellEmbedding
 genNotifier n evt = mkTypedDecl n
-  [ty| Identifier -> Trigger a -> EngineM String () |] 
+  [ty| Identifier -> Trigger a -> E.EngineM String () |] 
   [hs| \cid (trig, addr) -> 
           (liftIO $ ishow ()) >>= attachNotifier_ cid $(HB.strE evt) . (addr, handle trig,) |]
 
@@ -867,19 +887,19 @@ builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
 builtin "parseArgs" _ = return HNoRepr -- TODO
 
 builtin "openBuiltin" _ = mkTypedDecl "openBuiltin"
-  [ty| Identifier -> Identifier -> String -> EngineM String () |]
+  [ty| Identifier -> Identifier -> String -> E.EngineM String () |]
   [hs| \cid builtinId format -> E.openBuiltin cid builtinId (wireDesc format) |]
 
 builtin "openFile" t = mkTypedDecl "openFile"
-  [ty| Identifier -> String -> String -> String -> EngineM String () |]
+  [ty| Identifier -> String -> String -> String -> E.EngineM String () |]
   [hs| \cid path format mode -> E.openFile cid path (wireDesc format) mode |]
 
 builtin "openSocket" t = mkTypedDecl "openSocket"
-  [ty| Identifier -> Address -> String -> String -> EngineM String () |]
+  [ty| Identifier -> Address -> String -> String -> E.EngineM String () |]
   [hs| \cid addr format mode -> E.openSocket cid addr (wireDesc format) mode |]
 
 builtin "close" _ = mkTypedDecl "close"
-  [ty| Identifier -> EngineM String () |]
+  [ty| Identifier -> E.EngineM String () |]
   [hs| \cid -> E.close cid |]
 
 builtin "registerFileDataTrigger"     _ = genNotifier "registerFileDataTrigger"     "data"
@@ -938,7 +958,23 @@ channelMethod x =
 
 
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
+builtinLiftedAttribute "Collection" "peek"   t uid = undefined
+builtinLiftedAttribute "Collection" "insert" t uid = undefined
+builtinLiftedAttribute "Collection" "delete" t uid = undefined
+builtinLiftedAttribute "Collection" "update" t uid = undefined
+
+builtinLiftedAttribute "Collection" "combine" t uid = undefined
+builtinLiftedAttribute "Collection" "split"   t uid = undefined
+
+builtinLiftedAttribute "Collection" "iterate" t uid = undefined
+builtinLiftedAttribute "Collection" "map"     t uid = undefined
+builtinLiftedAttribute "Collection" "filter"  t uid = undefined
+builtinLiftedAttribute "Collection" "fold"    t uid = undefined
+builtinLiftedAttribute "Collection" "groupBy" t uid = undefined
+builtinLiftedAttribute "Collection" "ext"     t uid = undefined
+
 builtinLiftedAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
+
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
 builtinAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin attributes not implemented"
@@ -1020,6 +1056,10 @@ generateCollectionCompositions =
                          [ typeSig copyConId $ funType typeExpr $ engineType typeExpr
                          , simpleFun copyConId copyArg implE ]
 
+          -- TODO: injector as well as copy constructor, i.e.
+          --   record -> MVar record 
+          --   as well as MVar record -> MVar record
+
           constructorDecls = (\x y z -> x ++ y ++ z) <$> initCon <*> emptyCon <*> copyCon
 
       in ([reprDecl, typeDecl] ++) <$> constructorDecls
@@ -1057,15 +1097,15 @@ generate progName p = declaration p >>= mkProgram
         preDecls = 
           [ [dec| data Trigger a = Trigger { __triggerHandleFnId__ :: Identifier
                                            , __triggerImplFnId__   :: a } |] 
-          , [dec| type RuntimeStatus = Either EngineError () |] ]
+          , [dec| type RuntimeStatus = Either E.EngineError () |] ]
 
-        postDecls dispatchDecl =
+        postDecls dispatchDeclOpt =
           [ 
-            [dec| identityWD :: WireDesc String |]
-          , [dec| identityWD = WireDesc return (return . Just) (Delimiter "\n") |]
+            [dec| identityWD :: E.WireDesc String |]
+          , [dec| identityWD = E.WireDesc return (return . Just) (Delimiter "\n") |]
 
-          , [dec| compiledMsgPrcsr :: MessageProcessor SystemEnvironment () String RuntimeStatus EngineError |]
-          , [dec| compiledMsgPrcsr = MessageProcessor {
+          , [dec| compiledMsgPrcsr :: E.MessageProcessor SystemEnvironment () String RuntimeStatus E.EngineError |]
+          , [dec| compiledMsgPrcsr = E.MessageProcessor {
                                          initialize = initializeRT
                                        , process    = processRT
                                        , status     = statusRT
@@ -1082,16 +1122,18 @@ generate progName p = declaration p >>= mkProgram
                       reportRT (Right _)  = return ()
 
                       processRT (addr, n, msg) rts = dispatch addr n msg
-            |]
-
-          , [dec| dispatch :: Address -> Identifier -> String -> EngineM String () |]
-
-          , dispatchDecl
-
-          , [dec| main = do
+            |] ]
+          ++ (case dispatchDeclOpt of
+                Nothing -> []
+                Just dispatchDecl ->
+                  [ [dec| dispatch :: Address -> Identifier -> String -> E.EngineM String () |]
+                  , dispatchDecl ]
+              )
+          ++
+          [ [dec| main = do
                     sysEnv <- parseArgs
-                    engine <- networkEngine sysEnv compiledWD
-                    void $ runEngine compiledMsgPrcsr sysEnv engine ()
+                    engine <- E.networkEngine sysEnv identityWD
+                    void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
                 |] ]
 
         (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
@@ -1100,7 +1142,9 @@ generate progName p = declaration p >>= mkProgram
         
         generateDispatch = do
           alts <- dispatchCaseAlts
-          return . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
+          case alts of 
+            [] -> return Nothing
+            _  -> return . Just . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
 
         dispatchCaseAlts = do
           trigIds <- getTriggerDispatchCG
@@ -1109,7 +1153,7 @@ generate progName p = declaration p >>= mkProgram
         dispatchMsg n argT = 
           HB.doE
             [ HB.genStmt HL.noLoc (HB.pvar $ HB.name "payload")
-                  (HS.ExpTypeSig HL.noLoc [hs| liftIO ( iread $dispatchMsgV ) |] $ engineType $ maybeType argT)
+                  (HB.paren $ typedExpr [hs| liftIO ( iread $dispatchMsgV ) |] $ engineType $ maybeType argT)
             
             , HB.qualStmt [hs| case payload of 
                                   Nothing -> error "Failed to extract message payload" -- TODO: throw engine error
@@ -1131,6 +1175,9 @@ compile cg = either (Left . show) (Right . compile') $ fst $ runCodeGeneration e
 
 typeSig :: Identifier -> HS.Type -> HS.Decl
 typeSig n t = HS.TypeSig HL.noLoc [HB.name n] t
+
+typedExpr :: HS.Exp -> HS.Type -> HS.Exp
+typedExpr e t = HS.ExpTypeSig HL.noLoc e t
 
 namedVal :: Identifier -> HS.Exp -> HS.Decl
 namedVal n e = HB.nameBind HL.noLoc (HB.name n) e
