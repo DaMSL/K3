@@ -17,8 +17,8 @@ import Data.Set (Set)
 
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data.ConstraintSet
+import Language.K3.TypeSystem.Data.Coproduct
 import Language.K3.TypeSystem.Data.TypesAndConstraints
-import Language.K3.TypeSystem.Data.Utils
 
 -- |A value defining the empty annotation.
 emptyAnnotation :: NormalAnnType

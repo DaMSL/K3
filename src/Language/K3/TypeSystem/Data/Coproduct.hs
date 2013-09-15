@@ -1,7 +1,7 @@
 {-|
-  Contains generic utility types required by the K3 type system data types.
+  Contains a generic type required by the K3 type system data types.
 -}
-module Language.K3.TypeSystem.Data.Utils
+module Language.K3.TypeSystem.Data.Coproduct
 ( Coproduct(..)
 ) where
 

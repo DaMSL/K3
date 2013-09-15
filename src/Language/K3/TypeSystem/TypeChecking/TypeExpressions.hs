@@ -33,6 +33,7 @@ import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
+import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
 
 $(loggingFunctions)
@@ -105,8 +106,12 @@ deriveTypeExpression aEnv tExpr = do
           (qas,css) <- unzip <$>
                         mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
           a' <- freshTypecheckingUVar =<< uidOf tExpr
-          return (a', CSL.unions css `CSL.union`
-                      ((SRecord $ Map.fromList $ zip ids qas) ~= a'))
+          t <- either (\err -> typeError =<< RecordSignatureError <$>
+                                                  uidOf tExpr <*> return err)
+                  return
+                $ recordConcat (map (\ (i, qa) ->
+                    SRecord (Map.singleton i qa) Set.empty) $ zip ids qas)
+          return (a', CSL.unions css `CSL.union` (t ~= a'))
         TCollection -> do
           tExpr' <- assert1Child tExpr
           let ais = mapMaybe toAnnotationId $ annotations tExpr

@@ -11,9 +11,12 @@ module Language.K3.TypeSystem.TypeChecking.Expressions
 ) where
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
+import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
@@ -127,14 +130,19 @@ deriveExpression aEnv env expr = do
           a <- freshTypecheckingUVar =<< uidOf expr
           return (a, csUnions css `csUnion` csSing (STuple qas <: a))
         ERecord ids -> do
+          let duplicates = Set.fromList $ map fst $ filter ((>1) . snd) $
+                              map (head &&& length) $ groupBy (==) $ sort ids
+          unless (Set.null duplicates) $ typecheckError =<<
+            DuplicateIdentifiersInRecordExpression <$> uidOf expr <*>
+              return duplicates
           let exprs = subForest expr
           (qas, css) <- unzip <$>
                           mapM (deriveQualifiedExpression aEnv env) exprs
           unless (length exprs == length ids) $
             typecheckError $ InternalError $ InvalidExpressionChildCount expr
           a <- freshTypecheckingUVar =<< uidOf expr
-          return (a, csUnions css `csUnion`
-                      csSing (SRecord (Map.fromList $ zip ids qas) <: a))
+          let t = SRecord (Map.fromList $ zip ids qas) Set.empty
+          return (a, csUnions css `csUnion` csSing (t <: a))
         ELambda i -> do
           expr' <- assert1Child expr
           qa <- freshTypecheckingQVar =<< uidOf expr
@@ -159,7 +167,7 @@ deriveExpression aEnv env expr = do
           a <- freshTypecheckingUVar =<< uidOf expr
           qa <- freshTypecheckingQVar =<< uidOf expr
           return (a, cs `csUnion`
-                     csFromList [ a' <: SRecord (Map.singleton i qa)
+                     csFromList [ a' <: SRecord (Map.singleton i qa) Set.empty
                                 , qa <: a ])
         ELetIn i -> do
           (qexpr',expr') <- assert2Children expr
@@ -211,7 +219,8 @@ deriveExpression aEnv env expr = do
                               (\i' qa -> ( TEnvIdentifier i'
                                          , QuantType Set.empty qa csEmpty ))
                               i's qas
-                         , csSing $ a1 <: SRecord (Map.fromList $ zip is qas) )
+                         , csSing $ a1 <: SRecord (Map.fromList $ zip is qas)
+                                                  Set.empty )
           (env',cs') <- handleBinder
           (a2,cs2) <- deriveUnqualifiedExpression aEnv (envMerge env env') expr2
           return (a2, csUnions [cs1,cs2,cs'])

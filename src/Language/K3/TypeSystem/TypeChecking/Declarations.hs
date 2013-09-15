@@ -39,6 +39,7 @@ import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
+import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
 import Language.K3.Utils.Conditional
 
@@ -116,6 +117,13 @@ deriveDeclaration aEnv env decl =
                         return inst
       (t_H,cs_H) <- either (typecheckError . AnnotationDepolarizationFailure u)
                         return $ depolarize ms2
+      oa_C <- freshOVar $ OpaqueAnnotationOrigin u
+      oa_F <- freshOVar $ OpaqueAnnotationOrigin u
+      t'_H <- either
+                  (typecheckError . InternalError .
+                      HorizonTypeConstructionError decl)
+                  return
+                $ recordConcat [t_H, SRecord Map.empty $ Set.singleton oa_C]
       aEnv' <- mconcat <$> mapM (\(i,a) ->
                     (\qa -> Map.singleton i $ QuantAlias $
                             QuantType Set.empty qa $
@@ -130,15 +138,14 @@ deriveDeclaration aEnv env decl =
                  mconcat (map (\(AnnMemType i _ qa') ->
                                   Map.singleton (TEnvIdentifier i) $
                                     QuantType Set.empty qa' csEmpty) ms1)
-      oa_C <- freshOVar $ OpaqueAnnotationOrigin u
-      oa_F <- freshOVar $ OpaqueAnnotationOrigin u
       let cs' = csUnions
                   [ cs , cs_S , cs_H , csSing $ a_F <: a_H
-                  , a_H ~= t_H, csSing $ t_S <: a_S, SOpaque oa_C ~= a_C
-                  , SOpaque oa_F ~= a_F
+                  , a_H ~= t'_H, csSing $ t_S <: a_S
                   , csFromList
-                      [ OpaqueBoundConstraint oa_F SBottom t_H
-                      , OpaqueBoundConstraint oa_C SBottom $ SRecord Map.empty
+                      [ SOpaque oa_C <: a_C, SOpaque oa_F <: a_F
+                      , OpaqueBoundConstraint oa_F SBottom t'_H
+                      , OpaqueBoundConstraint oa_C SBottom $
+                          SRecord Map.empty Set.empty
                       ]
                   ]
       (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember (envMerge aEnv aEnv')

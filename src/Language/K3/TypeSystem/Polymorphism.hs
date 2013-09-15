@@ -74,7 +74,7 @@ reachableFromType t = case t of
   SOption qa -> reachableFromQVar qa
   SIndirection qa -> reachableFromQVar qa
   STuple qas -> reachableUnions $ map reachableFromQVar qas
-  SRecord m -> reachableUnions $ map reachableFromQVar $ Map.elems m
+  SRecord m _ -> reachableUnions $ map reachableFromQVar $ Map.elems m
   _ -> mzero
 
 -- * Polyinstantiation
