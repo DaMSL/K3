@@ -30,8 +30,12 @@ declare c2           :     collection { x : int } @ { Collection }
 declare c3           : mut collection { key : int, value : int } @ { Collection }
 
 declare c4           : mut collection { addr : address } @ { Collection }
+declare c5           : mut collection { addr : address } @ { Collection }
 
 declare y : mut int = 0
+
+declare node1 : immut address = 127.0.0.1:40000
+declare node2 : immut address = 127.0.0.1:50000
 
 trigger t : int = \i -> (
   myCollection.insert {x:i};
@@ -45,8 +49,17 @@ trigger t : int = \i -> (
   myCollection = myCollection.combine myCollection;
   c3 = myCollection.groupBy (\r -> r.x) (\acc -> (\r -> acc + 1)) 0;
 
-  c4.insert { addr : 127.0.0.1:40000 }
+  c4.insert { addr : node1 };
+  (u, node2) <- c4 
 )
+
+trigger u : (collection { addr : address } @ { Collection }) = \c -> (
+  c5 = c;
+  c5.iterate (\a -> (v, a.addr) <- 100 )
+)
+
+trigger v : int = \i ->
+  y = i
 
 source s1 : int = value 5
 
