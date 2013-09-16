@@ -1,0 +1,53 @@
+annotation Collection {
+  provides lifted peek    : (() -> option content);
+
+  provides lifted insert  : (content -> ());
+  provides lifted delete  : (content -> ());
+  provides lifted update  : (content -> content -> ());
+
+  provides lifted combine : (self -> self);
+  provides lifted split   : (self -> (self, self));
+
+  provides lifted iterate : ((content -> ()) -> ());  
+
+  provides lifted map     : ((content -> int) -> collection { elem : int } @ {Collection});
+
+  provides lifted filter  : ((content -> bool) -> self);
+
+  provides lifted fold    : ((int -> content -> int) -> int -> int);
+
+  provides lifted groupBy : ((content -> int) -> (int -> content -> int) -> int
+                             -> collection { key : int, value : int } @ {Collection});
+
+  provides lifted ext     : ((content -> collection { elem : int } @ {Collection}) 
+                             -> collection { elem : int } @ {Collection}); 
+}
+
+
+declare myCollection : mut collection { x : int } @ { Collection }
+declare c1           :     collection { x : int } @ { Collection }
+declare c2           :     collection { x : int } @ { Collection }
+declare c3           : mut collection { key : int, value : int } @ { Collection }
+
+declare c4           : mut collection { addr : address } @ { Collection }
+
+declare y : mut int = 0
+
+trigger t : int = \i -> (
+  myCollection.insert {x:i};
+  c1.insert {x:i};
+  c2.insert {x:(i + 1)};
+  myCollection = c1.combine c2;
+
+  myCollection = myCollection.map (\r -> {x : r.x + 1});
+  y = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
+
+  myCollection = myCollection.combine myCollection;
+  c3 = myCollection.groupBy (\r -> r.x) (\acc -> (\r -> acc + 1)) 0;
+
+  c4.insert { addr : 127.0.0.1:40000 }
+)
+
+source s1 : int = value 5
+
+~~ s1 |> t
