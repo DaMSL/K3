@@ -15,6 +15,7 @@ import Language.K3.Logger
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Utils
 
 $(loggingFunctions)
 
@@ -24,7 +25,7 @@ $(loggingFunctions)
 calculateClosure :: ConstraintSet -> ConstraintSet
 calculateClosure cs =
   _debugI (boxToString $ ["Closing constraints: "] %$
-    indent 2  (prettyLines cs)) $
+    indent 2 (prettyLines cs)) $
   let (cs',cont) = calculateClosureStep cs in
   if cont then calculateClosure cs' else _debugIPretty "Finished closure: " cs'
 
@@ -39,6 +40,8 @@ calculateClosureStep cs =
     closureFunctions =
       [ (closeTransitivity, "Transitivity")
       , (closeImmediate, "Immediate Type")
+      , (closeLowerBoundingExtendedRecord, "Close Lower Ext. Record")
+      , (closeUpperBoundingExtendedRecord, "Close Upper Ext. Record")
       , (closeBinaryOperations, "Binary Operation")
       , (closeQualifiedTransitivity, "Qual Transitivity")
       , (closeQualifiedRead, "Qualified Read")
@@ -100,10 +103,18 @@ closeImmediate cs = csUnions $ do
 closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeLowerBoundingExtendedRecord cs = csUnions $ do
   (SRecord m oas, t) <- csQuery cs QueryAllTypesLowerBoundingTypes
-  oa <- Set.toList oas
-  guard $ t /= SOpaque oa
-  (t_L, t_U) <- csQuery cs $ QueryOpaqueBounds oa
-  undefined -- TODO: RecordConcat
+  case t of
+    SOpaque oa -> guard $ not $ oa `Set.member` oas
+    _ -> return ()
+  oa' <- Set.toList oas
+  (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
+  case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
+    Left _ ->
+      -- In this situation, there is an inherent conflict in the record type.
+      -- We'll detect this in inconsistency (to keep the closure function
+      -- simple); for now, just bail on the rule.
+      mzero
+    Right t' -> return $ csSing $ t' <: t
 
 -- |Performs closure for opaque-extended records in an upper-bounding position.
 closeUpperBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
@@ -159,6 +170,7 @@ opaqueLowerBound :: ConstraintSet -> ConstraintSet
 opaqueLowerBound cs = csFromList $ do
   (oa,t) <- csQuery cs QueryAllOpaqueLowerBoundedConstraints
   guard $ SOpaque oa /= t
+  guard $ SRecord Map.empty (Set.singleton oa) /= t
   (_,ub) <- csQuery cs $ QueryOpaqueBounds oa
   return $ ub <: t
 
@@ -166,5 +178,8 @@ opaqueUpperBound :: ConstraintSet -> ConstraintSet
 opaqueUpperBound cs = csFromList $ do
   (t,oa) <- csQuery cs QueryAllOpaqueUpperBoundedConstraints
   guard $ SOpaque oa /= t
+  case t of
+    SRecord _ oas -> guard $ not $ Set.member oa oas
+    _ -> return ()
   (lb,_) <- csQuery cs $ QueryOpaqueBounds oa
   return $ t <: lb

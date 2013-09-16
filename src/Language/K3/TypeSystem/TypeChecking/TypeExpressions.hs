@@ -94,7 +94,7 @@ deriveTypeExpression aEnv tExpr = do
   (a, cs) <-
       case tag tExpr of
         TBool -> deriveTypePrimitive SBool
-        TByte -> undefined "No Byte type in spec!"
+        TByte -> error "No Byte type in spec!"
         TInt -> deriveTypePrimitive SInt
         TReal -> deriveTypePrimitive SReal
         TString -> deriveTypePrimitive SString

@@ -40,6 +40,13 @@ data ConsistencyError
   | UnsatisfiedRecordBound ShallowType ShallowType
       -- ^Indicates that a record type lower bound met a record type upper
       --  bound and was not a correct subtype.
+  | UnconcatenatableRecordType
+        ShallowType ShallowType OpaqueVar ShallowType RecordConcatenationError
+      -- ^Indicates that a given type cannot be concatenated as a lower-bounding
+      --  record.  The arguments are, in order: the type which cannot be
+      --  concatenated; its upper bound; the opaque component whose bound was
+      --  being concatenated; that component's bound; and the error from
+      --  record concatenation that occurred.
   | ConflictingRecordConcatenation RecordConcatenationError
       -- ^Indicates that a record type was concatenated in such a way that an
       --  overlap occurred.
@@ -65,6 +72,8 @@ instance Pretty ConsistencyError where
     UnsatisfiedRecordBound t1 t2 ->
       ["Unsatisfied record bound: "] %+
         prettyLines t1 %+ [" <: "] %+ prettyLines t2
+    BottomLowerBound t ->
+      ["Lower bound of bottom: "] %+ prettyLines t
     _ -> splitOn "\n" $ show ce
 
 type ConsistencyCheck = Either (Seq ConsistencyError) ()
@@ -121,6 +130,30 @@ checkConsistent cs =
       (SRecord m1 _, SRecord m2 oas2) | Set.null oas2 ->
         unless (Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1) $
           genErr $ UnsatisfiedRecordBound t1 t2
+      (SRecord m oas, _) -> mconcat <$> sequence (do
+        oa' <- Set.toList oas
+        (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
+        case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
+          Left err -> return $ Left $ Seq.singleton $ UnconcatenatableRecordType
+                        t1 t2 oa' t_U err
+          Right _ -> return $ Right ())
+      {-
+closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
+closeLowerBoundingExtendedRecord cs = csUnions $ do
+  (SRecord m oas, t) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  case t of
+    SOpaque oa -> guard $ not $ oa `Set.member` oas
+    _ -> return ()
+  oa' <- Set.toList oas
+  (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
+  case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
+    Left _ ->
+      -- In this situation, there is an inherent conflict in the record type.
+      -- We'll detect this in inconsistency (to keep the closure function
+      -- simple); for now, just bail on the rule.
+      mzero
+    Right t' -> return $ csSing $ t' <: t
+      -}
       _ -> return ()
     checkConcatenationInconsistent :: ShallowType -> ConsistencyCheck
     checkConcatenationInconsistent t = case t of

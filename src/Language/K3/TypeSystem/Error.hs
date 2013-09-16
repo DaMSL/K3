@@ -116,6 +116,11 @@ instance Pretty TypeError where
           ["Errors:"] %$
             indent 2 (prettyLines ces)
         )
+    AnnotationClosureInconsistencyInternal i errs ->
+      ["Inconsistencies in closure of annotation " ++ i ++ ": "] %$
+        indent 2 (
+          foldl (%$) [] $ map prettyLines errs
+        )
     _ -> splitOn "\n" $ show e
 
 instance Pretty (Seq TypeError) where

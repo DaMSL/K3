@@ -157,7 +157,7 @@ deriveDeclaration aEnv env decl =
                          , SOpaque oa_f ~= a_f
                          , SOpaque oa_s ~= a_s
                          , csFromList
-                             [ OpaqueBoundConstraint oa_c SBottom $
+                             [ OpaqueBoundConstraint oa_c (SOpaque oa_f) $
                                   SRecord Map.empty Set.empty
                              , OpaqueBoundConstraint oa_f SBottom t_h
                              , OpaqueBoundConstraint oa_s SBottom t_s
@@ -179,7 +179,7 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b' +% [" \\ "] %$ prettyLines cs''') 
-      let allCs = csUnions $ cs':cs''':cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''':cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
