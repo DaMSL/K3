@@ -134,6 +134,10 @@ deriveDeclaration aEnv env decl =
       -- Depolarize the members to get the self and horizon schema types.
       (t_s, cs_s) <- depolarizeOrError u ms1
       (t_h', cs_h) <- depolarizeOrError u ms2
+      _debug $ boxToString $ ["Annotation " ++ iAnn ++ " self part: "] %+
+            prettyLines t_s
+      _debug $ boxToString $ ["Annotation " ++ iAnn ++ " horizon part: "] %+
+            prettyLines t_h'
       
       -- NOTE: here, we'd normally enforce that a set of constraints existed in
       --       @cs@.  But that performs poorly.  Instead, we will rely on the
