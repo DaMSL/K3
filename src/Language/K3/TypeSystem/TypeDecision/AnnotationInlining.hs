@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections, TemplateHaskell #-}
 
 {-|
   This module defines the routines necessary to inline member annotation
@@ -35,11 +35,15 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Logger
+import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
+
+$(loggingFunctions)
 
 -- |The internal representation of annotations during and after inlining.
 data AnnRepr = AnnRepr
@@ -48,6 +52,25 @@ data AnnRepr = AnnRepr
                   , memberAnnDecls :: Set (Identifier, TPolarity)
                   , processedMemberAnnDecls :: Set (Identifier, TPolarity)
                   }
+
+instance Pretty AnnRepr where
+  prettyLines (AnnRepr lam sam mad umad) =
+    ["〈 "] %+ prettyAttMap lam %$
+    [", "] %+ prettyAttMap sam %$
+    [", "] %+ intersperseBoxes [", "]
+                (map (prettyTriple . rearrange) $ Set.toList $
+                  mad Set.\\ umad) +% [" 〉"]
+    where
+      prettyAttMap m = intersperseBoxes [", "] $ map prettyEntry $ Map.toList m
+      rearrange (i,pol) = (pol,i,Nothing)
+      prettyEntry (_,mem) = prettyMem mem
+      prettyMem mem = prettyTriple $ case mem of
+                        Lifted pol i _ _ u -> (typeOfPol pol,i,Just u)
+                        Attribute pol i _ _ u -> (typeOfPol pol,i,Just u)
+                        MAnnotation pol i u -> (typeOfPol pol,i,Just u)
+      prettyTriple (pol,i,mu) = [i ++ pStr pol ++ ": UID#" ++
+        maybe "?" (\(UID u) -> show u) mu]
+      pStr pol = case pol of { Positive -> "+"; Negative -> "-" }
 
 -- |A data type which tracks information about an @AnnRepr@ in addition to the
 --  @AnnRepr@ itself.
@@ -119,6 +142,8 @@ convertAstToRepr ast =
     declToRepr decl = case tag decl of
       DAnnotation i mems -> do
         repr <- convertAnnotationToRepr mems
+        _debug $ boxToString $ ["Annotation " ++ i ++ " representation: "] %$
+                                  indent 2 (prettyLines repr)
         u <- uidOf decl
         return $ Just (i, (repr, u, decl))
       _ -> return Nothing
@@ -186,7 +211,11 @@ inlineAnnotations decl = do
   m' <- closeReprs m
   return $ Map.map f m'
   where
-    f (repr,_,decl') =
-        ( ( Map.elems $ liftedAttMap repr
-          , Map.elems $ schemaAttMap repr)
-        , decl')
+    f (repr,UID u,decl') =
+        let ans = ( ( Map.elems $ liftedAttMap repr
+                    , Map.elems $ schemaAttMap repr)
+                  , decl')
+        in _debugI
+              ( boxToString $ ["Inlined form of UID " ++ show u ++ ":"] %$
+                  indent 2 (prettyLines repr) )
+              ans
