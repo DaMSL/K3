@@ -97,8 +97,7 @@ type ConstraintSetType c = (Pretty c, Show c)
 data TVarOrigin (a :: TVarQualification)
   = TVarSourceOrigin UID -- ^Type variable produced directly from source code.
   | TVarPolyinstantiationOrigin (TVar a) UID
-      -- ^Type variable is the result of polyinstantiation at a given source
-      --  location.
+      -- ^Type variable is the result of polyinstantiation at a given node UID.
   | TVarBoundGeneralizationOrigin [TVar a] TPolarity
       -- ^Type variable was created to generalize a number of existing
       --  variables.  The polarity describes the bounding direction: positive
@@ -118,6 +117,9 @@ data TVarOrigin (a :: TVarQualification)
   | TVarEmptyAnnotationOrigin
       -- ^Type variable was created to represent a fresh empty annotation
       --  (which is used when annotations are concatenated).
+  | TVarAnnotationFreshenOrigin (TVar a) UID
+      -- ^Type variable was the result of polyinstantiation of variables in an
+      --  annotation type at a given node UID.
 
 deriving instance Show (TVarOrigin a)
 

@@ -3,16 +3,19 @@
   This module contains functions for annotation types.
 -}
 module Language.K3.TypeSystem.Annotations
-( instantiateAnnotation
+( freshenAnnotation
+, instantiateAnnotation
 , concatAnnTypes
 , concatAnnBodies
 , depolarize
-, instantiateCollection
+
+, readAnnotationSpecialParameters
+, depolarizeOrError
 , module Language.K3.TypeSystem.Annotations.Error
 ) where
 
+import Control.Applicative
 import Control.Arrow
-import Control.Error.Util
 import Control.Monad
 import Control.Monad.Trans.Either
 import qualified Data.Map as Map
@@ -22,14 +25,42 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 
 import Language.K3.Core.Common
+import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
+import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Utils
+
+-- |Freshens an annotation type.  All variables appearing within the annotation
+--  type are replaced by fresh equivalents.  The provided @UID@ should identify
+--  the node which caused this freshening operation.
+freshenAnnotation :: forall m e c.
+                     ( CSL.ConstraintSetLike e c
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , FreshVarI m)
+                  => UID -> AnnType c -> m (AnnType c)
+freshenAnnotation u ann = do
+  -- PERF: Implement this as a monadic transform so we only walk the tree once.
+  let vars = extractVariables ann
+  (ma,mqa) <- mconcat <$> mapM freshen (Set.toList vars)
+  return $ replaceVariables mqa ma ann
+  where
+    freshen :: AnyTVar -> m (Map UVar UVar, Map QVar QVar)
+    freshen sa =
+      case sa of
+        SomeQVar qa ->
+          (\x -> (Map.empty, Map.singleton qa x))
+            <$> freshQVar (TVarAnnotationFreshenOrigin qa u)
+        SomeUVar a ->
+          (\x -> (Map.singleton a x, Map.empty))
+            <$> freshUVar (TVarAnnotationFreshenOrigin a u)
 
 -- |Instantiates an annotation type.  If bindings appear in the parameters
 --  which are not open type variables in the annotation type, they are ignored.
@@ -131,7 +162,9 @@ depolarize ms = do
   case mt of
     Right t -> return (t,cs)
     Left (RecordIdentifierOverlap is) ->
-      Left $ MultipleProvisions $ Set.findMin is
+      Left $ MultipleProvisions is
+    Left (RecordOpaqueOverlap oas) ->
+      Left $ MultipleOpaques oas
     Left (NonRecordType t) ->
       error $ "depolarize received non-record type complaint for " ++
               show t ++ ", which should never happen"
@@ -155,7 +188,7 @@ depolarize ms = do
           return ( SRecord (Map.singleton i posqa) Set.empty
                  , csFromList [ posqa <: qa
                               | qa <- Set.toList negqas ])
-        (_,_) -> Left $ MultipleProvisions i
+        (_,_) -> Left $ MultipleProvisions $ Set.singleton i
       where
         extract :: AnnMemType -> (Set QVar, Set QVar)
         extract (AnnMemType i' p qa) =
@@ -164,45 +197,22 @@ depolarize ms = do
             Positive -> (Set.singleton qa,Set.empty)
             Negative -> (Set.empty,Set.singleton qa)
 
--- |Defines instantiation of collection types.  If the instantiation is not
---  defined (e.g. because depolarization fails), then the clashing identifiers
---  are provided instead.
-instantiateCollection :: ( FreshVarI m, CSL.ConstraintSetLike e c
-                         , CSL.ConstraintSetLikePromotable ConstraintSet c
-                         , Transform ReplaceVariables c
-                         , ConstraintSetType c)
-                      => AnnType c -> UVar
-                      -> m (Either CollectionInstantiationError (UVar, c))
-instantiateCollection ann@(AnnType p (AnnBodyType ms1 ms2) cs') a_c =
-  runEitherT $ do
-    -- TODO: consider richer error reporting
-    a_s <- freshUVar $ TVarCollectionInstantiationOrigin ann a_c
-    (a_c', a_f', a_s') <- EitherT $ return readParameters
-    (t_s, cs_s) <- EitherT $ return $ liftedDepolarize ms1
-    (t_f, cs_f) <- EitherT $ return $ liftedDepolarize ms2
-    let cs'' = csFromList [ t_s <: a_s
-                          , t_f <: a_f'
-                          , a_f' <: t_f
-                          , t_s <: a_s'
-                          , a_s' <: t_s
-                          ]
-    let cs''' = replaceVariables Map.empty (Map.singleton a_c' a_c) $
-                  cs' `CSL.union` CSL.promote (csUnions [cs_s,cs_f,cs''])
-    return (a_s, cs''')
+-- |A convenience function to get the special type parameters from an annotation
+--  parameter environment.  If this cannot be done, a type error is raised.
+readAnnotationSpecialParameters :: (Monad m, TypeErrorI m)
+                                => TParamEnv -> m (UVar, UVar, UVar)
+readAnnotationSpecialParameters p = do
+  a_c' <- readParameter TEnvIdContent
+  a_f' <- readParameter TEnvIdFinal
+  a_s' <- readParameter TEnvIdSelf
+  return (a_c', a_f', a_s')
   where
-    liftedDepolarize :: [AnnMemType]
-                     -> Either CollectionInstantiationError
-                          (ShallowType, ConstraintSet)
-    liftedDepolarize mems = either
-                              (Left . CollectionDepolarizationError)
-                              Right $
-                              depolarize mems
-    readParameters :: Either CollectionInstantiationError (UVar, UVar, UVar)
-    readParameters = do
-      a_c' <- readParameter TEnvIdContent
-      a_f' <- readParameter TEnvIdFinal
-      a_s' <- readParameter TEnvIdSelf
-      return (a_c', a_f', a_s')
-      where
-        readParameter envId =
-          note (MissingAnnotationTypeParameter envId) $ Map.lookup envId p
+    readParameter envId =
+      maybe (typeError $ MissingAnnotationTypeParameter envId) return $
+        Map.lookup envId p
+
+-- |A convenience function to raise a type error if depolarization fails.
+depolarizeOrError :: (Monad m, TypeErrorI m)
+                  => UID -> [AnnMemType] -> m (ShallowType, ConstraintSet)
+depolarizeOrError u =
+  either (typeError . AnnotationDepolarizationFailure u) return . depolarize

@@ -48,10 +48,6 @@ data TypeError
   | InvalidAnnotationConcatenation UID AnnotationConcatenationError
       -- ^ Indicates that, at the given node, the concatenation of a set of
       --   annotation types has failed.
-  | InvalidCollectionInstantiation UID CollectionInstantiationError
-      -- ^ Indicates that, at the given node, the instantiaton of a
-      --   collection type has failed.  This occurs when two different positive
-      --   instances for the same identifier exist; the identifier is provided.
   | InitializerForNegativeAnnotationMember UID
       -- ^ Indicates that an initializer appears for a negative annotation
       --   member.
@@ -70,6 +66,12 @@ data TypeError
   | MultipleAnnotationBindings Identifier [AnnMemDecl]
       -- ^ Indicates that a given annotation binds the same identifier to
       --   multiple annotation declarations.
+  | MissingAnnotationTypeParameter TEnvId
+      -- ^Indicates that a required annotation parameter (e.g. content) is
+      --  missing from the parameter environment.
+  | CollectionDepolarizationError DepolarizationError
+      -- ^Indicates that collection instantiation induced a depolarization
+      --  error.
   | DeclarationClosureInconsistency
       Identifier
       ConstraintSet
