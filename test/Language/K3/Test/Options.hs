@@ -1,5 +1,9 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, TupleSections #-}
 
+{-|
+  This module handles command-line options for the K3 unit test system.
+-}
+
 module Language.K3.Test.Options
 ( parseOptions
 , K3TestOptions(..)
@@ -19,6 +23,15 @@ import Test.Framework
 import Test.Framework.Runners.Console
 
 import Language.K3.Logger
+
+{-
+  TO ADD A NEW OPTION, the following changes must be made:
+    1. Add an entry to the K3TestOptions record.
+    2. Add a default Nothing value to the mempty implementation.
+    3. Correctly implement mappend.
+    4. Add an entry to the defaultOptions value.
+    5. Add an entry to k3testOptions to allow it to be used on the command line.
+-}
 
 -- |Parses command line arguments for the K3 test system.
 parseOptions :: [String]
@@ -60,6 +73,7 @@ type LoggerInstruction = (String,Priority)
 data K3TestOptions =
   K3TestOptions
   { loggerInstructions :: Maybe [LoggerInstruction]
+  , typeSystemOnlyByName :: Maybe (Maybe String)
   }
   
 instance Monoid K3TestOptions where
@@ -67,11 +81,13 @@ instance Monoid K3TestOptions where
     -- Empty entries here
     K3TestOptions
     { loggerInstructions = Nothing
+    , typeSystemOnlyByName = Nothing
     }
   mappend x y =
     -- Operations here to join two defined sets of behavior
     K3TestOptions
     { loggerInstructions = mappendBy (++) loggerInstructions
+    , typeSystemOnlyByName = mappendBy preferJustRight typeSystemOnlyByName
     }
     where
       mappendBy :: (a -> a -> a) -> (K3TestOptions -> Maybe a) -> Maybe a
@@ -81,6 +97,11 @@ instance Monoid K3TestOptions where
           (Nothing, Just y') -> Just y'
           (Just x', Nothing) -> Just x'
           (Nothing, Nothing) -> Nothing
+      preferJustRight :: Maybe a -> Maybe a -> Maybe a
+      preferJustRight a b =
+        case (a,b) of
+          (_, Just _) -> b
+          _ -> a
 
 -- |The default options for the K3 test system.  This record must contain no
 --  @Nothing@ values; all top-level terms must be @Just@.
@@ -89,20 +110,23 @@ defaultOptions =
   -- Defaults (when options are unspecified) go here
   K3TestOptions
   { loggerInstructions = Just []
+  , typeSystemOnlyByName = Just Nothing
   }
 
 -- |The getOpt descriptions for this program.
 k3testOptions :: [OptDescr (Either String K3TestOptions)]
 k3testOptions =
   -- Each K3 test CLI option appears here as a getOpt description
-  [ 
-    let parse s =
+  [ let parse s =
           case parseInstruction s of
             Left err -> Left err
             Right instr -> Right $ mempty { loggerInstructions = Just [instr] }
     in
     Option "L" ["log"] (ReqArg parse "log_cmd")
       "a logging instruction of the form PRIO or PRIO:MODULE (e.g. debug:Foo)"
+  , let parse s = Right $ mempty {typeSystemOnlyByName = Just $ Just s } in 
+    Option [] ["ts-only"] (ReqArg parse "filename")
+      "execute only type system tests matching the provided filename"
   ]
   
 -- |Lifts an existing @OptDescr@ to a new space.
