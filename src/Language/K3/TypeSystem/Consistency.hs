@@ -127,7 +127,7 @@ checkConsistent cs =
       (_, _) -> True -- differently-shaped types!
     checkRecordInconsistent :: ShallowType -> ShallowType -> ConsistencyCheck
     checkRecordInconsistent t1 t2 = case (t1,t2) of
-      (SRecord m1 _, SRecord m2 oas2) | Set.null oas2 ->
+      (SRecord m1 oas1, SRecord m2 oas2) | Set.null oas1 && Set.null oas2 ->
         unless (Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1) $
           genErr $ UnsatisfiedRecordBound t1 t2
       (SRecord m oas, _) -> mconcat <$> sequence (do
