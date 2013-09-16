@@ -445,7 +445,15 @@ instance Monoid ConstraintSet where
 
 instance Pretty ConstraintSet where
   prettyLines (ConstraintSet cs) =
+    -- Filter out self-constraints.
+    let filteredCs = filter (not . silly) $ Set.toList cs in
     ["{ "] %+
-    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $
-        map prettyLines $ Set.toList cs) +%
-    [" }"]
+    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $ map prettyLines filteredCs) +%
+    [" }"] +%
+      if Set.size cs /= length filteredCs then ["*"] else []
+    where
+      silly :: Constraint -> Bool
+      silly c = case c of
+        IntermediateConstraint x y -> x == y
+        QualifiedIntermediateConstraint x y -> x == y
+        _ -> False
