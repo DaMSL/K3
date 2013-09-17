@@ -45,6 +45,7 @@ $(
                 , ''OpaqueVar
                 , ''QuantType
                 , ''AnyTVar
+                , ''AnnType
                 , ''AnnBodyType
                 , ''AnnMemType
                 , ''TPolarity
@@ -59,6 +60,7 @@ $(concat <$> mapM (defineTransformIdentityInstance ''ReplaceVariables)
 $(
   concat <$> mapM (defineTransformFunctorInstance ''ReplaceVariables)
                 [ [t|Map Identifier|]
+                , [t|Map TEnvId|]
                 ]
  )
 

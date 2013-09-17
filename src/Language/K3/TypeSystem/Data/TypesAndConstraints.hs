@@ -97,8 +97,7 @@ type ConstraintSetType c = (Pretty c, Show c)
 data TVarOrigin (a :: TVarQualification)
   = TVarSourceOrigin UID -- ^Type variable produced directly from source code.
   | TVarPolyinstantiationOrigin (TVar a) UID
-      -- ^Type variable is the result of polyinstantiation at a given source
-      --  location.
+      -- ^Type variable is the result of polyinstantiation at a given node UID.
   | TVarBoundGeneralizationOrigin [TVar a] TPolarity
       -- ^Type variable was created to generalize a number of existing
       --  variables.  The polarity describes the bounding direction: positive
@@ -115,6 +114,12 @@ data TVarOrigin (a :: TVarQualification)
     => TVarAnnotationToFunctionOrigin (AnnType c)
       -- ^Type variable was created to model an annotation as a function for the
       --  purposes of subtyping.
+  | TVarEmptyAnnotationOrigin
+      -- ^Type variable was created to represent a fresh empty annotation
+      --  (which is used when annotations are concatenated).
+  | TVarAnnotationFreshenOrigin (TVar a) UID
+      -- ^Type variable was the result of polyinstantiation of variables in an
+      --  annotation type at a given node UID.
 
 deriving instance Show (TVarOrigin a)
 
@@ -440,7 +445,15 @@ instance Monoid ConstraintSet where
 
 instance Pretty ConstraintSet where
   prettyLines (ConstraintSet cs) =
+    -- Filter out self-constraints.
+    let filteredCs = filter (not . silly) $ Set.toList cs in
     ["{ "] %+
-    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $
-        map prettyLines $ Set.toList cs) +%
-    [" }"]
+    (sequenceBoxes (max 1 $ maxWidth - 4) ", " $ map prettyLines filteredCs) +%
+    [" }"] +%
+      if Set.size cs /= length filteredCs then ["*"] else []
+    where
+      silly :: Constraint -> Bool
+      silly c = case c of
+        IntermediateConstraint x y -> x == y
+        QualifiedIntermediateConstraint x y -> x == y
+        _ -> False

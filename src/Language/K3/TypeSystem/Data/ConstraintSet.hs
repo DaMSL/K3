@@ -46,7 +46,7 @@ csToList :: ConstraintSet -> [Constraint]
 csToList (ConstraintSet cs) = Set.toList cs
 
 csFromSet :: Set Constraint -> ConstraintSet
-csFromSet s = ConstraintSet s
+csFromSet = ConstraintSet
 
 csToSet :: ConstraintSet -> Set Constraint
 csToSet (ConstraintSet s) = s

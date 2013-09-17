@@ -24,8 +24,10 @@ import Language.K3.TypeSystem
 
 import Debug.Trace
 
-tests :: IO [Test]
-tests =
+-- |Generates tests for the type system.  If a string is provided, only files
+--  with precisely that name will be tested.
+tests :: Maybe String -> IO [Test]
+tests mfilename =
   concat <$> sequence
     [ mkTests "Typecheck" True "success"
     , mkTests "Type fail" False "failure"
@@ -34,13 +36,17 @@ tests =
     mkTests :: String -> Bool -> FilePath -> IO [Test]
     mkTests name success subdir =
       let prefix = testFilePath </> subdir in
-      let files = filter (".k3" `isSuffixOf`) <$> getDirectoryContents prefix in
+      let files = filter testPredicate <$> getDirectoryContents prefix in
       sequence    
         [
           testGroup name <$>
             map (\path -> testCase path $ mkDirectSourceTest path success) <$>
             map (prefix </>) <$> files
         ]
+    testPredicate name = (".k3" `isSuffixOf` name) &&
+                         case mfilename of
+                            Nothing -> True
+                            Just filename -> filename == name
 
 testFilePath :: FilePath
 testFilePath = "examples" </> "typeSystem"

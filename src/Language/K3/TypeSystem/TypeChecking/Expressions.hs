@@ -111,7 +111,8 @@ deriveExpression aEnv env expr = do
               let anns = mapMaybe getAnnIdent $ annotations expr
               let tExpr = foldl (@+) (TC.collection recType) $
                             map TAnnotation anns
-              deriveUnqualifiedTypeExpression aEnv tExpr
+              u <- uidOf expr
+              deriveUnqualifiedTypeExpression aEnv (tExpr @+ TUID u)
         EVariable x -> do
           assert0Children expr
           s <- uidOf expr

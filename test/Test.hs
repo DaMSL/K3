@@ -18,7 +18,7 @@ tests :: IO [Test]
 tests = sequence
   [ return $ testGroup "Parser"  Parser.tests
   , return $ testGroup "Runtime" Runtime.tests
-  , testGroup "Type system" <$> TypeSystem.tests
+  , testGroup "Type system" <$> TypeSystem.tests Nothing
   ]
 
 -- |The main for the K3 unit tests.  We accept more options than the default
@@ -35,9 +35,14 @@ main = do
       putStrLn msg
       exitWith exitcode
     Right (tfOpts,k3tOpts) -> do
-      -- First, process K3 tester options
+      -- ## First, process K3 tester options
+      -- Logger options first
       let loggerSettings = fromJust $ loggerInstructions k3tOpts
       mconcat <$> mapM configureByInstruction loggerSettings
-      -- Then run the test-framework main
-      tests' <- tests
+      -- The type system override next
+      let typeSystemFilter = fromJust $ typeSystemOnlyByName k3tOpts
+      -- ## Then run the test-framework main
+      tests' <- case typeSystemFilter of
+                  Nothing -> tests
+                  Just filename -> TypeSystem.tests $ Just filename
       defaultMainWithOpts tests' tfOpts

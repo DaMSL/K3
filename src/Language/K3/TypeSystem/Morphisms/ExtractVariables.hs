@@ -18,6 +18,7 @@ import Data.Map (Map)
 import Language.K3.Core.Common
 import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.TypeDecision.Data
 
 type VariableReduction = Set AnyTVar
 
@@ -48,12 +49,17 @@ $(
                 , ''OpaqueOrigin
                 , ''OpaqueVar
                 , ''TPolarity
+                , ''AnnType
+                , ''AnnBodyType
+                , ''AnnMemType
+                , ''StubbedConstraintSet
                 ]
  )
  
 $(concat <$> mapM (defineReduceEmptyInstance [t|VariableReduction|]
                       ''ExtractVariables)
                 [ ''UID
+                , ''Stub
                 ]                
  )
  
@@ -61,6 +67,7 @@ $(
   concat <$> mapM (defineReduceFoldInstance [t|VariableReduction|]
                       ''ExtractVariables)
                 [ [t|Map Identifier|]
+                , [t|Map TEnvId|]
                 ]
  )
 

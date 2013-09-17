@@ -108,46 +108,66 @@ deriveDeclaration aEnv env decl =
           aEnvRequireAnn u (TEnvIdentifier iAnn) aEnv
       _debug $ boxToString $ ["Environment type for annotation " ++ iAnn ++
                               ":"] %$ indent 2 (prettyLines ann)
-      a_C <- pEnvRequire TEnvIdContent p
-      a_F <- pEnvRequire TEnvIdFinal p
-      a_S <- pEnvRequire TEnvIdSelf p
-      a_H <- freshTypecheckingUVar u
-      inst <- instantiateCollection ann a_C
-      (t_S,cs_S) <- either (typecheckError . InvalidCollectionInstantiation u)
-                        return inst
-      (t_H,cs_H) <- either (typecheckError . AnnotationDepolarizationFailure u)
-                        return $ depolarize ms2
-      oa_C <- freshOVar $ OpaqueAnnotationOrigin u
-      oa_F <- freshOVar $ OpaqueAnnotationOrigin u
-      t'_H <- either
-                  (typecheckError . InternalError .
-                      HorizonTypeConstructionError decl)
-                  return
-                $ recordConcat [t_H, SRecord Map.empty $ Set.singleton oa_C]
+
+      -- First, get the relevant variables.
+      a_c <- pEnvRequire TEnvIdContent p
+      a_f <- pEnvRequire TEnvIdFinal p
+      a_s <- pEnvRequire TEnvIdSelf p
+      a_h <- freshTypecheckingUVar u
+
+      -- Build the environments.
       aEnv' <- mconcat <$> mapM (\(i,a) ->
                     (\qa -> Map.singleton i $ QuantAlias $
                             QuantType Set.empty qa $
                             csFromList [qa <: a, a <: qa]) <$>
                                 freshTypecheckingQVar u)
-                  [ (TEnvIdContent, a_C), (TEnvIdFinal, a_F)
-                  , (TEnvIdHorizon, a_H), (TEnvIdSelf, a_S) ]
-      qa_S' <- freshTypecheckingQVar u
+                  [ (TEnvIdContent, a_c), (TEnvIdFinal, a_f)
+                  , (TEnvIdHorizon, a_h), (TEnvIdSelf, a_s) ]
+      qa_s' <- freshTypecheckingQVar u
       let env' = Map.singleton TEnvIdSelf
-                    (QuantType Set.empty qa_S' $ csSing $ a_S <: qa_S')
+                    (QuantType Set.empty qa_s' $ csSing $ a_s <: qa_s')
                  `mappend`
                  mconcat (map (\(AnnMemType i _ qa') ->
                                   Map.singleton (TEnvIdentifier i) $
                                     QuantType Set.empty qa' csEmpty) ms1)
-      let cs' = csUnions
-                  [ cs , cs_S , cs_H , csSing $ a_F <: a_H
-                  , a_H ~= t'_H, csSing $ t_S <: a_S
-                  , csFromList
-                      [ SOpaque oa_C <: a_C, SOpaque oa_F <: a_F
-                      , OpaqueBoundConstraint oa_F SBottom t'_H
-                      , OpaqueBoundConstraint oa_C SBottom $
-                          SRecord Map.empty Set.empty
-                      ]
-                  ]
+
+      -- Depolarize the members to get the self and horizon schema types.
+      (t_s, cs_s) <- depolarizeOrError u ms1
+      (t_h', cs_h) <- depolarizeOrError u ms2
+      _debug $ boxToString $ ["Annotation " ++ iAnn ++ " self part: "] %+
+            prettyLines t_s
+      _debug $ boxToString $ ["Annotation " ++ iAnn ++ " horizon part: "] %+
+            prettyLines t_h'
+      
+      -- NOTE: here, we'd normally enforce that a set of constraints existed in
+      --       @cs@.  But that performs poorly.  Instead, we will rely on the
+      --       type decision process to ensure that they are provided.
+      
+      -- Get the opaque types.
+      oa_c <- freshOVar $ OpaqueAnnotationOrigin u
+      oa_f <- freshOVar $ OpaqueAnnotationOrigin u
+      oa_s <- freshOVar $ OpaqueAnnotationOrigin u
+      
+      -- Construct the full horizon type.
+      t_h <- either
+                  (typecheckError . InternalError .
+                      HorizonTypeConstructionError decl)
+                  return
+                $ recordConcat [t_h', SRecord Map.empty $ Set.singleton oa_c]
+
+      -- Build the set of constraints to connect the opaque types to their
+      -- corresponding type variables.
+      let cs' = csUnions [ SOpaque oa_c ~= a_c
+                         , SOpaque oa_f ~= a_f
+                         , SOpaque oa_s ~= a_s
+                         , csFromList
+                             [ OpaqueBoundConstraint oa_c (SOpaque oa_f) $
+                                  SRecord Map.empty Set.empty
+                             , OpaqueBoundConstraint oa_f SBottom t_h
+                             , OpaqueBoundConstraint oa_s SBottom t_s
+                             ] ]
+      
+      -- Derive appropriate types for the members.
       (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember (envMerge aEnv aEnv')
                             (envMerge env env')) mems
       _debug $ boxToString $
@@ -163,10 +183,11 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b' +% [" \\ "] %$ prettyLines cs''') 
-      let allCs = csUnions $ cs':cs''':cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''':cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
+
       {-
         It remains to show the two forall conditions at the end of the
         annotation rule.  These conditions can be considerably simplified due to

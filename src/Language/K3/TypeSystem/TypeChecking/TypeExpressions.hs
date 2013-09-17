@@ -14,6 +14,7 @@ module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Control.Applicative
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
 
@@ -23,6 +24,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 import Language.K3.Logger
 import Language.K3.Pretty
+import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
@@ -31,6 +33,7 @@ import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
+import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.Utils
@@ -43,7 +46,9 @@ deriveQualifiedTypeExpression ::
       forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
                      , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
-                     , Transform ReplaceVariables c, ConstraintSetType c)
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (QVar, c)
@@ -62,7 +67,9 @@ deriveUnqualifiedTypeExpression ::
       forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
                      , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
-                     , Transform ReplaceVariables c, ConstraintSetType c)
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (UVar, c)
@@ -76,7 +83,9 @@ deriveTypeExpression ::
       forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
                      , CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
-                     , Transform ReplaceVariables c, ConstraintSetType c)
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (UVar, c)
@@ -85,7 +94,7 @@ deriveTypeExpression aEnv tExpr = do
   (a, cs) <-
       case tag tExpr of
         TBool -> deriveTypePrimitive SBool
-        TByte -> undefined "No Byte type in spec!"
+        TByte -> error "No Byte type in spec!"
         TInt -> deriveTypePrimitive SInt
         TReal -> deriveTypePrimitive SReal
         TString -> deriveTypePrimitive SString
@@ -115,23 +124,25 @@ deriveTypeExpression aEnv tExpr = do
         TCollection -> do
           tExpr' <- assert1Child tExpr
           let ais = mapMaybe toAnnotationId $ annotations tExpr
-          (a_c,cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+          (a_c',cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
           u <- uidOf tExpr
           namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
           anns <- mapM (uncurry toAnnAlias) namedAnns
           -- Concatenate the annotations
-          ann <- either (\err -> typeError =<<
-                            InvalidAnnotationConcatenation <$>
-                              uidOf tExpr <*> return err)
-                        return
-                      $ concatAnnTypes anns
-          einstcol <- instantiateCollection ann a_c
-          (a_s,cs_s) <- either (\err -> typeError =<<
-                            InvalidCollectionInstantiation <$>
-                              uidOf tExpr <*> return err)
-                        return
-                        einstcol
-          return (a_s, cs_c `CSL.union` cs_s)
+          anns' <- mapM (freshenAnnotation u) anns
+          concattedAnns <- concatAnnTypes anns'
+          AnnType p (AnnBodyType ms1 ms2) cs <-
+            either (\err -> typeError =<<
+                        InvalidAnnotationConcatenation <$>
+                          uidOf tExpr <*> return err)
+              return
+              concattedAnns
+          (a_c,a_f,a_s) <- readAnnotationSpecialParameters p
+          (t_s, cs_s) <- depolarizeOrError u ms1
+          (t_f, cs_f) <- depolarizeOrError u ms2
+          let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
+          return (a_s, CSL.unions [cs, cs_c, CSL.promote $
+                                                csUnions [cs_f, cs_s, cs']])
         TAddress -> error "Address type not in specification!" -- TODO
         TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
         TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO

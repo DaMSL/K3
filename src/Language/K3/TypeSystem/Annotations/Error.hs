@@ -5,8 +5,9 @@
 module Language.K3.TypeSystem.Annotations.Error
 ( AnnotationConcatenationError(..)
 , DepolarizationError(..)
-, CollectionInstantiationError(..)
 ) where
+
+import Data.Set (Set)
 
 import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
@@ -23,16 +24,8 @@ data AnnotationConcatenationError
 
 -- |A type describing an error in depolarization.
 data DepolarizationError
-  = MultipleProvisions Identifier
+  = MultipleProvisions (Set Identifier)
       -- ^Indicates that the specified identifier was provided multiple times.
+  | MultipleOpaques (Set OpaqueVar)
+      -- ^Indicates that an opaque type was provided multiple times.
   deriving (Eq, Show)
-
-data CollectionInstantiationError
-  = MissingAnnotationTypeParameter TEnvId
-      -- ^Indicates that a required annotation parameter (e.g. content) is
-      --  missing from the parameter environment.
-  | CollectionDepolarizationError DepolarizationError
-      -- ^Indicates that collection instantiation induced a depolarization
-      --  error.
-  deriving (Eq, Show)
-
