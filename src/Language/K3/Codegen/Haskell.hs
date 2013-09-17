@@ -39,14 +39,13 @@ data CodeGenerationError = CodeGenerationError String deriving (Eq, Show)
 type SymbolCounters      = [(Identifier, Int)]
 type TriggerDispatchSpec = [(Identifier, HS.Type)]
 
-type RecordLabels   = [Identifier]
-type RecordSpec     = [(Identifier, HS.Type, HS.Exp)] -- TODO: separate lifted vs regular attrs.
+type RecordSpec     = [(Identifier, HS.Type, Maybe HS.Exp)] -- TODO: separate lifted vs regular attrs.
 type RecordSpecs    = [(Identifier, RecordSpec)]
 
 data AnnotationState = AnnotationState { annotationSpecs  :: RecordSpecs
                                        , compositionSpecs :: RecordSpecs }
 
-type CGState = (SymbolCounters, TriggerDispatchSpec, RecordLabels, AnnotationState)
+type CGState = (SymbolCounters, TriggerDispatchSpec, RecordSpecs, AnnotationState)
 
 -- | The code generation monad. This supports CG errors, and stateful operation
 --   for symbol generation and type-directed declarations (e.g., record and collection types)
@@ -82,11 +81,11 @@ getTriggerDispatchSpecs (_,x,_,_) = x
 modifyTriggerDispatchSpecs :: (TriggerDispatchSpec -> TriggerDispatchSpec) -> CGState -> CGState
 modifyTriggerDispatchSpecs f (w,x,y,z) = (w, f x, y, z)
 
-getRecordLabels :: CGState -> RecordLabels
-getRecordLabels (_,_,x,_) = x
+getRecordSpecs :: CGState -> RecordSpecs
+getRecordSpecs (_,_,x,_) = x
 
-modifyRecordLabels :: (RecordLabels -> RecordLabels) -> CGState -> CGState 
-modifyRecordLabels f (w,x,y,z) = (w, x, f y, z)
+modifyRecordSpecs :: (RecordSpecs -> RecordSpecs) -> CGState -> CGState 
+modifyRecordSpecs f (w,x,y,z) = (w, x, f y, z)
 
 getAnnotationState :: CGState -> AnnotationState
 getAnnotationState (_,_,_,x) = x
@@ -111,8 +110,11 @@ getTriggerDispatchCG = get >>= return . getTriggerDispatchSpecs
 modifyTriggerDispatchCG :: (TriggerDispatchSpec -> TriggerDispatchSpec) -> CodeGeneration ()
 modifyTriggerDispatchCG f = modify $ modifyTriggerDispatchSpecs f
 
-addRecordLabel :: Identifier -> CodeGeneration ()
-addRecordLabel n = modify $ modifyRecordLabels $ nub . (n:)
+addRecordSpec :: Identifier -> RecordSpec -> CodeGeneration ()
+addRecordSpec n r = modify $ modifyRecordSpecs $ nub . ((n,r):)
+
+lookupRecordSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
+lookupRecordSpec n = get >>= return . lookup n . getRecordSpecs
 
 getAnnotationSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
 getAnnotationSpec n = get >>= return . lookup n . annotationSpecs . getAnnotationState
@@ -130,6 +132,10 @@ modifyCompositionSpecs f =
 
 
 {- Symbols and identifiers -}
+
+-- | Sanitizes a K3 identifier to a backend compatible identifier.
+sanitize :: Identifier -> Identifier 
+sanitize = id
 
 engineModuleAliasId :: Identifier
 engineModuleAliasId = "E"
@@ -172,6 +178,9 @@ compositionTypeId n = "C"++n
 
 collectionDataSegId :: Identifier
 collectionDataSegId = "__data"
+
+recordReprId :: Identifier -> Identifier
+recordReprId n = n
 
 -- TODO: duplicate of interpreter. Move into common utils.
 annotationNamesT :: [Annotation Type] -> [Identifier]
@@ -298,6 +307,9 @@ maybeType t = tyApp "Maybe" t
 tupleType :: [HS.Type] -> HS.Type
 tupleType = HS.TyTuple HS.Boxed
 
+recordType :: Identifier -> HS.Type
+recordType = namedType
+
 indirectionType :: HS.Type -> HS.Type
 indirectionType t = tyApp "MVar" t
 
@@ -324,6 +336,44 @@ ioType t = monadicType "IO" t
 
 engineType :: HS.Type -> HS.Type
 engineType t = HS.TyApp (qMonadicType engineModuleAliasId "EngineM" $ namedType engineValueTypeId) t
+
+
+signature :: K3 Type -> CodeGeneration Identifier
+signature (tag -> TBool)        = return "P"
+signature (tag -> TByte)        = return "B"
+signature (tag -> TInt)         = return "N"
+signature (tag -> TReal)        = return "D"
+signature (tag -> TString)      = return "S"
+signature (tag -> TAddress)     = return "A"
+
+signature (tag &&& children -> (TOption, [x])) = signature x >>= return . ("O" ++)
+
+signature (tag &&& children -> (TTuple, ch)) =
+  mapM signature ch >>= return . (("T" ++ (show $ length ch)) ++) . concat
+
+signature (tag &&& children -> (TRecord ids, ch)) =
+  mapM signature ch 
+  >>= return . intercalate "_" . map (\(x,y) -> (sanitize x) ++ "_" ++ y) . zip ids
+  >>= return . (("R" ++ (show $ length ch)) ++)
+
+signature (tag &&& children -> (TIndirection, [x])) = signature x >>= return . ("I" ++)
+signature (tag &&& children -> (TCollection, [x]))  = signature x >>= return . ("C" ++)
+
+signature (tag &&& children -> (TFunction, [a,r]))  = signature a >>= \s -> signature r >>= return . (("F" ++ s) ++)
+signature (tag &&& children -> (TSink, [x]))        = signature x >>= return . ("K" ++)
+signature (tag &&& children -> (TSource, [x]))      = signature x >>= return . ("U" ++)
+
+signature (tag &&& children -> (TTrigger, [x])) = signature x >>= return . ("G" ++)
+
+-- TODO
+signature (tag -> TBuiltIn _)   = throwCG $ CodeGenerationError "Cannot create type signature for builtins"
+
+signature (tag -> _)  = throwCG $ CodeGenerationError "Invalid type found when constructing a signature"
+
+
+-- TODO
+typeOfSignature :: Identifier -> CodeGeneration (K3 Type)
+typeOfSignature n = throwCG $ CodeGenerationError "Cannot reconstruct signatures yet."
 
 
 typ :: K3 Type -> CodeGeneration HaskellEmbedding
@@ -362,7 +412,11 @@ typ' t@(tag &&& children -> (TCollection, [x])) =
 typ' (tag -> TCollection) = throwCG $ CodeGenerationError "Invalid collection type"
 
 -- TODO
-typ' (tag &&& children -> (TRecord ids, ch)) = throwCG $ CodeGenerationError "Records types not implemented"
+typ' t@(tag &&& children -> (TRecord ids, ch)) = do
+  sig     <- signature t
+  specOpt <- lookupRecordSpec sig
+  return . const (recordType sig) =<< maybe (trackRecordSpec sig) (const $ return ()) specOpt
+  where trackRecordSpec sig = mapM typ' ch >>= addRecordSpec sig . map (\(x,y) -> (x,y,Nothing)) . zip ids
 
 -- TODO
 typ' (tag -> TBuiltIn TSelf)      = throwCG $ CodeGenerationError "Cannot generate Self type"
@@ -371,6 +425,7 @@ typ' (tag -> TBuiltIn THorizon)   = throwCG $ CodeGenerationError "Cannot genera
 typ' (tag -> TBuiltIn TStructure) = throwCG $ CodeGenerationError "Cannot generate Structure type"
 
 typ' _ = throwCG $ CodeGenerationError "Cannot generate Haskell type"
+
 
 {- Analysis -}
 
@@ -857,15 +912,16 @@ annotation n memberDecls =
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
   where initializeMember annId acc m = annotationMember annId m >>= return . maybe acc ((acc++) . (:[]))
 
--- TODO: distinguish lifted and regular attributes
-annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Maybe (Identifier, HS.Type, HS.Exp))
+-- TODO: distinguish lifted and regular attributes.
+-- TODO: use default values for attributes specified without initializers.
+annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Maybe (Identifier, HS.Type, Maybe HS.Exp))
 annotationMember annId = \case
   Lifted    Provides n t (Just e) uid -> memberSpec n t e
   Attribute Provides n t (Just e) uid -> memberSpec n t e
   Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid >>= return . Just
   Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid >>= return . Just
   _                                   -> return Nothing
-  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . Just . (n, t',))
+  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . Just . (n, t',) . Just)
 
 
 {- Builtins -}
@@ -951,27 +1007,31 @@ channelMethod x =
 
 
 
-builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
 builtinLiftedAttribute "Collection" "peek" t uid = typ' t >>= \t' -> 
-  return ("peek",   t', [hs| (\() -> liftIO (readMVar self) >>= return . head . getData) |])
+  return ("peek",   t', Just
+    [hs| (\() -> liftIO (readMVar self) >>= return . head . getData) |])
 
 builtinLiftedAttribute "Collection" "insert" t uid = typ' t >>= \t' -> 
-  return ("insert", t', [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData (++[x]))) |])
+  return ("insert", t', Just
+    [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData (++[x]))) |])
 
 builtinLiftedAttribute "Collection" "delete" t uid = typ' t >>= \t' ->
-  return ("delete", t', [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData $ delete x)) |])
+  return ("delete", t', Just
+    [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData $ delete x)) |])
 
 builtinLiftedAttribute "Collection" "update" t uid = typ' t >>= \t' ->
-  return ("update", t', [hs| (\x y -> liftIO $ modifyMVar_ self (return . modifyData (\l -> (delete x l)++[y]))) |])
+  return ("update", t', Just
+    [hs| (\x y -> liftIO $ modifyMVar_ self (return . modifyData (\l -> (delete x l)++[y]))) |])
 
 builtinLiftedAttribute "Collection" "combine" t uid = typ' t >>= \t' ->
-  return ("combine", t', 
+  return ("combine", t', Just $
     [hs| (\c' -> liftIO . newMVar =<< 
          ((\x y -> copyWithData x (getData x ++ getData y))
            <$> liftIO (readMVar self) <*> liftIO (readMVar c'))) |])
 
 builtinLiftedAttribute "Collection" "split" t uid = typ' t >>= \t' ->
-  return ("split", t',
+  return ("split", t', Just $
     [hs| (\() -> liftIO (readMVar self) >>=
          (\r -> let l = getData r
                     threshold = 10 
@@ -983,24 +1043,25 @@ builtinLiftedAttribute "Collection" "split" t uid = typ' t >>= \t' ->
 -- Lambda implementations do not guarantee this (blindly using ensureReturnE on lambdas
 -- is not ideal for non-transformer function application).
 builtinLiftedAttribute "Collection" "iterate" t uid = typ' t >>= \t' ->
-  return ("iterate", t', [hs| (\f -> liftIO (readMVar self) >>= mapM_ f . getData) |])
+  return ("iterate", t', Just [hs| (\f -> liftIO (readMVar self) >>= mapM_ f . getData) |])
 
 builtinLiftedAttribute "Collection" "map" t uid = typ' t >>= \t' ->
-  return ("map", t',
+  return ("map", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>=
          (\r -> mapM f (getData r) >>= (liftIO . newMVar $ copyWithData r))) |])
 
 builtinLiftedAttribute "Collection" "filter" t uid = typ' t >>= \t' ->
-  return ("filter", t',
+  return ("filter", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>= 
          (\r -> filterM f (getData r) >>= (liftIO . newMVar $ copyWithData r))) |])
 
 builtinLiftedAttribute "Collection" "fold" t uid = typ' t >>= \t' ->
-  return ("fold", t', [hs| (\f accInit -> liftIO (readMVar self) >>= foldM f accInit . getData) |])
+  return ("fold", t', Just $ 
+    [hs| (\f accInit -> liftIO (readMVar self) >>= foldM f accInit . getData) |])
 
 -- TODO: key-value record construction for resulting collection
 builtinLiftedAttribute "Collection" "groupBy" t uid = typ' t >>= \t' -> 
-  return ("groupBy", t',
+  return ("groupBy", t', Just $
     [hs| (\gb f accInit -> 
             liftIO (readMVar self) >>=
             (\r -> foldM (\m x -> let k = gb x 
@@ -1009,14 +1070,14 @@ builtinLiftedAttribute "Collection" "groupBy" t uid = typ' t >>= \t' ->
                    >>= liftIO . newMVar . copyWithData r . M.toList)) |])
 
 builtinLiftedAttribute "Collection" "ext" t uid = typ' t >>= \t' ->
-  return ("ext", t',
+  return ("ext", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>= 
          (\r -> mapM f . getData >>= liftIO . newMVar . copyWithData r . concat)) |])
 
 builtinLiftedAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
 
 
-builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, HS.Exp)
+builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
 builtinAttribute annId n t uid = throwCG $ CodeGenerationError "Builtin attributes not implemented"
 
 
@@ -1046,6 +1107,23 @@ declaration decl = case (tag &&& children) decl of
   where extractDeclarations (HDeclarations decls) = return decls
         extractDeclarations HNoRepr               = return []
         extractDeclarations _ = throwCG $ CodeGenerationError "Invalid declaration"
+
+
+generateRecords :: CodeGeneration [HS.Decl]
+generateRecords =
+  get >>= mapM generateRecord . getRecordSpecs
+  where
+    generateRecord (n, spec) =
+      let typeId       = recordReprId n
+          typeDeriving = [(HS.UnQual $ HB.name "Eq", [])]
+          recFields    = map generateRecFieldTy spec
+          recDecl      = HS.RecDecl (HB.name typeId) $ recFields
+          typeConDecl  = [HS.QualConDecl HL.noLoc [] [] recDecl]
+          typeDecl     = HS.DataDecl HL.noLoc HS.DataType [] (HB.name typeId) [] typeConDecl typeDeriving
+      in
+      return typeDecl
+
+    generateRecFieldTy (n, ty, _) = ([HB.name n], HS.UnBangedTy ty)
 
 
 -- TODO: add support for self-referencing in initializer expressions in non-function attributes.
@@ -1132,11 +1210,13 @@ generateCollectionCompositions =
       in ([reprDecl, typeDecl] ++) <$> constructorDecls
 
     generateRecFieldTy (n, ty, _)  = ([HB.name n], HS.UnBangedTy ty)
-    generateRecFieldExpr (_, _, e) = return e
+    generateRecFieldExpr (_, _, Just e)  = return e
+    generateRecFieldExpr (_, _, Nothing) = throwCG $ CodeGenerationError "No expression found for record field initializer"
 
     -- | Function fields are not copied between records to ensure correct handling of self-referencing.
-    copyFieldExpr _ (n, HS.TyFun _ _, e) = return e
-    copyFieldExpr varE (n,_,_)         = return [hs| $(HB.var $ HB.name n) $varE |] 
+    copyFieldExpr _ (n, HS.TyFun _ _, Just e)  = return e
+    copyFieldExpr _ (n, HS.TyFun _ _, Nothing) = throwCG $ CodeGenerationError "No expression found for record function field"
+    copyFieldExpr varE (n,_,_)                 = return [hs| $(HB.var $ HB.name n) $varE |] 
 
 
 -- | Top-level code generation function, returning a Haskell module.
@@ -1155,8 +1235,9 @@ generate progName p = declaration p >>= mkProgram
         expts     = Nothing
         
         programDecls decls =
+          generateRecords >>= \recordDecls ->
           generateCollectionCompositions >>= \comboDecls -> 
-            generateDispatch >>= return . ((preDecls ++ comboDecls ++ decls) ++) . postDecls
+          generateDispatch >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++) . postDecls
 
         impts = [ imprtDecl "Control.Concurrent"         False Nothing
                 , imprtDecl "Control.Concurrent.MVar"    False Nothing
