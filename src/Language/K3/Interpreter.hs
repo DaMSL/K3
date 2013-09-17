@@ -557,6 +557,9 @@ expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> c
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
     _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
   
+  -- TODO: support run-time determination of refresh targets, e.g., 
+  -- bind (if predicate then x else y) as ind x in ...
+  -- TODO: support aliased bindings, e.g, bind x as ind y in (bind x as ind z in y = y + z)
   where bindId = case tag e of
                   EVariable i -> Just i
                   _           -> Nothing
