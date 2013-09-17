@@ -26,7 +26,6 @@ module Language.K3.Interpreter (
 
   runNetwork,
   runProgram,
-  runProgramInitializer,
 
   packValueSyntax,
   unpackValueSyntax,
@@ -40,6 +39,7 @@ import Control.Applicative
 import Control.Arrow hiding ( (+++) )
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -51,7 +51,7 @@ import Data.Word (Word8)
 import Debug.Trace
 
 import qualified System.IO          as SIO (stdout, hFlush)
-import Text.Read hiding (get)
+import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
 
@@ -104,19 +104,16 @@ data InterpretationError
 type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
-type IState = (Globals, IEnvironment Value, AEnvironment Value, IEngine)
+type IState = (Globals, IEnvironment Value, AEnvironment Value)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IO))
+type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)
 
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment Value)
-
--- | A type capturing the environment resulting from an interpretation
-type REnvironment = Either EnvOnError (IEnvironment Value)
 
 
 {- Collections and annotations -}
@@ -165,26 +162,23 @@ type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
 {- State and result accessors -}
 
-emptyState :: IEngine -> IState
-emptyState engine = ([], [], AEnvironment [] [], engine)
+emptyState :: IState
+emptyState = ([], [], AEnvironment [] [])
 
 getGlobals :: IState -> Globals
-getGlobals (x,_,_,_) = x
+getGlobals (x,_,_) = x
 
 getEnv :: IState -> IEnvironment Value
-getEnv (_,x,_,_) = x
+getEnv (_,x,_) = x
 
 getAnnotEnv :: IState -> AEnvironment Value
-getAnnotEnv (_,_,x,_) = x
-
-getEngine :: IState -> IEngine
-getEngine (_,_,_,e) = e
+getAnnotEnv (_,_,x) = x
 
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
-modifyStateEnv f (w,x,y,z) = (w, f x, y, z)
+modifyStateEnv f (w, x, y) = (w, f x, y)
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (w,x,y,z) = (w, x, f y, z)
+modifyStateAEnv f (w, x, y) = (w, x, f y)
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -195,24 +189,24 @@ getResultVal ((x, _), _) = x
 {- Interpretation Helpers -}
 
 -- | Run an interpretation to get a value or error, resulting environment and event log.
-runInterpretation :: IState -> Interpretation a -> IO (IResult a)
-runInterpretation s = runWriterT . flip runStateT s . runEitherT
+runInterpretation :: Engine Value -> IState -> Interpretation a -> IO (Either EngineError (IResult a))
+runInterpretation e s = flip runEngineM e . runWriterT . flip runStateT s . runEitherT
 
--- | Run an interpretation and extract the resulting environment
-envOfInterpretation :: IState -> Interpretation a -> IO REnvironment
-envOfInterpretation s i = runInterpretation s i >>= \case
-                                  ((Right _, st), _) -> return $ Right $ getEnv st
-                                  ((Left err, st), _) -> return $ Left (err, getEnv st)
+runInterpretation' :: IState -> Interpretation a -> EngineM Value (IResult a)
+runInterpretation' s = runWriterT . flip runStateT s . runEitherT
 
 -- | Run an interpretation and extract its value.
-valueOfInterpretation :: IState -> Interpretation a -> IO (Maybe a)
-valueOfInterpretation s i =
-  runInterpretation s i >>= return . either (const $ Nothing) Just . fst . fst
+valueOfInterpretation :: IState -> Interpretation a -> EngineM Value (Maybe a)
+valueOfInterpretation s i = runInterpretation' s i >>= return . either (const $ Nothing) Just . fst . fst
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
 throwE :: InterpretationError -> Interpretation a
 throwE = Control.Monad.Trans.Either.left
+
+-- | Lift an engine computation to an interpretation.
+liftEngine :: EngineM Value b -> Interpretation b
+liftEngine = lift . lift . lift
 
 -- | Test if a variable is defined in the current interpretation environment.
 elemE :: Identifier -> Interpretation Bool
@@ -257,14 +251,9 @@ modifyADefs f = modifyA (\aEnv -> AEnvironment (f $ definitions aEnv) (realizati
 modifyACombos :: (AnnotationCombinations Value -> AnnotationCombinations Value) -> Interpretation ()
 modifyACombos f = modifyA (\aEnv -> AEnvironment (definitions aEnv) (f $ realizations aEnv))
 
--- | Accessor methods to compute with engine contents
-withEngine :: (IEngine -> IO a) -> Interpretation a
-withEngine f = get >>= liftIO . f . getEngine
-
-
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
-sendE addr n val = get >>= liftIO . (\eg -> send addr n val eg) . getEngine
+sendE addr n val = liftEngine $ send addr n val
 
 
 {- Constants -}
@@ -815,8 +804,8 @@ genBuiltin "parseArgs" _ =
 genBuiltin "openBuiltin" _ =
   ivfun $ \(VString cid) -> 
     ivfun $ \(VString builtinId) ->
-      ivfun $ \(VString format) -> 
-        withEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
+      ivfun $ \(VString format) ->
+        liftEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
@@ -824,7 +813,7 @@ genBuiltin "openFile" t =
     ivfun $ \(VString path) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          withEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
@@ -832,10 +821,10 @@ genBuiltin "openSocket" t =
     ivfun $ \(VAddress addr) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          withEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
 
 -- close :: ChannelId -> ()
-genBuiltin "close" _ = ivfun $ \(VString cid) -> withEngine (close cid) >> return vunit
+genBuiltin "close" _ = ivfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
@@ -848,23 +837,23 @@ genBuiltin "registerSocketCloseTrigger"  _ = registerNotifier "close"
 
 -- <source>HasRead :: () -> Bool
 genBuiltin (channelMethod -> ("HasRead", Just n)) _ = ivfun $ \_ -> checkChannel
-  where checkChannel = withEngine (hasRead n) >>= maybe invalid (return . VBool)
+  where checkChannel = liftEngine (hasRead n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Read :: () -> t
-genBuiltin (channelMethod -> ("Read", Just n)) _ = ivfun $ \_ -> withEngine (doRead n) >>= throwOnError
+genBuiltin (channelMethod -> ("Read", Just n)) _ = ivfun $ \_ -> liftEngine (doRead n) >>= throwOnError
   where throwOnError (Just v) = return v
         throwOnError Nothing =
           throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 -- <sink>HasWrite :: () -> Bool
 genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = ivfun $ \_ -> checkChannel
-  where checkChannel = withEngine (hasWrite n) >>= maybe invalid (return . VBool)
+  where checkChannel = liftEngine (hasWrite n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
-  ivfun $ \arg -> withEngine (doWrite n arg) >> return vunit
+  ivfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
@@ -880,7 +869,7 @@ registerNotifier n =
   ivfun $ \cid -> ivfun $ \target -> attach cid n target >> return vunit
 
   where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = 
-          withEngine $ attachNotifier_ cid n (addr, tid, v)
+          liftEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
         targetOfValue (VTuple [VTrigger (m, _), VAddress addr]) = (addr, m, vunit)
@@ -1052,7 +1041,7 @@ builtinAttribute annId n t uid = providesError "attribute" n
 
 {- Program initialization methods -}
 
-initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> IO IState
+initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> EngineM Value IState
 initEnvironment bootstrap decl st =
   foldM (\st (n,e) -> initializeExpr (registerGlobal n st) n e) st bootstrap >>= flip initDecl decl
   where 
@@ -1075,30 +1064,29 @@ initEnvironment bootstrap decl st =
     initFunction st n t Nothing  = initializeBinding st $ builtin n t
 
     initializeExpr st n e = initializeBinding st (expression e >>= modifyE . (:) . (n,))
-    initializeBinding st interp = runInterpretation st interp >>= return . getResultState
+    initializeBinding st interp = runInterpretation' st interp >>= return . getResultState
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
-    registerGlobal n (w,x,y,z) = (n:w, x, y, z)
+    registerGlobal n (w,x,y) = (n:w, x, y)
 
+initState :: PeerBootstrap -> K3 Declaration -> EngineM Value IState
+initState bootstrap prog = initEnvironment bootstrap prog emptyState
 
-initState :: PeerBootstrap -> K3 Declaration -> IEngine -> IO IState
-initState bootstrap prog engine = initEnvironment bootstrap prog (emptyState engine)
-
-initMessages :: IResult () -> IO (IResult Value)
+initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
     ((Right _, s), ilog)
-      | Just (VFunction (f,[])) <- lookup "atInit" $ getEnv s -> runInterpretation s (f vunit)
-      | otherwise                                             -> return ((unknownTrigger, s), ilog)
-    ((Left err, s), ilog)                                     -> return ((Left err, s), ilog)
+      | Just (VFunction (f, [])) <- lookup "atInit" $ getEnv s -> runInterpretation' s (f vunit)
+      | otherwise                                              -> return ((unknownTrigger, s), ilog)
+    ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-initProgram :: PeerBootstrap -> K3 Declaration -> IEngine -> IO (IResult Value)
-initProgram bootstrap prog engine =
-  initState bootstrap prog engine >>= flip runInterpretation (declaration prog) >>= initMessages
+initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
+initProgram bootstrap prog =
+  initState bootstrap prog >>= flip runInterpretation' (declaration prog) >>= initMessages
 
-finalProgram :: IState -> IO (IResult Value)
-finalProgram st = runInterpretation st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
+finalProgram :: IState -> EngineM Value (IResult Value)
+finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
   where runFinal (VFunction (f,[])) = f vunit
         runFinal _                  = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger              = throwE $ RunTimeTypeError "Could not find atExit trigger"
@@ -1109,27 +1097,25 @@ standaloneInterpreter :: (IEngine -> IO a) -> IO a
 standaloneInterpreter f = simulationEngine defaultSystem syntaxValueWD >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
-runExpression e = standaloneInterpreter withEngine'
-  where withEngine' engine = valueOfInterpretation (emptyState engine) (expression e)
+runExpression e = standaloneInterpreter (withEngine')
+  where
+    withEngine' engine = flip runEngineM engine (valueOfInterpretation emptyState (expression e))
+        >>= return . either (const Nothing) id
 
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
-
-runProgramInitializer :: PeerBootstrap -> K3 Declaration -> IO ()
-runProgramInitializer bootstrap p = standaloneInterpreter (initProgram bootstrap p) >>= putIResult
-
 
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO ()
-runProgram systemEnv prog =
-  simulationEngine systemEnv syntaxValueWD
-    >>= (\e -> runEngine virtualizedProcessor systemEnv e prog)
+runProgram systemEnv prog = do
+    engine <- simulationEngine systemEnv syntaxValueWD
+    void $ flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: SystemEnvironment -> K3 Declaration -> IO [(Address, IEngine, ThreadId)]
+runNetwork :: SystemEnvironment -> K3 Declaration -> IO [Either EngineError (Address, ThreadId)]
 runNetwork systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in do
     engines       <- mapM (flip networkEngine syntaxValueWD) nodeBootstraps
@@ -1138,20 +1124,21 @@ runNetwork systemEnv prog =
     return engineThreads
   where
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
-    fork (addr, engine, bootstrap) = forkEngine virtualizedProcessor bootstrap engine prog >>= return . (addr, engine,)
-
+    fork (addr, engine, bootstrap) = flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog >>= return . (addr,)
 
 {- Message processing -}
 
-runTrigger :: IResult Value -> Identifier -> Value -> Value -> IO (IResult Value)
+runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
-  (VTrigger (_, Just f)) -> putStrLn ("Running trigger " ++ n)
-                            >> SIO.hFlush SIO.stdout
-                            >> runInterpretation (getResultState r) (f a)
-                            >>= (\r -> putStrLn ("... done") >> return r)
+    (VTrigger (_, Just f)) -> do
+        liftIO $ putStrLn ("Running trigger " ++ n)
+        liftIO $ SIO.hFlush SIO.stdout
+        r <- runInterpretation' (getResultState r) (f a)
+        liftIO $ putStrLn ("... done")
+        return r
 
-  (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
-  _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
+    (VTrigger _) -> return . iError r $ "Uninitialized trigger " ++ n
+    _ -> return . tError r $ "Invalid trigger or sink value for " ++ n
 
   where iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
@@ -1159,46 +1146,43 @@ runTrigger r n a = \case
 
 uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResult Value) (IResult Value)
 uniProcessor = MessageProcessor {
-                    initialize = initUP
-                  , process    = processUP
-                  , status     = statusUP
-                  , finalize   = finalizeUP
-                  , report     = reportUP
-                }
-  where
-        initUP [] prog eg = initProgram [] prog eg
-        initUP ((_,inits):_) prog eg = initProgram inits prog eg
+    initialize = initUP,
+    process = processUP,
+    status = statusUP,
+    finalize = finalizeUP,
+    report = reportUP
+} where
+    initUP [] prog = initProgram [] prog
+    initUP ((_,is):_) prog = initProgram is prog
 
-        statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-        finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+    statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+    finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
 
-        processUP (_, n, args) r =
-          maybe (return $ unknownTrigger r n) (run r n args) $ lookup n $ getEnv $ getResultState r
+    reportUP (Left err)  = putIResult err
+    reportUP (Right res) = putIResult res
 
-        reportUP (Left err)  = putIResult err
-        reportUP (Right res) = putIResult res
+    processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
+        lookup n $ getEnv $ getResultState r
 
-        run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
+    run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
 
-        unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
+    unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
-
-virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value 
-                                         [(Address, IResult Value)] [(Address, IResult Value)]
+virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 virtualizedProcessor = MessageProcessor {
-                            initialize = initializeVP
-                          , process    = processVP
-                          , status     = statusVP
-                          , finalize   = finalizeVP
-                          , report     = reportVP
-                        } 
-  where
-    initializeVP systemEnv program engine =
-      sequence [initNode node systemEnv program engine | node <- nodes engine]
+    initialize = initializeVP,
+    process = processVP,
+    status = statusVP,
+    finalize = finalizeVP,
+    report = reportVP
+} where
+    initializeVP systemEnv program = do
+        engine <- ask
+        sequence [initNode node systemEnv program | node <- nodes engine]
 
-    initNode node systemEnv program engine = do
+    initNode node systemEnv program = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
-        iProgram <- initProgram initEnv program engine
+        iProgram <- initProgram initEnv program
         --
         debugResult node iProgram
         --
@@ -1227,8 +1211,8 @@ virtualizedProcessor = MessageProcessor {
         res' <- either (const $ return res) (const $ finalProgram $ getResultState res) $ getResultVal res
         return (node, res')
 
-    reportVP (Left err)  = mapM_ (\(addr,r) -> putStrLn ("[" ++ show addr ++ "]") >> putIResult r) err
-    reportVP (Right res) = mapM_ (\(addr,r) -> putStrLn ("[" ++ show addr ++ "]") >> putIResult r) res
+    reportVP (Left err)  = mapM_ (\(addr,r) -> liftIO (putStrLn ("[" ++ show addr ++ "]")) >> putIResult r) err
+    reportVP (Right res) = mapM_ (\(addr,r) -> liftIO (putStrLn ("[" ++ show addr ++ "]")) >> putIResult r) res
 
 
 {- Wire descriptions -}
@@ -1255,35 +1239,33 @@ putEnv env = do
   void $ putStrLn "Environment:"
   void $ mapM_ (\(n,v) -> packValueSyntax False v >>= putStrLn . ((n ++ " => ") ++)) env
 
-putIResult :: IResult Value -> IO ()
-putIResult ((res, st), _) = putResultValue res >> putEnv (getEnv st) >> putEngine (getEngine st)
-
+putIResult :: IResult Value -> EngineM Value ()
+putIResult ((res, st), _) = liftIO (putResultValue res >> putEnv (getEnv st)) >> putEngine
 
 {- Debugging helpers -}
 debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
 debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
 
-debugResult :: Address -> IResult Value -> IO ()
+debugResult :: Address -> IResult Value -> EngineM Value ()
 debugResult addr r = do
-  void $ putStrLn $ "=========== " ++ show addr
-  void $ putIResult r
-  void $ putStrLn "============"
+    void $ liftIO $ putStrLn $ "=========== " ++ show addr
+    void $ putIResult r
+    void $ liftIO $ putStrLn "============"
 
-debugDispatch :: Address -> Identifier -> Value -> IResult Value -> IO ()
+debugDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
 debugDispatch addr name args r = do
-  void $ putStrLn ("Processing " ++ show addr ++ " " ++ name)
-  void $ putStrLn "Args:"
-  void $ print args
-  void $ debugResult addr r
-  void $ putStrLn "=========="
+    void $ liftIO $ putStrLn ("Processing " ++ show addr ++ " " ++ name)
+    void $ liftIO $ putStrLn "Args:"
+    void $ liftIO $ print args
+    void $ debugResult addr r
+    void $ liftIO $ putStrLn "=========="
 
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (_, vEnv, aEnv, engine) =
+  prettyLines (_, vEnv, aEnv) =
        ["Environment:"] ++ map show vEnv
     ++ ["Annotations:"] ++ (lines $ show aEnv)
-    ++ (lines $ show engine)
 
 -- TODO: error prettification
 instance (Pretty a) => Pretty (IResult a) where
