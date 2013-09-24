@@ -14,8 +14,10 @@ module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 
 import Control.Applicative
 import Control.Monad
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
@@ -31,6 +33,7 @@ import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
@@ -60,23 +63,33 @@ derivePolymorphicTypeExpression aEnv tExpr =
   case tag tExpr of
     TForall ids -> do
       tExpr' <- assert1Child tExpr
-      (qa, cs) <- deriveQualifiedTypeExpression aEnv tExpr'
-      (cs', qEnv) <- foldM extend (cs, Map.empty) ids
+      iVars <- mconcat <$> mapM (\i -> Map.singleton i <$>
+                        (freshTypecheckingUVar =<< uidOf tExpr)) ids
+      aEnv' <- envMerge aEnv <$> mconcat <$>
+                mapM toQuantBinding (Map.toList iVars)
+      (qa, cs) <- deriveQualifiedTypeExpression aEnv' tExpr'
+      (cs', qEnv) <- foldM (extendResult iVars) (cs, Map.empty) ids
       return (qa, cs', qEnv)
     _ -> noPoly
   where
     noPoly = do
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
       return (qa, cs, Map.empty)
-    extend :: (c, TEnv (TQuantEnvValue c))
-           -> Identifier
-           -> m (c, TEnv (TQuantEnvValue c))
-    extend (cs,qEnv) i = do
+    toQuantBinding :: (Identifier, UVar) -> m (TEnv (TypeAliasEntry c))
+    toQuantBinding (i,a) = do
+      qa <- freshTypecheckingQVar =<< uidOf tExpr
+      return $ Map.singleton (TEnvIdentifier i) $ QuantAlias $
+        QuantType Set.empty qa $ qa ~= a
+    extendResult :: Map Identifier UVar
+                 -> (c, TEnv (TQuantEnvValue c))
+                 -> Identifier
+                 -> m (c, TEnv (TQuantEnvValue c))
+    extendResult iVars (cs,qEnv) i = do
       let t_U = STop
       let t_L = SBottom 
       u <- uidOf tExpr
-      a <- freshTypecheckingUVar u
       oa <- freshOVar (OpaqueSourceOrigin u)
+      let a = fromJust $ Map.lookup i iVars
       let cs' = CSL.promote $ (SOpaque oa ~= a) `csUnion`
                 csSing (OpaqueBoundConstraint oa t_L t_U)
       return ( cs `CSL.union` CSL.promote (csFromList [t_L <: a, a <: t_U])
@@ -192,20 +205,18 @@ deriveTypeExpression aEnv tExpr = do
           (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
           a' <- freshTypecheckingUVar =<< uidOf tExpr
           return (a', cs `CSL.union` (STrigger a ~= a'))
-        TBuiltIn b -> do
-          assert0Children tExpr
+        TBuiltIn b ->
           let ei = case b of
                       TSelf -> TEnvIdSelf
                       TStructure -> TEnvIdFinal
                       THorizon -> TEnvIdHorizon
                       TContent -> TEnvIdContent
-          u <- uidOf tExpr
-          qt <- uncurry toQuantType =<< aEnvLookup ei u
-          (qa,cs) <- polyinstantiate u qt
-          a <- freshTypecheckingUVar u
-          return (a, cs `CSL.union` (qa ~= a))
+          in
+          environIdType ei
         TForall _ -> error "Forall type is invalid for deriveTypeExpression!"
           -- TODO: possibly make the above error less crash-y?
+        TDeclaredVar i ->
+          environIdType $ TEnvIdentifier i
   _debug $ boxToString $
     ["Interpreted type expression:"] %$ indent 2 (
         ["Type expression: "] %+ prettyLines tExpr %$
@@ -236,6 +247,14 @@ deriveTypeExpression aEnv tExpr = do
     aEnvLookup :: TEnvId -> UID -> m (TEnvId, TypeAliasEntry c)
     aEnvLookup ei u =
       (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier u ei) ei aEnv
+    environIdType :: TEnvId -> m (UVar, c)
+    environIdType ei = do
+      assert0Children tExpr
+      u <- uidOf tExpr
+      qt <- uncurry toQuantType =<< aEnvLookup ei u
+      (qa,cs) <- polyinstantiate u qt
+      a <- freshTypecheckingUVar u
+      return (a, cs `CSL.union` (qa ~= a))
 
 -- |Obtains the type qualifiers of a given expression.  Each inner list
 --  represents the results for a single annotation.

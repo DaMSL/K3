@@ -46,6 +46,7 @@ data Type
     | TTrigger
     | TBuiltIn TypeBuiltIn
     | TForall [Identifier] -- ^Should have one child representing the body.
+    | TDeclaredVar Identifier -- ^Represents the use of a declared type var.
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.

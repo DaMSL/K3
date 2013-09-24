@@ -158,7 +158,7 @@ k3Keywords = [
     {- Types -}
     "int", "bool", "real", "string",
     "immut", "mut", "witness", "option", "ind" , "collection",
-    "self", "structure", "horizon", "content",
+    "self", "structure", "horizon", "content", "forall",
     {- Declarations -}
     "declare", "trigger", "source", "sink", "fun",
     {- Expressions -}
@@ -274,7 +274,7 @@ declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
-  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
+  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateNSExpr)
         mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
@@ -350,6 +350,15 @@ typeExpr = typeError "expression" $ TUID # tTermOrFun
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
 
+polymorphicTypeExpr :: TypeParser
+polymorphicTypeExpr =
+  typeExprError "polymorphic" $
+        (TUID # TC.forAll <$
+            keyword "forall" <*> many identifier <* symbol "." <*>
+            qualifiedTypeExpr)
+    <|> qualifiedTypeExpr
+    
+
 {- Parenthesized version of qualified types.
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ 
@@ -365,7 +374,7 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 tTerm :: TypeParser
 tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
                            tTupleOrNested, tRecord, tCollection,
-                           tBuiltIn ]
+                           tBuiltIn, tDeclared ]
 
 tTermOrFun :: TypeParser
 tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" *> typeExpr)
@@ -419,6 +428,10 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
               , ("structure",TStructure)
               , ("horizon",THorizon)
               , ("content",TContent) ]
+
+tDeclared :: TypeParser
+tDeclared = typeExprError "declared" $ ( TUID # ) $
+              TC.declaredVar <$> identifier
 
 tAnnotations :: K3Parser [Annotation Type]
 tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
