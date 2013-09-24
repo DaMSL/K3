@@ -46,16 +46,17 @@ deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
                    -> TNormEnv -- ^The existing type environment.
                    -> TAliasEnv -- ^The type alias environment to check.
                    -> TNormEnv -- ^The type environment to check.
+                   -> TGlobalQuantEnv -- ^The global polymorphism environment.
                    -> K3 Declaration -- ^The AST of global declarations to use
                                      --  in the checking process.
                    -> TypecheckM ()
-deriveDeclarations aEnv env aEnv' env' decls =
+deriveDeclarations aEnv env aEnv' env' rEnv decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
       let aEnv'' = aEnv `envMerge` aEnv' 
       let env'' = env `envMerge` env'
       ids <- (Set.fromList . map TEnvIdentifier) <$> gatherParallelErrors
-              (map (deriveDeclaration aEnv'' env'') globals)
+              (map (deriveDeclaration aEnv'' env'' rEnv) globals)
       let namedIds =
             Set.fromList (Map.keys aEnv'') `Set.union` -- TODO: disjoint union
             Set.fromList (Map.keys env'')
@@ -69,9 +70,15 @@ deriveDeclarations aEnv env aEnv' env' decls =
 --  type environments.
 deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
-                  -> K3 Declaration -- ^The AST of the declaration to check.retr
+                  -> TGlobalQuantEnv -- ^The global polymorphism environment to
+                                     --  use.  We pass in the full environment
+                                     --  and expect @deriveDeclaration@ to
+                                     --  extract the appropriate @TQuantEnv@
+                                     --  to simplify the call from
+                                     --  @deriveDeclarations@.
+                  -> K3 Declaration -- ^The AST of the declaration to check.
                   -> TypecheckM Identifier
-deriveDeclaration aEnv env decl =
+deriveDeclaration aEnv env rEnv decl =
   case tag decl of
 
     DRole _ -> typecheckError $ InternalError $ NonTopLevelDeclarationRole decl
@@ -80,9 +87,21 @@ deriveDeclaration aEnv env decl =
       assert0Children decl
       return i 
 
-    DGlobal i _ (Just expr) ->
-      basicDeclaration i expr deriveQualifiedExpression
-        $ \qa1 qa2 -> return $ csSing $ qa1 <: qa2
+    DGlobal i _ (Just expr) -> do
+      qEnv <- envRequire (InternalError $
+                MissingIdentifierInGlobalQuantifiedEnvironment rEnv i)
+                (TEnvIdentifier i) rEnv
+      {-
+      NOTE: Technically, we are obliged to check that the type decision
+            procedure has placed certain upper bounds on the type variables in
+            qEnv.  We are skipping that step here for performance reasons under
+            the assumption that the type decision process will have done this
+            correctly.
+      -}
+      let addedConstraints qa1 qa2 =
+            return $ csSing (qa1 <: qa2) `csUnion`
+              csUnions [cs'' | (_, _, _, cs'') <- Map.elems qEnv]
+      basicDeclaration i expr deriveQualifiedExpression addedConstraints
 
     DTrigger i _ expr ->
       basicDeclaration i expr deriveUnqualifiedExpression
@@ -227,6 +246,9 @@ deriveDeclaration aEnv env decl =
                   csUnion allCs wiringCs
       return iAnn
   where
+    -- |A common implementation of both initialized variables and triggers.
+    --  These rules only vary by (1) the derivation used on the type expression
+    --  and (2) the constraint set which is added to the constraint closure.
     basicDeclaration i expr deriv csf = do
       assert0Children decl
       u <- uidOf decl

@@ -29,9 +29,12 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 , TEnvId(..)
 , TypeAliasEntry(..)
 , NormalTypeAliasEntry
+, TQuantEnvValue
 , TAliasEnv
 , TNormEnv
 , TParamEnv
+, TQuantEnv
+, TGlobalQuantEnv
 , TypeOrVar
 , QualOrVar
 , UVarBound
@@ -343,12 +346,19 @@ instance (Pretty c) => Pretty (TypeAliasEntry c) where
 --  sets).
 type NormalTypeAliasEntry = TypeAliasEntry ConstraintSet
 
+-- |A type alias for the kind of polymorphism information stored in a QuantEnv.
+type TQuantEnvValue c = (UVar, ShallowType, ShallowType, c)
+
 -- |An alias for type alias environments.
 type TAliasEnv = TEnv NormalTypeAliasEntry
 -- |An alias for normal type environments.
 type TNormEnv = TEnv NormalQuantType
 -- |An alias for type parameter environments.
 type TParamEnv = TEnv UVar
+-- |An alias for quantified (polymorphism) environments.
+type TQuantEnv = TEnv (TQuantEnvValue ConstraintSet)
+-- |An alias for global quantified (polymorphism) environments.
+type TGlobalQuantEnv = TEnv TQuantEnv
 
 -- |A type alias describing a type or a variable.
 type TypeOrVar = Coproduct ShallowType UVar

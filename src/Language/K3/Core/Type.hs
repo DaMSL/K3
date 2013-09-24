@@ -45,6 +45,7 @@ data Type
     | TSink
     | TTrigger
     | TBuiltIn TypeBuiltIn
+    | TForall [Identifier] -- ^Should have one child representing the body.
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.

@@ -52,9 +52,9 @@ typecheck aEnv env decl = do
   -- 1. Simple sanity checks for consistency.
   either (Left . Seq.singleton) Right $ unSanityM (sanityCheck decl)
   -- 2. Decide the types that should be assigned.
-  ((aEnv',env'),idx) <- runDecideM 0 $ typeDecision decl
+  ((aEnv',env',rEnv),idx) <- runDecideM 0 $ typeDecision decl
   -- 3. Check that types inferred for the declarations match these types.
-  ((),_) <- runTypecheckM idx (deriveDeclarations aEnv env aEnv' env' decl)
+  ((),_) <- runTypecheckM idx (deriveDeclarations aEnv env aEnv' env' rEnv decl)
   -- TODO: annotate the declaration tree with type information
   -- TODO: some form of type simplification on the output types
   return TypecheckResult

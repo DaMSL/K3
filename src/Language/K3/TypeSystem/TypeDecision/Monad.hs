@@ -20,6 +20,7 @@ import qualified Data.Sequence as Seq
 
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.TypeDecision.Data
@@ -54,6 +55,9 @@ getNextVarId = do
   s <- get
   put $ s { nextVarId = nextVarId s + 1 }
   return $ nextVarId s
+
+instance FreshOpaqueI TypeDecideM where
+  freshOVar origin = OpaqueVar origin . OpaqueID <$> getNextVarId
 
 instance FreshVarI TypeDecideM where
   freshQVar origin = QTVar <$> getNextVarId <*> return origin
