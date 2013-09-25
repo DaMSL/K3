@@ -137,6 +137,9 @@ modifyCompositionSpecs f =
 sanitize :: Identifier -> Identifier 
 sanitize = id
 
+programId :: Identifier
+programId = "__progId"
+
 engineModuleAliasId :: Identifier
 engineModuleAliasId = "E"
 
@@ -300,6 +303,9 @@ unitType = [ty| () |]
 
 boolType :: HS.Type
 boolType = [ty| Bool |]
+
+stringType :: HS.Type
+stringType = [ty| String |]
 
 maybeType :: HS.Type -> HS.Type
 maybeType t = tyApp "Maybe" t
@@ -1225,7 +1231,7 @@ generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
 generate progName p = declaration p >>= mkProgram
   where 
         mkProgram (HDeclarations decls) = programDecls decls
-          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName progName) pragmas warning expts impts
+          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName $ sanitize progName) pragmas warning expts impts
         
         mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
 
@@ -1238,15 +1244,20 @@ generate progName p = declaration p >>= mkProgram
           generateCollectionCompositions >>= \comboDecls -> 
           generateDispatch >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++) . postDecls
 
-        impts = [ imprtDecl "Control.Concurrent"         False Nothing
-                , imprtDecl "Control.Concurrent.MVar"    False Nothing
-                , imprtDecl "Control.Monad"              False Nothing
-                , imprtDecl "Language.K3.Common"         False Nothing
-                , imprtDecl "Language.K3.Runtime.Engine" True  (Just engineModuleAliasId)
-                , imprtDecl "Data.Map.Lazy"              True  (Just "M") ]
+        impts = [ imprtDecl "Control.Concurrent"          False Nothing
+                , imprtDecl "Control.Concurrent.MVar"     False Nothing
+                , imprtDecl "Control.Monad"               False Nothing
+                , imprtDecl "Options.Applicative"         False Nothing                
+                , imprtDecl "Language.K3.Common"          False Nothing
+                , imprtDecl "Language.K3.Runtime.Options" False Nothing
+                , imprtDecl "Language.K3.Runtime.Engine"  True  (Just engineModuleAliasId)
+                , imprtDecl "Data.Map.Lazy"               True  (Just "M") ]
 
         preDecls = 
-          [ [dec| class Collection a b where
+          [ typeSig programId stringType,
+            namedVal programId $ HB.strE $ sanitize progName,
+
+            [dec| class Collection a b where
                     getData      :: a -> b
                     modifyData   :: a -> (b -> b) -> a
                     copyWithData :: a -> b -> a |]
@@ -1288,9 +1299,12 @@ generate progName p = declaration p >>= mkProgram
               )
           ++
           [ [dec| main = do
-                    sysEnv <- parseArgs
-                    engine <- E.networkEngine sysEnv identityWD
-                    void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
+                           sysEnv <- liftIO $ execParser options
+                           engine <- E.networkEngine sysEnv identityWD
+                           void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
+                         where options = info (helper <*> sysEnvOptions) $ fullDesc 
+                                          <> progDesc (__programId__ ++ " K3 binary.")
+                                          <> header (__programId__ ++ " K3 binary.")
                 |] ]
 
         (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
