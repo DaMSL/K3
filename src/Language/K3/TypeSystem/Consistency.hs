@@ -25,7 +25,6 @@ import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Utils
-import Language.K3.Utils.Conditional
 import Language.K3.Utils.Either
 
 data ConsistencyError

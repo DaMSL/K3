@@ -16,7 +16,6 @@ module Language.K3.TypeSystem.Monad.Utils
 import Control.Applicative
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe
 
 import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data

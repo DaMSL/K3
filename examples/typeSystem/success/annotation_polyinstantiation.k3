@@ -1,0 +1,19 @@
+annotation X {
+    requires lifted f : () -> int ;
+}
+
+annotation A {
+    provides lifted x : int = 4;
+    provides lifted f : () -> int = fun junk -> x ;
+}
+
+annotation B {
+    provides lifted x : bool = true;
+    provides lifted f : () -> int = (fun junk -> if x then 0 else 1) ;
+}
+
+declare c1 : collection {} @ {X} = empty {} @ {X,A} ;
+declare c2 : collection {} @ {X} = empty {} @ {X,B} ;
+
+declare v : int = c1.f() + c2.f()
+

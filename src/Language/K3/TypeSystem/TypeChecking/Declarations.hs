@@ -13,13 +13,10 @@ import Control.Arrow
 import Control.Applicative
 import Control.Monad
 import qualified Data.Foldable as Foldable
-import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
-import Data.Set (Set)
 import qualified Data.Set as Set
-import qualified Data.Traversable as Trav
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -38,10 +35,8 @@ import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Expressions
 import Language.K3.TypeSystem.TypeChecking.Monad
-import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
-import Language.K3.Utils.Conditional
 
 $(loggingFunctions)
 
