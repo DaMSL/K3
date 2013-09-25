@@ -574,8 +574,8 @@ defaultValue' (tag -> TRecord ids) = throwCG $ CodeGenerationError "Default reco
 
 defaultValue' (tag &&& annotations -> (TCollection, anns)) = 
   case annotationComboIdT anns of
-    Nothing      -> return $ [hs| [] |]
     Just comboId -> return $ HB.var $ HB.name $ collectionEmptyConPrefixId ++ comboId
+    Nothing      -> return [hs| return [] |]
 
 
 defaultValue' (tag -> TFunction) = throwCG $ CodeGenerationError "No default available for a function"
@@ -828,8 +828,8 @@ mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGene
 mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
   []           -> mkTypedDecl n nType nInit
   
-  [TMutable]   -> mkTypedDecl n (ioType $ indirectionType nType) [hs| newMVar ( $nInit ) |]
-    -- assumes no IO actions are present in the initializer.
+  [TMutable]   -> mkTypedDecl n (engineType $ indirectionType nType) [hs| liftIO $ newMVar ( $nInit ) |]
+    -- assumes no IO/Engine actions are present in the initializer.
   
   [TImmutable] -> mkTypedDecl n nType nInit
   _            -> throwCG $ CodeGenerationError "Ambiguous global declaration qualifier"
@@ -860,17 +860,17 @@ global n t@(tag -> TFunction) (Just e) = do
 -- TODO: two-level namespaces.
 global n t@(tag &&& children -> (TCollection, [x])) eOpt =
   case composedName of
-    Nothing      -> return HNoRepr
-    Just comboId -> testAndAddComposition comboId $ flip initializeCollection eOpt
+    Nothing      -> initializeCollection eOpt
+    Just comboId -> testAndAddComposition comboId >> initializeCollection eOpt
 
   where anns            = annotations t
         annotationNames = annotationNamesT anns
         composedName    = annotationComboIdT anns
 
-        testAndAddComposition comboId f = 
+        testAndAddComposition comboId = 
           getCompositionSpec comboId >>= \case 
-            Nothing   -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:) >> f spec
-            Just spec -> f (comboId, spec)
+            Nothing -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:)
+            Just _  -> return ()
 
         composeAnnotations comboId = mapM lookupAnnotation annotationNames >>= composeSpec comboId
         lookupAnnotation n = getAnnotationSpec n >>= maybe (invalidAnnotation n) return
@@ -883,9 +883,8 @@ global n t@(tag &&& children -> (TCollection, [x])) eOpt =
           then return (comboId, cSpec)
           else compositionError n
 
-        initializeCollection (comboId,_) eOpt = 
-          typ' x >>= return . collectionType comboId >>=
-          \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
+        initializeCollection eOpt = 
+          typ' t >>= return . engineType >>= \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
         
         compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
         invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
