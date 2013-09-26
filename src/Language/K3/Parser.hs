@@ -470,6 +470,7 @@ eTerm = do
 {- Literals -}
 eLiterals :: ExpressionParser
 eLiterals = choice [ 
+    try eCollection,
     eTerminal,
     eOption,
     eIndirection,
@@ -533,6 +534,28 @@ eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
+
+eCollection :: ExpressionParser
+eCollection = exprError "collection" $
+              mkCollection <$> braces (choice [try singleField, multiField])
+                           <*> (option [] (symbol "@" *> eAnnotations))
+  where 
+        singleField =     (symbol "|" *> idQType <* symbol "|")
+                      >>= mkSingletonRecord (commaSep1 expr <* symbol "|")
+        
+        multiField  = (\a b c -> ((a:b), c))
+                          <$> (symbol "|" *> idQType <* comma)
+                          <*> commaSep1 idQType
+                          <*> (symbol "|" *> commaSep1 expr <* symbol "|")
+        
+        mkCollection (tyl, el) a = EC.letIn cId (emptyC tyl a) $ EC.binop OSeq (mkInserts el) cVar
+
+        mkInserts el = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) (tail el)
+        mkInsert     = EC.binop OApp (EC.project "insert" cVar)
+        emptyC tyl a = foldl (@+) (EC.empty $ TC.record tyl) a
+        (cId, cVar)  = ("__collection", EC.variable "__collection")
+
+        mkSingletonRecord p (n,t) = p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,))
 
 eAnnotations :: K3Parser [Annotation Expression]
 eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
