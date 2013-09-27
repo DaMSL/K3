@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, TupleSections #-}
 
 {-|
   A module containing operations which typecheck declarations.
@@ -114,7 +114,17 @@ deriveDeclaration aEnv env rEnv decl =
               , a4 <: STuple []
               , qa2 <: STrigger a3 ]
 
-    DAnnotation iAnn mems -> do
+    DAnnotation iAnn _ mems -> do
+      qEnv <- envRequire (InternalError $
+                MissingIdentifierInGlobalQuantifiedEnvironment rEnv iAnn)
+                (TEnvIdentifier iAnn) rEnv
+      {-
+      NOTE: Technically, we are obliged to check that the type decision
+            procedure has placed certain upper bounds on the type variables in
+            qEnv.  We are skipping that step here for performance reasons under
+            the assumption that the type decision process will have done this
+            correctly.
+      -}
       _debug $ boxToString $ ["Checking type for annotation "++iAnn++":"] %$
                              indent 2 (prettyLines decl)
       u <- uidOf decl
@@ -130,13 +140,21 @@ deriveDeclaration aEnv env rEnv decl =
       a_h <- freshTypecheckingUVar u
 
       -- Build the environments.
-      aEnv' <- mconcat <$> mapM (\(i,a) ->
+      aEnv'1 <- mconcat <$> mapM (\(i,a) ->
                     (\qa -> Map.singleton i $ QuantAlias $
-                            QuantType Set.empty qa $
-                            csFromList [qa <: a, a <: qa]) <$>
+                            QuantType Set.empty qa $ qa ~= a) <$>
                                 freshTypecheckingQVar u)
                   [ (TEnvIdContent, a_c), (TEnvIdFinal, a_f)
                   , (TEnvIdHorizon, a_h), (TEnvIdSelf, a_s) ]
+      -- NOTE: Not generalizing the two environments because polymorphism will
+      --       change the construction function in the latter.
+      aEnv'2 <- mconcat <$>
+                  mapM (\(i,a) ->
+                          (\qa -> Map.singleton i $ QuantAlias $
+                            QuantType Set.empty qa $ qa ~= a) <$>
+                                freshTypecheckingQVar u)
+                  (map (\(ei,(a,_,_,_)) -> (ei, a)) $
+                    Map.toList qEnv)
       qa_s' <- freshTypecheckingQVar u
       let env' = Map.singleton TEnvIdSelf
                     (QuantType Set.empty qa_s' $ csSing $ a_s <: qa_s')
@@ -171,19 +189,25 @@ deriveDeclaration aEnv env rEnv decl =
 
       -- Build the set of constraints to connect the opaque types to their
       -- corresponding type variables.
-      let cs' = csUnions [ SOpaque oa_c ~= a_c
-                         , SOpaque oa_f ~= a_f
-                         , SOpaque oa_s ~= a_s
-                         , csFromList
+      let cs'1 = csUnions [ SOpaque oa_c ~= a_c
+                          , SOpaque oa_f ~= a_f
+                          , SOpaque oa_s ~= a_s
+                          , csFromList
                              [ OpaqueBoundConstraint oa_c (SOpaque oa_f) $
                                   SRecord Map.empty Set.empty
                              , OpaqueBoundConstraint oa_f SBottom t_h
                              , OpaqueBoundConstraint oa_s SBottom t_s
                              ] ]
+
+      cs'2 <- csUnions <$> mapM (\(a_i',t_L,t_U,cs_i') ->
+                (\oa -> csUnions [SOpaque oa ~= a_i', cs_i',
+                                  csSing $ OpaqueBoundConstraint oa t_L t_U])
+                        <$> freshOVar (OpaqueSourceOrigin u)) (Map.elems qEnv)
       
       -- Derive appropriate types for the members.
-      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember (envMerge aEnv aEnv')
-                            (envMerge env env')) mems
+      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember
+                                (envMerge (envMerge aEnv aEnv'1) aEnv'2)
+                                (envMerge env env')) mems
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " has inferred bodies:"] %$
           indent 2 (
@@ -197,7 +221,7 @@ deriveDeclaration aEnv env rEnv decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b' +% [" \\ "] %$ prettyLines cs''') 
-      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''':cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''':cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)

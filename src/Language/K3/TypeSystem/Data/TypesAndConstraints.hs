@@ -123,6 +123,10 @@ data TVarOrigin (a :: TVarQualification)
   | TVarAnnotationFreshenOrigin (TVar a) UID
       -- ^Type variable was the result of polyinstantiation of variables in an
       --  annotation type at a given node UID.
+  | TVarAnnotationDeclaredParamOrigin UID Identifier
+      -- ^Type variable was declared on an annotation and constructed during
+      --  type decision.  The UID identifies the annotation; the identifier
+      --  names the declared type variable.
 
 deriving instance Show (TVarOrigin a)
 

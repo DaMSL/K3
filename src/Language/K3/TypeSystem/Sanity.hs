@@ -34,6 +34,7 @@ sanityCheck decl =
       checkIdentifiedListForDupes
         (map (idOfDecl &&& id) decl's)
         MultipleDeclarationBindings
+      -- TODO: check that annotations do not declare duplicate type identifiers
       mconcat <$> mapM checkMembersForDupes (mapMaybe unAnn decl's)
     _ -> internalTypeError $ TopLevelDeclarationNonRole decl
   where
@@ -41,9 +42,9 @@ sanityCheck decl =
       DRole i -> i
       DGlobal i _ _ -> i
       DTrigger i _ _ -> i
-      DAnnotation i _ -> i
+      DAnnotation i _ _ -> i
     unAnn d = case tag d of
-      DAnnotation _ mems -> Just mems
+      DAnnotation _ _ mems -> Just mems
       _ -> Nothing
     checkMembersForDupes :: [AnnMemDecl] -> m ()
     checkMembersForDupes mems = do

@@ -16,6 +16,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
@@ -35,15 +36,17 @@ typeDecision decl = do
   -- Inline the annotations
   inlined <- inlineAnnotations decl
   -- Compute skeletal environment
-  (skelAEnv, stubInfoMap) <- runWriterT $ constructSkeletalAEnv inlined
+  ((skelAEnv, skelREnv), stubInfoMap) <-
+      runWriterT $ constructSkeletalEnvs inlined
   -- Use that environment to substitute stubs
   inlinedStubMap <- calculateStubs skelAEnv stubInfoMap
   -- Then substitute the stubs in the environment itself
-  let aEnv = envStubSubstitute inlinedStubMap skelAEnv
+  let aEnv = aEnvStubSubstitute inlinedStubMap skelAEnv
+  let rEnv = rEnvStubSubstitute inlinedStubMap skelREnv
   -- Now calculate types using this environment for non-annotation declarations
-  (env, rEnv) <- mconcat <$> gatherParallelErrors
+  (env, rEnv') <- mconcat <$> gatherParallelErrors
                           (map (calcExprDecl aEnv) (subForest decl))
-  return (aEnv, env, rEnv)
+  return (aEnv, env, rEnv `envMerge` rEnv')
   where
     calcExprDecl :: TAliasEnv -> K3 Declaration
                  -> TypeDecideM (TNormEnv, TGlobalQuantEnv)
@@ -69,5 +72,5 @@ typeDecision decl = do
         let qt = generalize Map.empty qa cs'
         -- Finally, generate the result
         return (Map.singleton (TEnvIdentifier i) qt, Map.empty)
-      DAnnotation _ _ -> return (Map.empty, Map.empty)
+      DAnnotation _ _ _ -> return (Map.empty, Map.empty)
       DRole _ -> internalTypeError $ NonTopLevelDeclarationRole decl'

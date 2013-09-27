@@ -313,8 +313,12 @@ dSelector :: K3Parser ()
 dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 dAnnotation :: DeclParser
-dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
-  where n = "annotation"
+dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
+  where rule x = x <*> annotationTypeParametersParser <*>
+                      braces (some annotationMember)
+        annotationTypeParametersParser =
+              keyword "given" *> keyword "type" *> typeParameterList
+          <|> return []
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
@@ -342,6 +346,8 @@ polarity = choice [keyword "provides" >> return Provides,
 uidOver :: K3Parser (UID -> a) -> K3Parser a
 uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
 
+typeParameterList :: K3Parser [Identifier]
+typeParameterList = some identifier
 
 {- Types -}
 typeExpr :: TypeParser
@@ -828,7 +834,7 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
               rebuildDecl d uid $ DTrigger n t' e'
 
             DRole       n      -> rebuildDecl d uid $ DRole n
-            DAnnotation n mems -> rebuildDecl d uid $ DAnnotation n mems
+            DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
 
         rebuildDecl d@(_ :@: as) uid =
           return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 
