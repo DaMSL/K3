@@ -1,0 +1,6 @@
+annotation X given type a {
+	provides lifted f : a -> a = (\x -> x) ;
+	provides lifted n : int = f 3 ;
+	provides lifted m : bool = f true ;
+}
+
