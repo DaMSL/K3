@@ -305,8 +305,8 @@ declareBuiltins d
 
         peerDecls = [
           DC.global myId TC.address Nothing,
-          DC.global peersId (TC.collection TC.address) Nothing,
-          DC.global argsId argT Nothing,
+          DC.global peersId peersT Nothing,
+          DC.global argsId progArgT Nothing,
           DC.global roleId TC.string Nothing]
 
         topLevelDecls = [
@@ -320,9 +320,12 @@ declareBuiltins d
 
         atExitE = EC.lambda "_" $ EC.tuple []
 
-        idT = TC.string
-        argT = TC.tuple [TC.collection TC.string,
-                         TC.collection $ TC.tuple [TC.string, TC.string]]
+        idT      = TC.string
+        progArgT = TC.tuple [argT, paramsT]
+        peersT   = mkCollection [("addr", TC.address)]
+        argT     = mkCollection [("arg", TC.string)]
+        paramsT  = mkCollection [("key", TC.string), ("value", TC.string)]
 
         mkUnitFnT rt = TC.function TC.unit rt
         unitFnT = TC.function TC.unit TC.unit
+        mkCollection fields = TC.collection $ TC.record fields

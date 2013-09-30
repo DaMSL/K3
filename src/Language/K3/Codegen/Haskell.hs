@@ -451,11 +451,11 @@ namedActionE n e = [hs| do
                           $nE |]
   where (nN, nE) = (HB.name n, HB.var $ HB.name n)                        
 
-doBindE :: Identifier -> HS.Exp -> HS.Exp
-doBindE n e = namedActionE n [hs| return ( $e ) |]
+bindE :: Identifier -> HS.Exp -> HS.Exp
+bindE n e = namedActionE n [hs| return ( $e ) |]
 
-doStoreE :: HS.Exp -> HS.Exp
-doStoreE e = [hs| liftIO ( newMVar ( $e ) ) |]
+doStoreE :: Identifier -> HS.Exp -> HS.Exp
+doStoreE n e = namedActionE n [hs| liftIO ( newMVar ( $e ) ) |]
 
 doLoadE :: Identifier -> HS.Exp -> HS.Exp
 doLoadE n e = namedActionE n [hs| liftIO $ readMVar ( $e ) |]
@@ -471,13 +471,12 @@ loadNameE anns n = case (qualifier anns, load anns) of
   _ -> qualLoadError
   where varE = HB.var $ HB.name n
 
-storeE :: [Annotation Expression] -> HS.Exp -> CodeGeneration HS.Exp
-storeE anns e = case (qualifier anns, store anns) of
-  (Nothing, False)         -> return e
-  (Just PImmutable, False) -> return e
-  (Just PMutable, True)    -> return $ doStoreE e
+storeE :: [Annotation Expression] -> Identifier -> HS.Exp -> CodeGeneration HS.Exp
+storeE anns n e = case (qualifier anns, store anns) of
+  (Nothing, False)         -> return $ bindE n e
+  (Just PImmutable, False) -> return $ bindE n e
+  (Just PMutable, True)    -> return $ doStoreE n e
   _ -> qualStoreError
-
 
 {- Do-expression manipulation -}
 
@@ -696,11 +695,11 @@ expression' (tag &&& children -> (EOperate otag, cs))
 
 -- | Let-in expressions
 expression' (tag &&& children -> (ELetIn i, [e, b])) = do
-  b'       <- expression' b
-  e'       <- expression' e
-  subE     <- storeE (annotations e) e'
-  letDecls <- return [namedVal i subE]
-  return $ HB.letE letDecls b'
+  e' <- expression' e
+  b' <- expression' b
+  chainReturnE e' $ \ne -> do
+    se <- storeE (annotations e) i ne
+    chainReturnE se $ return . const b'
 
 expression' (tag -> ELetIn _) = throwCG $ CodeGenerationError "Invalid let expression"
 
@@ -744,7 +743,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       f' <- expression' f
       case maybe PImmutable structureQualifier $ singleStructure eAnns of
         PImmutable -> chainReturnE (doLoadE i e') $ return . const f'
-        PMutable   -> chainReturnE (doBindE i e') $ return . const f'
+        PMutable   -> chainReturnE (bindE i e') $ return . const f'
 
     BTuple ts   -> bindTupleFields ts
     BRecord ids -> bindRecordFields ids
@@ -754,6 +753,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
     defaultStructure l = map (const PImmutable) l
     eStructure l = maybe (defaultStructure l) (map structureQualifier) $ complexStructure eAnns
 
+    -- TODO: simplify with storeE?
     bindTupleFields ids = do
       e'         <- expression' e
       f'         <- expression' f
@@ -776,10 +776,10 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       e'              <- expression' e
       f'              <- expression' f
       rNamedStructure <- return $ zip namePairs $ eStructure namePairs
-      rBindings       <- foldM bindRecordField (doBindE recordId e') rNamedStructure
+      rBindings       <- chainReturnE e' $ \re -> foldM bindRecordField (bindE recordId re) rNamedStructure
       seqDoE rBindings f'
 
-    bindRecordField acc ((a,b), q) = seqDoE acc $ doBindE a $ recordField q b
+    bindRecordField acc ((a,b), q) = seqDoE acc $ bindE a $ recordField q b
 
     recordField PImmutable x  = recordFieldLookupE [hs| id |] x recordVarE
     recordField PMutable x    = recordFieldLookupE [hs| (liftIO . newMVar) |] x recordVarE
