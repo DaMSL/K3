@@ -24,7 +24,7 @@ library
         either,
         errors,
         hashable,
-        haskell-src-exts,
+        haskell-src-exts == 1.13.5,
         haskell-src-exts-qq,
         hslogger,
         mtl,
