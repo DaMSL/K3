@@ -137,6 +137,9 @@ modifyCompositionSpecs f =
 sanitize :: Identifier -> Identifier 
 sanitize = id
 
+programId :: Identifier
+programId = "__progId"
+
 engineModuleAliasId :: Identifier
 engineModuleAliasId = "E"
 
@@ -301,6 +304,9 @@ unitType = [ty| () |]
 boolType :: HS.Type
 boolType = [ty| Bool |]
 
+stringType :: HS.Type
+stringType = [ty| String |]
+
 maybeType :: HS.Type -> HS.Type
 maybeType t = tyApp "Maybe" t
 
@@ -445,11 +451,11 @@ namedActionE n e = [hs| do
                           $nE |]
   where (nN, nE) = (HB.name n, HB.var $ HB.name n)                        
 
-doBindE :: Identifier -> HS.Exp -> HS.Exp
-doBindE n e = namedActionE n [hs| return ( $e ) |]
+bindE :: Identifier -> HS.Exp -> HS.Exp
+bindE n e = namedActionE n [hs| return ( $e ) |]
 
-doStoreE :: HS.Exp -> HS.Exp
-doStoreE e = [hs| liftIO ( newMVar ( $e ) ) |]
+doStoreE :: Identifier -> HS.Exp -> HS.Exp
+doStoreE n e = namedActionE n [hs| liftIO ( newMVar ( $e ) ) |]
 
 doLoadE :: Identifier -> HS.Exp -> HS.Exp
 doLoadE n e = namedActionE n [hs| liftIO $ readMVar ( $e ) |]
@@ -465,13 +471,12 @@ loadNameE anns n = case (qualifier anns, load anns) of
   _ -> qualLoadError
   where varE = HB.var $ HB.name n
 
-storeE :: [Annotation Expression] -> HS.Exp -> CodeGeneration HS.Exp
-storeE anns e = case (qualifier anns, store anns) of
-  (Nothing, False)         -> return e
-  (Just PImmutable, False) -> return e
-  (Just PMutable, True)    -> return $ doStoreE e
+storeE :: [Annotation Expression] -> Identifier -> HS.Exp -> CodeGeneration HS.Exp
+storeE anns n e = case (qualifier anns, store anns) of
+  (Nothing, False)         -> return $ bindE n e
+  (Just PImmutable, False) -> return $ bindE n e
+  (Just PMutable, True)    -> return $ doStoreE n e
   _ -> qualStoreError
-
 
 {- Do-expression manipulation -}
 
@@ -574,8 +579,8 @@ defaultValue' (tag -> TRecord ids) = throwCG $ CodeGenerationError "Default reco
 
 defaultValue' (tag &&& annotations -> (TCollection, anns)) = 
   case annotationComboIdT anns of
-    Nothing      -> return $ [hs| [] |]
     Just comboId -> return $ HB.var $ HB.name $ collectionEmptyConPrefixId ++ comboId
+    Nothing      -> return [hs| return [] |]
 
 
 defaultValue' (tag -> TFunction) = throwCG $ CodeGenerationError "No default available for a function"
@@ -690,11 +695,11 @@ expression' (tag &&& children -> (EOperate otag, cs))
 
 -- | Let-in expressions
 expression' (tag &&& children -> (ELetIn i, [e, b])) = do
-  b'       <- expression' b
-  e'       <- expression' e
-  subE     <- storeE (annotations e) e'
-  letDecls <- return [namedVal i subE]
-  return $ HB.letE letDecls b'
+  e' <- expression' e
+  b' <- expression' b
+  chainReturnE e' $ \ne -> do
+    se <- storeE (annotations e) i ne
+    chainReturnE se $ return . const b'
 
 expression' (tag -> ELetIn _) = throwCG $ CodeGenerationError "Invalid let expression"
 
@@ -738,7 +743,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       f' <- expression' f
       case maybe PImmutable structureQualifier $ singleStructure eAnns of
         PImmutable -> chainReturnE (doLoadE i e') $ return . const f'
-        PMutable   -> chainReturnE (doBindE i e') $ return . const f'
+        PMutable   -> chainReturnE (bindE i e') $ return . const f'
 
     BTuple ts   -> bindTupleFields ts
     BRecord ids -> bindRecordFields ids
@@ -748,6 +753,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
     defaultStructure l = map (const PImmutable) l
     eStructure l = maybe (defaultStructure l) (map structureQualifier) $ complexStructure eAnns
 
+    -- TODO: simplify with storeE?
     bindTupleFields ids = do
       e'         <- expression' e
       f'         <- expression' f
@@ -770,10 +776,10 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       e'              <- expression' e
       f'              <- expression' f
       rNamedStructure <- return $ zip namePairs $ eStructure namePairs
-      rBindings       <- foldM bindRecordField (doBindE recordId e') rNamedStructure
+      rBindings       <- chainReturnE e' $ \re -> foldM bindRecordField (bindE recordId re) rNamedStructure
       seqDoE rBindings f'
 
-    bindRecordField acc ((a,b), q) = seqDoE acc $ doBindE a $ recordField q b
+    bindRecordField acc ((a,b), q) = seqDoE acc $ bindE a $ recordField q b
 
     recordField PImmutable x  = recordFieldLookupE [hs| id |] x recordVarE
     recordField PMutable x    = recordFieldLookupE [hs| (liftIO . newMVar) |] x recordVarE
@@ -828,8 +834,8 @@ mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGene
 mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
   []           -> mkTypedDecl n nType nInit
   
-  [TMutable]   -> mkTypedDecl n (ioType $ indirectionType nType) [hs| newMVar ( $nInit ) |]
-    -- assumes no IO actions are present in the initializer.
+  [TMutable]   -> mkTypedDecl n (engineType $ indirectionType nType) [hs| liftIO $ newMVar ( $nInit ) |]
+    -- assumes no IO/Engine actions are present in the initializer.
   
   [TImmutable] -> mkTypedDecl n nType nInit
   _            -> throwCG $ CodeGenerationError "Ambiguous global declaration qualifier"
@@ -860,17 +866,17 @@ global n t@(tag -> TFunction) (Just e) = do
 -- TODO: two-level namespaces.
 global n t@(tag &&& children -> (TCollection, [x])) eOpt =
   case composedName of
-    Nothing      -> return HNoRepr
-    Just comboId -> testAndAddComposition comboId $ flip initializeCollection eOpt
+    Nothing      -> initializeCollection eOpt
+    Just comboId -> testAndAddComposition comboId >> initializeCollection eOpt
 
   where anns            = annotations t
         annotationNames = annotationNamesT anns
         composedName    = annotationComboIdT anns
 
-        testAndAddComposition comboId f = 
+        testAndAddComposition comboId = 
           getCompositionSpec comboId >>= \case 
-            Nothing   -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:) >> f spec
-            Just spec -> f (comboId, spec)
+            Nothing -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:)
+            Just _  -> return ()
 
         composeAnnotations comboId = mapM lookupAnnotation annotationNames >>= composeSpec comboId
         lookupAnnotation n = getAnnotationSpec n >>= maybe (invalidAnnotation n) return
@@ -883,9 +889,8 @@ global n t@(tag &&& children -> (TCollection, [x])) eOpt =
           then return (comboId, cSpec)
           else compositionError n
 
-        initializeCollection (comboId,_) eOpt = 
-          typ' x >>= return . collectionType comboId >>=
-          \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
+        initializeCollection eOpt = 
+          typ' t >>= return . engineType >>= \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
         
         compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
         invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
@@ -1228,7 +1233,7 @@ generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
 generate progName p = declaration p >>= mkProgram
   where 
         mkProgram (HDeclarations decls) = programDecls decls
-          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName progName) pragmas warning expts impts
+          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName $ sanitize progName) pragmas warning expts impts
         
         mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
 
@@ -1241,15 +1246,20 @@ generate progName p = declaration p >>= mkProgram
           generateCollectionCompositions >>= \comboDecls -> 
           generateDispatch >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++) . postDecls
 
-        impts = [ imprtDecl "Control.Concurrent"         False Nothing
-                , imprtDecl "Control.Concurrent.MVar"    False Nothing
-                , imprtDecl "Control.Monad"              False Nothing
-                , imprtDecl "Language.K3.Common"         False Nothing
-                , imprtDecl "Language.K3.Runtime.Engine" True  (Just engineModuleAliasId)
-                , imprtDecl "Data.Map.Lazy"              True  (Just "M") ]
+        impts = [ imprtDecl "Control.Concurrent"          False Nothing
+                , imprtDecl "Control.Concurrent.MVar"     False Nothing
+                , imprtDecl "Control.Monad"               False Nothing
+                , imprtDecl "Options.Applicative"         False Nothing                
+                , imprtDecl "Language.K3.Common"          False Nothing
+                , imprtDecl "Language.K3.Runtime.Options" False Nothing
+                , imprtDecl "Language.K3.Runtime.Engine"  True  (Just engineModuleAliasId)
+                , imprtDecl "Data.Map.Lazy"               True  (Just "M") ]
 
         preDecls = 
-          [ [dec| class Collection a b where
+          [ typeSig programId stringType,
+            namedVal programId $ HB.strE $ sanitize progName,
+
+            [dec| class Collection a b where
                     getData      :: a -> b
                     modifyData   :: a -> (b -> b) -> a
                     copyWithData :: a -> b -> a |]
@@ -1291,9 +1301,12 @@ generate progName p = declaration p >>= mkProgram
               )
           ++
           [ [dec| main = do
-                    sysEnv <- parseArgs
-                    engine <- E.networkEngine sysEnv identityWD
-                    void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
+                           sysEnv <- liftIO $ execParser options
+                           engine <- E.networkEngine sysEnv identityWD
+                           void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
+                         where options = info (helper <*> sysEnvOptions) $ fullDesc 
+                                          <> progDesc (__programId__ ++ " K3 binary.")
+                                          <> header (__programId__ ++ " K3 binary.")
                 |] ]
 
         (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]

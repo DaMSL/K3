@@ -31,7 +31,15 @@ declare c3           : mut collection { key : int, value : int } @ { Collection 
 
 declare c4           : mut collection { addr : address } @ { Collection }
 
-declare y : mut int = 0
+declare c5           : mut collection { x : int } @ { Collection }
+                     = {|x:int| 1, 2, 3, 4 |} @ { Collection }
+
+declare c6           : mut collection { x : int, y : int } @ { Collection }
+                     = {|x:int,y:int| {x:1,y:1}, {x:2,y:2}, {x:3,y:3}, {x:4,y:4} |} @ { Collection }
+
+declare sumMyC : mut int = 0
+declare sumC5  : mut int = 0
+declare sumC6  : mut int = 0
 
 trigger t : int = \i -> (
   myCollection.insert {x:i};
@@ -40,12 +48,15 @@ trigger t : int = \i -> (
   myCollection = c1.combine c2;
 
   myCollection = myCollection.map (\r -> {x : r.x + 1});
-  y = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
+  sumMyC = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
 
   myCollection = myCollection.combine myCollection;
   c3 = myCollection.groupBy (\r -> r.x) (\acc -> (\r -> acc + 1)) 0;
 
-  c4.insert { addr : 127.0.0.1:40000 }
+  c4.insert { addr : 127.0.0.1:40000 };
+
+  sumC5 = c5.fold (\acc -> (\r -> acc + r.x)) 0;
+  sumC6 = c6.fold (\acc -> (\r -> acc + r.x + r.y)) 0
 )
 
 source s1 : int = value 5
