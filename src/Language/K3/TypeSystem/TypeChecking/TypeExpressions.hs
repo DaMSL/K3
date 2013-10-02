@@ -195,8 +195,7 @@ deriveTypeExpression aEnv tExpr = do
           (t_s, cs_s) <- depolarizeOrError u ms1
           (t_f, cs_f) <- depolarizeOrError u ms2
           let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
-          return (a_s, CSL.unions [cs, cs_c, CSL.promote $
-                                                csUnions [cs_f, cs_s, cs']])
+          return (a_s, CSL.unions [cs, cs_c, cs_f, cs_s, CSL.promote cs'])
         TAddress -> error "Address type not in specification!" -- TODO
         TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
         TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO

@@ -109,6 +109,18 @@ stubLookup stub m =
                      " in context of substitution!")
           $ Map.lookup stub m
 
+-- |Performs stub substitution for annotation body types.
+closeBodyStubSubstitution
+    :: (CSL.ConstraintSetLikePromotable c StubbedConstraintSet)
+    => StubInfoMap c -> AnnBodyType StubbedConstraintSet -> NormalAnnBodyType
+closeBodyStubSubstitution m (AnnBodyType ms1 ms2) =
+  let ms1' = map closeMemberStubSubstitution ms1 in
+  let ms2' = map closeMemberStubSubstitution ms2 in
+  AnnBodyType ms1' ms2'
+  where
+    closeMemberStubSubstitution (AnnMemType i pol qa cs) =
+      AnnMemType i pol qa $ closeStubSubstitution m cs
+
 -- |Performs stub substitution on a skeletal environment, yielding a complete
 --  environment.
 aEnvStubSubstitute :: StubInfoMap ConstraintSet
@@ -119,7 +131,9 @@ aEnvStubSubstitute m = Map.map replEntry
               -> TypeAliasEntry ConstraintSet
     replEntry entry = case entry of
       AnnAlias (AnnType p b scs) ->
-        AnnAlias (AnnType p b $ closeStubSubstitution m scs)
+        let cs = closeStubSubstitution m scs in
+        let b' = closeBodyStubSubstitution m b in
+        AnnAlias $ AnnType p b' cs
       QuantAlias _ ->
         error $ "Quantified alias " ++ show entry ++
                 " unexpected in skeletal environment!"

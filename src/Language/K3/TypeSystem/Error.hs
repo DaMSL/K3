@@ -90,10 +90,12 @@ data TypeError
       --   type (e.g. "provides x : int = 4 + true").
   | AnnotationClosureInconsistency
       Identifier
+      Identifier
       [ConsistencyError]
       -- ^ Indicates that an annotation is inconsistent with its environment
       --   type.  This suggests that, while the expression of a member has a
-      --   consistent type, it does not match the type of its signature.
+      --   consistent type, it does not match the type of its signature.  The
+      --   first identifier names the annotation; the second names the member.
   | RecordSignatureError UID RecordConcatenationError
       -- ^ Indicates that a type signature contained a record type which
       --   produced a concatenation error when it was interpreted.

@@ -24,7 +24,10 @@ data AnnotationConcatenationError
 
 -- |A type describing an error in depolarization.
 data DepolarizationError
-  = MultipleProvisions (Set Identifier)
+  = DepolarizationConcatenationError AnnotationConcatenationError
+      -- ^Indicates that the original term to be depolarized failed to
+      --  concatenate with the empty set of members.
+  | MultipleProvisions (Set Identifier)
       -- ^Indicates that the specified identifier was provided multiple times.
   | MultipleOpaques (Set OpaqueVar)
       -- ^Indicates that an opaque type was provided multiple times.

@@ -156,12 +156,11 @@ deriveDeclaration aEnv env rEnv decl =
                   (map (\(ei,(a,_,_,_)) -> (ei, a)) $
                     Map.toList qEnv)
       qa_s' <- freshTypecheckingQVar u
-      let env' = Map.singleton TEnvIdSelf
+      let env'1 = Map.singleton TEnvIdSelf
                     (QuantType Set.empty qa_s' $ csSing $ a_s <: qa_s')
-                 `mappend`
-                 mconcat (map (\(AnnMemType i _ qa') ->
-                                  Map.singleton (TEnvIdentifier i) $
-                                    QuantType Set.empty qa' csEmpty) ms1)
+      let env'2 = mconcat (map (\(AnnMemType i _ qa' cs') ->
+                    Map.singleton (TEnvIdentifier i) $
+                      generalize (envMerge env env'1) qa' cs') ms1)
 
       -- Depolarize the members to get the self and horizon schema types.
       (t_s, cs_s) <- depolarizeOrError u ms1
@@ -207,7 +206,7 @@ deriveDeclaration aEnv env rEnv decl =
       -- Derive appropriate types for the members.
       (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
-                                (envMerge env env')) mems
+                                (envMerge (envMerge env env'1) env'2)) mems
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " has inferred bodies:"] %$
           indent 2 (
@@ -215,13 +214,13 @@ deriveDeclaration aEnv env rEnv decl =
               sequenceBoxes (maxWidth - 4) "," $ map prettyLines bs
             ) %$ ["]"]
           )
-      (b'@(AnnBodyType ms1' ms2'), cs''')
+      b'@(AnnBodyType ms1' ms2')
           <- either (typecheckError . AnnotationConcatenationFailure u) return $
                 concatAnnBodies bs
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
-          indent 2 (prettyLines b' +% [" \\ "] %$ prettyLines cs''') 
-      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''':cs''s
+          indent 2 (prettyLines b') 
+      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
@@ -232,6 +231,7 @@ deriveDeclaration aEnv env rEnv decl =
         some of the guarantees that we can get out of other rules.  Comments
         below detail the assumptions on which we rely.
       -}
+      
       -- For negative members, annotation member inference *always* produces
       -- an unconstrained type.  It therefore suffices to reduce this problem to
       -- (1) consistency-checking the constraints and (2) ensuring that each
@@ -246,28 +246,35 @@ deriveDeclaration aEnv env rEnv decl =
         typecheckError $ InternalError $
           MissingNegativeAnnotationMemberInEnvironment iAnn $
             Set.toList missingNegatives
+
       -- For the positive members, we know that each identifier can only have
       -- one positive inferred type; otherwise, the annotation concatenation
       -- above would've failed.  So we can treat the positives like a
-      -- dictionary.  Then we just verify consistency.
-      let genConstraints ms ms' = do
-            let mkDict (AnnMemType i Positive qa) = Just $ Map.singleton i qa
-                mkDict (AnnMemType _ Negative _) = Nothing
-            let d = mconcat $ mapMaybe mkDict ms'
-            let sig = mapMaybe (digestMemFromPol Positive) ms
-            let mkCs i qa = case Map.lookup i d of
-                  Just qa' -> return $ qa' <: qa
-                  Nothing -> typecheckError $ InternalError $
-                    MissingPositiveAnnotationMemberInInferredType iAnn i
-            csFromList <$> gatherParallelErrors (map (uncurry mkCs) sig)
-      wiringCs <- csUnion <$> genConstraints ms1 ms1'
-                          <*> genConstraints ms2 ms2'
-      _debug $ boxToString $
-        ["Annotation " ++ iAnn ++ " positive wiring constraints:"] %$
-          indent 2 (prettyLines wiringCs)
-      either (typecheckError . AnnotationClosureInconsistency iAnn .
-                Foldable.toList) return $ checkClosureConsistent $
-                  csUnion allCs wiringCs
+      -- dictionary.  Then we just verify consistency over each member.
+      let checkPositiveMatches ms ms' = do
+            let posInferredDict = Map.fromList $
+                                  mapMaybe (digestMemFromPol Positive) ms'
+            let posSignaturePairs = mapMaybe (digestMemFromPol Positive) ms
+            let verifySignaturePair (i',(qa1',cs1''')) =
+                  case Map.lookup i' posInferredDict of
+                    Nothing -> typecheckError $ InternalError $
+                                MissingPositiveAnnotationMemberInInferredType
+                                  iAnn i'
+                    Just (qa2',cs2''') -> do
+                      let csToClose = csUnions [ allCs, cs1''', cs2'''
+                                               , csSing $ qa2' <: qa1']
+                      _debug $ boxToString $
+                        ["Annotation " ++ iAnn ++ " member " ++ i' ++
+                         " positive wiring constraints:"] %$
+                          indent 2 (prettyLines csToClose)
+                      either (typecheckError . AnnotationClosureInconsistency
+                                                  iAnn i' .
+                        Foldable.toList) return $
+                          checkClosureConsistent csToClose
+            mconcat <$> gatherParallelErrors
+                          (map verifySignaturePair posSignaturePairs)
+      mconcat <$> gatherParallelErrors
+                    (map (uncurry checkPositiveMatches) [(ms1,ms1'),(ms2,ms2')])
       return iAnn
   where
     -- |A common implementation of both initialized variables and triggers.
@@ -286,15 +293,16 @@ deriveDeclaration aEnv env rEnv decl =
              return
            $ checkConsistent cs''
       return i
-    digestMemFromPol :: TPolarity -> AnnMemType -> Maybe (Identifier,QVar)
-    digestMemFromPol pol' (AnnMemType i pol qa) =
-      if pol' == pol then Just (i,qa) else Nothing
+    digestMemFromPol :: TPolarity -> NormalAnnMemType
+                     -> Maybe (Identifier,(QVar,ConstraintSet))
+    digestMemFromPol pol' (AnnMemType i pol qa cs) =
+      if pol' == pol then Just (i,(qa,cs)) else Nothing
 
 -- |A function to derive a type for an annotation member.
 deriveAnnotationMember :: TAliasEnv -- ^The relevant type alias environment.
                        -> TNormEnv -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
-                       -> TypecheckM (AnnBodyType, ConstraintSet)
+                       -> TypecheckM (NormalAnnBodyType, ConstraintSet)
 deriveAnnotationMember aEnv env decl = do
   _debug $ boxToString $ ["Deriving type for annotation member: "] %$
                             indent 2 (prettyLines decl)
@@ -326,8 +334,8 @@ deriveAnnotationMember aEnv env decl = do
                     Provides -> b
                     Requires ->
                       let AnnBodyType m1 m2 = b in
-                      let negatize (AnnMemType i' _ qa) =
-                            AnnMemType i' Negative qa in
+                      let negatize (AnnMemType i' _ qa cs') =
+                            AnnMemType i' Negative qa cs' in
                       AnnBodyType (map negatize m1) (map negatize m2)
           return (b', cs)
   _debug $ boxToString $ ["Derived type for annotation member: "] %$
@@ -349,12 +357,12 @@ deriveAnnotationMember aEnv env decl = do
                         NoInitializerForPositiveAnnotationMember u)
                 return mexpr
       (qa,cs) <- deriveQualifiedExpression aEnv env expr
-      return (constr $ AnnMemType i Positive qa, cs)
+      return (constr $ AnnMemType i Positive qa cs, csEmpty)
     deriveNegativeMember i mexpr u constr = do
       unless (isNothing mexpr) $
         typecheckError $ InitializerForNegativeAnnotationMember u
       qa <- freshTypecheckingQVar u
-      return ( constr $ AnnMemType i Negative qa, csEmpty )
+      return (constr $ AnnMemType i Negative qa csEmpty, csEmpty)
     lookupSpecialVar :: TEnvId -> TypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
@@ -375,6 +383,6 @@ deriveAnnotationMember aEnv env decl = do
 --  error if it cannot be found.
 requireQuantType :: UID -> Identifier -> TNormEnv
                  -> TypecheckM NormalQuantType
-requireQuantType u i env =
+requireQuantType u i =
   envRequire (UnboundEnvironmentIdentifier u $ TEnvIdentifier i)
-             (TEnvIdentifier i) env
+             (TEnvIdentifier i)

@@ -19,7 +19,9 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 , AnnType(..)
 , NormalAnnType
 , AnnBodyType(..)
+, NormalAnnBodyType
 , AnnMemType(..)
+, NormalAnnMemType
 , OpaqueID(..)
 , OpaqueOrigin(..)
 , OpaqueVar(..)
@@ -203,7 +205,7 @@ type NormalQuantType = QuantType ConstraintSet
 -- |Annotation types.  The constraint set type is left parametric for later use
 --  by the environment decision procedure.
 data AnnType c
-  = AnnType TParamEnv AnnBodyType c
+  = AnnType TParamEnv (AnnBodyType c) c
       -- ^Constructs an annotation type.  The arguments are the named parameter
       --  bindings for the annotation type, the body of the annotation type, and
       --  the set of constraints which apply to that body.
@@ -220,27 +222,36 @@ instance (Pretty c) => Pretty (AnnType c) where
 -- |A type alias for normal annotation types (which use normal constraint sets).
 type NormalAnnType = AnnType ConstraintSet
 
--- |Annotation body types.
-data AnnBodyType
-  = AnnBodyType [AnnMemType] [AnnMemType]
+-- |Annotation body types.  The type parameter dictates the type of constraint
+--  set used in the member types.
+data AnnBodyType c
+  = AnnBodyType [AnnMemType c] [AnnMemType c]
       -- ^Constructs an annotation body type.  The arguments are the members of
       --  the annotation: lifted attributes first, schema attributes second.
   deriving (Eq, Ord, Show)
 
-instance Pretty AnnBodyType where
+-- |An alias for normal annotation body types.
+type NormalAnnBodyType = AnnBodyType ConstraintSet
+
+instance (Pretty c) => Pretty (AnnBodyType c) where
   prettyLines (AnnBodyType ms1 ms2) =
     ["〈 "] %+ prettyLines ms1 %$ [", "] %+ prettyLines ms2 +% [" 〉"]
 
--- |Annotation member types.
-data AnnMemType = AnnMemType Identifier TPolarity QVar
+-- |Annotation member types.  The type parameter dictates the type of constraint
+--  set that this member type uses.
+data AnnMemType c = AnnMemType Identifier TPolarity QVar c
   deriving (Eq, Ord, Show)
 
-instance Pretty [AnnMemType] where
+-- |An alias for normal annotation member types.
+type NormalAnnMemType = AnnMemType ConstraintSet
+
+instance (Pretty c) => Pretty [AnnMemType c] where
   prettyLines ms = intersperseBoxes [", "] $ map prettyLines ms
 
-instance Pretty AnnMemType where
-  prettyLines (AnnMemType i pol qa) =
-    [i ++ " "] %+ prettyLines pol %+ [": "] %+ prettyLines qa
+instance (Pretty c) => Pretty (AnnMemType c) where
+  prettyLines (AnnMemType i pol qa cs) =
+    [i ++ " "] %+ prettyLines pol %+ [": "] %+ prettyLines qa %+ ["\\"] %+
+      prettyLines cs
 
 -- |A wrapper type for opaque type IDs.
 newtype OpaqueID = OpaqueID Int
