@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -58,6 +59,12 @@ data HaskellEmbedding
     | HType         HS.Type
     | HNoRepr
     deriving (Eq, Show)
+
+{- Intermediate code generation representations -}
+data CGExpr
+    = Pure          HS.Exp
+    | PartialAction HS.Exp
+    | Action        HS.Exp
 
 -- | An initial code generation state
 emptyCGState :: CGState
@@ -433,154 +440,317 @@ typ' (tag -> TBuiltIn TStructure) = throwCG $ CodeGenerationError "Cannot genera
 typ' _ = throwCG $ CodeGenerationError "Cannot generate Haskell type"
 
 
-{- Analysis -}
-
--- | Attaches purity annotations to a K3 expression tree.
-purifyExpression :: K3 Expression -> K3 Expression
-purifyExpression = undefined
-
 
 {- Expressions -}
-sendFnE :: HS.Exp
-sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "sendE"
 
-{- Load-store wrappers -}
-namedActionE :: Identifier -> HS.Exp -> HS.Exp
-namedActionE n e = [hs| do
-                          ((nN)) <- $e
-                          $nE |]
-  where (nN, nE) = (HB.name n, HB.var $ HB.name n)                        
 
-bindE :: Identifier -> HS.Exp -> HS.Exp
-bindE n e = namedActionE n [hs| return ( $e ) |]
+{- Error messages -}
+pureError :: String -> CodeGeneration a
+pureError msg = throwCG . CodeGenerationError $ "Invalid pure expression when " ++ msg
 
-doStoreE :: Identifier -> HS.Exp -> HS.Exp
-doStoreE n e = namedActionE n [hs| liftIO ( newMVar ( $e ) ) |]
+actionError :: String -> CodeGeneration a
+actionError msg = throwCG . CodeGenerationError $ "Invalid action expression when " ++ msg
 
-doLoadE :: Identifier -> HS.Exp -> HS.Exp
-doLoadE n e = namedActionE n [hs| liftIO $ readMVar ( $e ) |]
+pureOrPartialArgError :: String -> CodeGeneration a
+pureOrPartialArgError n =
+  throwCG . CodeGenerationError $ "Invalid pure expression or partial action in " ++ n
 
-doLoadNameE :: Identifier -> CodeGeneration HS.Exp
-doLoadNameE n = gensymCG n >>= return . flip doLoadE (HB.var $ HB.name n)
+actionArgError :: String -> CodeGeneration a
+actionArgError n = throwCG . CodeGenerationError $ "Invalid action expression in " ++ n
 
-loadNameE :: [Annotation Expression] -> Identifier -> CodeGeneration HS.Exp
+
+{- View pattern helpers -}
+pureOrPartial :: CGExpr -> Maybe HS.Exp
+pureOrPartial = \case
+  Pure e          -> Just e
+  PartialAction e -> Just e
+  _               -> Nothing
+
+partialOrAction :: CGExpr -> Maybe HS.Exp
+partialOrAction = \case
+  PartialAction e -> Just e
+  Action e        -> Just e
+  _               -> Nothing
+
+isPure :: CGExpr -> Bool
+isPure (Pure _) = True
+isPure _        = False
+
+isPureOrPartial :: CGExpr -> Bool
+isPureOrPartial (Pure _) = True
+isPureOrPartial (PartialAction _) = True
+isPureOrPartial _ = False
+
+getPure :: CGExpr -> CodeGeneration HS.Exp
+getPure (Pure e) = return e
+getPure _ = throwCG $ CodeGenerationError "Invalid pure expression"
+
+getHSExpression :: CGExpr -> HS.Exp
+getHSExpression = \case
+  Pure e          -> e
+  PartialAction e -> e
+  Action e        -> e
+
+
+{- CG expression construction -}
+
+-- | Builds a CG expression given a splice function that accepts a pure expression.
+spliceE :: Identifier -> CGExpr -> (HS.Exp -> CodeGeneration CGExpr) -> CodeGeneration CGExpr
+spliceE n e@(pureOrPartial -> Just _) spliceF = spliceValueE e spliceF
+spliceE n e spliceF = spliceActionE n e spliceF
+
+-- | Builds a CG expression, given a pair of splice functions for type-directed splicing.
+--   The first splice function assumes a pure expression, while the second assumes an action expression.
+spliceEWithAction :: (HS.Exp -> CodeGeneration CGExpr) -> (HS.Exp -> CodeGeneration CGExpr) -> CGExpr
+        -> CodeGeneration CGExpr
+spliceEWithAction pureF actionF ce = case pureOrPartial ce of
+    Just _  -> spliceValueE ce pureF
+    _       -> actionF $ getHSExpression ce
+
+-- | Builds a CG expression by splicing multiple subexpressions. Action subexpressions are
+--   bound to names with the given prefix.
+spliceManyE :: Identifier -> ([HS.Exp] -> CodeGeneration CGExpr) -> [CGExpr] -> CodeGeneration CGExpr
+spliceManyE n f args = case all isPureOrPartial args of
+    True  -> spliceManyValuesE f args
+    False -> do {  (stmts, argE) <- foldM (bindName n) ([],[]) args;
+                   f argE >>= prefixDoE stmts }
+
+  where bindName n (stmtAcc, argAcc) e@(pureOrPartial -> Just _) = extractValueE e >>= \case
+          (ctxt, Pure e') -> return (stmtAcc++ctxt, argAcc++[e'])
+          (_,_)           -> pureError "binding a value for splicing"
+
+        bindName n (stmtAcc, argAcc) (Action e) = gensymCG n >>= \n' ->
+          let nN       = HB.name n'
+              (nV,nPV) = (HB.var nN, HB.pvar nN)
+          in return (stmtAcc++[HB.genStmt HL.noLoc nPV e], argAcc++[nV])
+
+
+{- Name bindings. These construct partial action expressions. -}
+
+-- | Bind a K3 value to an immutable variable. This constructs a partial action.
+bindE :: Identifier -> CGExpr -> CodeGeneration CGExpr
+bindE n e = ensureActionE e >>= \e' -> return $
+              PartialAction [hs| do { ((nN)) <- $(getHSExpression e'); $nE } |]
+  where (nN, nE) = (HB.name n, HB.var $ HB.name n)
+
+-- | Store a K3 value as a mutable binding.
+doStoreE :: Identifier -> CGExpr -> CodeGeneration CGExpr
+doStoreE n = spliceEWithAction pureF actionF
+  where pureF   e = bindE n $ Action [hs| liftIO ( newMVar ( $e ) ) |]
+        actionF e = bindE n $ Action [hs| ( $e ) >>= liftIO . newMVar |]
+
+-- | Read a mutable expression.
+doLoadE :: Identifier -> CGExpr -> CodeGeneration CGExpr
+doLoadE n = spliceEWithAction pureF actionF
+  where pureF   e = bindE n $ Action [hs| liftIO ( readMVar ( $e ) ) |]
+        actionF e = bindE n $ Action [hs| ( $e ) >>= liftIO . readMVar |]
+
+-- | Read from a mutable variable.
+doLoadNameE :: Identifier -> CodeGeneration CGExpr
+doLoadNameE n = gensymCG n >>= flip doLoadE (Pure . HB.var $ HB.name n)
+
+-- | Read from a K3 variable, with annotations indicating qualifiers.
+loadNameE :: [Annotation Expression] -> Identifier -> CodeGeneration CGExpr
 loadNameE anns n = case (qualifier anns, load anns) of
   (Nothing, False)         -> return varE
   (Just PImmutable, False) -> return varE
   (Just PMutable, True)    -> doLoadNameE n
   _ -> qualLoadError
-  where varE = HB.var $ HB.name n
+  where varE = Pure . HB.var $ HB.name n
 
-storeE :: [Annotation Expression] -> Identifier -> HS.Exp -> CodeGeneration HS.Exp
+-- | Bind to a K3 variable, with annotations indicating qualifiers.
+storeE :: [Annotation Expression] -> Identifier -> CGExpr -> CodeGeneration CGExpr
 storeE anns n e = case (qualifier anns, store anns) of
-  (Nothing, False)         -> return $ bindE n e
-  (Just PImmutable, False) -> return $ bindE n e
-  (Just PMutable, True)    -> return $ doStoreE n e
+  (Nothing, False)         -> bindE n e
+  (Just PImmutable, False) -> bindE n e
+  (Just PMutable, True)    -> doStoreE n e
   _ -> qualStoreError
 
-{- Do-expression manipulation -}
 
--- | Extracts a return value and a context from an expression. For do-expressions this
---   is the qualifier expression and the context is the remainder of the stmts.
---   For any other expression, the context is empty.
-extractReturnE :: HS.Exp -> CodeGeneration ([HS.Stmt], HS.Exp)
-extractReturnE (HS.Do []) = blockError
-
-extractReturnE (HS.Do stmts) = case (init stmts, last stmts) of
-  ([], HS.Qualifier e) -> return ([], e)
-  (c, HS.Qualifier e)  -> return (c, e)
-  _ -> blockError
-
-extractReturnE e = return ([], e)
-
--- | Ensures that a do-expression returns a value.
-ensureReturnE :: HS.Exp -> CodeGeneration HS.Exp
-ensureReturnE (HS.Do []) = blockError
-ensureReturnE (HS.Do stmts) = case (init stmts, last stmts) of
-  ([], HS.Qualifier e) -> return [hs| return e |]
-  (c, HS.Qualifier e)  -> return . HS.Do $ c ++ [ HS.Qualifier [hs| return $e |] ]
-  _ -> blockError
-ensureReturnE e = return [hs| return ( $e ) |]
+{- Generic Do-expression constructors. -}
 
 -- | Prepends a sequence of do-block statements to an expression.
-prefixDoE :: [HS.Stmt] -> HS.Exp -> CodeGeneration HS.Exp
+prefixDoE :: [HS.Stmt] -> CGExpr -> CodeGeneration CGExpr
 prefixDoE [] e = return e
-prefixDoE context (HS.Do stmts) = return . HB.doE $ context ++ stmts
-prefixDoE context e = return . HB.doE $ context ++ [HB.qualStmt e]
 
-chainReturnE :: HS.Exp -> (HS.Exp -> CodeGeneration HS.Exp) -> CodeGeneration HS.Exp
-chainReturnE e chainF = extractReturnE e >>= \case
-  ([], e')   -> chainF e'
-  (ctxt, e') -> chainF e' >>= prefixDoE ctxt
+prefixDoE context (pureOrPartial -> Just (HS.Do stmts)) = return . PartialAction . HB.doE $ context ++ stmts
+prefixDoE context (pureOrPartial -> Just e) = return . PartialAction . HB.doE $ context ++ [HB.qualStmt e]
 
-seqDoE :: HS.Exp -> HS.Exp -> CodeGeneration HS.Exp
+prefixDoE context (Action (HS.Do stmts)) = return . Action . HB.doE $ context ++ stmts
+prefixDoE context (Action e) = return . Action . HB.doE $ context ++ [HB.qualStmt e]
+
+
+{- Do-expression manipulation on pure expressions and partial actions. -}
+
+-- | Extracts a pure return value and a context from an expression.
+--   For do-expressions this is the qualifier expression and the context is
+--   the remainder of the stmts. For any other expression, the context is empty.
+extractValueE :: CGExpr -> CodeGeneration ([HS.Stmt], CGExpr)
+extractValueE (pureOrPartial -> Just (HS.Do [])) = blockError
+
+extractValueE (pureOrPartial -> Just (HS.Do stmts)) =
+  case (init stmts, last stmts) of
+    ([], HS.Qualifier e) -> return ([], Pure e)
+    (c, HS.Qualifier e)  -> return (c, Pure e)
+    _ -> blockError
+
+extractValueE (pureOrPartial -> Just e) = return ([], Pure e)
+extractValueE _ = pureOrPartialArgError "extractValueE"
+
+
+-- | Sequences two pure or partial action expressions.
+--   Note this discards the first expression if it is pure.
+seqDoE :: CGExpr -> CGExpr -> CodeGeneration CGExpr
 seqDoE e e2 = do
-  (eStmts,  eRetE)  <- extractReturnE e
-  (e2Stmts, e2RetE) <- extractReturnE e2
+  (eStmts,  eRetE)  <- extractValueE e
+  (e2Stmts, e2RetE) <- extractValueE e2
   case (eStmts, e2Stmts) of
     ([],[]) -> return e2RetE
-    _ -> return . HB.doE $ eStmts ++ e2Stmts ++ [HB.qualStmt e2RetE]
+    _ -> return . PartialAction .
+          HB.doE $ eStmts ++ e2Stmts ++ [HB.qualStmt $ getHSExpression e2RetE]
+
+
+spliceValueE :: CGExpr -> (HS.Exp -> CodeGeneration CGExpr) -> CodeGeneration CGExpr
+spliceValueE e spliceF = extractValueE e >>= \case
+  ([], Pure e')   -> spliceF e'
+  (ctxt, Pure e') -> spliceF e' >>= prefixDoE ctxt
+  (_,_)           -> pureError "chaining a value"
+
 
 -- | Operator and data constructors applied to evaluated children.
 --   TODO: alpha renaming for conflicting binding names during merge
-applyE :: ([HS.Exp] -> CodeGeneration HS.Exp) -> [HS.Exp] -> CodeGeneration HS.Exp
-applyE f subE = do
-  (contexts, argsE) <- mapM extractReturnE subE >>= return . unzip
-  retE <- f argsE
-  prefixDoE (concat contexts) retE
+spliceManyValuesE :: ([HS.Exp] -> CodeGeneration CGExpr) -> [CGExpr] -> CodeGeneration CGExpr
+spliceManyValuesE f subE = do
+  (contexts, argsE) <- mapM extractValueE subE >>= return . unzip
+  if all isPure argsE then do
+    retE <- f $ map getHSExpression argsE
+    prefixDoE (concat contexts) retE
+  else pureError "applying a function"
+
+
+{- Monadic action manipulation -}
+
+-- | Construct a complete action from a pure or partial action expression.
+ensureActionE :: CGExpr -> CodeGeneration CGExpr
+ensureActionE (pureOrPartial -> Just (HS.Do [])) = blockError
+
+ensureActionE (pureOrPartial -> Just (HS.Do stmts)) =
+  case (init stmts, last stmts) of
+    ([], HS.Qualifier e) -> return $ Action [hs| return e |]
+    (c, HS.Qualifier e)  -> return . Action . HS.Do $ c ++ [ HS.Qualifier [hs| return $e |] ]
+    _ -> blockError
+
+ensureActionE (pureOrPartial -> Just e) = return $ Action [hs| return ( $e ) |]
+ensureActionE e = return e
+
+-- | Composes two monadic actions with a custom sequencing function.
+spliceActionEWithSeq :: Identifier -> CGExpr -> (HS.Exp -> CodeGeneration CGExpr)
+                     -> (HS.Exp -> HS.Exp -> CodeGeneration CGExpr)
+                     -> CodeGeneration CGExpr
+spliceActionEWithSeq n e spliceF composeF =
+  composeActions =<< ((,) <$> (ensureActionE e) <*> (spliceF (HB.var nN) >>= ensureActionE))
+  where composeActions (Action ae, Action ae') = composeF ae ae'
+        composeActions _ = actionError "splicing two actions"
+        nN = HB.name n
+
+-- | Compose two actions as a do-block, using an action constructor to support dependencies.
+spliceActionE :: Identifier -> CGExpr -> (HS.Exp -> CodeGeneration CGExpr) -> CodeGeneration CGExpr
+spliceActionE n e spliceF = spliceActionEWithSeq n e spliceF doSeqF
+  where doSeqF ae ae' = return $ Action [hs| do { ((nN)) <- $ae; $ae' } |]
+        nN = HB.name n
+
+-- | Compose two actions inline, using an action constructor to support dependencies.
+spliceInlineActionE :: Identifier -> CGExpr -> (HS.Exp -> CodeGeneration CGExpr) -> CodeGeneration CGExpr
+spliceInlineActionE n e spliceF = spliceActionEWithSeq n e spliceF inlineSeqF
+  where inlineSeqF ae ae' = return $ Action [hs| $ae >>= ( \((nN)) -> $ae' ) |]
+        nN = HB.name n
+
+
+{- Message passing -}
+sendFnE :: HS.Exp
+sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "sendE"
 
 
 {- Records embedding -}
 
+-- TODO: change for statically typed records
 -- | Ad-hoc record constructor
-buildRecordE :: [Identifier] -> [HS.Exp] -> CodeGeneration HS.Exp
+buildRecordE :: [Identifier] -> [HS.Exp] -> CodeGeneration CGExpr
 buildRecordE names subE = do
+  lSym <- gensymCG "__lbl"
+  rSym <- gensymCG "__record"
+
   (_, namedLblE, recFieldE) <- accumulateLabelAndFieldE names subE
-  return $ HB.tuple [HB.listE namedLblE, foldl concatRecField [hs| emptyRecord |] recFieldE]
+  lblCE <- spliceManyE lSym (return . Pure . HB.listE) namedLblE
+  recCE <- foldM concatRecField (Pure [hs| emptyRecord |]) recFieldE
+  spliceManyE rSym mkRecord [lblCE, recCE]
   
   where
+    mkRecord [lblE, recE] = return . Pure $ HB.tuple [lblE, recE]
+
     accumulateLabelAndFieldE names subE = 
-      foldM buildRecordFieldE ([hs| firstLabel |], [], []) $ zip names subE
+      foldM buildRecordFieldE (Pure [hs| firstLabel |], [], []) $ zip names subE
 
-    buildRecordFieldE (keyE, nlblAcc, recAcc) (n,cE) = do
-      namedKeyE <- applyE (return . HB.tuple) [HB.strE n, keyE]
-      fieldE    <- return $ [hs| $keyE .=. $cE |]
-      return ([hs| nextLabel $keyE |], nlblAcc++[namedKeyE], recAcc++[fieldE])
+    buildRecordFieldE (keyCE, nlblAcc, recAcc) (n,ce) = do
+      [kSym, kvSym, nkSym] <- mapM gensymCG ["__key", "__kv", "__nk"]
+      nextKeyE  <- spliceE nkSym keyCE $ \keyE -> return $ Pure [hs| nextLabel $keyE |]
+      namedKeyE <- spliceManyE kSym (return . Pure . HB.tuple) [Pure $ HB.strE n, keyCE]
+      fieldE    <- spliceManyE kvSym mkField [keyCE, Pure ce]
+      return (nextKeyE, nlblAcc++[namedKeyE], recAcc++[fieldE])
 
-    concatRecField a b = [hs| $b .*. $a |]
+    mkField [keyE, ce] = return $ Pure [hs| $keyE .=. $ce |]
+    mkField _          = throwCG $ CodeGenerationError "Invalid field constructor arguments"
+    
+    concatRecField a b = gensymCG "__crf" >>= \sym -> spliceManyE sym extendRecord [a, b]
+    extendRecord [a, b] = return $ Pure [hs| $b .*. $a |]
+    extendRecord _ = throwCG $ CodeGenerationError "Invalid record extension arguments"
 
+-- TODO: change for statically typed records
 -- | Record field lookup expression construction
-recordFieldLookupE :: HS.Exp -> Identifier -> HS.Exp -> HS.Exp
-recordFieldLookupE fE n rE = [hs| maybe (error "Record lookup") $fE $ lookup $(HB.strE n) $rE |]
+recordFieldLookupE :: (HS.Exp -> CodeGeneration CGExpr) -> Identifier -> CGExpr -> CodeGeneration CGExpr
+recordFieldLookupE accessF n rCE = do
+  fSym <- gensymCG "__field"
+  aSym <- gensymCG "__access"
+  fCE  <- spliceE fSym rCE $ \re -> return $ Pure [hs| ( __n__ $re ) |]
+  spliceE aSym fCE accessF
 
+
+{- Default values -}
 
 -- | Default values for specific types
 defaultValue :: K3 Type -> CodeGeneration HaskellEmbedding
-defaultValue t = defaultValue' t >>= return . HExpression
+defaultValue t = defaultValue' t >>= return . HExpression . getHSExpression
 
-defaultValue' :: K3 Type -> CodeGeneration HS.Exp
-defaultValue' (tag -> TBool)       = return [hs| False |]
-defaultValue' (tag -> TByte)       = return [hs| (0 :: Word8) |]
-defaultValue' (tag -> TInt)        = return [hs| (0 :: Int) |]
-defaultValue' (tag -> TReal)       = return [hs| (0 :: Double) |]
-defaultValue' (tag -> TString)     = return [hs| "" |]
-defaultValue' (tag -> TAddress)    = return [hs| defaultAddress |]
+defaultValue' :: K3 Type -> CodeGeneration CGExpr
+defaultValue' (tag -> TBool)       = return $ Pure [hs| False |]
+defaultValue' (tag -> TByte)       = return $ Pure [hs| (0 :: Word8) |]
+defaultValue' (tag -> TInt)        = return $ Pure [hs| (0 :: Int) |]
+defaultValue' (tag -> TReal)       = return $ Pure [hs| (0 :: Double) |]
+defaultValue' (tag -> TString)     = return $ Pure [hs| "" |]
+defaultValue' (tag -> TAddress)    = return $ Pure [hs| defaultAddress |]
 
-defaultValue' (tag &&& children -> (TOption, [x])) = defaultValue' x >>= \xD -> return [hs| Just $xD |]
-defaultValue' (tag -> TOption)                     = throwCG $ CodeGenerationError "Invalid option type"
+defaultValue' (tag &&& children -> (TOption, [x])) = defaultValue' x >>= spliceEWithAction pureF actionF
+  where pureF   e = return $ Pure   [hs| Just $e |]
+        actionF e = return $ Action [hs| ( $e  ) >>= return . Just |]
 
-defaultValue' (tag &&& children -> (TTuple, ch)) = mapM defaultValue' ch >>= return . HB.tuple 
+defaultValue' (tag -> TOption) = throwCG $ CodeGenerationError "Invalid option type"
 
-defaultValue' (tag &&& children -> (TIndirection, [x])) = defaultValue' x >>= \xD -> return [hs| liftIO ( newMVar $xD ) |]
-defaultValue' (tag -> TIndirection)                     = throwCG $ CodeGenerationError "Invalid indirection type"
+defaultValue' (tag &&& children -> (TIndirection, [x])) = defaultValue' x >>= spliceEWithAction pureF actionF
+  where pureF   e = return $ Action [hs| liftIO ( newMVar $e ) |]
+        actionF e = return $ Action [hs| ( $e ) >>= liftIO . newMVar |]
+
+defaultValue' (tag -> TIndirection) = throwCG $ CodeGenerationError "Invalid indirection type"
+
+defaultValue' (tag &&& children -> (TTuple, ch)) =
+  mapM defaultValue' ch >>= spliceManyE "__f" (return . Pure . HB.tuple)
 
 -- TODO
 defaultValue' (tag -> TRecord ids) = throwCG $ CodeGenerationError "Default records not implemented"
 
 defaultValue' (tag &&& annotations -> (TCollection, anns)) = 
-  case annotationComboIdT anns of
-    Just comboId -> return $ HB.var $ HB.name $ collectionEmptyConPrefixId ++ comboId
-    Nothing      -> return [hs| return [] |]
+  return . Action $ case annotationComboIdT anns of
+    Just comboId -> HB.var $ HB.name $ collectionEmptyConPrefixId ++ comboId
+    Nothing      -> [hs| return [] |]
 
 
 defaultValue' (tag -> TFunction) = throwCG $ CodeGenerationError "No default available for a function"
@@ -591,71 +761,75 @@ defaultValue' (tag -> TSource)   = throwCG $ CodeGenerationError "No default ava
 
 {- Expression code generation -}
 
-unary :: Operator -> K3 Expression -> CodeGeneration HS.Exp
+unary :: Operator -> K3 Expression -> CodeGeneration CGExpr
 unary op e = do
   e' <- expression' e
   case op of
-    ONeg -> chainReturnE e' $ return . HS.NegApp
-    ONot -> chainReturnE e' $ return . HB.app (HB.function "not")
+    ONeg -> gensymCG "__neg" >>= \n -> spliceE n e' $ return . Pure . HS.NegApp
+    ONot -> gensymCG "__not" >>= \n -> spliceE n e' $ return . Pure . HB.app (HB.function "not")
     _ -> throwCG $ CodeGenerationError "Invalid unary operator"
 
-binary :: Operator -> K3 Expression -> K3 Expression -> CodeGeneration HS.Exp
+binary :: Operator -> K3 Expression -> K3 Expression -> CodeGeneration CGExpr
 binary op e e' = do
   eE  <- expression' e
   eE' <- expression' e'
   case op of 
-    OAdd -> doInfx "+"     [eE, eE']
-    OSub -> doInfx "-"     [eE, eE']
-    OMul -> doInfx "*"     [eE, eE']
-    ODiv -> doInfx "/"     [eE, eE']
-    OAnd -> doInfx "&&"    [eE, eE']
-    OOr  -> doInfx "||"    [eE, eE']
-    OEqu -> doInfx "=="    [eE, eE']
-    ONeq -> doInfx "/="    [eE, eE']
-    OLth -> doInfx "<"     [eE, eE']
-    OLeq -> doInfx "<="    [eE, eE']
-    OGth -> doInfx ">"     [eE, eE']
-    OGeq -> doInfx ">="    [eE, eE']
-    OSeq -> doInfx ">>"    [eE, eE']
-    OApp -> applyE applyFn [eE, eE']
-    OSnd -> return $ doSendE eE eE'
+    OAdd -> doInfx "__arith" "+"  [eE, eE']
+    OSub -> doInfx "__arith" "-"  [eE, eE']
+    OMul -> doInfx "__arith" "*"  [eE, eE']
+    ODiv -> doInfx "__arith" "/"  [eE, eE']
+    OAnd -> doInfx "__bool"  "&&" [eE, eE']
+    OOr  -> doInfx "__bool"  "||" [eE, eE']
+    OEqu -> doInfx "__cmp"   "==" [eE, eE']
+    ONeq -> doInfx "__cmp"   "/=" [eE, eE']
+    OLth -> doInfx "__cmp"   "<"  [eE, eE']
+    OLeq -> doInfx "__cmp"   "<=" [eE, eE']
+    OGth -> doInfx "__cmp"   ">"  [eE, eE']
+    OGeq -> doInfx "__cmp"   ">=" [eE, eE']
+    OSeq -> doInfx "__seq"   ">>" [eE, eE']
+    OApp -> spliceManyE "__app" applyFn [eE, eE']
+    OSnd -> spliceManyE "__snd" doSendE [eE, eE']
     _    -> throwCG $ CodeGenerationError "Invalid binary operator"
 
-  where doSendE targE msgE = 
-          [hs| let (addr,trig) = $targE in
-                (liftIO $ ishow $msgE) >>= $sendFnE addr ( __triggerHandleFnId__ trig )|]
-
-        doInfx opStr args = applyE (doOpF True opStr) args
+  where doInfx n opStr args = gensymCG n >>= \n' -> spliceManyE n' (doOpF True opStr) args
         doOpF infx opStr = if infx then infixBinary opStr else appBinary $ HB.function opStr 
 
-        infixBinary op [a,b] = return $ HB.infixApp a (HB.op $ HB.sym op) b
+        infixBinary op [a,b] = return . Pure $ HB.infixApp a (HB.op $ HB.sym op) b
         infixBinary _ _      = throwCG $ CodeGenerationError "Invalid binary operator arguments"
 
-        appBinary f [a,b] = return $ HB.appFun f [a,b]
+        appBinary f [a,b] = return . Pure $ HB.appFun f [a,b]
         appBinary _ _     = throwCG $ CodeGenerationError "Invalid binary function app arguments"
 
-        applyFn [a,b] = return $ HB.appFun a [b]
+        applyFn [a,b] = return . Pure $ HB.appFun a [b]
         applyFn _     = throwCG $ CodeGenerationError "Invalid function application"
+
+        doSendE [targE, msgE] = return . Action $
+          [hs| let (addr,trig) = $targE in
+                (liftIO $ ishow $msgE) >>= $sendFnE addr ( __triggerHandleFnId__ trig ) |]
+
+        doSendE _ = throwCG $ CodeGenerationError "Invalid message send"
 
 
 -- | Compiles an expression, yielding a combination of a do-expression of 
 --   monadic action bindings, and a residual expression.
-expression' :: K3 Expression -> CodeGeneration HS.Exp
+expression' :: K3 Expression -> CodeGeneration CGExpr
 
 -- | Constants
 expression' (tag &&& annotations -> (EConstant c, anns)) =
   constantE c anns
   where 
-    constantE (CBool b)   _ = return $ if b then [hs| True |] else [hs| False |]
-    constantE (CInt i)    _ = return $ HB.intE $ toInteger i
-    constantE (CByte w)   _ = return $ HS.Lit $ HS.PrimWord $ toInteger w
-    constantE (CReal r)   _ = return $ HS.Lit $ HS.PrimDouble $ toRational r
-    constantE (CString s) _ = return $ HB.strE s
-    constantE (CNone _)   _ = return $ [hs| Nothing |]
+    constantE (CBool b)   _ = return . Pure $ if b then [hs| True |] else [hs| False |]
+    constantE (CInt i)    _ = return . Pure $ HB.intE $ toInteger i
+    constantE (CByte w)   _ = return . Pure $ HS.Lit $ HS.PrimWord $ toInteger w
+    constantE (CReal r)   _ = return . Pure $ HS.Lit $ HS.PrimDouble $ toRational r
+    constantE (CString s) _ = return . Pure $ HB.strE s
+    constantE (CNone _)   _ = return . Pure $ [hs| Nothing |]
     
     constantE (CEmpty _) as =
-      maybe comboIdErr (return . HB.var . HB.name . (collectionEmptyConPrefixId++)) $ annotationComboIdE as
-      where comboIdErr = throwCG $ CodeGenerationError "Invalid combo id for empty collection"
+      maybe comboIdErr (collectionCstr . (collectionEmptyConPrefixId++)) $ annotationComboIdE as
+    
+    collectionCstr n = return . Action . HB.var . HB.name $ n
+    comboIdErr = throwCG $ CodeGenerationError "Invalid combo id for empty collection"
 
 -- | Variables
 expression' (tag &&& annotations -> (EVariable i, anns)) = loadNameE anns i
@@ -663,26 +837,30 @@ expression' (tag &&& annotations -> (EVariable i, anns)) = loadNameE anns i
 -- | Unary option constructor
 expression' (tag &&& children -> (ESome, [x])) = do
   x' <- expression' x
-  chainReturnE x' $ \e -> return $ [hs| Just $e |]
+  n  <- gensymCG "__opt"
+  spliceE n x' $ \e -> return $ Pure [hs| Just $e |]
 
 expression' (tag -> ESome) = throwCG $ CodeGenerationError "Invalid option expression"
 
 -- | Indirection constructor
 expression' (tag &&& children -> (EIndirect, [x])) = do
   x' <- expression' x
-  chainReturnE x' $ \e -> return $ [hs| liftIO ( newMVar ( $e ) ) |]
+  n  <- gensymCG "__ind"
+  spliceE n x' $ \e -> return $ Action [hs| liftIO ( newMVar ( $e ) ) |]
 
 expression' (tag -> EIndirect) = throwCG $ CodeGenerationError "Invalid indirection expression"
 
 -- | Tuple constructor
 expression' (tag &&& children -> (ETuple, cs)) = do
   cs' <- mapM expression' cs
-  applyE (return . HB.tuple) cs'
+  n  <- gensymCG "__tup"  
+  spliceManyE n (return . Pure . HB.tuple) cs'
 
 -- | Functions
 expression' (tag &&& children -> (ELambda i,[b])) = do
   b' <- expression' b
-  return $ [hs| \((ni)) -> $b' |]
+  n  <- gensymCG "__lam"
+  spliceE n b' (\be -> return . Pure $ [hs| \((ni)) -> $be |])
   where ni = HB.name i
 
 expression' (tag -> ELambda _) = throwCG $ CodeGenerationError "Invalid lambda expression"
@@ -695,55 +873,68 @@ expression' (tag &&& children -> (EOperate otag, cs))
 
 -- | Let-in expressions
 expression' (tag &&& children -> (ELetIn i, [e, b])) = do
-  e' <- expression' e
-  b' <- expression' b
-  chainReturnE e' $ \ne -> do
-    se <- storeE (annotations e) i ne
-    chainReturnE se $ return . const b'
+  e'       <- expression' e
+  b'       <- expression' b
+  (n, n')  <- (,) <$> gensymCG "__letE" <*> gensymCG "__letB"
+  spliceE n e' $ \ne -> do
+    se <- storeE (annotations e) i (Pure ne)
+    spliceE n' se $ return . const b'
 
 expression' (tag -> ELetIn _) = throwCG $ CodeGenerationError "Invalid let expression"
 
 -- | Assignments
--- TODO: optimize if expression 'e' does a lookup of variable 'i'
 expression' (tag &&& children -> (EAssign i, [e])) = do
   e' <- expression' e
-  chainReturnE e' $ \ae -> return $ [hs| liftIO ( modifyMVar_ $iE (const $ae) ) |]
+  n  <- gensymCG "__assign"
+  spliceE n e' $ \ae -> return $ Action [hs| liftIO ( modifyMVar_ $iE (return . const $ $ae) ) |]
   where iE = HB.var $ HB.name i
 
 expression' (tag -> EAssign _) = throwCG $ CodeGenerationError "Invalid assignment"
 
 -- | Case-of expressions
 expression' (tag &&& children -> (ECaseOf i, [e, s, n])) = do
-  e' <- expression' e
-  s' <- expression' s
-  n' <- expression' n
+  e'  <- expression' e
+  s'  <- expression' s
+  n'  <- expression' n
+  sym <- gensymCG "__case"
 
   case maybe PImmutable structureQualifier $ singleStructure $ annotations e of
-    PImmutable -> immutableCase e' s' n'
-    PMutable   -> gensymCG i >>= mutableCase e' s' n' . HB.name
+    PImmutable -> spliceManyE sym mkICase [e', s', n']
+    PMutable   -> mutableCase sym e' s' n'
 
   where ni = HB.name i
 
-        immutableCase eE sE nE = chainReturnE eE $ \cE -> return $
-          [hs| case $cE of
-                 Just ((ni)) -> $sE
-                 Nothing -> $nE |]
+        mutableCase sym eCE sCE nCE = do
+          j   <- gensymCG i 
+          s'' <- ensureActionE sCE
+          n'' <- ensureActionE nCE
+          spliceManyE sym (mkMCase $ HB.name j) [eCE, s'', n'']
 
-        mutableCase eE sE nE nj = chainReturnE eE $ \cE -> return $
-          [hs| case $cE of
-                 Just ((nj)) -> let __i__ = liftIO $ newMVar $(HB.var nj) in ( $sE )
-                 Nothing -> $nE |]
+        mkICase [eE, sE, nE] = return . Pure $
+          [hs| case $eE of
+                 Just ((ni)) -> $sE
+                 Nothing     -> $nE |]
+
+        mkICase _ = throwCG $ CodeGenerationError "Invalid immutable case constructor arguments"
+
+        mkMCase x [eE, sE, nE] = return . Action $
+          [hs| case $eE of
+                 Just ((x)) -> liftIO ( newMVar ( $(HB.var x) ) ) >>= ( \((ni)) -> $sE )
+                 Nothing    -> return $nE |]
+
+        mkMCase _ _ = throwCG $ CodeGenerationError "Invalid mutable case constructor arguments"
 
 expression' (tag -> ECaseOf _) = throwCG $ CodeGenerationError "Invalid case expression"
 
 -- | Bind-as expressions
 expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
     BIndirection i -> do
-      e' <- expression' e
-      f' <- expression' f
+      e'  <- expression' e
+      f'  <- expression' f
+      sym <- gensymCG "__bindI"
       case maybe PImmutable structureQualifier $ singleStructure eAnns of
-        PImmutable -> chainReturnE (doLoadE i e') $ return . const f'
-        PMutable   -> chainReturnE (bindE i e') $ return . const f'
+        PImmutable -> doLoadE i e' >>= \eCE -> spliceE sym eCE $ return . const f'
+        PMutable   -> bindE i e' >>= \eCE -> spliceE sym eCE $ return . const f'
 
     BTuple ts   -> bindTupleFields ts
     BRecord ids -> bindRecordFields ids
@@ -755,19 +946,22 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
 
     -- TODO: simplify with storeE?
     bindTupleFields ids = do
-      e'         <- expression' e
+      e'         <- expression' e >>= ensureActionE
       f'         <- expression' f
+      sym        <- gensymCG "__bindT"
       tNames     <- mapM renameBinding $ zip ids $ eStructure ids
       mutNames   <- return $ filter (uncurry (/=)) tNames
       mutPat     <- return $ HB.pvarTuple $ map (HB.name . fst) mutNames
       mutVars    <- return $ HB.tuple $ map (\(_,x) -> [hs| liftIO ( newMVar ( $(HB.var $ HB.name x) ) ) |]) mutNames
-      tupPat     <- return $ HB.pvarTuple $ map (HB.name . snd) tNames      
-      chainReturnE e'  $ \eE ->
-        flip seqDoE f' $
-          HB.doE $   [ HB.genStmt HL.noLoc tupPat [hs| return $eE |] ]
-                  ++ (if not $ null mutNames then 
-                     [HB.genStmt HL.noLoc mutPat [hs| return $mutVars |] ] else [])
-                  ++ [HB.qualStmt $(HB.varTuple $ map (HB.name . fst) $ tNames)]
+      tupPat     <- return $ HB.pvarTuple $ map (HB.name . snd) tNames
+
+      bindStmts  <- return $ \eE -> [ HB.genStmt HL.noLoc tupPat eE ]
+                                 ++ (if not $ null mutNames then 
+                                    [HB.genStmt HL.noLoc mutPat [hs| return $mutVars |] ] else [])
+                                 ++ [HB.qualStmt $ HB.varTuple $ map (HB.name . fst) $ tNames ]
+
+      spliceE sym e' $ \eE -> prefixDoE (bindStmts eE) f'
+
 
     renameBinding (n, PImmutable) = return (n, n)
     renameBinding (n, PMutable)   = gensymCG n >>= return . (n,)
@@ -775,15 +969,19 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
     bindRecordFields namePairs = do
       e'              <- expression' e
       f'              <- expression' f
+      sym             <- gensymCG "__bindR"
       rNamedStructure <- return $ zip namePairs $ eStructure namePairs
-      rBindings       <- chainReturnE e' $ \re -> foldM bindRecordField (bindE recordId re) rNamedStructure
+      rBindings       <- bindE recordId e' >>= \rCE -> spliceE sym rCE $ 
+                          \re -> foldM bindRecordField (Pure re) rNamedStructure      
       seqDoE rBindings f'
 
-    bindRecordField acc ((a,b), q) = seqDoE acc $ bindE a $ recordField q b
+    bindRecordField acc ((a,b), q) = recordField q b >>= bindE a >>= seqDoE acc
 
-    recordField PImmutable x  = recordFieldLookupE [hs| id |] x recordVarE
-    recordField PMutable x    = recordFieldLookupE [hs| (liftIO . newMVar) |] x recordVarE
-    (recordId, recordVarE)    = let x = "__record" in (x, HB.var $ HB.name x)
+    recordField PImmutable x = recordFieldLookupE (return . Pure) x $ Pure recordVarE
+    recordField PMutable   x = recordFieldLookupE mkMutRecField x $ Pure recordVarE
+    (recordId, recordVarE)   = let x = "__record" in (x, HB.var $ HB.name x)
+
+    mkMutRecField fe = return $ Action [hs| liftIO ( newMVar $fe ) |]
 
 expression' (tag -> EBindAs _) = throwCG $ CodeGenerationError "Invalid bind expression"
 
@@ -791,25 +989,31 @@ expression' (tag &&& children -> (EIfThenElse, [p, t, e])) = do
   p' <- expression' p
   t' <- expression' t
   e' <- expression' e
-  chainReturnE p' $ \predE -> return $ [hs| if ( $predE ) then ( $t' ) else ( $e' ) |]
+  n  <- gensymCG "__if"
+  spliceManyE n mkBranch [p', t', e']
+  where mkBranch [pE, tE, eE] = return $ Pure [hs| if ( $pE ) then ( $tE ) else ( $eE ) |]
+        mkBranch _ = throwCG $ CodeGenerationError "Invalid branch constructor arguments"
 
 expression' (tag &&& children -> (EAddress, [h, p])) = do
   h' <- expression' h
   p' <- expression' p
-  applyE (return . HB.tuple) [h', p']
+  n  <- gensymCG "__addr"
+  spliceManyE n (return . Pure . HB.tuple) [h', p']
 
 -- | Record constructor
 -- TODO: records need heterogeneous lists. Find another encoding (e.g., Dynamic/HList).
 -- TODO: record labels used in ad-hoc records
 expression' (tag &&& children -> (ERecord is, cs)) = do
   cs' <- mapM expression' cs
-  applyE (buildRecordE is) cs'
+  sym <- gensymCG "__record"
+  spliceManyE sym (buildRecordE is) cs'
 
 -- | Projections
 -- TODO: records need heterogeneous lists. Find another encoding.
 expression' (tag &&& children -> (EProject i, [r])) = do
-  r' <- expression' r
-  chainReturnE r' $ \e -> return $ recordFieldLookupE (HB.function "id") i e
+  sym <- gensymCG "__proj"
+  r'  <- expression' r
+  spliceE sym r' $ \e -> recordFieldLookupE (return . Pure) i $ Pure e
 
 expression' (tag -> EProject _) = throwCG $ CodeGenerationError "Invalid record projection"
 
@@ -819,10 +1023,16 @@ expression' (tag -> ESelf) = undefined
 expression' _ = throwCG $ CodeGenerationError "Invalid expression"
 
 expression :: K3 Expression -> CodeGeneration HaskellEmbedding
-expression e = expression' e >>= return . HExpression
+expression e = expression' e >>= return . HExpression . getHSExpression
 
 
 {- Declarations -}
+
+promoteDeclType :: HS.Type -> CGExpr -> CodeGeneration (HS.Type, HS.Exp)
+promoteDeclType t e = case e of
+      Pure e'          -> return (t, e')
+      PartialAction e' -> ensureActionE e >>= return . (engineType t,) . getHSExpression
+      Action e'        -> return (engineType t, e')
 
 mkNamedDecl :: Identifier -> HS.Exp -> CodeGeneration HaskellEmbedding
 mkNamedDecl n initE = return . HDeclarations . (:[]) $ namedVal n initE
@@ -830,22 +1040,23 @@ mkNamedDecl n initE = return . HDeclarations . (:[]) $ namedVal n initE
 mkTypedDecl :: Identifier -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
 mkTypedDecl n nType nInit = return . HDeclarations $ [ typeSig n nType , namedVal n nInit]
 
-mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> HS.Exp -> CodeGeneration HaskellEmbedding
-mkGlobalDecl n anns nType nInit = case filter isTQualified anns of
-  []           -> mkTypedDecl n nType nInit
-  
-  [TMutable]   -> mkTypedDecl n (engineType $ indirectionType nType) [hs| liftIO $ newMVar ( $nInit ) |]
-    -- assumes no IO/Engine actions are present in the initializer.
-  
-  [TImmutable] -> mkTypedDecl n nType nInit
-  _            -> throwCG $ CodeGenerationError "Ambiguous global declaration qualifier"
 
-globalWithDefault :: Identifier -> [Annotation Type] -> HS.Type -> Maybe (K3 Expression) -> CodeGeneration HS.Exp
-                     -> CodeGeneration HaskellEmbedding
+mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> CGExpr -> CodeGeneration HaskellEmbedding
+mkGlobalDecl n anns nType nInit = do
+  (declType, declInit) <- promoteDeclType nType nInit  
+  case filter isTQualified anns of
+    []           -> mkTypedDecl n declType declInit
+    [TImmutable] -> mkTypedDecl n declType declInit    
+    [TMutable]   -> gensymCG "__decl"
+                    >>= \sym -> spliceE sym nInit (\e -> return $ Action [hs| liftIO $ newMVar ( $e ) |])
+                    >>= mkTypedDecl n (engineType $ indirectionType nType) . getHSExpression
+    _            -> throwCG $ CodeGenerationError "Ambiguous global declaration qualifier"
+
+
+globalWithDefault :: Identifier -> [Annotation Type] -> HS.Type -> Maybe (K3 Expression) -> CodeGeneration CGExpr
+                  -> CodeGeneration HaskellEmbedding
 globalWithDefault n anns t eOpt defaultE = do
-  e' <- case eOpt of
-          Nothing -> defaultE
-          Just e  -> expression' e
+  e' <- maybe defaultE expression' eOpt
   mkGlobalDecl n anns t e'
 
 
@@ -860,7 +1071,7 @@ global n t@(tag -> TFunction) (Just e) = do
   at <- argType t >>= typ'
   rt <- returnType t >>= typ'
   t' <- return $ funType at $ engineType rt
-  e' <- expression' e >>= ensureReturnE
+  e' <- expression' e >>= ensureActionE
   mkGlobalDecl n (annotations t) t' e'
 
 -- TODO: two-level namespaces.
@@ -890,7 +1101,7 @@ global n t@(tag &&& children -> (TCollection, [x])) eOpt =
           else compositionError n
 
         initializeCollection eOpt = 
-          typ' t >>= return . engineType >>= \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
+          typ' t >>= \t' -> globalWithDefault n anns t' eOpt (defaultValue' t)
         
         compositionError n  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n
         invalidAnnotation n = throwCG . CodeGenerationError $ "Invalid annotation " ++ n
@@ -899,14 +1110,19 @@ global n t@(tag -> TCollection) eOpt = throwCG . CodeGenerationError $ "Invalid 
 
 global n t eOpt = typ' t >>= \t' -> globalWithDefault n (annotations t) t' eOpt (defaultValue' t)
 
+
 -- | Triggers are implemented as functions that operate in the EngineM monad.
 trigger :: Identifier -> K3 Type -> K3 Expression -> CodeGeneration HaskellEmbedding
 trigger n t e = do
-  e' <- expression' e
-  t' <- typ' t
+  e'   <- expression' e
+  t'   <- typ' t
+
+  sym  <- gensymCG "__trig"
+  impl <- spliceE sym e' (return . Pure . triggerImpl (HB.strE n)) >>= ensureActionE
+
   void $ modifyTriggerDispatchCG ((n,t'):)
-  return . HDeclarations $
-    [ typeSig n $ triggerType t', namedVal n $ triggerImpl (HB.strE n) e' ]
+  return . HDeclarations $ [ typeSig n $ triggerType t', namedVal n $ getHSExpression impl ]
+  
   where 
     triggerImpl hndlE implE = 
       HB.appFun (HS.Con $ HS.UnQual $ HB.name triggerConId) [hndlE, implE]
@@ -919,6 +1135,7 @@ annotation n tis memberDecls =
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
   where initializeMember annId acc m = annotationMember annId m >>= return . maybe acc ((acc++) . (:[]))
 
+-- TODO: handle member mutability qualifier
 -- TODO: distinguish lifted and regular attributes.
 -- TODO: use default values for attributes specified without initializers.
 annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Maybe (Identifier, HS.Type, Maybe HS.Exp))
@@ -928,7 +1145,11 @@ annotationMember annId = \case
   Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid >>= return . Just
   Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid >>= return . Just
   _                                   -> return Nothing
-  where memberSpec n t e = typ' t >>= (\t' -> expression' e >>= return . Just . (n, t',) . Just)
+  where memberSpec n t e = do
+          e' <- expression' e
+          t' <- typ' t 
+          (t'', e'') <- promoteDeclType t' e'
+          return $ Just (n, t'', Just e'')
 
 
 {- Builtins -}
@@ -1047,7 +1268,7 @@ builtinLiftedAttribute "Collection" "split" t uid = typ' t >>= \t' ->
                 in liftIO ((,) <$> newMVar (copyWithData r x) <*> newMVar (copyWithData r y)) )) |])
 
 -- TODO: these implementations assume the transformer function is in the EngineM monad.
--- Lambda implementations do not guarantee this (blindly using ensureReturnE on lambdas
+-- Lambda implementations do not guarantee this (blindly using ensureActionE on lambdas
 -- is not ideal for non-transformer function application).
 builtinLiftedAttribute "Collection" "iterate" t uid = typ' t >>= \t' ->
   return ("iterate", t', Just [hs| (\f -> liftIO (readMVar self) >>= mapM_ f . getData) |])
@@ -1344,7 +1565,15 @@ compile cg = either (Left . show) (Right . compile') $ fst $ runCodeGeneration e
 
 
 
-{- Expression constructors -}
+{- Analysis -}
+
+-- | Attaches purity annotations to a K3 expression tree.
+purifyExpression :: K3 Expression -> K3 Expression
+purifyExpression = undefined
+
+
+
+{- Declaration and expression constructors -}
 
 typeSig :: Identifier -> HS.Type -> HS.Decl
 typeSig n t = HS.TypeSig HL.noLoc [HB.name n] t
