@@ -153,7 +153,8 @@ concatAnnMembers ms1 ms2 =
       case length positives of
         0 ->
           let (AnnMemType i1 _ qa1 _) = head mems in
-          let cs = memTypesToCs (~= qa1) $ map typeOfMem mems in
+          let cs = memTypesToCs (CSL.promote . csSing . (qa1 <:)) $
+                      map typeOfMem mems in
           return $ AnnMemType i1 Negative qa1 cs
         1 ->
           let (AnnMemType i _ qa' cs') = head positives in
