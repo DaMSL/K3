@@ -502,7 +502,7 @@ spliceE n e spliceF = spliceActionE n e spliceF
 -- | Builds a CG expression, given a pair of splice functions for type-directed splicing.
 --   The first splice function assumes a pure expression, while the second assumes an action expression.
 spliceEWithAction :: (HS.Exp -> CodeGeneration CGExpr) -> (HS.Exp -> CodeGeneration CGExpr) -> CGExpr
-        -> CodeGeneration CGExpr
+                  -> CodeGeneration CGExpr
 spliceEWithAction pureF actionF ce = case pureOrPartial ce of
     Just _  -> spliceValueE ce pureF
     _       -> actionF $ getHSExpression ce
@@ -860,7 +860,9 @@ expression' (tag &&& children -> (ETuple, cs)) = do
 expression' (tag &&& children -> (ELambda i,[b])) = do
   b' <- expression' b
   n  <- gensymCG "__lam"
-  spliceE n b' (\be -> return . Pure $ [hs| \((ni)) -> $be |])
+  case b' of 
+    Pure be -> return . Pure $ [hs| \((ni)) -> $be |]
+    _       -> ensureActionE b' >>= \bCE -> return . Pure $ [hs| \((ni)) -> $(getHSExpression bCE) |]
   where ni = HB.name i
 
 expression' (tag -> ELambda _) = throwCG $ CodeGenerationError "Invalid lambda expression"
@@ -1071,7 +1073,7 @@ global n t@(tag -> TFunction) (Just e) = do
   at <- argType t >>= typ'
   rt <- returnType t >>= typ'
   t' <- return $ funType at $ engineType rt
-  e' <- expression' e >>= ensureActionE
+  e' <- expression' e
   mkGlobalDecl n (annotations t) t' e'
 
 -- TODO: two-level namespaces.
@@ -1118,10 +1120,11 @@ trigger n t e = do
   t'   <- typ' t
 
   sym  <- gensymCG "__trig"
-  impl <- spliceE sym e' (return . Pure . triggerImpl (HB.strE n)) >>= ensureActionE
+  impl <- spliceE sym e' (return . Pure . triggerImpl (HB.strE n))
 
   void $ modifyTriggerDispatchCG ((n,t'):)
-  return . HDeclarations $ [ typeSig n $ triggerType t', namedVal n $ getHSExpression impl ]
+  (pt, pImpl) <- promoteDeclType (triggerType t') impl
+  return . HDeclarations $ [ typeSig n pt, namedVal n pImpl ]
   
   where 
     triggerImpl hndlE implE = 
