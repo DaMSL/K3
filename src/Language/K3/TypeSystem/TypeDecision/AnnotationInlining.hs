@@ -15,7 +15,10 @@
   work.
 -}
 module Language.K3.TypeSystem.TypeDecision.AnnotationInlining
-( FlatAnnotation
+( AnnMemRepr(..)
+, TypeParameterContext
+, TypeParameterContextEntry
+, FlatAnnotation
 , FlatAnnotationDecls
 , inlineAnnotations
 ) where
@@ -39,16 +42,42 @@ import Language.K3.Logger
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
 
 $(loggingFunctions)
 
--- |The internal representation of annotations during and after inlining.
+-- |An internal repersentation of an annotation member.  This representation
+--  carries additional metadata which applies to the member in particular; this
+--  allows inlining to occur without confusing the context in which the member
+--  was declared.  In particular, @typeParamCxt@ describes the context of
+--  declared type parameters on this annotation member and @reprNative@
+--  indicates whether or not the member is "native" (e.g. was not inlined from
+--  another source).
+data AnnMemRepr = AnnMemRepr
+                    { reprMem :: AnnMemDecl
+                    , typeParamCxt :: TypeParameterContext
+                    , reprNative :: Bool
+                    }
+  deriving (Show)
+  
+-- |A type alias for type parameter contexts.  Each entry maps the name of a
+--  declared type parameter to a pair of type variables chosen for it.
+type TypeParameterContext = Map Identifier TypeParameterContextEntry
+type TypeParameterContextEntry = (UVar,QVar)
+-- TODO: add bounding type expressions to the above
+
+-- |The internal representation of annotations during and after inlining.  The
+--  type parameter map relates declared type variable identifiers to the type
+--  variables which represent them.  This map only includes type variables from
+--  the current annotation and not those from included annotations (via the
+--  "requires annotation" or "provides annotation" syntax) since it is only
+--  necessary to test the new parametricity.
 data AnnRepr = AnnRepr
-                  { liftedAttMap :: Map Identifier AnnMemDecl
-                  , schemaAttMap :: Map Identifier AnnMemDecl
+                  { liftedAttMap :: Map Identifier AnnMemRepr
+                  , schemaAttMap :: Map Identifier AnnMemRepr
                   , memberAnnDecls :: Set (Identifier, TPolarity)
                   , processedMemberAnnDecls :: Set (Identifier, TPolarity)
                   }
@@ -59,11 +88,12 @@ instance Pretty AnnRepr where
     [", "] %+ prettyAttMap sam %$
     [", "] %+ intersperseBoxes [", "]
                 (map (prettyTriple . rearrange) $ Set.toList $
-                  mad Set.\\ umad) +% [" 〉"]
+                  mad Set.\\ umad)
+    +% [" 〉"]
     where
       prettyAttMap m = intersperseBoxes [", "] $ map prettyEntry $ Map.toList m
       rearrange (i,pol) = (pol,i,Nothing)
-      prettyEntry (_,mem) = prettyMem mem
+      prettyEntry (_,memRepr) = prettyMem $ reprMem memRepr
       prettyMem mem = prettyTriple $ case mem of
                         Lifted pol i _ _ u -> (typeOfPol pol,i,Just u)
                         Attribute pol i _ _ u -> (typeOfPol pol,i,Just u)
@@ -79,7 +109,7 @@ type TaggedAnnRepr = (AnnRepr, UID, K3 Declaration)
 -- |A type alias describing the representation of annotations internal to the
 --  type decision procedure.  The first list of annotations describes the
 --  lifted attributes; the second list describes the schema attributes.
-type FlatAnnotation = ([AnnMemDecl], [AnnMemDecl])
+type FlatAnnotation = (TypeParameterContext, [AnnMemRepr], [AnnMemRepr])
 -- |A type alias describing the representation of a group of declared
 --  annotations internal to the type decision procedure.  The declaration
 --  included here is solely for error reporting purposes; it indicates the
@@ -92,20 +122,22 @@ emptyRepr = AnnRepr Map.empty Map.empty Set.empty Set.empty
 
 appendRepr :: forall m. (TypeErrorI m, Monad m)
            => AnnRepr -> AnnRepr -> m AnnRepr
-appendRepr (AnnRepr lam sam mad umad) (AnnRepr lam' sam' mad' umad') = do
-  overlapCheck lam lam'
-  overlapCheck sam sam'
-  return $ AnnRepr (lam `mappend` lam') (sam `mappend` sam')
-                   (mad `mappend` mad') (umad `mappend` umad')
+appendRepr (AnnRepr lam sam mad umad) (AnnRepr lam' sam' mad' umad') =
+  do
+    overlapCheck lam lam'
+    overlapCheck sam sam'
+    return $ AnnRepr (lam `mappend` lam') (sam `mappend` sam')
+                     (mad `mappend` mad') (umad `mappend` umad')
   where
-    overlapCheck :: Map Identifier AnnMemDecl -> Map Identifier AnnMemDecl
+    overlapCheck :: Map Identifier AnnMemRepr -> Map Identifier AnnMemRepr
                  -> m ()
     overlapCheck m1 m2 =
       let ks = Set.toList $ Set.fromList (Map.keys m1) `Set.intersection`
                             Set.fromList (Map.keys m2) in
       unless (null ks) $
         let i = head ks in
-        typeError $ MultipleAnnotationBindings i [m1 Map.! i, m2 Map.! i]
+        typeError $ MultipleAnnotationBindings i [ reprMem $ m1 Map.! i
+                                                 , reprMem $ m2 Map.! i]
         
 concatReprs :: forall m. (TypeErrorI m, Monad m)
            => [AnnRepr] -> m AnnRepr
@@ -113,39 +145,51 @@ concatReprs = foldM appendRepr emptyRepr
 
 -- |Converts a single annotation into internal representation.
 convertAnnotationToRepr :: forall m. (TypeErrorI m, Monad m)
-                        => [AnnMemDecl] -> m AnnRepr
-convertAnnotationToRepr mems =
+                        => TypeParameterContext -> [AnnMemDecl] -> m AnnRepr
+convertAnnotationToRepr typeParams mems =
   concatReprs =<< mapM convertMemToRepr mems
   where
     convertMemToRepr :: AnnMemDecl -> m AnnRepr
-    convertMemToRepr mem = case mem of
-      Lifted _ i _ _ _ ->
-        return $ AnnRepr (Map.singleton i mem) Map.empty Set.empty Set.empty
-      Attribute _ i _ _ _ ->
-        return $ AnnRepr Map.empty (Map.singleton i mem) Set.empty Set.empty
-      MAnnotation pol i _ ->
-        let s = Set.singleton (i,typeOfPol pol) in
-        return $ AnnRepr Map.empty Map.empty s Set.empty
+    convertMemToRepr mem =
+      let repr = AnnMemRepr mem typeParams True in
+      case mem of
+        Lifted _ i _ _ _ ->
+          return $ AnnRepr (Map.singleton i repr) Map.empty Set.empty Set.empty
+        Attribute _ i _ _ _ ->
+          return $ AnnRepr Map.empty (Map.singleton i repr) Set.empty Set.empty
+        MAnnotation pol i _ ->
+          let s = Set.singleton (i,typeOfPol pol) in
+          return $ AnnRepr Map.empty Map.empty s Set.empty
 
 -- |Given a role AST, converts all annotations contained within to the internal
 --  form.
-convertAstToRepr :: forall m. (TypeErrorI m, Monad m, Functor m)
-                 => K3 Declaration -> m (Map Identifier TaggedAnnRepr)
+convertAstToRepr :: forall m. ( TypeErrorI m, FreshVarI m, Monad m
+                              , Applicative m, Functor m)
+                 => K3 Declaration
+                 -> m ( Map Identifier TypeParameterContext
+                      , Map Identifier TaggedAnnRepr)
 convertAstToRepr ast =
   case tag ast of
-    DRole _ ->
-      let decls = subForest ast in
-      Map.fromList <$> catMaybes <$> mapM declToRepr decls
+    DRole _ -> do
+      let decls = subForest ast
+      m' <- Map.fromList <$> catMaybes <$> mapM declToRepr decls
+      return (Map.map fst m', Map.map snd m')
     _ -> internalTypeError $ TopLevelDeclarationNonRole ast
   where
-    declToRepr :: K3 Declaration -> m (Maybe (Identifier, TaggedAnnRepr))
+    declToRepr :: K3 Declaration -> m (Maybe (Identifier, (TypeParameterContext, TaggedAnnRepr)))
     declToRepr decl = case tag decl of
-      DAnnotation i mems -> do
-        repr <- convertAnnotationToRepr mems
+      DAnnotation i tis mems -> do
+        u <- uidOf decl
+        -- TODO: for parametricity, also include the bounding expression(s)
+        --       in the type params map
+        typeParams <- Map.fromList <$> mapM (\i' ->
+                        let origin = TVarAnnotationDeclaredParamOrigin u i' in
+                        (i',) <$> ((,) <$>
+                          freshUVar origin <*> freshQVar origin)) tis
+        repr <- convertAnnotationToRepr typeParams mems
         _debug $ boxToString $ ["Annotation " ++ i ++ " representation: "] %$
                                   indent 2 (prettyLines repr)
-        u <- uidOf decl
-        return $ Just (i, (repr, u, decl))
+        return $ Just (i, (typeParams, (repr, u, decl)))
       _ -> return Nothing
 
 -- |Given a map of internal annotation representations, performs closure over
@@ -180,18 +224,23 @@ closeReprs dict = do
           let repr'' = case pol of
                           Positive -> repr'
                           Negative -> negatize repr'
-          newRepr <- appendRepr repr repr''
+          newRepr <- appendRepr repr $ foreignize repr''
           let newRepr' = newRepr { processedMemberAnnDecls =
                                       Set.insert (i,pol) $
                                         processedMemberAnnDecls newRepr }
-          return ((newRepr',s,decl),True) 
+          return ((newRepr',s,decl),True)
+    foreignize :: AnnRepr -> AnnRepr
+    foreignize (AnnRepr lam sam mad umad) =
+      AnnRepr (Map.map f lam) (Map.map f sam) mad umad
+      where f (AnnMemRepr mem tps _) = AnnMemRepr mem tps False
     negatize :: AnnRepr -> AnnRepr
     negatize (AnnRepr lam sam mad umad) =
       AnnRepr (negMap lam) (negMap sam) (negSet mad) (negSet umad)
       where
-        negMap = Map.map negDecl
+        negMap = Map.map negRepr
         negSet = Set.map (second $ const Negative)
-        negDecl mem = case mem of
+        negRepr (AnnMemRepr mem tps ntv) = AnnMemRepr (negMem mem) tps ntv
+        negMem mem = case mem of
                         Lifted _ i tExpr mexpr s ->
                           Lifted Requires i tExpr mexpr s
                         Attribute _ i tExpr mexpr s ->
@@ -203,16 +252,18 @@ closeReprs dict = do
 --  annotation representations.  Each representation is a pair of maps from
 --  identifiers to relevant member declarations; the first represents lifted
 --  attributes while the second represents schema attributes.
-inlineAnnotations :: (TypeErrorI m, Monad m, Functor m, Applicative m)
+inlineAnnotations :: ( FreshVarI m, TypeErrorI m, Monad m, Functor m
+                     , Applicative m)
                   => K3 Declaration
                   -> m FlatAnnotationDecls
 inlineAnnotations decl = do
-  m <- convertAstToRepr decl
-  m' <- closeReprs m
-  return $ Map.map f m'
+  (cxtm, reprm) <- convertAstToRepr decl
+  reprm' <- closeReprs reprm
+  return $ Map.mapWithKey (f cxtm) reprm'
   where
-    f (repr,UID u,decl') =
-        let ans = ( ( Map.elems $ liftedAttMap repr
+    f cxtm i (repr,UID u,decl') =
+        let ans = ( ( cxtm Map.! i
+                    , Map.elems $ liftedAttMap repr
                     , Map.elems $ schemaAttMap repr)
                   , decl')
         in _debugI

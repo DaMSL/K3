@@ -158,7 +158,7 @@ k3Keywords = [
     {- Types -}
     "int", "bool", "real", "string",
     "immut", "mut", "witness", "option", "ind" , "collection",
-    "self", "structure", "horizon", "content",
+    "self", "structure", "horizon", "content", "forall",
     {- Declarations -}
     "declare", "trigger", "source", "sink", "fun",
     {- Expressions -}
@@ -274,7 +274,7 @@ declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
-  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateNSExpr)
+  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateNSExpr)
         mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
@@ -313,8 +313,12 @@ dSelector :: K3Parser ()
 dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 dAnnotation :: DeclParser
-dAnnotation = namedBraceDecl n n (some annotationMember) DC.annotation
-  where n = "annotation"
+dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
+  where rule x = x <*> annotationTypeParametersParser <*>
+                      braces (some annotationMember)
+        annotationTypeParametersParser =
+              keyword "given" *> keyword "type" *> typeParameterList
+          <|> return []
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
@@ -342,6 +346,8 @@ polarity = choice [keyword "provides" >> return Provides,
 uidOver :: K3Parser (UID -> a) -> K3Parser a
 uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
 
+typeParameterList :: K3Parser [Identifier]
+typeParameterList = some identifier
 
 {- Types -}
 typeExpr :: TypeParser
@@ -349,6 +355,15 @@ typeExpr = typeError "expression" $ TUID # tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
+
+polymorphicTypeExpr :: TypeParser
+polymorphicTypeExpr =
+  typeExprError "polymorphic" $
+        (TUID # TC.forAll <$
+            keyword "forall" <*> many identifier <* symbol "." <*>
+            qualifiedTypeExpr)
+    <|> qualifiedTypeExpr
+    
 
 {- Parenthesized version of qualified types.
 qualifiedTypeExpr :: TypeParser
@@ -365,7 +380,7 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 tTerm :: TypeParser
 tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
                            tTupleOrNested, tRecord, tCollection,
-                           tBuiltIn ]
+                           tBuiltIn, tDeclared ]
 
 tTermOrFun :: TypeParser
 tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" *> typeExpr)
@@ -419,6 +434,10 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
               , ("structure",TStructure)
               , ("horizon",THorizon)
               , ("content",TContent) ]
+
+tDeclared :: TypeParser
+tDeclared = typeExprError "declared" $ ( TUID # ) $
+              TC.declaredVar <$> identifier
 
 tAnnotations :: K3Parser [Annotation Type]
 tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
@@ -838,7 +857,7 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
               rebuildDecl d uid $ DTrigger n t' e'
 
             DRole       n      -> rebuildDecl d uid $ DRole n
-            DAnnotation n mems -> rebuildDecl d uid $ DAnnotation n mems
+            DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
 
         rebuildDecl d@(_ :@: as) uid =
           return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 

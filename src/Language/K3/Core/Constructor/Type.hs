@@ -16,7 +16,9 @@ module Language.K3.Core.Constructor.Type (
     source,
     sink,
     trigger,
-    builtIn
+    builtIn,
+    forAll,
+    declaredVar
 ) where
 
 import Data.Tree
@@ -90,3 +92,9 @@ trigger at = Node (TTrigger :@: []) [at]
 
 builtIn :: TypeBuiltIn -> K3 Type
 builtIn bi = Node (TBuiltIn bi :@: []) []
+
+forAll :: [Identifier] -> K3 Type -> K3 Type
+forAll ids t = Node (TForall ids :@: []) [t]
+
+declaredVar :: Identifier -> K3 Type
+declaredVar i = Node (TDeclaredVar i :@: []) []

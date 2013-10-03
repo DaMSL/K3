@@ -10,8 +10,6 @@ import qualified Data.Sequence as Seq
 import Control.Applicative
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
-import Language.K3.Core.Type
 import Language.K3.Logger
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
@@ -19,7 +17,6 @@ import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Sanity
 import Language.K3.TypeSystem.TypeChecking
-import Language.K3.TypeSystem.TypeChecking.Monad
 import Language.K3.TypeSystem.TypeDecision
 import Language.K3.TypeSystem.TypeDecision.Monad
 
@@ -52,9 +49,9 @@ typecheck aEnv env decl = do
   -- 1. Simple sanity checks for consistency.
   either (Left . Seq.singleton) Right $ unSanityM (sanityCheck decl)
   -- 2. Decide the types that should be assigned.
-  ((aEnv',env'),idx) <- runDecideM 0 $ typeDecision decl
+  ((aEnv',env',rEnv),idx) <- runDecideM 0 $ typeDecision decl
   -- 3. Check that types inferred for the declarations match these types.
-  ((),_) <- runTypecheckM idx (deriveDeclarations aEnv env aEnv' env' decl)
+  ((),_) <- runTypecheckM idx (deriveDeclarations aEnv env aEnv' env' rEnv decl)
   -- TODO: annotate the declaration tree with type information
   -- TODO: some form of type simplification on the output types
   return TypecheckResult

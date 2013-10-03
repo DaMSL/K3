@@ -1131,8 +1131,10 @@ trigger n t e = do
       HB.appFun (HS.Con $ HS.UnQual $ HB.name triggerConId) [hndlE, implE]
 
 
-annotation :: Identifier -> [AnnMemDecl] -> CodeGeneration ()
-annotation n memberDecls =
+annotation :: Identifier -> [Identifier] -> [AnnMemDecl] -> CodeGeneration ()
+annotation n tis memberDecls =
+  -- TODO: consider: should we do anything with "tis", the declared identifiers
+  --       for type variables?
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)
   where initializeMember annId acc m = annotationMember annId m >>= return . maybe acc ((acc++) . (:[]))
 
@@ -1329,7 +1331,7 @@ declaration decl = case (tag &&& children) decl of
     return . HDeclarations $ concat decls
       -- TODO: qualify names?
 
-  (DAnnotation n members, []) -> annotation n members >> return HNoRepr
+  (DAnnotation n tis members, []) -> annotation n tis members >> return HNoRepr
 
   _ -> throwCG $ CodeGenerationError "Invalid declaration"
 

@@ -9,11 +9,15 @@
 module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 ( deriveUnqualifiedTypeExpression
 , deriveQualifiedTypeExpression
+, derivePolymorphicTypeExpression
 ) where
 
 import Control.Applicative
+import Control.Monad
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree
@@ -29,7 +33,9 @@ import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Monad.Utils
@@ -40,6 +46,54 @@ import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
 
 $(loggingFunctions)
+
+-- |A function to derive the type of a polymorphic type expression.
+derivePolymorphicTypeExpression ::
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , FreshOpaqueI m
+                     , CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c)
+   => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
+   -> K3 Type
+   -> m (QVar, c, TEnv (TQuantEnvValue c))
+derivePolymorphicTypeExpression aEnv tExpr =
+  case tag tExpr of
+    TForall ids -> do
+      tExpr' <- assert1Child tExpr
+      iVars <- mconcat <$> mapM (\i -> Map.singleton i <$>
+                        (freshTypecheckingUVar =<< uidOf tExpr)) ids
+      aEnv' <- envMerge aEnv <$> mconcat <$>
+                mapM toQuantBinding (Map.toList iVars)
+      (qa, cs) <- deriveQualifiedTypeExpression aEnv' tExpr'
+      (cs', qEnv) <- foldM (extendResult iVars) (cs, Map.empty) ids
+      return (qa, cs', qEnv)
+    _ -> noPoly
+  where
+    noPoly = do
+      (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
+      return (qa, cs, Map.empty)
+    toQuantBinding :: (Identifier, UVar) -> m (TEnv (TypeAliasEntry c))
+    toQuantBinding (i,a) = do
+      qa <- freshTypecheckingQVar =<< uidOf tExpr
+      return $ Map.singleton (TEnvIdentifier i) $ QuantAlias $
+        QuantType Set.empty qa $ qa ~= a
+    extendResult :: Map Identifier UVar
+                 -> (c, TEnv (TQuantEnvValue c))
+                 -> Identifier
+                 -> m (c, TEnv (TQuantEnvValue c))
+    extendResult iVars (cs,qEnv) i = do
+      let t_U = STop
+      let t_L = SBottom 
+      u <- uidOf tExpr
+      oa <- freshOVar (OpaqueSourceOrigin u)
+      let a = fromJust $ Map.lookup i iVars
+      let cs' = CSL.promote $ (SOpaque oa ~= a) `csUnion`
+                csSing (OpaqueBoundConstraint oa t_L t_U)
+      return ( cs `CSL.union` CSL.promote (csFromList [t_L <: a, a <: t_U])
+             , Map.insert (TEnvIdentifier i) (a, t_L, t_U, cs') qEnv)
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::
@@ -141,8 +195,7 @@ deriveTypeExpression aEnv tExpr = do
           (t_s, cs_s) <- depolarizeOrError u ms1
           (t_f, cs_f) <- depolarizeOrError u ms2
           let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
-          return (a_s, CSL.unions [cs, cs_c, CSL.promote $
-                                                csUnions [cs_f, cs_s, cs']])
+          return (a_s, CSL.unions [cs, cs_c, cs_f, cs_s, CSL.promote cs'])
         TAddress -> error "Address type not in specification!" -- TODO
         TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
         TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
@@ -151,18 +204,18 @@ deriveTypeExpression aEnv tExpr = do
           (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'
           a' <- freshTypecheckingUVar =<< uidOf tExpr
           return (a', cs `CSL.union` (STrigger a ~= a'))
-        TBuiltIn b -> do
-          assert0Children tExpr
+        TBuiltIn b ->
           let ei = case b of
                       TSelf -> TEnvIdSelf
                       TStructure -> TEnvIdFinal
                       THorizon -> TEnvIdHorizon
                       TContent -> TEnvIdContent
-          u <- uidOf tExpr
-          qt <- uncurry toQuantType =<< aEnvLookup ei u
-          (qa,cs) <- polyinstantiate u qt
-          a <- freshTypecheckingUVar u
-          return (a, cs `CSL.union` (qa ~= a))
+          in
+          environIdType ei
+        TForall _ -> error "Forall type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
+        TDeclaredVar i ->
+          environIdType $ TEnvIdentifier i
   _debug $ boxToString $
     ["Interpreted type expression:"] %$ indent 2 (
         ["Type expression: "] %+ prettyLines tExpr %$
@@ -193,6 +246,14 @@ deriveTypeExpression aEnv tExpr = do
     aEnvLookup :: TEnvId -> UID -> m (TEnvId, TypeAliasEntry c)
     aEnvLookup ei u =
       (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier u ei) ei aEnv
+    environIdType :: TEnvId -> m (UVar, c)
+    environIdType ei = do
+      assert0Children tExpr
+      u <- uidOf tExpr
+      qt <- uncurry toQuantType =<< aEnvLookup ei u
+      (qa,cs) <- polyinstantiate u qt
+      a <- freshTypecheckingUVar u
+      return (a, cs `CSL.union` (qa ~= a))
 
 -- |Obtains the type qualifiers of a given expression.  Each inner list
 --  represents the results for a single annotation.

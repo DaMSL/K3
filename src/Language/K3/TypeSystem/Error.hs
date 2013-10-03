@@ -90,10 +90,12 @@ data TypeError
       --   type (e.g. "provides x : int = 4 + true").
   | AnnotationClosureInconsistency
       Identifier
+      Identifier
       [ConsistencyError]
       -- ^ Indicates that an annotation is inconsistent with its environment
       --   type.  This suggests that, while the expression of a member has a
-      --   consistent type, it does not match the type of its signature.
+      --   consistent type, it does not match the type of its signature.  The
+      --   first identifier names the annotation; the second names the member.
   | RecordSignatureError UID RecordConcatenationError
       -- ^ Indicates that a type signature contained a record type which
       --   produced a concatenation error when it was interpreted.
@@ -192,6 +194,9 @@ data InternalTypeError
       -- ^Indicates that something went wrong while constructing the horizon
       --  type for an annotation derivation.  (This should never happen because
       --  the concatenation is with record containing only a fresh opaque.)
+  | MissingIdentifierInGlobalQuantifiedEnvironment TGlobalQuantEnv Identifier
+      -- ^Indicates that the @TGlobalQuantEnv@ used during typechecking did not
+      --  include an entry for one of the globals in the declaration list.
 
 deriving instance Show InternalTypeError
 

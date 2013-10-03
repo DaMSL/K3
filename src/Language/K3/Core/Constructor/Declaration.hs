@@ -31,6 +31,7 @@ endpoint i t eOpt = Node (DGlobal i t eOpt :@: [])
 role :: Identifier -> [K3 Declaration] -> K3 Declaration
 role i = Node (DRole i :@: [])
 
--- | Create a user-defined annotation
-annotation :: Identifier -> [AnnMemDecl] -> K3 Declaration
-annotation i members = Node (DAnnotation i members :@: []) []
+-- | Create a user-defined annotation.  Arguments are annotation name,
+--   declared type parameters, and member declarations.
+annotation :: Identifier -> [Identifier] -> [AnnMemDecl] -> K3 Declaration
+annotation i tis members = Node (DAnnotation i tis members :@: []) []

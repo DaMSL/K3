@@ -5,9 +5,11 @@
 -}
 module Language.K3.TypeSystem.TypeDecision.SkeletalEnvironment
 ( TSkelAliasEnv
+, TSkelGlobalQuantEnv
+, TSkelQuantEnv
 , TypeDecideSkelM
 , StubInfo(..)
-, constructSkeletalAEnv
+, constructSkeletalEnvs
 ) where
 
 import Control.Applicative
@@ -40,6 +42,10 @@ $(loggingFunctions)
 
 -- |A type alias for skeletal type alias environments.
 type TSkelAliasEnv = TEnv (TypeAliasEntry StubbedConstraintSet)
+-- |A type alias for skeletal global quantified environments.
+type TSkelGlobalQuantEnv = TEnv TSkelQuantEnv
+-- |A type alias for skeletal quantified environments.
+type TSkelQuantEnv = TEnv (TQuantEnvValue StubbedConstraintSet)
 
 -- |A type alias for the skeletal construction monad.  The writer output maps
 --  each used stub to the information associated with it.
@@ -54,6 +60,9 @@ data StubInfo
         -- ^ The type variable to be bounded by the type expression.
     , stubParamEnv :: TParamEnv
         -- ^ The type parameter environment for the annotation in this stub.
+    , stubMemRepr :: AnnMemRepr
+        -- ^ The representation of the annotation member which inspired this
+        --   stub.
     }
   deriving (Show)
 
@@ -62,9 +71,10 @@ instance TypeErrorI TypeDecideSkelM where
 
 -- |A function which constructs a skeletal type environment for the type
 --  decision procedure.
-constructSkeletalAEnv :: FlatAnnotationDecls -> TypeDecideSkelM TSkelAliasEnv
-constructSkeletalAEnv anns = do
-  -- First, get a structure for each declaration
+constructSkeletalEnvs :: FlatAnnotationDecls
+                      -> TypeDecideSkelM (TSkelAliasEnv, TSkelGlobalQuantEnv)
+constructSkeletalEnvs anns = do
+  -- First, get a structure for each declaration.
   base <- Trav.mapM constructTypeForDecl anns
   _debug $ boxToString $
     ["Base skeletal environment: "] %+ indent 2 (
@@ -72,25 +82,55 @@ constructSkeletalAEnv anns = do
                           prettyLines (AnnType p b scs)) $
                       Map.toList base
       )
+      
   -- Next, join all of the constraint sets together (because each annotation can
-  -- refer to the others) and make an environment from it.
+  -- refer to the others) and make an environment from it.  This environment
+  -- lacks bounds on member type parameters but is otherwise complete.
   let scs = CSL.unions $ map ((\(_,_,scs') -> scs') . snd) $ Map.toList base
-  let aEnv = Map.fromList $
-              map (\(i,(b,p,_)) ->
-                  (TEnvIdentifier i, AnnAlias $ AnnType p b scs)) $
-                Map.toList base
+  let aPreEnv = Map.fromList $
+                  map (\(i,(b,p,_)) ->
+                      (TEnvIdentifier i, AnnAlias $ AnnType p b scs)) $
+                    Map.toList base
+                
+  -- Next, each annotation's type parameters should be processed.  We must
+  -- create both the skeletal global quantified environment entry as well as
+  -- the constraints which are required to be present within the annotation by
+  -- the Annotation rule.  We are calculating these required constraints later
+  -- than we otherwise would because processing their type signatures requires
+  -- the skeletal environment from above.
+  -- NOTE: The typechecker implementation, rather than checking for these
+  -- constraints, simply assumes that this code will insert them here.  This set
+  -- of constraints has to do with declared type parameters for annotation
+  -- members and not the annotation type parameters themselves (which are added
+  -- in the constructTypeForDecl calls above).
+  tpdata <- Trav.mapM (digestTypeParameterInfo aPreEnv) anns
+  let rEnv = Map.mapKeys TEnvIdentifier $ Map.map snd tpdata
+  let tpscs = CSL.unions $ Map.elems $ Map.map fst tpdata
+  let aEnv = Map.map (addConstraints tpscs) aPreEnv
+
+  -- Finally, present some debugging info and give back the results.
   _debug $ boxToString $
     ["Skeletal environment: "] %+ indent 2 (
         vconcats $ map (\(k,v) -> prettyLines k %+ [" → "] %+ prettyLines v) $
                       Map.toList aEnv
       )
-  return aEnv
+  return (aEnv, rEnv)
+  where
+    addConstraints :: StubbedConstraintSet
+                   -> TypeAliasEntry StubbedConstraintSet
+                   -> TypeAliasEntry StubbedConstraintSet
+    addConstraints scs entry = case entry of
+      QuantAlias _ -> error $ "constructTypeForDecl produced QuantAlias: " ++
+                                  show entry
+      AnnAlias (AnnType p mems scs') ->
+        AnnAlias (AnnType p mems $ CSL.union scs scs') 
 
--- |Constructs a skeletal type environment for a single declaration.
+-- |Constructs a skeletal environment entry for a single declaration.
 constructTypeForDecl :: (FlatAnnotation, K3 Declaration)
-                             -> TypeDecideSkelM
-                                  (AnnBodyType, TParamEnv, StubbedConstraintSet)
-constructTypeForDecl ((lAtts,sAtts),decl) = do
+                     -> TypeDecideSkelM ( AnnBodyType StubbedConstraintSet
+                                        , TParamEnv
+                                        , StubbedConstraintSet )
+constructTypeForDecl ((_,lAtts,sAtts),decl) = do
   u <- uidOf decl
   -- Prepare an appropriate environment
   a_c <- lift $ freshUVar $ TVarSourceOrigin u
@@ -103,49 +143,76 @@ constructTypeForDecl ((lAtts,sAtts),decl) = do
   
   -- Calculate the horizon part of the schema and the constraints generated by
   -- it.
-  (sAttTs, scs_h) <- second mconcat <$> unzip <$>
-                      gatherParallelSkelErrors (map (memDeclToMemType p) sAtts)
+  sAttTs <- gatherParallelSkelErrors (map (memReprToMemType p) sAtts)
   (a_h', cs_h) <- liftEither (AnnotationDepolarizationFailure u) $
                     depolarize sAttTs
                     
   -- Calculate the type of self and the corresponding constraints
-  (lAttTs, scs_s) <- second mconcat <$> unzip <$>
-                      gatherParallelSkelErrors (map (memDeclToMemType p) lAtts)
+  lAttTs <- gatherParallelSkelErrors (map (memReprToMemType p) lAtts)
   (a_s', cs_s) <- liftEither (AnnotationDepolarizationFailure u) $
                     depolarize lAttTs
 
-  -- NOTE: The typechecker is required by specification to ensure that a set
-  -- of constraints exists in the annotation.  It is considerably more efficient
-  -- for this code to ensure that they are generated than it is to check for
-  -- them (because the checker would need to perform a general pattern match),
-  -- so we just satisfy those constraints here.
+  -- NOTE: The typechecker is required by specification to ensure that certain
+  -- constraints exist in the annotation's constraint set.  For the sake of
+  -- efficiency, we instead allow the typechecker implementation to assume that
+  -- the decision process (this code) has inserted those constraints.  The first
+  -- set of constraints relates only to annotation parametric bounds and is
+  -- handled here.
   let cs = csFromList [a_f <: a_h, a_h <: a_c, a_h <: a_h', a_s <: a_s']
 
   -- Construct an appropriate stubbed constraint set
-  let scs = CSL.unions [scs_h, scs_s, CSL.promote $ csUnions [cs, cs_h, cs_s]]
+  let scs = CSL.unions [cs_h, cs_s, CSL.promote cs]
   
   -- We now have a result for a single annotation
   return (AnnBodyType lAttTs sAttTs,p,scs)
   where
     liftEither :: (a -> TypeError) -> Either a b -> TypeDecideSkelM b
     liftEither f = either (typeError . f) return
-    memDeclToMemType :: TParamEnv -> AnnMemDecl
-                     -> TypeDecideSkelM (AnnMemType, StubbedConstraintSet)
-    memDeclToMemType p decl' = case decl' of
-      Lifted pol i' tExpr _ s -> genMemType pol i' tExpr s
-      Attribute pol i' tExpr _ s -> genMemType pol i' tExpr s
-      MAnnotation{} ->
-        -- These should've been inlined and forgotten!
-        error $ "Member annotation declaration found during skeletal " ++
-                "environment construction!"
+    memReprToMemType :: TParamEnv -> AnnMemRepr
+                     -> TypeDecideSkelM (AnnMemType StubbedConstraintSet)
+    memReprToMemType p repr =
+      let decl' = reprMem repr in
+      case decl' of
+        Lifted pol i' tExpr _ s -> genMemType pol i' tExpr s
+        Attribute pol i' tExpr _ s -> genMemType pol i' tExpr s
+        MAnnotation{} ->
+          -- These should've been inlined and forgotten!
+          error $ "Member annotation declaration found during skeletal " ++
+                  "environment construction!"
       where
         genMemType pol i' tExpr s = do
           qa <- lift $ freshQVar $ TVarSourceOrigin s
           stub <- lift nextStub
           let scs = CSL.singleton $ CLeft stub
           tell $ Map.singleton stub StubInfo
-                    { stubTypeExpr = tExpr, stubVar = qa, stubParamEnv = p }
-          return (AnnMemType i' (typeOfPol pol) qa, scs)
+                    { stubTypeExpr = tExpr, stubVar = qa, stubParamEnv = p
+                    , stubMemRepr = repr }
+          return $ AnnMemType i' (typeOfPol pol) qa scs
+
+-- |Calculates for a representation of a single annotation the constraints
+--  required by the Annotation rule of typechecking as well as the entry which
+--  should appear in the global quantified environment.  These results are
+--  skeletal, making use of stubs to defer constraint decisions.
+digestTypeParameterInfo :: TSkelAliasEnv
+                        -> (FlatAnnotation, K3 Declaration)
+                        -> TypeDecideSkelM
+                              ( StubbedConstraintSet , TSkelQuantEnv )
+digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
+  digested <- Trav.mapM digestSingleTypeParameterInfo cxt
+  return ( CSL.unions $ map fst $ Map.elems digested
+         , Map.mapKeys TEnvIdentifier $ Map.map snd digested )
+  where
+    digestSingleTypeParameterInfo :: TypeParameterContextEntry
+                                  -> TypeDecideSkelM
+                                        ( StubbedConstraintSet
+                                        , TQuantEnvValue StubbedConstraintSet )
+    digestSingleTypeParameterInfo (a,qa) = do
+      -- TODO: type derivation on the bound expression(s) for each declared
+      --       variable for bounded parametricity
+      let (t_L,scs_L) = (SBottom,CSL.empty)
+      let (t_U,scs_U) = (STop,CSL.empty)
+      return ( CSL.promote $ (qa ~= a) `csUnion` csFromList [t_L <: a, a <: t_U]
+             , (a, t_L, t_U, scs_L `CSL.union` scs_U) )
 
 -- |Performs error gathering for @TypeDecideSkelM@.
 gatherParallelSkelErrors :: forall a. [TypeDecideSkelM a] -> TypeDecideSkelM [a]
