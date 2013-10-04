@@ -1,9 +1,10 @@
 -- | Options for the K3 Driver
 module Language.K3.Driver.Options where
 
-
 import Control.Applicative
 import Options.Applicative
+
+import System.FilePath
 
 import Language.K3.Runtime.Engine (SystemEnvironment)
 import Language.K3.Runtime.Options
@@ -19,15 +20,34 @@ data Options = Options {
 
 -- | Modes of Operation.
 data Mode
+    = Compile   CompileOptions
+    | Interpret InterpretOptions
+    | Print     PrintOptions
+  deriving (Eq, Read, Show)
+
+-- | Compilation options datatype.
+data CompileOptions = CompileOptions { language   :: Maybe String
+                                     , outputFile :: Maybe FilePath }
+                        deriving (Eq, Read, Show)
+
+-- | Interpretation options.
+data InterpretOptions
     = Batch { sysEnv :: SystemEnvironment }
     | Interactive
   deriving (Eq, Read, Show)
 
-data Peer = Peer {
-    peerHost :: String,
-    peerPort :: Int,
-    peerVals :: [(String, String)]
-} deriving (Eq, Read, Show)
+-- | Pretty-printing options.
+data PrintOptions
+    = PrintAST
+    | PrintSyntax
+  deriving (Eq, Read, Show)
+
+-- | Deprecated?
+data Peer = Peer { peerHost :: String
+                 , peerPort :: Int
+                 , peerVals :: [(String, String)] }
+              deriving (Eq, Read, Show)
+
 
 data Verbosity
     = NullV
@@ -35,8 +55,36 @@ data Verbosity
     | LoudV
   deriving (Enum, Eq, Read, Show)
 
+
+-- | Compiler options
+compileOptions :: Parser Mode
+compileOptions = mkCompile <$> languageOpt <*> outputFileOpt
+  where mkCompile l o = Compile $ CompileOptions l o
+
+languageOpt :: Parser (Maybe String)
+languageOpt = option (   short   'l'
+                      <> long    "language"
+                      <> value   Nothing
+                      <> help    "Specify compiler target language"
+                      <> metavar "LANG" )
+
+outputFileOpt :: Parser (Maybe FilePath)
+outputFileOpt = validatePath <$> option (
+                       short   'o'
+                    <> long    "output"
+                    <> value   Nothing
+                    <> help    "Specify output file"
+                    <> metavar "OUTPUT" )
+  where validatePath Nothing  = Nothing
+        validatePath (Just p) = if isValid p then Just p else Nothing
+
+
+-- | Interpretation options
+interpretOptions :: Parser Mode
+interpretOptions = Interpret <$> (batchOptions <|> interactiveOptions)
+
 -- | Options for Batch Mode.
-batchOptions :: Parser Mode
+batchOptions :: Parser InterpretOptions
 batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
@@ -44,16 +92,36 @@ batchOptions = flag' Batch (
         ) *> pure Batch <*> sysEnvOptions
 
 -- | Options for Interactive Mode.
-interactiveOptions :: Parser Mode
+interactiveOptions :: Parser InterpretOptions
 interactiveOptions = flag' Interactive (
         short 'i'
      <> long "interactive"
      <> help "Run in Interactive Mode"
     )
 
+-- | Printing options
+printOptions :: Parser Mode
+printOptions = Print <$> (astPrintOpt <|> syntaxPrintOpt)
+
+astPrintOpt :: Parser PrintOptions
+astPrintOpt = flag' PrintAST (   long "ast"
+                              <> help "Print AST output" )
+
+syntaxPrintOpt :: Parser PrintOptions
+syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
+                                    <> help "Print syntax output" )
+
+
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
-modeOptions = batchOptions <|> interactiveOptions
+modeOptions = subparser (
+         command "compile"   (info compileOptions   $ progDesc compileDesc)
+      <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
+      <> command "print"     (info printOptions     $ progDesc printDesc)
+    )
+  where compileDesc   = "Compile a K3 binary"
+        interpretDesc = "Interpret a K3 program"
+        printDesc     = "Print a K3 program"
 
 -- | Expression-Level flag.
 elvlOptions :: Parser Bool
