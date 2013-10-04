@@ -362,7 +362,7 @@ instance (Pretty c) => Pretty (TypeAliasEntry c) where
 type NormalTypeAliasEntry = TypeAliasEntry ConstraintSet
 
 -- |A type alias for the kind of polymorphism information stored in a QuantEnv.
-type TQuantEnvValue c = (UVar, ShallowType, ShallowType, c)
+type TQuantEnvValue c = (UVar, TypeOrVar, TypeOrVar, c)
 
 -- |An alias for type alias environments.
 type TAliasEnv = TEnv NormalTypeAliasEntry
@@ -395,7 +395,7 @@ data Constraint
   --       implementation parses "!"
   | MonomorphicQualifiedUpperConstraint QVar (Set TQual)
   | PolyinstantiationLineageConstraint QVar QVar
-  | OpaqueBoundConstraint OpaqueVar ShallowType ShallowType
+  | OpaqueBoundConstraint OpaqueVar TypeOrVar TypeOrVar
   deriving (Eq, Ord, Show)
   
 instance Pretty Constraint where

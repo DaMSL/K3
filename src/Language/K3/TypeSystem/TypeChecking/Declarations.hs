@@ -192,10 +192,13 @@ deriveDeclaration aEnv env rEnv decl =
                           , SOpaque oa_f ~= a_f
                           , SOpaque oa_s ~= a_s
                           , csFromList
-                             [ OpaqueBoundConstraint oa_c (SOpaque oa_f) $
-                                  SRecord Map.empty Set.empty
-                             , OpaqueBoundConstraint oa_f SBottom t_h
-                             , OpaqueBoundConstraint oa_s SBottom t_s
+                             [ OpaqueBoundConstraint oa_c
+                                  (CLeft $ SOpaque oa_f) $
+                                  CLeft $ SRecord Map.empty Set.empty
+                             , OpaqueBoundConstraint oa_f
+                                  (CLeft SBottom) (CLeft t_h)
+                             , OpaqueBoundConstraint oa_s
+                                  (CLeft SBottom) (CLeft t_s)
                              ] ]
 
       cs'2 <- csUnions <$> mapM (\(a_i',t_L,t_U,cs_i') ->

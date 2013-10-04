@@ -5,6 +5,7 @@
 module Language.K3.Core.Type (
     Type(..),
     TypeBuiltIn(..),
+    TypeVarDecl(..),
     Annotation(..),
     
     isTSpan,
@@ -45,7 +46,7 @@ data Type
     | TSink
     | TTrigger
     | TBuiltIn TypeBuiltIn
-    | TForall [Identifier] -- ^Should have one child representing the body.
+    | TForall [TypeVarDecl] -- ^Should have one child representing the body.
     | TDeclaredVar Identifier -- ^Represents the use of a declared type var.
   deriving (Eq, Read, Show)
 
@@ -55,6 +56,11 @@ data TypeBuiltIn
     | TStructure
     | THorizon
     | TContent
+  deriving (Eq, Read, Show)
+  
+-- | Type variable declarations.  These consist of the identifier for the
+--   declared variable and, optionally, a type expression for the upper bound.
+data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type))
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.

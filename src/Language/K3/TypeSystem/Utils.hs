@@ -8,6 +8,8 @@ module Language.K3.TypeSystem.Utils
 , typeOfPol
 , recordConcat
 , RecordConcatenationError(..)
+, getLowerBoundsOf
+, getUpperBoundsOf
 ) where
 
 import Control.Monad
@@ -77,3 +79,22 @@ recordConcat = foldM concatRecs (SRecord Map.empty Set.empty) .
             else Left $ RecordIdentifierOverlap labelOverlap
         (SRecord _ _, _) -> Left $ NonRecordType t2
         (_, _) -> Left $ NonRecordType t1
+
+-- |Calculates the upper bounds of a given @TypeOrVar@ in context of a
+--  constraint set.  If the argument is a type, that type is returned.
+--  Otherwise, the argument's upper bounds are returned.
+getLowerBoundsOf :: ConstraintSet -> TypeOrVar -> [ShallowType]
+getLowerBoundsOf cs ta =
+  case ta of
+    CLeft t -> [t]
+    CRight a -> csQuery cs $ QueryTypeByUVarUpperBound a
+
+-- |Calculates the upper bounds of a given @TypeOrVar@ in context of a
+--  constraint set.  If the argument is a type, that type is returned.
+--  Otherwise, the argument's upper bounds are returned.
+getUpperBoundsOf :: ConstraintSet -> TypeOrVar -> [ShallowType]
+getUpperBoundsOf cs ta =
+  case ta of
+    CLeft t -> [t]
+    CRight a -> csQuery cs $ QueryTypeByUVarLowerBound a
+    

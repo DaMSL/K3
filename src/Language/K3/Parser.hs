@@ -360,9 +360,13 @@ polymorphicTypeExpr :: TypeParser
 polymorphicTypeExpr =
   typeExprError "polymorphic" $
         (TUID # TC.forAll <$
-            keyword "forall" <*> many identifier <* symbol "." <*>
-            qualifiedTypeExpr)
+            keyword "forall" <*> sepBy typeVarDecl (symbol ",") <*
+            symbol "." <*> qualifiedTypeExpr)
     <|> qualifiedTypeExpr
+
+typeVarDecl :: K3Parser TypeVarDecl
+typeVarDecl = TypeVarDecl <$> identifier <*>
+                  option Nothing (Just <$ symbol "<=" <*> typeExpr) 
     
 
 {- Parenthesized version of qualified types.

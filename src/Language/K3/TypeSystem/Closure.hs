@@ -107,7 +107,8 @@ closeLowerBoundingExtendedRecord cs = csUnions $ do
     SOpaque oa -> guard $ not $ oa `Set.member` oas
     _ -> return ()
   oa' <- Set.toList oas
-  (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
+  (_, ta_U) <- csQuery cs $ QueryOpaqueBounds oa'
+  t_U <- getUpperBoundsOf cs ta_U
   case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
     Left _ ->
       -- In this situation, there is an inherent conflict in the record type.
