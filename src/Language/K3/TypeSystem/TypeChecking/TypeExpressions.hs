@@ -110,7 +110,8 @@ derivePolymorphicTypeExpression aEnv tExpr =
       let csOpaque = cs' `CSL.union` CSL.promote
                         ((SOpaque oa ~= a) `csUnion`
                           csSing (OpaqueBoundConstraint oa ta_L ta_U))
-      return ( cs `CSL.union` CSL.promote (csFromList [ta_L <: a, a <: ta_U])
+      return ( CSL.unions [cs, cs',
+                              CSL.promote (csFromList [ta_L <: a, a <: ta_U])]
              , Map.insert (TEnvIdentifier i) (a, ta_L, ta_U, csOpaque) qEnv)
 
 -- |A function to derive the type of a qualified expression.
