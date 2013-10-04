@@ -1,0 +1,7 @@
+declare f : forall a. {l:immut a} -> a = \r -> bind r as {l:z} in z
+
+declare n : int = f {l:immut 4}
+
+declare s : string = f {l:immut "biscuit"}
+
+
