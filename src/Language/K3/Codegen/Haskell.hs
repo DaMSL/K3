@@ -857,6 +857,7 @@ defaultValue' (tag -> TTrigger)  = throwCG $ CodeGenerationError "No default ava
 defaultValue' (tag -> TSink)     = throwCG $ CodeGenerationError "No default available for a sink"
 defaultValue' (tag -> TSource)   = throwCG $ CodeGenerationError "No default available for a source"
 
+defaultValue' _ = throwCG $ CodeGenerationError "Cannot create a type-based default value."
 
 {- Expression code generation -}
 
