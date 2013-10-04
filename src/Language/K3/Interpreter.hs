@@ -636,16 +636,17 @@ declaration (tag &&& children -> (DTrigger n t e, cs)) =
     debugDecl n t $ (expression e >>= replaceTrigger n) >> mapM_ declaration cs
 
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
-declaration (tag -> DAnnotation n tis members)      = annotation n tis members
+declaration (tag -> DAnnotation n vdecls members)      =
+    annotation n vdecls members
 
 declaration _ = undefined
 
 {- Annotations -}
 
-annotation :: Identifier -> [Identifier] -> [AnnMemDecl] -> Interpretation ()
-annotation n tis memberDecls = do
-  -- TODO: consider: does anything need to be done with "tis", the declared type
-  --       identifiers for this annotation?
+annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> Interpretation ()
+annotation n vdecls memberDecls = do
+  -- TODO: consider: does anything need to be done with "vdecls", the declared
+  --       type variables for this annotation?
   bindings <- foldM initializeMembers [] [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
   void $ foldM (flip removeE) () bindings
   void $ modifyADefs $ (:) (n,bindings)

@@ -77,6 +77,11 @@ instance Pretty (K3 Type) where
     prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
     prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
 
+instance Pretty TypeVarDecl where
+    prettyLines (TypeVarDecl i mtExpr) = case mtExpr of
+      Nothing -> [i]
+      Just tExpr -> [i ++ "<="] %+ prettyLines tExpr
+
 {- Type annotation predicates -}
 
 isTSpan :: Annotation Type -> Bool

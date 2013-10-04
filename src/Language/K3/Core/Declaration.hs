@@ -30,7 +30,7 @@ data Declaration
         -- ^Trigger declaration.  Type is argument type of trigger.  Expression
         --  must be a function taking that argument type and returning unit.
     | DRole       Identifier
-    | DAnnotation Identifier [Identifier] [AnnMemDecl]
+    | DAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
   deriving (Eq, Read, Show)
 
 -- | Annotation declaration members
@@ -75,9 +75,12 @@ instance Pretty (K3 Declaration) where
     ["DRole " ++ i ++ " :@: " ++ show as, "|"]
     ++ drawSubTrees ds
     
-  prettyLines (Node (DAnnotation i tis members :@: as) ds) =
+  prettyLines (Node (DAnnotation i vdecls members :@: as) ds) =
     ["DAnnotation " ++ i
-    ++ if null tis then "" else ("[" ++ intercalate "," tis ++ "]")
+    ++ if null vdecls then "" else
+          ("[" ++ boxToString (foldl1 ((%+) . ([", "] %+))
+                    (map prettyLines vdecls))
+           ++ "]")
     ++ drawAnnotations as, "|"]
     ++ drawAnnotationMembers members
     ++ drawSubTrees ds

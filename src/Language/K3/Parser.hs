@@ -317,7 +317,7 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
   where rule x = x <*> annotationTypeParametersParser <*>
                       braces (some annotationMember)
         annotationTypeParametersParser =
-              keyword "given" *> keyword "type" *> typeParameterList
+              keyword "given" *> keyword "type" *> typeVarDecls
           <|> return []
 
 {- Annotation declaration members -}
@@ -346,9 +346,6 @@ polarity = choice [keyword "provides" >> return Provides,
 uidOver :: K3Parser (UID -> a) -> K3Parser a
 uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
 
-typeParameterList :: K3Parser [Identifier]
-typeParameterList = some identifier
-
 {- Types -}
 typeExpr :: TypeParser
 typeExpr = typeError "expression" $ TUID # tTermOrFun
@@ -359,10 +356,12 @@ qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable
 polymorphicTypeExpr :: TypeParser
 polymorphicTypeExpr =
   typeExprError "polymorphic" $
-        (TUID # TC.forAll <$
-            keyword "forall" <*> sepBy typeVarDecl (symbol ",") <*
+        (TUID # TC.forAll <$ keyword "forall" <*> typeVarDecls <*
             symbol "." <*> qualifiedTypeExpr)
     <|> qualifiedTypeExpr
+
+typeVarDecls :: K3Parser [TypeVarDecl]
+typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
 typeVarDecl = TypeVarDecl <$> identifier <*>
