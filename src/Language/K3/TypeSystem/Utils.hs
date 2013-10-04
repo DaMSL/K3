@@ -13,6 +13,7 @@ module Language.K3.TypeSystem.Utils
 ) where
 
 import Control.Monad
+import Data.List
 import Data.Map as Map
 import Data.Set as Set
 
@@ -87,7 +88,7 @@ getLowerBoundsOf :: ConstraintSet -> TypeOrVar -> [ShallowType]
 getLowerBoundsOf cs ta =
   case ta of
     CLeft t -> [t]
-    CRight a -> csQuery cs $ QueryTypeByUVarUpperBound a
+    CRight a -> nub $ csQuery cs $ QueryTypeByUVarUpperBound a
 
 -- |Calculates the upper bounds of a given @TypeOrVar@ in context of a
 --  constraint set.  If the argument is a type, that type is returned.
@@ -96,5 +97,4 @@ getUpperBoundsOf :: ConstraintSet -> TypeOrVar -> [ShallowType]
 getUpperBoundsOf cs ta =
   case ta of
     CLeft t -> [t]
-    CRight a -> csQuery cs $ QueryTypeByUVarLowerBound a
-    
+    CRight a -> nub $ csQuery cs $ QueryTypeByUVarLowerBound a

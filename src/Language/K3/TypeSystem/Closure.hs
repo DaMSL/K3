@@ -173,7 +173,8 @@ opaqueLowerBound cs = csFromList $ do
   guard $ SOpaque oa /= t
   guard $ SRecord Map.empty (Set.singleton oa) /= t
   (_,ub) <- csQuery cs $ QueryOpaqueBounds oa
-  return $ ub <: t
+  t_U <- getUpperBoundsOf cs ub
+  return $ t_U <: t
 
 opaqueUpperBound :: ConstraintSet -> ConstraintSet
 opaqueUpperBound cs = csFromList $ do
@@ -183,4 +184,5 @@ opaqueUpperBound cs = csFromList $ do
     SRecord _ oas -> guard $ not $ Set.member oa oas
     _ -> return ()
   (lb,_) <- csQuery cs $ QueryOpaqueBounds oa
-  return $ t <: lb
+  t_L <- getLowerBoundsOf cs lb
+  return $ t <: t_L
