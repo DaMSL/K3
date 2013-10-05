@@ -6,10 +6,13 @@
   module-specific logging functions.
 -}
 module Language.K3.Logger.Generators
-( loggingFunctions
+( loggerGenerator,
+  loggingFunctions,
+  customLoggingFunctions
 ) where
 
 import Control.Applicative
+import Data.List
 import Language.Haskell.TH
 import System.Log
 import System.Log.Logger
@@ -33,8 +36,8 @@ import Language.K3.Pretty
     * Monadic value logging functions of the form @_debugPretty@ with type
       @(Monad m, Display a) => String -> a -> m()@.
 -}
-loggingFunctions :: Q [Dec]
-loggingFunctions = do
+loggerGenerator :: String -> Q [Dec]
+loggerGenerator suffixTag = do
   let levels = [ ("_debug", [|DEBUG|])
                , ("_info", [|INFO|])
                , ("_notice", [|NOTICE|])
@@ -53,17 +56,29 @@ loggingFunctions = do
               , ("Pretty", [|k3logMPretty|],
                   [t| forall m a. (Monad m, Pretty a) => String -> a -> m () |])
               ]
-  concat <$> sequence [ loggingFunction mode level
+  concat <$> sequence [ loggingFunction suffixTag mode level
                       | mode <- modes
                       , level <- levels
                       ]
   where
-    moduleNameExpr :: Q Exp
-    moduleNameExpr = LitE <$> StringL <$> loc_module <$> location
-    loggingFunction :: (String,Q Exp,Q Type) -> (String, Q Exp) -> Q [Dec]
-    loggingFunction (nameSuffix,baseFn,typ) (namePart,prioExpr) = do
-      let name = mkName $ namePart ++ nameSuffix
-      let signature = sigD name typ
-      let decl = funD name [clause [] (normalB
-                    [| $(baseFn) $(moduleNameExpr) $(prioExpr) |]) []]
+    moduleNameExpr :: String -> Q Exp
+    moduleNameExpr tag = 
+      let modNameE = LitE <$> StringL <$> loc_module <$> location in
+      if null tag
+         then [| $modNameE |]
+         else [| ( $modNameE ++ $(litE $ stringL $ "#" ++ tag) ) |] 
+    
+
+    loggingFunction :: String -> (String,Q Exp,Q Type) -> (String, Q Exp) -> Q [Dec]
+    loggingFunction tag (nameSuffix,baseFn,typ) (namePart,prioExpr) = do
+      let fnName    = mkName $ namePart ++ nameSuffix ++ (if null tag then "" else "_"++tag)
+      let logName   = moduleNameExpr tag
+      let signature = sigD fnName typ
+      let decl      = funD fnName [clause [] (normalB [| $(baseFn) $(logName) $(prioExpr) |]) []]
       sequence [signature, decl]
+
+loggingFunctions :: Q [Dec]
+loggingFunctions = loggerGenerator ""
+
+customLoggingFunctions :: [String] -> Q [Dec]
+customLoggingFunctions tags = concat <$> (mapM loggerGenerator $ nub tags)

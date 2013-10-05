@@ -173,6 +173,7 @@ import Language.K3.Logger
 import Language.K3.Pretty
 
 $(loggingFunctions)
+$(customLoggingFunctions ["EngineSteps"])
 
 -- | Address implementation
 data Address = Address (String, Int) deriving (Eq)
@@ -376,22 +377,6 @@ data ListenerError a
     | PropagatedError a
 
 
-{- Instance definitions -}
-
-instance Show Address where
-  show (Address (host, port)) = host ++ ":" ++ show port
-
-instance Read Address where
-  readsPrec _ str =
-    let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int
-    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
-
-instance Hashable Address where
-  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
-
-instance Pretty Address where
-  prettyLines addr = [show addr]
 
 {- Naming schemes and constants -}
 
@@ -600,12 +585,17 @@ runMessages mp status = ask >>= \engine -> status >>= \case
             die "Terminated:" fr (control engine)
         _ -> waitForMessage >> runMessages mp (processMessage mp r)
   where
-    debugStep = debugQueues >>= liftIO . putStr . unlines . (["", "EVENT LOOP { "] ++) . (++ ["}"]) . (:[])
+    debugStep = do
+      q <- prettyQueues
+      logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
+
     die msg r cntrl = do
-        liftIO $ putStrLn (boxToString $ ["", msg] ++ prettyLines r)
+        logStep $ boxToString $ ["", msg] ++ prettyLines r
         cleanupEngine
         liftIO $ tryPutMVar (waitV cntrl) ()
-        liftIO $ putStrLn "Finished."
+        logStep $ "Finished."
+
+    logStep s = void $ _notice_EngineSteps $ s
 
 runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
 runEngine mp is p = do
@@ -1336,13 +1326,28 @@ showMessageQueues (ManyByPeer qs)    = liftIO (readMVar qs) >>= return . show
 showMessageQueues (ManyByTrigger qs) = liftIO (readMVar qs) >>= return . show
 
 showEngine :: Show a => EngineM a String
-showEngine = return . unlines =<< (on (++) (:[]) <$> (ask >>= return . show) <*> debugQueues)
+showEngine = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues)
 
-debugQueues :: Show a => EngineM a String
-debugQueues = ask >>= showMessageQueues . queues 
-                  >>= return . concat . intersperse "\n" . (["Queues: "]++) . (:[])
+prettyQueues :: Show a => EngineM a [String]
+prettyQueues = ask >>= showMessageQueues . queues >>= return . (["Queues: "]++) . (:[])
 
-{- Instance implementations -}
+
+{- Instance definitions -}
+
+instance Show Address where
+  show (Address (host, port)) = host ++ ":" ++ show port
+
+instance Read Address where
+  readsPrec _ str =
+    let strl = splitOn ":" str
+        tryPort = (readMaybe $ last strl) :: Maybe Int
+    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
+
+instance Hashable Address where
+  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
+
+instance Pretty Address where
+  prettyLines addr = [show addr]
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
@@ -1355,6 +1360,9 @@ instance (Show a) => Show (Engine a) where
 
 instance (Show a) => Pretty (Engine a) where
     prettyLines = lines . show
+
+
+{- Misc. helpers -}
 
 modifyMVE :: MVar a -> (a -> EngineM b (a, c)) -> EngineM b c
 modifyMVE v f = do

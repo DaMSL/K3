@@ -209,27 +209,16 @@ collectionDataSegId = "__data"
 recordReprId :: Identifier -> Identifier
 recordReprId n = n
 
--- TODO: duplicate of interpreter. Move into common utils.
-annotationNamesT :: [Annotation Type] -> [Identifier]
-annotationNamesT anns = map extractId $ filter isTAnnotation anns
-  where extractId (TAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
-annotationNamesE :: [Annotation Expression] -> [Identifier]
-annotationNamesE anns = map extractId $ filter isEAnnotation anns
-  where extractId (EAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
 annotationComboId :: [Identifier] -> Identifier
 annotationComboId annIds = intercalate "_" annIds
 
 annotationComboIdT :: [Annotation Type] -> Maybe Identifier
-annotationComboIdT (annotationNamesT -> [])  = Nothing
-annotationComboIdT (annotationNamesT -> ids) = Just $ annotationComboId ids
+annotationComboIdT (namedTAnnotations -> [])  = Nothing
+annotationComboIdT (namedTAnnotations -> ids) = Just $ annotationComboId ids
 
 annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
-annotationComboIdE (annotationNamesE -> [])  = Nothing
-annotationComboIdE (annotationNamesE -> ids) = Just $ annotationComboId ids
+annotationComboIdE (namedEAnnotations -> [])  = Nothing
+annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 
 
 {- Code generation annotations -}
@@ -1201,7 +1190,7 @@ global n t@(tag &&& children -> (TCollection, [x])) eOpt =
     Just comboId -> testAndAddComposition comboId >> initializeCollection eOpt
 
   where anns            = annotations t
-        annotationNames = annotationNamesT anns
+        annotationNames = namedTAnnotations anns
         composedName    = annotationComboIdT anns
 
         testAndAddComposition comboId = 

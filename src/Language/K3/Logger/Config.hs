@@ -34,8 +34,8 @@ configureLogging configs =
       mapM_ configureByInstruction steps
       return True
       
--- |Given a module name and a priority, sets that module to log only messages
---  of that priority and higher.
+-- | Given a module name and a priority, sets that module to log only messages
+--   of that priority and higher.
 configureByInstruction :: (String, Priority) -> IO ()
 configureByInstruction (loggerName, prio) =
   updateGlobalLogger loggerName $ setLevel prio

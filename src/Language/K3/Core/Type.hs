@@ -12,7 +12,9 @@ module Language.K3.Core.Type (
     isTQualified,
     isTImmutable,
     isTMutable,
-    isTAnnotation
+    isTAnnotation,
+
+    namedTAnnotations
 ) where
 
 import Data.Tree
@@ -97,3 +99,9 @@ isTMutable _        = False
 isTAnnotation :: Annotation Type -> Bool
 isTAnnotation (TAnnotation _) = True
 isTAnnotation _               = False
+
+namedTAnnotations :: [Annotation Type] -> [Identifier]
+namedTAnnotations anns = map extractId $ filter isTAnnotation anns
+  where extractId (TAnnotation n) = n
+        extractId _ = error "Invalid named annotation"
+

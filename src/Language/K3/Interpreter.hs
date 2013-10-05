@@ -69,6 +69,7 @@ import Language.K3.Logger
 import Language.K3.Pretty
 
 $(loggingFunctions)
+$(customLoggingFunctions ["Dispatch"])
 
 -- | K3 Values
 data Value
@@ -295,23 +296,13 @@ annotationDataId = "data"
 annotationComboId :: [Identifier] -> Identifier
 annotationComboId annIds = intercalate ";" annIds
 
-annotationNamesT :: [Annotation Type] -> [Identifier]
-annotationNamesT anns = map extractId $ filter isTAnnotation anns
-  where extractId (TAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
-annotationNamesE :: [Annotation Expression] -> [Identifier]
-annotationNamesE anns = map extractId $ filter isEAnnotation anns
-  where extractId (EAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
 annotationComboIdT :: [Annotation Type] -> Maybe Identifier
-annotationComboIdT (annotationNamesT -> [])  = Nothing
-annotationComboIdT (annotationNamesT -> ids) = Just $ annotationComboId ids
+annotationComboIdT (namedTAnnotations -> [])  = Nothing
+annotationComboIdT (namedTAnnotations -> ids) = Just $ annotationComboId ids
 
 annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
-annotationComboIdE (annotationNamesE -> [])  = Nothing
-annotationComboIdE (annotationNamesE -> ids) = Just $ annotationComboId ids
+annotationComboIdE (namedEAnnotations -> [])  = Nothing
+annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 
 
 {- Interpretation -}
@@ -640,7 +631,7 @@ declaration (tag &&& children -> (DTrigger n t e, cs)) =
     debugDecl n t $ (expression e >>= replaceTrigger n) >> mapM_ declaration cs
 
 declaration (tag &&& children -> (DRole r, ch)) = role r ch
-declaration (tag -> DAnnotation n tis members)      = annotation n tis members
+declaration (tag -> DAnnotation n tis members)  = annotation n tis members
 
 declaration _ = undefined
 
@@ -682,10 +673,10 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
-getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, annotationNamesT anns)
+getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, namedTAnnotations anns)
 
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
-getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, annotationNamesE anns) 
+getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
 
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
@@ -1164,7 +1155,7 @@ uniProcessor = MessageProcessor {
     processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
         lookup n $ getEnv $ getResultState r
 
-    run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
+    run r n args trig = logTrigger defaultAddress n args r >> runTrigger r n args trig
 
     unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
@@ -1183,13 +1174,11 @@ virtualizedProcessor = MessageProcessor {
     initNode node systemEnv program = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program
-        void $ debugResult ("INIT " ++ show node) iProgram >>= liftIO . putStr . unlines
+        logResult "INIT " node iProgram
         return (node, iProgram)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> do
-          void $ debugDispatch addr name args s >>= liftIO . putStr . unlines
-          runTrigger' s name args)
+        dispatch addr (\s -> logTrigger addr name args s >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
         Nothing -> return (Just (), unknownTrigger s n)
@@ -1258,25 +1247,38 @@ prettyIResult ((res, st), _) =
   liftIO ((++) <$> prettyResultValue res <*> prettyEnv (getEnv st))
 
 showIResult :: IResult Value -> EngineM Value String
-showIResult r = prettyIResult r >>= return . unlines
+showIResult r = prettyIResult r >>= return . boxToString
 
 
 {- Debugging helpers -}
 
 debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
-debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+debugDecl n t = _debugI . boxToString $
+  [concat ["Declaring ", show n, " : "]] ++ (indent 2 $ prettyLines t)
 
-debugResult :: String -> IResult Value -> EngineM Value [String]
-debugResult str r = 
+showResult :: String -> IResult Value -> EngineM Value [String]
+showResult str r = 
   prettyIResult r >>= return . ([str ++ " { "] ++) . (++ ["}"]) . indent 2
 
-debugDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
-debugDispatch addr name args r = wrap <$> liftIO (prettyValue args)
-                                      <*> (debugResult "BEFORE" r >>= return . indent 2)
+showDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
+showDispatch addr name args r =
+    wrap <$> liftIO (prettyValue args)
+         <*> (showResult "BEFORE" r >>= return . indent 2)
   where
     wrap arg res = ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
                      ++ ["  Args: " ++ arg] 
                      ++ res ++ ["}"]
+
+logResult :: String -> Address -> IResult Value -> EngineM Value ()
+logResult tag addr r = do
+    msg <- showResult (tag ++ show addr) r 
+    void $ _notice_Dispatch $ boxToString msg
+
+logTrigger :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
+logTrigger addr n args r = do
+    msg <- showDispatch addr n args r
+    void $ _notice_Dispatch $ boxToString msg
+
 
 {- Instances -}
 instance Pretty IState where
