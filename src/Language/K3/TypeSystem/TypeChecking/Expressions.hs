@@ -23,7 +23,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error

@@ -13,7 +13,7 @@ import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression

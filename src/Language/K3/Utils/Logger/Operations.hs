@@ -16,7 +16,7 @@ import System.IO.Unsafe
 import System.Log
 import System.Log.Logger
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 -- |A function, similar to @Debug.Trace.trace@, to log a messge in K3 in an
 --  inline fashion.

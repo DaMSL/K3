@@ -5,7 +5,7 @@ module Language.K3.TypeSystem.Data.Coproduct
 ( Coproduct(..)
 ) where
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 {-|
   An unbiased form of @Either@.  This type is meant to represent a sum type

@@ -32,7 +32,7 @@ import Text.ParserCombinators.ReadP    as TP
 import Text.ParserCombinators.ReadPrec as TRP
 import Text.Read                       as TR
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 -- | Identifiers are used everywhere.
 type Identifier = String

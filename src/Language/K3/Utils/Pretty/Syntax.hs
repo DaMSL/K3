@@ -2,7 +2,7 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Pretty.Syntax (
+module Language.K3.Utils.Pretty.Syntax (
     program,
     decl,
     expr,

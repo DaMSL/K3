@@ -18,7 +18,7 @@ import System.Log
 import System.Log.Logger
 
 import Language.K3.Utils.Logger.Operations
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 {-|
   A set of logging functions for the current module.  These logging functions

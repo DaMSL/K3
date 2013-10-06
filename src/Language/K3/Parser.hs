@@ -57,7 +57,7 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser.ProgramBuilder
-import qualified Language.K3.Pretty.Syntax as S
+import qualified Language.K3.Utils.Pretty.Syntax as S
 
 {- Type synonyms for parser return types -}
 {-| Parser environment type.

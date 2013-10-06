@@ -13,7 +13,7 @@ import Data.Maybe
 import qualified Data.Set as Set
 import qualified Data.Traversable as Trav
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment

@@ -24,7 +24,7 @@ import qualified Data.Traversable as Trav
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data

@@ -65,7 +65,7 @@ import Language.K3.Core.Type
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
 
 $(loggingFunctions)

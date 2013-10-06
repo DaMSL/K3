@@ -22,7 +22,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Consistency
