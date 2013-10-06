@@ -33,9 +33,11 @@ dispatch op = do
         interpret Interactive    = error "Interactive Mode is not yet implemented."
 
         printer PrintAST    = parseK3Input (input op) >>= either parseError (putStrLn . pretty)
-        printer PrintSyntax = parseK3Input (input op) >>= either parseError (putStrLn . programS)
+        printer PrintSyntax = parseK3Input (input op) >>= either parseError printProgram
+        printProgram        = either syntaxError putStrLn . programS
 
-        parseError s = putStrLn $ "Could not parse input: " ++ s
+        parseError s  = putStrLn $ "Could not parse input: " ++ s
+        syntaxError s = putStrLn $ "Could not print program: " ++ s
 
 
 -- | Top-Level.
