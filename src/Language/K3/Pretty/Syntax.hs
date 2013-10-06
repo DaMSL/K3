@@ -77,14 +77,15 @@ decl (details -> (DRole n, cs, _)) =
   mapM decl cs >>= return . roleDecl
   where roleDecl subDecls = text "role" <+> text n <+> braces (indent 2 $ vsep subDecls)
 
-decl (details -> (DAnnotation n tvars mems, cs, _)) =
-  return . uncurry annotationDecl =<< ((,) C.<$> mapM memberDecl mems <*> mapM decl cs)
+decl (details -> (DAnnotation n tvars mems, cs, _)) = do
+  tsps <- mapM typeVarDecl tvars
+  msps <- mapM memberDecl mems
+  csps <- mapM decl cs
+  return $ vsep . (: csps) $
+    text "annotation" <+> text n <+> text "given" <+> text "type"
+      <+> cat (punctuate comma tsps)
+      <+> braces (indent 2 $ vsep msps)
   where
-    annotationDecl memDecls subDecls = vsep . (: subDecls) $ 
-          text "annotation" <+> text n
-      <+> text "given" <+> text "type" <+> cat (punctuate comma $ map text tvars)
-      <+> braces (indent 2 . vsep $ memDecls)
-
     memberDecl (Lifted pol i t eOpt _) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
                                 <*> optionalPrinter qualifierAndExpr eOpt
@@ -106,6 +107,14 @@ decl (details -> (DAnnotation n tvars mems, cs, _)) =
     initializer d (Just (qualE, e')) = d <+> equals <+> qualE <+> e'
 
 decl _ = throwSP "Invalid declaration"
+
+typeVarDecl :: TypeVarDecl -> SyntaxPrinter
+typeVarDecl (TypeVarDecl i mtExpr) =
+  case mtExpr of
+    Nothing -> return $ text i
+    Just tExpr -> do
+      t <- typ tExpr
+      return $ text i <+> text "<=" <+> t
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
