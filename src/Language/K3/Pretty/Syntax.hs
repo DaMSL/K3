@@ -11,16 +11,19 @@ module Language.K3.Pretty.Syntax (
     programS,
     declS,
     exprS,
-    typeS
+    typeS,
+    symbolS
 ) where
 
 import Control.Applicative ( (<*>) )
 import qualified Control.Applicative as C ( (<$>) )
+import Control.Monad
 
 import Data.List 
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Type
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
@@ -36,54 +39,73 @@ type SyntaxPrinter = Printer Doc
 runSyntaxPrinter :: SyntaxPrinter -> Either String Doc
 runSyntaxPrinter p = either (\(SyntaxError s) -> Left s) Right p
 
-throwSP :: String -> SyntaxPrinter
+throwSP :: String -> Printer a
 throwSP = Left . SyntaxError
 
-programS :: K3 Declaration -> String
-programS = either id show . program
+programS :: K3 Declaration -> Either String String
+programS p = program p >>= (\doc -> return $ displayS (renderPretty 0.8 100 doc) $ "")
 
-declS :: K3 Declaration -> String
-declS = either id show . runSyntaxPrinter . decl
+declS :: K3 Declaration -> Either String String
+declS d = show C.<$> runSyntaxPrinter (decl d)
 
-exprS :: K3 Expression -> String
-exprS = either id show . runSyntaxPrinter . expr
+exprS :: K3 Expression -> Either String String
+exprS e = show C.<$> runSyntaxPrinter (expr e)
 
-typeS :: K3 Type -> String
-typeS = either id show . runSyntaxPrinter . typ
+typeS :: K3 Type -> Either String String
+typeS t = show C.<$> runSyntaxPrinter (typ t)
+
+symbolS :: K3 Expression -> Either String String
+symbolS e = show C.<$> runSyntaxPrinter (symbol e)
 
 program :: K3 Declaration -> Either String Doc
 program = runSyntaxPrinter . decl
 
 -- | Declaration syntax printing.
 decl :: K3 Declaration -> SyntaxPrinter
-decl (details -> (DGlobal n t eOpt, cs, _)) =
-  return . vsep =<< ((:) C.<$> decl' <*> mapM decl cs)
+decl (details -> (DGlobal n t eOpt, cs, anns)) =
+    case tag t of 
+      TSource -> withSubDecls $ endpoint' "source"
+      TSink   -> withSubDecls $ endpoint' "sink"
+      _       -> withSubDecls $ decl'
   where
-    decl' = globlDecl C.<$> qualifierAndType t
-                        <*> optionalPrinter qualifierAndExpr eOpt
-    globlDecl (qualT, t') eqeOpt = 
-      flip initializer eqeOpt $ text "declare" <+> text n <+> colon <+> qualT <+> t'
+    withSubDecls d = vsep C.<$> ((:) C.<$> d <*> subDecls cs)
 
-    initializer d Nothing           = d
-    initializer d (Just (qualE, e)) = d <+> equals <+> qualE <+> e
+    decl' = globalDecl C.<$> qualifierAndType t
+                         <*> optionalPrinter qualifierAndExpr eOpt
+
+    globalDecl (qualT, t') eqeOpt = 
+      hang 2 $ text "declare" <+> text n <+> colon <+> qualT <+> (align t') <+> initializer eqeOpt <> line
+    
+    endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
+
+    initializer opt = maybe empty (\(qualE, e) -> equals <+> qualE <$> e) opt
+
 
 decl (details -> (DTrigger n t e, cs, _)) =
-  return . vsep =<< ((:) C.<$> decl' <*> mapM decl cs)
+    vsep C.<$> ((:) C.<$> decl' <*> subDecls cs)
+  
   where
     decl' = triggerDecl C.<$> typ t <*> expr e
-    triggerDecl t' e' = text "trigger" <+> text n <+> colon <+> t' <+> e'
+    triggerDecl t' e' =
+      hang 2 $ text "trigger" <+> text n <+> colon <+> (align t') <+> equals <$> e' <> line
+
 
 decl (details -> (DRole n, cs, _)) = 
-  mapM decl cs >>= return . roleDecl
-  where roleDecl subDecls = text "role" <+> text n <+> braces (indent 2 $ vsep subDecls)
+  if n == "__global" then vsep C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
+                     else roleDecl C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
+  where roleDecl subDecls' =
+          text "role" <+> text n
+                      <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
+
 
 decl (details -> (DAnnotation n tvars mems, cs, _)) =
-  return . uncurry annotationDecl =<< ((,) C.<$> mapM memberDecl mems <*> mapM decl cs)
+  uncurry annotationDecl C.<$> ((,) C.<$> mapM memberDecl mems <*> subDecls cs)
   where
-    annotationDecl memDecls subDecls = vsep . (: subDecls) $ 
+    annotationDecl memDecls subDecls' = vsep . (: subDecls') $ 
           text "annotation" <+> text n
-      <+> text "given" <+> text "type" <+> cat (punctuate comma $ map text tvars)
-      <+> braces (indent 2 . vsep $ memDecls)
+      <+> (if null tvars then empty
+           else text "given" <+> text "type" <+> cat (punctuate (comma <> space) $ map text tvars))
+      <+> lbrace <$> (align . indent 2 $ vsep memDecls) <$> rbrace <> line
 
     memberDecl (Lifted pol i t eOpt _) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
@@ -96,16 +118,63 @@ decl (details -> (DAnnotation n tvars mems, cs, _)) =
     memberDecl (MAnnotation pol i _) =
       return $ polarity pol <+> text "annotation" <+> text i
 
-    attrDecl pol kw j (qualT, t') eqeOpt = flip initializer eqeOpt $
-      polarity pol <+> (if null kw then text j else text kw <+> text j) <+> colon <+> qualT <+> t'
+    attrDecl pol kw j (qualT, t') eqeOpt = 
+      hang 2 $ polarity pol <+> (if null kw then text j else text kw <+> text j)
+                            <+> colon <+> qualT <+> (align t') <+> initializer eqeOpt
 
     polarity Provides = text "provides"
     polarity Requires = text "requires"
 
-    initializer d Nothing            = d
-    initializer d (Just (qualE, e')) = d <+> equals <+> qualE <+> e'
+    initializer opt = maybe empty (\(qualE, e') -> equals <+> qualE <$> e') opt 
 
 decl _ = throwSP "Invalid declaration"
+
+
+subDecls :: [K3 Declaration] -> Printer [Doc]
+subDecls d = mapM decl $ filter (not . generatedDecl) d
+  where generatedDecl (details -> (DGlobal _ _ _, _, anns)) = any isGenerated $ filter isDSpan anns
+        generatedDecl _ = False
+        isGenerated (DSpan (GeneratedSpan _)) = True
+        isGenerated _ = False
+
+bindingDecls :: [K3 Declaration] -> Printer [Doc]
+bindingDecls d = mapM feed d >>= foldM (\acc x -> maybe (return acc) (return . (acc++) . (:[])) x) []
+  where
+    feed (details -> (DGlobal n _ _, _, anns))
+      | any isDEndpointDecl anns = endpointBindings anns >>= return . maybe Nothing (doFeed n)
+      | otherwise                = return Nothing
+    feed _ = return Nothing
+
+    doFeed src dests = Just $ vsep $ flip map dests $ ((text "feed" <+> text src <+> text "|>") <+>) . text
+
+isDEndpointDecl :: Annotation Declaration -> Bool
+isDEndpointDecl (DSyntax (EndpointDeclaration _ _)) = True
+isDEndpointDecl _ = False
+
+endpointSpec :: [Annotation Declaration] -> Printer (Maybe EndpointSpec)
+endpointSpec = matchAnnotation isDEndpointDecl spec
+  where spec (DSyntax (EndpointDeclaration s _ )) = return $ Just s
+        spec _ = return $ Nothing
+
+endpointBindings :: [Annotation Declaration] -> Printer (Maybe EndpointBindings)
+endpointBindings = matchAnnotation isDEndpointDecl bindings
+  where bindings (DSyntax (EndpointDeclaration _ b)) = return $ Just b
+        bindings _ = return $ Nothing
+
+endpoint :: String -> Identifier -> Maybe EndpointSpec -> Doc -> Maybe Doc -> Doc
+endpoint kw n specOpt t' eOpt' = case specOpt of 
+  Nothing                   -> common Nothing
+  Just ValueEP              -> common . Just $ maybe empty (text "value" <+>) eOpt'
+  Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
+  Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
+  Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
+
+  where
+    common initializer =
+      hang 2 $ text kw <+> text n
+                       <+> colon <+> (align t')
+                       <+> maybe empty (equals <$>) initializer <> line
+
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
@@ -166,7 +235,7 @@ expr (tag -> EBindAs _)                  = exprError "bind-as"
 expr (details -> (EIfThenElse, [p, t, e], _)) = branchExpr C.<$> expr p <*> expr t <*> expr e
 expr (tag -> EIfThenElse)                     = exprError "if-then-else"
 
-expr (details -> (EAddress, [h, p], _)) = addrExpr C.<$> expr h <*> expr p
+expr (details -> (EAddress, [h, p], _)) = address h p
 expr (tag -> EAddress)                  = exprError "address"
 
 expr (tag -> ESelf) = return $ keyword "self"
@@ -193,12 +262,21 @@ binary op e e' =
     OLeq -> infixOp "<="
     OGth -> infixOp ">" 
     OGeq -> infixOp ">="
-    OSeq -> return $ e <//> text ";" <+> e'
+    OSeq -> return . align $ e <> semi <$> e'
     OApp -> return $ e <+> e'
     OSnd -> infixOp "<-"
     _    -> throwSP $ "Invalid binary operator '" ++ show op ++ "'"
 
   where infixOp opStr = return $ e <+> text opStr <+> e'
+
+address :: K3 Expression -> K3 Expression -> SyntaxPrinter
+address h p
+  | EConstant (CString s) <- tag h = addrExpr C.<$> (return $ text s) <*> expr p
+  | otherwise                      = addrExpr C.<$> expr h <*> expr p
+
+symbol :: K3 Expression -> SyntaxPrinter
+symbol (tag -> EConstant (CString s)) = return $ text s
+symbol _ = throwSP "Invalid symbol expression"
 
 qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
 qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
@@ -225,17 +303,20 @@ typ (tag -> TAddress)    = return $ text "address"
 typ (details -> (TOption, [x], _)) = qualifierAndType x >>= return . uncurry optionType
 typ (tag -> TOption)               = throwSP "Invalid option type"
 
+typ (details -> (TIndirection, [x], _)) = qualifierAndType x >>= return . uncurry indirectionType
+typ (tag -> TIndirection)               = throwSP "Invalid indirection type"
+
 typ (details -> (TTuple, ch, _)) = mapM qualifierAndType ch >>= return . tupleType
 
 typ (details -> (TRecord ids, ch, _))
   | length ids == length ch  = mapM qualifierAndType ch >>= return . recordType ids
   | otherwise                = throwSP "Invalid record type"
 
-typ (details -> (TIndirection, [x], _)) = qualifierAndType x >>= return . uncurry indirectionType
-typ (tag -> TIndirection)               = throwSP "Invalid indirection type"
-
 typ (details -> (TFunction, [a,r], _)) = mapM typ [a,r] >>= \chT -> return $ funType (head chT) (last chT)
 typ (tag -> TFunction)                 = throwSP "Invalid function type"
+
+typ (details -> (TSource, [x], _)) = typ x
+typ (tag -> TSource)               = throwSP "Invalid sink type"
 
 typ (details -> (TSink, [x], _)) = typ x
 typ (tag -> TSink)               = throwSP "Invalid sink type"
@@ -252,6 +333,9 @@ typ (tag -> TBuiltIn TSelf)      = return $ keyword "self"
 typ (tag -> TBuiltIn TContent)   = return $ keyword "content"
 typ (tag -> TBuiltIn THorizon)   = return $ keyword "horizon"
 typ (tag -> TBuiltIn TStructure) = return $ keyword "structure"
+
+typ (tag -> TForall _)      = throwSP "TForall syntax not supported"
+typ (tag -> TDeclaredVar _) = throwSP "TDeclaredVar syntax not supported"
 
 typ _ = throwSP "Cannot generate type syntax"
 
@@ -287,7 +371,7 @@ collectionType namedAnns t =
   text "collection" <+> t <+> text "@" <+> commaBrace namedAnns
 
 funType :: Doc -> Doc -> Doc
-funType arg ret = arg <+> text "->" <+> ret
+funType arg ret = parens $ arg </> text "->" <+> ret
 
 triggerType :: Doc -> Doc
 triggerType t = text "trigger" <+> t
@@ -308,35 +392,38 @@ recordExpr ids qualC =
              $ zip ids $ map (uncurry (<+>)) qualC
 
 lambdaExpr :: Identifier -> Doc -> Doc
-lambdaExpr n b = backslash <//> text n <+> text "->" <+> b
+lambdaExpr n b = parens $ backslash <> text n <+> text "->" <+> b
 
 projectExpr :: Identifier -> Doc -> Doc
-projectExpr n r = r <//> dot <//> text n
+projectExpr n r = r <> dot <> text n
 
 letExpr :: Identifier -> (Doc, Doc) -> Doc -> Doc
 letExpr n (qual,e) b =
-  text "let" <+> text n <+> equals <+> qual <+> e <+> text "in" <+> b
+  text "let" <+> align (text n <+> equals <+> qual </> e) <$> text "in" </> b
 
 assignExpr :: Identifier -> Doc -> Doc
 assignExpr n e = text n <+> equals <+> e
 
 caseExpr :: Identifier -> Doc -> Doc -> Doc -> Doc
-caseExpr i e s n = text "case" <+> e <+> text "of" <+> sCase <+> nCase
-  where sCase = braces $ text "Some" <+> text i <+> text "->" <+> s
-        nCase = braces $ text "None" <+> text "->" <+> n
+caseExpr i e s n = text "case" </> hang 2 e </> text "of"
+                               </> indent 2 sCase </> indent 2 nCase
+  where sCase = braces $ text "Some" <+> text i <+> text "->" </> s
+        nCase = braces $ text "None" <+> text "->" </> n
 
 bindExpr :: Binder -> Doc -> Doc -> Doc
-bindExpr b e e' = text "bind" <+> e <+> text "as" <+> binder b <+> text "in" <+> e'
+bindExpr b e e' = text "bind" </> hang 2 e </> text "as"
+                              </> (hang 2 $ binder b)
+                              </> text "in" <$> indent 2 e'
   where
     binder (BIndirection i) = text "ind" <+> text i
     binder (BTuple ids)     = tupled $ map text ids
     binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
 
 branchExpr :: Doc -> Doc -> Doc -> Doc
-branchExpr p t e = text "if" <+> p <+> text "then" <+> t <+> text "else" <+> e
+branchExpr p t e = text "if" <+> (align $ p <$> text "then" </> t <$> text "else" </> e)
 
 addrExpr :: Doc -> Doc -> Doc
-addrExpr h p = h <//> colon <//> p
+addrExpr h p = h <> colon <> p
 
 
 {- Helpers -}
@@ -350,15 +437,20 @@ commaBrace = encloseSep lbrace rbrace comma
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details n = (tag n, children n, annotations n)
 
+matchAnnotation :: (Eq (Annotation a))
+                => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]
+                -> Printer b
+matchAnnotation matchF mapF anns = case filter matchF anns of
+    []            -> throwSP "No matching annotation found"
+    [q]           -> mapF q
+    l | same l    -> mapF $ head l
+      | otherwise -> throwSP "Multiple matching annotations found"
+  where same l = 1 == (length $ nub l)
+
 qualifier :: (Eq (Annotation a))
           => (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter) -> [Annotation a]
           -> SyntaxPrinter
-qualifier matchQ syntaxQ anns = case filter matchQ anns of
-    []            -> throwSP "No qualifier found"
-    [q]           -> syntaxQ q
-    l | same l    -> syntaxQ $ head l
-      | otherwise -> throwSP "Ambiguous qualifier found"
-  where same l = 1 == (length $ nub l)
+qualifier = matchAnnotation
 
 optionalPrinter :: (a -> Printer b) -> Maybe a -> Printer (Maybe b)
 optionalPrinter f opt = maybe (return Nothing) (\x -> f x >>= return . Just) opt

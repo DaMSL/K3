@@ -46,6 +46,7 @@ import Text.Parser.Token.Style
 import Text.Parser.Parsec()
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
@@ -56,6 +57,7 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser.ProgramBuilder
+import qualified Language.K3.Pretty.Syntax as S
 
 {- Type synonyms for parser return types -}
 {-| Parser environment type.
@@ -63,8 +65,9 @@ import Language.K3.Parser.ProgramBuilder
     list of K3 program entry points as role-qualified sources that can be consumed.    
 -}
 
--- endpoint name => bound triggers, qualified name, initializer expression
-type EndpointsBQG        = [(Identifier, (Maybe [Identifier], Identifier, Maybe (K3 Expression)))]
+-- endpoint name => endpoint spec, bound triggers, qualified name, initializer expression
+type EndpointInfo      = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
+type EndpointsBQG      = [(Identifier, EndpointInfo)]
 
 -- role name, default name
 type DefaultEntries    = [(Identifier, Identifier)] 
@@ -73,11 +76,17 @@ type EnvironmentFrame  = (EndpointsBQG, DefaultEntries)
 type ParserEnvironment = [EnvironmentFrame]
 type ParserState       = (Int, ParserEnvironment)
 
+-- | Parser type synonyms
 type K3Parser a        = PP.ParsecT String ParserState Identity a
 type TypeParser        = K3Parser (K3 Type)
 type ExpressionParser  = K3Parser (K3 Expression)
 type BinderParser      = K3Parser Binder
 type DeclParser        = K3Parser (K3 Declaration)
+
+-- | Additional parsing type synonyms.
+type EndpointMethods = (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
+type EndpointBuilder = (Identifier -> K3 Type -> Either String EndpointMethods)
+
 
 {- Helpers -}
 optAsList :: Maybe a -> [a]
@@ -264,11 +273,11 @@ program :: DeclParser
 program = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
   where rule = mkProgram <$> endBy (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
-        mkEntryPoints d = withEnvironment $ (uncurry $ desugarRoleEntries d) . fst . safePopFrame
+        mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
-roleBody n = pushBindings >> rule >>= popBindings >>= desugarRole n
+roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
   where rule = some declaration >>= return . filterOptions
         pushBindings = modifyEnvironment_ addFrame
         popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
@@ -292,13 +301,17 @@ dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
 dEndpoint :: String -> String -> Bool -> DeclParser
 dEndpoint kind name isSource = 
   namedDecl kind name $ join . rule . (mkEndpoint <$>)
-  where rule x = x <*> (colon *> typeExpr) <*> (symbol "=" *> (channel isSource))
-        
+  where rule x      = ruleError =<< (x <*> (colon *> typeExpr) <*> (symbol "=" *> (endpoint isSource)))
+        ruleError x = either unexpected pure x
+
         (typeCstr, stateModifier) = 
           (if isSource then TC.source else TC.sink, trackEndpoint)
-        
-        mkEndpoint n t channelCstr =
-          stateModifier $ uncurry (DC.endpoint n (typeCstr t)) (channelCstr n t)
+
+        mkEndpoint n t endpointCstr =
+          endpointCstr n t >>= (\(spec, eOpt, subDecls) ->
+            return . stateModifier spec $ DC.endpoint n (qualifyT $ typeCstr t) eOpt subDecls)
+
+        qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
 
 dSource :: DeclParser
 dSource = dEndpoint "source" "source" True
@@ -307,11 +320,11 @@ dSink :: DeclParser
 dSink = dEndpoint "sink" "sink" False
 
 dFeed :: K3Parser ()
-dFeed = prefix $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identifier
+dFeed = track $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identifier
   where feedSym             = choice [keyword "feed", void $ symbol "~~"]
         bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
         mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
-        prefix p            = (trackBindings =<<) $ declError "feed" $ p
+        track p             = (trackBindings =<<) $ declError "feed" $ p
         
 dRole :: DeclParser
 dRole = chainedNamedBraceDecl n n roleBody DC.role
@@ -398,6 +411,7 @@ tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
   where tConst (x, f) = keyword x >> return f
         tPrimError    = typeExprError "primitive"
 
+tQNested :: (K3 Type -> K3 Type) -> String -> TypeParser
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
 
 tOption :: TypeParser
@@ -554,6 +568,7 @@ eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *
   where mkEmpty e a = foldl (@+) e a 
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
 
+-- TODO: treating collection literals as immutable will fail when initializing mutable collections.
 eCollection :: ExpressionParser
 eCollection = exprError "collection" $
               mkCollection <$> braces (choice [try singleField, multiField])
@@ -571,10 +586,11 @@ eCollection = exprError "collection" $
 
         mkInserts el = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) (tail el)
         mkInsert     = EC.binop OApp (EC.project "insert" cVar)
-        emptyC tyl a = foldl (@+) (EC.empty $ TC.record tyl) a
+        emptyC tyl a = foldl (@+) ((EC.empty $ TC.record tyl) @+ EImmutable) a
         (cId, cVar)  = ("__collection", EC.variable "__collection")
 
-        mkSingletonRecord p (n,t) = p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,))
+        mkSingletonRecord p (n,t) =
+          p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,) . (@+ EImmutable))
 
 eAnnotations :: K3Parser [Annotation Expression]
 eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
@@ -606,10 +622,13 @@ binOpSpan cstr l r = (cstr l r) @+ (ESpan $ coverSpans (getSpan la) (getSpan ra)
   where la = getAnnotations l
         ra = getAnnotations r
         coverSpans (Span n l1 c1 _ _) (Span _ _ _ l2 c2) = Span n l1 c1 l2 c2
+        coverSpans s@(Span _ _ _ _ _) (GeneratedSpan _) = s
+        coverSpans (GeneratedSpan _) s@(Span _ _ _ _ _) = s
 
 unOpSpan opName cstr e = (cstr e) @+ (ESpan $ prefixSpan $ getSpan al)
   where al = getAnnotations e
         prefixSpan (Span n l1 c1 l2 c2) = Span n l1 (c1-(length opName)) l2 c2
+        prefixSpan s = s
 
 binaryParseOp (opName, opTag) = binary opName (binOpSpan $ EC.binop opTag) AssocLeft
 mkBinOp  x = binaryParseOp x operator
@@ -705,27 +724,34 @@ equateNSExpr = symbol "=" *> nonSeqExpr
 equateQExpr :: ExpressionParser
 equateQExpr = symbol "=" *> qualifiedExpr
 
-{- Channels -}
 
-channel :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
-channel isSource = if isSource then choice $ [value]++common else choice common
+{- Endpoints -}
+
+endpoint :: Bool -> K3Parser EndpointBuilder
+endpoint isSource = if isSource then choice $ [value]++common else choice common
   where common = [builtin isSource, file isSource, network isSource]
 
-value :: K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+value :: K3Parser EndpointBuilder
 value = mkValueStream <$> (symbol "value" *> expr)
-  where mkValueStream e _ _ = (Just e, [])
+  where mkValueStream e _ _ = Right (ValueEP, Just e, [])
 
-builtin :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+builtin :: Bool -> K3Parser EndpointBuilder
 builtin isSource = mkBuiltin <$> builtinChannels <*> format
-  where mkBuiltin idE formatE n t = endpointMethods isSource Builtin idE formatE n t
+  where mkBuiltin idE formatE n t =
+          builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
+        builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
-file :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+file :: Bool -> K3Parser EndpointBuilder
 file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile argE formatE n t = endpointMethods isSource File argE formatE n t
+  where mkFile argE formatE n t =
+          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+        fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
 
-network :: Bool -> K3Parser (Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration]))
+network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork argE formatE n t =  endpointMethods isSource Network argE formatE n t
+  where mkNetwork addrE formatE n t =
+          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+        networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
 builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
@@ -761,13 +787,13 @@ defaultEntries = snd
 
 sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
 sourceBindings s = concatMap extractBindings s
-  where extractBindings (x,(Just b,_,_))  = map ((,) x) b
-        extractBindings (_,(Nothing,_,_)) = []
+  where extractBindings (x,(_,Just b,_,_))  = map ((,) x) b
+        extractBindings (_,(_,Nothing,_,_)) = []
 
 qualifiedSources :: EndpointsBQG -> [Identifier]
 qualifiedSources s = concatMap (qualifiedSourceName . snd) s
-  where qualifiedSourceName (Just _, x, _)  = [x]
-        qualifiedSourceName (Nothing, _, _) = []
+  where qualifiedSourceName (_, Just _, x, _)  = [x]
+        qualifiedSourceName (_, Nothing, _, _) = []
 
 addFrame :: ParserEnvironment -> ParserEnvironment
 addFrame env = ([],[]):env
@@ -788,25 +814,30 @@ trackBindings :: (Identifier, Identifier) -> K3Parser ()
 trackBindings (src, dest) = modifyEnvironmentF_ $ updateBindings src dest
   where updateBindings src dest (safePopFrame -> ((s,d), env)) =
           case lookup src s of
-            Just (Just b, q, g)  -> Right $ (replaceAssoc s src (Just (dest:b), q, g), d):env
-            Just (Nothing, _, _) -> Left  $ "Invalid binding for endpoint " ++ src
-            Nothing              -> Left  $ "Invalid binding, no source " ++ src
+            Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g), d):env
+            Just (_, Nothing, _, _) -> Left  $ "Invalid binding for endpoint " ++ src
+            Nothing                 -> Left  $ "Invalid binding, no source " ++ src
+
 
 -- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
-trackEndpoint :: K3 Declaration -> DeclParser
-trackEndpoint d
+trackEndpoint :: EndpointSpec -> K3 Declaration -> DeclParser
+trackEndpoint eSpec d
   | DGlobal n t eOpt <- tag d, TSource <- tag t = track True n eOpt >> return d
   | DGlobal n t eOpt <- tag d, TSink <- tag t   = track False n eOpt >> return d
   | otherwise = return d
 
   where 
     track isSource n eOpt = modifyEnvironmentF_ $ addEndpointGoExpr isSource n eOpt
+
     addEndpointGoExpr isSource n eOpt (safePopFrame -> ((s,d), env)) =
-          case (eOpt, isSource) of
-            (Just _, True)   -> Right $ (replaceAssoc s n (Just [], n, Nothing), d):env
-            (Nothing, True)  -> Right $ (replaceAssoc s n (Just [], n, Just $ mkRunSourceE n), d):env
-            (Just _, False)  -> Right $ (replaceAssoc s n (Nothing, n, Just $ mkRunSinkE n),   d):env
-            (_,_)            -> Left  $ "Invalid endpoint initializer"
+      case (eOpt, isSource) of
+        (Just _, True)   -> Right $ refresh n s d env (Just [], n, Nothing)
+        (Nothing, True)  -> Right $ refresh n s d env (Just [], n, Just $ mkRunSourceE n)
+        (Just _, False)  -> Right $ refresh n s d env (Nothing, n, Just $ mkRunSinkE n)
+        (_,_)            -> Left  $ "Invalid endpoint initializer"
+
+    refresh n s d env (a,b,c) = (replaceAssoc s n (eSpec, a, b, c), d):env
+
 
 -- | Records defaults in a K3 parsing environment
 trackDefault :: Identifier -> K3Parser ()
@@ -814,22 +845,34 @@ trackDefault n = modifyEnvironment_ $ updateState n
   where updateState n (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
 
 
-{- Desugaring methods -}
-desugarRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
-desugarRole n (dl, frame) = 
-  modifyEnvironmentF_ (qualify frame) >> (return $ desugarSourceImpl dl frame)
+-- | Completes any stateful processing needed for the role.
+--   This includes handling 'feed' clauses, and checking and qualifying role defaults.
+postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
+postProcessRole n (dl, frame) = 
+  modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints dl frame
   
-  where desugarSourceImpl dl (s,_) = flip map dl $ rewriteSource $ sourceBindings s
+  where processEndpoints dl (s,_) = return . flip map dl $ annotateEndpoint s . attachSource s
+        attachSource s            = bindSource $ sourceBindings s
         
-        qualify poppedFrame (safePopFrame -> (frame, env)) =
-          case validateSources poppedFrame of
-            (_, []) -> Right $ (concatWithPrefix poppedFrame frame):env
+        annotateEndpoint s d
+          | DGlobal en t eOpt <- tag d, TSource <- tag t = maybe d (d @+) (syntaxAnnotation en s)
+          | DGlobal en t eOpt <- tag d, TSink   <- tag t = maybe d (d @+) (syntaxAnnotation en s)
+          | otherwise = d
+
+        syntaxAnnotation en s = 
+          lookup en s
+            >>= (\(enSpec,bindingsOpt,_,_) -> return (enSpec, maybe [] id bindingsOpt))
+            >>= return . DSyntax . uncurry EndpointDeclaration
+        
+        ensureQualified poppedFrame (safePopFrame -> (frame, env)) =
+          case validateDefaults poppedFrame of
+            (_, [])     -> Right $ (qualifyRole' poppedFrame frame):env
             (_, failed) -> Left  $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
 
-        validateSources (s,d) = partition ((flip elem $ qualifiedSources s) . snd) d
-        concatWithPrefix (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
+        validateDefaults (s,d)     = partition ((flip elem $ qualifiedSources s) . snd) d
+        qualifyRole' (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
 
-        qualifySource (eid, (Just b, q, g)) = (eid, (Just b, prefix "." n q, g))
+        qualifySource (eid, (es, Just b, q, g)) = (eid, (es, Just b, prefix "." n q, g))
         qualifySource x = x
 
         qualifyDefaults = map $ uncurry $ flip (,) . prefix "." n

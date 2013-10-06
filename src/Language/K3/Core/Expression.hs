@@ -10,7 +10,6 @@ import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Codegen
-
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
@@ -85,13 +84,13 @@ data Binder
 
 -- | Annotations on expressions are mutability qualifiers.
 data instance Annotation Expression
-    = EMutable
-    | EImmutable
-    | ELexicalName Identifier
-    | EType (K3 Type)
-    | ESpan Span
+    = ESpan Span
     | EUID UID
+    | EMutable
+    | EImmutable
     | EAnnotation Identifier
+    | EType (K3 Type)
+    | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Read, Show)
 

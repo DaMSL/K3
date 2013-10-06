@@ -10,13 +10,16 @@ module Language.K3.Core.Declaration (
     Polarity(..),
     AnnMemDecl(..),
 
-    isDUID
+    isDSpan,
+    isDUID,
+    isDSyntax
 ) where
 
 import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
@@ -51,8 +54,9 @@ data Polarity = Provides | Requires deriving (Eq, Read, Show)
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
-    = DSpan Span
-    | DUID UID
+    = DSpan   Span
+    | DUID    UID
+    | DSyntax SyntaxAnnotation
   deriving (Eq, Read, Show)
 
 
@@ -108,6 +112,14 @@ instance Pretty AnnMemDecl where
 
 {- Declaration annotation predicates -}
 
+isDSpan :: Annotation Declaration -> Bool
+isDSpan (DSpan _) = True
+isDSpan _         = False
+
 isDUID :: Annotation Declaration -> Bool
 isDUID (DUID _) = True
 isDUID _        = False
+
+isDSyntax :: Annotation Declaration -> Bool
+isDSyntax (DSyntax _) = True
+isDSyntax _           = False

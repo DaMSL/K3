@@ -5,8 +5,10 @@
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
     Identifier,
+    Address(..),
     Span(..),
     UID(..),
+    EndpointSpec(..),
 
     IShow(..),
     IRead(..),
@@ -21,7 +23,10 @@ module Language.K3.Core.Common (
 
 import Control.Concurrent.MVar
 
+import Data.Hashable ( Hashable(..) )
 import Data.IORef
+import Data.List
+import Data.List.Split ( splitOn )
 
 import Text.ParserCombinators.ReadP    as TP
 import Text.ParserCombinators.ReadPrec as TRP
@@ -32,14 +37,64 @@ import Language.K3.Pretty
 -- | Identifiers are used everywhere.
 type Identifier = String
 
--- | Spans are locations in the program source.
-data Span = Span String Int Int Int Int deriving (Eq, Ord, Read, Show)
+-- | Address implementation
+data Address = Address (String, Int) deriving (Eq)
+
+-- | Spans are either locations in the program source, or generated code.
+data Span
+    = Span String Int Int Int Int
+        -- ^ Source name, start line and column, end line and column.
+    
+    | GeneratedSpan String 
+        -- ^ Generator-specific metadata.
+  deriving (Eq, Ord, Read, Show)
 
 -- | Unique identifiers for AST nodes.
 data UID = UID Int deriving (Eq, Ord, Read, Show)
 
+-- | Endpoint types.
+data EndpointSpec
+  = ValueEP
+  | BuiltinEP String String    -- ^ Builtin endpoint type (stdin/stdout/stderr), format  
+  | FileEP    String String    -- ^ File path, format
+  | NetworkEP String String    -- ^ Address, format
+  deriving (Eq, Read, Show)
+
+
+-- | Associative lists
+addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+addAssoc l a b = (a,b):l
+
+removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
+removeAssoc l a = filter ((a /=) . fst) l
+
+replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+replaceAssoc l a b = addAssoc (removeAssoc l a) a b
+
+modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c,b)) -> (c, [(a,b)])
+modifyAssoc l k f = (r, replaceAssoc l k nv)
+  where (r, nv) = f $ lookup k l
+
+
+{- Instance implementations -}
+instance Show Address where
+  show (Address (host, port)) = host ++ ":" ++ show port
+
+instance Read Address where
+  readsPrec _ str =
+    let strl = splitOn ":" str
+        tryPort = (readMaybe $ last strl) :: Maybe Int
+    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
+
+instance Hashable Address where
+  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
+
+instance Pretty Address where
+  prettyLines addr = [show addr]
+
 instance Pretty UID where
   prettyLines (UID n) = [show n]
+
 
 -- | Show and read of impure values
 class IShow a where
@@ -92,17 +147,3 @@ instance (IRead a) => IRead (MVar a) where
         "MVar" -> ireadPrec >>= return . (>>= newMVar)
         _ -> TRP.pfail
     )
-
--- | Associative lists
-addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-addAssoc l a b = (a,b):l
-
-removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
-removeAssoc l a = filter ((a /=) . fst) l
-
-replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
-replaceAssoc l a b = addAssoc (removeAssoc l a) a b
-
-modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c,b)) -> (c, [(a,b)])
-modifyAssoc l k f = (r, replaceAssoc l k nv)
-  where (r, nv) = f $ lookup k l

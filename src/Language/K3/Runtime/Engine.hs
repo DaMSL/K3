@@ -7,8 +7,7 @@
 
 -- | A message processing runtime for the K3 interpreter
 module Language.K3.Runtime.Engine (
-    Address(..)
-  , FrameDesc(..)
+    FrameDesc(..)
   , WireDesc(..)
   , PeerBootstrap
   , SystemEnvironment
@@ -144,10 +143,9 @@ import Control.Monad.Trans.Either
 import qualified Data.ByteString.Char8 as BS
 import Data.Function
 import Data.Functor
-import Data.Hashable (Hashable(..))
 import qualified Data.HashMap.Lazy as H
 import Data.List
-import Data.List.Split (splitOn, wordsBy)
+import Data.List.Split (wordsBy)
 
 import Debug.Trace
 
@@ -175,8 +173,6 @@ import Language.K3.Pretty
 $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
--- | Address implementation
-data Address = Address (String, Int) deriving (Eq)
 
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
@@ -1333,21 +1329,6 @@ prettyQueues = ask >>= showMessageQueues . queues >>= return . (["Queues: "]++) 
 
 
 {- Instance definitions -}
-
-instance Show Address where
-  show (Address (host, port)) = host ++ ":" ++ show port
-
-instance Read Address where
-  readsPrec _ str =
-    let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int
-    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
-
-instance Hashable Address where
-  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
-
-instance Pretty Address where
-  prettyLines addr = [show addr]
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where

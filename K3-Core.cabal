@@ -45,6 +45,7 @@ library
 
     exposed-modules:
         Language.K3.Core.Annotation,
+        Language.K3.Core.Annotation.Syntax,        
         Language.K3.Core.Common,
         Language.K3.Core.Declaration,
         Language.K3.Core.Expression,

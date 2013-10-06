@@ -7,11 +7,11 @@ import Data.Maybe
 import Control.Applicative
 import Options.Applicative
 
+import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Expression as E
 
 import Language.K3.Parser
-
-import Language.K3.Runtime.Engine (Address(..), SystemEnvironment, PeerBootstrap)
+import Language.K3.Runtime.Engine ( SystemEnvironment, PeerBootstrap )
 
 peerBReader :: String -> Either ParseError (Address, PeerBootstrap)
 peerBReader peerDesc = case splitOn ":" peerDesc of
