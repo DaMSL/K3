@@ -167,8 +167,8 @@ import Language.K3.Core.Type
 import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 
-import Language.K3.Logger
 import Language.K3.Pretty
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])

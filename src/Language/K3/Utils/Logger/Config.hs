@@ -4,7 +4,7 @@
   This module contains the logging configuration functions for K3's logging
   system.
 -}
-module Language.K3.Logger.Config
+module Language.K3.Utils.Logger.Config
 ( configureLogging
 , parseInstruction
 , configureLoggingHandlers

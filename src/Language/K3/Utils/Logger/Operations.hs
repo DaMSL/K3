@@ -4,7 +4,7 @@
   Callers will typically want to generate module-specific functions via the
   @Language.K3.Logging.Generators@ module.
 -}
-module Language.K3.Logger.Operations
+module Language.K3.Utils.Logger.Operations
 ( k3logI
 , k3logIPretty
 , k3logM

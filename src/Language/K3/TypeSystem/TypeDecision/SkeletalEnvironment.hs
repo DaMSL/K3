@@ -24,7 +24,6 @@ import qualified Data.Traversable as Trav
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
-import Language.K3.Logger
 import Language.K3.Pretty
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations
@@ -38,6 +37,7 @@ import Language.K3.TypeSystem.TypeDecision.Data
 import Language.K3.TypeSystem.TypeDecision.Monad
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 

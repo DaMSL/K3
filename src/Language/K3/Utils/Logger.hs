@@ -4,10 +4,10 @@
   set of thin convenience wrappers and code generators which make use of
   HSlogger.  Logging targets are assumed to be module names.
 -}
-module Language.K3.Logger
+module Language.K3.Utils.Logger
 ( module X
 ) where
 
-import Language.K3.Logger.Config as X
-import Language.K3.Logger.Generators as X
-import Language.K3.Logger.Operations as X
+import Language.K3.Utils.Logger.Config as X
+import Language.K3.Utils.Logger.Generators as X
+import Language.K3.Utils.Logger.Operations as X
