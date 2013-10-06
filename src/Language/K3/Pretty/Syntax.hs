@@ -98,15 +98,15 @@ decl (details -> (DRole n, cs, _)) =
                       <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
 
 
-decl (details -> (DAnnotation n tvars mems, cs, _)) =
-  uncurry annotationDecl C.<$> ((,) C.<$> mapM memberDecl mems <*> subDecls cs)
+decl (details -> (DAnnotation n tvars mems, cs, _)) = do
+  tsps <- mapM typeVarDecl tvars
+  msps <- mapM memberDecl mems
+  csps <- mapM decl cs
+  return $ vsep . (: csps) $
+    text "annotation" <+> text n <+> text "given" <+> text "type"
+      <+> cat (punctuate comma tsps)
+      <+> braces (indent 2 $ vsep msps)
   where
-    annotationDecl memDecls subDecls' = vsep . (: subDecls') $ 
-          text "annotation" <+> text n
-      <+> (if null tvars then empty
-           else text "given" <+> text "type" <+> cat (punctuate (comma <> space) $ map text tvars))
-      <+> lbrace <$> (align . indent 2 $ vsep memDecls) <$> rbrace <> line
-
     memberDecl (Lifted pol i t eOpt _) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
                                 <*> optionalPrinter qualifierAndExpr eOpt
@@ -130,12 +130,22 @@ decl (details -> (DAnnotation n tvars mems, cs, _)) =
 decl _ = throwSP "Invalid declaration"
 
 
+typeVarDecl :: TypeVarDecl -> SyntaxPrinter
+typeVarDecl (TypeVarDecl i mtExpr) =
+  case mtExpr of
+    Nothing -> return $ text i
+    Just tExpr -> do
+      t <- typ tExpr
+      return $ text i <+> text "<=" <+> t
+
+
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d
   where generatedDecl (details -> (DGlobal _ _ _, _, anns)) = any isGenerated $ filter isDSpan anns
         generatedDecl _ = False
         isGenerated (DSpan (GeneratedSpan _)) = True
         isGenerated _ = False
+
 
 bindingDecls :: [K3 Declaration] -> Printer [Doc]
 bindingDecls d = mapM feed d >>= foldM (\acc x -> maybe (return acc) (return . (acc++) . (:[])) x) []
@@ -147,9 +157,11 @@ bindingDecls d = mapM feed d >>= foldM (\acc x -> maybe (return acc) (return . (
 
     doFeed src dests = Just $ vsep $ flip map dests $ ((text "feed" <+> text src <+> text "|>") <+>) . text
 
+
 isDEndpointDecl :: Annotation Declaration -> Bool
 isDEndpointDecl (DSyntax (EndpointDeclaration _ _)) = True
 isDEndpointDecl _ = False
+
 
 endpointSpec :: [Annotation Declaration] -> Printer (Maybe EndpointSpec)
 endpointSpec = matchAnnotation isDEndpointDecl spec

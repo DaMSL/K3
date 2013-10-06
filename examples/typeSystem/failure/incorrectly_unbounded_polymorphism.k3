@@ -1,0 +1,5 @@
+declare f : forall a. a -> {y:immut a} =
+	\n -> bind n as {x:i} in
+		let j = i + 1 in
+		{y:immut n}
+

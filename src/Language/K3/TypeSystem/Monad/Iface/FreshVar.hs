@@ -11,6 +11,8 @@ module Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Writer
+import Data.Monoid
 
 import Language.K3.TypeSystem.Data
 
@@ -24,5 +26,9 @@ instance (FreshVarI m, Monad m) => FreshVarI (MaybeT m) where
   freshUVar = lift . freshUVar
 
 instance (FreshVarI m, Monad m) => FreshVarI (EitherT e m) where
+  freshQVar = lift . freshQVar
+  freshUVar = lift . freshUVar
+
+instance (Monoid d, FreshVarI m, Monad m) => FreshVarI (WriterT d m) where
   freshQVar = lift . freshQVar
   freshUVar = lift . freshUVar

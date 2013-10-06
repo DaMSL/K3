@@ -38,6 +38,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Type
 import Language.K3.Logger
 import Language.K3.Pretty
 import Language.K3.TypeSystem.Data
@@ -66,7 +67,7 @@ data AnnMemRepr = AnnMemRepr
 -- |A type alias for type parameter contexts.  Each entry maps the name of a
 --  declared type parameter to a pair of type variables chosen for it.
 type TypeParameterContext = Map Identifier TypeParameterContextEntry
-type TypeParameterContextEntry = (UVar,QVar)
+type TypeParameterContextEntry = (UVar,QVar,Maybe (K3 Type))
 -- TODO: add bounding type expressions to the above
 
 -- |The internal representation of annotations during and after inlining.  The
@@ -178,19 +179,25 @@ convertAstToRepr ast =
   where
     declToRepr :: K3 Declaration -> m (Maybe (Identifier, (TypeParameterContext, TaggedAnnRepr)))
     declToRepr decl = case tag decl of
-      DAnnotation i tis mems -> do
+      DAnnotation i vdecls mems -> do
         u <- uidOf decl
         -- TODO: for parametricity, also include the bounding expression(s)
         --       in the type params map
-        typeParams <- Map.fromList <$> mapM (\i' ->
-                        let origin = TVarAnnotationDeclaredParamOrigin u i' in
-                        (i',) <$> ((,) <$>
-                          freshUVar origin <*> freshQVar origin)) tis
+        typeParams <- Map.fromList <$> mapM contextEntryForVDecl vdecls
         repr <- convertAnnotationToRepr typeParams mems
         _debug $ boxToString $ ["Annotation " ++ i ++ " representation: "] %$
                                   indent 2 (prettyLines repr)
         return $ Just (i, (typeParams, (repr, u, decl)))
       _ -> return Nothing
+      where
+        contextEntryForVDecl :: TypeVarDecl
+                             -> m (Identifier, TypeParameterContextEntry)
+        contextEntryForVDecl (TypeVarDecl i' mtExpr) = do
+          u <- uidOf decl
+          let origin = TVarAnnotationDeclaredParamOrigin u i'
+          a <- freshUVar origin
+          qa <- freshQVar origin
+          return (i',(a,qa,mtExpr))
 
 -- |Given a map of internal annotation representations, performs closure over
 --  their member annotation declarations until they have all been processed.

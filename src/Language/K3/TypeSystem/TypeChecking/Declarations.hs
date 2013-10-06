@@ -98,13 +98,13 @@ deriveDeclaration aEnv env rEnv decl =
             the assumption that the type decision process will have done this
             correctly.
       -}
+      let cs2'' = csUnions [cs'' | (_, _, _, cs'') <- Map.elems qEnv]
       let addedConstraints qa1 qa2 =
-            return $ csSing (qa1 <: qa2) `csUnion`
-              csUnions [cs'' | (_, _, _, cs'') <- Map.elems qEnv]
-      basicDeclaration i expr deriveQualifiedExpression addedConstraints
+            return $ csSing (qa1 <: qa2)
+      basicDeclaration i expr deriveQualifiedExpression cs2'' addedConstraints
 
     DTrigger i _ expr ->
-      basicDeclaration i expr deriveUnqualifiedExpression
+      basicDeclaration i expr deriveUnqualifiedExpression csEmpty
         $ \a1 qa2 -> do
             u <- uidOf decl
             a3 <- freshTypecheckingUVar u
@@ -192,10 +192,13 @@ deriveDeclaration aEnv env rEnv decl =
                           , SOpaque oa_f ~= a_f
                           , SOpaque oa_s ~= a_s
                           , csFromList
-                             [ OpaqueBoundConstraint oa_c (SOpaque oa_f) $
-                                  SRecord Map.empty Set.empty
-                             , OpaqueBoundConstraint oa_f SBottom t_h
-                             , OpaqueBoundConstraint oa_s SBottom t_s
+                             [ OpaqueBoundConstraint oa_c
+                                  (CLeft $ SOpaque oa_f) $
+                                  CLeft $ SRecord Map.empty Set.empty
+                             , OpaqueBoundConstraint oa_f
+                                  (CLeft SBottom) (CLeft t_h)
+                             , OpaqueBoundConstraint oa_s
+                                  (CLeft SBottom) (CLeft t_s)
                              ] ]
 
       cs'2 <- csUnions <$> mapM (\(a_i',t_L,t_U,cs_i') ->
@@ -279,15 +282,15 @@ deriveDeclaration aEnv env rEnv decl =
   where
     -- |A common implementation of both initialized variables and triggers.
     --  These rules only vary by (1) the derivation used on the type expression
-    --  and (2) the constraint set which is added to the constraint closure.
-    basicDeclaration i expr deriv csf = do
+    --  and (2) the constraint sets which are added to the constraint closure.
+    basicDeclaration i expr deriv csPre csPostF = do
       assert0Children decl
       u <- uidOf decl
       (v1,cs1) <- deriv aEnv env expr
-      qt2 <- requireQuantType u i env
-      (v2,cs2) <- polyinstantiate u qt2
-      cs' <- csf v1 v2
-      let cs'' = calculateClosure $ csUnions [cs1,cs2,cs']
+      QuantType sas qa' cs2' <- requireQuantType u i env
+      (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
+      csPost <- csPostF v1 v2
+      let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)
              return

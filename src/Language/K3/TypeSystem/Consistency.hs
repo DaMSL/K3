@@ -33,14 +33,22 @@ data ConsistencyError
   | UnboundedOpaqueVariable OpaqueVar
       -- ^Indicates that no bounds have been defined for an opaque variable
       --  which appears in the constraint set.
-  | MultipleOpaqueBounds OpaqueVar [(ShallowType,ShallowType)]
+  | MultipleOpaqueBounds OpaqueVar [(TypeOrVar,TypeOrVar)]
       -- ^Indicates that an opaque variable exists in the constraint set and is
       --  bounded by multiple opaque bounding constraints.
+  | MultipleLowerBoundsForOpaque OpaqueVar [ShallowType]
+      -- ^Indicates that an opaque variable had a bounding constraint which used
+      --  a variable for the lower bound and that variable had multiple concrete
+      --  lower bounds.
+  | MultipleUpperBoundsForOpaque OpaqueVar [ShallowType]
+      -- ^Indicates that an opaque variable had a bounding constraint which used
+      --  a variable for the upper bound and that variable had multiple concrete
+      --  upper bounds.
   | UnsatisfiedRecordBound ShallowType ShallowType
       -- ^Indicates that a record type lower bound met a record type upper
       --  bound and was not a correct subtype.
   | UnconcatenatableRecordType
-        ShallowType ShallowType OpaqueVar ShallowType RecordConcatenationError
+        ShallowType ShallowType OpaqueVar TypeOrVar RecordConcatenationError
       -- ^Indicates that a given type cannot be concatenated as a lower-bounding
       --  record.  The arguments are, in order: the type which cannot be
       --  concatenated; its upper bound; the opaque component whose bound was
@@ -131,35 +139,20 @@ checkConsistent cs =
           genErr $ UnsatisfiedRecordBound t1 t2
       (SRecord m oas, _) -> mconcat <$> sequence (do
         oa' <- Set.toList oas
-        (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
+        (_, ta_U) <- csQuery cs $ QueryOpaqueBounds oa'
+        t_U <- getUpperBoundsOf cs ta_U
         case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
           Left err -> return $ Left $ Seq.singleton $ UnconcatenatableRecordType
-                        t1 t2 oa' t_U err
+                        t1 t2 oa' ta_U err
           Right _ -> return $ Right ())
-      {-
-closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
-closeLowerBoundingExtendedRecord cs = csUnions $ do
-  (SRecord m oas, t) <- csQuery cs QueryAllTypesLowerBoundingTypes
-  case t of
-    SOpaque oa -> guard $ not $ oa `Set.member` oas
-    _ -> return ()
-  oa' <- Set.toList oas
-  (_, t_U) <- csQuery cs $ QueryOpaqueBounds oa'
-  case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
-    Left _ ->
-      -- In this situation, there is an inherent conflict in the record type.
-      -- We'll detect this in inconsistency (to keep the closure function
-      -- simple); for now, just bail on the rule.
-      mzero
-    Right t' -> return $ csSing $ t' <: t
-      -}
       _ -> return ()
     checkConcatenationInconsistent :: ShallowType -> ConsistencyCheck
     checkConcatenationInconsistent t = case t of
       SRecord m oas ->
         mconcat <$> gatherParallelErrors (do
           oa <- Set.toList oas
-          (_,t_U) <- csQuery cs $ QueryOpaqueBounds oa
+          (_,ta_U) <- csQuery cs $ QueryOpaqueBounds oa
+          t_U <- getUpperBoundsOf cs ta_U
           case recordConcat [SRecord m oas, t_U] of
             Left err -> return $ genErr $ ConflictingRecordConcatenation err
             Right _ -> return $ Right ()
@@ -172,7 +165,13 @@ closeLowerBoundingExtendedRecord cs = csUnions $ do
         case bounds of
           [] -> genErr $ UnboundedOpaqueVariable oa
           _:_:_ -> genErr $ MultipleOpaqueBounds oa bounds
-          _:_ -> return ()
+          [(ta_L,ta_U)] ->
+            let t_Ls = getLowerBoundsOf cs ta_L in
+            let t_Us = getUpperBoundsOf cs ta_U in
+            case (length t_Ls, length t_Us) of
+              (1,1) -> return ()
+              (1,_) -> genErr $ MultipleUpperBoundsForOpaque oa t_Us
+              (_,_) -> genErr $ MultipleLowerBoundsForOpaque oa t_Ls
       _ -> return ()
     genErr :: ConsistencyError -> ConsistencyCheck
     genErr = Left . Seq.singleton

@@ -33,5 +33,5 @@ role i = Node (DRole i :@: [])
 
 -- | Create a user-defined annotation.  Arguments are annotation name,
 --   declared type parameters, and member declarations.
-annotation :: Identifier -> [Identifier] -> [AnnMemDecl] -> K3 Declaration
-annotation i tis members = Node (DAnnotation i tis members :@: []) []
+annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
+annotation i vdecls members = Node (DAnnotation i vdecls members :@: []) []

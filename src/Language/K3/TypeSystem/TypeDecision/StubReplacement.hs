@@ -62,7 +62,7 @@ calculateStubs aEnv stubInfoMap = do
       -- type parameters from the context in the stub info.
       let cxt = typeParamCxt $ stubMemRepr x
       let aEnv' = Map.mapKeys TEnvIdentifier $
-                    Map.map (\(a,qa) ->
+                    Map.map (\(a,qa,_) ->
                       QuantAlias $ QuantType Set.empty qa $ qa ~= a) cxt
       -- Now calculate the correct type for the stub.
       (qa,cs) <- deriveQualifiedTypeExpression

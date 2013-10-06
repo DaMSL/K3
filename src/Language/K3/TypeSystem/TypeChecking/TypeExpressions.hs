@@ -61,39 +61,58 @@ derivePolymorphicTypeExpression ::
    -> m (QVar, c, TEnv (TQuantEnvValue c))
 derivePolymorphicTypeExpression aEnv tExpr =
   case tag tExpr of
-    TForall ids -> do
+    TForall vdecls -> do
       tExpr' <- assert1Child tExpr
-      iVars <- mconcat <$> mapM (\i -> Map.singleton i <$>
-                        (freshTypecheckingUVar =<< uidOf tExpr)) ids
+      -- Determine type form of variable declarations
+      tvdecls <- mapM typeOfVarDecl vdecls
+      -- Allocate variables for each declaration's environment entry
+      entryVars <- mconcat <$> mapM (\i -> Map.singleton i <$>
+                        (freshTypecheckingUVar =<< uidOf tExpr))
+                      (map fst tvdecls)
+      -- Extend environment
       aEnv' <- envMerge aEnv <$> mconcat <$>
-                mapM toQuantBinding (Map.toList iVars)
+                  mapM toQuantBinding (Map.toList entryVars)
+      -- Now recurse
       (qa, cs) <- deriveQualifiedTypeExpression aEnv' tExpr'
-      (cs', qEnv) <- foldM (extendResult iVars) (cs, Map.empty) ids
+      -- Next, calculate the extension for Q and C
+      (cs', qEnv) <- foldM (extendResult entryVars) (cs, Map.empty) tvdecls
+      -- And we're done!
       return (qa, cs', qEnv)
     _ -> noPoly
   where
     noPoly = do
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
       return (qa, cs, Map.empty)
+    typeOfVarDecl :: TypeVarDecl -> m (Identifier,(UVar,c))
+    typeOfVarDecl (TypeVarDecl i mtExpr') =
+      case mtExpr' of
+        Nothing -> do
+          a <- freshTypecheckingUVar =<< uidOf tExpr
+          return (i, (a,a ~= STop))
+        Just tExpr' ->
+          (i,) <$> deriveTypeExpression aEnv tExpr'
     toQuantBinding :: (Identifier, UVar) -> m (TEnv (TypeAliasEntry c))
     toQuantBinding (i,a) = do
       qa <- freshTypecheckingQVar =<< uidOf tExpr
       return $ Map.singleton (TEnvIdentifier i) $ QuantAlias $
         QuantType Set.empty qa $ qa ~= a
+    -- |Builds up the C and Q for this rule.
     extendResult :: Map Identifier UVar
                  -> (c, TEnv (TQuantEnvValue c))
-                 -> Identifier
+                 -> (Identifier,(UVar,c))
                  -> m (c, TEnv (TQuantEnvValue c))
-    extendResult iVars (cs,qEnv) i = do
-      let t_U = STop
-      let t_L = SBottom 
+    extendResult entryVars (cs,qEnv) (i,(a',cs')) = do
+      let ta_U :: TypeOrVar = CRight a'
+      let ta_L :: TypeOrVar = CLeft SBottom
       u <- uidOf tExpr
       oa <- freshOVar (OpaqueSourceOrigin u)
-      let a = fromJust $ Map.lookup i iVars
-      let cs' = CSL.promote $ (SOpaque oa ~= a) `csUnion`
-                csSing (OpaqueBoundConstraint oa t_L t_U)
-      return ( cs `CSL.union` CSL.promote (csFromList [t_L <: a, a <: t_U])
-             , Map.insert (TEnvIdentifier i) (a, t_L, t_U, cs') qEnv)
+      let a = fromJust $ Map.lookup i entryVars
+      let csOpaque = cs' `CSL.union` CSL.promote
+                        ((SOpaque oa ~= a) `csUnion`
+                          csSing (OpaqueBoundConstraint oa ta_L ta_U))
+      return ( CSL.unions [cs, cs',
+                              CSL.promote (csFromList [ta_L <: a, a <: ta_U])]
+             , Map.insert (TEnvIdentifier i) (a, ta_L, ta_U, csOpaque) qEnv)
 
 -- |A function to derive the type of a qualified expression.
 deriveQualifiedTypeExpression ::

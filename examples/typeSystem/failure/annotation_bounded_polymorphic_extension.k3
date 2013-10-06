@@ -1,0 +1,14 @@
+annotation A given type a {
+    requires lifted f : a -> int
+}
+
+annotation B given type a <= {x:int} {
+    provides lifted f : a -> int = (
+        \r ->
+            bind r as {x:v} in
+            v
+        )
+}
+
+declare c : collection {} @ {A,B} = empty {} @ {A,B}
+

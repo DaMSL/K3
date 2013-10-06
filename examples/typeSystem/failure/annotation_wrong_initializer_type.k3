@@ -1,3 +1,3 @@
 annotation X {
-    provides x : int = true;
+    provides x : int = true
 }

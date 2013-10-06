@@ -92,6 +92,8 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (ShallowType, OpaqueVar)
   QueryTypeOrAnyVarByAnyVarLowerBound ::
     AnyTVar -> ConstraintSetQuery UVarBound
+  QueryTypeByUVarLowerBound ::
+    UVar -> ConstraintSetQuery ShallowType
   QueryTypeByUVarUpperBound ::
     UVar -> ConstraintSetQuery ShallowType
   QueryTypeByQVarUpperBound ::
@@ -111,7 +113,7 @@ data ConstraintSetQuery r where
   QueryPolyLineageByOrigin ::
     QVar -> ConstraintSetQuery QVar
   QueryOpaqueBounds ::
-    OpaqueVar -> ConstraintSetQuery (ShallowType, ShallowType) -- lower, upper
+    OpaqueVar -> ConstraintSetQuery (TypeOrVar, TypeOrVar) -- lower, upper
 
 -- TODO: this routine is a prime candidate for optimization once the
 --       ConstraintSet type is fancier.
@@ -171,6 +173,10 @@ csQuery (ConstraintSet csSet) query =
                 | qa == qa' ->
               return $ CRight qa''
             _ -> mzero
+    QueryTypeByUVarLowerBound a -> do
+      IntermediateConstraint (CRight a') (CLeft t) <- cs
+      guard $ a == a'
+      return t
     QueryTypeByUVarUpperBound a -> do
       IntermediateConstraint (CLeft t) (CRight a') <- cs
       guard $ a == a'
@@ -181,7 +187,7 @@ csQuery (ConstraintSet csSet) query =
       return t
     QueryQualOrVarByQVarLowerBound qa -> do
       QualifiedIntermediateConstraint qv1 qv2 <- cs
-      guard $ (CRight qa) == qv1
+      guard $ CRight qa == qv1
       return qv2
     QueryTypeOrVarByQVarLowerBound qa -> do
       QualifiedUpperConstraint qa' ta <- cs

@@ -32,6 +32,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
+import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.TypeDecision.AnnotationInlining
 import Language.K3.TypeSystem.TypeDecision.Data
 import Language.K3.TypeSystem.TypeDecision.Monad
@@ -206,13 +207,15 @@ digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
                                   -> TypeDecideSkelM
                                         ( StubbedConstraintSet
                                         , TQuantEnvValue StubbedConstraintSet )
-    digestSingleTypeParameterInfo (a,qa) = do
-      -- TODO: type derivation on the bound expression(s) for each declared
-      --       variable for bounded parametricity
-      let (t_L,scs_L) = (SBottom,CSL.empty)
-      let (t_U,scs_U) = (STop,CSL.empty)
-      return ( CSL.promote $ (qa ~= a) `csUnion` csFromList [t_L <: a, a <: t_U]
-             , (a, t_L, t_U, scs_L `CSL.union` scs_U) )
+    digestSingleTypeParameterInfo (a,qa,mtExpr') = do
+      let (ta_L,scs_L) = (CLeft SBottom :: TypeOrVar,CSL.empty)
+      (ta_U,scs_U) <- case mtExpr' of
+            Nothing -> return (CLeft STop :: TypeOrVar,CSL.empty)
+            Just tExpr' ->
+              first CRight <$> deriveUnqualifiedTypeExpression aEnv tExpr'
+      return ( CSL.promote $ (qa ~= a) `csUnion`
+               csFromList [ta_L <: a, a <: ta_U]
+             , (a, ta_L, ta_U, scs_L `CSL.union` scs_U) )
 
 -- |Performs error gathering for @TypeDecideSkelM@.
 gatherParallelSkelErrors :: forall a. [TypeDecideSkelM a] -> TypeDecideSkelM [a]

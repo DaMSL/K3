@@ -93,8 +93,8 @@ trigger at = Node (TTrigger :@: []) [at]
 builtIn :: TypeBuiltIn -> K3 Type
 builtIn bi = Node (TBuiltIn bi :@: []) []
 
-forAll :: [Identifier] -> K3 Type -> K3 Type
-forAll ids t = Node (TForall ids :@: []) [t]
+forAll :: [TypeVarDecl] -> K3 Type -> K3 Type
+forAll vdecls t = Node (TForall vdecls :@: []) [t]
 
 declaredVar :: Identifier -> K3 Type
 declaredVar i = Node (TDeclaredVar i :@: []) []

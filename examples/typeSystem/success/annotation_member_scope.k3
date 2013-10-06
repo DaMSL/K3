@@ -1,6 +1,6 @@
 annotation X {
-	provides lifted n : int = 4 ;
-	provides lifted f : int -> int = (\x -> x + n) ;
+	provides lifted n : int = 4
+	provides lifted f : int -> int = (\x -> x + n)
 }
 
 declare c : collection {}@{X} = empty {}@{X}
