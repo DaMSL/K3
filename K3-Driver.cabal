@@ -16,6 +16,7 @@ executable k3
     build-depends:
         base,
         filepath,
+        hslogger,
         mtl,
         optparse-applicative,
         readline,

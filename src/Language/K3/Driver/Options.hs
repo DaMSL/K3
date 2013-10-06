@@ -5,16 +5,20 @@ import Control.Applicative
 import Options.Applicative
 
 import System.FilePath
+import System.Log
 
+import Language.K3.Logger.Config
+import Language.K3.Pretty
 import Language.K3.Runtime.Engine (SystemEnvironment)
 import Language.K3.Runtime.Options
 
+import Language.K3.Driver.Common
+
 -- | Program Options.
 data Options = Options {
-        mode :: Mode,
-        elvl :: Bool,
-        verbosity :: Verbosity,
-        input :: FilePath
+        mode      :: Mode,
+        inform    :: InfoSpec,
+        input     :: FilePath
     }
   deriving (Eq, Read, Show)
 
@@ -32,7 +36,8 @@ data CompileOptions = CompileOptions { language   :: Maybe String
 
 -- | Interpretation options.
 data InterpretOptions
-    = Batch { sysEnv :: SystemEnvironment }
+    = Batch { sysEnv :: SystemEnvironment
+            , asExpr :: Bool }
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -42,6 +47,22 @@ data PrintOptions
     | PrintSyntax
   deriving (Eq, Read, Show)
 
+-- | Logging and information output options.
+data InfoSpec = InfoSpec { logging   :: LoggerOptions
+                         , verbosity :: Verbosity }
+                  deriving (Eq, Read, Show)
+
+-- | Logging directives, passed through to K3.Logger.Config .
+type LoggerInstruction = (String,Priority)
+type LoggerOptions     = [LoggerInstruction]
+
+-- | Verbosity levels.
+data Verbosity
+    = NullV
+    | SoftV
+    | LoudV
+  deriving (Enum, Eq, Read, Show)
+
 -- | Deprecated?
 data Peer = Peer { peerHost :: String
                  , peerPort :: Int
@@ -49,12 +70,16 @@ data Peer = Peer { peerHost :: String
               deriving (Eq, Read, Show)
 
 
-data Verbosity
-    = NullV
-    | SoftV
-    | LoudV
-  deriving (Enum, Eq, Read, Show)
-
+-- | Mode Options Parsing.
+modeOptions :: Parser Mode
+modeOptions = subparser (
+         command "compile"   (info compileOptions   $ progDesc compileDesc)
+      <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
+      <> command "print"     (info printOptions     $ progDesc printDesc)
+    )
+  where compileDesc   = "Compile a K3 binary"
+        interpretDesc = "Interpret a K3 program"
+        printDesc     = "Print a K3 program"
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -79,7 +104,7 @@ outputFileOpt = validatePath <$> option (
         validatePath (Just p) = if isValid p then Just p else Nothing
 
 
--- | Interpretation options
+-- | Interpretation options.
 interpretOptions :: Parser Mode
 interpretOptions = Interpret <$> (batchOptions <|> interactiveOptions)
 
@@ -89,7 +114,15 @@ batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> sysEnvOptions
+        ) *> pure Batch <*> sysEnvOptions <*> elvlOptions
+
+-- | Expression-Level flag.
+elvlOptions :: Parser Bool
+elvlOptions = switch (
+        short 'e'
+     <> long "expression"
+     <> help "Run in top-level expression mode."
+    )
 
 -- | Options for Interactive Mode.
 interactiveOptions :: Parser InterpretOptions
@@ -112,26 +145,20 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
 
--- | Mode Options Parsing.
-modeOptions :: Parser Mode
-modeOptions = subparser (
-         command "compile"   (info compileOptions   $ progDesc compileDesc)
-      <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
-      <> command "print"     (info printOptions     $ progDesc printDesc)
-    )
-  where compileDesc   = "Compile a K3 binary"
-        interpretDesc = "Interpret a K3 program"
-        printDesc     = "Print a K3 program"
+-- | Information printing options.
+informOptions :: Parser InfoSpec
+informOptions = InfoSpec <$> loggingOptions <*> verbosityOptions
 
--- | Expression-Level flag.
-elvlOptions :: Parser Bool
-elvlOptions = switch (
-        short 'e'
-     <> long "expression"
-     <> help "Run in top-level expression mode."
-    )
+-- | Logging options.
+loggingOptions :: Parser LoggerOptions
+loggingOptions = many $ option (
+                       long "log"
+                    <> help "Logging directive"
+                    <> metavar "LOG_INSTRUCTION"
+                    <> reader (either (Left . ErrorMsg) Right . parseInstruction)
+                 )
 
--- | Verbosity Options.
+-- | Verbosity options.
 verbosityOptions :: Parser Verbosity
 verbosityOptions = toEnum . roundVerbosity <$> option (
         short 'v'
@@ -156,4 +183,19 @@ inputOptions = argument str (
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = Options <$> modeOptions <*> elvlOptions <*> verbosityOptions <*> inputOptions
+programOptions = Options <$> modeOptions <*> informOptions <*> inputOptions
+
+
+{- Instance definitions -}
+
+instance Pretty Mode where
+  prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts] 
+  prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
+  prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
+
+instance Pretty InterpretOptions where
+  prettyLines (Batch env expr) =
+    ["Batch"] ++ (indent 2 $ prettySysEnv env ++ ["Expression: " ++ show expr])
+  
+  prettyLines v = [show v]
+
