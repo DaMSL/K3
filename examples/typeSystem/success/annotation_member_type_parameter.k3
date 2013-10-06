@@ -1,5 +1,5 @@
 annotation X given type a {
-	provides lifted f : a -> a = (\x -> x) ;
+	provides lifted f : a -> a = \x -> x
 }
 
 declare c : collection {}@{X} = empty{}@{X}
