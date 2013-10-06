@@ -5,4 +5,4 @@ trigger t : { a : immut int } = \r ->
 
 source s1 : { a : immut int } = value {a : immut 5}
 
-~~ s1 |> t
+feed s1 |> t

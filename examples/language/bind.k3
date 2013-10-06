@@ -17,4 +17,4 @@ trigger t : int = \x -> (
 )
 
 source s1 : int = value 100
-~~ s1 |> t
+feed s1 |> t

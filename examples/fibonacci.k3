@@ -10,6 +10,6 @@ trigger fibonacci : (immut int, immut int, immut int) = \x ->
 
 trigger result : int = \x -> final = x
 
-source s1 : int = value 5
+source s1 : int = value 6
 
-~~ s1 |> start
+feed s1 |> start

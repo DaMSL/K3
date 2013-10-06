@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -64,7 +65,11 @@ import Language.K3.Core.Type
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
+import Language.K3.Logger
 import Language.K3.Pretty
+
+$(loggingFunctions)
+$(customLoggingFunctions ["Dispatch"])
 
 -- | K3 Values
 data Value
@@ -291,23 +296,13 @@ annotationDataId = "data"
 annotationComboId :: [Identifier] -> Identifier
 annotationComboId annIds = intercalate ";" annIds
 
-annotationNamesT :: [Annotation Type] -> [Identifier]
-annotationNamesT anns = map extractId $ filter isTAnnotation anns
-  where extractId (TAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
-annotationNamesE :: [Annotation Expression] -> [Identifier]
-annotationNamesE anns = map extractId $ filter isEAnnotation anns
-  where extractId (EAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
-
 annotationComboIdT :: [Annotation Type] -> Maybe Identifier
-annotationComboIdT (annotationNamesT -> [])  = Nothing
-annotationComboIdT (annotationNamesT -> ids) = Just $ annotationComboId ids
+annotationComboIdT (namedTAnnotations -> [])  = Nothing
+annotationComboIdT (namedTAnnotations -> ids) = Just $ annotationComboId ids
 
 annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
-annotationComboIdE (annotationNamesE -> [])  = Nothing
-annotationComboIdE (annotationNamesE -> ids) = Just $ annotationComboId ids
+annotationComboIdE (namedEAnnotations -> [])  = Nothing
+annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 
 
 {- Interpretation -}
@@ -679,10 +674,10 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
-getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, annotationNamesT anns)
+getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, namedTAnnotations anns)
 
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
-getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, annotationNamesE anns) 
+getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
 
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
@@ -1133,15 +1128,9 @@ runNetwork systemEnv prog =
 
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
-    (VTrigger (_, Just f)) -> do
-        liftIO $ putStrLn ("Running trigger " ++ n)
-        liftIO $ SIO.hFlush SIO.stdout
-        r <- runInterpretation' (getResultState r) (f a)
-        liftIO $ putStrLn ("... done")
-        return r
-
-    (VTrigger _) -> return . iError r $ "Uninitialized trigger " ++ n
-    _ -> return . tError r $ "Invalid trigger or sink value for " ++ n
+    (VTrigger (_, Just f)) -> runInterpretation' (getResultState r) (f a)
+    (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
+    _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
 
   where iError r = mkError r . RunTimeInterpretationError
         tError r = mkError r . RunTimeTypeError
@@ -1161,13 +1150,13 @@ uniProcessor = MessageProcessor {
     statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
     finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
 
-    reportUP (Left err)  = putIResult err
-    reportUP (Right res) = putIResult res
+    reportUP (Left err)  = showIResult err >>= liftIO . putStr
+    reportUP (Right res) = showIResult res >>= liftIO . putStr
 
     processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
         lookup n $ getEnv $ getResultState r
 
-    run r n args trig = debugDispatch defaultAddress n args r >> runTrigger r n args trig
+    run r n args trig = logTrigger defaultAddress n args r >> runTrigger r n args trig
 
     unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
@@ -1186,13 +1175,11 @@ virtualizedProcessor = MessageProcessor {
     initNode node systemEnv program = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program
-        --
-        debugResult node iProgram
-        --
+        logResult "INIT " node iProgram
         return (node, iProgram)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-        dispatch addr (\s -> debugDispatch addr name args s >> runTrigger' s name args)
+        dispatch addr (\s -> logTrigger addr name args s >> runTrigger' s name args)
 
     runTrigger' s n a = case lookup n $ getEnv $ getResultState s of
         Nothing -> return (Just (), unknownTrigger s n)
@@ -1214,8 +1201,12 @@ virtualizedProcessor = MessageProcessor {
         res' <- either (const $ return res) (const $ finalProgram $ getResultState res) $ getResultVal res
         return (node, res')
 
-    reportVP (Left err)  = mapM_ (\(addr,r) -> liftIO (putStrLn ("[" ++ show addr ++ "]")) >> putIResult r) err
-    reportVP (Right res) = mapM_ (\(addr,r) -> liftIO (putStrLn ("[" ++ show addr ++ "]")) >> putIResult r) res
+    reportVP (Left err)  = mapM_ reportNodeIResult err
+    reportVP (Right res) = mapM_ reportNodeIResult res
+
+    reportNodeIResult (addr, r) = do
+      void $ liftIO (putStrLn ("[" ++ show addr ++ "]"))
+      void $ prettyIResult r >>= liftIO . putStr . unlines . indent 2 
 
 
 {- Wire descriptions -}
@@ -1232,50 +1223,78 @@ wireDesc fmt  = error $ "Invalid format " ++ fmt
 
 
 {- Pretty printing -}
+prettyValue :: Value -> IO String
+prettyValue = packValueSyntax False
 
-putResultValue :: Either InterpretationError Value -> IO ()
-putResultValue (Left err)  = putStrLn $ "Error:\n" ++ show err
-putResultValue (Right val) = packValueSyntax False val >>= putStrLn . ("Value:\n"++)
+prettyResultValue :: Either InterpretationError Value -> IO [String]
+prettyResultValue (Left err)  = return ["Error: " ++ show err]
+prettyResultValue (Right val) = prettyValue val >>= return . (:[]) . ("Value: " ++)
 
-putEnv :: IEnvironment Value -> IO ()
-putEnv env = do
-  void $ putStrLn "Environment:"
-  void $ mapM_ (\(n,v) -> packValueSyntax False v >>= putStrLn . ((n ++ " => ") ++)) env
+prettyEnv :: IEnvironment Value -> IO [String]
+prettyEnv env = do
+    nWidth   <- return . maximum $ map (length . fst) env
+    bindings <- mapM (prettyEnvEntry nWidth) $ sortBy (on compare fst) env
+    return $ ["Environment:"] ++ concat bindings 
+  where 
+    prettyEnvEntry w (n,v) =
+      prettyValue v >>= return . shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70
 
-putIResult :: IResult Value -> EngineM Value ()
-putIResult ((res, st), _) = liftIO (putResultValue res >> putEnv (getEnv st)) >> putEngine
+    prettyName w n    = (suffixPadTo w n) ++ " => "
+    suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
+    prefixPadTo len n = replicate (max (len - length n) 0) ' ' ++ n
+
+prettyIResult :: IResult Value -> EngineM Value [String]
+prettyIResult ((res, st), _) =
+  liftIO ((++) <$> prettyResultValue res <*> prettyEnv (getEnv st))
+
+showIResult :: IResult Value -> EngineM Value String
+showIResult r = prettyIResult r >>= return . boxToString
+
 
 {- Debugging helpers -}
+
 debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
-debugDecl n t = trace (concat ["Adding ", show n, " : ", pretty t])
+debugDecl n t = _debugI . boxToString $
+  [concat ["Declaring ", show n, " : "]] ++ (indent 2 $ prettyLines t)
 
-debugResult :: Address -> IResult Value -> EngineM Value ()
-debugResult addr r = do
-    void $ liftIO $ putStrLn $ "=========== " ++ show addr
-    void $ putIResult r
-    void $ liftIO $ putStrLn "============"
+showResult :: String -> IResult Value -> EngineM Value [String]
+showResult str r = 
+  prettyIResult r >>= return . ([str ++ " { "] ++) . (++ ["}"]) . indent 2
 
-debugDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
-debugDispatch addr name args r = do
-    void $ liftIO $ putStrLn ("Processing " ++ show addr ++ " " ++ name)
-    void $ liftIO $ putStrLn "Args:"
-    void $ liftIO $ print args
-    void $ debugResult addr r
-    void $ liftIO $ putStrLn "=========="
+showDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
+showDispatch addr name args r =
+    wrap <$> liftIO (prettyValue args)
+         <*> (showResult "BEFORE" r >>= return . indent 2)
+  where
+    wrap arg res = ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
+                     ++ ["  Args: " ++ arg] 
+                     ++ res ++ ["}"]
+
+logResult :: String -> Address -> IResult Value -> EngineM Value ()
+logResult tag addr r = do
+    msg <- showResult (tag ++ show addr) r 
+    void $ _notice_Dispatch $ boxToString msg
+
+logTrigger :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
+logTrigger addr n args r = do
+    msg <- showDispatch addr n args r
+    void $ _notice_Dispatch $ boxToString msg
 
 
 {- Instances -}
 instance Pretty IState where
   prettyLines (_, vEnv, aEnv) =
-       ["Environment:"] ++ map show vEnv
-    ++ ["Annotations:"] ++ (lines $ show aEnv)
+         ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) vEnv)
+      ++ ["Annotations:"] ++ (indent 2 $ lines $ show aEnv)
+    where
+      prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
+      maxNameLength        = maximum $ map (length . fst) vEnv
 
--- TODO: error prettification
 instance (Pretty a) => Pretty (IResult a) where
     prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
 
 instance (Pretty a) => Pretty [(Address, IResult a)] where
-    prettyLines l = concatMap (\(x,y) -> prettyLines x ++ prettyLines y) l
+    prettyLines l = concatMap (\(x,y) -> [""] ++ prettyLines x ++ (indent 2 $ prettyLines y)) l
 
 {- Value equality -}
 instance Eq Value where
@@ -1315,11 +1334,11 @@ instance Show Value where
   showsPrec d (VRecord v)      = showsPrecTag "VRecord" d v
   showsPrec d (VAddress v)     = showsPrecTag "VAddress" d v
   
-  showsPrec d (VCollection _)  = showsPrecTagF "VCollection "  d $ showString "<opaque>"
-  showsPrec d (VIndirection _) = showsPrecTagF "VIndirection " d $ showString "<opaque>"
-  showsPrec d (VFunction _)    = showsPrecTagF "VFunction "    d $ showString "<function>"
-  showsPrec d (VTrigger (n, Nothing)) = showsPrecTagF "VTrigger " d $ showString "<uninitialized>"
-  showsPrec d (VTrigger (n, Just _))  = showsPrecTagF "VTrigger " d $ showString "<function>"
+  showsPrec d (VCollection _)  = showsPrecTagF "VCollection"  d $ showString "<opaque>"
+  showsPrec d (VIndirection _) = showsPrecTagF "VIndirection" d $ showString "<opaque>"
+  showsPrec d (VFunction _)    = showsPrecTagF "VFunction"    d $ showString "<function>"
+  showsPrec d (VTrigger (n, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
+  showsPrec d (VTrigger (n, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
 
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
@@ -1450,8 +1469,9 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
         <*> rt (showChar ',' . showString extId))
 
     packCollectionNamespace d (cns, ans) =
-      (\a b c d -> a . b . c . d)
+      (\a b c d e -> a . b . c . d . e)
         <$> rt (showString "CNS=") <*> packNamedValues d cns
+        <*> rt (showChar ',')
         <*> rt (showString "ANS=") <*> braces (packDoublyNamedValues d) ans
     
     packCollectionDataspace d v =
@@ -1540,10 +1560,11 @@ unpackValueSyntax = readSingleParse unpackValue
     readCollectionNamespace :: ReadPrec (IO (CollectionNamespace Value))
     readCollectionNamespace = parens $
       (prec appPrec $ do
-        void $ readExpectedName "CNS"
-        cns  <- readNamedValues unpackValue
-        void $ readExpectedName "ANS"
-        ans <- readDoublyNamedValues
+        void      $ readExpectedName "CNS"
+        cns      <- readNamedValues unpackValue
+        Char ',' <- lexP
+        void      $ readExpectedName "ANS"
+        ans      <- readDoublyNamedValues
         return $ (do
           cns' <- cns
           ans' <- ans

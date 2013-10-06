@@ -118,6 +118,12 @@ isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
+namedEAnnotations :: [Annotation Expression] -> [Identifier]
+namedEAnnotations anns = map extractId $ filter isEAnnotation anns
+  where extractId (EAnnotation n) = n
+        extractId _ = error "Invalid named annotation"
+
+
 {- Expression utilities -}
 
 -- | Retrieves all free variables in an expression. 

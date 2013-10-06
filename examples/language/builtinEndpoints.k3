@@ -7,5 +7,5 @@ sink   s2 : string = stderr k3
 source s3 : string = stdin k3
 source s4 : string = value "hello k3"
 
-~~ s3 |> test
-~~ s4 |> test
+feed s3 |> test
+feed s4 |> test

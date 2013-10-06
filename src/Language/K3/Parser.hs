@@ -149,25 +149,33 @@ instance UIDAttachable (K3 Declaration) where
   (#) = ensureUID isDUID
 
 {- Language definition constants -}
+k3Operators :: [[Char]]
 k3Operators = [
     "+", "-", "*", "/",
     "==", "!=", "<>", "<", ">", ">=", "<=", ";"
   ]
 
+k3Keywords :: [[Char]]
 k3Keywords = [
     {- Types -}
     "int", "bool", "real", "string",
     "immut", "mut", "witness", "option", "ind" , "collection",
-    "self", "structure", "horizon", "content", "forall",
+
     {- Declarations -}
-    "declare", "trigger", "source", "sink", "fun",
+    "declare", "fun", "trigger", "source", "sink", "feed",
+
     {- Expressions -}
     "let", "in", "if", "then", "else", "case", "of", "bind", "as",
     "and", "or", "not",
+
     {- Values -}
     "true", "false", "ind", "Some", "None", "empty",
+
     {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires"
+    "annotation", "lifted", "provides", "requires",
+
+    {- Annotation keywords -}
+    "self", "structure", "horizon", "content", "forall"
   ]
 
 {- Style definitions for parsers library -}
@@ -274,7 +282,7 @@ declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
-  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateNSExpr)
+  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateExpr)
         mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
@@ -300,7 +308,7 @@ dSink = dEndpoint "sink" "sink" False
 
 dFeed :: K3Parser ()
 dFeed = prefix $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identifier
-  where feedSym             = choice [symbol "feed", symbol "~~"]
+  where feedSym             = choice [keyword "feed", void $ symbol "~~"]
         bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
         mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         prefix p            = (trackBindings =<<) $ declError "feed" $ p
@@ -314,8 +322,8 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 dAnnotation :: DeclParser
 dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
-  where rule x = x <*> annotationTypeParametersParser <*>
-                      braces (some annotationMember)
+  where rule x = x <*> annotationTypeParametersParser
+                   <*> braces (some annotationMember)
         annotationTypeParametersParser =
               keyword "given" *> keyword "type" *> typeVarDecls
           <|> return []
@@ -326,7 +334,7 @@ annotationMember =
   memberError $ mkMember <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
   where 
         liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
-                                  <*> qualifiedTypeExpr <*> optional equateNSExpr <* semi
+                                  <*> qualifiedTypeExpr <*> optional equateExpr
         
         subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
         

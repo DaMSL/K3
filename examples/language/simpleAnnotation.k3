@@ -1,6 +1,6 @@
 annotation myAnnotation {
-  provides lifted y : immut int = 5;
-  provides lifted z : immut (() -> int) = \_ -> 10;
+  provides lifted y : immut int = 5
+  provides lifted z : immut (() -> int) = \_ -> 10
 }
 
 declare myCollection : immut collection { x : immut int } @ { myAnnotation }
@@ -12,4 +12,4 @@ trigger t : int = \x ->
 
 source s1 : int = value 0
 
-~~ s1 |> t 
+feed s1 |> t 

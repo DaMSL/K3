@@ -15,6 +15,7 @@ module Language.K3.Pretty (
     terminalShift,
     nonTerminalShift,
     
+    wrap,
     indent,
     hconcatTop,
     hconcatBottom,
@@ -70,6 +71,11 @@ terminalShift = shift "`- " "   " . prettyLines
 
 nonTerminalShift :: Pretty a => a -> [String]
 nonTerminalShift = shift "+- " "|  " . prettyLines
+
+wrap :: Int -> String -> [String]
+wrap n str 
+   | length str <= n = [str]
+   | otherwise       = [take n str] ++ wrap n (drop n str)
 
 indent :: Int -> [String] -> [String]
 indent n = let s = replicate n ' ' in shift s s

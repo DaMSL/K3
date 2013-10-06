@@ -1,26 +1,26 @@
 annotation Collection {
-  provides lifted peek    : (() -> option content);
+  provides lifted peek    : (() -> option content)
 
-  provides lifted insert  : (content -> ());
-  provides lifted delete  : (content -> ());
-  provides lifted update  : (content -> content -> ());
+  provides lifted insert  : (content -> ())
+  provides lifted delete  : (content -> ())
+  provides lifted update  : (content -> content -> ())
 
-  provides lifted combine : (self -> self);
-  provides lifted split   : (self -> (self, self));
+  provides lifted combine : (self -> self)
+  provides lifted split   : (self -> (self, self))
 
-  provides lifted iterate : ((content -> ()) -> ());  
+  provides lifted iterate : ((content -> ()) -> ())
 
-  provides lifted map     : ((content -> int) -> collection { elem : int } @ {Collection});
+  provides lifted map     : ((content -> int) -> collection { elem : int } @ {Collection})
 
-  provides lifted filter  : ((content -> bool) -> self);
+  provides lifted filter  : ((content -> bool) -> self)
 
-  provides lifted fold    : ((int -> content -> int) -> int -> int);
+  provides lifted fold    : ((int -> content -> int) -> int -> int)
 
   provides lifted groupBy : ((content -> int) -> (int -> content -> int) -> int
-                             -> collection { key : int, value : int } @ {Collection});
+                             -> collection { key : int, value : int } @ {Collection})
 
   provides lifted ext     : ((content -> collection { elem : int } @ {Collection}) 
-                             -> collection { elem : int } @ {Collection}); 
+                             -> collection { elem : int } @ {Collection})
 }
 
 
@@ -61,4 +61,4 @@ trigger t : int = \i -> (
 
 source s1 : int = value 5
 
-~~ s1 |> t
+feed s1 |> t

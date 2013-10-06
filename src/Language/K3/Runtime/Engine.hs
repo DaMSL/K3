@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -64,8 +65,8 @@ module Language.K3.Runtime.Engine (
   , detachNotifier
   , detachNotifier_
 
-  , putMessageQueues
-  , putEngine
+  , showMessageQueues
+  , showEngine
 
 #ifdef TEST
   , EngineControl(..)
@@ -141,6 +142,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 
 import qualified Data.ByteString.Char8 as BS
+import Data.Function
 import Data.Functor
 import Data.Hashable (Hashable(..))
 import qualified Data.HashMap.Lazy as H
@@ -167,8 +169,11 @@ import Language.K3.Core.Type
 import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 
-import Language.K3.Parser
+import Language.K3.Logger
 import Language.K3.Pretty
+
+$(loggingFunctions)
+$(customLoggingFunctions ["EngineSteps"])
 
 -- | Address implementation
 data Address = Address (String, Int) deriving (Eq)
@@ -372,22 +377,6 @@ data ListenerError a
     | PropagatedError a
 
 
-{- Instance definitions -}
-
-instance Show Address where
-  show (Address (host, port)) = host ++ ":" ++ show port
-
-instance Read Address where
-  readsPrec _ str =
-    let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int
-    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
-
-instance Hashable Address where
-  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
-
-instance Pretty Address where
-  prettyLines addr = [show addr]
 
 {- Naming schemes and constants -}
 
@@ -542,71 +531,6 @@ simulation = ask >>= return . \case
     _ -> False
 
 {- Message processing and engine control -}
-{- <<<<<<< HEAD -}
-{- registerNetworkListener :: (Identifier, Weak ThreadId) -> Engine a -> IO () -}
-{- registerNetworkListener x (control &&& listeners -> (ctrl, lstnrs)) = do -}
-  {- modifyMVar_ (networkDoneV ctrl) $ return . (1+) -}
-  {- modifyMVar_ lstnrs $ return . (x:) -}
-
-{- deregisterNetworkListener :: Identifier -> Engine a -> IO () -}
-{- deregisterNetworkListener n (control &&& listeners -> (ctrl, lstnrs)) = do -}
-  {- modifyMVar_ (networkDoneV ctrl) $ return . flip (-) 1 -}
-  {- modifyMVar_ lstnrs $ return . filter ((n /= ) . fst) -}
-
-{- terminate :: Engine a -> IO Bool -}
-{- terminate e = (||) <$> ((not (waitForNetwork $ config e) &&) <$> readMVar (terminateV $ control e)) -}
-                   {- <*> networkDone e -}
-
-{- networkDone :: Engine a -> IO Bool -}
-{- networkDone e = readMVar (networkDoneV $ control e) >>= return . (0 ==) -}
-
-{- waitForMessage :: Engine a -> IO () -}
-{- waitForMessage e = readSV (messageReadyV $ control e) -}
-
-{- processMessage :: MessageProcessor i p a r e -> Engine a -> r -> IO (LoopStatus r e) -}
-{- processMessage msgPrcsr e prevResult = (dequeue . queues) e >>= maybe term proc -}
-  {- where term = return $ MessagesDone prevResult -}
-        {- proc msg = (process msgPrcsr msg prevResult) >>= return . either Error Result . status msgPrcsr -}
-
-{- runMessages :: (Pretty r, Pretty e, Show a) =>  -}
-               {- MessageProcessor i p a r e -> Engine a -> IO (LoopStatus r e) -> IO () -}
-{- runMessages msgPrcsr e status = status >>= \case -}
-  {- Result r       -> debugQueues e >> rcr r -}
-  {- Error e        -> finish e >> report msgPrcsr (Left e) -}
-  {- MessagesDone r -> terminate e >>= \case -}
-                      {- True -> finalize msgPrcsr r >>= finish >> report msgPrcsr (Right r) -}
-                      {- _    -> waitForMessage e >> rcr r -}
-
-  {- where rcr      = runMessages msgPrcsr e . processMessage msgPrcsr e -}
-        {- finish r = cleanupEngine e >> tryPutMVar (waitV $ control e) () -}
-
-
-{- runEngine :: (Pretty r, Pretty e, Show a) => -}
-             {- MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO () -}
-{- runEngine msgPrcsr inits eg prog = (initialize msgPrcsr inits prog eg) -}
-                              {- >>= (\res -> initializeWorker eg >> return res) -}
-                              {- >>= runMessages msgPrcsr eg . return . initStatus -}
-  {- where initStatus = either Error Result . status msgPrcsr -}
-
-        {- initializeWorker (workers -> Uniprocess workerMV) = tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV -}
-        {- initializeWorker (workers -> Multithreaded _)     = error $ "Unsupported engine mode: Multithreaded" -}
-        {- initializeWorker _                                = error $ "Unsupported engine mode: Multiprocess" -}
-
-{- forkEngine :: (Pretty r, Pretty e, Show a) => -}
-              {- MessageProcessor inits prog a r e -> inits -> Engine a -> prog -> IO ThreadId -}
-{- forkEngine msgPrcsr inits eg prog = forkIO $ runEngine msgPrcsr inits eg prog -}
-
-{- waitForEngine :: Engine a -> IO () -}
-{- waitForEngine = readMVar . waitV . control -}
-
-{- terminateEngine :: Engine a -> IO () -}
-{- terminateEngine e =  -}
-       {- modifyMVar_ (terminateV $ control e) (const $ return True) -}
-    {- >> writeSV (messageReadyV $ control e) () -}
-
-{- cleanupEngine :: Engine a -> IO () -}
-{- cleanupEngine e = cleanC (connections e) >> cleanE (endpoints e) -}
-{- ======= -}
 registerNetworkListener :: (Identifier, Weak ThreadId) -> EngineM a ()
 registerNetworkListener iwt = do
     engine <- ask
@@ -653,19 +577,25 @@ processMessage mp pr = do
 runMessages :: (Pretty r, Pretty e, Show a) =>
     MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
-    Result r -> debugQueues >> runMessages mp (processMessage mp r)
-    Error e -> die "Error:\n" e (control engine)
+    Result r       -> debugStep >> runMessages mp (processMessage mp r)
+    Error e        -> die "Error:" e (control engine)
     MessagesDone r -> terminate >>= \case
         True -> do
             fr <- finalize mp r
-            die "Terminated:\n" fr (control engine)
+            die "Terminated:" fr (control engine)
         _ -> waitForMessage >> runMessages mp (processMessage mp r)
   where
+    debugStep = do
+      q <- prettyQueues
+      logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
+
     die msg r cntrl = do
-        liftIO $ putStrLn (msg ++ pretty r)
+        logStep $ boxToString $ ["", msg] ++ prettyLines r
         cleanupEngine
         liftIO $ tryPutMVar (waitV cntrl) ()
-        liftIO $ putStrLn "Finished."
+        logStep $ "Finished."
+
+    logStep s = void $ _notice_EngineSteps $ s
 
 runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
 runEngine mp is p = do
@@ -1144,6 +1074,7 @@ modifyConnectionMap :: MVar EConnectionMap -> (EConnectionMap -> IO (EConnection
 modifyConnectionMap connsMV modifyF = liftIO $ modifyMVar connsMV modifyF
 
 -- TODO: Verify exception-safety of this translation to EngineM.
+addConnection :: Address -> MVar EConnectionMap -> EngineM a (Maybe NConnection)
 addConnection addr conns = do
     c@(anchor -> (anchorAddr, Nothing)) <- liftIO $ readMVar conns
 
@@ -1389,21 +1320,34 @@ modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return
 
 {- Pretty printing helpers -}
 
-putMessageQueues :: Show a => MessageQueues a -> IO ()
-putMessageQueues (Peer q) = readMVar q >>= putStrLn . show
-putMessageQueues (ManyByPeer qs) = readMVar qs >>= putStrLn . show
-putMessageQueues (ManyByTrigger qs) = readMVar qs >>= putStrLn . show
+showMessageQueues :: Show a => MessageQueues a -> EngineM a String
+showMessageQueues (Peer q)           = liftIO (readMVar q)  >>= return . show
+showMessageQueues (ManyByPeer qs)    = liftIO (readMVar qs) >>= return . show
+showMessageQueues (ManyByTrigger qs) = liftIO (readMVar qs) >>= return . show
 
-putEngine :: Show a => EngineM a ()
-putEngine = ask >>= liftIO . print >> debugQueues
+showEngine :: Show a => EngineM a String
+showEngine = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues)
 
-debugQueues :: Show a => EngineM a ()
-debugQueues = do
-    engine <- ask
-    liftIO $ putStrLn "Queues: "
-    liftIO $ putMessageQueues (queues engine)
+prettyQueues :: Show a => EngineM a [String]
+prettyQueues = ask >>= showMessageQueues . queues >>= return . (["Queues: "]++) . (:[])
 
-{- Instance implementations -}
+
+{- Instance definitions -}
+
+instance Show Address where
+  show (Address (host, port)) = host ++ ":" ++ show port
+
+instance Read Address where
+  readsPrec _ str =
+    let strl = splitOn ":" str
+        tryPort = (readMaybe $ last strl) :: Maybe Int
+    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
+
+instance Hashable Address where
+  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
+
+instance Pretty Address where
+  prettyLines addr = [show addr]
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where
@@ -1416,6 +1360,9 @@ instance (Show a) => Show (Engine a) where
 
 instance (Show a) => Pretty (Engine a) where
     prettyLines = lines . show
+
+
+{- Misc. helpers -}
 
 modifyMVE :: MVar a -> (a -> EngineM b (a, c)) -> EngineM b c
 modifyMVE v f = do
