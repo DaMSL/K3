@@ -105,7 +105,7 @@ decl (details -> (DAnnotation n tvars mems, cs, _)) = do
   return $ vsep . (: csps) $
     text "annotation" <+> text n <+> text "given" <+> text "type"
       <+> cat (punctuate comma tsps)
-      <+> braces (indent 2 $ vsep msps)
+      <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
   where
     memberDecl (Lifted pol i t eOpt _) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
