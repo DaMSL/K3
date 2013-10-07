@@ -7,6 +7,8 @@
 
 -- | K3 Parser.
 module Language.K3.Parser (
+  K3Parser,
+  identifier,
   declaration,
   qualifiedTypeExpr,
   typeExpr,
@@ -16,7 +18,7 @@ module Language.K3.Parser (
   parseExpression,
   parseDeclaration,
   parseK3,
-  K3Parser,
+  runK3Parser,
   ensureUIDs
 ) where
 
