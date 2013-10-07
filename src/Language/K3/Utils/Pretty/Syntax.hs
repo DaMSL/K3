@@ -83,7 +83,6 @@ decl (details -> (DGlobal n t eOpt, cs, anns)) =
 
 decl (details -> (DTrigger n t e, cs, _)) =
     vsep C.<$> ((:) C.<$> decl' <*> subDecls cs)
-  
   where
     decl' = triggerDecl C.<$> typ t <*> expr e
     triggerDecl t' e' =
@@ -91,7 +90,7 @@ decl (details -> (DTrigger n t e, cs, _)) =
 
 
 decl (details -> (DRole n, cs, _)) = 
-  if n == "__global" then vsep C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
+  if n == "__global" then vsep     C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
                      else roleDecl C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
   where roleDecl subDecls' =
           text "role" <+> text n
@@ -141,7 +140,8 @@ typeVarDecl (TypeVarDecl i mtExpr) =
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d
-  where generatedDecl (details -> (DGlobal _ _ _, _, anns)) = any isGenerated $ filter isDSpan anns
+  where generatedDecl (details -> (DGlobal _ _ _, _, anns))  = any isGenerated $ filter isDSpan anns
+        generatedDecl (details -> (DTrigger _ _ _, _, anns)) = any isGenerated $ filter isDSpan anns
         generatedDecl _ = False
         isGenerated (DSpan (GeneratedSpan _)) = True
         isGenerated _ = False
@@ -176,7 +176,7 @@ endpointBindings = matchAnnotation isDEndpointDecl bindings
 endpoint :: String -> Identifier -> Maybe EndpointSpec -> Doc -> Maybe Doc -> Doc
 endpoint kw n specOpt t' eOpt' = case specOpt of 
   Nothing                   -> common Nothing
-  Just ValueEP              -> common . Just $ maybe empty (text "value" <+>) eOpt'
+  Just ValueEP              -> common $ maybe Nothing (Just . (text "value" <+>)) eOpt'
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
   Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
   Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt

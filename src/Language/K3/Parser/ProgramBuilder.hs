@@ -140,6 +140,9 @@ replace_children (Node n _) nc = Node n nc
 builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
 builtinGlobal n t eOpt = (DC.global n t eOpt) @+ (DSpan $ GeneratedSpan "builtin")
 
+builtinTrigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
+builtinTrigger n t e = (DC.trigger n t e) @+ (DSpan $ GeneratedSpan "builtin")
+
 {- Type qualification -}
 qualifyT :: K3 Type -> K3 Type
 qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
@@ -213,7 +216,7 @@ endpointMethods isSource eSpec argE formatE n t =
     mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
     mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ EC.applyMany closeFn [sourceId n])
 
-    sourceController = DC.trigger (ccName n) TC.unit $
+    sourceController = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_"
         (EC.ifThenElse
           (EC.applyMany (EC.variable $ chrName n) [EC.unit])

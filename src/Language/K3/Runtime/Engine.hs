@@ -570,8 +570,8 @@ processMessage mp pr = do
         nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show a) =>
-    MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+runMessages :: (Pretty r, Pretty e, Show a)
+            => MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
     Result r       -> debugStep >> runMessages mp (processMessage mp r)
     Error e        -> die "Error:" e (control engine)
@@ -599,8 +599,8 @@ runEngine mp is p = do
     result <- initialize mp is p
     liftIO $ case workers engine of
         Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
-        Multithreaded _ -> error "Unsupported engine mode: Multithreaded"
-        _ -> error "Unsupported engine mode: Multiprocess"
+        Multithreaded _     -> error "Unsupported engine mode: Multithreaded"
+        _                   -> error "Unsupported engine mode: Multiprocess"
 
     runMessages mp (return . either Error Result $ status mp result)
 

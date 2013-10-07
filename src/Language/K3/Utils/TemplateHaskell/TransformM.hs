@@ -39,7 +39,7 @@
   this special case applies to all instances of Baz5 throughout the transformed
   structure.
 -}
-module Language.K3.TemplateHaskell.TransformM
+module Language.K3.Utils.TemplateHaskell.TransformM
 ( TransformM(..)
 , defineHomInstanceM
 , defineHomFuncM
@@ -57,7 +57,7 @@ import qualified Data.Set as Set
 import qualified Data.Traversable as Trav
 import Language.Haskell.TH
 
-import Language.K3.TemplateHaskell.Utils
+import Language.K3.Utils.TemplateHaskell.Utils
 
 -- |The typeclass which defines monadic transformations.
 class (Monad m) => TransformM m t d where

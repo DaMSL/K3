@@ -15,7 +15,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 
 import Language.K3.Core.Common
-import Language.K3.TemplateHaskell.Transform
+import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Data
 
 -- |The data type defining the transformation.

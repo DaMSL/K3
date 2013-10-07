@@ -1,7 +1,7 @@
 {-
   This module contains some handy Template Haskell utilities.
 -}
-module Language.K3.TemplateHaskell.Utils
+module Language.K3.Utils.TemplateHaskell.Utils
 ( applyTypeCon
 , mkPrefixNames
 , mkFnType

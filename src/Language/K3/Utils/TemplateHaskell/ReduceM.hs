@@ -41,7 +41,7 @@
   by the monad.  Note that this special case applies to all instances of Baz5
   throughout all of the reduced structure.
 -}
-module Language.K3.TemplateHaskell.ReduceM
+module Language.K3.Utils.TemplateHaskell.ReduceM
 ( ReduceM(..)
 , defineCatInstanceM
 , defineCatFuncM
@@ -61,7 +61,7 @@ import qualified Data.Set as Set
 import qualified Data.Traversable as Trav
 import Language.Haskell.TH
 
-import Language.K3.TemplateHaskell.Utils
+import Language.K3.Utils.TemplateHaskell.Utils
 
 class (Monad m, Monoid r) => ReduceM m t d r | t d -> r where
   reduceM :: t -> d -> m r

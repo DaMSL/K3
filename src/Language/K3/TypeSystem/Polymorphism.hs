@@ -19,7 +19,7 @@ import qualified Data.Set as Set
 
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
-import Language.K3.TemplateHaskell.Transform
+import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Closure
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
