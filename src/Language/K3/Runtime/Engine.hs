@@ -177,6 +177,8 @@ $(customLoggingFunctions ["EngineSteps"])
 
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
+                       --, bareFormat      :: WireDesc a -- We had a good name for this
+                       -- This is causing problems for now
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
                        , queues          :: MessageQueues a
@@ -967,10 +969,14 @@ openBuiltinInternal eid bid = do
     let iep = internalEndpoints $ endpoints engine
     genericOpenBuiltin eid bid ife iep
 
-openFileInternal :: Identifier -> String -> String -> EngineM a ()
-openFileInternal eid path mode = do
+openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> EngineM a ()
+openFileInternal eid path mode f = do
     engine <- ask
     let ife = internalFormat engine
+    --let ife =
+    --     case f of
+    --        Nothing -> internalFormat engine
+    --        Just wd -> wd
     let iep = internalEndpoints $ endpoints engine
     genericOpenFile eid path ife Nothing mode iep
 
