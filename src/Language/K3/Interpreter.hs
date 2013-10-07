@@ -1600,12 +1600,6 @@ unpackValueSyntax = readSingleParse unpackValue
         v <- readBrackets unpackValue
         return $ VolatileDS <$> sequence v
       )
-    {-readCollectionDataspace :: ReadPrec (IO [Value])
-    readCollectionDataspace = parens $
-      (prec appPrec $ do
-        void $ readExpectedName "DS"
-        v <- readBrackets unpackValue
-        return $ sequence v)-}
 
     readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
     readDoublyNamedValues = parens $
