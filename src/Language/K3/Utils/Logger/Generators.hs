@@ -15,7 +15,6 @@ import Control.Applicative
 import Data.List
 import Language.Haskell.TH
 import System.Log
-import System.Log.Logger
 
 import Language.K3.Utils.Logger.Operations
 import Language.K3.Utils.Pretty

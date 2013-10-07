@@ -213,6 +213,13 @@ throwE = Control.Monad.Trans.Either.left
 liftEngine :: EngineM Value b -> Interpretation b
 liftEngine = lift . lift . lift
 
+-- | Checks the result of running an interpretation for an error, and 
+--   lifts any error present to the engine monad.
+liftError :: String -> IResult a -> EngineM b (IResult a)
+liftError msg r = either rethrow pass $ getResultVal r 
+  where pass    = const $ return r
+        rethrow = throwEngineError . EngineError . (++ (" " ++ msg)) . show
+
 -- | Test if a variable is defined in the current interpretation environment.
 elemE :: Identifier -> Interpretation Bool
 elemE n = get >>= return . maybe False (const True) . find ((n == ) . fst) . getEnv
@@ -1040,33 +1047,44 @@ builtinAttribute annId n t uid = providesError "attribute" n
 {- Program initialization methods -}
 
 initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> EngineM Value IState
-initEnvironment bootstrap decl st =
-  foldM (\st (n,e) -> initializeExpr (registerGlobal n st) n e) st bootstrap >>= flip initDecl decl
+initEnvironment bootstrap decl st = do
+  let bsGState    = foldl (\st' (n,_) -> registerGlobal n st') st bootstrap
+  let declGState  = foldTree registerDecl bsGState decl
+  bsIState       <- foldM (\st' (n,e) -> initializeExpr st' n e) declGState bootstrap
+  initDecl bsIState decl
   where 
-    initDecl st (tag &&& children -> (DGlobal n t eOpt, ch)) = initGlobal (registerGlobal n st) n t eOpt >>= flip (foldM initDecl) ch
-    initDecl st (tag &&& children -> (DTrigger n _ _, ch))   = initTrigger (registerGlobal n st) n >>= flip (foldM initDecl) ch
-    initDecl st (tag &&& children -> (DRole _, ch))          = foldM initDecl st ch
-    initDecl st _                                            = return st
+    initDecl st' (tag &&& children -> (DGlobal n t eOpt, ch)) = initGlobal st' n t eOpt >>= flip (foldM initDecl) ch
+    initDecl st' (tag &&& children -> (DTrigger n _ _, ch))   = initTrigger st' n >>= flip (foldM initDecl) ch
+    initDecl st' (tag &&& children -> (DRole _, ch))          = foldM initDecl st' ch
+    initDecl st' _                                            = return st'
 
-    initGlobal st n (tag -> TSink) _          = initTrigger st n
-    initGlobal st n t@(tag -> TFunction) eOpt = initFunction st n t eOpt
-    initGlobal st _ _ _                       = return st
+    initGlobal st' n (tag -> TSink) _          = initTrigger st' n
+    initGlobal st' n t@(tag -> TFunction) eOpt = initFunction st' n t eOpt
+    initGlobal st' _ _ _                       = return st'
 
-    initTrigger st n = return $ modifyStateEnv ((:) $ (n, VTrigger (n, Nothing))) st
+    initTrigger st' n = return $ modifyStateEnv ((:) $ (n, VTrigger (n, Nothing))) st'
         
     -- Functions create lambda expressions, thus they are safe to initialize during
     -- environment construction. This way, all global functions can be mutually recursive.
     -- Note that since we only initialize functions, no declaration can force function
     -- evaluation during initialization (e.g., as would be the case with variable initializers).
-    initFunction st n t (Just e) = initializeExpr st n e
-    initFunction st n t Nothing  = initializeBinding st $ builtin n t
+    initFunction st' n t (Just e) = initializeExpr st' n e
+    initFunction st' n t Nothing  = initializeBinding st' $ builtin n t
 
-    initializeExpr st n e = initializeBinding st (expression e >>= modifyE . (:) . (n,))
-    initializeBinding st interp = runInterpretation' st interp >>= return . getResultState
+    initializeExpr st' n e = initializeBinding st' (expression e >>= modifyE . (:) . (n,))
+    initializeBinding st' interp = runInterpretation' st' interp
+                                     >>= liftError "(initializing environment)"
+                                     >>= return . getResultState
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
     registerGlobal n (w,x,y) = (n:w, x, y)
+
+    registerDecl :: IState -> K3 Declaration -> IState
+    registerDecl st' (tag -> DGlobal n _ _)  = registerGlobal n st'
+    registerDecl st' (tag -> DTrigger n _ _) = registerGlobal n st'
+    registerDecl st' _                       = st'
+
 
 initState :: PeerBootstrap -> K3 Declaration -> EngineM Value IState
 initState bootstrap prog = initEnvironment bootstrap prog emptyState
@@ -1106,10 +1124,10 @@ runExpression_ e = runExpression e >>= putStrLn . show
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
-runProgram :: SystemEnvironment -> K3 Declaration -> IO ()
+runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
 runProgram systemEnv prog = do
     engine <- simulationEngine systemEnv syntaxValueWD
-    void $ flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
+    flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
