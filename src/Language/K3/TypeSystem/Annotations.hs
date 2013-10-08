@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds, DataKinds #-}
 {-|
   This module contains functions for annotation types.
 -}
@@ -16,6 +16,7 @@ module Language.K3.TypeSystem.Annotations
 
 import Control.Applicative
 import Control.Monad
+import Data.List
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid
@@ -27,6 +28,7 @@ import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations.Error
+import Language.K3.TypeSystem.Annotations.Within
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
@@ -75,6 +77,7 @@ instantiateAnnotation p (AnnType p' b cs) =
 -- |Defines concatenation of annotation types.
 concatAnnType :: ( CSL.ConstraintSetLike e c
                  , CSL.ConstraintSetLikePromotable ConstraintSet c
+                 , WithinAlignable e, Ord e
                  , Transform ReplaceVariables c)
               => AnnType c -> AnnType c
               -> Either AnnotationConcatenationError (AnnType c)
@@ -88,7 +91,8 @@ concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
 -- |Defines concatenation over numerous annotation types.
 concatAnnTypes :: ( CSL.ConstraintSetLike e c
                   , CSL.ConstraintSetLikePromotable ConstraintSet c
-                  , Transform ReplaceVariables c, FreshVarI m)
+                  , Transform ReplaceVariables c, FreshVarI m
+                  , WithinAlignable e, Ord e)
                => [AnnType c]
                -> m (Either AnnotationConcatenationError (AnnType c))
 concatAnnTypes typs = do
@@ -112,7 +116,8 @@ emptyAnnType = do
 -- |Defines concatenation of annotation body types.
 concatAnnBody :: forall c el.
                  ( CSL.ConstraintSetLike el c
-                 , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                 , CSL.ConstraintSetLikePromotable ConstraintSet c
+                 , WithinAlignable el, Ord el)
               => AnnBodyType c -> AnnBodyType c
               -> Either AnnotationConcatenationError (AnnBodyType c)
 concatAnnBody (AnnBodyType ms1 ms2) (AnnBodyType ms1' ms2') =
@@ -121,7 +126,8 @@ concatAnnBody (AnnBodyType ms1 ms2) (AnnBodyType ms1' ms2') =
 -- |Defines concatenation over numerous annotation body types.
 concatAnnBodies :: forall c el.
                    ( CSL.ConstraintSetLike el c
-                   , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                   , CSL.ConstraintSetLikePromotable ConstraintSet c
+                   , WithinAlignable el, Ord el)
                 => [AnnBodyType c]
                 -> Either AnnotationConcatenationError (AnnBodyType c)
 concatAnnBodies = foldM concatAnnBody $ AnnBodyType [] []
@@ -129,7 +135,8 @@ concatAnnBodies = foldM concatAnnBody $ AnnBodyType [] []
 -- |Defines concatenation over (lists of) annotation member types.
 concatAnnMembers :: forall c el.
                     ( CSL.ConstraintSetLike el c
-                    , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                    , CSL.ConstraintSetLikePromotable ConstraintSet c
+                    , WithinAlignable el, Ord el)
                  => [AnnMemType c] -> [AnnMemType c]
                  -> Either AnnotationConcatenationError [AnnMemType c]
 concatAnnMembers ms1 ms2 =
@@ -139,9 +146,9 @@ concatAnnMembers ms1 ms2 =
   mapM concatConstr $ Map.elems memsById
   where
     polOf :: AnnMemType c -> TPolarity
-    polOf (AnnMemType _ pol _ _) = pol
+    polOf (AnnMemType _ pol _ _ _) = pol
     idOf :: AnnMemType c -> Identifier
-    idOf (AnnMemType i _ _ _) = i
+    idOf (AnnMemType i _ _ _ _) = i
     -- |Implements the concatConstr function from the specification.  This
     --  function must never be passed an empty list; @concatAnnMembers@ ensures
     --  that this never happens.  This function assumes that all member types
@@ -149,32 +156,53 @@ concatAnnMembers ms1 ms2 =
     concatConstr :: [AnnMemType c]
                  -> Either AnnotationConcatenationError (AnnMemType c)
     concatConstr mems =
+      let arities = nub $ map (\(AnnMemType _ _ ar _ _) -> ar) mems in
       let positives = filter ((== Positive) . polOf) mems in
-      case length positives of
-        0 ->
-          let (AnnMemType i1 _ qa1 _) = head mems in
-          let cs = memTypesToCs (CSL.promote . csSing . (qa1 <:)) $
-                      map typeOfMem mems in
-          return $ AnnMemType i1 Negative qa1 cs
-        1 ->
-          let (AnnMemType i _ qa' cs') = head positives in
-          let cs = memTypesToCs (CSL.promote . csSing . (qa' <:)) $
-                      map typeOfMem mems in
-          return $ AnnMemType i Positive qa' $ CSL.union cs' cs
-        _ ->
+      case (length positives, arities) of
+        (_,_:_:_) ->
+          Left $ DifferentMorphicArities $ idOf $ head mems
+        (_,[]) ->
+          error "concatConstr provided empty list of members!"
+        (0,[MonoArity]) ->
+          let (AnnMemType i1 _ _ qa1 cs1) = head mems in
+          Right $ monoRepresentative i1 qa1 cs1 Negative $ tail mems
+        (1,[MonoArity]) ->
+          let (AnnMemType i _ _ qa' cs') = head positives in
+          Right $ monoRepresentative i qa' cs' Positive mems
+        (0,[PolyArity]) -> do
+          let (AnnMemType _ _ _ qa1 cs1) = head mems
+          mconcat <$> mapM (polyCheckEquiv (qa1,cs1) . typeOfMem) (tail mems)
+          Right $ head mems
+        (1,[PolyArity]) -> do
+          let (AnnMemType _ _ _ qa' cs') = head positives
+          mconcat <$> mapM (polyCheckEquiv (qa',cs') . typeOfMem) mems
+          Right $ head positives
+        (_,[_]) ->
           Left $ OverlappingPositiveMember $ idOf $ head positives
       where
         typeOfMem :: AnnMemType c -> (QVar, c)
-        typeOfMem (AnnMemType _ _ qa cs) = (qa,cs)
+        typeOfMem (AnnMemType _ _ _ qa cs) = (qa,cs)
         memTypesToCs :: (QVar -> c) -> [(QVar,c)] -> c
         memTypesToCs f = CSL.unions . map (\(qa,cs) -> CSL.union cs $ f qa)
-
+        monoRepresentative :: Identifier -> QVar -> c -> TPolarity
+                           -> [AnnMemType c] -> AnnMemType c
+        monoRepresentative i qa cs pol mems' =
+          let cs' = memTypesToCs (CSL.promote . csSing . (qa <:)) $
+                      map typeOfMem mems' in
+          AnnMemType i pol MonoArity qa $ CSL.union cs cs'
+        polyCheckEquiv :: (QVar,c) -> (QVar,c)
+                       -> Either AnnotationConcatenationError ()
+        polyCheckEquiv x y =
+          if isWithin x y && isWithin y x then Right ()
+            else Left $ PolymorphicArityMembersNotEquivalent $ idOf $ head mems
+            
 -- |Defines depolarization of annotation members.  If depolarization is not
 --  defined (e.g. because multiple annotations positively define the same
 --  identifier), then an appropriate error is returned instead.
 depolarize :: forall c el.
               ( CSL.ConstraintSetLike el c
-              , CSL.ConstraintSetLikePromotable ConstraintSet c)
+              , CSL.ConstraintSetLikePromotable ConstraintSet c
+              , WithinAlignable el, Ord el)
            => [AnnMemType c] -> Either DepolarizationError (ShallowType, c)
 depolarize ms = do
   ms' <- either (Left . DepolarizationConcatenationError) Right $
@@ -189,7 +217,7 @@ depolarize ms = do
     Right t -> return (t, CSL.unions css)
   where
     depolarizeSingle :: AnnMemType c -> (ShallowType, c)
-    depolarizeSingle (AnnMemType i _ qa cs) =
+    depolarizeSingle (AnnMemType i _ _ qa cs) =
       (SRecord (Map.singleton i qa) Set.empty, cs)
 
 -- |A convenience function to get the special type parameters from an annotation
@@ -208,7 +236,8 @@ readAnnotationSpecialParameters p = do
 
 -- |A convenience function to raise a type error if depolarization fails.
 depolarizeOrError :: ( Monad m, TypeErrorI m, CSL.ConstraintSetLike el c
-                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , WithinAlignable el, Ord el)
                   => UID -> [AnnMemType c] -> m (ShallowType, c)
 depolarizeOrError u =
   either (typeError . AnnotationDepolarizationFailure u) return . depolarize

@@ -31,6 +31,7 @@ import Language.K3.Pretty
 import Language.K3.TemplateHaskell.Reduce
 import Language.K3.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
+import Language.K3.TypeSystem.Annotations.Within
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
@@ -55,7 +56,8 @@ derivePolymorphicTypeExpression ::
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
-                     , ConstraintSetType c)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (QVar, c, TEnv (TQuantEnvValue c))
@@ -121,7 +123,8 @@ deriveQualifiedTypeExpression ::
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
-                     , ConstraintSetType c)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (QVar, c)
@@ -142,7 +145,8 @@ deriveUnqualifiedTypeExpression ::
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
-                     , ConstraintSetType c)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (UVar, c)
@@ -158,7 +162,8 @@ deriveTypeExpression ::
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
-                     , ConstraintSetType c)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
    => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
    -> K3 Type
    -> m (UVar, c)

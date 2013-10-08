@@ -20,6 +20,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
 import qualified Data.Traversable as Trav
+import Data.Tree as Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -188,7 +189,21 @@ constructTypeForDecl ((_,lAtts,sAtts),decl) = do
           tell $ Map.singleton stub StubInfo
                     { stubTypeExpr = tExpr, stubVar = qa, stubParamEnv = p
                     , stubMemRepr = repr }
-          return $ AnnMemType i' (typeOfPol pol) qa scs
+          -- Determine appropriate arity ascription.  Whether the member has a
+          -- polymorphic signature is equivalent to whether the signature
+          -- contains any declared type variable references, since this is
+          -- necessary (declared polymorphism only comes from such variables)
+          -- and sufficient (the only declared type variables in scope are those
+          -- on the annotation declaration since all such declarations are top
+          -- level).
+          let ar =
+                if any isDeclaredVar $ map tag $ flatten tExpr
+                  then PolyArity else MonoArity 
+          return $ AnnMemType i' (typeOfPol pol) ar qa scs
+          where
+            isDeclaredVar :: Type -> Bool
+            isDeclaredVar (TDeclaredVar _) = True
+            isDeclaredVar _ = False
 
 -- |Calculates for a representation of a single annotation the constraints
 --  required by the Annotation rule of typechecking as well as the entry which

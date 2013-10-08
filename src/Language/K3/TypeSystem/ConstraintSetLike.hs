@@ -23,6 +23,7 @@ class ConstraintSetLike e c | c -> e where
   isSubsetOf :: c -> c -> Bool
   union :: c -> c -> c
   unions :: [c] -> c
+  query :: (Ord r) => c -> ConstraintSetQuery r -> [r]
 
 instance ConstraintSetLike Constraint ConstraintSet where
   empty = csEmpty
@@ -34,6 +35,7 @@ instance ConstraintSetLike Constraint ConstraintSet where
   isSubsetOf = csSubset
   union = csUnion
   unions = csUnions
+  query = csQuery
 
 class ConstraintSetLikePromotable c1 c2 where
   promote :: c1 -> c2

@@ -118,8 +118,8 @@ closeBodyStubSubstitution m (AnnBodyType ms1 ms2) =
   let ms2' = map closeMemberStubSubstitution ms2 in
   AnnBodyType ms1' ms2'
   where
-    closeMemberStubSubstitution (AnnMemType i pol qa cs) =
-      AnnMemType i pol qa $ closeStubSubstitution m cs
+    closeMemberStubSubstitution (AnnMemType i pol ar qa cs) =
+      AnnMemType i pol ar qa $ closeStubSubstitution m cs
 
 -- |Performs stub substitution on a skeletal environment, yielding a complete
 --  environment.

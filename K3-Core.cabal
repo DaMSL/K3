@@ -113,7 +113,9 @@ library
         Language.K3.Codegen
 
     ghc-options: -Wall
-    other-modules: Language.K3.TypeSystem.Monad.Iface.FreshOpaque
+    other-modules: 
+                   Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
+                   Language.K3.TypeSystem.Annotations.Within
 
 test-suite all
     type: exitcode-stdio-1.0

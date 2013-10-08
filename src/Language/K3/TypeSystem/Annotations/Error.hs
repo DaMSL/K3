@@ -20,6 +20,12 @@ data AnnotationConcatenationError
   | IncompatibleTypeParameters TParamEnv TParamEnv
       -- ^Produced when two annotation types are concatenated and one has a
       --  different set of open type variables than the other.
+  | DifferentMorphicArities Identifier
+      -- ^Produced when two annotations are concatenated and the member in
+      --  question is defined using both polymorphic and monomorphic signatures.
+  | PolymorphicArityMembersNotEquivalent Identifier
+      -- ^Produced when a concatenated member uses polymorphic signatures and
+      --  those signatures are not equivalent.
   deriving (Eq, Show)
 
 -- |A type describing an error in depolarization.

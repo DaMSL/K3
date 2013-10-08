@@ -14,6 +14,7 @@ import Control.Applicative
 import Control.Monad
 import qualified Data.Foldable as Foldable
 import qualified Data.Map as Map
+import Data.Map (Map)
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as Set
@@ -158,7 +159,7 @@ deriveDeclaration aEnv env rEnv decl =
       qa_s' <- freshTypecheckingQVar u
       let env'1 = Map.singleton TEnvIdSelf
                     (QuantType Set.empty qa_s' $ csSing $ a_s <: qa_s')
-      let env'2 = mconcat (map (\(AnnMemType i _ qa' cs') ->
+      let env'2 = mconcat (map (\(AnnMemType i _ _ qa' cs') ->
                     Map.singleton (TEnvIdentifier i) $
                       generalize (envMerge env env'1) qa' cs') ms1)
 
@@ -207,7 +208,10 @@ deriveDeclaration aEnv env rEnv decl =
                         <$> freshOVar (OpaqueSourceOrigin u)) (Map.elems qEnv)
       
       -- Derive appropriate types for the members.
-      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember
+      let arityMaps =
+            let f = Map.fromList . map (\(AnnMemType i _ ar _ _) -> (i,ar)) in
+            (f ms1, f ms2)
+      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember arityMaps
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
                                 (envMerge (envMerge env env'1) env'2)) mems
       _debug $ boxToString $
@@ -298,15 +302,17 @@ deriveDeclaration aEnv env rEnv decl =
       return i
     digestMemFromPol :: TPolarity -> NormalAnnMemType
                      -> Maybe (Identifier,(QVar,ConstraintSet))
-    digestMemFromPol pol' (AnnMemType i pol qa cs) =
+    digestMemFromPol pol' (AnnMemType i pol _ qa cs) =
       if pol' == pol then Just (i,(qa,cs)) else Nothing
 
 -- |A function to derive a type for an annotation member.
-deriveAnnotationMember :: TAliasEnv -- ^The relevant type alias environment.
+deriveAnnotationMember :: ( Map Identifier MorphismArity
+                          , Map Identifier MorphismArity )
+                       -> TAliasEnv -- ^The relevant type alias environment.
                        -> TNormEnv -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
                        -> TypecheckM (NormalAnnBodyType, ConstraintSet)
-deriveAnnotationMember aEnv env decl = do
+deriveAnnotationMember (ars1,ars2) aEnv env decl = do
   _debug $ boxToString $ ["Deriving type for annotation member: "] %$
                             indent 2 (prettyLines decl)
   (b,cs) <-
@@ -314,11 +320,11 @@ deriveAnnotationMember aEnv env decl = do
       
         Lifted pol i _ mexpr u ->
           let constr x = AnnBodyType [x] [] in
-          deriveMember pol i mexpr u constr
+          deriveMember ars1 pol i mexpr u constr
           
         Attribute pol i _ mexpr u ->
           let constr x = AnnBodyType [] [x] in
-          deriveMember pol i mexpr u constr
+          deriveMember ars2 pol i mexpr u constr
           
         MAnnotation pol i u -> do
           p <- mconcat <$>
@@ -337,8 +343,8 @@ deriveAnnotationMember aEnv env decl = do
                     Provides -> b
                     Requires ->
                       let AnnBodyType m1 m2 = b in
-                      let negatize (AnnMemType i' _ qa cs') =
-                            AnnMemType i' Negative qa cs' in
+                      let negatize (AnnMemType i' _ ar qa cs') =
+                            AnnMemType i' Negative ar qa cs' in
                       AnnBodyType (map negatize m1) (map negatize m2)
           return (b', cs)
   _debug $ boxToString $ ["Derived type for annotation member: "] %$
@@ -352,20 +358,24 @@ deriveAnnotationMember aEnv env decl = do
                             )
   return (b,cs)
   where
-    deriveMember pol = case pol of
-                          Provides -> derivePositiveMember
-                          Requires -> deriveNegativeMember
-    derivePositiveMember i mexpr u constr = do
+    deriveMember ars pol i mexpr u constr = do
+      ar <- maybe (typecheckError $ InternalError $
+                      UndeterminedArityForAnnotationMember decl i)
+              return $ Map.lookup i ars
+      case pol of
+        Provides -> derivePositiveMember ar i mexpr u constr
+        Requires -> deriveNegativeMember ar i mexpr u constr
+    derivePositiveMember ar i mexpr u constr = do
       expr <- maybe (typecheckError $
                         NoInitializerForPositiveAnnotationMember u)
                 return mexpr
       (qa,cs) <- deriveQualifiedExpression aEnv env expr
-      return (constr $ AnnMemType i Positive qa cs, csEmpty)
-    deriveNegativeMember i mexpr u constr = do
+      return (constr $ AnnMemType i Positive ar qa cs, csEmpty)
+    deriveNegativeMember ar i mexpr u constr = do
       unless (isNothing mexpr) $
         typecheckError $ InitializerForNegativeAnnotationMember u
       qa <- freshTypecheckingQVar u
-      return (constr $ AnnMemType i Negative qa csEmpty, csEmpty)
+      return (constr $ AnnMemType i Negative ar qa csEmpty, csEmpty)
     lookupSpecialVar :: TEnvId -> TypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
