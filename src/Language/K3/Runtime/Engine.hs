@@ -1427,8 +1427,8 @@ modifyMVE v f = do
         Right (r, x) -> return x
 
 -- Persistent collection helpers
-generateCollectionFilename:: () -> EngineM b Identifier
-generateCollectionFilename () = do
+generateCollectionFilename :: EngineM b Identifier
+generateCollectionFilename = do
     engine <- ask
     let counter = collectionCount engine
     number <- liftIO $ readMVar counter
