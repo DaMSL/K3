@@ -223,7 +223,7 @@ digestTypeParameterInfo :: TSkelAliasEnv
                         -> (FlatAnnotation, K3 Declaration)
                         -> TypeDecideSkelM
                               ( StubbedConstraintSet , TSkelQuantEnv )
-digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
+digestTypeParameterInfo aEnv ((cxt,_,_),_) = do
   digested <- Trav.mapM digestSingleTypeParameterInfo cxt
   return ( CSL.unions $ map fst $ Map.elems digested
          , Map.mapKeys TEnvIdentifier $ Map.map snd digested )
