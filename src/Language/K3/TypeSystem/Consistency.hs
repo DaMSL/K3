@@ -20,7 +20,7 @@ import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Closure
 import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data

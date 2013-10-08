@@ -5,7 +5,7 @@
   This module contains Template Haskell utilities which will produce
   module-specific logging functions.
 -}
-module Language.K3.Logger.Generators
+module Language.K3.Utils.Logger.Generators
 ( loggerGenerator,
   loggingFunctions,
   customLoggingFunctions
@@ -15,10 +15,9 @@ import Control.Applicative
 import Data.List
 import Language.Haskell.TH
 import System.Log
-import System.Log.Logger
 
-import Language.K3.Logger.Operations
-import Language.K3.Pretty
+import Language.K3.Utils.Logger.Operations
+import Language.K3.Utils.Pretty
 
 {-|
   A set of logging functions for the current module.  These logging functions

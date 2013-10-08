@@ -2,8 +2,6 @@
 --   These are attached to expressions.
 module Language.K3.Core.Annotation.Codegen where
 
-import Language.K3.Core.Common
-
 data EmbeddingAnnotation
     = IOLoad
     | IOStore

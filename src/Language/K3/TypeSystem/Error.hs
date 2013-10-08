@@ -19,7 +19,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type as K3T
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Annotations.Error
 import Language.K3.TypeSystem.Consistency
 import Language.K3.TypeSystem.Data

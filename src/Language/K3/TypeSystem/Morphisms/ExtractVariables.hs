@@ -16,7 +16,7 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 
 import Language.K3.Core.Common
-import Language.K3.TemplateHaskell.Reduce
+import Language.K3.Utils.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.TypeDecision.Data
 
@@ -27,7 +27,7 @@ extractVariables :: (Reduce ExtractVariables a VariableReduction)
                  => a -> Set AnyTVar
 extractVariables = reduce ExtractVariables
 
--- |A transformation (as in @Language.K3.TemplateHaskell.Transform@) for
+-- |A transformation (as in @Language.K3.Utils.TemplateHaskell.Transform@) for
 --  retrieving the type variables which appear in type system data structures.
 data ExtractVariables = ExtractVariables
 

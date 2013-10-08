@@ -56,7 +56,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data.Coproduct
 
 -- * Types

@@ -34,7 +34,7 @@
   Note that this special case applies to all instances of Baz5 throughout the
   transformed structure.
 -}
-module Language.K3.TemplateHaskell.Transform
+module Language.K3.Utils.TemplateHaskell.Transform
 ( Transform(..)
 , defineHomInstance
 , defineHomFunc
@@ -50,7 +50,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Language.Haskell.TH
 
-import Language.K3.TemplateHaskell.Utils
+import Language.K3.Utils.TemplateHaskell.Utils
 
 class Transform t d where
   transform :: t -> d -> d

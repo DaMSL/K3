@@ -26,10 +26,9 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
-import Language.K3.Logger
-import Language.K3.Pretty
-import Language.K3.TemplateHaskell.Reduce
-import Language.K3.TemplateHaskell.Transform
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.TemplateHaskell.Reduce
+import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Annotations.Within
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
@@ -45,6 +44,7 @@ import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.Utils
 import Language.K3.TypeSystem.Utils.K3Tree
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 

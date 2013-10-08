@@ -18,15 +18,15 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Language.K3.Core.Common
-import Language.K3.Logger
-import Language.K3.Pretty
-import Language.K3.TemplateHaskell.Transform
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Closure
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 

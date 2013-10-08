@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | Pretty Printing for K3 Trees.
-module Language.K3.Pretty (
+module Language.K3.Utils.Pretty (
     pretty,
     boxToString,
 

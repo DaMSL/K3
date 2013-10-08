@@ -4,11 +4,10 @@
 
 -- | K3 Program constructor
 module Language.K3.Parser.ProgramBuilder (
-  EndpointType(..),
   defaultRoleName,
-  desugarRoleEntries,
+  processInitsAndRoles,
   endpointMethods,
-  rewriteSource,
+  bindSource,
   mkRunSourceE,
   mkRunSinkE,
   declareBuiltins
@@ -18,8 +17,6 @@ import Control.Applicative
 
 import Data.List
 import Data.Tree
-
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -31,7 +28,8 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
-data EndpointType = Builtin | File | Network 
+-- | Type synonyms, copied from the parser.
+type EndpointInfo = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
 
 {- Names -}
 defaultRoleName :: Identifier
@@ -138,46 +136,60 @@ parseArgsFn   = EC.variable parseArgsId
 replace_children :: K3 a -> [K3 a] -> K3 a
 replace_children (Node n _) nc = Node n nc
 
+{- Declaration construction -}
+builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
+builtinGlobal n t eOpt = (DC.global n t eOpt) @+ (DSpan $ GeneratedSpan "builtin")
+
+builtinTrigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
+builtinTrigger n t e = (DC.trigger n t e) @+ (DSpan $ GeneratedSpan "builtin")
+
+{- Type qualification -}
+qualifyT :: K3 Type -> K3 Type
+qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
+
+qualifyE :: K3 Expression -> K3 Expression
+qualifyE e = if null $ filter isEQualified $ annotations e then e @+ EImmutable else e
 
 {- Desugaring methods -}
 -- TODO: replace with Template Haskell
 
-desugarRoleEntries :: K3 Declaration
-                      -> [(Identifier, (Maybe [Identifier], Identifier, Maybe (K3 Expression)))]
-                      -> [(Identifier, Identifier)]
-                      -> K3 Declaration
-desugarRoleEntries (Node t c) endpointBQGs roleDefaults  = Node t $ c ++ initializerFns
+processInitsAndRoles :: K3 Declaration -> [(Identifier, EndpointInfo)] -> [(Identifier, Identifier)]
+                     -> K3 Declaration
+processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initializerFns
   where 
         (sinkEndpoints, sourceEndpoints) = partition matchSink endpointBQGs
-        matchSink (_,(Nothing, _, _)) = True
+        matchSink (_,(_, Nothing, _, _)) = True
         matchSink _ = False
 
         initializerFns =
-            [DC.global initDeclId unitFnT (Just $ mkInitDeclBody sinkEndpoints),
-             DC.global roleFnId unitFnT (Just $ mkRoleBody sourceEndpoints roleDefaults)]
+            [ builtinGlobal initDeclId (qualifyT unitFnT)
+                $ Just . qualifyE $ mkInitDeclBody sinkEndpoints,
+             
+              builtinGlobal roleFnId (qualifyT unitFnT)
+                $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults ]
 
         mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
 
-        sinkInitE acc (_,(Nothing, _, Just e)) = acc ++ [e]
+        sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
         sinkInitE acc _ = acc
         
         mkRoleBody sources defaults =
           EC.lambda "_" $ uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults
         
         defaultAndRestIds sources defaults = (defaultE sources $ lookup "" defaults, sources)
-        dispatchId elseE (n,(_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE
+        dispatchId elseE (n,(_,_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE
         
         eqRole n = EC.binop OEqu roleVar (EC.constant $ CString n)
 
         runE _ (Just goE) = goE
         runE n Nothing    = EC.applyMany (EC.variable $ cpName n) [EC.unit]
 
-        defaultE s (Just x) = case find ((x ==) . second . snd) s of
-                                Just (n,(_,_,goE)) -> runE n goE
-                                Nothing -> EC.unit
+        defaultE s (Just x) = case find ((x ==) . third . snd) s of
+                                Just (n,(_,_,_,goE)) -> runE n goE
+                                Nothing              -> EC.unit
         defaultE _ Nothing   = EC.unit
 
-        second (_,x,_) = x
+        third (_,_,x,_) = x
         
         unitFnT = TC.function TC.unit TC.unit
 
@@ -185,24 +197,26 @@ desugarRoleEntries (Node t c) endpointBQGs roleDefaults  = Node t $ c ++ initial
 {- Code generation methods-}
 -- TODO: replace with Template Haskell
 
-endpointMethods :: Bool -> EndpointType -> K3 Expression -> K3 Expression ->
-                   Identifier -> K3 Type -> (Maybe (K3 Expression), [K3 Declaration])
-endpointMethods isSource eType argE formatE n t =
+endpointMethods :: Bool -> EndpointSpec -> K3 Expression -> K3 Expression -> Identifier -> K3 Type
+                -> (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
+endpointMethods isSource eSpec argE formatE n t =
   if isSource then sourceDecls else sinkDecls
   where 
-    sourceDecls = (Nothing,) $
+    sourceDecls = (eSpec, Nothing,) $
          (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead])
       ++ [sourceController]
 
-    sinkDecls = (Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
+    sinkDecls = (eSpec, Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
-    mkMethod (m,argT,retT,eOpt) = DC.global (n++m) (TC.function argT retT) eOpt
+    mkMethod (m, argT, retT, eOpt) =
+      builtinGlobal (n++m) (qualifyT $ TC.function argT retT)
+        $ maybe Nothing (Just . qualifyE) eOpt
 
     mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ openEndpointE)
     mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
     mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ EC.applyMany closeFn [sourceId n])
 
-    sourceController = DC.trigger (ccName n) TC.unit $
+    sourceController = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_"
         (EC.ifThenElse
           (EC.applyMany (EC.variable $ chrName n) [EC.unit])
@@ -222,56 +236,59 @@ endpointMethods isSource eType argE formatE n t =
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)
     sinkWrite     = ("Write",    t,       TC.unit, Nothing)
 
-    openEndpointE = case eType of
-      Builtin -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
-      File    -> openFnE openFileFn
-      Network -> openFnE openSocketFn
+    openEndpointE = case eSpec of
+      BuiltinEP _ _ -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
+      FileEP    _ _ -> openFnE openFileFn
+      NetworkEP _ _ -> openFnE openSocketFn
+      _             -> error "Invalid endpoint argument"
 
     openFnE openFn = EC.applyMany openFn [sourceId n, argE, formatE, modeE]
 
     modeE = EC.constant . CString $ if isSource then "r" else "w"
 
-    startE = case eType of
-      Builtin -> fileStartE
-      File    -> fileStartE
-      Network -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+    startE = case eSpec of
+      BuiltinEP _ _ -> fileStartE
+      FileEP    _ _ -> fileStartE
+      NetworkEP _ _ -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+      _             -> error "Invalid endpoint argument"
 
     fileStartE = EC.send (EC.variable (ccName n)) myAddr EC.unit
 
-    controlE processE = case eType of
-      Builtin -> fileControlE processE
-      File    -> fileControlE processE
-      Network -> processE
+    controlE processE = case eSpec of
+      BuiltinEP _ _ -> fileControlE processE
+      FileEP    _ _ -> fileControlE processE
+      NetworkEP _ _ -> processE
+      _             -> error "Invalid endpoint argument"
 
     fileControlE processE =
       EC.block [processE, (EC.send (EC.variable $ ccName n) myAddr EC.unit)]
 
-    sourceId n = EC.constant $ CString n
+    sourceId n' = EC.constant $ CString n'
 
--- | Rewrites a source declaration's process method to access and dispatch the next available event to all its bindings
-rewriteSource :: [(Identifier, Identifier)] -> K3 Declaration -> K3 Declaration
-rewriteSource bindings d
+-- | Rewrites a source declaration's process method to access and
+--   dispatch the next available event to all its bindings.
+bindSource :: [(Identifier, Identifier)] -> K3 Declaration -> K3 Declaration
+bindSource bindings d
   | DGlobal src t eOpt <- tag d
   , TSource <- tag t
-  = replace_children d $ (children d) ++ [mkProcessFn bindings src eOpt]
+  = replace_children d $ (children d) ++ [mkProcessFn src eOpt]
 
   | otherwise = d
 
--- | Constructs a dispatch function declaration for a source.
-mkProcessFn :: [(Identifier, Identifier)] -> Identifier -> Maybe (K3 Expression) -> K3 Declaration
-mkProcessFn bindings n eOpt = 
-    DC.global (cpName n) unitFnT (Just $ body bindings n eOpt)
-  
-  where body bindings n eOpt =
-          EC.lambda "_" $ EC.applyMany (processFnE bindings n) [nextE n eOpt]
-        
-        processFnE bindings n = EC.lambda "next" $ EC.block $
-          map (\(_,dest) -> sendNextE dest) $ filter ((n ==) . fst) bindings
-        
-        nextE _ (Just e) = e
-        nextE n Nothing  = EC.applyMany (EC.variable $ crName n) [EC.unit]
-        sendNextE dest   = EC.send (EC.variable dest) myAddr (EC.variable "next")
-        unitFnT          = TC.function TC.unit TC.unit
+  where
+    -- | Constructs a dispatch function declaration for a source.
+    mkProcessFn n eOpt = 
+      builtinGlobal (cpName n) (qualifyT unitFnT) (Just . qualifyE $ body n eOpt)
+      
+    body n eOpt = EC.lambda "_" $ EC.applyMany (processFnE n) [nextE n eOpt]
+            
+    processFnE n = EC.lambda "next" $ EC.block $
+      map (\(_,dest) -> sendNextE dest) $ filter ((n ==) . fst) bindings
+    
+    nextE _ (Just e) = e
+    nextE n Nothing  = EC.applyMany (EC.variable $ crName n) [EC.unit]
+    sendNextE dest   = EC.send (EC.variable dest) myAddr (EC.variable "next")
+    unitFnT          = TC.function TC.unit TC.unit
 
 -- | Constructs an "atInit" expression for initializing and starting sources.
 mkRunSourceE :: Identifier -> K3 Expression
@@ -287,31 +304,33 @@ mkRunSinkE n = EC.applyMany (EC.variable $ ciName n) [EC.unit]
 -- TODO: stdin, stdout, stderr
 declareBuiltins :: K3 Declaration -> K3 Declaration
 declareBuiltins d
-  | DRole defaultRoleName <- tag d = replace_children d new_children
+  | DRole n <- tag d, n == defaultRoleName = replace_children d new_children
   | otherwise = d
   where new_children = runtimeDecls ++ peerDecls ++ (children d) ++ topLevelDecls
 
         runtimeDecls = [
-          DC.global parseArgsId (mkUnitFnT argT) Nothing,
-          DC.global "openBuiltin" (flip TC.function TC.unit $ TC.tuple [idT, TC.string,  TC.string]) Nothing,
-          DC.global "openFile"    (flip TC.function TC.unit $ TC.tuple [idT, TC.string,  TC.string, TC.string]) Nothing,
-          DC.global "openSocket"  (flip TC.function TC.unit $ TC.tuple [idT, TC.address, TC.string, TC.string]) Nothing,
-          DC.global "close"       (TC.function idT TC.unit) Nothing,
-          DC.global "registerFileDataTrigger"     (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerFileCloseTrigger"    (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerSocketAcceptTrigger" (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerSocketDataTrigger"   (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing,
-          DC.global "registerSocketCloseTrigger"  (flip TC.function TC.unit $ TC.tuple [idT, TC.trigger TC.unit]) Nothing ]
+          mkGlobal parseArgsId (mkRUnitFnT argT) Nothing,
+
+          mkGlobal "openBuiltin" (mkCurriedFnT [idT, TC.string, TC.string, TC.unit]) Nothing,
+          mkGlobal "openFile"    (mkCurriedFnT [idT, TC.string,  TC.string, TC.string, TC.unit]) Nothing,
+          mkGlobal "openSocket"  (mkCurriedFnT [idT, TC.address, TC.string, TC.string, TC.unit]) Nothing,
+          mkGlobal "close"       (mkAUnitFnT idT) Nothing,
+
+          mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
+          mkGlobal "registerFileCloseTrigger"    (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
+          mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
+          mkGlobal "registerSocketDataTrigger"   (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
+          mkGlobal "registerSocketCloseTrigger"  (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing ]
 
         peerDecls = [
-          DC.global myId TC.address Nothing,
-          DC.global peersId peersT Nothing,
-          DC.global argsId progArgT Nothing,
-          DC.global roleId TC.string Nothing]
+          mkGlobal myId    TC.address Nothing,
+          mkGlobal peersId peersT     Nothing,
+          mkGlobal argsId  progArgT   Nothing,
+          mkGlobal roleId  TC.string  Nothing]
 
         topLevelDecls = [
-          DC.global initId unitFnT $ Just atInitE,
-          DC.global exitId unitFnT $ Just atExitE ]
+          mkGlobal initId unitFnT $ Just atInitE,
+          mkGlobal exitId unitFnT $ Just atExitE ]
 
         atInitE = EC.lambda "_" $
           EC.block [--EC.assign argsId (EC.applyMany parseArgsFn [EC.unit]),
@@ -321,11 +340,17 @@ declareBuiltins d
         atExitE = EC.lambda "_" $ EC.tuple []
 
         idT      = TC.string
-        progArgT = TC.tuple [argT, paramsT]
+        progArgT = TC.tuple [qualifyT argT, qualifyT paramsT]
         peersT   = mkCollection [("addr", TC.address)]
         argT     = mkCollection [("arg", TC.string)]
         paramsT  = mkCollection [("key", TC.string), ("value", TC.string)]
 
-        mkUnitFnT rt = TC.function TC.unit rt
-        unitFnT = TC.function TC.unit TC.unit
-        mkCollection fields = TC.collection $ TC.record fields
+        mkGlobal n t eOpt = builtinGlobal n (qualifyT t) $ maybe Nothing (Just . qualifyE) eOpt
+
+        mkCurriedFnT tl = foldr1 TC.function tl
+
+        mkAUnitFnT at = TC.function at TC.unit
+        mkRUnitFnT rt = TC.function TC.unit rt
+        unitFnT       = TC.function TC.unit TC.unit
+
+        mkCollection fields = TC.collection $ TC.record $ map (qualifyT <$>) fields

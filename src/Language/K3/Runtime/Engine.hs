@@ -7,8 +7,7 @@
 
 -- | A message processing runtime for the K3 interpreter
 module Language.K3.Runtime.Engine (
-    Address(..)
-  , FrameDesc(..)
+    FrameDesc(..)
   , WireDesc(..)
   , PeerBootstrap
   , SystemEnvironment
@@ -20,7 +19,8 @@ module Language.K3.Runtime.Engine (
   , EngineM
   , runEngineT
   , runEngineM
-  , EngineError
+  , EngineError(..)
+  , throwEngineError
 
   , EngineConfiguration(..)
   , EEndpoints
@@ -144,10 +144,9 @@ import Control.Monad.Trans.Either
 import qualified Data.ByteString.Char8 as BS
 import Data.Function
 import Data.Functor
-import Data.Hashable (Hashable(..))
 import qualified Data.HashMap.Lazy as H
 import Data.List
-import Data.List.Split (splitOn, wordsBy)
+import Data.List.Split (wordsBy)
 
 import Debug.Trace
 
@@ -169,14 +168,12 @@ import Language.K3.Core.Type
 import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 
-import Language.K3.Logger
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
--- | Address implementation
-data Address = Address (String, Int) deriving (Eq)
 
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
@@ -188,7 +185,7 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , endpoints       :: EEndpointState a
                        , connections     :: EConnectionState }
 
-data EngineError = EngineError
+data EngineError = EngineError String deriving (Eq, Read, Show)
 
 type EngineT e r m = EitherT e (ReaderT r m)
 
@@ -199,6 +196,9 @@ runEngineT s r = flip runReaderT r $ runEitherT s
 
 runEngineM :: EngineM a b -> Engine a -> IO (Either EngineError b)
 runEngineM = runEngineT
+
+throwEngineError :: EngineError -> EngineM a b
+throwEngineError = Control.Monad.Trans.Either.left
 
 {- Configuration parameters -}
 
@@ -286,6 +286,7 @@ type ProcessPool = MVar [ProcessHandle]  -- TODO: use System.process with pipes 
 --   The caller is responsible for using deRefWeak to determine if the thread is valid.
 type Listeners   = MVar [(Identifier, Weak ThreadId)]
 
+
 {- Wire Descriptions -}
 
 data FrameDesc = Delimiter String | FixedSize Int | PrefixLength
@@ -300,28 +301,20 @@ data WireDesc a = WireDesc { packWith     :: a -> IO String
 --   destination trigger identifier with each message.
 type InternalMessage a = (Address, Identifier, a)
 
-{- Network state -}
-
-data NEndpoint   = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
-data NConnection = NConnection { conn :: LLConnection, cEndpointAddress :: Address }
-
--- | Low-level transport layer, built on network-transport
-type LLTransport  = NT.Transport
-type LLEndpoint   = NT.EndPoint
-type LLConnection = NT.Connection
-
--- | Connection maps may be initialized without binding an endpoint (e.g., if the program has no
---   communication with any other peer or network sink), and are also safely modifiable to enable
---   their construction on demand.
--- TODO: implement an actual cache, or a connection pool with Data.Pool from the resource-pool package.
-data EConnectionMap = EConnectionMap { anchor :: (Address, Maybe NEndpoint)
-                                     , cache  :: [(Address, NConnection)] }
-
--- | Two connection maps for outgoing internal (i.e., K3 peer) and external (i..e, network sink) connections
---   The first is optional capturing simulations that cannot send to peers without name resolution.
-newtype EConnectionState = EConnectionState (Maybe (MVar EConnectionMap), MVar EConnectionMap)
 
 {- Endpoints and internal IO handles -}
+
+-- | K3 endpoint datatype. Endpoints may be external (for external data sources or sinks), 
+--   or internal (for peer-to-peer communication).
+data Endpoint a b = Endpoint { handle      :: IOHandle a
+                             , buffer      :: Maybe (EndpointBuffer a)
+                             , subscribers :: EndpointBindings b }
+
+type EEndpoints a b = MVar (H.HashMap Identifier (Endpoint a b))
+
+data EEndpointState a = EEndpointState { internalEndpoints :: EEndpoints (InternalMessage a) a
+                                       , externalEndpoints :: EEndpoints a a }
+
 data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
@@ -345,14 +338,6 @@ data EndpointBuffer a
 -- | Currently, notifications can only use a constant (i.e., compile-time value) argument on dispatch
 type EndpointBindings a = [(EndpointNotification, InternalMessage a)]
 
-data Endpoint a b = Endpoint { handle      :: IOHandle a
-                             , buffer      :: EndpointBuffer a
-                             , subscribers :: EndpointBindings b }
-
-type EEndpoints a b = MVar (H.HashMap Identifier (Endpoint a b))
-
-data EEndpointState a = EEndpointState { internalEndpoints :: EEndpoints (InternalMessage a) a
-                                       , externalEndpoints :: EEndpoints a a }
 
 {- Builtin notifications -}
 data EndpointNotification
@@ -362,6 +347,29 @@ data EndpointNotification
     | SocketData
     | SocketClose
   deriving (Eq, Show, Read)
+
+
+{- Network state -}
+
+data NEndpoint   = NEndpoint { endpoint :: LLEndpoint, epTransport :: LLTransport }
+data NConnection = NConnection { conn :: LLConnection, cEndpointAddress :: Address }
+
+-- | Low-level transport layer, built on network-transport
+type LLTransport  = NT.Transport
+type LLEndpoint   = NT.EndPoint
+type LLConnection = NT.Connection
+
+-- | Connection maps may be initialized without binding an endpoint (e.g., if the program has no
+--   communication with any other peer or network sink), and are also safely modifiable to enable
+--   their construction on demand.
+-- TODO: implement an actual cache, or a connection pool with Data.Pool from the resource-pool package.
+data EConnectionMap = EConnectionMap { anchor :: (Address, Maybe NEndpoint)
+                                     , cache  :: [(Address, NConnection)] }
+
+-- | Two connection maps for outgoing internal (i.e., K3 peer) and external (i..e, network sink) connections
+--   The first is optional capturing simulations that cannot send to peers without name resolution.
+newtype EConnectionState = EConnectionState (Maybe (MVar EConnectionMap), MVar EConnectionMap)
+
 
 {- Listeners -}
 type ListenerProcessor a b =
@@ -373,9 +381,9 @@ data ListenerState a b = ListenerState { name       :: Identifier
 
 data ListenerError a
     = SerializeError  BS.ByteString
+    | InvalidBuffer
     | OverflowError   a
     | PropagatedError a
-
 
 
 {- Naming schemes and constants -}
@@ -574,8 +582,8 @@ processMessage mp pr = do
         nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show a) =>
-    MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+runMessages :: (Pretty r, Pretty e, Show a)
+            => MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
     Result r       -> debugStep >> runMessages mp (processMessage mp r)
     Error e        -> die "Error:" e (control engine)
@@ -603,8 +611,8 @@ runEngine mp is p = do
     result <- initialize mp is p
     liftIO $ case workers engine of
         Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
-        Multithreaded _ -> error "Unsupported engine mode: Multithreaded"
-        _ -> error "Unsupported engine mode: Multiprocess"
+        Multithreaded _     -> error "Unsupported engine mode: Multithreaded"
+        _                   -> error "Unsupported engine mode: Multiprocess"
 
     runMessages mp (return . either Error Result $ status mp result)
 
@@ -659,20 +667,23 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
         NT.EndPointClosed          -> return ()
         NT.ErrorEvent err          -> endpointError $ show err
   where
-    processMsg msg = liftIO (bufferMsg msg) >>= \case
-        (b, [])     -> (processor ls) ls b ep >>= \buf -> runNEndpoint ls (Endpoint h buf subs)
-        (_, errors) -> endpointError $ summarize errors
+    processMsg msg = bufferMsg msg >>= \case
+        (Just b, []) -> (processor ls) ls b ep >>= \buf -> runNEndpoint ls (Endpoint h (Just buf) subs)
+        (_, errors)  -> endpointError $ summarize errors
 
-    bufferMsg = foldM safeAppend (buffer ep, [])
+    bufferMsg msg = case buffer ep of
+                      Just b  -> liftIO (foldM safeAppend (b, []) msg) >>= (\(x,y) -> return (Just x, y))
+                      Nothing -> return (Nothing, [InvalidBuffer])
+    
     unpackMsg = unpackWith wd . BS.unpack
 
     safeAppend (b, errors) payload = unpackMsg payload >>= \case
         Nothing -> return (b, errors ++ [SerializeError payload])
         Just mg -> case errors of
-            [] ->flip appendEBuffer b mg >>= \case
-                (nb, Nothing) -> return (nb, [])
-                (nb, Just m) -> return (nb, [OverflowError m])
-            ls -> return (b, ls ++ [PropagatedError mg])
+                    [] -> flip appendEBuffer b mg >>= \case
+                            (nb, Nothing) -> return (nb, [])
+                            (nb, Just m)  -> return (nb, [OverflowError m])
+                    ls -> return (b, ls ++ [PropagatedError mg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
     endpointError s = close (name ls) >> (liftIO $ putStrLn s) -- TODO: close vs closeInternal
@@ -762,21 +773,25 @@ ioMode "a"  = SIO.AppendMode
 ioMode "rw" = SIO.ReadWriteMode
 ioMode s    = error $ "Invalid IO mode: " ++ s
 
+
 -- | Builtin endpoint constructor
 genericOpenBuiltin :: Identifier -> Identifier -> WireDesc a -> EEndpoints a b -> EngineM b ()
 genericOpenBuiltin eid (builtin -> b) wd eps = do
     let file = BuiltinH wd (builtinHandle b) b
-    let buffer = Exclusive emptySingletonBuffer
+    let buffer = case b of
+                   Stdin -> Nothing
+                   _     -> Just $ Exclusive emptySingletonBuffer
     void $ addEndpoint eid (file, buffer, []) eps
 
 
 -- | File endpoint constructor.
 -- TODO: validation with the given type
-genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EEndpoints a b
-    -> EngineM b ()
+genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type)
+                -> String -> EEndpoints a b
+                -> EngineM b ()
 genericOpenFile eid path wd _ mode eps = do
     file <- liftIO $ openFileHandle path wd (ioMode mode)
-    let buffer = Exclusive emptySingletonBuffer
+    let buffer = Just $ Exclusive emptySingletonBuffer
     void $ addEndpoint eid (file, buffer, []) eps
     case ioMode mode of
         SIO.ReadMode -> void $ genericDoRead eid eps -- Prime the file's buffer.
@@ -785,8 +800,9 @@ genericOpenFile eid path wd _ mode eps = do
 -- | Socket endpoint constructor.
 --   This initializes the engine's connections as necessary.
 -- TODO: validation with the given type
-genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String
-    -> ListenerState a b -> EEndpoints a b -> EngineM b ()
+genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type)
+                  -> String -> ListenerState a b -> EEndpoints a b
+                  -> EngineM b ()
 genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
     engine <- ask
     let cfm = case mode of
@@ -800,7 +816,7 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
     registerEndpoint SIO.ReadMode ioh = do
         engine <- ask
         let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
-        buf <- liftIO $ shared t
+        buf <- liftIO (shared t >>= return . Just)
         e <- addEndpoint eid (ioh, buf, []) endpoints
         wkThreadId <- forkEndpoint e
         registerNetworkListener (eid, wkThreadId)
@@ -808,7 +824,7 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
     registerEndpoint _ ioh = do
         engine <- ask
         let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
-        buf <- liftIO $ shared t
+        buf <- liftIO (shared t >>= return . Just)
         void $ addEndpoint eid (ioh, buf, []) endpoints
 
     forkEndpoint e = do
@@ -833,43 +849,81 @@ genericClose n endpoints = getEndpoint n endpoints >>= \case
 genericHasRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
 genericHasRead n endpoints = getEndpoint n endpoints >>= \case
     Nothing -> return Nothing
-    Just e  -> case handle e of
-        BuiltinH _ h Stdin -> liftIO (SIO.hIsReadable h) >>= return . Just
-        _ -> liftIO (emptyEBuffer (buffer e)) >>= return . Just . not
+    Just e  -> do
+      readable      <- liftIO (maybe (return True) SIO.hIsReadable $ getSystemHandle $ handle e)
+      invalidBuffer <- liftIO (maybe (return False) emptyEBuffer $ buffer e)
+      return . Just $ readable && (not invalidBuffer)
 
 genericDoRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe a)
 genericDoRead n endpoints = getEndpoint n endpoints >>= maybe (return Nothing) refresh
   where
-    refresh e = liftIO (refreshEBuffer (handle e) (buffer e)) >>= updateAndYield e
+    refresh e = do
+      let h = handle e
+      readInfo <- maybe (readDirect h) (readFromBuffer h) (buffer e)
+      updateAndYield e readInfo
 
-    updateAndYield e (nBuf, (vOpt, notifyType)) = do
-      addEndpoint n (handle e, nBuf, subscribers e) endpoints
+    updateAndYield e (nBufOpt, (vOpt, notifyType)) = do
+      addEndpoint n (handle e, nBufOpt, subscribers e) endpoints
       notify notifyType (subscribers e)
       return vOpt
 
     notify Nothing _      = return ()
     notify (Just nt) subs = notifySubscribers nt subs
 
+    readDirect h@(BuiltinH _ _ _) = readFromHandle h
+    readDirect h@(FileH _ _)      = readFromHandle h
+    readDirect   (SocketH _ _)    = readError "Cannot read directly from a network socket."
+    
+    readFromHandle h   = liftIO (readHandle h >>= return . maybe emptyRead validRead)
+    readFromBuffer h b = liftIO (refreshEBuffer h b >>= \(x,(y,z)) -> return (Just x,(y,z)))
+    
+    emptyRead   = (Nothing, (Nothing, Nothing))
+    validRead v = (Nothing, (Just v, Just FileData))
+    
+    readError msg = do
+      void $ genericClose n endpoints 
+      void $ (liftIO $ putStrLn $ msg ++ " (doRead)")
+      return emptyRead
+
 genericHasWrite :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
 genericHasWrite n endpoints = getEndpoint n endpoints >>= \case
     Nothing -> return Nothing
-    Just e -> liftIO (fullEBuffer (buffer e)) >>= return . Just . not
+    Just e -> do
+      writeable     <- liftIO (maybe (return True) SIO.hIsWritable $ getSystemHandle $ handle e)
+      invalidBuffer <- liftIO (maybe (return False) fullEBuffer $ buffer e)
+      return . Just $ writeable && not invalidBuffer
 
 genericDoWrite :: Identifier -> a -> EEndpoints a b -> EngineM b ()
 genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) write
   where
-    write e = liftIO (appendEBuffer arg (buffer e)) >>= \case
-        (nb, Nothing) -> liftIO (flushEBuffer (handle e) nb) >>= update e
+    write e = do
+      let h    = handle e
+      let subs = subscribers e
+      void $ maybe (writeToHandle h subs) (writeToBuffer h subs) $ buffer e
+
+    writeToHandle h subs = do
+      void $ liftIO (writeHandle arg h) 
+      notify (notification h) subs
+
+    writeToBuffer h subs b = liftIO (appendEBuffer arg b) >>= \case
+        (nb, Nothing) -> liftIO (flushEBuffer h nb) >>= update h subs
         (_, Just _)   -> overflowError
 
-    update e (nBuf, notifyType) = addEndpoint n (nep e nBuf) endpoints >> notify notifyType (subscribers e)
-
-    nep e b = (handle e, b, subscribers e)
+    update h subs (nBuf, notifyType) = do
+      void $ addEndpoint n (h, Just nBuf, subs) endpoints
+      notify notifyType subs
 
     notify Nothing _ = return ()
     notify (Just nt) subs = notifySubscribers nt subs
 
-    overflowError = genericClose n endpoints >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
+    notification (networkSource -> Just _) = Nothing
+    notification (networkSink -> Just _)   = Just SocketData
+    notification _                         = Just FileData
+
+    overflowError =
+      genericClose n endpoints
+        >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
+
 
 {- External endpoint methods -}
 
@@ -945,6 +999,12 @@ doWriteInternal :: Identifier -> InternalMessage a -> EngineM a ()
 doWriteInternal n arg = ask >>= genericDoWrite n arg . internalEndpoints . endpoints
 
 {- IO Handle methods -}
+
+getSystemHandle :: IOHandle a -> Maybe SIO.Handle
+getSystemHandle h = case h of
+  BuiltinH _ h _  -> Just h
+  FileH    _ h    -> Just h
+  SocketH  _ _    -> Nothing
 
 networkSource :: IOHandle a -> Maybe (WireDesc a, NEndpoint)
 networkSource (SocketH wd (Left ep)) = Just (wd, ep)
@@ -1035,7 +1095,7 @@ closeEndpoint ep = liftIO $ NT.closeEndPoint (endpoint ep) >> NT.closeTransport 
 emptyEndpoints :: IO (EEndpoints a b)
 emptyEndpoints = newMVar (H.fromList [])
 
-addEndpoint :: Identifier -> (IOHandle a, EndpointBuffer a, EndpointBindings b) -> EEndpoints a b
+addEndpoint :: Identifier -> (IOHandle a, Maybe (EndpointBuffer a), EndpointBindings b) -> EEndpoints a b
     -> EngineM b (Endpoint a b)
 addEndpoint n (h,b,s) eps = liftIO $ modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
   where rebuild e m = return (H.insert n e m, e)
@@ -1266,14 +1326,15 @@ flushEBContents :: IOHandle v -> BufferContents v
 flushEBContents (networkSource -> Just _) _ = error "Invalid buffer flush for network source"
 flushEBContents h c =  case batch c of
                         ([], nc) -> return (nc, Nothing)
-                        (x, nc)  -> mapM_ (flip writeHandle h) x >> return (nc, notification x)
+                        (x, nc)  -> mapM_ (flip writeHandle h) x >> return (nc, notification h x)
 
   where batch c@(Single Nothing)  = ([], c)
         batch (Single (Just x)) = ([x], Single Nothing)
         batch (Multiple x s) = let (a,b) = splitAt (batchSize s) x in (a, Multiple b s)
 
-        notification [] = Nothing
-        notification _  = Just FileData
+        notification _ []                      = Nothing
+        notification (networkSink -> Just _) _ = Just SocketData
+        notification _ _                       = Just FileData
 
 flushEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe EndpointNotification)
 flushEBuffer h = modifyEBuffer $ flushEBContents h
@@ -1333,21 +1394,6 @@ prettyQueues = ask >>= showMessageQueues . queues >>= return . (["Queues: "]++) 
 
 
 {- Instance definitions -}
-
-instance Show Address where
-  show (Address (host, port)) = host ++ ":" ++ show port
-
-instance Read Address where
-  readsPrec _ str =
-    let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int
-    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
-
-instance Hashable Address where
-  hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)
-
-instance Pretty Address where
-  prettyLines addr = [show addr]
 
 -- TODO: put workers, endpoints
 instance (Show a) => Show (Engine a) where

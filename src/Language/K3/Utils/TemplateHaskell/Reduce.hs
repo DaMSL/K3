@@ -33,7 +33,7 @@
   that this special case applies to all instances of Baz5 throughout all of the
   reduced structure.
 -}
-module Language.K3.TemplateHaskell.Reduce
+module Language.K3.Utils.TemplateHaskell.Reduce
 ( Reduce(..)
 , defineCatInstance
 , defineCatFunc
@@ -51,7 +51,7 @@ import Data.Monoid
 import Data.Set (Set)
 import Language.Haskell.TH
 
-import Language.K3.TemplateHaskell.Utils
+import Language.K3.Utils.TemplateHaskell.Utils
 
 class (Monoid r) => Reduce t d r | t d -> r where
   reduce :: t -> d -> r

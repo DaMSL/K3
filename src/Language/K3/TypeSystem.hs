@@ -10,8 +10,7 @@ import qualified Data.Sequence as Seq
 import Control.Applicative
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-import Language.K3.Logger
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
@@ -19,6 +18,7 @@ import Language.K3.TypeSystem.Sanity
 import Language.K3.TypeSystem.TypeChecking
 import Language.K3.TypeSystem.TypeDecision
 import Language.K3.TypeSystem.TypeDecision.Monad
+import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 
