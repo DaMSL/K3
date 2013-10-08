@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, DataKinds, FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE ScopedTypeVariables, DataKinds, FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances, TemplateHaskell #-}
 
 {-|
   This module defines a routine for determining structural containment on a type
@@ -24,20 +24,31 @@ import Data.Set (Set)
 
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
 
 -- PERF: This whole thing uses a naive set exploration.  Just indexing the
 --       constraints before the work is done could speed things up a bit.  To be
 --       fair, this computation is going to be expensive regardless...
 
 isWithin :: forall c el.
-            ( Ord el, WithinAlignable el, CSL.ConstraintSetLike el c
+            ( Pretty c, Ord el, WithinAlignable el, CSL.ConstraintSetLike el c
             , CSL.ConstraintSetLikePromotable ConstraintSet c)
          => (QVar,c) -> (QVar,c) -> Bool
 isWithin (qa,cs) (qa',cs') =
-  
   let initMap = (Map.singleton qa qa', Map.empty) in
   let initState = (Set.fromList $ CSL.toList cs', initMap) in
-  not $ null $ runStateT (mconcat <$> mapM deduct (CSL.toList cs)) initState
+  let answer = map (snd . snd) $
+        runStateT (mconcat <$> mapM deduct (CSL.toList cs)) initState in
+  _debugI
+    (boxToString $ ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
+                %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
+                %$ ["  gives: "] %+
+                  if null answer then ["failure"] else
+                    (vconcats $ map prettyMap answer))
+    $ not $ null answer
   where
     -- |Given one element, find its match and remove it.  Each step should also
     --  force alignment of the variable mapping.
@@ -51,6 +62,17 @@ isWithin (qa,cs) (qa',cs') =
           el' <- lift =<< Set.toList . fst <$> get
           withinAlign el el'
           return el'
+    prettyMap :: WithinMap -> [String]
+    prettyMap (qm,um) =
+      ["〈"] %+ (
+         ["["] %+ intersperseBoxes [","] (map prettyPair $ Map.toList qm)
+            %+ ["],"]
+      %$ ["["] %+ intersperseBoxes [","] (map prettyPair $ Map.toList um)
+            %+ ["]"]
+      ) +% ["〉"]
+      where
+        prettyPair :: (Pretty a, Pretty b) => (a,b) -> [String]
+        prettyPair (x,y) = prettyLines x %+ ["→"] %+ prettyLines y
 
 -- |A data type for the mappings used to align variables during the @isWithin@
 --  test.

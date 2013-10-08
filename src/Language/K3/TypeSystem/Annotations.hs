@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds, DataKinds #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables, FlexibleContexts, ConstraintKinds, DataKinds, TemplateHaskell #-}
 {-|
   This module contains functions for annotation types.
 -}
@@ -36,6 +36,10 @@ import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 import Language.K3.TypeSystem.Utils
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
 
 -- |Freshens an annotation type.  All variables appearing within the annotation
 --  type are replaced by fresh equivalents.  The provided @UID@ should identify
@@ -77,7 +81,7 @@ instantiateAnnotation p (AnnType p' b cs) =
 -- |Defines concatenation of annotation types.
 concatAnnType :: ( CSL.ConstraintSetLike e c
                  , CSL.ConstraintSetLikePromotable ConstraintSet c
-                 , WithinAlignable e, Ord e
+                 , WithinAlignable e, Ord e, Pretty c
                  , Transform ReplaceVariables c)
               => AnnType c -> AnnType c
               -> Either AnnotationConcatenationError (AnnType c)
@@ -91,7 +95,7 @@ concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
 -- |Defines concatenation over numerous annotation types.
 concatAnnTypes :: ( CSL.ConstraintSetLike e c
                   , CSL.ConstraintSetLikePromotable ConstraintSet c
-                  , Transform ReplaceVariables c, FreshVarI m
+                  , Transform ReplaceVariables c, FreshVarI m, Pretty c
                   , WithinAlignable e, Ord e)
                => [AnnType c]
                -> m (Either AnnotationConcatenationError (AnnType c))
@@ -117,7 +121,7 @@ emptyAnnType = do
 concatAnnBody :: forall c el.
                  ( CSL.ConstraintSetLike el c
                  , CSL.ConstraintSetLikePromotable ConstraintSet c
-                 , WithinAlignable el, Ord el)
+                 , WithinAlignable el, Ord el, Pretty c)
               => AnnBodyType c -> AnnBodyType c
               -> Either AnnotationConcatenationError (AnnBodyType c)
 concatAnnBody (AnnBodyType ms1 ms2) (AnnBodyType ms1' ms2') =
@@ -127,7 +131,7 @@ concatAnnBody (AnnBodyType ms1 ms2) (AnnBodyType ms1' ms2') =
 concatAnnBodies :: forall c el.
                    ( CSL.ConstraintSetLike el c
                    , CSL.ConstraintSetLikePromotable ConstraintSet c
-                   , WithinAlignable el, Ord el)
+                   , WithinAlignable el, Ord el, Pretty c)
                 => [AnnBodyType c]
                 -> Either AnnotationConcatenationError (AnnBodyType c)
 concatAnnBodies = foldM concatAnnBody $ AnnBodyType [] []
@@ -136,7 +140,7 @@ concatAnnBodies = foldM concatAnnBody $ AnnBodyType [] []
 concatAnnMembers :: forall c el.
                     ( CSL.ConstraintSetLike el c
                     , CSL.ConstraintSetLikePromotable ConstraintSet c
-                    , WithinAlignable el, Ord el)
+                    , WithinAlignable el, Ord el, Pretty c)
                  => [AnnMemType c] -> [AnnMemType c]
                  -> Either AnnotationConcatenationError [AnnMemType c]
 concatAnnMembers ms1 ms2 =
@@ -155,9 +159,12 @@ concatAnnMembers ms1 ms2 =
     --  have the same identifier; this property is not checked.
     concatConstr :: [AnnMemType c]
                  -> Either AnnotationConcatenationError (AnnMemType c)
-    concatConstr mems =
-      let arities = nub $ map (\(AnnMemType _ _ ar _ _) -> ar) mems in
-      let positives = filter ((== Positive) . polOf) mems in
+    concatConstr mems = do
+      _debug $ boxToString $
+        ["Calculating concatenation of: [ "] %+
+          (vconcats $ map prettyLines mems) +% ["]"]
+      let arities = nub $ map (\(AnnMemType _ _ ar _ _) -> ar) mems
+      let positives = filter ((== Positive) . polOf) mems
       case (length positives, arities) of
         (_,_:_:_) ->
           Left $ DifferentMorphicArities $ idOf $ head mems
@@ -202,7 +209,7 @@ concatAnnMembers ms1 ms2 =
 depolarize :: forall c el.
               ( CSL.ConstraintSetLike el c
               , CSL.ConstraintSetLikePromotable ConstraintSet c
-              , WithinAlignable el, Ord el)
+              , WithinAlignable el, Ord el, Pretty c)
            => [AnnMemType c] -> Either DepolarizationError (ShallowType, c)
 depolarize ms = do
   ms' <- either (Left . DepolarizationConcatenationError) Right $
@@ -237,7 +244,7 @@ readAnnotationSpecialParameters p = do
 -- |A convenience function to raise a type error if depolarization fails.
 depolarizeOrError :: ( Monad m, TypeErrorI m, CSL.ConstraintSetLike el c
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
-                     , WithinAlignable el, Ord el)
+                     , WithinAlignable el, Ord el, Pretty c)
                   => UID -> [AnnMemType c] -> m (ShallowType, c)
 depolarizeOrError u =
   either (typeError . AnnotationDepolarizationFailure u) return . depolarize

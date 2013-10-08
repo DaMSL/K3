@@ -108,6 +108,7 @@ constructSkeletalEnvs anns = do
   tpdata <- Trav.mapM (digestTypeParameterInfo aPreEnv) anns
   let rEnv = Map.mapKeys TEnvIdentifier $ Map.map snd tpdata
   let tpscs = CSL.unions $ Map.elems $ Map.map fst tpdata
+  _debug $ boxToString $ ["Type parameter constraints: "] %+ prettyLines tpscs
   let aEnv = Map.map (addConstraints tpscs) aPreEnv
 
   -- Finally, present some debugging info and give back the results.
@@ -125,7 +126,16 @@ constructSkeletalEnvs anns = do
       QuantAlias _ -> error $ "constructTypeForDecl produced QuantAlias: " ++
                                   show entry
       AnnAlias (AnnType p mems scs') ->
-        AnnAlias (AnnType p mems $ CSL.union scs scs') 
+        AnnAlias (AnnType p (addBodyConstraints mems) $ CSL.union scs scs')
+      where
+        addBodyConstraints :: AnnBodyType StubbedConstraintSet
+                           -> AnnBodyType StubbedConstraintSet
+        addBodyConstraints (AnnBodyType ms1 ms2) =
+          AnnBodyType (map addMemConstraints ms1) (map addMemConstraints ms2)
+        addMemConstraints :: AnnMemType StubbedConstraintSet
+                          -> AnnMemType StubbedConstraintSet
+        addMemConstraints (AnnMemType i pol ar qa scs') =
+          AnnMemType i pol ar qa $ CSL.union scs scs'
 
 -- |Constructs a skeletal environment entry for a single declaration.
 constructTypeForDecl :: (FlatAnnotation, K3 Declaration)
@@ -228,8 +238,9 @@ digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
             Nothing -> return (CLeft STop :: TypeOrVar,CSL.empty)
             Just tExpr' ->
               first CRight <$> deriveUnqualifiedTypeExpression aEnv tExpr'
-      return ( CSL.promote $ (qa ~= a) `csUnion`
-               csFromList [ta_L <: a, a <: ta_U]
+      return ( CSL.unions [ qa ~= a
+                          , CSL.promote $ csFromList [ta_L <: a, a <: ta_U]
+                          , scs_L, scs_U ]
              , (a, ta_L, ta_U, scs_L `CSL.union` scs_U) )
 
 -- |Performs error gathering for @TypeDecideSkelM@.
