@@ -125,7 +125,8 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 --class Dataspace ds where
 --    insert :: ds -> Value -> ds
-data CollectionDataspace = VolatileDS [Value] | PersistentDS Identifier
+data CollectionDataspaceType = InMemory | External
+data CollectionDataspace = InMemoryDS [Value] | ExternalDS Identifier
 
 -- | Collection implementation.
 --   The namespace contains lifted members, the dataspace contains final
@@ -283,7 +284,7 @@ emptyCollectionBody :: Identifier -> Collection Value
 emptyCollectionBody n = Collection emptyCollectionNamespace (VolatileDS []) n
 
 defaultCollectionBody :: [Value] -> Collection Value
-defaultCollectionBody v = Collection emptyCollectionNamespace (VolatileDS v) collectionAnnotationId
+defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
 
 emptyAnnotatedCollection :: Identifier -> Interpretation Value
 emptyAnnotatedCollection n = liftIO (newMVar $ emptyCollectionBody n) >>= return . VCollection 
@@ -295,6 +296,9 @@ emptyCollection = emptyAnnotatedCollection ""
 {- Identifiers -}
 collectionAnnotationId :: Identifier
 collectionAnnotationId = "Collection"
+
+externalAnnotationId :: Identifier
+externalAnnotationId = "External"
 
 annotationSelfId :: Identifier
 annotationSelfId = "self"
@@ -914,7 +918,7 @@ builtinLiftedAttribute annId n t uid
           return $ VCollection c'
 
         -- | Collection accessor implementation
-        peekFn = valWithCollection $ \_ (Collection ns (VolatileDS ds) extId) -> 
+        peekFn = valWithCollection $ \_ (Collection ns (InMemoryDS ds) extId) -> 
           case ds of
             []    -> return $ VOption Nothing
             (h:t) -> return . VOption $ Just h
@@ -926,46 +930,46 @@ builtinLiftedAttribute annId n t uid
 
         modifyCollection cmv f = liftIO (modifyMVar_ cmv f) >> return vunit
 
-        insertCollection v    (Collection ns (VolatileDS ds) extId) = return $ Collection ns (VolatileDS (ds++[v])) extId
-        deleteCollection v    (Collection ns (VolatileDS ds) extId) = return $ Collection ns (VolatileDS (delete v ds)) extId
-        updateCollection v v' (Collection ns (VolatileDS ds) extId) = return $ Collection ns (VolatileDS ((delete v ds)++[v'])) extId
+        insertCollection v    (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS (ds++[v])) extId
+        deleteCollection v    (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS (delete v ds)) extId
+        updateCollection v v' (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS ((delete v ds)++[v'])) extId
 
         -- | Collection effector implementation
-        iterateFn = valWithCollection $ \f (Collection ns (VolatileDS ds) extId) -> 
+        iterateFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) -> 
           flip (matchFunction iterateFnError) f $
           \f' -> mapM_ (withClosure f') ds >> return vunit
 
         -- | Collection transformer implementation
-        combineFn = valWithCollection $ \other (Collection ns (VolatileDS ds) extId) ->
+        combineFn = valWithCollection $ \other (Collection ns (InMemoryDS ds) extId) ->
           flip (matchCollection collectionError) other $ 
-            \(Collection ns' (VolatileDS ds') extId') ->
+            \(Collection ns' (InMemoryDS ds') extId') ->
               if extId /= extId' then combineError
-              else copy $ Collection ns (VolatileDS (ds++ds')) extId
+              else copy $ Collection ns (InMemoryDS (ds++ds')) extId
 
-        splitFn = valWithCollection $ \_ (Collection ns (VolatileDS ds) extId) ->
+        splitFn = valWithCollection $ \_ (Collection ns (InMemoryDS ds) extId) ->
           let (l, r) = splitImpl ds in do
-            lc <- copy (Collection ns (VolatileDS l) extId)
-            rc <- copy (Collection ns (VolatileDS r) extId)
+            lc <- copy (Collection ns (InMemoryDS l) extId)
+            rc <- copy (Collection ns (InMemoryDS r) extId)
             return $ VTuple [lc, rc]
 
-        mapFn = valWithCollection $ \f (Collection ns (VolatileDS ds) extId) ->
+        mapFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
           flip (matchFunction mapFnError) f $ 
             \f'  -> mapM (withClosure f') ds >>= 
             \ds' -> copy (defaultCollectionBody ds')
 
-        filterFn = valWithCollection $ \f (Collection ns (VolatileDS ds) extId) ->
+        filterFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
           flip (matchFunction filterFnError) f $
             \f'  -> filterM (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
-            \ds' -> copy (Collection ns (VolatileDS ds') extId)
+            \ds' -> copy (Collection ns (InMemoryDS ds') extId)
 
-        foldFn = valWithCollection $ \f (Collection ns (VolatileDS ds) extId) ->
+        foldFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
           flip (matchFunction foldFnError) f $
             \f' -> ivfun $ \accInit -> foldM (curryFoldFn f') accInit ds
 
         curryFoldFn f' acc v = withClosure f' acc >>= (matchFunction curryFnError) (flip withClosure v)
 
         -- TODO: replace assoc lists with a hashmap.
-        groupByFn = valWithCollection $ \gb (Collection ns (VolatileDS ds) extId) ->
+        groupByFn = valWithCollection $ \gb (Collection ns (InMemoryDS ds) extId) ->
           flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
           flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
             do
@@ -979,7 +983,7 @@ builtinLiftedAttribute annId n t uid
             Nothing         -> curryFoldFn f' accInit v    >>= return . (acc++) . (:[]) . (k,)
             Just partialAcc -> curryFoldFn f' partialAcc v >>= return . replaceAssoc acc k 
 
-        extFn = valWithCollection $ \f (Collection ns (VolatileDS ds) extId) -> 
+        extFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) -> 
           flip (matchFunction extError) f $ 
           \f' -> do
                     vals <- mapM (withClosure f') ds
@@ -993,10 +997,10 @@ builtinLiftedAttribute annId n t uid
 
         -- TODO: make more efficient by avoiding intermediate MVar construction.
         combine' (Just acc) (Just cv) =
-          flip (matchCollection $ return Nothing) acc $ \(Collection ns1 (VolatileDS ds1) extId1) -> 
-          flip (matchCollection $ return Nothing) cv  $ \(Collection ns2 (VolatileDS ds2) extId2) -> 
+          flip (matchCollection $ return Nothing) acc $ \(Collection ns1 (InMemoryDS ds1) extId1) -> 
+          flip (matchCollection $ return Nothing) cv  $ \(Collection ns2 (InMemoryDS ds2) extId2) -> 
           if extId1 /= extId2 then return Nothing
-          else copy (Collection ns1 (VolatileDS (ds1++ds2)) extId1) >>= return . Just
+          else copy (Collection ns1 (InMemoryDS (ds1++ds2)) extId1) >>= return . Just
 
 
         -- | Collection implementation helpers.
@@ -1497,7 +1501,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
         <*> rt (showString "ANS=") <*> braces (packDoublyNamedValues d) ans
     
     -- Need to pattern match on kind of dataspace
-    packCollectionDataspace d (VolatileDS v) =
+    packCollectionDataspace d (InMemoryDS v) =
       (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v
     
     packDoublyNamedValues d (n, nv)  = (.) <$> rt (showString $ n ++ "=") <*> packNamedValues d nv
@@ -1598,7 +1602,7 @@ unpackValueSyntax = readSingleParse unpackValue
       (prec appPrec $ do
         void $ readExpectedName "DS"
         v <- readBrackets unpackValue
-        return $ VolatileDS <$> sequence v
+        return $ InMemoryDS <$> sequence v
       )
 
     readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
