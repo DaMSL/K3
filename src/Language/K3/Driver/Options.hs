@@ -7,10 +7,10 @@ import Options.Applicative
 import System.FilePath
 import System.Log
 
-import Language.K3.Logger.Config
-import Language.K3.Pretty
 import Language.K3.Runtime.Engine (SystemEnvironment)
 import Language.K3.Runtime.Options
+import Language.K3.Utils.Logger.Config
+import Language.K3.Utils.Pretty
 
 import Language.K3.Driver.Common
 

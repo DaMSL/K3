@@ -3,9 +3,9 @@
 import Control.Monad
 import Options.Applicative
 
-import Language.K3.Logger
-import Language.K3.Pretty
-import Language.K3.Pretty.Syntax
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.Pretty.Syntax
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common

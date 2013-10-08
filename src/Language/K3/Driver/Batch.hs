@@ -12,6 +12,7 @@ import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Expression as E
 import qualified Language.K3.Core.Constructor.Type as T
 
+import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
 
 import Language.K3.Driver.Common
@@ -33,4 +34,4 @@ runBatch progOpts interpOpts = do
     p <- parseK3Input (input progOpts)
     case p of
         Left e  -> putStrLn e
-        Right q -> runProgram (sysEnv interpOpts) q
+        Right q -> runProgram (sysEnv interpOpts) q >>= either (\(EngineError s) -> putStrLn s) return

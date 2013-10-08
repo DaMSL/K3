@@ -6,12 +6,10 @@ import System.IO
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-
 import Language.K3.Runtime.Engine ( SystemEnvironment )
-
 import Language.K3.Parser
-import Language.K3.Pretty
-import Language.K3.Pretty.Syntax
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.Pretty.Syntax
 
 -- | Helper for resolving standard input.
 openFileOrStdIn :: String -> IO Handle
