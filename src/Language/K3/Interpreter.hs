@@ -280,8 +280,15 @@ vunit = VTuple []
 emptyCollectionNamespace :: CollectionNamespace Value
 emptyCollectionNamespace = CollectionNamespace [] []
 
-emptyCollectionBody :: Identifier -> Collection Value
-emptyCollectionBody n = Collection emptyCollectionNamespace (VolatileDS []) n
+emptyCollectionBody :: CollectionDataspaceType -> Identifier -> EngineM b (Collection Value)
+emptyCollectionBody dst n =
+    case dst of
+        InMemory -> return $ Collection emptyCollectionNamespace (InMemoryDS[]) n
+        External ->
+          do
+            filename <- generateCollectionFilename
+            let ds = ExternalDS filename
+            return $ Collection emptyCollectionNamespace ds n
 
 defaultCollectionBody :: [Value] -> Collection Value
 defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
