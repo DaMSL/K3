@@ -68,6 +68,7 @@ module Language.K3.Runtime.Engine (
   , showMessageQueues
   , showEngine
 
+  , generateCollectionFilename
 #ifdef TEST
   , EngineControl(..)
   , LoopStatus(..)
@@ -185,7 +186,8 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
-                       , connections     :: EConnectionState }
+                       , connections     :: EConnectionState
+                       , collectionCount :: MVar Int }
 
 data EngineError = EngineError String deriving (Eq, Read, Show)
 
@@ -473,7 +475,8 @@ simulationEngine systemEnv (internalizeWD -> internalWD) = do
   endpoints       <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ config
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine config internalWD ctrl systemEnv q workers listeners endpoints connState
+  colCount        <- newMVar 0
+  return $ Engine config internalWD ctrl systemEnv q workers listeners endpoints connState colCount
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
@@ -489,7 +492,8 @@ networkEngine systemEnv (internalizeWD -> internalWD) = do
   internalConns <- emptyConns internalSendAddress config >>= return . Just
   externalConns <- emptyConns externalSendAddress config
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState
+  colCount      <- newMVar 0
+  engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState colCount
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -973,10 +977,6 @@ openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> Engi
 openFileInternal eid path mode f = do
     engine <- ask
     let ife = internalFormat engine
-    --let ife =
-    --     case f of
-    --        Nothing -> internalFormat engine
-    --        Just wd -> wd
     let iep = internalEndpoints $ endpoints engine
     genericOpenFile eid path ife Nothing mode iep
 
@@ -1425,3 +1425,13 @@ modifyMVE v f = do
     case result of
         Left e -> left e
         Right (r, x) -> return x
+
+-- Persistent collection helpers
+generateCollectionFilename:: () -> EngineM b Identifier
+generateCollectionFilename () = do
+    engine <- ask
+    let counter = collectionCount engine
+    number <- liftIO $ readMVar counter
+    let filename = "collection_" ++ (show number)
+    liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
+    return filename
