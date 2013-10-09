@@ -51,9 +51,13 @@ deriveQualifiedExpression aEnv env expr = do
   if length quals /= 1
     then internalTypeError $ InvalidQualifiersOnExpression expr
     else do
-      qa <- freshTypecheckingQVar =<< uidOf expr
-      return (qa, cs `csUnion`
-                  csFromList [a <: qa, Set.fromList (concat quals) <: qa])
+      u <- uidOf expr
+      qa <- freshTypecheckingQVar u
+      let csOut = cs `csUnion` csFromList
+                    [a <: qa, Set.fromList (concat quals) <: qa]
+      attributeExprVar u $ someVar qa
+      attributeExprConstraints csOut
+      return (qa, csOut)
 
 -- |A function to derive the type of an unqualified expression.  An error is
 --  raised if any qualifiers appear.
