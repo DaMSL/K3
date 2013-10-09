@@ -7,8 +7,8 @@ import System.Exit
 import Test.Framework
 import Test.Framework.Runners.Console
 
-import Language.K3.Logger
 import Language.K3.Test.Options
+import Language.K3.Utils.Logger
 
 import qualified Language.K3.Parser.Test as Parser
 import qualified Language.K3.Runtime.Test as Runtime

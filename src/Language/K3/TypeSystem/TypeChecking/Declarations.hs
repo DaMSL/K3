@@ -23,6 +23,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Closure
@@ -31,6 +32,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
+import Language.K3.TypeSystem.Monad.Iface.TypeAttribution
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Expressions
@@ -50,7 +52,7 @@ deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
                    -> TGlobalQuantEnv -- ^The global polymorphism environment.
                    -> K3 Declaration -- ^The AST of global declarations to use
                                      --  in the checking process.
-                   -> TypecheckM ()
+                   -> DeclTypecheckM ()
 deriveDeclarations aEnv env aEnv' env' rEnv decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
@@ -78,7 +80,7 @@ deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                                      --  to simplify the call from
                                      --  @deriveDeclarations@.
                   -> K3 Declaration -- ^The AST of the declaration to check.
-                  -> TypecheckM Identifier
+                  -> DeclTypecheckM Identifier
 deriveDeclaration aEnv env rEnv decl =
   case tag decl of
 
@@ -211,9 +213,10 @@ deriveDeclaration aEnv env rEnv decl =
       let arityMaps =
             let f = Map.fromList . map (\(AnnMemType i _ ar _ _) -> (i,ar)) in
             (f ms1, f ms2)
-      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember arityMaps
+      (bs,cs''s) <- unzip <$> transExprToDeclTypecheckM
+                      (mapM (deriveAnnotationMember arityMaps
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
-                                (envMerge (envMerge env env'1) env'2)) mems
+                                (envMerge (envMerge env env'1) env'2)) mems)
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " has inferred bodies:"] %$
           indent 2 (
@@ -287,14 +290,17 @@ deriveDeclaration aEnv env rEnv decl =
     -- |A common implementation of both initialized variables and triggers.
     --  These rules only vary by (1) the derivation used on the type expression
     --  and (2) the constraint sets which are added to the constraint closure.
-    basicDeclaration i expr deriv csPre csPostF = do
+    basicDeclaration i expr deriv csPre csPostF = do -- DeclTypecheckM
       assert0Children decl
       u <- uidOf decl
-      (v1,cs1) <- deriv aEnv env expr
+      (v1,cs1) <- transExprToDeclTypecheckM $ deriv aEnv env expr
       QuantType sas qa' cs2' <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
       let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
+      -- We've decided upon the type, so now record it and then check for
+      -- consistency.
+      attributeExprType u (someVar v1) cs''
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)
              return
@@ -311,7 +317,7 @@ deriveAnnotationMember :: ( Map Identifier MorphismArity
                        -> TAliasEnv -- ^The relevant type alias environment.
                        -> TNormEnv -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
-                       -> TypecheckM (NormalAnnBodyType, ConstraintSet)
+                       -> ExprTypecheckM (NormalAnnBodyType, ConstraintSet)
 deriveAnnotationMember (ars1,ars2) aEnv env decl = do
   _debug $ boxToString $ ["Deriving type for annotation member: "] %$
                             indent 2 (prettyLines decl)
@@ -376,7 +382,7 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
         typecheckError $ InitializerForNegativeAnnotationMember u
       qa <- freshTypecheckingQVar u
       return (constr $ AnnMemType i Negative ar qa csEmpty, csEmpty)
-    lookupSpecialVar :: TEnvId -> TypecheckM UVar
+    lookupSpecialVar :: TEnvId -> ExprTypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
       let badForm = typecheckError $ badFormErr $ Just mqt 
@@ -395,7 +401,7 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
 requireQuantType :: UID -> Identifier -> TNormEnv
-                 -> TypecheckM NormalQuantType
+                 -> DeclTypecheckM NormalQuantType
 requireQuantType u i =
   envRequire (UnboundEnvironmentIdentifier u $ TEnvIdentifier i)
              (TEnvIdentifier i)

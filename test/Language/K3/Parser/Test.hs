@@ -15,7 +15,7 @@ import Text.Parsec.Error (ParseError, errorPos, errorMessages)
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
 
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 import qualified Language.K3.Core.Constructor.Expression as E
 

@@ -102,6 +102,7 @@ library
         Language.K3.TypeSystem.Utils.TemplateHaskell,
         Language.K3.TypeSystem.TypeChecking.Monad,
         Language.K3.TypeSystem.Monad.Iface.TypeError,
+        Language.K3.TypeSystem.Monad.Iface.TypeAttribution,
         Language.K3.TypeSystem.Error,
         Language.K3.TypeSystem.Utils.K3Tree,
         Language.K3.TypeSystem.Monad.Utils,
@@ -116,7 +117,8 @@ library
     ghc-options: -Wall
     other-modules: 
                    Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
-                   Language.K3.TypeSystem.Annotations.Within
+                   Language.K3.TypeSystem.Annotations.Within,
+                   Language.K3.TypeSystem.Simplification.ConstraintCollection
 
 test-suite all
     type: exitcode-stdio-1.0
