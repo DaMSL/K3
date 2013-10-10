@@ -22,6 +22,7 @@ module Language.K3.TypeSystem.Data.TypesAndConstraints
 , NormalAnnBodyType
 , AnnMemType(..)
 , NormalAnnMemType
+, MorphismArity(..)
 , OpaqueID(..)
 , OpaqueOrigin(..)
 , OpaqueVar(..)
@@ -239,7 +240,7 @@ instance (Pretty c) => Pretty (AnnBodyType c) where
 
 -- |Annotation member types.  The type parameter dictates the type of constraint
 --  set that this member type uses.
-data AnnMemType c = AnnMemType Identifier TPolarity QVar c
+data AnnMemType c = AnnMemType Identifier TPolarity MorphismArity QVar c
   deriving (Eq, Ord, Show)
 
 -- |An alias for normal annotation member types.
@@ -249,9 +250,17 @@ instance (Pretty c) => Pretty [AnnMemType c] where
   prettyLines ms = intersperseBoxes [", "] $ map prettyLines ms
 
 instance (Pretty c) => Pretty (AnnMemType c) where
-  prettyLines (AnnMemType i pol qa cs) =
-    [i ++ " "] %+ prettyLines pol %+ [": "] %+ prettyLines qa %+ ["\\"] %+
-      prettyLines cs
+  prettyLines (AnnMemType i pol arity qa cs) =
+    [i ++ " "] %+ prettyLines pol %+ prettyLines arity %+ [": "] %+
+      prettyLines qa %+ ["\\"] %+ prettyLines cs
+
+-- |A type to describe arities of morphisms in annotation member types.
+data MorphismArity = PolyArity | MonoArity
+  deriving (Eq, Ord, Show)
+
+instance Pretty MorphismArity where
+  prettyLines PolyArity = ["A"]
+  prettyLines MonoArity = ["1"]
 
 -- |A wrapper type for opaque type IDs.
 newtype OpaqueID = OpaqueID Int

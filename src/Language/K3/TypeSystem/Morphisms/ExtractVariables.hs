@@ -60,6 +60,7 @@ $(concat <$> mapM (defineReduceEmptyInstance [t|VariableReduction|]
                       ''ExtractVariables)
                 [ ''UID
                 , ''Stub
+                , ''MorphismArity
                 ]                
  )
  

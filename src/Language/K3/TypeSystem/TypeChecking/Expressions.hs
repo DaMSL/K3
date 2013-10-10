@@ -43,7 +43,7 @@ deriveQualifiedExpression ::
       TAliasEnv -- ^The relevant type alias environment.
    -> TNormEnv -- ^The relevant type environment.
    -> K3 Expression
-   -> TypecheckM (QVar, ConstraintSet)
+   -> ExprTypecheckM (QVar, ConstraintSet)
 deriveQualifiedExpression aEnv env expr = do
   (a,cs) <- deriveExpression aEnv env expr
   let quals = qualifiersOfExpr expr
@@ -60,7 +60,7 @@ deriveUnqualifiedExpression ::
       TAliasEnv -- ^The relevant type alias environment.
    -> TNormEnv -- ^The relevant type environment.
    -> K3 Expression
-   -> TypecheckM (UVar, ConstraintSet)
+   -> ExprTypecheckM (UVar, ConstraintSet)
 deriveUnqualifiedExpression aEnv env expr =
   if null $ qualifiersOfExpr expr
     then deriveExpression aEnv env expr
@@ -71,7 +71,7 @@ deriveUnqualifiedExpression aEnv env expr =
 deriveExpression :: TAliasEnv -- ^The relevant type alias environment.
                  -> TNormEnv -- ^The relevant type environment.
                  -> K3 Expression
-                 -> TypecheckM (UVar, ConstraintSet)
+                 -> ExprTypecheckM (UVar, ConstraintSet)
 deriveExpression aEnv env expr = do
   _debug $ boxToString $ ["Deriving type for expression: "] %+ prettyLines expr
   (a,cs) <-
@@ -197,7 +197,7 @@ deriveExpression aEnv env expr = do
         EBindAs binder -> do
           (expr1,expr2) <- assert2Children expr
           (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
-          let handleBinder :: TypecheckM (TNormEnv, ConstraintSet)
+          let handleBinder :: ExprTypecheckM (TNormEnv, ConstraintSet)
               handleBinder = case binder of
                 BIndirection i -> do
                   qa <- freshTypecheckingQVar =<< uidOf expr
@@ -252,7 +252,7 @@ deriveExpression aEnv env expr = do
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingUVar =<< uidOf expr
       return (a, cs `csUnion` csSing (constr qa <: a))
-    lookupOrFail :: TEnvId -> TypecheckM NormalQuantType
+    lookupOrFail :: TEnvId -> ExprTypecheckM NormalQuantType
     lookupOrFail envId =
       envRequireM (UnboundEnvironmentIdentifier <$> uidOf expr
                                                 <*> return envId)

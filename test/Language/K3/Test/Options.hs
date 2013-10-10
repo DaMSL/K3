@@ -22,7 +22,7 @@ import System.Log
 import Test.Framework
 import Test.Framework.Runners.Console
 
-import Language.K3.Logger
+import Language.K3.Utils.Logger
 
 {-
   TO ADD A NEW OPTION, the following changes must be made:

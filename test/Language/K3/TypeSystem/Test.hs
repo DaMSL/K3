@@ -4,9 +4,11 @@ module Language.K3.TypeSystem.Test
 
 import Control.Applicative
 import Control.Monad
+import qualified Data.Foldable as Foldable
 import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.Sequence as Seq
 import System.Directory
 import System.FilePath
 import Test.HUnit hiding (Test)
@@ -19,8 +21,8 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Constructor.Declaration
 import Language.K3.Core.Declaration
 import Language.K3.Parser
-import Language.K3.Pretty
 import Language.K3.TypeSystem
+import Language.K3.Utils.Pretty
 
 import Debug.Trace
 
@@ -60,12 +62,13 @@ mkDirectSourceTest path success = do
   case parseSource path src of
     Left err -> assertFailure $ "Parse failure: " ++ show err
     Right decl ->
-      case (typecheck Map.empty Map.empty decl, success) of
-        (Left errs, True) ->
+      case ( Foldable.toList $ fst $ typecheck Map.empty Map.empty decl
+           , success) of
+        ([], True) -> assert True
+        (errs@(_:_), True) ->
           assertFailure $ "Typechecking errors: " ++ pretty errs
-        (Right _, True) -> assert True
-        (Left _, False) -> assert True
-        (Right _, False) -> assert "Incorrectly typechecked!"
+        ([], False) -> assert "Incorrectly typechecked!"
+        (_:_, False) -> assert True
 
 -- |Parses a top-level source file in K3 *without* processing the AST for
 --  program generation and the like.

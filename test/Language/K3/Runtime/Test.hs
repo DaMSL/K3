@@ -36,7 +36,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
-import Language.K3.Pretty
+import Language.K3.Utils.Pretty
 
 constructBuffer :: [Test]
 constructBuffer = [

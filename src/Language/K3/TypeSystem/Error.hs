@@ -197,6 +197,9 @@ data InternalTypeError
   | MissingIdentifierInGlobalQuantifiedEnvironment TGlobalQuantEnv Identifier
       -- ^Indicates that the @TGlobalQuantEnv@ used during typechecking did not
       --  include an entry for one of the globals in the declaration list.
+  | UndeterminedArityForAnnotationMember AnnMemDecl Identifier
+      -- ^Indicates that the type decision mechanism did not provide an aritied
+      --  type for an identifier for which inference was performed.
 
 deriving instance Show InternalTypeError
 

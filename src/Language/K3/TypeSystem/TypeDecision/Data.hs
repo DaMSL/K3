@@ -11,6 +11,7 @@ module Language.K3.TypeSystem.TypeDecision.Data
 
 import Control.Applicative
 import Control.Arrow
+import Control.Monad
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -18,6 +19,7 @@ import qualified Data.Set as Set
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
+import Language.K3.TypeSystem.Annotations.Within
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
 
@@ -60,10 +62,19 @@ instance CSL.ConstraintSetLike (Coproduct Stub Constraint) StubbedConstraintSet
   unions scs = uncurry StubbedConstraintSet $ csUnions *** Set.unions $
                   unzip $ map extract scs
     where extract (StubbedConstraintSet cs ss) = (cs,ss)
+  query scs = csQuery (constraintsOf scs)
 
 instance CSL.ConstraintSetLikePromotable ConstraintSet StubbedConstraintSet
     where
   promote cs = StubbedConstraintSet cs Set.empty
+
+instance WithinAlignable (Coproduct Stub Constraint) where
+  withinAlign sc sc' =
+    case (sc,sc') of
+      (CLeft s, CLeft s') -> guard $ s == s'
+      (CRight c, CRight c') -> withinAlign c c'
+      (CLeft _, CRight _) -> mzero
+      (CRight _, CLeft _) -> mzero
 
 instance Monoid StubbedConstraintSet where
   mempty = CSL.empty

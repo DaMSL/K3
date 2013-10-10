@@ -20,6 +20,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
 import qualified Data.Traversable as Trav
+import Data.Tree as Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -107,6 +108,7 @@ constructSkeletalEnvs anns = do
   tpdata <- Trav.mapM (digestTypeParameterInfo aPreEnv) anns
   let rEnv = Map.mapKeys TEnvIdentifier $ Map.map snd tpdata
   let tpscs = CSL.unions $ Map.elems $ Map.map fst tpdata
+  _debug $ boxToString $ ["Type parameter constraints: "] %+ prettyLines tpscs
   let aEnv = Map.map (addConstraints tpscs) aPreEnv
 
   -- Finally, present some debugging info and give back the results.
@@ -124,7 +126,16 @@ constructSkeletalEnvs anns = do
       QuantAlias _ -> error $ "constructTypeForDecl produced QuantAlias: " ++
                                   show entry
       AnnAlias (AnnType p mems scs') ->
-        AnnAlias (AnnType p mems $ CSL.union scs scs') 
+        AnnAlias (AnnType p (addBodyConstraints mems) $ CSL.union scs scs')
+      where
+        addBodyConstraints :: AnnBodyType StubbedConstraintSet
+                           -> AnnBodyType StubbedConstraintSet
+        addBodyConstraints (AnnBodyType ms1 ms2) =
+          AnnBodyType (map addMemConstraints ms1) (map addMemConstraints ms2)
+        addMemConstraints :: AnnMemType StubbedConstraintSet
+                          -> AnnMemType StubbedConstraintSet
+        addMemConstraints (AnnMemType i pol ar qa scs') =
+          AnnMemType i pol ar qa $ CSL.union scs scs'
 
 -- |Constructs a skeletal environment entry for a single declaration.
 constructTypeForDecl :: (FlatAnnotation, K3 Declaration)
@@ -188,7 +199,21 @@ constructTypeForDecl ((_,lAtts,sAtts),decl) = do
           tell $ Map.singleton stub StubInfo
                     { stubTypeExpr = tExpr, stubVar = qa, stubParamEnv = p
                     , stubMemRepr = repr }
-          return $ AnnMemType i' (typeOfPol pol) qa scs
+          -- Determine appropriate arity ascription.  Whether the member has a
+          -- polymorphic signature is equivalent to whether the signature
+          -- contains any declared type variable references, since this is
+          -- necessary (declared polymorphism only comes from such variables)
+          -- and sufficient (the only declared type variables in scope are those
+          -- on the annotation declaration since all such declarations are top
+          -- level).
+          let ar =
+                if any isDeclaredVar $ map tag $ flatten tExpr
+                  then PolyArity else MonoArity 
+          return $ AnnMemType i' (typeOfPol pol) ar qa scs
+          where
+            isDeclaredVar :: Type -> Bool
+            isDeclaredVar (TDeclaredVar _) = True
+            isDeclaredVar _ = False
 
 -- |Calculates for a representation of a single annotation the constraints
 --  required by the Annotation rule of typechecking as well as the entry which
@@ -198,7 +223,7 @@ digestTypeParameterInfo :: TSkelAliasEnv
                         -> (FlatAnnotation, K3 Declaration)
                         -> TypeDecideSkelM
                               ( StubbedConstraintSet , TSkelQuantEnv )
-digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
+digestTypeParameterInfo aEnv ((cxt,_,_),_) = do
   digested <- Trav.mapM digestSingleTypeParameterInfo cxt
   return ( CSL.unions $ map fst $ Map.elems digested
          , Map.mapKeys TEnvIdentifier $ Map.map snd digested )
@@ -213,8 +238,9 @@ digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
             Nothing -> return (CLeft STop :: TypeOrVar,CSL.empty)
             Just tExpr' ->
               first CRight <$> deriveUnqualifiedTypeExpression aEnv tExpr'
-      return ( CSL.promote $ (qa ~= a) `csUnion`
-               csFromList [ta_L <: a, a <: ta_U]
+      return ( CSL.unions [ qa ~= a
+                          , CSL.promote $ csFromList [ta_L <: a, a <: ta_U]
+                          , scs_L, scs_U ]
              , (a, ta_L, ta_U, scs_L `CSL.union` scs_U) )
 
 -- |Performs error gathering for @TypeDecideSkelM@.
