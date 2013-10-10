@@ -48,6 +48,7 @@ import Control.Monad.Writer
 import Data.Function
 import Data.IORef
 import Data.List
+import Data.Tree
 import Data.Word (Word8)
 import Debug.Trace
 
@@ -69,7 +70,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
 
 $(loggingFunctions)
-$(customLoggingFunctions ["Dispatch"])
+$(customLoggingFunctions ["Dispatch", "RegisterGlobal"])
 
 -- | K3 Values
 data Value
@@ -1046,18 +1047,19 @@ builtinAttribute annId n t uid = providesError "attribute" n
 
 {- Program initialization methods -}
 
-initEnvironment :: PeerBootstrap -> K3 Declaration -> IState -> EngineM Value IState
-initEnvironment bootstrap decl st = do
-  let bsGState    = foldl (\st' (n,_) -> registerGlobal n st') st bootstrap
-  let declGState  = foldTree registerDecl bsGState decl
-  bsIState       <- foldM (\st' (n,e) -> initializeExpr st' n e) declGState bootstrap
-  initDecl bsIState decl
+initEnvironment :: K3 Declaration -> IState -> EngineM Value IState
+initEnvironment decl st =
+  let declGState  = foldTree registerDecl st decl
+  in initDecl declGState decl
   where 
     initDecl st' (tag &&& children -> (DGlobal n t eOpt, ch)) = initGlobal st' n t eOpt >>= flip (foldM initDecl) ch
     initDecl st' (tag &&& children -> (DTrigger n _ _, ch))   = initTrigger st' n >>= flip (foldM initDecl) ch
     initDecl st' (tag &&& children -> (DRole _, ch))          = foldM initDecl st' ch
     initDecl st' _                                            = return st'
 
+    -- | Global initialization for cyclic dependencies.
+    --   This partially initializes sinks and functions (to their defining lambda expression).
+    initGlobal :: IState -> Identifier -> K3 Type -> Maybe (K3 Expression) -> EngineM Value IState
     initGlobal st' n (tag -> TSink) _          = initTrigger st' n
     initGlobal st' n t@(tag -> TFunction) eOpt = initFunction st' n t eOpt
     initGlobal st' _ _ _                       = return st'
@@ -1081,13 +1083,13 @@ initEnvironment bootstrap decl st = do
     registerGlobal n (w,x,y) = (n:w, x, y)
 
     registerDecl :: IState -> K3 Declaration -> IState
-    registerDecl st' (tag -> DGlobal n _ _)  = registerGlobal n st'
-    registerDecl st' (tag -> DTrigger n _ _) = registerGlobal n st'
-    registerDecl st' _                       = st'
+    registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
+    registerDecl st' (tag -> DTrigger n _ _) = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
+    registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
 
 
-initState :: PeerBootstrap -> K3 Declaration -> EngineM Value IState
-initState bootstrap prog = initEnvironment bootstrap prog emptyState
+initState :: K3 Declaration -> EngineM Value IState
+initState prog = initEnvironment prog emptyState
 
 initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
@@ -1097,9 +1099,20 @@ initMessages = \case
     ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
+injectBootstrap :: PeerBootstrap -> K3 Declaration -> K3 Declaration
+injectBootstrap bootstrap prog = mapTree rebuildNode prog
+  where rebuildNode newCh d@(tag -> DGlobal n t eOpt) = case lookup n bootstrap of
+          Nothing -> rebuildGlobal n t eOpt (annotations d) newCh
+          Just e  -> rebuildGlobal n t (Just e) (annotations d) newCh
+        rebuildNode newCh (Node d _) = Node d newCh
+        rebuildGlobal n t eOpt anns ch = Node ((DGlobal n t eOpt) :@: anns) ch
+
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
-initProgram bootstrap prog =
-  initState bootstrap prog >>= flip runInterpretation' (declaration prog) >>= initMessages
+initProgram bootstrap prog = do
+  let prog' = injectBootstrap bootstrap prog
+  st       <- initState prog'
+  r        <- runInterpretation' st (declaration prog')
+  initMessages r        
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
@@ -26,12 +27,15 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
+import Data.Function
 import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.List
 import Data.String
-import Data.Traversable
+import Data.Traversable hiding ( mapM )
+
+import System.FilePath
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
@@ -56,6 +60,7 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser.ProgramBuilder
+import Language.K3.Parser.Preprocessor
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
 {- Note: debugging helper
@@ -245,6 +250,9 @@ keyword = reserve k3Idents
 
 
 {- Main parsing functions -}
+stringifyError :: Either P.ParseError a -> Either String a
+stringifyError = either (Left . show) Right
+
 emptyParserState :: ParserState
 emptyParserState = (0,[])
 
@@ -263,8 +271,22 @@ parseExpression = maybeParser expr
 parseDeclaration :: String -> Maybe (K3 Declaration)
 parseDeclaration s = either (const Nothing) id $ runK3Parser declaration s
 
-parseK3 :: String -> Either String (K3 Declaration)
-parseK3 s = either (Left . show) Right $ runK3Parser program s
+parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3 includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (lines s) []
+  fileContents  <- mapM readFile subFiles >>= return . (++ [s])
+  return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
+  where
+    chainValidParse c parse = parse >>= parseAndCompose c
+    parseAndCompose src (p, asTopLevel) =
+      parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
+        ((DRole n, ch), (DRole n2, ch2))
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
+          | otherwise                       -> programError
+        _                                   -> programError
+    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    programError = Left "Invalid program, expected top-level role."
 
 
 {- Parsing state helpers -}
@@ -305,12 +327,12 @@ nextUID = withUID UID
 {- K3 grammar parsers -}
 
 -- TODO: inline testing
-program :: DeclParser
-program = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
+program :: Bool -> DeclParser
+program asInclude = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
   where rule = mkProgram <$> endBy (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
         mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
-        mkBuiltins = ensureUIDs . declareBuiltins
+        mkBuiltins = ensureUIDs . (if asInclude then id else declareBuiltins)
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
 roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
@@ -321,9 +343,10 @@ roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
 
 {- Declarations -}
 declaration :: K3Parser (Maybe (K3 Declaration))
-declaration = choice [decls >>= return . Just, sugaredDecls >> return Nothing]
+declaration = choice [ignores >> return Nothing, decls >>= return . Just, sugaredDecls >> return Nothing]
   where decls        = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
-        sugaredDecls =        choice [dSelector, dFeed]
+        sugaredDecls = choice [dSelector, dFeed]
+        ignores      = pInclude >> return ()
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
@@ -402,6 +425,10 @@ polarity = choice [keyword "provides" >> return Provides,
 
 uidOver :: K3Parser (UID -> a) -> K3Parser a
 uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
+
+pInclude :: K3Parser String
+pInclude = keyword "include" >> stringLiteral
+
 
 {- Types -}
 typeExpr :: TypeParser
