@@ -9,6 +9,19 @@ import Language.K3.Parser
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+{- Defaults -}
+defaultLanguage :: String
+defaultLanguage = "haskell"
+
+defaultProgramName :: String
+defaultProgramName = "A"
+
+defaultOutputFile :: Maybe FilePath
+defaultOutputFile = Just "a.out"
+
+defaultBuildDir :: Maybe FilePath
+defaultBuildDir = Just "__build"
+
 -- | Helper for resolving standard input.
 openFileOrStdIn :: String -> IO Handle
 openFileOrStdIn "-" = return stdin

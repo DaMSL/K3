@@ -31,8 +31,10 @@ data Mode
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
-data CompileOptions = CompileOptions { language   :: Maybe String
-                                     , outputFile :: Maybe FilePath }
+data CompileOptions = CompileOptions { language    :: String
+                                     , programName :: String
+                                     , outputFile  :: Maybe FilePath
+                                     , buildDir    :: Maybe FilePath }
                         deriving (Eq, Read, Show)
 
 -- | Interpretation options.
@@ -88,23 +90,44 @@ modeOptions = subparser (
 
 -- | Compiler options
 compileOptions :: Parser Mode
-compileOptions = mkCompile <$> languageOpt <*> outputFileOpt
-  where mkCompile l o = Compile $ CompileOptions l o
+compileOptions = mkCompile <$> languageOpt <*> progNameOpt <*> outputFileOpt <*> buildDirOpt
+  where mkCompile l n o b = Compile $ CompileOptions l n o b 
 
-languageOpt :: Parser (Maybe String)
+languageOpt :: Parser String
 languageOpt = option (   short   'l'
                       <> long    "language"
-                      <> value   Nothing
+                      <> value   defaultLanguage
+                      <> reader  str
                       <> help    "Specify compiler target language"
                       <> metavar "LANG" )
+
+progNameOpt :: Parser String
+progNameOpt = option (   short   'n'
+                      <> long    "name"
+                      <> value   defaultProgramName
+                      <> reader  str
+                      <> help    "Program name"
+                      <> metavar "PROGNAME" )
 
 outputFileOpt :: Parser (Maybe FilePath)
 outputFileOpt = validatePath <$> option (
                        short   'o'
                     <> long    "output"
-                    <> value   Nothing
+                    <> value   defaultOutputFile
+                    <> reader (\s -> str s >>= return . Just)
                     <> help    "Specify output file"
                     <> metavar "OUTPUT" )
+  where validatePath Nothing  = Nothing
+        validatePath (Just p) = if isValid p then Just p else Nothing
+
+buildDirOpt :: Parser (Maybe FilePath)
+buildDirOpt = validatePath <$> option (
+                       short   'b'
+                    <> long    "build"
+                    <> value   defaultBuildDir
+                    <> reader (\s -> str s >>= return . Just)
+                    <> help    "Temporary build directory"
+                    <> metavar "BUILDDIR" )
   where validatePath Nothing  = Nothing
         validatePath (Just p) = if isValid p then Just p else Nothing
 

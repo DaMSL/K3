@@ -5,7 +5,6 @@ import Data.Char
 
 import Options.Applicative
 
-import Language.K3.Codegen.Haskell
 import Language.K3.TypeSystem
 
 import Language.K3.Utils.Logger
@@ -15,6 +14,7 @@ import Language.K3.Utils.Pretty.Syntax
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
+import qualified Language.K3.Compiler.Haskell as HaskellC
 
 
 -- | Mode Dispatch.
@@ -28,19 +28,14 @@ dispatch op = do
     -- ^ Process logging directives
 
   case mode op of
-    Compile   c -> compile' c
+    Compile   c -> compile c
     Interpret i -> interpret i
     Print     p -> printer p
 
-  where compile' (CompileOptions lang out) = case maybe "" (map toLower) lang of 
+  where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of 
           "types"   -> k3Program >>= either parseError (putStrLn . show . typecheckProgram)
-          "haskell" -> do
-                          let progName = maybe "A.hs" id out
-                          prog <- k3Program 
-                          either parseError (doCompile progName) prog
+          "haskell" -> HaskellC.compile op cOpts
           _         -> error "Compiler not yet implemented."
-
-        doCompile n p = either compileError putStrLn $ compile (generate n p)
 
         interpret im@(Batch _ _) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
@@ -52,7 +47,6 @@ dispatch op = do
 
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
-        compileError s = putStrLn $ "Could not generate code: " ++ s
 
 
 -- | Top-Level.
