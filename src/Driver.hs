@@ -32,8 +32,9 @@ dispatch op = do
         interpret im@(Batch _ _) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
 
-        printer PrintAST    = parseK3Input (input op) >>= either parseError (putStrLn . pretty)
-        printer PrintSyntax = parseK3Input (input op) >>= either parseError printProgram
+        printer PrintAST    = k3Program >>= either parseError (putStrLn . pretty)
+        printer PrintSyntax = k3Program >>= either parseError printProgram
+        k3Program           = parseK3Input (includes $ paths op) (input op)
         printProgram        = either syntaxError putStrLn . programS
 
         parseError s  = putStrLn $ "Could not parse input: " ++ s

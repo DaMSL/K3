@@ -18,6 +18,7 @@ import Language.K3.Driver.Common
 data Options = Options {
         mode      :: Mode,
         inform    :: InfoSpec,
+        paths     :: PathOptions,
         input     :: FilePath
     }
   deriving (Eq, Read, Show)
@@ -55,6 +56,10 @@ data InfoSpec = InfoSpec { logging   :: LoggerOptions
 -- | Logging directives, passed through to K3.Logger.Config .
 type LoggerInstruction = (String,Priority)
 type LoggerOptions     = [LoggerInstruction]
+
+-- | Path related options
+data PathOptions = PathOptions { includes :: [FilePath] }
+  deriving (Eq, Read, Show)
 
 -- | Verbosity levels.
 data Verbosity
@@ -158,6 +163,15 @@ loggingOptions = many $ option (
                     <> reader (either (Left . ErrorMsg) Right . parseInstruction)
                  )
 
+-- | Path options.
+pathOptions :: Parser PathOptions
+pathOptions = PathOptions <$> many ( strOption (
+                     short 'I'
+                  <> long "include"
+                  <> help "Includes a directory on the source code search path"
+                  <> metavar "DIRECTORY"
+                ))
+
 -- | Verbosity options.
 verbosityOptions :: Parser Verbosity
 verbosityOptions = toEnum . roundVerbosity <$> option (
@@ -183,7 +197,8 @@ inputOptions = argument str (
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = Options <$> modeOptions <*> informOptions <*> inputOptions
+programOptions = Options <$> modeOptions <*> informOptions
+                         <*> pathOptions <*> inputOptions
 
 
 {- Instance definitions -}

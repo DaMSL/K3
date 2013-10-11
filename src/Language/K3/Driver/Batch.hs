@@ -31,7 +31,7 @@ setDefaultRole d _ _ = d
 
 runBatch :: Options -> InterpretOptions -> IO ()
 runBatch progOpts interpOpts = do
-    p <- parseK3Input (input progOpts)
+    p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
         Right q -> runProgram (sysEnv interpOpts) q >>= either (\(EngineError s) -> putStrLn s) return

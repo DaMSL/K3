@@ -1,7 +1,5 @@
 module Language.K3.Driver.Common where
 
-import Data.Functor
-
 import System.IO
 
 import Language.K3.Core.Annotation
@@ -16,10 +14,10 @@ openFileOrStdIn :: String -> IO Handle
 openFileOrStdIn "-" = return stdin
 openFileOrStdIn f = openFile f ReadMode
 
-parseK3Input :: FilePath -> IO (Either String (K3 Declaration))
-parseK3Input path = do
+parseK3Input :: [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
+parseK3Input searchPaths path = do
     h <- openFileOrStdIn path
-    parseK3 <$> hGetContents h
+    parseK3 searchPaths =<< hGetContents h
 
 prettySysEnv :: SystemEnvironment -> [String]
 prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
