@@ -102,7 +102,7 @@ typecheck aEnv env decl =
     prettyExprBounds :: (UID,(K3 Type, K3 Type)) -> [String]
     prettyExprBounds (u,(lb,ub)) =
       let n = take 10 $ show u ++ repeat ' ' in
-      [n ++ " ≤ "] %+ prettyLines lb %$ [n ++ " ≥ "] %+ prettyLines ub
+      [n ++ " ≥ "] %+ prettyLines lb %$ [n ++ " ≤ "] %+ prettyLines ub
 
 -- |The actual heavy lifting of @typecheck@.
 doTypecheck :: TAliasEnv -- ^The environment defining existing type bindings.

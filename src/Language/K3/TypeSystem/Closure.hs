@@ -145,7 +145,7 @@ closeBinaryOperations cs = csUnions $ do
   case ans of
     Nothing -> mzero
     Just (ta3,cs') ->
-      return $ cs' `csUnion` csSing (ta3 <: a3)
+      return $ cs' `csUnion` csFromList [ta3 <: a3, a1 <: t1, a2 <: t2]
 
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do
