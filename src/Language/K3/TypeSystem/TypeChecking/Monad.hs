@@ -15,7 +15,6 @@ module Language.K3.TypeSystem.TypeChecking.Monad
 ) where
 
 import Control.Applicative
-import Control.Arrow
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.Writer

@@ -102,6 +102,8 @@ data ConstraintSetQuery r where
     UVar -> ConstraintSetQuery ShallowType
   QueryTypeByUVarUpperBound ::
     UVar -> ConstraintSetQuery ShallowType
+  QueryTypeByQVarLowerBound ::
+    QVar -> ConstraintSetQuery ShallowType
   QueryTypeByQVarUpperBound ::
     QVar -> ConstraintSetQuery ShallowType
   QueryQualOrVarByQVarLowerBound ::
@@ -110,6 +112,8 @@ data ConstraintSetQuery r where
     QVar -> ConstraintSetQuery TypeOrVar
   QueryTypeOrVarByQVarUpperBound ::
     QVar -> ConstraintSetQuery TypeOrVar
+  QueryTQualSetByQVarLowerBound ::
+    QVar -> ConstraintSetQuery (Set TQual)
   QueryTQualSetByQVarUpperBound ::
     QVar -> ConstraintSetQuery (Set TQual)
   QueryBoundingConstraintsByUVar ::
@@ -215,6 +219,10 @@ csQuery (ConstraintSet csSet) query =
       IntermediateConstraint (CLeft t) (CRight a') <- cs
       guard $ a == a'
       return t
+    QueryTypeByQVarLowerBound qa -> do
+      QualifiedUpperConstraint qa' (CLeft t) <- cs
+      guard $ qa == qa'
+      return t
     QueryTypeByQVarUpperBound qa -> do
       QualifiedLowerConstraint (CLeft t) qa' <- cs
       guard $ qa == qa'
@@ -231,6 +239,10 @@ csQuery (ConstraintSet csSet) query =
       QualifiedLowerConstraint ta qa' <- cs
       guard $ qa == qa'
       return ta
+    QueryTQualSetByQVarLowerBound qa -> do
+      QualifiedIntermediateConstraint (CRight qa') (CLeft qs) <- cs
+      guard $ qa == qa'
+      return qs
     QueryTQualSetByQVarUpperBound qa -> do
       QualifiedIntermediateConstraint (CLeft qs) (CRight qa') <- cs
       guard $ qa == qa'

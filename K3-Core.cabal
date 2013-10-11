@@ -112,13 +112,19 @@ library
         Language.K3.TypeSystem.Annotations.Error,
         Language.K3.Core.Annotation.Codegen,
         Language.K3.Codegen.Haskell,
-        Language.K3.Codegen
+        Language.K3.Codegen,
+        Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
+        Language.K3.TypeSystem.Annotations.Within,
+        Language.K3.TypeSystem.Simplification,
+        Language.K3.TypeSystem.Simplification.Data,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification
 
     ghc-options: -Wall
     other-modules: 
-                   Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
-                   Language.K3.TypeSystem.Annotations.Within,
-                   Language.K3.TypeSystem.Simplification.ConstraintCollection
+                   Language.K3.TypeSystem.Simplification.GarbageCollection,
+                   Language.K3.TypeSystem.Manifestation,
+                   Language.K3.TypeSystem.Manifestation.Monad,
+                   Language.K3.TypeSystem.Manifestation.Data
 
 test-suite all
     type: exitcode-stdio-1.0

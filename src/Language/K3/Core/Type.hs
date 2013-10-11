@@ -48,8 +48,18 @@ data Type
     | TSink
     | TTrigger
     | TBuiltIn TypeBuiltIn
-    | TForall [TypeVarDecl] -- ^Should have one child representing the body.
-    | TDeclaredVar Identifier -- ^Represents the use of a declared type var.
+    | TForall [TypeVarDecl] {- ^Should have one child representing the body. -}
+    | TDeclaredVar Identifier {- ^Represents the use of a declared type var. -}
+    -- The following constructors are used primarily during type manifestation
+    -- after typechecking is complete; they do not necessarily have an
+    -- equivalent in the language syntax.
+    | TTop
+    | TBottom
+    | TRecordExtension [Identifier] [Identifier]
+        -- ^Represents the extension of a record.  The first list of identifiers
+        --  names the labels corresponding to the children of this record
+        --  extension; the second list names the type variables with which this
+        --  record concatenates.
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.
