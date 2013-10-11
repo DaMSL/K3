@@ -1,0 +1,21 @@
+// Comments are C, Java style.
+/* This is a multi-line comment. */
+declare x : int = 5
+
+// Comments can be prefixed to a declaration, expression or type.
+// Note comments cannot appear arbitrarily since they are source annotations
+// rather than whitespace that is stripped off.
+// For example, they cannot appear between the 'declare' keyword and the 'y'
+// identifier below.
+declare y : mut /* Type comment */ int = /* Expression comment */ 0
+
+trigger t : int = // Comment before trigger definition.
+\v -> (
+  // Example of comments per sequence statement
+  y = v;
+  /* Comment for the next statement */
+  y = y + x
+)
+
+source s1 : int = value 100
+feed s1 |> t

@@ -19,7 +19,8 @@ import Control.Applicative ( (<*>) )
 import qualified Control.Applicative as C ( (<$>) )
 import Control.Monad
 
-import Data.List 
+import Data.Maybe
+import Data.List hiding ( group )
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
@@ -62,15 +63,20 @@ program = runSyntaxPrinter . decl
 
 -- | Declaration syntax printing.
 decl :: K3 Declaration -> SyntaxPrinter
-decl (details -> (DGlobal n t eOpt, cs, anns)) =
+decl d@(details -> (_,_,anns)) = case commentD anns of
+  Just doc -> (doc <+>) C.<$> decl' d
+  Nothing  -> decl' d
+
+decl' :: K3 Declaration -> SyntaxPrinter
+decl' (details -> (DGlobal n t eOpt, cs, anns)) =
     case tag t of 
       TSource -> withSubDecls $ endpoint' "source"
       TSink   -> withSubDecls $ endpoint' "sink"
-      _       -> withSubDecls $ decl'
+      _       -> withSubDecls $ declG
   where
     withSubDecls d = vsep C.<$> ((:) C.<$> d <*> subDecls cs)
 
-    decl' = globalDecl C.<$> qualifierAndType t
+    declG = globalDecl C.<$> qualifierAndType t
                          <*> optionalPrinter qualifierAndExpr eOpt
 
     globalDecl (qualT, t') eqeOpt = 
@@ -81,15 +87,15 @@ decl (details -> (DGlobal n t eOpt, cs, anns)) =
     initializer opt = maybe empty (\(qualE, e) -> equals <+> qualE <$> e) opt
 
 
-decl (details -> (DTrigger n t e, cs, _)) =
-    vsep C.<$> ((:) C.<$> decl' <*> subDecls cs)
+decl' (details -> (DTrigger n t e, cs, _)) =
+    vsep C.<$> ((:) C.<$> declT <*> subDecls cs)
   where
-    decl' = triggerDecl C.<$> typ t <*> expr e
+    declT = triggerDecl C.<$> typ t <*> expr e
     triggerDecl t' e' =
       hang 2 $ text "trigger" <+> text n <+> colon <+> (align t') <+> equals <$> e' <> line
 
 
-decl (details -> (DRole n, cs, _)) = 
+decl' (details -> (DRole n, cs, _)) = 
   if n == "__global" then vsep     C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
                      else roleDecl C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
   where roleDecl subDecls' =
@@ -97,7 +103,7 @@ decl (details -> (DRole n, cs, _)) =
                       <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
 
 
-decl (details -> (DAnnotation n tvars mems, cs, _)) = do
+decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
   tsps <- mapM typeVarDecl tvars
   msps <- mapM memberDecl mems
   csps <- mapM decl cs
@@ -126,7 +132,7 @@ decl (details -> (DAnnotation n tvars mems, cs, _)) = do
 
     initializer opt = maybe empty (\(qualE, e') -> equals <+> qualE <$> e') opt 
 
-decl _ = throwSP "Invalid declaration"
+decl' _ = throwSP "Invalid declaration"
 
 
 typeVarDecl :: TypeVarDecl -> SyntaxPrinter
@@ -190,7 +196,12 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
-expr (details -> (EConstant c, _, anns)) =
+expr e@(details -> (_,_,anns)) = case commentE anns of
+  Just doc -> (doc <+>) C.<$> expr' e
+  _        -> expr' e
+
+expr' :: K3 Expression -> SyntaxPrinter
+expr' (details -> (EConstant c, _, anns)) =
   case c of 
     CBool b   -> return . text $ if b then "true" else "false"
     CInt i    -> return $ int i
@@ -207,52 +218,52 @@ expr (details -> (EConstant c, _, anns)) =
     nQualifier NoneMut   = text "mut"
     nQualifier NoneImmut = text "immut"
 
-expr (tag -> EVariable i) = return $ text i
+expr' (tag -> EVariable i) = return $ text i
 
-expr (details -> (ESome, [x], _)) = qualifierAndExpr x >>= return . uncurry someExpr
-expr (tag -> ESome)               = exprError "some"
+expr' (details -> (ESome, [x], _)) = qualifierAndExpr x >>= return . uncurry someExpr
+expr' (tag -> ESome)               = exprError "some"
 
-expr (details -> (EIndirect, [x], _)) = qualifierAndExpr x >>= return . uncurry indirectionExpr
-expr (tag -> EIndirect)               = exprError "indirection"
+expr' (details -> (EIndirect, [x], _)) = qualifierAndExpr x >>= return . uncurry indirectionExpr
+expr' (tag -> EIndirect)               = exprError "indirection"
 
-expr (details -> (ETuple, cs, _)) = mapM qualifierAndExpr cs >>= return . tupleExpr
-expr (tag -> ETuple)              = exprError "tuple"
+expr' (details -> (ETuple, cs, _)) = mapM qualifierAndExpr cs >>= return . tupleExpr
+expr' (tag -> ETuple)              = exprError "tuple"
 
-expr (details -> (ERecord is, cs, _)) = mapM qualifierAndExpr cs >>= return . recordExpr is
-expr (tag -> ERecord _)               = exprError "record"
+expr' (details -> (ERecord is, cs, _)) = mapM qualifierAndExpr cs >>= return . recordExpr is
+expr' (tag -> ERecord _)               = exprError "record"
 
-expr (details -> (ELambda i, [b], _)) = expr b >>= return . lambdaExpr i
-expr (tag -> ELambda _)               = exprError "lambda"
+expr' (details -> (ELambda i, [b], _)) = expr b >>= return . lambdaExpr i
+expr' (tag -> ELambda _)               = exprError "lambda"
 
-expr (details -> (EOperate otag, cs, _))
+expr' (details -> (EOperate otag, cs, _))
     | otag `elem` [ONeg, ONot], [a] <- cs = expr a >>= unary otag
     | otherwise, [a, b] <- cs             = uncurry (binary otag) =<< ((,) C.<$> expr a <*> expr b)
     | otherwise                           = exprError "operator"
 
-expr (details -> (EProject i, [r], _)) = expr r >>= return . projectExpr i
-expr (tag -> EProject _)               = exprError "project"
+expr' (details -> (EProject i, [r], _)) = expr r >>= return . projectExpr i
+expr' (tag -> EProject _)               = exprError "project"
 
-expr (details -> (ELetIn i, [e, b], _)) = letExpr i C.<$> qualifierAndExpr e <*> expr b
-expr (tag -> ELetIn _)                  = exprError "let"
+expr' (details -> (ELetIn i, [e, b], _)) = letExpr i C.<$> qualifierAndExpr e <*> expr b
+expr' (tag -> ELetIn _)                  = exprError "let"
 
-expr (details -> (EAssign i, [e], _)) = expr e >>= return . assignExpr i
-expr (tag -> EAssign _)               = exprError "assign"
+expr' (details -> (EAssign i, [e], _)) = expr e >>= return . assignExpr i
+expr' (tag -> EAssign _)               = exprError "assign"
 
-expr (details -> (ECaseOf i, [e, s, n], _)) = caseExpr i C.<$> expr e <*> expr s <*> expr n
-expr (tag -> ECaseOf _)                     = exprError "case-of"
+expr' (details -> (ECaseOf i, [e, s, n], _)) = caseExpr i C.<$> expr e <*> expr s <*> expr n
+expr' (tag -> ECaseOf _)                     = exprError "case-of"
 
-expr (details -> (EBindAs b, [e, f], _)) = bindExpr b C.<$> expr e <*> expr f
-expr (tag -> EBindAs _)                  = exprError "bind-as"
+expr' (details -> (EBindAs b, [e, f], _)) = bindExpr b C.<$> expr e <*> expr f
+expr' (tag -> EBindAs _)                  = exprError "bind-as"
 
-expr (details -> (EIfThenElse, [p, t, e], _)) = branchExpr C.<$> expr p <*> expr t <*> expr e
-expr (tag -> EIfThenElse)                     = exprError "if-then-else"
+expr' (details -> (EIfThenElse, [p, t, e], _)) = branchExpr C.<$> expr p <*> expr t <*> expr e
+expr' (tag -> EIfThenElse)                     = exprError "if-then-else"
 
-expr (details -> (EAddress, [h, p], _)) = address h p
-expr (tag -> EAddress)                  = exprError "address"
+expr' (details -> (EAddress, [h, p], _)) = address h p
+expr' (tag -> EAddress)                  = exprError "address"
 
-expr (tag -> ESelf) = return $ keyword "self"
+expr' (tag -> ESelf) = return $ keyword "self"
 
-expr _ = exprError "unknown"
+expr' _ = exprError "unknown"
 
 unary :: Operator -> Doc -> SyntaxPrinter
 unary ONeg e = return $ text "-" <//> e
@@ -305,51 +316,56 @@ exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
 typ :: K3 Type -> SyntaxPrinter
-typ (tag -> TBool)       = return $ text "bool"
-typ (tag -> TByte)       = return $ text "byte"
-typ (tag -> TInt)        = return $ text "int"
-typ (tag -> TReal)       = return $ text "real"
-typ (tag -> TString)     = return $ text "string"
-typ (tag -> TAddress)    = return $ text "address"
+typ t@(details -> (_,_,anns)) = case commentT anns of 
+  Just doc -> (doc <+>) C.<$> typ' t
+  Nothing  -> typ' t
 
-typ (details -> (TOption, [x], _)) = qualifierAndType x >>= return . uncurry optionType
-typ (tag -> TOption)               = throwSP "Invalid option type"
+typ' :: K3 Type -> SyntaxPrinter
+typ' (tag -> TBool)       = return $ text "bool"
+typ' (tag -> TByte)       = return $ text "byte"
+typ' (tag -> TInt)        = return $ text "int"
+typ' (tag -> TReal)       = return $ text "real"
+typ' (tag -> TString)     = return $ text "string"
+typ' (tag -> TAddress)    = return $ text "address"
 
-typ (details -> (TIndirection, [x], _)) = qualifierAndType x >>= return . uncurry indirectionType
-typ (tag -> TIndirection)               = throwSP "Invalid indirection type"
+typ' (details -> (TOption, [x], _)) = qualifierAndType x >>= return . uncurry optionType
+typ' (tag -> TOption)               = throwSP "Invalid option type"
 
-typ (details -> (TTuple, ch, _)) = mapM qualifierAndType ch >>= return . tupleType
+typ' (details -> (TIndirection, [x], _)) = qualifierAndType x >>= return . uncurry indirectionType
+typ' (tag -> TIndirection)               = throwSP "Invalid indirection type"
 
-typ (details -> (TRecord ids, ch, _))
+typ' (details -> (TTuple, ch, _)) = mapM qualifierAndType ch >>= return . tupleType
+
+typ' (details -> (TRecord ids, ch, _))
   | length ids == length ch  = mapM qualifierAndType ch >>= return . recordType ids
   | otherwise                = throwSP "Invalid record type"
 
-typ (details -> (TFunction, [a,r], _)) = mapM typ [a,r] >>= \chT -> return $ funType (head chT) (last chT)
-typ (tag -> TFunction)                 = throwSP "Invalid function type"
+typ' (details -> (TFunction, [a,r], _)) = mapM typ [a,r] >>= \chT -> return $ funType (head chT) (last chT)
+typ' (tag -> TFunction)                 = throwSP "Invalid function type"
 
-typ (details -> (TSource, [x], _)) = typ x
-typ (tag -> TSource)               = throwSP "Invalid sink type"
+typ' (details -> (TSource, [x], _)) = typ x
+typ' (tag -> TSource)               = throwSP "Invalid sink type"
 
-typ (details -> (TSink, [x], _)) = typ x
-typ (tag -> TSink)               = throwSP "Invalid sink type"
+typ' (details -> (TSink, [x], _)) = typ x
+typ' (tag -> TSink)               = throwSP "Invalid sink type"
 
-typ (details -> (TTrigger, [x], _)) = typ x >>= return . triggerType
-typ (tag -> TTrigger)               = throwSP "Invalid trigger type"
+typ' (details -> (TTrigger, [x], _)) = typ x >>= return . triggerType
+typ' (tag -> TTrigger)               = throwSP "Invalid trigger type"
 
-typ (details -> (TCollection, [x], anns)) =
+typ' (details -> (TCollection, [x], anns)) =
   typ x >>= return . collectionType (map text $ namedTAnnotations anns)
 
-typ (tag -> TCollection) = throwSP "Invalid collection type"
+typ' (tag -> TCollection) = throwSP "Invalid collection type"
 
-typ (tag -> TBuiltIn TSelf)      = return $ keyword "self"
-typ (tag -> TBuiltIn TContent)   = return $ keyword "content"
-typ (tag -> TBuiltIn THorizon)   = return $ keyword "horizon"
-typ (tag -> TBuiltIn TStructure) = return $ keyword "structure"
+typ' (tag -> TBuiltIn TSelf)      = return $ keyword "self"
+typ' (tag -> TBuiltIn TContent)   = return $ keyword "content"
+typ' (tag -> TBuiltIn THorizon)   = return $ keyword "horizon"
+typ' (tag -> TBuiltIn TStructure) = return $ keyword "structure"
 
-typ (tag -> TForall _)      = throwSP "TForall syntax not supported"
-typ (tag -> TDeclaredVar _) = throwSP "TDeclaredVar syntax not supported"
+typ' (tag -> TForall _)      = throwSP "TForall syntax not supported"
+typ' (tag -> TDeclaredVar _) = throwSP "TDeclaredVar syntax not supported"
 
-typ _ = throwSP "Cannot generate type syntax"
+typ' _ = throwSP "Cannot generate type syntax"
 
 qualifierAndType :: K3 Type -> Printer (Doc, Doc)
 qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
@@ -436,6 +452,34 @@ branchExpr p t e = text "if" <+> (align $ p <$> text "then" </> t <$> text "else
 
 addrExpr :: Doc -> Doc -> Doc
 addrExpr h p = h <> colon <> p
+
+
+{- Source comments -}
+comment :: SyntaxAnnotation -> Maybe Doc
+comment (SourceComment multi _ contents) = Just (string $ prefix ++ contents ++ suffix)
+  where prefix = if multi then "/* " else "// "
+        suffix = if multi then "*/" else "\n"
+
+comment _ = Nothing
+
+annotatedComments :: [Annotation a] -> (Annotation a -> Maybe SyntaxAnnotation) -> Maybe Doc
+annotatedComments anns extractF = if null docs then Nothing else Just $ (vcat $ map group docs) <> line
+  where docs = mapMaybe (\x -> extractF x >>= comment) anns
+
+commentD :: [Annotation Declaration] -> Maybe Doc
+commentD anns = annotatedComments anns extractSyntax
+  where extractSyntax (DSyntax x) = Just x
+        extractSyntax _ = Nothing
+
+commentE :: [Annotation Expression] -> Maybe Doc
+commentE anns = annotatedComments anns extractSyntax
+  where extractSyntax (ESyntax x) = Just x
+        extractSyntax _ = Nothing
+
+commentT :: [Annotation Type] -> Maybe Doc
+commentT anns = annotatedComments anns extractSyntax
+  where extractSyntax (TSyntax x) = Just x
+        extractSyntax _ = Nothing
 
 
 {- Helpers -}

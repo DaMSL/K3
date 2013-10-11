@@ -15,6 +15,7 @@ module Language.K3.Core.Annotation (
     K3,
 
     children,
+    mapTree,
     foldMapTree,
     foldTree
 ) where
@@ -86,7 +87,7 @@ instance AContainer (Maybe a) where
 instance AContainer [a] where
     type IElement [a] = a
 
-    vs @+ v = v:vs
+    vs @+ v = vs++[v]
     vs @- v = delete v vs
     vs @~ p = find p vs
 
@@ -140,6 +141,10 @@ type K3 a = Tree (a :@: [Annotation a])
 -- | Subtree extraction
 children :: Tree a -> Forest a
 children = subForest
+
+mapTree :: ([Tree a] -> Tree a -> Tree a) -> Tree a -> Tree a
+mapTree f n@(Node _ []) = f [] n
+mapTree f n@(Node _ ch) = flip f n $ map (mapTree f) ch
 
 -- | Fold over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.

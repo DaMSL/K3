@@ -9,6 +9,7 @@ import Data.Tree
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Common
 import Language.K3.Core.Type
@@ -78,8 +79,8 @@ data Operator
 -- | Binding Forms.
 data Binder
     = BIndirection Identifier
-    | BTuple [Identifier]
-    | BRecord [(Identifier, Identifier)]
+    | BTuple       [Identifier]
+    | BRecord      [(Identifier, Identifier)]
   deriving (Eq, Read, Show)
 
 -- | Annotations on expressions are mutability qualifiers.
@@ -89,6 +90,7 @@ data instance Annotation Expression
     | EMutable
     | EImmutable
     | EAnnotation Identifier
+    | ESyntax SyntaxAnnotation
     | EType (K3 Type)
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
@@ -96,6 +98,10 @@ data instance Annotation Expression
 
 instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) = ["EUnit" ++ drawAnnotations as]
+    
+    prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
+        ["EConstant CEmpty" ++ drawAnnotations as, "|"] ++ prettyLines t
+    
     prettyLines (Node (t :@: as) es) = (show t ++ drawAnnotations as) : drawSubTrees es
 
 {- Expression annotation predicates -}
@@ -132,10 +138,10 @@ freeVariables = foldMapTree extractVariable []
     extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs bs)  = filter (`notElem` bindings bs) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)  = filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)  = filter (/= i) $ let [s, n] = chAcc in filter (/= i) s ++ n
+    extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> ECaseOf i)   = filter (/= i) $ let [s, n] = chAcc in filter (/= i) s ++ n
     extractVariable chAcc _ = concat chAcc
 
     bindings (BIndirection i) = [i]
-    bindings (BTuple is) = is
-    bindings (BRecord ivs) = fst (unzip ivs)
+    bindings (BTuple is)      = is
+    bindings (BRecord ivs)    = fst (unzip ivs)

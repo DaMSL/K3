@@ -21,6 +21,7 @@ module Language.K3.Core.Type (
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 
 import Language.K3.Utils.Pretty
@@ -83,6 +84,7 @@ data instance Annotation Type
     | TSpan Span
     | TUID UID
     | TAnnotation Identifier
+    | TSyntax SyntaxAnnotation
   deriving (Eq, Read, Show)
 
 instance Pretty (K3 Type) where
