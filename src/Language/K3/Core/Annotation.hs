@@ -87,7 +87,7 @@ instance AContainer (Maybe a) where
 instance AContainer [a] where
     type IElement [a] = a
 
-    vs @+ v = v:vs
+    vs @+ v = vs++[v]
     vs @- v = delete v vs
     vs @~ p = find p vs
 

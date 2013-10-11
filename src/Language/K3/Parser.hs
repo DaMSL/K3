@@ -18,6 +18,7 @@ module Language.K3.Parser (
   parseType,
   parseExpression,
   parseDeclaration,
+  parseSimpleK3,
   parseK3,
   runK3Parser,
   ensureUIDs
@@ -193,102 +194,6 @@ instance UIDAttachable (K3 Declaration) where
   (#) = ensureUID isDUID
 
 
-{- Language definition constants -}
-k3Operators :: [[Char]]
-k3Operators = [
-    "+", "-", "*", "/",
-    "==", "!=", "<>", "<", ">", ">=", "<=", ";"
-  ]
-
-k3Keywords :: [[Char]]
-k3Keywords = [
-    {- Types -}
-    "int", "bool", "real", "string",
-    "immut", "mut", "witness", "option", "ind" , "collection",
-
-    {- Declarations -}
-    "declare", "fun", "trigger", "source", "sink", "feed",
-
-    {- Expressions -}
-    "let", "in", "if", "then", "else", "case", "of", "bind", "as",
-    "and", "or", "not",
-
-    {- Values -}
-    "true", "false", "ind", "Some", "None", "empty",
-
-    {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires",
-
-    {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall"
-  ]
-
-{- Style definitions for parsers library -}
-
-{- TODO: comments
-k3CommentStyle :: CommentStyle
-k3CommentStyle = javaCommentStyle
-
-comment :: (TokenParsing m, Monad m) => m ()
-comment = buildSomeSpaceParser whiteSpace k3CommentStyle
--}
-
-k3Ops :: TokenParsing m => IdentifierStyle m
-k3Ops = emptyOps { _styleReserved = set k3Operators }
-
-k3Idents :: TokenParsing m => IdentifierStyle m
-k3Idents = emptyIdents { _styleReserved = set k3Keywords }
-
-operator :: (TokenParsing m, Monad m) => String -> m ()
-operator = reserve k3Ops
-
-identifier :: (TokenParsing m, Monad m, IsString s) => m s
-identifier = ident k3Idents
-
-keyword :: (TokenParsing m, Monad m) => String -> m ()
-keyword = reserve k3Idents
-
-
-{- Main parsing functions -}
-stringifyError :: Either P.ParseError a -> Either String a
-stringifyError = either (Left . show) Right
-
-emptyParserState :: ParserState
-emptyParserState = (0,[])
-
-runK3Parser :: K3Parser a -> String -> Either P.ParseError a
-runK3Parser p s = P.runParser p emptyParserState "" s
-
-maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (const Nothing) Just $ runK3Parser p s
-
-parseType :: String -> Maybe (K3 Type)
-parseType = maybeParser typeExpr
-
-parseExpression :: String -> Maybe (K3 Expression)
-parseExpression = maybeParser expr
-
-parseDeclaration :: String -> Maybe (K3 Declaration)
-parseDeclaration s = either (const Nothing) id $ runK3Parser declaration s
-
-parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includePaths s = do
-  searchPaths   <- if null includePaths then getSearchPath else return includePaths
-  subFiles      <- processIncludes searchPaths (lines s) []
-  fileContents  <- mapM readFile subFiles >>= return . (++ [s])
-  return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
-  where
-    chainValidParse c parse = parse >>= parseAndCompose c
-    parseAndCompose src (p, asTopLevel) =
-      parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
-        ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
-          | otherwise                       -> programError
-        _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
-    programError = Left "Invalid program, expected top-level role."
-
-
 {- Parsing state helpers -}
 withEnvironment :: (ParserEnvironment -> a) -> K3Parser a
 withEnvironment f = PP.getState >>= return . f . snd
@@ -324,6 +229,123 @@ modifyUID_ f = modifyUID $ (,()) . f
 nextUID :: K3Parser UID
 nextUID = withUID UID
 
+
+{- Language definition constants -}
+k3Operators :: [[Char]]
+k3Operators = [
+    "+", "-", "*", "/",
+    "==", "!=", "<>", "<", ">", ">=", "<=", ";"
+  ]
+
+k3Keywords :: [[Char]]
+k3Keywords = [
+    {- Types -}
+    "int", "bool", "real", "string",
+    "immut", "mut", "witness", "option", "ind" , "collection",
+
+    {- Declarations -}
+    "declare", "fun", "trigger", "source", "sink", "feed",
+
+    {- Expressions -}
+    "let", "in", "if", "then", "else", "case", "of", "bind", "as",
+    "and", "or", "not",
+
+    {- Values -}
+    "true", "false", "ind", "Some", "None", "empty",
+
+    {- Annotation declarations -}
+    "annotation", "lifted", "provides", "requires",
+
+    {- Annotation keywords -}
+    "self", "structure", "horizon", "content", "forall"
+  ]
+
+{- Style definitions for parsers library -}
+
+k3Ops :: TokenParsing m => IdentifierStyle m
+k3Ops = emptyOps { _styleReserved = set k3Operators }
+
+k3Idents :: TokenParsing m => IdentifierStyle m
+k3Idents = emptyIdents { _styleReserved = set k3Keywords }
+
+operator :: (TokenParsing m, Monad m) => String -> m ()
+operator = reserve k3Ops
+
+identifier :: (TokenParsing m, Monad m, IsString s) => m s
+identifier = ident k3Idents
+
+keyword :: (TokenParsing m, Monad m) => String -> m ()
+keyword = reserve k3Idents
+
+
+{- Comments -}
+
+mkComment :: Bool -> P.SourcePos -> String -> P.SourcePos -> SyntaxAnnotation
+mkComment multi start contents end = SourceComment multi (mkSpan start end) contents
+
+multiComment :: K3Parser SyntaxAnnotation
+multiComment = (mkComment True 
+                 <$> PP.getPosition 
+                 <*> (symbol "/*" *> manyTill anyChar (try $ symbol "*/") <* spaces)
+                 <*> PP.getPosition) <?> "multi-line comment"
+
+singleComment :: K3Parser SyntaxAnnotation
+singleComment = (mkComment False
+                 <$> PP.getPosition
+                 <*> (symbol "//" *> manyTill anyChar (try newline) <* spaces)
+                 <*> PP.getPosition) <?> "single line comment"
+
+comment :: K3Parser [SyntaxAnnotation]
+comment = many (choice [try multiComment, singleComment])
+
+-- | Helper to attach comment annotations
+(//) :: (a -> SyntaxAnnotation -> a) -> [SyntaxAnnotation] -> a -> a
+(//) attachF l x = foldl attachF x l
+
+
+{- Main parsing functions -}
+stringifyError :: Either P.ParseError a -> Either String a
+stringifyError = either (Left . show) Right
+
+emptyParserState :: ParserState
+emptyParserState = (0,[])
+
+runK3Parser :: K3Parser a -> String -> Either P.ParseError a
+runK3Parser p s = P.runParser p emptyParserState "" s
+
+maybeParser :: K3Parser a -> String -> Maybe a
+maybeParser p s = either (const Nothing) Just $ runK3Parser p s
+
+parseType :: String -> Maybe (K3 Type)
+parseType = maybeParser typeExpr
+
+parseExpression :: String -> Maybe (K3 Expression)
+parseExpression = maybeParser expr
+
+parseDeclaration :: String -> Maybe (K3 Declaration)
+parseDeclaration s = either (const Nothing) id $ runK3Parser declaration s
+
+parseSimpleK3 :: String -> Maybe (K3 Declaration)
+parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
+
+parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3 includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (lines s) []
+  fileContents  <- mapM readFile subFiles >>= return . (++ [s])
+  return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
+  where
+    chainValidParse c parse = parse >>= parseAndCompose c
+    parseAndCompose src (p, asTopLevel) =
+      parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
+        ((DRole n, ch), (DRole n2, ch2))
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
+          | otherwise                       -> programError
+        _                                   -> programError
+    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    programError = Left "Invalid program, expected top-level role."
+
+
 {- K3 grammar parsers -}
 
 -- TODO: inline testing
@@ -343,10 +365,15 @@ roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
 
 {- Declarations -}
 declaration :: K3Parser (Maybe (K3 Declaration))
-declaration = choice [ignores >> return Nothing, decls >>= return . Just, sugaredDecls >> return Nothing]
-  where decls        = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
-        sugaredDecls = choice [dSelector, dFeed]
-        ignores      = pInclude >> return ()
+declaration = (//) attachComment <$> comment <*> 
+              choice [ignores >> return Nothing, decls >>= return . Just, sugaredDecls >> return Nothing]
+
+  where decls         = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
+        sugaredDecls  = choice [dSelector, dFeed]
+        ignores       = pInclude >> return ()
+        
+        attachComment Nothing _    = Nothing
+        attachComment (Just d) cmt = Just (d @+ DSyntax cmt)
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
@@ -465,9 +492,11 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 
 {- Type terms -}
 tTerm :: TypeParser
-tTerm = TSpan <-> choice [ tPrimitive, tOption, tIndirection,
+tTerm = TSpan <-> (//) attachComment <$> comment 
+              <*> choice [ tPrimitive, tOption, tIndirection,
                            tTupleOrNested, tRecord, tCollection,
                            tBuiltIn, tDeclared ]
+  where attachComment t cmt = t @+ (TSyntax cmt)
 
 tTermOrFun :: TypeParser
 tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" *> typeExpr)
@@ -534,7 +563,7 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 {- Expressions -}
 
 expr :: ExpressionParser
-expr = parseError "k3" "expression" $ buildExpressionParser fullOpTable eApp
+expr = parseError "expression" "k3" $ buildExpressionParser fullOpTable eApp
 
 nonSeqExpr :: ExpressionParser
 nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
@@ -560,16 +589,18 @@ eTerm = do
     Nothing -> return e
     Just i -> EUID # return (EC.project i e) -- TODO: span
   where
-    rawTerm = choice [ (try eAssign),
-                       (try eAddress),
-                       eLiterals,
-                       eLambda,
-                       eCondition,
-                       eLet,
-                       eCase,
-                       eBind,
-                       eSelf  ]
+    rawTerm = (//) attachComment <$> comment <*> 
+      choice [ (try eAssign),
+               (try eAddress),
+               eLiterals,
+               eLambda,
+               eCondition,
+               eLet,
+               eCase,
+               eBind,
+               eSelf  ]
     eProject = dot *> identifier
+    attachComment e cmt = e @+ (ESyntax cmt)
 
 
 {- Literals -}

@@ -8,9 +8,8 @@ import Language.K3.Core.Common
 
 data SyntaxAnnotation
   = EndpointDeclaration EndpointSpec EndpointBindings
-  | SourceComment Span String
-      -- ^ Placeholder for storing comments in the AST.
-      --   TODO: this is currently unused.
+  | SourceComment Bool Span String
+      -- ^ Comment annotations, as multiline, with span and contents.
   deriving (Eq, Read, Show)
 
 -- | A list of triggers ids fed by an endpoint. Only valid for sources.
