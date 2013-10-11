@@ -1,7 +1,8 @@
 {-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 
 module Language.K3.TypeSystem
-( typecheck
+( typecheck,
+  typecheckProgram
 ) where
 
 import Control.Applicative
@@ -9,6 +10,7 @@ import Control.Arrow
 import Control.Monad.Writer
 import Control.Monad.Trans.Either
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 
@@ -81,6 +83,10 @@ doTypecheck aEnv env decl = do
   -- TODO: annotate the declaration tree with type information
   -- TODO: some form of type simplification on the output types
   return ()
+
+-- |Driver wrapper function for typechecking
+typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult)
+typecheckProgram p = typecheck Map.empty Map.empty p
 
 -- |A simple monad type for sanity checking.
 newtype SanityM a = SanityM { unSanityM :: Either TypeError a }
