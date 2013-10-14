@@ -83,7 +83,7 @@ data Binder
     | BRecord      [(Identifier, Identifier)]
   deriving (Eq, Read, Show)
 
--- | Annotations on expressions are mutability qualifiers.
+-- | Annotations on expressions.
 data instance Annotation Expression
     = ESpan Span
     | EUID UID
