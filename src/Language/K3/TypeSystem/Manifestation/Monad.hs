@@ -17,8 +17,10 @@ module Language.K3.TypeSystem.Manifestation.Monad
 , askBoundType
 , envQuery
 
-, tryBindSig
+, tryDeclSig
 , catchSigUse
+, nameOpaque
+, grabNamedOpaques
 , dualizeBoundType
 ) where
 
@@ -50,8 +52,9 @@ runManifestM bt cs x =
                                        , envBoundType = bt
                                        , definedSignatures = Set.empty } in
   let initialState = ManifestState { unusedNames = initialNames
-                                   , variableNameMap = Map.empty } in
-  let (result, _, _) = runRWS (unManifestM x) initialEnviron initialState in
+                                   , variableNameMap = Map.empty
+                                   , opaqueNameMap = Map.empty } in
+  let (result,_,_) = runRWS (unManifestM x) initialEnviron initialState in
   result
   
 -- |A structure which defines the identifier used when creating bindings for
@@ -83,6 +86,7 @@ data ManifestState
   = ManifestState
       { unusedNames :: [String]
       , variableNameMap :: Map VariableSignature String
+      , opaqueNameMap :: Map OpaqueVar String
       }
 
 initialNames :: [String]
@@ -113,12 +117,12 @@ envQuery query = (`csQuery` query) <$> askConstraints
 --  been bound in the environment, it is marked as used and the @alreadyDefined@
 --  computation runs.  If it has not yet been bound, it is marked as bound and
 --  the @justDefined@ computation runs.
-tryBindSig :: VariableSignature
+tryDeclSig :: VariableSignature
            -> (String -> ManifestM a)
                 -- ^Accepts the variable name for the definition.
            -> ManifestM a -- ^Runs if the variable was not yet bound.
            -> ManifestM a -- ^The result
-tryBindSig sig alreadyDefined justDefined = do
+tryDeclSig sig alreadyDefined justDefined = do
   dsigs <- definedSignatures <$> ask
   if Set.member sig dsigs
     then do
@@ -147,6 +151,28 @@ catchSigUse sig x = do
   (v,w) <- ManifestM $ listen (unManifestM x)
   tell w
   return (v, Set.member sig $ usedSignatures w)
+
+-- |Defines a name for the provided opaque variable if one does not already
+--  exist.  In either case, returns the name for the given opaque variable.
+nameOpaque :: OpaqueVar -> ManifestM String
+nameOpaque oa = do
+  s <- get
+  case Map.lookup oa $ opaqueNameMap s of
+    Just name -> return name
+    Nothing -> do
+      let newName:rest = unusedNames s
+      put s{ unusedNames = rest
+           , opaqueNameMap = Map.insert oa newName $ opaqueNameMap s }
+      return newName
+
+-- |Retrieves all declared opaque variables.  This operation will remove them
+--  from the monad's stateful mapping; it is expected that the caller will
+--  ensure that these variables are bound.
+grabNamedOpaques :: ManifestM (Map OpaqueVar String)
+grabNamedOpaques = do
+  s <- get
+  put s{ opaqueNameMap = Map.empty }
+  return $ opaqueNameMap s
 
 -- |Performs a computation in the dual bound type.  This is used when a type
 --  must be constructed in a contravariant position.

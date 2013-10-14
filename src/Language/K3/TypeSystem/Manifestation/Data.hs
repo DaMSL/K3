@@ -19,6 +19,7 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 
 -- |A data type describing bounding directions for type manifestation.  A value
@@ -34,6 +35,7 @@ data BoundType
       , getDelayedOperation :: [DelayedType] -> DelayedType
       , getQualifierOperation :: [Set TQual] -> Set TQual
       , getDualBoundType :: BoundType
+      , getTyVarOp :: TypeVariableOperator
       }
       {-^
         Represents a bounding type.  The elements are:
@@ -61,6 +63,7 @@ upperBound = BoundType
               , getQualifierOperation =
                   foldl Set.intersection (Set.fromList [TMut, TImmut])
               , getDualBoundType = lowerBound
+              , getTyVarOp = TyVarOpIntersection
               }
 
 lowerBound :: BoundType
@@ -72,6 +75,7 @@ lowerBound = BoundType
               , getDelayedOperation = delayedUnions
               , getQualifierOperation = Set.unions
               , getDualBoundType = upperBound
+              , getTyVarOp = TyVarOpUnion
               }
               
 -- |An enumeration identifying the delayed operations over groups of types which

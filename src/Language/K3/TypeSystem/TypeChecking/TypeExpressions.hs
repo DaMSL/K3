@@ -86,13 +86,15 @@ derivePolymorphicTypeExpression aEnv tExpr =
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
       return (qa, cs, Map.empty)
     typeOfVarDecl :: TypeVarDecl -> m (Identifier,(UVar,c))
-    typeOfVarDecl (TypeVarDecl i mtExpr') =
-      case mtExpr' of
-        Nothing -> do
+    typeOfVarDecl (TypeVarDecl i mlbtExpr' mubtExpr') =
+      case (mlbtExpr', mubtExpr') of
+        (Nothing, Nothing) -> do
           a <- freshTypecheckingUVar =<< uidOf tExpr
           return (i, (a,a ~= STop))
-        Just tExpr' ->
+        (Nothing, Just tExpr') ->
           (i,) <$> deriveTypeExpression aEnv tExpr'
+        (Just _, _) ->
+          error "Type derivation does not support declared lower bounds!"
     toQuantBinding :: (Identifier, UVar) -> m (TEnv (TypeAliasEntry c))
     toQuantBinding (i,a) = do
       qa <- freshTypecheckingQVar =<< uidOf tExpr
@@ -244,6 +246,9 @@ deriveTypeExpression aEnv tExpr = do
         TBottom -> deriveLeafType SBottom
         TRecordExtension _ _ ->
           error "Record extension type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
+        TDeclaredVarOp _ _ ->
+          error "Declared variable operator type is invalid for deriveTypeExpression!"
           -- TODO: possibly make the above error less crash-y?
   _debug $ boxToString $
     ["Interpreted type expression:"] %$ indent 2 (

@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
 {-|
   This module provides a routine which manifests a type given a constraint set
@@ -8,16 +8,19 @@
 
 module Language.K3.TypeSystem.Manifestation
 ( manifestType
+, Manifestable
 , upperBound
 , lowerBound
 ) where
 
 import Control.Applicative
+import Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Set (Set)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
@@ -27,7 +30,33 @@ import Language.K3.TypeSystem.Manifestation.Monad
 -- |A general top-level function for manifesting a type from a constraint set
 --  and a manifestable entity.
 manifestType :: (Manifestable a) => BoundType -> ConstraintSet -> a -> K3 Type
-manifestType bt cs x = runManifestM bt cs $ manifestTypeFrom $ Set.singleton x
+manifestType bt cs x =
+  runManifestM bt cs $ declareOpaques $ manifestTypeFrom $ Set.singleton x
+  
+-- |A helper routine which will create declarations for opaque variables as
+--  necessary.
+declareOpaques :: ManifestM (K3 Type) -> ManifestM (K3 Type)
+declareOpaques xM = do
+  x <- xM
+  namedOpaques <- Map.toList <$> grabNamedOpaques
+  cs <- askConstraints
+  return $ TC.forAll (map (bindOpaque cs) namedOpaques) x
+  where
+    bindOpaque :: ConstraintSet -> (OpaqueVar, Identifier) -> TypeVarDecl
+    bindOpaque cs (oa,i) =
+      let bounds = csQuery cs $ QueryOpaqueBounds oa in
+      case length bounds of
+        1 ->
+          let (t_L,t_U) = head bounds in
+          let typL = manifestFromTypeOrVar lowerBound t_L in
+          let typU = manifestFromTypeOrVar upperBound t_U in
+          TypeVarDecl i (Just typL) (Just typU)
+        0 -> error $ "Missing opaque bound for " ++ show oa
+        _ -> error $ "Multile opaque bounds for " ++ show oa
+      where
+        manifestFromTypeOrVar bt tov = case tov of
+          CLeft x -> manifestType bt cs $ shallowToDelayed x
+          CRight x -> manifestType bt cs x
 
 -- |A typeclass for entities from which types can be manifested.
 class Manifestable a where
@@ -85,10 +114,12 @@ instance Manifestable DelayedType where
         if Set.null oas
           then
             return $ TC.record $ zip is typs
-          else
-            undefined -- TODO
+          else do
+            oids <- mapM nameOpaque $ Set.toList oas
+            return $ TC.recordExtension (zip is typs) oids
       DTop -> return TC.top
       DBottom -> return TC.bottom
-      DOpaque oas ->
-        undefined -- TODO
+      DOpaque oas -> do
+        is <- sort <$> mapM nameOpaque (Set.toList oas)
+        TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
 

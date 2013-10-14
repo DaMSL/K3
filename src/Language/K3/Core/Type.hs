@@ -6,6 +6,7 @@ module Language.K3.Core.Type (
     Type(..),
     TypeBuiltIn(..),
     TypeVarDecl(..),
+    TypeVariableOperator(..),
     Annotation(..),
     
     isTSpan,
@@ -18,6 +19,7 @@ module Language.K3.Core.Type (
     namedTAnnotations
 ) where
 
+import Data.Maybe
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -61,6 +63,11 @@ data Type
         --  names the labels corresponding to the children of this record
         --  extension; the second list names the type variables with which this
         --  record concatenates.
+    | TDeclaredVarOp [Identifier] TypeVariableOperator
+        -- ^Represents an n-ary operation over declared type variables.  This
+        --  type is generated when multiple opaque variables are aligned during
+        --  type manifestation, since computing the appropriate bounds is
+        --  inconvenient and quite complex.
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.
@@ -72,8 +79,13 @@ data TypeBuiltIn
   deriving (Eq, Read, Show)
   
 -- | Type variable declarations.  These consist of the identifier for the
---   declared variable and, optionally, a type expression for the upper bound.
-data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type))
+--   declared variable and, optionally, a type expression for the lower and
+--   upper bounds (respectively).
+data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type)) (Maybe (K3 Type))
+  deriving (Eq, Read, Show)
+
+-- | The operations which may occur on a collection of opaque variables.
+data TypeVariableOperator = TyVarOpUnion | TyVarOpIntersection
   deriving (Eq, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.
@@ -92,9 +104,12 @@ instance Pretty (K3 Type) where
     prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
 
 instance Pretty TypeVarDecl where
-    prettyLines (TypeVarDecl i mtExpr) = case mtExpr of
-      Nothing -> [i]
-      Just tExpr -> [i ++ "<="] %+ prettyLines tExpr
+    prettyLines (TypeVarDecl i mlbtExpr mubtExpr) =
+      (if isNothing mlbtExpr then [] else
+          prettyLines (fromJust mlbtExpr) %+ ["=<"]) %+
+      [i] %+
+      (if isNothing mubtExpr then [] else
+          ["<="] %+ prettyLines (fromJust mubtExpr))
 
 {- Type annotation predicates -}
 
