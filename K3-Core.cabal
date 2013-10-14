@@ -51,6 +51,7 @@ library
         Language.K3.Core.Common,
         Language.K3.Core.Declaration,
         Language.K3.Core.Expression,
+        Language.K3.Core.Literal,
         Language.K3.Core.Type,
         Language.K3.Core.Utils,
         Language.K3.Core.Constructor.Declaration,
