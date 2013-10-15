@@ -23,6 +23,7 @@ import qualified Data.Traversable as Trav
 import Data.Tree as Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
@@ -65,6 +66,8 @@ data StubInfo
     , stubMemRepr :: AnnMemRepr
         -- ^ The representation of the annotation member which inspired this
         --   stub.
+    , stubFreshUID :: UID
+        -- ^ The UID to which fresh type variables may be attributed.
     }
   deriving (Show)
 
@@ -196,9 +199,10 @@ constructTypeForDecl ((_,lAtts,sAtts),decl) = do
           qa <- lift $ freshQVar $ TVarSourceOrigin s
           stub <- lift nextStub
           let scs = CSL.singleton $ CLeft stub
+          u <- uidOf decl
           tell $ Map.singleton stub StubInfo
                     { stubTypeExpr = tExpr, stubVar = qa, stubParamEnv = p
-                    , stubMemRepr = repr }
+                    , stubMemRepr = repr, stubFreshUID = u }
           -- Determine appropriate arity ascription.  Whether the member has a
           -- polymorphic signature is equivalent to whether the signature
           -- contains any declared type variable references, since this is

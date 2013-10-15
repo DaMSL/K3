@@ -17,6 +17,7 @@ import Language.K3.Utils.Pretty
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
+import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
 import Language.K3.TypeSystem.TypeDecision.AnnotationInlining
 import Language.K3.TypeSystem.TypeDecision.Data
@@ -64,10 +65,17 @@ calculateStubs aEnv stubInfoMap = do
       let aEnv' = Map.mapKeys TEnvIdentifier $
                     Map.map (\(a,qa,_) ->
                       QuantAlias $ QuantType Set.empty qa $ qa ~= a) cxt
+      aEnv'' <- Trav.mapM monoQuantType $ stubParamEnv x
       -- Now calculate the correct type for the stub.
       (qa,cs) <- deriveQualifiedTypeExpression
-                  (envMerge aEnv aEnv') (stubTypeExpr x)
+                  (envMerge aEnv $ envMerge aEnv' aEnv'') (stubTypeExpr x)
       return (x,(qa,cs))
+      where
+        monoQuantType :: UVar
+                      -> TypeDecideM (TypeAliasEntry StubbedConstraintSet)
+        monoQuantType a = do
+          qa <- freshQVar $ TVarSourceOrigin $ stubFreshUID x
+          return $ QuantAlias $ QuantType Set.empty qa $ qa ~= a
 
 -- |Closes over stub substitution for a given set of constraints.  Then,
 --  replaces each stub with an appropriate type variable bound.

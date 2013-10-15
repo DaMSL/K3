@@ -65,10 +65,10 @@ data AnnMemRepr = AnnMemRepr
   deriving (Show)
   
 -- |A type alias for type parameter contexts.  Each entry maps the name of a
---  declared type parameter to a pair of type variables chosen for it.
+--  declared type parameter to a pair of type variables chosen for it as well as
+--  an upper bounding type expression when one was provided.
 type TypeParameterContext = Map Identifier TypeParameterContextEntry
 type TypeParameterContextEntry = (UVar,QVar,Maybe (K3 Type))
--- TODO: add bounding type expressions to the above
 
 -- |The internal representation of annotations during and after inlining.  The
 --  type parameter map relates declared type variable identifiers to the type
