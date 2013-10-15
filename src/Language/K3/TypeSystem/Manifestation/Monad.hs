@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
 
 {-|
   A module defining a monad (and associated data types) for type manifestation.
@@ -13,6 +13,7 @@ module Language.K3.TypeSystem.Manifestation.Monad
 ( ManifestM(..)
 , runManifestM
 
+, VariableSignature(..)
 , askConstraints
 , askBoundType
 , envQuery
@@ -32,6 +33,7 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
+import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 
@@ -118,7 +120,7 @@ envQuery query = (`csQuery` query) <$> askConstraints
 --  computation runs.  If it has not yet been bound, it is marked as bound and
 --  the @justDefined@ computation runs.
 tryDeclSig :: VariableSignature
-           -> (String -> ManifestM a)
+           -> (Identifier -> ManifestM a)
                 -- ^Accepts the variable name for the definition.
            -> ManifestM a -- ^Runs if the variable was not yet bound.
            -> ManifestM a -- ^The result
@@ -134,7 +136,7 @@ tryDeclSig sig alreadyDefined justDefined = do
   where
     defSig :: ManifestEnviron -> ManifestEnviron
     defSig e = e { definedSignatures = Set.insert sig $ definedSignatures e }
-    getVarName :: VariableSignature -> ManifestM String
+    getVarName :: VariableSignature -> ManifestM Identifier
     getVarName sig' = do
       s <- get
       case Map.lookup sig' $ variableNameMap s of
@@ -145,13 +147,19 @@ tryDeclSig sig alreadyDefined justDefined = do
                , variableNameMap = Map.insert sig' name $ variableNameMap s }
           return name
 
--- |Determines whether a given variable was used or not.
-catchSigUse :: VariableSignature -> ManifestM a -> ManifestM (a, Bool)
+-- |Determines whether a given variable signature was used or not.  If it was
+--  used, the return value contains the name it was assigned; otherwise, the
+--  return value contains a @Nothing@.
+catchSigUse :: VariableSignature -> ManifestM a
+            -> ManifestM (a, Maybe Identifier)
 catchSigUse sig x = do
   (v,w) <- ManifestM $ listen (unManifestM x)
   tell w
-  return (v, Set.member sig $ usedSignatures w)
-
+  name <- if Set.member sig $ usedSignatures w
+    then Map.lookup sig <$> variableNameMap <$> get
+    else return Nothing
+  return (v, name)
+  
 -- |Defines a name for the provided opaque variable if one does not already
 --  exist.  In either case, returns the name for the given opaque variable.
 nameOpaque :: OpaqueVar -> ManifestM String

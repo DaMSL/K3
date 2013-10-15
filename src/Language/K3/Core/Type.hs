@@ -68,6 +68,10 @@ data Type
         --  type is generated when multiple opaque variables are aligned during
         --  type manifestation, since computing the appropriate bounds is
         --  inconvenient and quite complex.
+    | TMu Identifier
+        -- ^Represents a mu-recursive binding.  This type is generated when a
+        --  self-referential type is encountered.  This type has one child: the
+        --  body of the type declaration.
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.

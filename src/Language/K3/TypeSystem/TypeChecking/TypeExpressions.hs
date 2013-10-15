@@ -250,6 +250,9 @@ deriveTypeExpression aEnv tExpr = do
         TDeclaredVarOp _ _ ->
           error "Declared variable operator type is invalid for deriveTypeExpression!"
           -- TODO: possibly make the above error less crash-y?
+        TMu _ ->
+          error "Mu type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
   _debug $ boxToString $
     ["Interpreted type expression:"] %$ indent 2 (
         ["Type expression: "] %+ prettyLines tExpr %$

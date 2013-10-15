@@ -22,7 +22,8 @@ module Language.K3.Core.Constructor.Type (
     top,
     bottom,
     recordExtension,
-    declaredVarOp
+    declaredVarOp,
+    mu
 ) where
 
 import Data.Tree
@@ -115,3 +116,6 @@ recordExtension idts ids' = Node (TRecordExtension ids ids' :@: []) ts
 
 declaredVarOp :: [Identifier] -> TypeVariableOperator -> K3 Type
 declaredVarOp ids op = Node (TDeclaredVarOp ids op :@: []) []
+
+mu :: Identifier -> K3 Type -> K3 Type
+mu i t = Node (TMu i :@: []) [t]

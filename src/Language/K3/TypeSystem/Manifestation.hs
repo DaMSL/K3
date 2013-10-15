@@ -67,10 +67,11 @@ class Manifestable a where
   manifestTypeFrom :: Set a -> ManifestM (K3 Type)
 
 instance Manifestable UVar where
-  manifestTypeFrom = doVariableManifestation getConcreteUVarBounds
+  manifestTypeFrom as =
+    considerMuType as $ doVariableManifestation getConcreteUVarBounds as
 
 instance Manifestable QVar where
-  manifestTypeFrom qas = do
+  manifestTypeFrom qas = considerMuType qas $ do
     typ <- doVariableManifestation getConcreteQVarBounds qas
     qualQuery <- getConcreteQVarQualifiers <$> askBoundType
     qss <- concat <$> mapM (envQuery . qualQuery) (Set.toList qas)
@@ -82,6 +83,24 @@ instance Manifestable QVar where
       addQual q typ = case q of
         TMut -> typ @+ TMutable
         TImmut -> typ @+ TImmutable
+
+considerMuType :: Set (TVar q) -> ManifestM (K3 Type) -> ManifestM (K3 Type)
+considerMuType vars computation = do
+  let sas = Set.map someVar vars
+  sig <- VariableSignature sas <$> getDelayedOperationTag <$> askBoundType
+  tryDeclSig sig alreadyDefined (justDefined sig)
+  where
+    -- |Used when this point has already been witnessed before in the same
+    --  branch of tree.
+    alreadyDefined :: Identifier -> ManifestM (K3 Type)
+    alreadyDefined i = return $ TC.declaredVar i
+    -- |Used when this point is new, which is the most common case.
+    justDefined :: VariableSignature -> ManifestM (K3 Type)
+    justDefined sig = do
+      (typ, usedName) <- catchSigUse sig computation
+      return $ case usedName of
+        Just name -> TC.mu name typ
+        Nothing -> typ
 
 doVariableManifestation :: (BoundType ->
                               TVar q -> ConstraintSetQuery ShallowType)
