@@ -14,6 +14,7 @@ module Language.K3.Runtime.Engine (
   , MessageProcessor(..)
 
   , Engine(..)
+  , EngineControl(..)
 
   , EngineT
   , EngineM
@@ -68,7 +69,6 @@ module Language.K3.Runtime.Engine (
   , showEngine
 
 #ifdef TEST
-  , EngineControl(..)
   , LoopStatus(..)
 
   , MessageQueues(..)
