@@ -1144,7 +1144,7 @@ runProgram systemEnv prog = do
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: SystemEnvironment -> K3 Declaration -> IO [Either EngineError (Address, ThreadId)]
+runNetwork :: SystemEnvironment -> K3 Declaration -> IO [Either EngineError (Address, Engine Value, ThreadId)]
 runNetwork systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in do
     engines       <- mapM (flip networkEngine syntaxValueWD) nodeBootstraps
@@ -1153,7 +1153,9 @@ runNetwork systemEnv prog =
     return engineThreads
   where
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
-    fork (addr, engine, bootstrap) = flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog >>= return . (addr,)
+    fork (addr, engine, bootstrap) = do
+      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog
+      return $ either Left (Right . (addr, engine,)) threadId
 
 {- Message processing -}
 
