@@ -4,6 +4,8 @@
 module Language.K3.Driver.Batch where
 
 import Control.Arrow
+import Control.Concurrent.MVar
+import Control.Monad
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
