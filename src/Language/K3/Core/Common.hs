@@ -5,13 +5,16 @@
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
     Identifier,
-    Address(..),
-    Span(..),
     UID(..),
-    EndpointSpec(..),
 
+    Address(..),
+    defaultAddress,
+
+    Span(..),
     coverSpans,
     prefixSpan,
+
+    EndpointSpec(..),
 
     IShow(..),
     IRead(..),
@@ -40,8 +43,13 @@ import Language.K3.Utils.Pretty
 -- | Identifiers are used everywhere.
 type Identifier = String
 
+
 -- | Address implementation
 data Address = Address (String, Int) deriving (Eq)
+
+defaultAddress :: Address
+defaultAddress = Address ("127.0.0.1", 40000)
+
 
 -- | Spans are either locations in the program source, or generated code.
 data Span

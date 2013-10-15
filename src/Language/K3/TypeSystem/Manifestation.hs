@@ -40,7 +40,9 @@ declareOpaques xM = do
   x <- xM
   namedOpaques <- Map.toList <$> grabNamedOpaques
   cs <- askConstraints
-  return $ TC.forAll (map (bindOpaque cs) namedOpaques) x
+  return $ if null namedOpaques
+    then x
+    else TC.forAll (map (bindOpaque cs) namedOpaques) x
   where
     bindOpaque :: ConstraintSet -> (OpaqueVar, Identifier) -> TypeVarDecl
     bindOpaque cs (oa,i) =

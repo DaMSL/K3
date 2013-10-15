@@ -746,7 +746,7 @@ spliceInlineActionE n e spliceF = spliceActionEWithSeq n e spliceF inlineSeqF
 
 {- Message passing -}
 sendFnE :: HS.Exp
-sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "sendE"
+sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "send"
 
 
 {- Records embedding -}
@@ -900,7 +900,7 @@ binary op e e' = do
         applyFn _ = argError "funapp"
 
         doSendE [(targE,_), (msgE,_)] = return $ mkAValue $
-          [hs| let (addr,trig) = $targE in
+          [hs| let (trig, addr) = $targE in
                 (liftIO $ ishow $msgE) >>= $sendFnE addr ( __triggerHandleFnId__ trig ) |]
 
         doSendE _ = argError "message send"
@@ -1272,24 +1272,25 @@ annotationMember annId = \case
 
 genNotifier :: Identifier -> String -> CodeGeneration HaskellEmbedding
 genNotifier n evt = mkTypedDecl n
-  [ty| Identifier -> Trigger a -> E.EngineM String () |] 
+  [ty| Identifier -> (Trigger a, Address) -> E.EngineM String () |] 
   [hs| \cid (trig, addr) -> 
-          (liftIO $ ishow ()) >>= attachNotifier_ cid $(HB.strE evt) . (addr, handle trig,) |]
+          (liftIO $ ishow ()) >>= E.attachNotifier_ cid $(HB.strE evt) . (addr, handle trig,) |]
 
 builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
 builtin "parseArgs" _ = return HNoRepr -- TODO
 
+-- TODO: due to use of identityWD, generate ser/deser with ishow/iread at call sites for these builtins.
 builtin "openBuiltin" _ = mkTypedDecl "openBuiltin"
   [ty| Identifier -> Identifier -> String -> E.EngineM String () |]
-  [hs| \cid builtinId format -> E.openBuiltin cid builtinId (wireDesc format) |]
+  [hs| \cid builtinId format -> E.openBuiltin cid builtinId identityWD |]
 
 builtin "openFile" t = mkTypedDecl "openFile"
   [ty| Identifier -> String -> String -> String -> E.EngineM String () |]
-  [hs| \cid path format mode -> E.openFile cid path (wireDesc format) mode |]
+  [hs| \cid path format mode -> E.openFile cid path identityWD Nothing mode |]
 
 builtin "openSocket" t = mkTypedDecl "openSocket"
   [ty| Identifier -> Address -> String -> String -> E.EngineM String () |]
-  [hs| \cid addr format mode -> E.openSocket cid addr (wireDesc format) mode |]
+  [hs| \cid addr format mode -> E.openSocket cid addr identityWD Nothing mode |]
 
 builtin "close" _ = mkTypedDecl "close"
   [ty| Identifier -> E.EngineM String () |]
@@ -1575,7 +1576,9 @@ generate progName p = declaration p >>= mkProgram
         
         mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
 
-        pragmas   = []
+        pragmas   = [ HS.LanguagePragma HL.noLoc $ [ HB.name "MultiParamTypeClasses"
+                                                   , HB.name "TupleSections"
+                                                   , HB.name "FlexibleInstances"] ]
         warning   = Nothing
         expts     = Nothing
         
@@ -1587,20 +1590,25 @@ generate progName p = declaration p >>= mkProgram
         impts = [ imprtDecl "Control.Concurrent"          False Nothing
                 , imprtDecl "Control.Concurrent.MVar"     False Nothing
                 , imprtDecl "Control.Monad"               False Nothing
+                , imprtDecl "Control.Monad.IO.Class"      False Nothing
                 , imprtDecl "Options.Applicative"         False Nothing                
-                , imprtDecl "Language.K3.Common"          False Nothing
+                , imprtDecl "Language.K3.Core.Common"     False Nothing
+                , imprtDecl "Language.K3.Utils.Pretty"    False Nothing
                 , imprtDecl "Language.K3.Runtime.Options" False Nothing
                 , imprtDecl "Language.K3.Runtime.Engine"  True  (Just engineModuleAliasId)
                 , imprtDecl "Data.Map.Lazy"               True  (Just "M") ]
 
         preDecls = 
           [ typeSig programId stringType,
-            namedVal programId $ HB.strE $ sanitize progName,
+            namedVal programId $ HB.strE $ sanitize progName
 
-            [dec| class Collection a b where
+          , [dec| class Collection a b where
                     getData      :: a -> b
                     modifyData   :: a -> (b -> b) -> a
                     copyWithData :: a -> b -> a |]
+
+          , [dec| instance Pretty (Either E.EngineError ()) where
+                    prettyLines rts = [show rts] |]
 
           , [dec| data Trigger a = Trigger { __triggerHandleFnId__ :: Identifier
                                            , __triggerImplFnId__   :: a } |] 
@@ -1610,23 +1618,23 @@ generate progName p = declaration p >>= mkProgram
         postDecls dispatchDeclOpt =
           [ 
             [dec| identityWD :: E.WireDesc String |]
-          , [dec| identityWD = E.WireDesc return (return . Just) (Delimiter "\n") |]
+          , [dec| identityWD = E.WireDesc return (return . Just) (E.Delimiter "\n") |]
 
-          , [dec| compiledMsgPrcsr :: E.MessageProcessor SystemEnvironment () String RuntimeStatus E.EngineError |]
+          , [dec| compiledMsgPrcsr :: E.MessageProcessor E.SystemEnvironment () String RuntimeStatus E.EngineError |]
           , [dec| compiledMsgPrcsr = E.MessageProcessor {
-                                         initialize = initializeRT
-                                       , process    = processRT
-                                       , status     = statusRT
-                                       , finalize   = finalizeRT
-                                       , report     = reportRT
+                                         E.initialize = initializeRT
+                                       , E.process    = processRT
+                                       , E.status     = statusRT
+                                       , E.finalize   = finalizeRT
+                                       , E.report     = reportRT
                                      }
                     where
-                      initializeRT _ _ _ = atInit ()
+                      initializeRT _ _ = atInit ()
                       finalizeRT _ = atExit ()
                       
-                      statusRT rts = either id (const rts) rts
+                      statusRT rts = either Left (Right . Right) rts
                                             
-                      reportRT (Left err) = print err
+                      reportRT (Left err) = liftIO $ print err
                       reportRT (Right _)  = return ()
 
                       processRT (addr, n, msg) rts = dispatch addr n msg
@@ -1634,14 +1642,14 @@ generate progName p = declaration p >>= mkProgram
           ++ (case dispatchDeclOpt of
                 Nothing -> []
                 Just dispatchDecl ->
-                  [ [dec| dispatch :: Address -> Identifier -> String -> E.EngineM String () |]
+                  [ [dec| dispatch :: Address -> Identifier -> String -> E.EngineM String RuntimeStatus |]
                   , dispatchDecl ]
               )
           ++
           [ [dec| main = do
                            sysEnv <- liftIO $ execParser options
                            engine <- E.networkEngine sysEnv identityWD
-                           void $ E.runEngine compiledMsgPrcsr sysEnv engine ()
+                           void $ E.runEngineM (E.runEngine compiledMsgPrcsr sysEnv ()) engine
                          where options = info (helper <*> sysEnvOptions) $ fullDesc 
                                           <> progDesc (__programId__ ++ " K3 binary.")
                                           <> header (__programId__ ++ " K3 binary.")
@@ -1663,7 +1671,7 @@ generate progName p = declaration p >>= mkProgram
 
         dispatchMsg n argT rtAct = 
           let invokeE = if rtAct then [hs| (__triggerImplFnId__ __n__) |]
-                                 else [hs| (return . (__triggerImplFnId__ __n__)) |]
+                                 else [hs| (return $ __triggerImplFnId__ __n__) |]
           in
           HB.doE
             [ HB.genStmt HL.noLoc (HB.pvar $ HB.name "payload")
@@ -1671,7 +1679,7 @@ generate progName p = declaration p >>= mkProgram
             
             , HB.qualStmt [hs| case payload of 
                                   Nothing -> error "Failed to extract message payload" -- TODO: throw engine error
-                                  Just v  -> $invokeE v |]
+                                  Just v  -> $invokeE v >>= return . Right |]
             ]          
 
 

@@ -25,7 +25,6 @@ module Language.K3.Runtime.Engine (
   , EngineConfiguration(..)
   , EEndpoints
 
-  , defaultAddress
   , defaultConfig
   , defaultSystem
 
@@ -186,6 +185,9 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , connections     :: EConnectionState }
 
 data EngineError = EngineError String deriving (Eq, Read, Show)
+
+instance Pretty EngineError where
+    prettyLines e = [show e]
 
 type EngineT e r m = EitherT e (ReaderT r m)
 
@@ -399,9 +401,6 @@ peerEndpointId addr = internalEndpointPrefix ++ "_node_" ++ show addr
 
 externalEndpointId :: Identifier -> Bool
 externalEndpointId = not . isPrefixOf internalEndpointPrefix
-
-defaultAddress :: Address
-defaultAddress = Address ("127.0.0.1", 40000)
 
 defaultConfig :: EngineConfiguration
 defaultConfig = EngineConfiguration { address           = defaultAddress

@@ -2,6 +2,7 @@
 
 module Language.K3.TypeSystem
 ( typecheck
+, typecheckProgram
 , TypecheckResult(..)
 ) where
 
@@ -136,6 +137,11 @@ doTypecheck aEnv env decl = do
       where
         manifestBounds' var =
           (manifestType lowerBound cs var, manifestType upperBound cs var)
+
+-- |Driver wrapper function for typechecking
+typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult)
+typecheckProgram p = typecheck Map.empty Map.empty p
+-- NOTE: the above function should not be used once a module system is in place
 
 -- |A simple monad type for sanity checking.
 newtype SanityM a = SanityM { unSanityM :: Either TypeError a }
