@@ -37,7 +37,7 @@ dispatch op = do
           "haskell" -> HaskellC.compile op cOpts
           _         -> error "Compiler not yet implemented."
 
-        interpret im@(Batch _ _) = runBatch op im
+        interpret im@(Batch _ _ _) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
 
         printer PrintAST    = k3Program >>= either parseError (putStrLn . pretty)
