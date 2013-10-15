@@ -863,9 +863,7 @@ litQualifier = suffixError "literal" "qualifier" $
   <|> keyword "mut"   *> return LMutable
 
 lTerminal :: LiteralParser
-lTerminal = litError "constant" $ choice [lBool,
-                                          try lNumber,
-                                          lString]
+lTerminal = litError "constant" $ choice [lBool, try lNumber, lString]
 
 lBool :: LiteralParser
 lBool = LC.bool <$> choice [keyword "true" >> return True, keyword "false" >> return False]
