@@ -34,5 +34,16 @@ runBatch progOpts interpOpts@(Batch asNetwork _ _) = do
     p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
-        Right q -> if not asNetwork then runProgram (sysEnv interpOpts) q >>= either (\(EngineError s) -> putStrLn s) return
-                   else runNetwork (sysEnv interpOpts) q >>= mapM_ (\x -> either (\(EngineError s) -> putStrLn s) (\(addr,threadid) -> putStrLn $ "Node " ++ show addr ++ " running on thread " ++ show threadid)  x)
+        Right q -> if not asNetwork then do
+                      status <- runProgram (sysEnv interpOpts) q
+                      void $ printError return status
+                   else do
+                      nodeStatuses <- runNetwork (sysEnv interpOpts) q
+                      void $ mapM_ (printError printNode) nodeStatuses
+
+  where printNode (addr, engine, threadid) = do
+          void $ putStrLn $ "Waiting for node " ++ show addr ++ " running on thread " ++ show threadid
+          readMVar (waitV $ control engine)
+          void $ putStrLn $ "Node " ++ show addr ++ " finished."
+
+        printError validF status = either (\(EngineError s) -> putStrLn s) validF status

@@ -43,17 +43,22 @@ k3PackageDescription :: String -> PackageDescription
 k3PackageDescription progName = emptyPackageDescription {
       package = PackageIdentifier { pkgName    = PackageName progName
                                   , pkgVersion = Version [0] []}
-    , author      = "The K3 Team"
-    , synopsis    = "K3 binary for \"" ++ progName ++ "\""
-    , description = "K3 binary for \"" ++ progName ++ "\""
-    , buildType   = Just Simple
-    , executables = [Executable progName progName k3BuildInfo]
+    , author       = "The K3 Team"
+    , synopsis     = "K3 binary for \"" ++ progName ++ "\""
+    , description  = "K3 binary for \"" ++ progName ++ "\""
+    , buildType    = Just Simple
+    , buildDepends =
+                [ Dependency (PackageName "base") anyVersion
+                , Dependency (PackageName "containers") anyVersion
+                , Dependency (PackageName "optparse-applicative") anyVersion
+                , Dependency (PackageName "transformers") anyVersion
+                , Dependency (PackageName "K3-Core") anyVersion ]
+    , executables  = [Executable progName (progName <.> "hs") k3BuildInfo]
   }
 
   where k3BuildInfo = emptyBuildInfo {
-              buildTools   = [ Dependency (PackageName "base") anyVersion
-                             , Dependency (PackageName "K3-Core") anyVersion]
-            , hsSourceDirs = []
+              hsSourceDirs       = []
+            , targetBuildDepends = []
           }
 
 prepare :: String -> FilePath -> FilePath -> String -> PackageDescription -> IO ()
