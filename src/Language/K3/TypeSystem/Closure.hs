@@ -68,12 +68,21 @@ calculateClosureStep cs =
 
 -- |Performs closure for transitivity.
 closeTransitivity :: ConstraintSet -> ConstraintSet
-closeTransitivity cs = csFromList $ do
-  (t,sa) <- csQuery cs QueryAllTypesLowerBoundingAnyVars
-  bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarLowerBound sa
-  return $ case bnd of
-    CLeft ta -> t <: ta
-    CRight qa -> t <: qa
+closeTransitivity cs = csFromList $
+  (do
+    (t,sa) <- csQuery cs QueryAllTypesLowerBoundingAnyVars
+    bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarLowerBound sa
+    return $ case bnd of
+      CLeft ta -> t <: ta
+      CRight qa -> t <: qa
+  ) ++
+  (do
+    (sa,t) <- csQuery cs QueryAllTypesUpperBoundingAnyVars
+    bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarUpperBound sa
+    return $ case bnd of
+      CLeft ta -> ta <: t
+      CRight qa -> qa <: t
+  )
   
 -- |Performs immediate type closure.  This routine calculates the closure for
 --  all immediate type-to-type constraints.
@@ -136,7 +145,7 @@ closeBinaryOperations cs = csUnions $ do
   case ans of
     Nothing -> mzero
     Just (ta3,cs') ->
-      return $ cs' `csUnion` csSing (ta3 <: a3)
+      return $ cs' `csUnion` csFromList [ta3 <: a3, a1 <: t1, a2 <: t2]
 
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do

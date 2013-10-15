@@ -18,7 +18,11 @@ module Language.K3.Core.Constructor.Type (
     trigger,
     builtIn,
     forAll,
-    declaredVar
+    declaredVar,
+    top,
+    bottom,
+    recordExtension,
+    declaredVarOp
 ) where
 
 import Data.Tree
@@ -98,3 +102,16 @@ forAll vdecls t = Node (TForall vdecls :@: []) [t]
 
 declaredVar :: Identifier -> K3 Type
 declaredVar i = Node (TDeclaredVar i :@: []) []
+
+top :: K3 Type
+top = leaf TTop
+
+bottom :: K3 Type
+bottom = leaf TBottom
+
+recordExtension :: [(Identifier, K3 Type)] -> [Identifier] -> K3 Type
+recordExtension idts ids' = Node (TRecordExtension ids ids' :@: []) ts
+  where (ids, ts) = unzip idts
+
+declaredVarOp :: [Identifier] -> TypeVariableOperator -> K3 Type
+declaredVarOp ids op = Node (TDeclaredVarOp ids op :@: []) []

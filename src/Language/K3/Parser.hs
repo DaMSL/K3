@@ -475,7 +475,7 @@ typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
-typeVarDecl = TypeVarDecl <$> identifier <*>
+typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*>
                   option Nothing (Just <$ symbol "<=" <*> typeExpr) 
     
 

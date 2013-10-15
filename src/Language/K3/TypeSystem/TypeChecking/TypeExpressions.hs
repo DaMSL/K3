@@ -86,13 +86,15 @@ derivePolymorphicTypeExpression aEnv tExpr =
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr
       return (qa, cs, Map.empty)
     typeOfVarDecl :: TypeVarDecl -> m (Identifier,(UVar,c))
-    typeOfVarDecl (TypeVarDecl i mtExpr') =
-      case mtExpr' of
-        Nothing -> do
+    typeOfVarDecl (TypeVarDecl i mlbtExpr' mubtExpr') =
+      case (mlbtExpr', mubtExpr') of
+        (Nothing, Nothing) -> do
           a <- freshTypecheckingUVar =<< uidOf tExpr
           return (i, (a,a ~= STop))
-        Just tExpr' ->
+        (Nothing, Just tExpr') ->
           (i,) <$> deriveTypeExpression aEnv tExpr'
+        (Just _, _) ->
+          error "Type derivation does not support declared lower bounds!"
     toQuantBinding :: (Identifier, UVar) -> m (TEnv (TypeAliasEntry c))
     toQuantBinding (i,a) = do
       qa <- freshTypecheckingQVar =<< uidOf tExpr
@@ -171,11 +173,11 @@ deriveTypeExpression aEnv tExpr = do
   _debug $ boxToString $ ["Interpreting type expression:"] %+ prettyLines tExpr
   (a, cs) <-
       case tag tExpr of
-        TBool -> deriveTypePrimitive SBool
+        TBool -> deriveLeafType SBool
         TByte -> error "No Byte type in spec!"
-        TInt -> deriveTypePrimitive SInt
-        TReal -> deriveTypePrimitive SReal
-        TString -> deriveTypePrimitive SString
+        TInt -> deriveLeafType SInt
+        TReal -> deriveLeafType SReal
+        TString -> deriveLeafType SString
         TFunction -> do
           (tExpr1, tExpr2) <- assert2Children tExpr
           (a1,cs1) <- deriveUnqualifiedTypeExpression aEnv tExpr1
@@ -240,6 +242,14 @@ deriveTypeExpression aEnv tExpr = do
           -- TODO: possibly make the above error less crash-y?
         TDeclaredVar i ->
           environIdType $ TEnvIdentifier i
+        TTop -> deriveLeafType STop
+        TBottom -> deriveLeafType SBottom
+        TRecordExtension _ _ ->
+          error "Record extension type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
+        TDeclaredVarOp _ _ ->
+          error "Declared variable operator type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
   _debug $ boxToString $
     ["Interpreted type expression:"] %$ indent 2 (
         ["Type expression: "] %+ prettyLines tExpr %$
@@ -247,7 +257,7 @@ deriveTypeExpression aEnv tExpr = do
       )
   return (a,cs)
   where
-    deriveTypePrimitive p = do
+    deriveLeafType p = do
       assert0Children tExpr
       a <- freshTypecheckingUVar =<< uidOf tExpr
       return (a, p ~= a)

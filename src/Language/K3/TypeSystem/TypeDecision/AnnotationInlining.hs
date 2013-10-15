@@ -192,12 +192,14 @@ convertAstToRepr ast =
       where
         contextEntryForVDecl :: TypeVarDecl
                              -> m (Identifier, TypeParameterContextEntry)
-        contextEntryForVDecl (TypeVarDecl i' mtExpr) = do
+        contextEntryForVDecl (TypeVarDecl i' mlbtExpr mubtExpr) = do
           u <- uidOf decl
           let origin = TVarAnnotationDeclaredParamOrigin u i'
           a <- freshUVar origin
           qa <- freshQVar origin
-          return (i',(a,qa,mtExpr))
+          when (isJust mlbtExpr) $
+            error "Type decision does not support declared lower bounds!"
+          return (i',(a,qa,mubtExpr))
 
 -- |Given a map of internal annotation representations, performs closure over
 --  their member annotation declarations until they have all been processed.

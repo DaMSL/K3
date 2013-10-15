@@ -12,18 +12,17 @@ module Language.K3.TypeSystem.TypeChecking.Declarations
 import Control.Arrow
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Writer
 import qualified Data.Foldable as Foldable
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe
-import Data.Monoid
 import qualified Data.Set as Set
 import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Closure
@@ -293,11 +292,15 @@ deriveDeclaration aEnv env rEnv decl =
     basicDeclaration i expr deriv csPre csPostF = do -- DeclTypecheckM
       assert0Children decl
       u <- uidOf decl
-      (v1,cs1) <- transExprToDeclTypecheckM $ deriv aEnv env expr
+      ((v1,cs1),(exprAttribs,exprCs))
+          <- transExprToDeclTypecheckM $
+                censor (const (Map.empty, csEmpty)) $
+                listen $ deriv aEnv env expr
       QuantType sas qa' cs2' <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
       let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
+      tell $ Map.map (, cs'' `csUnion` exprCs) exprAttribs
       -- We've decided upon the type, so now record it and then check for
       -- consistency.
       attributeExprType u (someVar v1) cs''

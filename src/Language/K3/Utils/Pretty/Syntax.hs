@@ -136,13 +136,12 @@ decl' _ = throwSP "Invalid declaration"
 
 
 typeVarDecl :: TypeVarDecl -> SyntaxPrinter
-typeVarDecl (TypeVarDecl i mtExpr) =
-  case mtExpr of
-    Nothing -> return $ text i
-    Just tExpr -> do
-      t <- typ tExpr
-      return $ text i <+> text "<=" <+> t
-
+typeVarDecl (TypeVarDecl i mlbtExpr mubtExpr) = do
+  lb <- if isNothing mlbtExpr then return empty else
+          liftM (<+> text "=<") $ typ (fromJust mlbtExpr)
+  ub <- if isNothing mubtExpr then return empty else
+          liftM (text "<=" <+>) $ typ (fromJust mubtExpr)
+  return $ lb <+> text i <+> ub
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d

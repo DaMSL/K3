@@ -1,21 +1,16 @@
 {-# LANGUAGE DataKinds, ScopedTypeVariables, TupleSections #-}
 
 {-|
-  This module defines a garbage collection routine for constraint sets.  It uses
-  a number of strategies to reduce the size of the constraint set while
-  retaining all of the relevant information.
+  This module defines a routine to unify equivalent variables in a constraint
+  set (except those protected by configuration).
 -}
 
-module Language.K3.TypeSystem.Simplification.ConstraintCollection
-( simplify
-, SimplificationConfig(..)
+module Language.K3.TypeSystem.Simplification.EquivalenceUnification
+( simplifyByUnification
 ) where
 
 import Control.Applicative
 import Control.Arrow
-import Control.Monad
-import Control.Monad.State
-import Control.Monad.Trans
 import Control.Monad.Trans.Reader
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -26,31 +21,17 @@ import qualified Data.Set as Set
 
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
-
--- |The record used to configure the simplification routine.  The set of
---  variables @preserveVars@ are variables which must be present by the
---  completion of the simplification process.
-data SimplificationConfig
-  = SimplificationConfig
-      { preserveVars :: Set AnyTVar
-      }
-
--- |The top level simplification routine for constraint sets.  This routine also
---  accepts a configuration in the form of a @SimplificationConfig@ type.
-simplify :: SimplificationConfig -> ConstraintSet -> ConstraintSet
-simplify config cs = flip runReader config $
-  return cs >>= simplifyByUnification
-
--- |The monad under which simplification occurs.
-type SimplifyM = Reader SimplificationConfig
+import Language.K3.TypeSystem.Simplification.Data
 
 -- |A routine which performs simplification by unification of equivalent
---  variables.
+--  variables.  This routine is guaranteed to be equicontradictory: the
+--  resulting constraint set will contradict on closure iff the provided
+--  constraint set does.
 simplifyByUnification :: ConstraintSet -> SimplifyM ConstraintSet
 simplifyByUnification cs = do
-  uvarEquivs <- findEquivPairs (\(SomeUVar a) -> a) $
+  uvarEquivs <- findEquivPairs onlyUVar $
                   csQuery cs QueryAllUVarLowerBoundingUVar
-  qvarEquivs <- findEquivPairs (\(SomeQVar a) -> a) $
+  qvarEquivs <- findEquivPairs onlyQVar $
                   csQuery cs QueryAllQVarLowerBoundingQVar
   let qvarRepls = mconcat $ map equivToSubstitutions $ Map.toList qvarEquivs
   let uvarRepls = mconcat $ map equivToSubstitutions $ Map.toList uvarEquivs
@@ -58,7 +39,7 @@ simplifyByUnification cs = do
   return cs'
   where
     findEquivPairs :: forall q.
-                      (AnyTVar -> TVar q)
+                      (AnyTVar -> Maybe (TVar q))
                    -> [(TVar q, TVar q)]
                    -> SimplifyM (Map (TVar q) (Set (TVar q)))
     findEquivPairs destr pairs = do
@@ -70,7 +51,8 @@ simplifyByUnification cs = do
       let mapPairs = zip maps $ tail maps
       let closedMap = head $ map fst $ filter (uncurry (==)) mapPairs
       -- Remove the prohibited replacements from the map
-      toPreserve <- Set.fromList . map destr . Set.toList . preserveVars <$> ask 
+      toPreserve <- Set.fromList . mapMaybe destr . Set.toList .
+                        preserveVars <$> ask 
       let cleanedMap = Map.map (Set.\\ toPreserve) closedMap
       -- Pick a priority for the elements in the map (so we don't replace
       -- a1 with a2 and then a2 with a1 again)

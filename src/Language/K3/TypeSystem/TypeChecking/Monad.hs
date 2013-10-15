@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections, TemplateHaskell, ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections, TemplateHaskell, ScopedTypeVariables, MultiParamTypeClasses, UndecidableInstances #-}
 
 {-|
   A module defining the computational environment in which typechecking
@@ -15,10 +15,9 @@ module Language.K3.TypeSystem.TypeChecking.Monad
 ) where
 
 import Control.Applicative
-import Control.Arrow
 import Control.Monad.State
 import Control.Monad.Trans.Either
-import Control.Monad.Trans.Writer
+import Control.Monad.Writer
 import Data.Either
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -52,6 +51,13 @@ newtype AbstractTypecheckT m a
           EitherT (Seq TypeError) ((StateT TypecheckState) m) a }
   deriving ( Monad, Functor, Applicative, MonadState TypecheckState )
 
+instance (Monad m, Monoid w, MonadWriter w m)
+      => MonadWriter w (AbstractTypecheckT m) where
+  writer = AbstractTypecheckT . writer
+  tell = AbstractTypecheckT . tell
+  listen = AbstractTypecheckT . listen . unAbstractTypecheckT
+  pass = AbstractTypecheckT . pass . unAbstractTypecheckT
+
 instance MonadTrans AbstractTypecheckT where
   lift = AbstractTypecheckT . lift . lift
 
@@ -61,7 +67,8 @@ newtype ExprTypecheckM a
       { unExprTypecheckM ::
           AbstractTypecheckT (Writer (Map UID AnyTVar, ConstraintSet)) a }
   deriving ( Monad, Functor, Applicative, MonadState TypecheckState
-           , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable )
+           , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable
+           , MonadWriter (Map UID AnyTVar, ConstraintSet) )
 
 -- |A type for declaration typechecking environments.
 newtype DeclTypecheckM a
@@ -69,7 +76,8 @@ newtype DeclTypecheckM a
       { unDeclTypecheckM ::
           AbstractTypecheckT (Writer (Map UID (AnyTVar, ConstraintSet))) a }
   deriving ( Monad, Functor, Applicative, MonadState TypecheckState
-           , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable )
+           , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable
+           , MonadWriter (Map UID (AnyTVar, ConstraintSet)))
   
 -- |Evaluates a declaration typechecking computation.
 runDeclTypecheckM :: Int -> DeclTypecheckM a
