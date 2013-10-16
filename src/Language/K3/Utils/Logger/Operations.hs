@@ -26,7 +26,7 @@ k3logI :: String -- ^The name of the module doing the logging.
        -> a -- ^The value to use as the result of the logging expression.
        -> a
 k3logI moduleName logLevel message value =
-  deepseq message $!
+  deepseq message $
   unsafePerformIO $! do
     logM moduleName logLevel message
     return value
