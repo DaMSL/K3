@@ -10,6 +10,7 @@ module Language.K3.TypeSystem.TypeChecking.Monad
 , ExprTypecheckM
 , runDeclTypecheckM
 , transExprToDeclTypecheckM
+, captureExprInDeclTypecheckM
 , typecheckError
 , gatherParallelErrors
 ) where
@@ -97,6 +98,12 @@ transExprToDeclTypecheckM =
   where
     mapE = mapEitherT $ mapStateT $ mapWriter mapV
     mapV (x, (m,cs)) = (x, Map.map (,cs) m)
+
+captureExprInDeclTypecheckM :: ExprTypecheckM a
+                            -> DeclTypecheckM
+                                  (a, (Map UID AnyTVar, ConstraintSet))
+captureExprInDeclTypecheckM x = do
+  transExprToDeclTypecheckM $ censor (const (Map.empty, csEmpty)) $ listen x
 
 getNextVarId :: (Monad m) => AbstractTypecheckT m Int
 getNextVarId = do

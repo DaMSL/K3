@@ -212,7 +212,8 @@ deriveDeclaration aEnv env rEnv decl =
       let arityMaps =
             let f = Map.fromList . map (\(AnnMemType i _ ar _ _) -> (i,ar)) in
             (f ms1, f ms2)
-      (bs,cs''s) <- unzip <$> transExprToDeclTypecheckM
+      ((bs,cs''s),(exprAttribs,exprCs))
+                <- first unzip <$> captureExprInDeclTypecheckM
                       (mapM (deriveAnnotationMember arityMaps
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
                                 (envMerge (envMerge env env'1) env'2)) mems)
@@ -233,7 +234,27 @@ deriveDeclaration aEnv env rEnv decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
-
+          
+      -- Now creating and recording our learned constraint sets for each member
+      -- for the typechecking result.  See below for rationale.
+      -- TODO: refactor for code reuse re: checkPositiveMatches below
+      let getMatchingPositiveConstraints ms ms' = do
+            let posInferredDict = Map.fromList $
+                                  mapMaybe (digestMemFromPol Positive) ms'
+            let posSignaturePairs = mapMaybe (digestMemFromPol Positive) ms
+            let extractConstraints (i',(qa1',cs1''')) =
+                  case Map.lookup i' posInferredDict of
+                    Nothing -> typecheckError $ InternalError $
+                                MissingPositiveAnnotationMemberInInferredType
+                                  iAnn i'
+                    Just (qa2',cs2''') ->
+                      return $ csUnions [ cs1''', cs2'''
+                                        , csSing $ qa2' <: qa1']
+            csUnions <$> (allCs:) <$> mapM extractConstraints posSignaturePairs
+      externalCs <- getMatchingPositiveConstraints ms1 ms1'
+      tell $ Map.map (, calculateClosure $ externalCs `csUnion` exprCs)
+                exprAttribs
+      
       {-
         It remains to show the two forall conditions at the end of the
         annotation rule.  These conditions can be considerably simplified due to
@@ -293,14 +314,12 @@ deriveDeclaration aEnv env rEnv decl =
       assert0Children decl
       u <- uidOf decl
       ((v1,cs1),(exprAttribs,exprCs))
-          <- transExprToDeclTypecheckM $
-                censor (const (Map.empty, csEmpty)) $
-                listen $ deriv aEnv env expr
+          <- captureExprInDeclTypecheckM $ deriv aEnv env expr
       QuantType sas qa' cs2' <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
       let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
-      tell $ Map.map (, cs'' `csUnion` exprCs) exprAttribs
+      tell $ Map.map (, calculateClosure $ cs'' `csUnion` exprCs) exprAttribs
       -- We've decided upon the type, so now record it and then check for
       -- consistency.
       attributeExprType u (someVar v1) cs''
