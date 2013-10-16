@@ -822,8 +822,8 @@ bindRec = BRecord <$> braces idPairList
 
 eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
-  where ipAddress = EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
-        port = EC.constant . CInt . fromIntegral <$> natural
+  where ipAddress = EUID # EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
+        port = EUID # EC.constant . CInt . fromIntegral <$> natural
 
 eSelf :: ExpressionParser
 eSelf = exprError "self" $ keyword "self" >> return EC.self

@@ -24,6 +24,7 @@ binOpType op t1 t2 =
     (BinOpSequence, _, _) -> Just (CLeft t2, mempty)
     (BinOpApply, SFunction a1 a2, _) ->
       Just (CRight a2, csSing $ constraint t2 a1)
+    -- TODO: update as per new spec re: triggers
     (BinOpSend, STrigger a, _) ->
       Just (CLeft $ STuple [], csSing $ constraint t2 a)
     _ -> Nothing

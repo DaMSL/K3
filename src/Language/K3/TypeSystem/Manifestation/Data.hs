@@ -96,6 +96,7 @@ data DelayedType
   | DInt
   | DReal
   | DString
+  | DAddress
   | DOption (Set QVar)
   | DIndirection (Set QVar)
   | DTuple [Set QVar]
@@ -114,6 +115,7 @@ shallowToDelayed t = case t of
   SInt -> DInt
   SReal -> DReal
   SString -> DString
+  SAddress -> DAddress
   SOption qa -> DOption (Set.singleton qa)
   SIndirection qa -> DIndirection (Set.singleton qa)
   STuple qas -> DTuple (map Set.singleton qas)
@@ -203,6 +205,8 @@ delayedMerge tDefault fTop fBottom mapMerge t t'  =
         (DReal, _) -> tDefault
         (DString, DString) -> DString
         (DString, _) -> tDefault
+        (DAddress, DAddress) -> DAddress
+        (DAddress, _) -> tDefault
         (DOption qas, DOption qas') -> DOption (qas `Set.union` qas') 
         (DOption _, _) -> tDefault
         (DIndirection qas, DIndirection qas') ->

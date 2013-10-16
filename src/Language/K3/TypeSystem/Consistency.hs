@@ -121,6 +121,7 @@ checkConsistent cs =
       (SInt,SInt) -> False
       (SReal,SReal) -> False
       (SString,SString) -> False
+      (SAddress,SAddress) -> False
       (SOption _,SOption _) -> False
       (SIndirection _,SIndirection _) -> False
       (STuple xs, STuple xs') -> length xs /= length xs'

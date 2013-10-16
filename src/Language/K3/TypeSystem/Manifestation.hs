@@ -126,6 +126,7 @@ instance Manifestable DelayedType where
       DInt -> return TC.int
       DReal -> return TC.real
       DString -> return TC.string
+      DAddress -> return TC.address
       DOption qas -> TC.option <$> manifestTypeFrom qas
       DIndirection qas -> TC.indirection <$> manifestTypeFrom qas
       DTuple qass -> TC.tuple <$> mapM manifestTypeFrom qass

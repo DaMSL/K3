@@ -47,7 +47,7 @@ isWithin (qa,cs) (qa',cs') =
                 %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
                 %$ ["  gives: "] %+
                   if null answer then ["failure"] else
-                    (vconcats $ map prettyMap answer))
+                    vconcats $ map prettyMap answer)
     $ not $ null answer
   where
     -- |Given one element, find its match and remove it.  Each step should also
@@ -180,6 +180,10 @@ instance WithinAlignable ShallowType where
       (SString, SString) ->
         success
       (SString, _) ->
+        mzero
+      (SAddress, SAddress) ->
+        success
+      (SAddress, _) ->
         mzero
       (SOption qa, SOption qa') ->
         withinAlign qa qa'

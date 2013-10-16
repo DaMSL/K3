@@ -291,6 +291,7 @@ data ShallowType
   | SInt
   | SReal
   | SString
+  | SAddress
   | SOption QVar
   | SIndirection QVar
   | STuple [QVar]
@@ -308,6 +309,7 @@ instance Pretty ShallowType where
     SInt -> ["int"]
     SReal -> ["real"]
     SString -> ["string"]
+    SAddress -> ["address"]
     SOption qa -> ["option "] %+ prettyLines qa
     SIndirection qa -> ["ind "] %+ prettyLines qa
     STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]

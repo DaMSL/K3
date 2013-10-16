@@ -236,7 +236,13 @@ deriveExpression aEnv env expr = do
           a4 <- freshTypecheckingUVar u
           return (a4, csUnions [ cs1, cs2, cs3, csFromList
                                   [ a1 <: SBool, a2 <: a4, a3 <: a4 ] ])
-        EAddress -> error "No address expression in specification!" -- TODO
+        EAddress -> do
+          (expr1,expr2) <- assert2Children expr
+          (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
+          (a2,cs2) <- deriveUnqualifiedExpression aEnv env expr2
+          a3 <- freshTypecheckingUVar u
+          return (a3, csUnions [cs1, cs2, csFromList
+                                [SAddress <: a3, a1 <: SString, a2 <: SInt ]])
         ESelf -> do
           assert0Children expr
           qt@(QuantType sas qa cs) <- lookupOrFail TEnvIdSelf
