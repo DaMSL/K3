@@ -650,16 +650,19 @@ eIndirection :: ExpressionParser
 eIndirection = exprError "indirection" $ EC.indirect <$> (keyword "ind" *> qualifiedExpr)
 
 eTuplePrefix :: ExpressionParser
-eTuplePrefix = choice [try unit, try eNested, eTupleOrSnd]
+eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
   where unit          = symbol "(" *> symbol ")" >> return (EC.tuple [])
         eNested       = stripSpan  <$> parens expr
-        eTupleOrSnd   = mkTupOrSnd <$> (parens $ commaSep1 qualifiedExpr) <*> optional sendSuffix        
+        eTupleOrSend  = do
+          elements <- parens $ commaSep1 qualifiedExpr
+          msuffix <- optional sendSuffix
+          mkTupOrSend elements msuffix        
         sendSuffix    = symbol "<-" *> nonSeqExpr
 
-        mkTupOrSnd [e] Nothing    = stripSpan <$> e
-        mkTupOrSnd [e] (Just arg) = EC.binop OSnd e arg
-        mkTupOrSnd l Nothing      = EC.tuple l
-        mkTupOrSnd l (Just arg)   = EC.binop OSnd (EC.tuple l) arg
+        mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
+        mkTupOrSend [e] (Just arg) = return $ EC.binop OSnd e arg
+        mkTupOrSend l Nothing      = return $ EC.tuple l
+        mkTupOrSend l (Just arg)   = EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg
 
         stripSpan e               = maybe e (e @-) $ e @~ isESpan
 
