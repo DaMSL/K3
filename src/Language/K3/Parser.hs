@@ -852,7 +852,8 @@ literal = parseError "literal" "k3" $ choice [
     lTuple,
     lRecord,
     lEmpty,
-    lCollection ]
+    lCollection,
+    lAddress ]
 
 qualifiedLiteral :: LiteralParser
 qualifiedLiteral = litError "qualified" $ flip (@+) <$> (option LImmutable litQualifier) <*> literal
@@ -924,6 +925,11 @@ lCollection = litError "collection" $
 lAnnotations :: K3Parser [Annotation Literal]
 lAnnotations = braces $ commaSep1 (mkLAnnotation <$> identifier)
   where mkLAnnotation x = LAnnotation x
+
+lAddress :: LiteralParser
+lAddress = litError "address" $ LC.address <$> ipAddress <* colon <*> port
+  where ipAddress = LC.string <$> (some $ choice [alphaNum, oneOf "."])
+        port = LC.int . fromIntegral <$> natural
 
 
 {- Identifiers and their list forms -}

@@ -44,3 +44,6 @@ empty t = Node (LEmpty t :@: []) []
 
 collection :: K3 Type -> [K3 Literal] -> K3 Literal
 collection t ls = Node (LCollection t :@: []) ls
+
+address :: K3 Literal -> K3 Literal -> K3 Literal
+address h p = Node (LAddress :@: []) [h, p]

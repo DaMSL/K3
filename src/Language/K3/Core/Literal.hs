@@ -1,9 +1,11 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | Literals (i.e., constant values) in K3.
 module Language.K3.Core.Literal where
 
+import Data.Typeable
 import Data.Tree
 import Data.Word (Word8)
 
@@ -30,7 +32,7 @@ data Literal
     | LEmpty      (K3 Type)
     | LCollection (K3 Type)
     | LAddress
-  deriving (Eq, Read, Show)
+  deriving (Eq, Read, Show, Typeable)
 
 -- | Annotations on literals.
 data instance Annotation Literal

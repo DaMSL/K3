@@ -9,21 +9,21 @@ import Text.Parser.Combinators
 import Text.Parser.Token
 
 import Language.K3.Core.Common
-import qualified Language.K3.Core.Constructor.Expression as E
+import qualified Language.K3.Core.Constructor.Literal as LC
 
 import Language.K3.Parser
-import Language.K3.Runtime.Engine ( SystemEnvironment, PeerBootstrap )
+import Language.K3.Runtime.Deployment ( PeerBootstrap, SystemEnvironment )
 
 peerBReader :: String -> Either ParseError (Address, PeerBootstrap)
 peerBReader peerDesc = either (Left . ErrorMsg . show) Right $ runK3Parser parser peerDesc
   where parser       = mkBootstrap <$> ipAddressP <* colon <*> portP
-                                   <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> expr)         
+                                   <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> literal)         
         ipAddressP   = some $ choice [alphaNum, oneOf "."]
         portP        = fromIntegral <$> natural
         
         mkBootstrap host port bootstrap = 
           let addr  = Address (host, port)
-              addrE = E.address (E.constant $ E.CString host) (E.constant $ E.CInt $ port)
+              addrE = LC.address (LC.string host) (LC.int port)
           in
           (addr, ("me", addrE):(filter (("me" /=) . fst) bootstrap))
 

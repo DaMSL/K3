@@ -61,8 +61,10 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
+import Language.K3.Runtime.Deployment ( PeerBootstrap, SystemEnvironment )
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
@@ -164,6 +166,12 @@ type CInitializer v = () -> Interpretation (MVar (Collection v))
 -- | A copy constructor that takes a collection, copies its non-function fields,
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
+
+
+{- Misc. helpers-}
+
+details :: K3 a -> (a, [K3 a], [Annotation a])
+details (Node (tg :@: anns) ch) = (tg, ch, anns)
 
 
 {- State and result accessors -}
@@ -273,21 +281,6 @@ sendE addr n val = liftEngine $ send addr n val
 vunit :: Value
 vunit = VTuple []
 
-emptyCollectionNamespace :: CollectionNamespace Value
-emptyCollectionNamespace = CollectionNamespace [] []
-
-emptyCollectionBody :: Identifier -> Collection Value
-emptyCollectionBody n = Collection emptyCollectionNamespace [] n
-
-defaultCollectionBody :: [Value] -> Collection Value
-defaultCollectionBody v = Collection emptyCollectionNamespace v collectionAnnotationId
-
-emptyAnnotatedCollection :: Identifier -> Interpretation Value
-emptyAnnotatedCollection n = liftIO (newMVar $ emptyCollectionBody n) >>= return . VCollection 
-
-emptyCollection :: Interpretation Value
-emptyCollection = emptyAnnotatedCollection ""
-
 
 {- Identifiers -}
 collectionAnnotationId :: Identifier
@@ -312,6 +305,46 @@ annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
 annotationComboIdE (namedEAnnotations -> [])  = Nothing
 annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 
+annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
+annotationComboIdL (namedLAnnotations -> [])  = Nothing
+annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
+
+{- Collection initialization -}
+
+emptyCollectionNamespace :: CollectionNamespace Value
+emptyCollectionNamespace = CollectionNamespace [] []
+
+initialCollectionBody :: Identifier -> [Value] -> Collection Value
+initialCollectionBody n vals = Collection emptyCollectionNamespace vals n
+
+emptyCollectionBody :: Identifier -> Collection Value
+emptyCollectionBody n = initialCollectionBody n []
+
+defaultCollectionBody :: [Value] -> Collection Value
+defaultCollectionBody vals = initialCollectionBody collectionAnnotationId vals
+
+initialCollection :: [Value] -> Interpretation Value
+initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= return . VCollection
+
+emptyCollection :: Interpretation Value
+emptyCollection = initialCollection []
+
+
+-- | These methods create a valid namespace by performing a lookup based on the annotation combo id.
+initialAnnotatedCollectionBody :: Identifier -> [Value] -> Interpretation (MVar (Collection Value))
+initialAnnotatedCollectionBody comboId vals = do
+    (initF, _) <- lookupACombo comboId
+    cmv        <- initF ()
+    void $ liftIO (modifyMVar_ cmv (\(Collection ns _ cid) -> return $ Collection ns vals cid))
+    return cmv
+
+initialAnnotatedCollection :: Identifier -> [Value] -> Interpretation Value
+initialAnnotatedCollection comboId vals =
+  initialAnnotatedCollectionBody comboId vals >>= return . VCollection
+
+emptyAnnotatedCollection :: Identifier -> Interpretation Value
+emptyAnnotatedCollection comboId = initialAnnotatedCollection comboId []
+
 
 {- Interpretation -}
 
@@ -323,13 +356,24 @@ defaultValue (tag -> TInt)        = return $ VInt 0
 defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
 defaultValue (tag -> TOption)     = return $ VOption Nothing
-defaultValue (tag -> TCollection) = emptyCollection -- TODO: annotations from type
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
 defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
 defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
-defaultValue _ = undefined
+defaultValue
+ (tag &&& annotations -> (TCollection, anns)) = 
+  (getComposedAnnotationT anns) >>= maybe emptyCollection emptyAnnotatedCollection
+
+{- TODO: 
+  TSource
+  TSink
+  TTrigger
+  TBuiltIn TypeBuiltIn
+  TForall [TypeVarDecl]
+  TDeclaredVar Identifier
+-}
+defaultValue t = throwE . RunTimeTypeError $ "Cannot create default value for " ++ show t
 
 -- | Interpretation of Constants.
 constant :: Constant -> [Annotation Expression] -> Interpretation Value
@@ -339,8 +383,7 @@ constant (CByte w)   _ = return $ VByte w
 constant (CReal r)   _ = return $ VReal r
 constant (CString s) _ = return $ VString s
 constant (CNone _)   _ = return $ VOption Nothing
-constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection initEmptyCollection
-  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . fst >>= return . VCollection
+constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection emptyAnnotatedCollection
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -586,6 +629,47 @@ expression (tag -> ESelf) = lookupE annotationSelfId
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
+
+{- Literal interpretation -}
+
+literal :: K3 Literal -> Interpretation Value
+literal (tag -> LBool b)   = return $ VBool b
+literal (tag -> LByte b)   = return $ VByte b
+literal (tag -> LInt b)    = return $ VInt b
+literal (tag -> LReal b)   = return $ VReal b
+literal (tag -> LString b) = return $ VString b
+literal (tag -> LNone _)   = return $ VOption Nothing
+
+literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . Just
+literal (tag -> LSome) = throwE $ RunTimeTypeError "Invalid option literal"
+
+literal (tag &&& children -> (LIndirect, [x])) = literal x >>= liftIO . newIORef >>= return . VIndirection
+literal (tag -> LIndirect) = throwE $ RunTimeTypeError "Invalid indirection literal"
+
+literal (tag &&& children -> (LTuple, ch)) = mapM literal ch >>= return . VTuple
+literal (tag -> LTuple) = throwE $ RunTimeTypeError "Invalid tuple literal"
+
+literal (tag &&& children -> (LRecord ids, ch)) = mapM literal ch >>= return . VRecord . zip ids
+literal (tag -> LRecord _) = throwE $ RunTimeTypeError "Invalid record literal"
+
+literal (details -> (LEmpty t, [], anns)) =
+  getComposedAnnotationL anns >>= maybe emptyCollection initEmptyCollection
+  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . fst >>= return . VCollection
+
+literal (tag -> LEmpty _) = throwE $ RunTimeTypeError "Invalid empty literal"
+
+literal (details -> (LCollection t, elems, anns)) = do
+  cElems <- mapM literal elems
+  getComposedAnnotationL anns
+    >>= maybe (initialCollection cElems) (flip initialAnnotatedCollection cElems)
+
+literal (details -> (LAddress, [h,p], anns)) = mapM literal [h,p] >>= \case 
+  [VString a, VInt b] -> return . VAddress $ Address (a,b)
+  _     -> throwE $ RunTimeTypeError "Invalid address literal"
+
+literal (tag -> LAddress) = throwE $ RunTimeTypeError "Invalid address literal" 
+
+
 {- Declaration interpretation -}
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
@@ -686,6 +770,9 @@ getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, na
 
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
 getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
+
+getComposedAnnotationL :: [Annotation Literal] -> Interpretation (Maybe Identifier)
+getComposedAnnotationL anns = getComposedAnnotation (annotationComboIdL anns, namedLAnnotations anns) 
 
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
@@ -1099,26 +1186,29 @@ initMessages = \case
     ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-injectBootstrap :: PeerBootstrap -> K3 Declaration -> K3 Declaration
-injectBootstrap bootstrap prog = mapTree rebuildNode prog
-  where rebuildNode newCh d@(tag -> DGlobal n t eOpt) = case lookup n bootstrap of
-          Nothing -> rebuildGlobal n t eOpt (annotations d) newCh
-          Just e  -> rebuildGlobal n t (Just e) (annotations d) newCh
-        rebuildNode newCh (Node d _) = Node d newCh
-        rebuildGlobal n t eOpt anns ch = Node ((DGlobal n t eOpt) :@: anns) ch
+initBootstrap :: PeerBootstrap -> EngineM Value (IEnvironment Value)
+initBootstrap bootstrap = flip mapM bootstrap (\(n,l) ->
+    runInterpretation' emptyState (literal l) 
+      >>= liftError "(initializing bootstrap)"
+      >>= either invalidErr (return . (n,)) . getResultVal)
+  where invalidErr = const $ throwEngineError $ EngineError "Invalid result"
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
 initProgram bootstrap prog = do
-  let prog' = injectBootstrap bootstrap prog
-  st       <- initState prog'
-  r        <- runInterpretation' st (declaration prog')
-  initMessages r        
+    env <- initBootstrap bootstrap
+    st  <- initState prog
+    st' <- return $ injectBootstrap st env
+    r   <- runInterpretation' st' (declaration prog)
+    initMessages r
+  where injectBootstrap (globals, vEnv, annEnv) bootEnv = 
+          (globals, map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv, annEnv)
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
   where runFinal (VFunction (f,[])) = f vunit
         runFinal _                  = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger              = throwE $ RunTimeTypeError "Could not find atExit trigger"
+
 
 {- Standalone (i.e., single peer) evaluation -}
 
@@ -1134,13 +1224,14 @@ runExpression e = standaloneInterpreter (withEngine')
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
 
+
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
 runProgram systemEnv prog = do
     engine <- simulationEngine systemEnv syntaxValueWD
-    flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
+    flip runEngineM engine $ runEngine virtualizedProcessor prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
@@ -1152,10 +1243,11 @@ runNetwork systemEnv prog =
     engineThreads <- mapM fork namedEngines
     return engineThreads
   where
-    pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
-    fork (addr, engine, bootstrap) = do
-      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog
+    pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
+    fork (addr, engine) = do
+      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor prog
       return $ either Left (Right . (addr, engine,)) threadId
+
 
 {- Message processing -}
 
@@ -1169,7 +1261,7 @@ runTrigger r n a = \case
         tError r = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
-uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResult Value) (IResult Value)
+uniProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 uniProcessor = MessageProcessor {
     initialize = initUP,
     process = processUP,
@@ -1177,8 +1269,9 @@ uniProcessor = MessageProcessor {
     finalize = finalizeUP,
     report = reportUP
 } where
-    initUP [] prog = initProgram [] prog
-    initUP ((_,is):_) prog = initProgram is prog
+    initUP prog = ask >>= flip initProgram prog . uniBootstrap . deployment
+    uniBootstrap [] = []
+    uniBootstrap ((_,is):_) = is
 
     statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
     finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
@@ -1193,7 +1286,7 @@ uniProcessor = MessageProcessor {
 
     unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
-virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
+virtualizedProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 virtualizedProcessor = MessageProcessor {
     initialize = initializeVP,
     process = processVP,
@@ -1201,11 +1294,11 @@ virtualizedProcessor = MessageProcessor {
     finalize = finalizeVP,
     report = reportVP
 } where
-    initializeVP systemEnv program = do
+    initializeVP program = do
         engine <- ask
-        sequence [initNode node systemEnv program | node <- nodes engine]
+        sequence [initNode node program (deployment engine) | node <- nodes engine]
 
-    initNode node systemEnv program = do
+    initNode node program systemEnv = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program
         logResult "INIT " node iProgram

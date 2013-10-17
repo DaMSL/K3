@@ -9,11 +9,10 @@
 module Language.K3.Runtime.Engine (
     FrameDesc(..)
   , WireDesc(..)
-  , PeerBootstrap
-  , SystemEnvironment
   , MessageProcessor(..)
 
   , Engine(..)
+  , EngineControl(..)
 
   , EngineT
   , EngineM
@@ -68,7 +67,6 @@ module Language.K3.Runtime.Engine (
   , showEngine
 
 #ifdef TEST
-  , EngineControl(..)
   , LoopStatus(..)
 
   , MessageQueues(..)
@@ -162,10 +160,14 @@ import qualified Network.Transport.TCP as NTTCP
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Literal    as LC
 import qualified Language.K3.Core.Constructor.Type       as TC
+
+import Language.K3.Runtime.Deployment ( PeerBootstrap, SystemEnvironment )
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -209,13 +211,6 @@ data EngineConfiguration = EngineConfiguration { address           :: Address
                                                , connectionRetries :: Int
                                                , waitForNetwork    :: Bool }
 
--- | A bootstrap environment for a peer.
-type PeerBootstrap = [(Identifier, K3 Expression)]
-
--- | A system environment, to bootstrap a set of deployed peers.
-type SystemEnvironment = [(Address, PeerBootstrap)]
-
-
 {- Message processing -}
 
 data EngineControl = EngineControl {
@@ -250,9 +245,9 @@ data LoopStatus res err = Result res | Error err | MessagesDone res
 
 -- | Each backend provides must provide a message processor which can handle the initialization of
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
-data MessageProcessor inits prog msg res err = MessageProcessor {
+data MessageProcessor prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
-    initialize :: inits -> prog -> EngineM msg res,
+    initialize :: prog -> EngineM msg res,
 
     -- | Process a single message.
     process    :: (Address, Identifier, msg) -> res -> EngineM msg res,
@@ -411,12 +406,12 @@ defaultConfig = EngineConfiguration { address           = defaultAddress
     bufferSpec = BufferSpec { maxSize = 100, batchSize = 10 }
 
 defaultSystem :: SystemEnvironment
-defaultSystem = [(defaultAddress, [ ("me", defaultAddressExpr)
+defaultSystem = [(defaultAddress, [ ("me",    defaultAddressExpr)
                                   , ("peers", defaultPeersExpr)
-                                  , ("role", defaultRoleExpr)])]
-  where defaultAddressExpr = EC.address (EC.constant $ CString "127.0.0.1") (EC.constant $ CInt 40000)
-        defaultPeersExpr = EC.empty TC.address
-        defaultRoleExpr = EC.constant $ CString ""
+                                  , ("role",  defaultRoleExpr)])]
+  where defaultAddressExpr = LC.address (LC.string "127.0.0.1") (LC.int 40000)
+        defaultPeersExpr = (LC.empty TC.address) @+ (LAnnotation "Collection")
+        defaultRoleExpr = LC.string ""
 
 {- Configurations -}
 configureWithAddress :: Address -> EngineConfiguration
@@ -570,7 +565,7 @@ waitForMessage = do
 
 -- | Process a single message within the engine, given the message processor to use, and the
 -- previous message result. Return the status of the loop.
-processMessage :: MessageProcessor i p a r e -> r -> EngineM a (LoopStatus r e)
+processMessage :: MessageProcessor p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
     message <- dequeue $ queues engine
@@ -582,7 +577,7 @@ processMessage mp pr = do
         return $ either Error Result (status mp nextResult)
 
 runMessages :: (Pretty r, Pretty e, Show a)
-            => MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+            => MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status = ask >>= \engine -> status >>= \case
     Result r       -> debugStep >> runMessages mp (processMessage mp r)
     Error e        -> die "Error:" e (control engine)
@@ -604,10 +599,10 @@ runMessages mp status = ask >>= \engine -> status >>= \case
 
     logStep s = void $ _notice_EngineSteps $ s
 
-runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
-runEngine mp is p = do
+runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
+runEngine mp p = do
     engine <- ask
-    result <- initialize mp is p
+    result <- initialize mp p
     liftIO $ case workers engine of
         Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
         Multithreaded _     -> error "Unsupported engine mode: Multithreaded"
@@ -615,8 +610,8 @@ runEngine mp is p = do
 
     runMessages mp (return . either Error Result $ status mp result)
 
-forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ThreadId
-forkEngine mp is p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp is p) engine
+forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ThreadId
+forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp p) engine
 
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control

@@ -1587,16 +1587,17 @@ generate progName p = declaration p >>= mkProgram
           generateCollectionCompositions >>= \comboDecls -> 
           generateDispatch >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++) . postDecls
 
-        impts = [ imprtDecl "Control.Concurrent"          False Nothing
-                , imprtDecl "Control.Concurrent.MVar"     False Nothing
-                , imprtDecl "Control.Monad"               False Nothing
-                , imprtDecl "Control.Monad.IO.Class"      False Nothing
-                , imprtDecl "Options.Applicative"         False Nothing                
-                , imprtDecl "Language.K3.Core.Common"     False Nothing
-                , imprtDecl "Language.K3.Utils.Pretty"    False Nothing
-                , imprtDecl "Language.K3.Runtime.Options" False Nothing
-                , imprtDecl "Language.K3.Runtime.Engine"  True  (Just engineModuleAliasId)
-                , imprtDecl "Data.Map.Lazy"               True  (Just "M") ]
+        impts = [ imprtDecl "Control.Concurrent"             False Nothing
+                , imprtDecl "Control.Concurrent.MVar"        False Nothing
+                , imprtDecl "Control.Monad"                  False Nothing
+                , imprtDecl "Control.Monad.IO.Class"         False Nothing
+                , imprtDecl "Options.Applicative"            False Nothing                
+                , imprtDecl "Language.K3.Core.Common"        False Nothing
+                , imprtDecl "Language.K3.Utils.Pretty"       False Nothing
+                , imprtDecl "Language.K3.Runtime.Deployment" False Nothing
+                , imprtDecl "Language.K3.Runtime.Engine"     True  (Just engineModuleAliasId)
+                , imprtDecl "Language.K3.Runtime.Options"    False Nothing
+                , imprtDecl "Data.Map.Lazy"                  True  (Just "M") ]
 
         preDecls = 
           [ typeSig programId stringType,
@@ -1620,7 +1621,7 @@ generate progName p = declaration p >>= mkProgram
             [dec| identityWD :: E.WireDesc String |]
           , [dec| identityWD = E.WireDesc return (return . Just) (E.Delimiter "\n") |]
 
-          , [dec| compiledMsgPrcsr :: E.MessageProcessor E.SystemEnvironment () String RuntimeStatus E.EngineError |]
+          , [dec| compiledMsgPrcsr :: E.MessageProcessor () String RuntimeStatus E.EngineError |]
           , [dec| compiledMsgPrcsr = E.MessageProcessor {
                                          E.initialize = initializeRT
                                        , E.process    = processRT
@@ -1629,8 +1630,8 @@ generate progName p = declaration p >>= mkProgram
                                        , E.report     = reportRT
                                      }
                     where
-                      initializeRT _ _ = atInit ()
-                      finalizeRT _ = atExit ()
+                      initializeRT _ = atInit ()
+                      finalizeRT _   = atExit ()
                       
                       statusRT rts = either Left (Right . Right) rts
                                             
