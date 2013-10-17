@@ -244,6 +244,9 @@ deriveTypeExpression aEnv tExpr = do
           environIdType $ TEnvIdentifier i
         TTop -> deriveLeafType STop
         TBottom -> deriveLeafType SBottom
+        TExternallyBound _ ->
+          error "External binding type is invalid for deriveTypeExpression!"
+          -- TODO: possibly make the above error less crash-y?
         TRecordExtension _ _ ->
           error "Record extension type is invalid for deriveTypeExpression!"
           -- TODO: possibly make the above error less crash-y?

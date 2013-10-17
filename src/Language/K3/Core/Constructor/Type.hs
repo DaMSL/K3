@@ -21,6 +21,7 @@ module Language.K3.Core.Constructor.Type (
     declaredVar,
     top,
     bottom,
+    externallyBound,
     recordExtension,
     declaredVarOp,
     mu
@@ -109,6 +110,9 @@ top = leaf TTop
 
 bottom :: K3 Type
 bottom = leaf TBottom
+
+externallyBound :: [TypeVarDecl] -> K3 Type -> K3 Type
+externallyBound vdecls t = Node (TExternallyBound vdecls :@: []) [t]
 
 recordExtension :: [(Identifier, K3 Type)] -> [Identifier] -> K3 Type
 recordExtension idts ids' = Node (TRecordExtension ids ids' :@: []) ts

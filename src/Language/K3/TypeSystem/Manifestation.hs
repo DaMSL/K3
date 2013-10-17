@@ -42,7 +42,7 @@ declareOpaques xM = do
   cs <- askConstraints
   return $ if null namedOpaques
     then x
-    else TC.forAll (map (bindOpaque cs) namedOpaques) x
+    else TC.externallyBound (map (bindOpaque cs) namedOpaques) x
   where
     bindOpaque :: ConstraintSet -> (OpaqueVar, Identifier) -> TypeVarDecl
     bindOpaque cs (oa,i) =

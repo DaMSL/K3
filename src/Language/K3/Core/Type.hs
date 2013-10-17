@@ -58,6 +58,8 @@ data Type
     -- equivalent in the language syntax.
     | TTop
     | TBottom
+    | TExternallyBound [TypeVarDecl]
+        -- ^Represents an externally chosen type variable binding.
     | TRecordExtension [Identifier] [Identifier]
         -- ^Represents the extension of a record.  The first list of identifiers
         --  names the labels corresponding to the children of this record
