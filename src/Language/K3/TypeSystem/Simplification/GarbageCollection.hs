@@ -22,6 +22,9 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Simplification.Data
 
+-- FIXME: This simplification destroys opaque bounding constraints!  (It's not
+--        marking opaque variables as "alive".)
+
 -- |Performs garbage collection on the provided constraint set.
 simplifyByGarbageCollection :: ConstraintSet -> SimplifyM ConstraintSet
 simplifyByGarbageCollection cs = do
