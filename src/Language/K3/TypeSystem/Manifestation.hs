@@ -143,5 +143,7 @@ instance Manifestable DelayedType where
       DBottom -> return TC.bottom
       DOpaque oas -> do
         is <- sort <$> mapM nameOpaque (Set.toList oas)
-        TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
+        if length is == 1
+          then return $ TC.declaredVar $ head is
+          else TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
 
