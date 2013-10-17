@@ -102,7 +102,7 @@ transExprToDeclTypecheckM =
 captureExprInDeclTypecheckM :: ExprTypecheckM a
                             -> DeclTypecheckM
                                   (a, (Map UID AnyTVar, ConstraintSet))
-captureExprInDeclTypecheckM x = do
+captureExprInDeclTypecheckM x =
   transExprToDeclTypecheckM $ censor (const (Map.empty, csEmpty)) $ listen x
 
 getNextVarId :: (Monad m) => AbstractTypecheckT m Int
@@ -119,9 +119,9 @@ instance (Monad m) => FreshOpaqueI (AbstractTypecheckT m) where
   freshOVar origin = OpaqueVar origin . OpaqueID <$> getNextVarId
   
 freshVar :: (Monad m)
-         => (Int -> TVarOrigin q -> TVar q) -> TVarOrigin q
+         => (TVarID -> TVarOrigin q -> TVar q) -> TVarOrigin q
          -> AbstractTypecheckT m (TVar q)
-freshVar cnstr origin = cnstr <$> getNextVarId <*> pure origin
+freshVar cnstr origin = cnstr <$> (TVarBasicID <$> getNextVarId) <*> pure origin
   
 instance (Monad m) => TypeErrorI (AbstractTypecheckT m) where
   typeError = typecheckError

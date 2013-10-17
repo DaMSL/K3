@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, DataKinds #-}
 
 {-|
   This module contains general type manipulation utilities.
@@ -10,6 +10,7 @@ module Language.K3.TypeSystem.Utils
 , RecordConcatenationError(..)
 , getLowerBoundsOf
 , getUpperBoundsOf
+, quasiFreshVar
 ) where
 
 import Control.Monad
@@ -98,3 +99,20 @@ getUpperBoundsOf cs ta =
   case ta of
     CLeft t -> [t]
     CRight a -> nub $ csQuery cs $ QueryTypeByUVarLowerBound a
+
+-- |A class defining ad-hoc overloading for a routine which generates a
+--  quasi-fresh variable.
+class QuasiFreshVarConstruction q where
+  quasiFreshVar :: TVar q' -> TVarQuasiFreshIndex -> TVar q
+
+instance QuasiFreshVarConstruction UnqualifiedTVar where
+  quasiFreshVar = quasiFreshVar' UTVar
+
+instance QuasiFreshVarConstruction QualifiedTVar where
+  quasiFreshVar = quasiFreshVar' QTVar
+
+quasiFreshVar' :: (TVarID -> TVarOrigin q -> TVar q)
+               -> TVar q' -> TVarQuasiFreshIndex -> TVar q
+quasiFreshVar' constr v idx =
+  constr (TVarQuasiFreshID (tvarId v) idx)
+         (TVarQuasiFreshOrigin (someVar v) idx)

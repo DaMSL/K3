@@ -3,6 +3,8 @@
 module Language.K3.TypeSystem.Data.TypesAndConstraints
 ( TVarQualification(..)
 , TVar(..)
+, TVarID(..)
+, TVarQuasiFreshIndex
 , tvarId
 , ConstraintSetType
 , TVarOrigin(..)
@@ -73,19 +75,32 @@ data TVarQualification
 --  second is an origin describing why the type variable was created (for
 --  history and tracking purposes).
 data TVar (a :: TVarQualification) where
-  QTVar :: Int
+  QTVar :: TVarID
         -> TVarOrigin QualifiedTVar
         -> TVar QualifiedTVar
-  UTVar :: Int
+  UTVar :: TVarID
         -> TVarOrigin UnqualifiedTVar
         -> TVar UnqualifiedTVar
+
+-- |A data structure describing the UID of a type variable.  This structure is
+--  more complex than a simple @Int@ because it provides a means by which
+--  quasi-freshness can be implemented without relying on a stateful monad;
+--  instead, a quasi-fresh variable is created by deriving its UID from the
+--  UID of the originating variable.
+data TVarID
+  = TVarBasicID Int
+  | TVarQuasiFreshID TVarID TVarQuasiFreshIndex
+  deriving (Eq, Ord, Show)
+
+-- |A type alias for quasi-freshness.
+type TVarQuasiFreshIndex = Int
 
 instance Pretty (TVar a) where
   prettyLines v = case v of
     QTVar n _ -> ["å" ++ show n]
     UTVar n _ -> ["α" ++ show n]
 
-tvarId :: TVar a -> Int
+tvarId :: TVar a -> TVarID
 tvarId a = case a of
             QTVar n _ -> n
             UTVar n _ -> n
@@ -130,6 +145,8 @@ data TVarOrigin (a :: TVarQualification)
       -- ^Type variable was declared on an annotation and constructed during
       --  type decision.  The UID identifies the annotation; the identifier
       --  names the declared type variable.
+  | TVarQuasiFreshOrigin AnyTVar TVarQuasiFreshIndex
+      -- ^Type variable was created as a quasi-fresh variable.
 
 deriving instance Show (TVarOrigin a)
 

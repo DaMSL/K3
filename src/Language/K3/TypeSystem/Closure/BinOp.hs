@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, ScopedTypeVariables #-}
 
 module Language.K3.TypeSystem.Closure.BinOp
 ( binOpType
@@ -8,6 +8,7 @@ import Control.Applicative
 import Data.Monoid
 
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Utils
 
 -- |An operation for determining how binary operations should be typed.  This
 --  function models the @BinOpType@ function from the specification.  When
@@ -24,9 +25,10 @@ binOpType op t1 t2 =
     (BinOpSequence, _, _) -> Just (CLeft t2, mempty)
     (BinOpApply, SFunction a1 a2, _) ->
       Just (CRight a2, csSing $ constraint t2 a1)
-    -- TODO: update as per new spec re: triggers
-    (BinOpSend, STrigger a, _) ->
-      Just (CLeft $ STuple [], csSing $ constraint t2 a)
+    (BinOpSend, STuple [qa1,qa2], _) ->
+      Just (CLeft $ STuple [], csFromList $
+        let a3 :: UVar = quasiFreshVar qa1 0 in
+        [qa1 <: STrigger a3, qa2 <: SAddress, t2 <: a3])
     _ -> Nothing
   where
     arithOp = [BinOpAdd,BinOpSubtract,BinOpMultiply,BinOpDivide]
