@@ -82,6 +82,11 @@ data TVar (a :: TVarQualification) where
         -> TVarOrigin UnqualifiedTVar
         -> TVar UnqualifiedTVar
 
+instance Pretty (TVar a) where
+  prettyLines v = case v of
+    QTVar n _ -> ["å"] %+ prettyLines n
+    UTVar n _ -> ["α"] %+ prettyLines n
+
 -- |A data structure describing the UID of a type variable.  This structure is
 --  more complex than a simple @Int@ because it provides a means by which
 --  quasi-freshness can be implemented without relying on a stateful monad;
@@ -92,13 +97,13 @@ data TVarID
   | TVarQuasiFreshID TVarID TVarQuasiFreshIndex
   deriving (Eq, Ord, Show)
 
+instance Pretty TVarID where
+  prettyLines i = case i of
+    TVarBasicID n -> [show n]
+    TVarQuasiFreshID n idx -> [show n ++ "." ++ show idx]
+
 -- |A type alias for quasi-freshness.
 type TVarQuasiFreshIndex = Int
-
-instance Pretty (TVar a) where
-  prettyLines v = case v of
-    QTVar n _ -> ["å" ++ show n]
-    UTVar n _ -> ["α" ++ show n]
 
 tvarId :: TVar a -> TVarID
 tvarId a = case a of
