@@ -31,7 +31,6 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
-import Language.K3.TypeSystem.Monad.Iface.TypeAttribution
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Expressions
@@ -320,9 +319,7 @@ deriveDeclaration aEnv env rEnv decl =
       csPost <- csPostF v1 v2
       let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
       tell $ Map.map (, calculateClosure $ cs'' `csUnion` exprCs) exprAttribs
-      -- We've decided upon the type, so now record it and then check for
-      -- consistency.
-      attributeExprType u (someVar v1) cs''
+      -- We've decided upon the type, so now check for consistency.
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)
              return
