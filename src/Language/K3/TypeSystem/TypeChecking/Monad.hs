@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections, TemplateHaskell, ScopedTypeVariables, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, DataKinds, TupleSections, TemplateHaskell, ScopedTypeVariables, MultiParamTypeClasses, UndecidableInstances, FlexibleContexts #-}
 
 {-|
   A module defining the computational environment in which typechecking
@@ -6,7 +6,9 @@
 -}
 
 module Language.K3.TypeSystem.TypeChecking.Monad
-( DeclTypecheckM
+( TypecheckContext(..)
+, typecheckingContext
+, DeclTypecheckM
 , ExprTypecheckM
 , runDeclTypecheckM
 , transExprToDeclTypecheckM
@@ -16,6 +18,7 @@ module Language.K3.TypeSystem.TypeChecking.Monad
 ) where
 
 import Control.Applicative
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -37,10 +40,16 @@ import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 
--- |The state of the typechecking monad.
+-- |The state of the typechecking monads.
 data TypecheckState
   = TypecheckState
     { nextVarId :: Int
+    }
+
+-- |The context for the typechecking monads.
+data TypecheckContext
+  = TypecheckContext
+    { globalREnv :: TGlobalQuantEnv
     }
 
 -- |A type for abstract typechecking environments.  This newtype represents the
@@ -49,8 +58,10 @@ data TypecheckState
 newtype AbstractTypecheckT m a
   = AbstractTypecheckT
       { unAbstractTypecheckT ::
-          EitherT (Seq TypeError) ((StateT TypecheckState) m) a }
-  deriving ( Monad, Functor, Applicative, MonadState TypecheckState )
+          EitherT (Seq TypeError) (ReaderT TypecheckContext
+            ((StateT TypecheckState) m)) a }
+  deriving ( Monad, Functor, Applicative, MonadState TypecheckState
+           , MonadReader TypecheckContext )
 
 instance (Monad m, Monoid w, MonadWriter w m)
       => MonadWriter w (AbstractTypecheckT m) where
@@ -60,7 +71,12 @@ instance (Monad m, Monoid w, MonadWriter w m)
   pass = AbstractTypecheckT . pass . unAbstractTypecheckT
 
 instance MonadTrans AbstractTypecheckT where
-  lift = AbstractTypecheckT . lift . lift
+  lift = AbstractTypecheckT . lift . lift . lift
+
+-- |Retrieves the typechecking context for a typechecking monad.
+typecheckingContext :: (MonadReader TypecheckContext m)
+                    => m TypecheckContext
+typecheckingContext = ask
 
 -- |A type for expression typechecking environments.
 newtype ExprTypecheckM a
@@ -69,7 +85,8 @@ newtype ExprTypecheckM a
           AbstractTypecheckT (Writer (Map UID AnyTVar, ConstraintSet)) a }
   deriving ( Monad, Functor, Applicative, MonadState TypecheckState
            , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable
-           , MonadWriter (Map UID AnyTVar, ConstraintSet) )
+           , MonadWriter (Map UID AnyTVar, ConstraintSet)
+           , MonadReader TypecheckContext )
 
 -- |A type for declaration typechecking environments.
 newtype DeclTypecheckM a
@@ -78,17 +95,20 @@ newtype DeclTypecheckM a
           AbstractTypecheckT (Writer (Map UID (AnyTVar, ConstraintSet))) a }
   deriving ( Monad, Functor, Applicative, MonadState TypecheckState
            , FreshVarI, FreshOpaqueI, TypeErrorI, TypecheckErrorable
-           , MonadWriter (Map UID (AnyTVar, ConstraintSet)))
+           , MonadWriter (Map UID (AnyTVar, ConstraintSet))
+           , MonadReader TypecheckContext )
   
 -- |Evaluates a declaration typechecking computation.
-runDeclTypecheckM :: Int -> DeclTypecheckM a
+runDeclTypecheckM :: TGlobalQuantEnv -> Int -> DeclTypecheckM a
                   -> ( Either (Seq TypeError) (a, Int) 
                      , Map UID (AnyTVar, ConstraintSet) )
-runDeclTypecheckM firstVarId x =
+runDeclTypecheckM rEnv firstVarId x =
   let initState = TypecheckState { nextVarId = firstVarId } in
+  let initContext = TypecheckContext { globalREnv = rEnv } in
   let ((eVal,finalState),tmap) =
-        runWriter (runStateT (runEitherT $
-          unAbstractTypecheckT $ unDeclTypecheckM x) initState) in
+        runWriter (runStateT (runReaderT
+            (runEitherT $ unAbstractTypecheckT $ unDeclTypecheckM x)
+          initContext) initState) in
   ( (,nextVarId finalState) <$> eVal, tmap )
   
 transExprToDeclTypecheckM :: ExprTypecheckM a -> DeclTypecheckM a
@@ -96,7 +116,7 @@ transExprToDeclTypecheckM =
   DeclTypecheckM . AbstractTypecheckT . mapE .
     unAbstractTypecheckT . unExprTypecheckM
   where
-    mapE = mapEitherT $ mapStateT $ mapWriter mapV
+    mapE = mapEitherT $ mapReaderT $ mapStateT $ mapWriter mapV
     mapV (x, (m,cs)) = (x, Map.map (,cs) m)
 
 captureExprInDeclTypecheckM :: ExprTypecheckM a
@@ -135,14 +155,15 @@ instance TypeVarAttrI ExprTypecheckM where
 instance TypeAttrI DeclTypecheckM where
   attributeExprType u a cs =
     DeclTypecheckM $ lift $ tell $ Map.singleton u (a, cs)
-
+    
 -- |Generates an error for a typechecking operation.
 class (TypeErrorI m) => TypecheckErrorable m where
   typecheckError :: TypeError -> m a
   gatherParallelErrors :: [m a] -> m [a]
 
 instance (Monad m) => TypecheckErrorable (AbstractTypecheckT m) where
-  typecheckError = AbstractTypecheckT . EitherT . return . Left . Seq.singleton
+  typecheckError err =
+    AbstractTypecheckT $ EitherT $ return $ Left $ Seq.singleton err
   gatherParallelErrors ops = AbstractTypecheckT $ EitherT $ do
     executed <- mapM (runEitherT . unAbstractTypecheckT) ops
     let (errs,vals) = partitionEithers executed

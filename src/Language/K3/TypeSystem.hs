@@ -44,16 +44,17 @@ data TypecheckResult
   = TypecheckResult
       { tcAEnv :: Maybe TAliasEnv
       , tcEnv :: Maybe TNormEnv
+      , tcREnv :: Maybe TGlobalQuantEnv
       , tcExprTypes :: Maybe (Map UID (AnyTVar, ConstraintSet))
       , tcExprBounds :: Maybe (Map UID (K3 Type, K3 Type))
       }
   deriving (Eq, Show)
 
 instance Monoid TypecheckResult where
-  mempty = TypecheckResult Nothing Nothing Nothing Nothing
-  mappend (TypecheckResult a b c d) (TypecheckResult a' b' c' d') =
+  mempty = TypecheckResult Nothing Nothing Nothing Nothing Nothing
+  mappend (TypecheckResult a b c d e) (TypecheckResult a' b' c' d' e') =
     TypecheckResult (a `mappend` a') (b `mappend` b') (c `mappend` c')
-      (d `mappend` d')
+      (d `mappend` d') (e `mappend` e')
 
 -- |The top level of typechecking in K3.  This routine accepts a role
 --  declaration and typechecks it.  The result is a pair between the
@@ -62,12 +63,13 @@ instance Monoid TypecheckResult where
 --  the result will contain only @Just@ values.
 typecheck :: TAliasEnv -- ^The environment defining existing type bindings.
           -> TNormEnv -- ^The environment defining existing bindings.
+            -> TGlobalQuantEnv -- ^The polymorphism bounding info bindings.
           -> K3 Declaration -- ^The top-level AST to check.
           -> (Seq TypeError, TypecheckResult)
-typecheck aEnv env decl =
+typecheck aEnv env rEnv decl =
   let (errs, result) =
         first (either id (const Seq.empty)) $
-          runWriter $ runEitherT $ doTypecheck aEnv env decl
+          runWriter $ runEitherT $ doTypecheck aEnv env rEnv decl
   in
   let errsBox =
         if Seq.null errs
@@ -108,20 +110,21 @@ typecheck aEnv env decl =
 -- |The actual heavy lifting of @typecheck@.
 doTypecheck :: TAliasEnv -- ^The environment defining existing type bindings.
             -> TNormEnv -- ^The environment defining existing bindings.
+            -> TGlobalQuantEnv -- ^The polymorphism bounding info bindings.
             -> K3 Declaration -- ^The top-level AST to check.
             -> EitherT (Seq TypeError) (Writer TypecheckResult) ()
-doTypecheck aEnv env decl = do
+doTypecheck aEnv env rEnv decl = do
   _debug $ boxToString $ ["Performing typechecking for AST:"] %$
                             indent 2 (prettyLines decl)
   -- 1. Simple sanity checks for consistency.
   hoistEither $ either (Left . Seq.singleton) Right $
     unSanityM (sanityCheck decl)
   -- 2. Decide the types that should be assigned.
-  ((aEnv',env',rEnv),idx) <- hoistEither $ runDecideM 0 $ typeDecision decl
-  tell $ mempty { tcAEnv = Just aEnv', tcEnv = Just env' }
+  ((aEnv',env',rEnv'),idx) <- hoistEither $ runDecideM 0 $ typeDecision decl
+  tell $ mempty { tcAEnv = Just aEnv', tcEnv = Just env', tcREnv = Just rEnv' }
   -- 3. Check that types inferred for the declarations match these types.
-  let (eErrs, attribs) = runDeclTypecheckM idx
-                            (deriveDeclarations aEnv env aEnv' env' rEnv decl)
+  let (eErrs, attribs) = runDeclTypecheckM (rEnv' `mappend` rEnv) idx
+                            (deriveDeclarations aEnv env aEnv' env' decl)
   tell $ mempty { tcExprTypes = Just attribs }
   ((), _) <- hoistEither eErrs
   -- 4. Post-process all of the attributions so we can extract meaningful type
@@ -140,7 +143,7 @@ doTypecheck aEnv env decl = do
 
 -- |Driver wrapper function for typechecking
 typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult)
-typecheckProgram p = typecheck Map.empty Map.empty p
+typecheckProgram p = typecheck Map.empty Map.empty Map.empty p
 -- NOTE: the above function should not be used once a module system is in place
 
 -- |A simple monad type for sanity checking.

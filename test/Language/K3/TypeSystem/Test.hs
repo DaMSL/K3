@@ -62,7 +62,8 @@ mkDirectSourceTest path success = do
   case parseSource path src of
     Left err -> assertFailure $ "Parse failure: " ++ show err
     Right decl ->
-      case ( Foldable.toList $ fst $ typecheck Map.empty Map.empty decl
+      case ( Foldable.toList $ fst $
+                typecheck Map.empty Map.empty Map.empty decl
            , success) of
         ([], True) -> assert True
         (errs@(_:_), True) ->

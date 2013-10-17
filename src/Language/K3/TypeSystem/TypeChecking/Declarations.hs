@@ -47,17 +47,16 @@ deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
                    -> TNormEnv -- ^The existing type environment.
                    -> TAliasEnv -- ^The type alias environment to check.
                    -> TNormEnv -- ^The type environment to check.
-                   -> TGlobalQuantEnv -- ^The global polymorphism environment.
                    -> K3 Declaration -- ^The AST of global declarations to use
                                      --  in the checking process.
                    -> DeclTypecheckM ()
-deriveDeclarations aEnv env aEnv' env' rEnv decls =
+deriveDeclarations aEnv env aEnv' env' decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
       let aEnv'' = aEnv `envMerge` aEnv' 
       let env'' = env `envMerge` env'
       ids <- (Set.fromList . map TEnvIdentifier) <$> gatherParallelErrors
-              (map (deriveDeclaration aEnv'' env'' rEnv) globals)
+              (map (deriveDeclaration aEnv'' env'') globals)
       let namedIds =
             Set.fromList (Map.keys aEnv'') `Set.union` -- TODO: disjoint union
             Set.fromList (Map.keys env'')
@@ -71,15 +70,9 @@ deriveDeclarations aEnv env aEnv' env' rEnv decls =
 --  type environments.
 deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
-                  -> TGlobalQuantEnv -- ^The global polymorphism environment to
-                                     --  use.  We pass in the full environment
-                                     --  and expect @deriveDeclaration@ to
-                                     --  extract the appropriate @TQuantEnv@
-                                     --  to simplify the call from
-                                     --  @deriveDeclarations@.
                   -> K3 Declaration -- ^The AST of the declaration to check.
                   -> DeclTypecheckM Identifier
-deriveDeclaration aEnv env rEnv decl =
+deriveDeclaration aEnv env decl =
   case tag decl of
 
     DRole _ -> typecheckError $ InternalError $ NonTopLevelDeclarationRole decl
@@ -89,6 +82,7 @@ deriveDeclaration aEnv env rEnv decl =
       return i 
 
     DGlobal i _ (Just expr) -> do
+      rEnv <- globalREnv <$> typecheckingContext
       qEnv <- envRequire (InternalError $
                 MissingIdentifierInGlobalQuantifiedEnvironment rEnv i)
                 (TEnvIdentifier i) rEnv
@@ -116,6 +110,7 @@ deriveDeclaration aEnv env rEnv decl =
               , qa2 <: STrigger a3 ]
 
     DAnnotation iAnn _ mems -> do
+      rEnv <- globalREnv <$> typecheckingContext
       qEnv <- envRequire (InternalError $
                 MissingIdentifierInGlobalQuantifiedEnvironment rEnv iAnn)
                 (TEnvIdentifier iAnn) rEnv
