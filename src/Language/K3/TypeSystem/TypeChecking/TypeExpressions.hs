@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts, ConstraintKinds, TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections, FlexibleContexts, ConstraintKinds, TemplateHaskell, TypeFamilies #-}
 
 {-|
   Contains operations related to typechecking of type expressions.  These
@@ -10,6 +10,8 @@ module Language.K3.TypeSystem.TypeChecking.TypeExpressions
 ( deriveUnqualifiedTypeExpression
 , deriveQualifiedTypeExpression
 , derivePolymorphicTypeExpression
+
+, deriveCollectionType
 ) where
 
 import Control.Applicative
@@ -111,6 +113,8 @@ derivePolymorphicTypeExpression aEnv tExpr =
       u <- uidOf tExpr
       oa <- freshOVar (OpaqueSourceOrigin u)
       let a = fromJust $ Map.lookup i entryVars
+      -- Handle opaque constructions for non-annotation types.  (Annotation
+      -- types are handled earlier during skeletal environment construction.)
       let csOpaque = cs' `CSL.union` CSL.promote
                         ((SOpaque oa ~= a) `csUnion`
                           csSing (OpaqueBoundConstraint oa ta_L ta_U))
@@ -202,26 +206,8 @@ deriveTypeExpression aEnv tExpr = do
                     SRecord (Map.singleton i qa) Set.empty) $ zip ids qas)
           return (a', CSL.unions css `CSL.union` (t ~= a'))
         TCollection -> do
-          tExpr' <- assert1Child tExpr
-          let ais = mapMaybe toAnnotationId $ annotations tExpr
-          (a_c',cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
-          u <- uidOf tExpr
-          namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
-          anns <- mapM (uncurry toAnnAlias) namedAnns
-          -- Concatenate the annotations
-          anns' <- mapM (freshenAnnotation u) anns
-          concattedAnns <- concatAnnTypes anns'
-          AnnType p (AnnBodyType ms1 ms2) cs <-
-            either (\err -> typeError =<<
-                        InvalidAnnotationConcatenation <$>
-                          uidOf tExpr <*> return err)
-              return
-              concattedAnns
-          (a_c,a_f,a_s) <- readAnnotationSpecialParameters p
-          (t_s, cs_s) <- depolarizeOrError u ms1
-          (t_f, cs_f) <- depolarizeOrError u ms2
-          let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
-          return (a_s, CSL.unions [cs, cs_c, cs_f, cs_s, CSL.promote cs'])
+          (a,cs,_) <- deriveCollectionType Nothing aEnv tExpr
+          return (a,cs)
         TAddress -> deriveLeafType SAddress
         TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
         TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
@@ -272,13 +258,6 @@ deriveTypeExpression aEnv tExpr = do
       (qa,cs) <- deriveQualifiedTypeExpression aEnv tExpr'
       a <- freshTypecheckingUVar =<< uidOf tExpr
       return (a, cs `CSL.union` (constr qa ~= a))
-    toAnnotationId tann = case tann of
-      TAnnotation i -> Just i
-      _ -> Nothing
-    toAnnAlias :: TEnvId -> TypeAliasEntry c -> m (AnnType c)
-    toAnnAlias ei entry = case entry of
-      AnnAlias ann -> return ann
-      _ -> typeError =<< NonAnnotationAlias <$> uidOf tExpr <*> return ei
     toQuantType :: TEnvId -> TypeAliasEntry c -> m (QuantType c)
     toQuantType ei entry = case entry of
       QuantAlias qt -> return qt
@@ -304,3 +283,76 @@ qualifiersOfType tExpr = mapMaybe unQual $ annotations tExpr
       TImmutable -> Just [TImmut]
       TMutable -> Just [TMut]
       _ -> Nothing
+
+-- |A utility function for type derivation over collection types.  This is
+--  separated from the main derivation routine so that it can be called by the
+--  expression derivation routine for empty collections.  This also allows it
+--  to expose additional information to the expression derivation routine as
+--  necessary.
+deriveCollectionType ::
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
+   => Maybe TGlobalQuantEnv -> TEnv (TypeAliasEntry c) -> K3 Type
+   -> m (UVar, c, Maybe ConstraintSet)
+deriveCollectionType mrEnv aEnv tExpr = do
+  tExpr' <- assert1Child tExpr
+  let ais = mapMaybe toAnnotationId $ annotations tExpr
+  (a_c',cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+  u <- uidOf tExpr
+  namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
+  anns <- mapM (uncurry toAnnAlias) namedAnns
+  -- Concatenate the annotations
+  (anns',pessimals) <- unzip <$> mapM performFreshen (zip ais anns)
+  concattedAnns <- concatAnnTypes anns'
+  AnnType p (AnnBodyType ms1 ms2) cs <-
+    either (\err -> typeError =<<
+                InvalidAnnotationConcatenation <$>
+                  uidOf tExpr <*> return err)
+      return
+      concattedAnns
+  (a_c,a_f,a_s) <- readAnnotationSpecialParameters p
+  (t_s, cs_s) <- depolarizeOrError u ms1
+  (t_f, cs_f) <- depolarizeOrError u ms2
+  let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
+  let pessimal = csUnions <$> sequence pessimals
+  return (a_s, CSL.unions [cs, cs_c, cs_f, cs_s, CSL.promote cs'], pessimal)
+  where
+    toAnnotationId tann = case tann of
+      TAnnotation i -> Just i
+      _ -> Nothing
+    toAnnAlias :: TEnvId -> TypeAliasEntry c -> m (AnnType c)
+    toAnnAlias ei entry = case entry of
+      AnnAlias ann -> return ann
+      _ -> typeError =<< NonAnnotationAlias <$> uidOf tExpr <*> return ei
+    aEnvLookup :: TEnvId -> UID -> m (TEnvId, TypeAliasEntry c)
+    aEnvLookup ei u =
+      (ei,) <$> envRequire (UnboundTypeEnvironmentIdentifier u ei) ei aEnv
+    -- |Freshens an annotation.  May also provides pessimal bounding information
+    --  for the annotation (in the form of a constraint set) if an @rEnv@ was
+    --  provided.
+    performFreshen :: (Identifier, AnnType c)
+                   -> m (AnnType c, Maybe ConstraintSet)
+    performFreshen (ai,ann) = do
+      u <- uidOf tExpr
+      (ann',replMaps) <- freshenAnnotation u ann
+      retInfo <- case pessimalInfo replMaps <$> mrEnv of
+                    Just x -> Just <$> x
+                    Nothing -> return Nothing
+      return (ann', retInfo)
+      where
+        pessimalInfo :: (Map QVar QVar, Map UVar UVar)
+                     -> TGlobalQuantEnv
+                     -> m ConstraintSet
+        pessimalInfo replMaps rEnv = do
+          qEnv <- envRequire (InternalError $
+                      MissingIdentifierInGlobalQuantifiedEnvironment rEnv ai)
+                    (TEnvIdentifier ai) rEnv
+          let cs = csUnions $ map fourth $ Map.elems qEnv
+          return $ uncurry replaceVariables replMaps cs
+        fourth :: (t1,t2,t3,t4) -> t4
+        fourth (_,_,_,x) = x

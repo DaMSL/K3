@@ -11,6 +11,8 @@ module Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Control.Monad.Trans
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Writer
+import Data.Monoid
 
 import Language.K3.TypeSystem.Data
 
@@ -22,4 +24,7 @@ instance (FreshOpaqueI m, Monad m) => FreshOpaqueI (MaybeT m) where
   freshOVar = lift . freshOVar
 
 instance (FreshOpaqueI m, Monad m) => FreshOpaqueI (EitherT e m) where
+  freshOVar = lift . freshOVar
+
+instance (FreshOpaqueI m, Monad m, Monoid w) => FreshOpaqueI (WriterT w m) where
   freshOVar = lift . freshOVar

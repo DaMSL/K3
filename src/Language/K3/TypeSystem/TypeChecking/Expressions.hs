@@ -115,10 +115,11 @@ deriveExpression aEnv env expr = do
               let anns = mapMaybe getAnnIdent $ annotations expr
               let tExpr = foldl (@+) (TC.collection recType) $
                             map TAnnotation anns
-              -- TODO: use an in-context rEnv to resolve promises for the
-              --       selected annotations; then attribute a set of constraints
-              --       to contain them
-              deriveUnqualifiedTypeExpression aEnv (tExpr @+ TUID u)
+              rEnv <- globalREnv <$> typecheckingContext
+              (a,cs,pessimals) <- deriveCollectionType
+                                (Just rEnv) aEnv (tExpr @+ TUID u)
+              attributeExprConstraints $ fromJust pessimals
+              return (a,cs)
         EVariable x -> do
           assert0Children expr
           s <- uidOf expr

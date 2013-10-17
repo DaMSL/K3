@@ -31,6 +31,7 @@ import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
+import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.TypeChecking.TypeExpressions
@@ -227,7 +228,7 @@ digestTypeParameterInfo :: TSkelAliasEnv
                         -> (FlatAnnotation, K3 Declaration)
                         -> TypeDecideSkelM
                               ( StubbedConstraintSet , TSkelQuantEnv )
-digestTypeParameterInfo aEnv ((cxt,_,_),_) = do
+digestTypeParameterInfo aEnv ((cxt,_,_),decl) = do
   digested <- Trav.mapM digestSingleTypeParameterInfo cxt
   return ( CSL.unions $ map fst $ Map.elems digested
          , Map.mapKeys TEnvIdentifier $ Map.map snd digested )
@@ -242,10 +243,16 @@ digestTypeParameterInfo aEnv ((cxt,_,_),_) = do
             Nothing -> return (CLeft STop :: TypeOrVar,CSL.empty)
             Just tExpr' ->
               first CRight <$> deriveUnqualifiedTypeExpression aEnv tExpr'
+      -- Create opaques for annotation types.  (Non-annotation types are handled
+      -- later once the environments are constructed.)
+      u <- uidOf decl
+      oa <- freshOVar $ OpaqueSourceOrigin u
+      let scsOpaque = CSL.promote $ (SOpaque oa ~= a) `csUnion`
+                        csSing (OpaqueBoundConstraint oa ta_L ta_U)
       return ( CSL.unions [ qa ~= a
                           , CSL.promote $ csFromList [ta_L <: a, a <: ta_U]
                           , scs_L, scs_U ]
-             , (a, ta_L, ta_U, scs_L `CSL.union` scs_U) )
+             , (a, ta_L, ta_U, CSL.unions [scs_L, scs_U, scsOpaque]) )
 
 -- |Performs error gathering for @TypeDecideSkelM@.
 gatherParallelSkelErrors :: forall a. [TypeDecideSkelM a] -> TypeDecideSkelM [a]

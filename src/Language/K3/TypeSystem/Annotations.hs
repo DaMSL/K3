@@ -43,27 +43,29 @@ $(loggingFunctions)
 
 -- |Freshens an annotation type.  All variables appearing within the annotation
 --  type are replaced by fresh equivalents.  The provided @UID@ should identify
---  the node which caused this freshening operation.
+--  the node which caused this freshening operation.  The result contains both
+--  the freshened type as well as the variable replacement map which was used.
 freshenAnnotation :: forall m e c.
                      ( CSL.ConstraintSetLike e c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
                      , FreshVarI m)
-                  => UID -> AnnType c -> m (AnnType c)
+                  => UID -> AnnType c
+                  -> m (AnnType c, (Map QVar QVar, Map UVar UVar))
 freshenAnnotation u ann = do
   -- PERF: Implement this as a monadic transform so we only walk the tree once.
   let vars = extractVariables ann
-  (ma,mqa) <- mconcat <$> mapM freshen (Set.toList vars)
-  return $ replaceVariables mqa ma ann
+  (mqa,ma) <- mconcat <$> mapM freshen (Set.toList vars)
+  return (replaceVariables mqa ma ann, (mqa,ma))
   where
-    freshen :: AnyTVar -> m (Map UVar UVar, Map QVar QVar)
+    freshen :: AnyTVar -> m (Map QVar QVar, Map UVar UVar)
     freshen sa =
       case sa of
         SomeQVar qa ->
-          (\x -> (Map.empty, Map.singleton qa x))
+          (\x -> (Map.singleton qa x, Map.empty))
             <$> freshQVar (TVarAnnotationFreshenOrigin qa u)
         SomeUVar a ->
-          (\x -> (Map.singleton a x, Map.empty))
+          (\x -> (Map.empty, Map.singleton a x))
             <$> freshUVar (TVarAnnotationFreshenOrigin a u)
 
 -- |Instantiates an annotation type.  If bindings appear in the parameters

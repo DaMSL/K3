@@ -184,7 +184,7 @@ deriveDeclaration aEnv env decl =
 
       -- Build the set of constraints to connect the opaque types to their
       -- corresponding type variables.
-      let cs'1 = csUnions [ SOpaque oa_c ~= a_c
+      let cs' = csUnions [ SOpaque oa_c ~= a_c
                           , SOpaque oa_f ~= a_f
                           , SOpaque oa_s ~= a_s
                           , csFromList
@@ -196,11 +196,6 @@ deriveDeclaration aEnv env decl =
                              , OpaqueBoundConstraint oa_s
                                   (CLeft SBottom) (CLeft t_s)
                              ] ]
-
-      cs'2 <- csUnions <$> mapM (\(a_i',t_L,t_U,cs_i') ->
-                (\oa -> csUnions [SOpaque oa ~= a_i', cs_i',
-                                  csSing $ OpaqueBoundConstraint oa t_L t_U])
-                        <$> freshOVar (OpaqueSourceOrigin u)) (Map.elems qEnv)
       
       -- Derive appropriate types for the members.
       let arityMaps =
@@ -224,7 +219,7 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b') 
-      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
