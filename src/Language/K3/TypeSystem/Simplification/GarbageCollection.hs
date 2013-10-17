@@ -32,7 +32,7 @@ simplifyByGarbageCollection cs = do
                         mmapConcat $ map createReachability $ csToList cs
   toPreserve <- preserveVars <$> ask
   let liveVars = Set.unions $ mapMaybe (`Map.lookup` reachability) $
-                    Set.toList toPreserve
+                    Set.toList $ Set.map varLike toPreserve
   return $ csFromList $ filter (hasVar liveVars) $ csToList cs
   where
     mmapAppend :: (Ord a, Ord b)
@@ -47,9 +47,39 @@ simplifyByGarbageCollection cs = do
     closeMMap m =
       let m' = closeMMapOnce m in
       if m == m' then m else closeMMap m'
-    createReachability :: Constraint -> Map AnyTVar (Set AnyTVar)
+    varsInConstraint :: Constraint -> Set VarLike
+    varsInConstraint c =
+      let tvars = extractVariables c in
+      let ovars = extractOpaques c in
+      Set.map varLike tvars `Set.union` Set.map varLike ovars
+    createReachability :: Constraint -> Map VarLike (Set VarLike)
     createReachability c =
-      let s = extractVariables c in
-      mmapConcat $ map (`Map.singleton` s) $ Set.toList s
-    hasVar :: Set AnyTVar -> Constraint -> Bool
-    hasVar vs c = not $ Set.null $ vs `Set.intersection` extractVariables c
+      let vars = varsInConstraint c in
+      mmapConcat $ map (`Map.singleton` vars) $ Set.toList vars
+    hasVar :: Set VarLike -> Constraint -> Bool
+    hasVar vs c =
+      not $ Set.null $ vs `Set.intersection` varsInConstraint c
+    extractOpaques :: Constraint -> Set OpaqueVar
+    extractOpaques c = case c of
+      OpaqueBoundConstraint oa _ _ -> Set.singleton oa
+      IntermediateConstraint (CLeft (SOpaque oa)) _ -> Set.singleton oa
+      IntermediateConstraint _ (CLeft (SOpaque oa)) -> Set.singleton oa
+      IntermediateConstraint _ _ ->  Set.empty
+      QualifiedIntermediateConstraint _ _ -> Set.empty
+      QualifiedLowerConstraint _ _ -> Set.empty
+      QualifiedUpperConstraint _ _ -> Set.empty
+      BinaryOperatorConstraint _ _ _ _ -> Set.empty
+      MonomorphicQualifiedUpperConstraint _ _ -> Set.empty
+      PolyinstantiationLineageConstraint _ _ -> Set.empty
+
+data VarLike
+  = VarLikeAnyTVar AnyTVar
+  | VarLikeOpaqueVar OpaqueVar
+  deriving (Eq, Ord, Show)
+
+class IsVarLike a where
+  varLike :: a -> VarLike
+instance IsVarLike AnyTVar where
+  varLike = VarLikeAnyTVar
+instance IsVarLike OpaqueVar where
+  varLike = VarLikeOpaqueVar
