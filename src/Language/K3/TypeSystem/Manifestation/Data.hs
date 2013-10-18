@@ -60,8 +60,7 @@ upperBound = BoundType
               , getConcreteQVarQualifiers = QueryTQualSetByQVarLowerBound
               , getDelayedOperationTag = DelayedIntersectionTag
               , getDelayedOperation = delayedIntersections
-              , getQualifierOperation =
-                  foldl Set.intersection (Set.fromList [TMut, TImmut])
+              , getQualifierOperation = Set.unions
               , getDualBoundType = lowerBound
               , getTyVarOp = TyVarOpIntersection
               }
@@ -73,7 +72,8 @@ lowerBound = BoundType
               , getConcreteQVarQualifiers = QueryTQualSetByQVarUpperBound
               , getDelayedOperationTag = DelayedUnionTag
               , getDelayedOperation = delayedUnions
-              , getQualifierOperation = Set.unions
+              , getQualifierOperation =
+                  foldl Set.intersection (Set.fromList [TMut, TImmut])
               , getDualBoundType = upperBound
               , getTyVarOp = TyVarOpUnion
               }
