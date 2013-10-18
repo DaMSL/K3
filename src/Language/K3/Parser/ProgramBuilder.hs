@@ -267,13 +267,13 @@ endpointMethods isSource eSpec argE formatE n t =
 
 -- | Rewrites a source declaration's process method to access and
 --   dispatch the next available event to all its bindings.
-bindSource :: [(Identifier, Identifier)] -> K3 Declaration -> K3 Declaration
+bindSource :: [(Identifier, Identifier)] -> K3 Declaration -> [K3 Declaration]
 bindSource bindings d
   | DGlobal src t eOpt <- tag d
   , TSource <- tag t
-  = replace_children d $ (children d) ++ [mkProcessFn src eOpt]
+  = [d, mkProcessFn src eOpt]
 
-  | otherwise = d
+  | otherwise = [d]
 
   where
     -- | Constructs a dispatch function declaration for a source.

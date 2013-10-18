@@ -105,15 +105,8 @@ type K3BinaryOperator     = K3 Expression -> K3 Expression -> K3 Expression
 type K3UnaryOperator      = K3 Expression -> K3 Expression
 
 {- Helpers -}
-optAsList :: Maybe a -> [a]
-optAsList (Just a) = [a]
-optAsList Nothing = []
-
 set :: [String] -> HashSet String
 set = HashSet.fromList
-
-filterOptions :: [Maybe a] -> [a]
-filterOptions = concat . map optAsList
 
 parseError :: Parsing m => String -> String -> m a -> m a
 parseError rule i m = m <?> (i ++ " " ++ rule)
@@ -323,7 +316,8 @@ parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
 
 parseDeclaration :: String -> Maybe (K3 Declaration)
-parseDeclaration s = either (const Nothing) id $ runK3Parser declaration s
+parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
+  where mkRole l = Just $ DC.role defaultRoleName l
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
@@ -358,22 +352,23 @@ program asInclude = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
 roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
-  where rule = some declaration >>= return . filterOptions
+  where rule = some declaration >>= return . concat
         pushBindings = modifyEnvironment_ addFrame
         popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
         
 
 {- Declarations -}
-declaration :: K3Parser (Maybe (K3 Declaration))
+declaration :: K3Parser [K3 Declaration]
 declaration = (//) attachComment <$> comment <*> 
-              choice [ignores >> return Nothing, decls >>= return . Just, sugaredDecls >> return Nothing]
+              choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
 
-  where decls         = DUID # choice [dGlobal, dTrigger, dSource, dSink, dRole, dAnnotation]
-        sugaredDecls  = choice [dSelector, dFeed]
-        ignores       = pInclude >> return ()
-        
-        attachComment Nothing _    = Nothing
-        attachComment (Just d) cmt = Just (d @+ DSyntax cmt)
+  where singleDecls  = (:[]) <$> (DUID # choice [dGlobal, dTrigger, dRole, dAnnotation])
+        multiDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
+        sugaredDecls = choice [dSelector, dFeed]
+        ignores      = pInclude >> return ()
+
+        attachComment [] _      = []
+        attachComment (h:t) cmt = (h @+ DSyntax cmt):t
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
@@ -384,25 +379,30 @@ dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
   where rule x = x <* colon <*> typeExpr <*> equateExpr
 
-dEndpoint :: String -> String -> Bool -> DeclParser
+dEndpoint :: String -> String -> Bool -> K3Parser [K3 Declaration]
 dEndpoint kind name isSource = 
-  namedDecl kind name $ join . rule . (mkEndpoint <$>)
+  attachFirst (DSpan <->) =<< (namedIdentifier kind name $ join . rule . (mkEndpoint <$>))
   where rule x      = ruleError =<< (x <*> (colon *> typeExpr) <*> (symbol "=" *> (endpoint isSource)))
         ruleError x = either unexpected pure x
 
         (typeCstr, stateModifier) = 
           (if isSource then TC.source else TC.sink, trackEndpoint)
 
-        mkEndpoint n t endpointCstr =
-          endpointCstr n t >>= (\(spec, eOpt, subDecls) ->
-            return . stateModifier spec $ DC.endpoint n (qualifyT $ typeCstr t) eOpt subDecls)
+        mkEndpoint n t endpointCstr = either Left (Right . mkDecls n t) $ endpointCstr n t
+
+        mkDecls n t (spec, eOpt, subDecls) = do
+          epDecl <- stateModifier spec $ DC.endpoint n (qualifyT $ typeCstr t) eOpt []
+          return $ epDecl:subDecls
 
         qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
 
-dSource :: DeclParser
+        attachFirst _ []    = return []
+        attachFirst f (h:t) = f (return h) >>= return . (:t)
+
+dSource :: K3Parser [K3 Declaration]
 dSource = dEndpoint "source" "source" True
 
-dSink :: DeclParser
+dSink :: K3Parser [K3 Declaration]
 dSink = dEndpoint "sink" "sink" False
 
 dFeed :: K3Parser ()
@@ -1004,13 +1004,14 @@ postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parse
 postProcessRole n (dl, frame) = 
   modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints frame
   
-  where processEndpoints (s,_) = return . flip map dl $ annotateEndpoint s . attachSource s
+  where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
         attachSource s         = bindSource $ sourceBindings s
         
-        annotateEndpoint s d
-          | DGlobal en t _ <- tag d, TSource <- tag t = maybe d (d @+) (syntaxAnnotation en s)
-          | DGlobal en t _ <- tag d, TSink   <- tag t = maybe d (d @+) (syntaxAnnotation en s)
-          | otherwise = d
+        annotateEndpoint _ [] = []
+        annotateEndpoint s (d:drest)
+          | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
+          | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
+          | otherwise = d:drest
 
         syntaxAnnotation en s = 
           lookup en s
@@ -1052,11 +1053,12 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
               e' <- annotateExpr e
               rebuildDecl d uid $ DTrigger n t' e'
 
-            DRole       n      -> rebuildDecl d uid $ DRole n
+            DRole n -> rebuildDecl d uid $ DRole n
             DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
 
-        rebuildDecl d@(_ :@: as) uid =
-          return . unlessAnnotated (any isDUID) d . flip (@+) (DUID $ UID uid) . ( :@: as) 
+        rebuildDecl (_ :@: as) uid tg =
+          let d' = tg :@: as in
+          return $ unlessAnnotated (any isDUID) d' (d' @+ (DUID $ UID uid))
 
         annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns) 
         annotateExpr = traverse (\e -> parserWithUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
