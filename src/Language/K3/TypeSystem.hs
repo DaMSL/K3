@@ -13,12 +13,14 @@ import Control.Monad.Trans.Either
 import qualified Data.Foldable as Foldable
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import qualified Language.K3.Core.Constructor.Declaration as DC
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
@@ -113,18 +115,21 @@ doTypecheck :: TAliasEnv -- ^The environment defining existing type bindings.
             -> TGlobalQuantEnv -- ^The polymorphism bounding info bindings.
             -> K3 Declaration -- ^The top-level AST to check.
             -> EitherT (Seq TypeError) (Writer TypecheckResult) ()
-doTypecheck aEnv env rEnv decl = do
+doTypecheck aEnv env rEnv ast = do
   _debug $ boxToString $ ["Performing typechecking for AST:"] %$
-                            indent 2 (prettyLines decl)
+                            indent 2 (prettyLines ast)
+  -- 0. Strip out things that the type system isn't specified to do (e.g. sink
+  --    and source declarations).
+  let ast' = fromJust $ stripUnspecifiedNodes ast
   -- 1. Simple sanity checks for consistency.
   hoistEither $ either (Left . Seq.singleton) Right $
-    unSanityM (sanityCheck decl)
+    unSanityM (sanityCheck ast')
   -- 2. Decide the types that should be assigned.
-  ((aEnv',env',rEnv'),idx) <- hoistEither $ runDecideM 0 $ typeDecision decl
+  ((aEnv',env',rEnv'),idx) <- hoistEither $ runDecideM 0 $ typeDecision ast'
   tell $ mempty { tcAEnv = Just aEnv', tcEnv = Just env', tcREnv = Just rEnv' }
   -- 3. Check that types inferred for the declarations match these types.
   let (eErrs, attribs) = runDeclTypecheckM (rEnv' `mappend` rEnv) idx
-                            (deriveDeclarations aEnv env aEnv' env' decl)
+                            (deriveDeclarations aEnv env aEnv' env' ast')
   tell $ mempty { tcExprTypes = Just attribs }
   ((), _) <- hoistEither eErrs
   -- 4. Post-process all of the attributions so we can extract meaningful type
@@ -140,6 +145,17 @@ doTypecheck aEnv env rEnv decl = do
       where
         manifestBounds' var =
           (manifestType lowerBound cs var, manifestType upperBound cs var)
+    stripUnspecifiedNodes :: K3 Declaration -> Maybe (K3 Declaration)
+    stripUnspecifiedNodes decl =
+      case tag decl of
+        DRole i -> Just $ DC.role i $
+                    mapMaybe stripUnspecifiedNodes $ children decl
+        DGlobal _ tExpr _ ->
+          case tag tExpr of
+            TSink -> Nothing
+            TSource -> Nothing
+            _ -> Just decl
+        _ -> Just decl
 
 -- |Driver wrapper function for typechecking
 typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult)
