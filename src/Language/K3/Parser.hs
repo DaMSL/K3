@@ -1055,6 +1055,8 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 
             DRole n -> rebuildDecl d uid $ DRole n
             DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
+              -- ^ TODO: recur through members (e.g., attributes w/ initializers)
+              --   and ensure they have a uid
 
         rebuildDecl (_ :@: as) uid tg =
           let d' = tg :@: as in
