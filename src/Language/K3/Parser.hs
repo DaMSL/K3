@@ -13,9 +13,12 @@ module Language.K3.Parser (
   declaration,
   qualifiedTypeExpr,
   typeExpr,
+  qualifiedLiteral,
+  literal,
   qualifiedExpr,
   expr,
   parseType,
+  parseLiteral,
   parseExpression,
   parseDeclaration,
   parseSimpleK3,
@@ -54,10 +57,12 @@ import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
+import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser.ProgramBuilder
@@ -91,6 +96,7 @@ type ParserState       = (Int, ParserEnvironment)
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
 type TypeParser        = K3Parser (K3 Type)
+type LiteralParser     = K3Parser (K3 Literal)
 type ExpressionParser  = K3Parser (K3 Expression)
 type BinderParser      = K3Parser Binder
 type DeclParser        = K3Parser (K3 Declaration)
@@ -111,6 +117,9 @@ set = HashSet.fromList
 parseError :: Parsing m => String -> String -> m a -> m a
 parseError rule i m = m <?> (i ++ " " ++ rule)
 
+suffixError :: Parsing m => String -> String -> m a -> m a
+suffixError k x = parseError x k
+
 declError :: Parsing m => String -> m a -> m a
 declError x = parseError "declaration" x
 
@@ -120,11 +129,12 @@ typeError x = parseError x "type"
 typeExprError :: Parsing m => String -> m a -> m a
 typeExprError x = parseError "type expression" x
 
+litError :: Parsing m => String -> m a -> m a
+litError x = parseError "literal" x
+
 exprError :: Parsing m => String -> m a -> m a
 exprError x = parseError "expression" x
 
-exprSuffixError :: Parsing m => String -> m a -> m a
-exprSuffixError x = parseError x "expression"
 
 {- Span and UID helpers -}
 emptySpan :: Span 
@@ -311,6 +321,9 @@ maybeParser p s = either (const Nothing) Just $ runK3Parser p s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
+
+parseLiteral :: String -> Maybe (K3 Literal)
+parseLiteral = maybeParser literal
 
 parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
@@ -572,12 +585,12 @@ qualifiedExpr :: ExpressionParser
 qualifiedExpr = exprError "qualified" $ flip (@+) <$> (option EImmutable exprQualifier) <*> expr
 
 exprQualifier :: K3Parser (Annotation Expression)
-exprQualifier = exprSuffixError "qualifier" $
+exprQualifier = suffixError "expression" "qualifier" $
       keyword "immut" *> return EImmutable 
   <|> keyword "mut"   *> return EMutable
 
 exprNoneQualifier :: K3Parser NoneMutability
-exprNoneQualifier = exprSuffixError "option qualifier" $
+exprNoneQualifier = suffixError "expression" "option qualifier" $
       keyword "immut" *> return NoneImmut
   <|> keyword "mut"   *> return NoneMut
 
@@ -603,7 +616,7 @@ eTerm = do
     attachComment e cmt = e @+ (ESyntax cmt)
 
 
-{- Literals -}
+{- Expression literals -}
 eLiterals :: ExpressionParser
 eLiterals = choice [ 
     try eCollection,
@@ -831,7 +844,99 @@ eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
 eSelf :: ExpressionParser
 eSelf = exprError "self" $ keyword "self" >> return EC.self
 
+
+{- Literal values -}
+
+literal :: LiteralParser
+literal = parseError "literal" "k3" $ choice [ 
+    lTerminal,
+    lOption,
+    lIndirection,
+    lTuple,
+    lRecord,
+    lEmpty,
+    lCollection,
+    lAddress ]
+
+qualifiedLiteral :: LiteralParser
+qualifiedLiteral = litError "qualified" $ flip (@+) <$> (option LImmutable litQualifier) <*> literal
+
+litQualifier :: K3Parser (Annotation Literal)
+litQualifier = suffixError "literal" "qualifier" $
+      keyword "immut" *> return LImmutable 
+  <|> keyword "mut"   *> return LMutable
+
+lTerminal :: LiteralParser
+lTerminal = litError "constant" $ choice [lBool, try lNumber, lString]
+
+lBool :: LiteralParser
+lBool = LC.bool <$> choice [keyword "true" >> return True, keyword "false" >> return False]
+
+lNumber :: LiteralParser
+lNumber = mkNumber <$> integerOrDouble
+  where mkNumber x = case x of
+                      Left i  -> LC.int . fromIntegral $ i
+                      Right d -> LC.real $ d
+
+lString :: LiteralParser
+lString = LC.string <$> stringLiteral
+
+lOption :: LiteralParser
+lOption = litError "option" $ choice [
+            LC.some <$> (keyword "Some" *> qualifiedLiteral),
+            keyword "None" *> (LC.none <$> exprNoneQualifier)]
+
+lIndirection :: LiteralParser
+lIndirection = litError "indirection" $ LC.indirect <$> (keyword "ind" *> qualifiedLiteral)
+
+lTuple :: LiteralParser
+lTuple = choice [try unit, try lNested, litTuple]
+  where unit       = symbol "(" *> symbol ")" >> return (LC.tuple [])
+        lNested    = stripSpan <$> parens literal
+        litTuple   = mkTuple   <$> (parens $ commaSep1 qualifiedLiteral)
+
+        mkTuple [x] = stripSpan <$> x
+        mkTuple l   = LC.tuple l
+        stripSpan l = maybe l (l @-) $ l @~ isLSpan
+
+lRecord :: LiteralParser
+lRecord = litError "record" $ LC.record <$> braces idQLitList
+
+lEmpty :: LiteralParser
+lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
+  where mkEmpty l a = foldl (@+) l a 
+        typedEmpty = LC.empty <$> (keyword "empty" *> tRecord) 
+
+lCollection :: LiteralParser
+lCollection = litError "collection" $
+              mkCollection <$> braces (choice [try singleField, multiField])
+                           <*> (option [] (symbol "@" *> lAnnotations))
+  where 
+    singleField =     (symbol "|" *> idQType <* symbol "|")
+                  >>= mkSingletonRecord (commaSep1 literal <* symbol "|")
+        
+    multiField  = (\a b c -> ((a:b), c))
+                    <$> (symbol "|" *> idQType <* comma)
+                    <*> commaSep1 idQType
+                    <*> (symbol "|" *> commaSep1 literal <* symbol "|")
+        
+    mkCollection (tyl, el) a = foldl (@+) ((LC.collection (TC.record tyl) el) @+ LImmutable) a
+
+    mkSingletonRecord p (n,t) =
+      p >>= return . ([(n,t)],) . map (LC.record . (:[]) . (n,) . (@+ LImmutable))
+
+lAnnotations :: K3Parser [Annotation Literal]
+lAnnotations = braces $ commaSep1 (mkLAnnotation <$> identifier)
+  where mkLAnnotation x = LAnnotation x
+
+lAddress :: LiteralParser
+lAddress = litError "address" $ LC.address <$> ipAddress <* colon <*> port
+  where ipAddress = LC.string <$> (some $ choice [alphaNum, oneOf "."])
+        port = LC.int . fromIntegral <$> natural
+
+
 {- Identifiers and their list forms -}
+
 idList :: K3Parser [Identifier]
 idList = commaSep identifier
 
@@ -840,6 +945,9 @@ idPairList = commaSep idPair
 
 idQExprList :: K3Parser [(Identifier, K3 Expression)]
 idQExprList = commaSep idQExpr
+
+idQLitList :: K3Parser [(Identifier, K3 Literal)]
+idQLitList = commaSep idQLit
 
 {- Note: unused
 idQTypeList :: K3Parser [(Identifier, K3 Type)]
@@ -851,6 +959,9 @@ idPair = (,) <$> identifier <*> (colon *> identifier)
 
 idQExpr :: K3Parser (Identifier, K3 Expression)
 idQExpr = (,) <$> identifier <*> (colon *> qualifiedExpr)
+
+idQLit :: K3Parser (Identifier, K3 Literal)
+idQLit = (,) <$> identifier <*> (colon *> qualifiedLiteral)
 
 idQType :: K3Parser (Identifier, K3 Type)
 idQType = (,) <$> identifier <*> (colon *> qualifiedTypeExpr)

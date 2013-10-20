@@ -9,8 +9,6 @@
 module Language.K3.Runtime.Engine (
     FrameDesc(..)
   , WireDesc(..)
-  , PeerBootstrap
-  , SystemEnvironment
   , MessageProcessor(..)
 
   , Engine(..)
@@ -27,7 +25,6 @@ module Language.K3.Runtime.Engine (
   , EEndpoints
 
   , defaultConfig
-  , defaultSystem
 
   , simpleQueues
   , perPeerQueues
@@ -127,33 +124,21 @@ module Language.K3.Runtime.Engine (
 
 ) where
 
-import Control.Arrow hiding (left)
 import Control.Applicative
 import Control.Concurrent
-import Control.Concurrent.MVar
 import Control.Concurrent.MSampleVar
-import qualified Control.Concurrent.MSem as MSem
-import Control.Concurrent.MSem (MSem)
-import Control.Exception (throwIO)
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Function
-import Data.Functor
 import qualified Data.HashMap.Lazy as H
 import Data.List
 import Data.List.Split (wordsBy)
 
-import Debug.Trace
-
 import qualified System.IO as SIO
 import System.Process
 import System.Mem.Weak (Weak)
-
-import Text.Read hiding (lift)
 
 import Network.Socket (withSocketsDo)
 import qualified Network.Transport     as NT
@@ -164,8 +149,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
-import qualified Language.K3.Core.Constructor.Expression as EC
-import qualified Language.K3.Core.Constructor.Type       as TC
+import Language.K3.Runtime.Common
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -174,6 +158,7 @@ $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
 
+-- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
@@ -209,13 +194,6 @@ data EngineConfiguration = EngineConfiguration { address           :: Address
                                                , connectionRetries :: Int
                                                , waitForNetwork    :: Bool }
 
--- | A bootstrap environment for a peer.
-type PeerBootstrap = [(Identifier, K3 Expression)]
-
--- | A system environment, to bootstrap a set of deployed peers.
-type SystemEnvironment = [(Address, PeerBootstrap)]
-
-
 {- Message processing -}
 
 data EngineControl = EngineControl {
@@ -250,9 +228,9 @@ data LoopStatus res err = Result res | Error err | MessagesDone res
 
 -- | Each backend provides must provide a message processor which can handle the initialization of
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
-data MessageProcessor inits prog msg res err = MessageProcessor {
+data MessageProcessor prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
-    initialize :: inits -> prog -> EngineM msg res,
+    initialize :: prog -> EngineM msg res,
 
     -- | Process a single message.
     process    :: (Address, Identifier, msg) -> res -> EngineM msg res,
@@ -402,6 +380,8 @@ peerEndpointId addr = internalEndpointPrefix ++ "_node_" ++ show addr
 externalEndpointId :: Identifier -> Bool
 externalEndpointId = not . isPrefixOf internalEndpointPrefix
 
+
+{- Configurations -}
 defaultConfig :: EngineConfiguration
 defaultConfig = EngineConfiguration { address           = defaultAddress
                                     , defaultBufferSpec = bufferSpec
@@ -410,20 +390,12 @@ defaultConfig = EngineConfiguration { address           = defaultAddress
   where
     bufferSpec = BufferSpec { maxSize = 100, batchSize = 10 }
 
-defaultSystem :: SystemEnvironment
-defaultSystem = [(defaultAddress, [ ("me", defaultAddressExpr)
-                                  , ("peers", defaultPeersExpr)
-                                  , ("role", defaultRoleExpr)])]
-  where defaultAddressExpr = EC.address (EC.constant $ CString "127.0.0.1") (EC.constant $ CInt 40000)
-        defaultPeersExpr = EC.empty TC.address
-        defaultRoleExpr = EC.constant $ CString ""
-
-{- Configurations -}
 configureWithAddress :: Address -> EngineConfiguration
 configureWithAddress addr = EngineConfiguration addr bufSpec connRetries wforNet
   where bufSpec = defaultBufferSpec defaultConfig
         connRetries = connectionRetries defaultConfig
         wforNet = waitForNetwork defaultConfig
+
 
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)
@@ -460,33 +432,33 @@ perTriggerQueues peers triggerIds =
 --   to ensure it cannot send internal messages.
 simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
 simulationEngine systemEnv (internalizeWD -> internalWD) = do
-  config          <- return $ configureWithAddress $ head $ deployedNodes systemEnv
+  config'         <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
-  workers         <- newEmptyMVar >>= return . Uniprocess
-  listeners       <- newMVar []
+  workers'        <- newEmptyMVar >>= return . Uniprocess
+  listeners'      <- newMVar []
   q               <- case deployedNodes systemEnv of
                       [addr] -> simpleQueues addr
                       _      -> perPeerQueues $ deployedNodes systemEnv
-  endpoints       <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
-  externalConns   <- emptyConnectionMap . externalSendAddress . address $ config
+  endpoints'      <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
+  externalConns   <- emptyConnectionMap . externalSendAddress . address $ config'
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine config internalWD ctrl systemEnv q workers listeners endpoints connState
+  return $ Engine config' internalWD ctrl systemEnv q workers' listeners' endpoints' connState
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
 networkEngine systemEnv (internalizeWD -> internalWD) = do
-  config        <- return $ configureWithAddress $ head peers
+  config'       <- return $ configureWithAddress $ head peers
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
-  workers       <- newEmptyMVar >>= return . Uniprocess
+  workers'      <- newEmptyMVar >>= return . Uniprocess
   listnrs       <- newMVar []
   q             <- perPeerQueues peers
-  endpoints     <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
-  internalConns <- emptyConns internalSendAddress config >>= return . Just
-  externalConns <- emptyConns externalSendAddress config
+  endpoints'    <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
+  internalConns <- emptyConns internalSendAddress config' >>= return . Just
+  externalConns <- emptyConns externalSendAddress config'
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState
+  engine        <- return $ Engine config' internalWD ctrl systemEnv q workers' listnrs endpoints' connState
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -494,7 +466,7 @@ networkEngine systemEnv (internalizeWD -> internalWD) = do
 
   where
     peers                      = deployedNodes systemEnv
-    emptyConns addrF config    = emptyConnectionMap . addrF . address $ config
+    emptyConns addrF config'   = emptyConnectionMap . addrF . address $ config'
     startNetwork = mapM_ runPeerEndpoint peers
     runPeerEndpoint addr = openSocketInternal (peerEndpointId addr) addr "r"
 
@@ -552,10 +524,10 @@ deregisterNetworkListener n = do
 
 terminate :: EngineM a Bool
 terminate = do
-    engine <- ask
-    terminate <- liftIO $ readMVar (terminateV $ control engine)
-    done <- networkDone
-    return $ done || not (waitForNetwork $ config engine) && terminate
+    engine     <- ask
+    terminate' <- liftIO $ readMVar (terminateV $ control engine)
+    done       <- networkDone
+    return $ done || not (waitForNetwork $ config engine) && terminate'
 
 networkDone :: EngineM a Bool
 networkDone = do
@@ -570,7 +542,7 @@ waitForMessage = do
 
 -- | Process a single message within the engine, given the message processor to use, and the
 -- previous message result. Return the status of the loop.
-processMessage :: MessageProcessor i p a r e -> r -> EngineM a (LoopStatus r e)
+processMessage :: MessageProcessor p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
     message <- dequeue $ queues engine
@@ -582,8 +554,8 @@ processMessage mp pr = do
         return $ either Error Result (status mp nextResult)
 
 runMessages :: (Pretty r, Pretty e, Show a)
-            => MessageProcessor i p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
-runMessages mp status = ask >>= \engine -> status >>= \case
+            => MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+runMessages mp status' = ask >>= \engine -> status' >>= \case
     Result r       -> debugStep >> runMessages mp (processMessage mp r)
     Error e        -> die "Error:" e (control engine)
     MessagesDone r -> terminate >>= \case
@@ -599,15 +571,15 @@ runMessages mp status = ask >>= \engine -> status >>= \case
     die msg r cntrl = do
         logStep $ boxToString $ ["", msg] ++ prettyLines r
         cleanupEngine
-        liftIO $ tryPutMVar (waitV cntrl) ()
+        void $ liftIO $ tryPutMVar (waitV cntrl) ()
         logStep $ "Finished."
 
     logStep s = void $ _notice_EngineSteps $ s
 
-runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ()
-runEngine mp is p = do
+runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
+runEngine mp p = do
     engine <- ask
-    result <- initialize mp is p
+    result <- initialize mp p
     liftIO $ case workers engine of
         Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
         Multithreaded _     -> error "Unsupported engine mode: Multithreaded"
@@ -615,8 +587,8 @@ runEngine mp is p = do
 
     runMessages mp (return . either Error Result $ status mp result)
 
-forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor i p a r e -> i -> p -> EngineM a ThreadId
-forkEngine mp is p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp is p) engine
+forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ThreadId
+forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp p) engine
 
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
@@ -644,10 +616,10 @@ cleanupEngine = do
 -- TODO: log errors on ErrorEvent
 internalListenerProcessor :: ListenerProcessor (InternalMessage a) a
 internalListenerProcessor (engineSync -> (msgAvail, _)) buf _ = do
-    engine <- ask
-    buffer <- enqueueEBuffer (queues engine) buf
+    engine  <- ask
+    buffer' <- enqueueEBuffer (queues engine) buf
     liftIO $ writeSV msgAvail ()
-    return buffer
+    return buffer'
 
 externalListenerProcessor :: ListenerProcessor a a
 externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep = do
@@ -682,7 +654,7 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
                     [] -> flip appendEBuffer b mg >>= \case
                             (nb, Nothing) -> return (nb, [])
                             (nb, Just m)  -> return (nb, [OverflowError m])
-                    ls -> return (b, ls ++ [PropagatedError mg])
+                    l  -> return (b, l ++ [PropagatedError mg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
     endpointError s = close (name ls) >> (liftIO $ putStrLn s) -- TODO: close vs closeInternal
@@ -777,10 +749,10 @@ ioMode s    = error $ "Invalid IO mode: " ++ s
 genericOpenBuiltin :: Identifier -> Identifier -> WireDesc a -> EEndpoints a b -> EngineM b ()
 genericOpenBuiltin eid (builtin -> b) wd eps = do
     let file = BuiltinH wd (builtinHandle b) b
-    let buffer = case b of
+    let buffer' = case b of
                    Stdin -> Nothing
                    _     -> Just $ Exclusive emptySingletonBuffer
-    void $ addEndpoint eid (file, buffer, []) eps
+    void $ addEndpoint eid (file, buffer', []) eps
 
 
 -- | File endpoint constructor.
@@ -790,8 +762,8 @@ genericOpenFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type)
                 -> EngineM b ()
 genericOpenFile eid path wd _ mode eps = do
     file <- liftIO $ openFileHandle path wd (ioMode mode)
-    let buffer = Just $ Exclusive emptySingletonBuffer
-    void $ addEndpoint eid (file, buffer, []) eps
+    let buffer' = Just $ Exclusive emptySingletonBuffer
+    void $ addEndpoint eid (file, buffer', []) eps
     case ioMode mode of
         SIO.ReadMode -> void $ genericDoRead eid eps -- Prime the file's buffer.
         _ -> return ()
@@ -802,7 +774,7 @@ genericOpenFile eid path wd _ mode eps = do
 genericOpenSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type)
                   -> String -> ListenerState a b -> EEndpoints a b
                   -> EngineM b ()
-genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
+genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints' = do
     engine <- ask
     let cfm = case mode of
             SIO.WriteMode -> getConnections eid (connections engine)
@@ -816,7 +788,7 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
         engine <- ask
         let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
         buf <- liftIO (shared t >>= return . Just)
-        e <- addEndpoint eid (ioh, buf, []) endpoints
+        e <- addEndpoint eid (ioh, buf, []) endpoints'
         wkThreadId <- forkEndpoint e
         registerNetworkListener (eid, wkThreadId)
 
@@ -824,7 +796,7 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
         engine <- ask
         let t = emptyBoundedBuffer $ defaultBufferSpec $ config engine
         buf <- liftIO (shared t >>= return . Just)
-        void $ addEndpoint eid (ioh, buf, []) endpoints
+        void $ addEndpoint eid (ioh, buf, []) endpoints'
 
     forkEndpoint e = do
         engine <- ask
@@ -832,12 +804,12 @@ genericOpenSocket eid addr wd _ (ioMode -> mode) lst endpoints = do
         liftIO $ mkWeakThreadId tid
 
 genericClose :: String -> EEndpoints a b -> EngineM b ()
-genericClose n endpoints = getEndpoint n endpoints >>= \case
+genericClose n endpoints' = getEndpoint n endpoints' >>= \case
     Nothing -> return ()
     Just e  -> do
         closeHandle (handle e)
         deregister (networkSource $ handle e)
-        removeEndpoint n endpoints
+        removeEndpoint n endpoints'
         notifySubscribers (notifyType $ handle e) (subscribers e)
   where
     deregister = maybe (return ()) (const $ deregisterNetworkListener n)
@@ -846,7 +818,7 @@ genericClose n endpoints = getEndpoint n endpoints >>= \case
     notifyType (SocketH _ _)    = SocketClose
 
 genericHasRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
-genericHasRead n endpoints = getEndpoint n endpoints >>= \case
+genericHasRead n endpoints' = getEndpoint n endpoints' >>= \case
     Nothing -> return Nothing
     Just e  -> do
       readable      <- liftIO (maybe (return True) SIO.hIsReadable $ getSystemHandle $ handle e)
@@ -854,7 +826,7 @@ genericHasRead n endpoints = getEndpoint n endpoints >>= \case
       return . Just $ readable && (not invalidBuffer)
 
 genericDoRead :: Identifier -> EEndpoints a b -> EngineM b (Maybe a)
-genericDoRead n endpoints = getEndpoint n endpoints >>= maybe (return Nothing) refresh
+genericDoRead n endpoints' = getEndpoint n endpoints' >>= maybe (return Nothing) refresh
   where
     refresh e = do
       let h = handle e
@@ -862,7 +834,7 @@ genericDoRead n endpoints = getEndpoint n endpoints >>= maybe (return Nothing) r
       updateAndYield e readInfo
 
     updateAndYield e (nBufOpt, (vOpt, notifyType)) = do
-      addEndpoint n (handle e, nBufOpt, subscribers e) endpoints
+      void $ addEndpoint n (handle e, nBufOpt, subscribers e) endpoints'
       notify notifyType (subscribers e)
       return vOpt
 
@@ -880,12 +852,12 @@ genericDoRead n endpoints = getEndpoint n endpoints >>= maybe (return Nothing) r
     validRead v = (Nothing, (Just v, Just FileData))
     
     readError msg = do
-      void $ genericClose n endpoints 
+      void $ genericClose n endpoints'
       void $ (liftIO $ putStrLn $ msg ++ " (doRead)")
       return emptyRead
 
 genericHasWrite :: Identifier -> EEndpoints a b -> EngineM b (Maybe Bool)
-genericHasWrite n endpoints = getEndpoint n endpoints >>= \case
+genericHasWrite n endpoints' = getEndpoint n endpoints' >>= \case
     Nothing -> return Nothing
     Just e -> do
       writeable     <- liftIO (maybe (return True) SIO.hIsWritable $ getSystemHandle $ handle e)
@@ -893,7 +865,7 @@ genericHasWrite n endpoints = getEndpoint n endpoints >>= \case
       return . Just $ writeable && not invalidBuffer
 
 genericDoWrite :: Identifier -> a -> EEndpoints a b -> EngineM b ()
-genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) write
+genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ()) write
   where
     write e = do
       let h    = handle e
@@ -909,7 +881,7 @@ genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) w
         (_, Just _)   -> overflowError
 
     update h subs (nBuf, notifyType) = do
-      void $ addEndpoint n (h, Just nBuf, subs) endpoints
+      void $ addEndpoint n (h, Just nBuf, subs) endpoints'
       notify notifyType subs
 
     notify Nothing _ = return ()
@@ -920,7 +892,7 @@ genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) w
     notification _                         = Just FileData
 
     overflowError =
-      genericClose n endpoints
+      genericClose n endpoints'
         >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
 
 
@@ -956,6 +928,7 @@ doRead n = ask >>= genericDoRead n . externalEndpoints . endpoints
 
 doWrite :: Identifier -> a -> EngineM a ()
 doWrite n arg = ask >>= genericDoWrite n arg . externalEndpoints . endpoints
+
 
 {- Internal endpoint methods -}
 
@@ -997,12 +970,13 @@ doReadInternal n = ask >>= genericDoRead n . internalEndpoints . endpoints
 doWriteInternal :: Identifier -> InternalMessage a -> EngineM a ()
 doWriteInternal n arg = ask >>= genericDoWrite n arg . internalEndpoints . endpoints
 
+
 {- IO Handle methods -}
 
 getSystemHandle :: IOHandle a -> Maybe SIO.Handle
 getSystemHandle h = case h of
-  BuiltinH _ h _  -> Just h
-  FileH    _ h    -> Just h
+  BuiltinH _ h' _  -> Just h'
+  FileH    _ h'    -> Just h'
   SocketH  _ _    -> Nothing
 
 networkSource :: IOHandle a -> Maybe (WireDesc a, NEndpoint)
@@ -1010,7 +984,7 @@ networkSource (SocketH wd (Left ep)) = Just (wd, ep)
 networkSource _ = Nothing
 
 networkSink :: IOHandle a -> Maybe (WireDesc a, NConnection)
-networkSink (SocketH wd (Right conn)) = Just (wd, conn)
+networkSink (SocketH wd (Right conn')) = Just (wd, conn')
 networkSink _ = Nothing
 
 -- | Open an external file, with given wire description and file path.
@@ -1105,6 +1079,7 @@ removeEndpoint n eps = liftIO $ modifyMVar_ eps $ return . H.delete n
 getEndpoint :: Identifier -> EEndpoints a b -> EngineM b (Maybe (Endpoint a b))
 getEndpoint n eps = liftIO $ withMVar eps (return . H.lookup n)
 
+
 {- Connection and connection map accessors -}
 
 llAddress :: Address -> NT.EndPointAddress
@@ -1115,8 +1090,8 @@ newConnection :: Address -> NEndpoint -> EngineM a (Maybe NConnection)
 newConnection addr (endpoint -> ep) = liftIO $
   NT.connect ep (llAddress addr) NT.ReliableOrdered NT.defaultConnectHints
     >>= either connectionError connectionSuccess
-  where connectionSuccess   = return . Just . flip NConnection addr
-        connectionError err = return Nothing
+  where connectionSuccess = return . Just . flip NConnection addr
+        connectionError _ = return Nothing
 
 emptyConnectionMap :: Address -> IO (MVar EConnectionMap)
 emptyConnectionMap addr = liftIO $ newMVar $ EConnectionMap { anchor = (addr, Nothing), cache = [] }
@@ -1135,8 +1110,7 @@ modifyConnectionMap connsMV modifyF = liftIO $ modifyMVar connsMV modifyF
 -- TODO: Verify exception-safety of this translation to EngineM.
 addConnection :: Address -> MVar EConnectionMap -> EngineM a (Maybe NConnection)
 addConnection addr conns = do
-    c@(anchor -> (anchorAddr, Nothing)) <- liftIO $ readMVar conns
-
+    c <- liftIO $ readMVar conns
     case c of
         (anchor -> (anchorAddr, Nothing)) -> newEndpoint anchorAddr >>= \case
             Nothing -> return Nothing
@@ -1150,7 +1124,7 @@ addConnection addr conns = do
             Nothing -> return Nothing
             Just c' -> liftIO $ swapMVar conns (add c c') >> return (Just c')
 
-    connection _ = error "Invalid connection map, no anchor endpoint found."
+    connect _ = throwEngineError $ EngineError "Invalid connection map, no anchor endpoint found."
 
     add cs c = EConnectionMap (anchor cs) $ (addr, c):(cache cs)
 
@@ -1177,6 +1151,7 @@ clearConnections cm = liftIO (withConnectionMap cm (\x -> return (snd $ anchor x
         clearC conns      = mapM_ (flip removeConnection cm . fst) conns
         clearE Nothing    = return ()
         clearE (Just ep)  = closeEndpoint ep
+
 
 {- Endpoint Notifiers -}
 
@@ -1321,13 +1296,13 @@ takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ return . takeEBContents
 
 flushEBContents :: IOHandle v -> BufferContents v
-                    -> IO (BufferContents v, Maybe EndpointNotification)
+                -> IO (BufferContents v, Maybe EndpointNotification)
 flushEBContents (networkSource -> Just _) _ = error "Invalid buffer flush for network source"
 flushEBContents h c =  case batch c of
                         ([], nc) -> return (nc, Nothing)
                         (x, nc)  -> mapM_ (flip writeHandle h) x >> return (nc, notification h x)
 
-  where batch c@(Single Nothing)  = ([], c)
+  where batch c'@(Single Nothing)  = ([], c')
         batch (Single (Just x)) = ([x], Single Nothing)
         batch (Multiple x s) = let (a,b) = splitAt (batchSize s) x in (a, Multiple b s)
 
@@ -1339,17 +1314,17 @@ flushEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, Maybe En
 flushEBuffer h = modifyEBuffer $ flushEBContents h
 
 refreshEBContents :: IOHandle v -> BufferContents v
-                     -> IO (BufferContents v, (Maybe v, Maybe EndpointNotification))
+                  -> IO (BufferContents v, (Maybe v, Maybe EndpointNotification))
 
 -- For now, ignore the buffer for reading from builtins.
 refreshEBContents f@(BuiltinH _ _ _) c =
   readHandle f >>= (\vOpt -> return (c,(vOpt, maybe Nothing (const $ Just FileData) vOpt)))
 
 refreshEBContents f@(FileH _ _) c = refill $ takeEBContents c
-  where refill (c, vOpt) | refillPolicy c = readHandle f >>= return . rebuild c >>= (\(x,y) -> return (x, (vOpt, y)))
-                         | otherwise      = return (c, (vOpt, Nothing))
+  where refill (c', vOpt) | refillPolicy c' = readHandle f >>= return . rebuild c' >>= (\(x,y) -> return (x, (vOpt, y)))
+                          | otherwise       = return (c, (vOpt, Nothing))
 
-        rebuild (Single _)     = maybe (Single Nothing, Nothing) (\c -> (Single $ Just c, Just FileData))
+        rebuild (Single _)     = maybe (Single Nothing, Nothing) (\c' -> (Single $ Just c', Just FileData))
         rebuild (Multiple x s) = maybe (Multiple x s, Nothing)   (\y -> (Multiple (x++[y]) s, Just FileData))
 
         refillPolicy = emptyEBContents
@@ -1361,22 +1336,25 @@ refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe
 refreshEBuffer h = modifyEBuffer $ refreshEBContents h
 
 enqueueEBContents :: MessageQueues a -> BufferContents (InternalMessage a)
-    -> EngineM a (BufferContents (InternalMessage a))
+                  -> EngineM a (BufferContents (InternalMessage a))
 enqueueEBContents q = \case
   Single Nothing             -> return emptySingletonBuffer
   Single (Just (addr, n, v)) -> enqueue q addr n v >> return emptySingletonBuffer
   Multiple x spec            -> mapM_ (\(addr, n, v) -> enqueue q addr n v) x >> return (emptyBoundedBuffer spec)
 
 enqueueEBuffer :: MessageQueues a -> EndpointBuffer (InternalMessage a)
-    -> EngineM a (EndpointBuffer (InternalMessage a))
+               -> EngineM a (EndpointBuffer (InternalMessage a))
 enqueueEBuffer q = modifyEBuffer'_ $ enqueueEBContents q
 
 modifyEBuffer' :: (BufferContents b -> EngineM c (BufferContents b, a)) -> EndpointBuffer b
-    -> EngineM c (EndpointBuffer b, a)
+               -> EngineM c (EndpointBuffer b, a)
 modifyEBuffer' f (Exclusive c) = f c >>= \(a, b) -> return (Exclusive a, b)
 modifyEBuffer' f (Shared mvc) = modifyMVE mvc f >>= return . (Shared mvc,)
 
+modifyEBuffer'_ :: (BufferContents b -> EngineM c (BufferContents b)) -> EndpointBuffer b
+                -> EngineM c (EndpointBuffer b)
 modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return . fst
+
 
 {- Pretty printing helpers -}
 
@@ -1417,4 +1395,4 @@ modifyMVE v f = do
         Right (r, x) -> (r, Right (r, x))
     case result of
         Left e -> left e
-        Right (r, x) -> return x
+        Right (_, x) -> return x

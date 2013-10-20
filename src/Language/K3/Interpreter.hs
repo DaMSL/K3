@@ -50,9 +50,7 @@ import Data.IORef
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
-import Debug.Trace
 
-import qualified System.IO          as SIO (stdout, hFlush)
 import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
@@ -61,8 +59,10 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
+import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment, defaultSystem )
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
@@ -166,6 +166,12 @@ type CInitializer v = () -> Interpretation (MVar (Collection v))
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
 
+{- Misc. helpers-}
+
+details :: K3 a -> (a, [K3 a], [Annotation a])
+details (Node (tg :@: anns) ch) = (tg, ch, anns)
+
+
 {- State and result accessors -}
 
 emptyState :: IState
@@ -217,8 +223,8 @@ liftEngine = lift . lift . lift
 -- | Checks the result of running an interpretation for an error, and 
 --   lifts any error present to the engine monad.
 liftError :: String -> IResult a -> EngineM b (IResult a)
-liftError msg r = either rethrow pass $ getResultVal r 
-  where pass    = const $ return r
+liftError msg r = either rethrow pass' $ getResultVal r 
+  where pass'   = const $ return r
         rethrow = throwEngineError . EngineError . (++ (" " ++ msg)) . show
 
 -- | Test if a variable is defined in the current interpretation environment.
@@ -273,21 +279,6 @@ sendE addr n val = liftEngine $ send addr n val
 vunit :: Value
 vunit = VTuple []
 
-emptyCollectionNamespace :: CollectionNamespace Value
-emptyCollectionNamespace = CollectionNamespace [] []
-
-emptyCollectionBody :: Identifier -> Collection Value
-emptyCollectionBody n = Collection emptyCollectionNamespace [] n
-
-defaultCollectionBody :: [Value] -> Collection Value
-defaultCollectionBody v = Collection emptyCollectionNamespace v collectionAnnotationId
-
-emptyAnnotatedCollection :: Identifier -> Interpretation Value
-emptyAnnotatedCollection n = liftIO (newMVar $ emptyCollectionBody n) >>= return . VCollection 
-
-emptyCollection :: Interpretation Value
-emptyCollection = emptyAnnotatedCollection ""
-
 
 {- Identifiers -}
 collectionAnnotationId :: Identifier
@@ -312,6 +303,46 @@ annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
 annotationComboIdE (namedEAnnotations -> [])  = Nothing
 annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 
+annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
+annotationComboIdL (namedLAnnotations -> [])  = Nothing
+annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
+
+{- Collection initialization -}
+
+emptyCollectionNamespace :: CollectionNamespace Value
+emptyCollectionNamespace = CollectionNamespace [] []
+
+initialCollectionBody :: Identifier -> [Value] -> Collection Value
+initialCollectionBody n vals = Collection emptyCollectionNamespace vals n
+
+emptyCollectionBody :: Identifier -> Collection Value
+emptyCollectionBody n = initialCollectionBody n []
+
+defaultCollectionBody :: [Value] -> Collection Value
+defaultCollectionBody vals = initialCollectionBody collectionAnnotationId vals
+
+initialCollection :: [Value] -> Interpretation Value
+initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= return . VCollection
+
+emptyCollection :: Interpretation Value
+emptyCollection = initialCollection []
+
+
+-- | These methods create a valid namespace by performing a lookup based on the annotation combo id.
+initialAnnotatedCollectionBody :: Identifier -> [Value] -> Interpretation (MVar (Collection Value))
+initialAnnotatedCollectionBody comboId vals = do
+    (initF, _) <- lookupACombo comboId
+    cmv        <- initF ()
+    void $ liftIO (modifyMVar_ cmv (\(Collection ns _ cid) -> return $ Collection ns vals cid))
+    return cmv
+
+initialAnnotatedCollection :: Identifier -> [Value] -> Interpretation Value
+initialAnnotatedCollection comboId vals =
+  initialAnnotatedCollectionBody comboId vals >>= return . VCollection
+
+emptyAnnotatedCollection :: Identifier -> Interpretation Value
+emptyAnnotatedCollection comboId = initialAnnotatedCollection comboId []
+
 
 {- Interpretation -}
 
@@ -323,13 +354,24 @@ defaultValue (tag -> TInt)        = return $ VInt 0
 defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
 defaultValue (tag -> TOption)     = return $ VOption Nothing
-defaultValue (tag -> TCollection) = emptyCollection -- TODO: annotations from type
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
 defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
 defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
-defaultValue _ = undefined
+defaultValue
+ (tag &&& annotations -> (TCollection, anns)) = 
+  (getComposedAnnotationT anns) >>= maybe emptyCollection emptyAnnotatedCollection
+
+{- TODO: 
+  TSource
+  TSink
+  TTrigger
+  TBuiltIn TypeBuiltIn
+  TForall [TypeVarDecl]
+  TDeclaredVar Identifier
+-}
+defaultValue t = throwE . RunTimeTypeError $ "Cannot create default value for " ++ show t
 
 -- | Interpretation of Constants.
 constant :: Constant -> [Annotation Expression] -> Interpretation Value
@@ -339,8 +381,7 @@ constant (CByte w)   _ = return $ VByte w
 constant (CReal r)   _ = return $ VReal r
 constant (CString s) _ = return $ VString s
 constant (CNone _)   _ = return $ VOption Nothing
-constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection initEmptyCollection
-  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . fst >>= return . VCollection
+constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection emptyAnnotatedCollection
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -501,16 +542,16 @@ expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
     VRecord vr -> maybe (unknownField i) return $ lookup i vr
 
     VCollection cmv -> do
-      Collection ns ds extId <- liftIO $ readMVar cmv
+      Collection ns _ extId <- liftIO $ readMVar cmv
       if null extId then unannotatedCollection else case lookup i $ collectionNS ns of
         Nothing -> unknownCollectionMember i (map fst $ collectionNS ns)
         Just v' -> return v'
 
     _ -> throwE $ RunTimeTypeError "Invalid Record Projection"
   
-  where unknownField i              = throwE $ RunTimeTypeError $ "Unknown record field " ++ i
-        unannotatedCollection       = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
-        unknownCollectionMember i n = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i ++ "(valid " ++ show n ++ ")"
+  where unknownField i'              = throwE $ RunTimeTypeError $ "Unknown record field " ++ i'
+        unannotatedCollection        = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
+        unknownCollectionMember i' n = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i' ++ "(valid " ++ show n ++ ")"
 
 expression (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
 
@@ -586,6 +627,48 @@ expression (tag -> ESelf) = lookupE annotationSelfId
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
+
+{- Literal interpretation -}
+
+literal :: K3 Literal -> Interpretation Value
+literal (tag -> LBool b)   = return $ VBool b
+literal (tag -> LByte b)   = return $ VByte b
+literal (tag -> LInt b)    = return $ VInt b
+literal (tag -> LReal b)   = return $ VReal b
+literal (tag -> LString b) = return $ VString b
+literal (tag -> LNone _)   = return $ VOption Nothing
+
+literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . Just
+literal (tag -> LSome) = throwE $ RunTimeTypeError "Invalid option literal"
+
+literal (tag &&& children -> (LIndirect, [x])) = literal x >>= liftIO . newIORef >>= return . VIndirection
+literal (tag -> LIndirect) = throwE $ RunTimeTypeError "Invalid indirection literal"
+
+literal (tag &&& children -> (LTuple, ch)) = mapM literal ch >>= return . VTuple
+literal (tag -> LTuple) = throwE $ RunTimeTypeError "Invalid tuple literal"
+
+literal (tag &&& children -> (LRecord ids, ch)) = mapM literal ch >>= return . VRecord . zip ids
+literal (tag -> LRecord _) = throwE $ RunTimeTypeError "Invalid record literal"
+
+literal (details -> (LEmpty _, [], anns)) =
+  getComposedAnnotationL anns >>= maybe emptyCollection initEmptyCollection
+  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . fst >>= return . VCollection
+
+literal (tag -> LEmpty _) = throwE $ RunTimeTypeError "Invalid empty literal"
+
+literal (details -> (LCollection _, elems, anns)) = do
+  cElems <- mapM literal elems
+  getComposedAnnotationL anns
+    >>= maybe (initialCollection cElems) (flip initialAnnotatedCollection cElems)
+
+literal (details -> (LAddress, [h,p], _)) = mapM literal [h,p] >>= \case 
+  [VString a, VInt b] -> return . VAddress $ Address (a,b)
+  _     -> throwE $ RunTimeTypeError "Invalid address literal"
+
+literal (tag -> LAddress) = throwE $ RunTimeTypeError "Invalid address literal" 
+
+literal _ = throwE $ RunTimeTypeError "Invalid literal"
+
 {- Declaration interpretation -}
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
@@ -596,13 +679,13 @@ global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
 global _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 global _ (tag -> TSource) _           = return ()
-global n (tag -> TFunction) _         = return () -- Functions have already been initialized.
+global _ (tag -> TFunction) _         = return () -- Functions have already been initialized.
 
 global n t@(tag -> TCollection) eOpt = elemE n >>= \case
   True  -> void . getComposedAnnotationT $ annotations t
-  False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection eOpt . maybe "" id
+  False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection . maybe "" id
   where
-    initializeCollection eOpt comboId = case eOpt of
+    initializeCollection comboId = case eOpt of
       Nothing | not (null comboId) -> lookupACombo comboId >>= \(initC,_) -> initC () >>= modifyE . (:) . (n,) . VCollection
       Just e  | not (null comboId) -> expression e >>= verifyInitialCollection comboId
 
@@ -670,8 +753,8 @@ annotation n vdecls memberDecls = do
 annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl 
                     -> Interpretation (Maybe (Identifier, Value))
 annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
-  (True,  Lifted    Provides n t (Just e) uid) | matchF t -> interpretExpr n e
-  (False, Attribute Provides n t (Just e) uid) | matchF t -> interpretExpr n e
+  (True,  Lifted    Provides n t (Just e) _)   | matchF t -> interpretExpr n e
+  (False, Attribute Provides n t (Just e) _)   | matchF t -> interpretExpr n e
   (True,  Lifted    Provides n t Nothing  uid) | matchF t -> builtinLiftedAttribute annId n t uid
   (False, Attribute Provides n t Nothing  uid) | matchF t -> builtinAttribute annId n t uid
   _ -> return Nothing
@@ -687,13 +770,16 @@ getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, na
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
 getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
 
+getComposedAnnotationL :: [Annotation Literal] -> Interpretation (Maybe Identifier)
+getComposedAnnotationL anns = getComposedAnnotation (annotationComboIdL anns, namedLAnnotations anns) 
+
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
   Nothing      -> return Nothing
   Just comboId -> tryLookupACombo comboId 
-                    >>= (\cOpt -> initializeComposition comboId annNames cOpt >> return (Just comboId))
+                    >>= (\cOpt -> initializeComposition comboId cOpt >> return (Just comboId))
   where
-    initializeComposition comboId annNames = \case
+    initializeComposition comboId = \case
       Nothing -> mapM (\x -> lookupADef x >>= return . (x,)) annNames
                    >>= addComposedAnnotation comboId
       Just _  -> return ()
@@ -702,7 +788,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
       modifyACombos . (:) . (comboId,) $ mkCBinder comboId namedAnnDefs
 
     mkCBinder comboId namedAnnDefs =
-      (mkInitializer comboId namedAnnDefs, mkConstructor comboId namedAnnDefs)
+      (mkInitializer comboId namedAnnDefs, mkConstructor namedAnnDefs)
 
     mkInitializer :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitializer Value
     mkInitializer comboId namedAnnDefs = const $ do
@@ -711,8 +797,8 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
       return newCMV
 
-    mkConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkConstructor comboId namedAnnDefs = \coll -> do
+    mkConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
+    mkConstructor namedAnnDefs = \coll -> do
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       return newCMV
@@ -720,7 +806,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
 
-    bindMember cmv annId (n, VFunction _) = return ()
+    bindMember _ _ (_, VFunction _) = return ()
     bindMember cmv annId (n, v) =
       liftIO $ modifyMVar_ cmv (\(Collection (CollectionNamespace cns ans) ds extId) ->
         let (cns', ans') = extendNamespace cns ans annId n v
@@ -745,9 +831,9 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
 contextualizeFunction :: MVar (Collection Value) -> (Value -> Interpretation Value, Closure Value) -> Value
 contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
-      bindings <- liftCollection cmv
+      bindings <- liftCollection
       result   <- f x >>= return . contextualizeResult
-      lowerCollection cmv bindings result
+      lowerCollection bindings result
 
   where
     contextualizeResult (VFunction f') = contextualizeFunction cmv f'
@@ -758,13 +844,13 @@ contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
     -- ii. handle aliases, e.g., 'self.x' and 'x'. 
     --     Also, this needs to be done more generally for bind as expressions.
     -- iii. handle lowering of annotation-specific namespaces
-    liftCollection cmv = do
-      Collection (CollectionNamespace cns _) ds extId <- liftIO $ readMVar cmv
+    liftCollection = do
+      Collection (CollectionNamespace cns _) _ _ <- liftIO $ readMVar cmv
       bindings <- return $ cns ++ [(annotationSelfId, VCollection cmv)]
       void $ modifyE (bindings ++)
       return bindings
 
-    lowerCollection cmv bindings result = do
+    lowerCollection bindings result = do
         newNsInfo <- lowerBindings bindings
         void $ liftIO $ modifyMVar_ cmv $ \(Collection ns ds extId) -> 
           return (Collection (rebuildNamespace ns newNsInfo) ds extId)
@@ -889,7 +975,7 @@ providesError kind n = error $
 
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
-builtinLiftedAttribute annId n t uid 
+builtinLiftedAttribute annId n _ _ 
   | annId == "Collection" && n == "peek"    = return $ Just (n, peekFn)
   | annId == "Collection" && n == "insert"  = return $ Just (n, insertFn)
   | annId == "Collection" && n == "delete"  = return $ Just (n, deleteFn)
@@ -911,10 +997,10 @@ builtinLiftedAttribute annId n t uid
           return $ VCollection c'
 
         -- | Collection accessor implementation
-        peekFn = valWithCollection $ \_ (Collection ns ds extId) -> 
+        peekFn = valWithCollection $ \_ (Collection _ ds _) -> 
           case ds of
             []    -> return $ VOption Nothing
-            (h:t) -> return . VOption $ Just h
+            (h:_) -> return . VOption $ Just h
 
         -- | Collection modifier implementation
         insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
@@ -928,14 +1014,14 @@ builtinLiftedAttribute annId n t uid
         updateCollection v v' (Collection ns ds extId) = return $ Collection ns ((delete v ds)++[v']) extId
 
         -- | Collection effector implementation
-        iterateFn = valWithCollection $ \f (Collection ns ds extId) -> 
+        iterateFn = valWithCollection $ \f (Collection _ ds _) -> 
           flip (matchFunction iterateFnError) f $
           \f' -> mapM_ (withClosure f') ds >> return vunit
 
         -- | Collection transformer implementation
         combineFn = valWithCollection $ \other (Collection ns ds extId) ->
           flip (matchCollection collectionError) other $ 
-            \(Collection ns' ds' extId') ->
+            \(Collection _ ds' extId') ->
               if extId /= extId' then combineError
               else copy $ Collection ns (ds++ds') extId
 
@@ -945,7 +1031,7 @@ builtinLiftedAttribute annId n t uid
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
 
-        mapFn = valWithCollection $ \f (Collection ns ds extId) ->
+        mapFn = valWithCollection $ \f (Collection _ ds _) ->
           flip (matchFunction mapFnError) f $ 
             \f'  -> mapM (withClosure f') ds >>= 
             \ds' -> copy (defaultCollectionBody ds')
@@ -955,14 +1041,14 @@ builtinLiftedAttribute annId n t uid
             \f'  -> filterM (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
             \ds' -> copy (Collection ns ds' extId)
 
-        foldFn = valWithCollection $ \f (Collection ns ds extId) ->
+        foldFn = valWithCollection $ \f (Collection _ ds _) ->
           flip (matchFunction foldFnError) f $
             \f' -> ivfun $ \accInit -> foldM (curryFoldFn f') accInit ds
 
         curryFoldFn f' acc v = withClosure f' acc >>= (matchFunction curryFnError) (flip withClosure v)
 
         -- TODO: replace assoc lists with a hashmap.
-        groupByFn = valWithCollection $ \gb (Collection ns ds extId) ->
+        groupByFn = valWithCollection $ \gb (Collection _ ds _) ->
           flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
           flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
             do
@@ -976,7 +1062,7 @@ builtinLiftedAttribute annId n t uid
             Nothing         -> curryFoldFn f' accInit v    >>= return . (acc++) . (:[]) . (k,)
             Just partialAcc -> curryFoldFn f' partialAcc v >>= return . replaceAssoc acc k 
 
-        extFn = valWithCollection $ \f (Collection ns ds extId) -> 
+        extFn = valWithCollection $ \f (Collection _ ds _) -> 
           flip (matchFunction extError) f $ 
           \f' -> do
                     vals <- mapM (withClosure f') ds
@@ -991,7 +1077,7 @@ builtinLiftedAttribute annId n t uid
         -- TODO: make more efficient by avoiding intermediate MVar construction.
         combine' (Just acc) (Just cv) =
           flip (matchCollection $ return Nothing) acc $ \(Collection ns1 ds1 extId1) -> 
-          flip (matchCollection $ return Nothing) cv  $ \(Collection ns2 ds2 extId2) -> 
+          flip (matchCollection $ return Nothing) cv  $ \(Collection _ ds2 extId2) -> 
           if extId1 /= extId2 then return Nothing
           else copy (Collection ns1 (ds1++ds2) extId1) >>= return . Just
 
@@ -1009,19 +1095,19 @@ builtinLiftedAttribute annId n t uid
           lookupE annotationSelfId >>= matchCollectionMV collectionError (f arg)
 
         matchCollection :: Interpretation a -> (Collection Value -> Interpretation a) -> Value -> Interpretation a
-        matchCollection err f (VCollection cmv) = liftIO (readMVar cmv) >>= f
+        matchCollection _ f (VCollection cmv) = liftIO (readMVar cmv) >>= f
         matchCollection err _  _ =  err
 
         matchCollectionMV :: Interpretation a -> (MVar (Collection Value) -> Interpretation a) -> Value -> Interpretation a
-        matchCollectionMV err f (VCollection cmv) = f cmv
+        matchCollectionMV _ f (VCollection cmv) = f cmv
         matchCollectionMV err _ _ = err
 
         matchFunction :: a -> ((Value -> Interpretation Value, Closure Value) -> a) -> Value -> a
-        matchFunction err f (VFunction f') = f f'
+        matchFunction _ f (VFunction f') = f f'
         matchFunction err _ _ = err
 
         matchBool :: Interpretation Bool -> Value -> Interpretation Bool
-        matchBool err (VBool b) = return b
+        matchBool _ (VBool b) = return b
         matchBool err _ = err
 
 
@@ -1041,8 +1127,8 @@ builtinLiftedAttribute annId n t uid
 
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
-                    -> Interpretation (Maybe (Identifier, Value))
-builtinAttribute annId n t uid = providesError "attribute" n
+                 -> Interpretation (Maybe (Identifier, Value))
+builtinAttribute _ n _ _ = providesError "attribute" n
 
 
 {- Program initialization methods -}
@@ -1070,7 +1156,7 @@ initEnvironment decl st =
     -- environment construction. This way, all global functions can be mutually recursive.
     -- Note that since we only initialize functions, no declaration can force function
     -- evaluation during initialization (e.g., as would be the case with variable initializers).
-    initFunction st' n t (Just e) = initializeExpr st' n e
+    initFunction st' n _ (Just e) = initializeExpr st' n e
     initFunction st' n t Nothing  = initializeBinding st' $ builtin n t
 
     initializeExpr st' n e = initializeBinding st' (expression e >>= modifyE . (:) . (n,))
@@ -1099,26 +1185,29 @@ initMessages = \case
     ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-injectBootstrap :: PeerBootstrap -> K3 Declaration -> K3 Declaration
-injectBootstrap bootstrap prog = mapTree rebuildNode prog
-  where rebuildNode newCh d@(tag -> DGlobal n t eOpt) = case lookup n bootstrap of
-          Nothing -> rebuildGlobal n t eOpt (annotations d) newCh
-          Just e  -> rebuildGlobal n t (Just e) (annotations d) newCh
-        rebuildNode newCh (Node d _) = Node d newCh
-        rebuildGlobal n t eOpt anns ch = Node ((DGlobal n t eOpt) :@: anns) ch
+initBootstrap :: PeerBootstrap -> EngineM Value (IEnvironment Value)
+initBootstrap bootstrap = flip mapM bootstrap (\(n,l) ->
+    runInterpretation' emptyState (literal l) 
+      >>= liftError "(initializing bootstrap)"
+      >>= either invalidErr (return . (n,)) . getResultVal)
+  where invalidErr = const $ throwEngineError $ EngineError "Invalid result"
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
 initProgram bootstrap prog = do
-  let prog' = injectBootstrap bootstrap prog
-  st       <- initState prog'
-  r        <- runInterpretation' st (declaration prog')
-  initMessages r        
+    env <- initBootstrap bootstrap
+    st  <- initState prog
+    st' <- return $ injectBootstrap st env
+    r   <- runInterpretation' st' (declaration prog)
+    initMessages r
+  where injectBootstrap (globals, vEnv, annEnv) bootEnv = 
+          (globals, map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv, annEnv)
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
   where runFinal (VFunction (f,[])) = f vunit
         runFinal _                  = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger              = throwE $ RunTimeTypeError "Could not find atExit trigger"
+
 
 {- Standalone (i.e., single peer) evaluation -}
 
@@ -1134,13 +1223,14 @@ runExpression e = standaloneInterpreter (withEngine')
 runExpression_ :: K3 Expression -> IO ()
 runExpression_ e = runExpression e >>= putStrLn . show
 
+
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
 runProgram systemEnv prog = do
     engine <- simulationEngine systemEnv syntaxValueWD
-    flip runEngineM engine $ runEngine virtualizedProcessor systemEnv prog
+    flip runEngineM engine $ runEngine virtualizedProcessor prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
@@ -1152,24 +1242,25 @@ runNetwork systemEnv prog =
     engineThreads <- mapM fork namedEngines
     return engineThreads
   where
-    pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine, bootstrap)
-    fork (addr, engine, bootstrap) = do
-      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor bootstrap prog
+    pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
+    fork (addr, engine) = do
+      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor prog
       return $ either Left (Right . (addr, engine,)) threadId
+
 
 {- Message processing -}
 
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
     (VTrigger (_, Just f)) -> runInterpretation' (getResultState r) (f a)
-    (VTrigger _)           -> return . iError r $ "Uninitialized trigger " ++ n
-    _                      -> return . tError r $ "Invalid trigger or sink value for " ++ n
+    (VTrigger _)           -> return . iError $ "Uninitialized trigger " ++ n
+    _                      -> return . tError $ "Invalid trigger or sink value for " ++ n
 
-  where iError r = mkError r . RunTimeInterpretationError
-        tError r = mkError r . RunTimeTypeError
+  where iError = mkError r . RunTimeInterpretationError
+        tError = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
-uniProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value (IResult Value) (IResult Value)
+uniProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 uniProcessor = MessageProcessor {
     initialize = initUP,
     process = processUP,
@@ -1177,8 +1268,9 @@ uniProcessor = MessageProcessor {
     finalize = finalizeUP,
     report = reportUP
 } where
-    initUP [] prog = initProgram [] prog
-    initUP ((_,is):_) prog = initProgram is prog
+    initUP prog = ask >>= flip initProgram prog . uniBootstrap . deployment
+    uniBootstrap [] = []
+    uniBootstrap ((_,is):_) = is
 
     statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
     finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
@@ -1193,7 +1285,7 @@ uniProcessor = MessageProcessor {
 
     unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
-virtualizedProcessor :: MessageProcessor SystemEnvironment (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
+virtualizedProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 virtualizedProcessor = MessageProcessor {
     initialize = initializeVP,
     process = processVP,
@@ -1201,11 +1293,11 @@ virtualizedProcessor = MessageProcessor {
     finalize = finalizeVP,
     report = reportVP
 } where
-    initializeVP systemEnv program = do
+    initializeVP program = do
         engine <- ask
-        sequence [initNode node systemEnv program | node <- nodes engine]
+        sequence [initNode node program (deployment engine) | node <- nodes engine]
 
-    initNode node systemEnv program = do
+    initNode node program systemEnv = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program
         logResult "INIT " node iProgram
@@ -1296,16 +1388,16 @@ showResult str r =
 
 showDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
 showDispatch addr name args r =
-    wrap <$> liftIO (prettyValue args)
+    wrap' <$> liftIO (prettyValue args)
          <*> (showResult "BEFORE" r >>= return . indent 2)
   where
-    wrap arg res = ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
-                     ++ ["  Args: " ++ arg] 
-                     ++ res ++ ["}"]
+    wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
+                  ++ ["  Args: " ++ arg] 
+                  ++ res ++ ["}"]
 
 logResult :: String -> Address -> IResult Value -> EngineM Value ()
-logResult tag addr r = do
-    msg <- showResult (tag ++ show addr) r 
+logResult tag' addr r = do
+    msg <- showResult (tag' ++ show addr) r 
     void $ _notice_Dispatch $ boxToString msg
 
 logTrigger :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
@@ -1370,8 +1462,8 @@ instance Show Value where
   showsPrec d (VCollection _)  = showsPrecTagF "VCollection"  d $ showString "<opaque>"
   showsPrec d (VIndirection _) = showsPrecTagF "VIndirection" d $ showString "<opaque>"
   showsPrec d (VFunction _)    = showsPrecTagF "VFunction"    d $ showString "<function>"
-  showsPrec d (VTrigger (n, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
-  showsPrec d (VTrigger (n, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
+  showsPrec d (VTrigger (_, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
+  showsPrec d (VTrigger (_, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
 
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
@@ -1465,18 +1557,18 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     rt = return
     packValue :: Int -> Value -> IO ShowS
     packValue d = \case
-      VBool v        -> rt $ showsPrec d v
-      VByte v        -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v)
-      VInt v         -> rt $ showsPrec d v
-      VReal v        -> rt $ showsPrec d v
-      VString v      -> rt $ showsPrec d v
-      VOption vOpt   -> packOpt d vOpt
-      VTuple v       -> parens (packValue $ d+1) v
-      VRecord v      -> packNamedValues (d+1) v
+      VBool v'     -> rt $ showsPrec d v'
+      VByte v'     -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v')
+      VInt v'      -> rt $ showsPrec d v'
+      VReal v'     -> rt $ showsPrec d v'
+      VString v'   -> rt $ showsPrec d v'
+      VOption vOpt -> packOpt d vOpt
+      VTuple v'    -> parens' (packValue $ d+1) v'
+      VRecord v'   -> packNamedValues (d+1) v'
       
       VCollection c  -> packCollectionPrec (d+1) c      
-      VIndirection r -> readIORef r >>= (\v -> (.) <$> rt (showChar 'I') <*> packValue (d+1) v)
-      VAddress v     -> rt $ showsPrec d v
+      VIndirection r -> readIORef r >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValue (d+1) v')
+      VAddress v'    -> rt $ showsPrec d v'
 
       VFunction _    -> (forTransport ? error $ (rt . showString)) funSym
       VTrigger (n,_) -> (forTransport ? error $ (rt . showString)) $ trigSym n
@@ -1484,36 +1576,36 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     funSym    = "<function>"
     trigSym n = "<trigger " ++ n ++ " >"
 
-    parens   = packCustomList "(" ")" ","
+    parens'  = packCustomList "(" ")" ","
     braces   = packCustomList "{" "}" ","
     brackets = packCustomList "[" "]" ","
 
     packOpt d vOpt =
       maybe (rt ("Nothing "++)) 
-            (\v -> packValue appPrec1 v >>= \showS -> rt (showParen (d > appPrec) ("Just " ++) . showS))
+            (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) ("Just " ++) . showS))
             vOpt
 
     packCollectionPrec d cmv = do
-      Collection (CollectionNamespace cns ans) v extId <- readMVar cmv 
-      wrap "{" "}" ((\a b c d -> a . b . c . d)
+      Collection (CollectionNamespace cns ans) v' extId <- readMVar cmv 
+      wrap' "{" "}" ((\a b c d' -> a . b . c . d')
         <$> packCollectionNamespace (d+1) (cns, ans)
         <*> rt (showChar ',')
-        <*> packCollectionDataspace (d+1) v
+        <*> packCollectionDataspace (d+1) v'
         <*> rt (showChar ',' . showString extId))
 
     packCollectionNamespace d (cns, ans) =
-      (\a b c d e -> a . b . c . d . e)
+      (\a b c d' e -> a . b . c . d' . e)
         <$> rt (showString "CNS=") <*> packNamedValues d cns
         <*> rt (showChar ',')
         <*> rt (showString "ANS=") <*> braces (packDoublyNamedValues d) ans
     
-    packCollectionDataspace d v =
-      (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v
+    packCollectionDataspace d v' =
+      (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v'
     
     packDoublyNamedValues d (n, nv)  = (.) <$> rt (showString $ n ++ "=") <*> packNamedValues d nv
 
-    packNamedValues d nv       = braces (packNamedValuePrec d) nv
-    packNamedValuePrec d (n,v) = (.) <$> rt (showString n . showChar '=') <*> packValue d v
+    packNamedValues d nv        = braces (packNamedValuePrec d) nv
+    packNamedValuePrec d (n,v') = (.) <$> rt (showString n . showChar '=') <*> packValue d v'
 
     packCustomList :: String -> String -> String -> (a -> IO ShowS) -> [a] -> IO ShowS
     packCustomList lWrap rWrap _ _ []             = rt $ \s -> lWrap ++ rWrap ++ s
@@ -1521,7 +1613,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
       where packl []     = rt $ \s -> rWrap ++ s
             packl (y:ys) = (\a b -> (sep++) . a . b) <$> packF y <*> packl ys
 
-    wrap lWrap rWrap packx =
+    wrap' lWrap rWrap packx =
       (\a b c -> a . b . c) <$> rt (showString lWrap) <*> packx <*> rt (showString rWrap)
 
     appPrec  = 10
@@ -1680,4 +1772,4 @@ unpackValueSyntax = readSingleParse unpackValue
 
 
 instance (Show v) => Show (AEnvironment v) where
-  show (AEnvironment defs composed) = show defs
+  show (AEnvironment defs _) = show defs
