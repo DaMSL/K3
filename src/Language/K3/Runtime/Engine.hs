@@ -25,7 +25,6 @@ module Language.K3.Runtime.Engine (
   , EEndpoints
 
   , defaultConfig
-  , defaultSystem
 
   , simpleQueues
   , perPeerQueues
@@ -163,11 +162,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
-import qualified Language.K3.Core.Constructor.Expression as EC
-import qualified Language.K3.Core.Constructor.Literal    as LC
-import qualified Language.K3.Core.Constructor.Type       as TC
-
-import Language.K3.Runtime.Deployment ( PeerBootstrap, SystemEnvironment )
+import Language.K3.Runtime.Common
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -176,6 +171,7 @@ $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
 
+-- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
@@ -397,6 +393,8 @@ peerEndpointId addr = internalEndpointPrefix ++ "_node_" ++ show addr
 externalEndpointId :: Identifier -> Bool
 externalEndpointId = not . isPrefixOf internalEndpointPrefix
 
+
+{- Configurations -}
 defaultConfig :: EngineConfiguration
 defaultConfig = EngineConfiguration { address           = defaultAddress
                                     , defaultBufferSpec = bufferSpec
@@ -405,20 +403,12 @@ defaultConfig = EngineConfiguration { address           = defaultAddress
   where
     bufferSpec = BufferSpec { maxSize = 100, batchSize = 10 }
 
-defaultSystem :: SystemEnvironment
-defaultSystem = [(defaultAddress, [ ("me",    defaultAddressExpr)
-                                  , ("peers", defaultPeersExpr)
-                                  , ("role",  defaultRoleExpr)])]
-  where defaultAddressExpr = LC.address (LC.string "127.0.0.1") (LC.int 40000)
-        defaultPeersExpr = (LC.empty TC.address) @+ (LAnnotation "Collection")
-        defaultRoleExpr = LC.string ""
-
-{- Configurations -}
 configureWithAddress :: Address -> EngineConfiguration
 configureWithAddress addr = EngineConfiguration addr bufSpec connRetries wforNet
   where bufSpec = defaultBufferSpec defaultConfig
         connRetries = connectionRetries defaultConfig
         wforNet = waitForNetwork defaultConfig
+
 
 {- Wire descriptions -}
 exprWD :: WireDesc (K3 Expression)

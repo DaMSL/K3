@@ -10,9 +10,8 @@ import Text.Parser.Token
 
 import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Literal as LC
-
 import Language.K3.Parser
-import Language.K3.Runtime.Deployment ( PeerBootstrap, SystemEnvironment )
+import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 
 peerBReader :: String -> Either ParseError (Address, PeerBootstrap)
 peerBReader peerDesc = either (Left . ErrorMsg . show) Right $ runK3Parser parser peerDesc
