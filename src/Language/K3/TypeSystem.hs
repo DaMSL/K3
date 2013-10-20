@@ -11,17 +11,21 @@ import Control.Arrow
 import Control.Monad.Writer
 import Control.Monad.Trans.Either
 import qualified Data.Foldable as Foldable
+import Data.Functor.Identity
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
+import Data.Traversable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Declaration as DC
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data
@@ -157,10 +161,45 @@ doTypecheck aEnv env rEnv ast = do
             _ -> Just decl
         _ -> Just decl
 
+
 -- |Driver wrapper function for typechecking
-typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult)
-typecheckProgram p = typecheck Map.empty Map.empty Map.empty p
--- NOTE: the above function should not be used once a module system is in place
+-- NOTE: this function should not be used once a module system is in place
+typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult, K3 Declaration)
+typecheckProgram p = 
+  let (errs, result) = typecheck Map.empty Map.empty Map.empty p
+  in (errs, result, case tcExprBounds result of
+        Nothing     -> p
+        Just bounds -> annotateProgramTypes p bounds)
+
+-- | Attaches type bounds as expression annotations to a program.
+annotateProgramTypes :: K3 Declaration -> Map UID (K3 Type, K3 Type) -> K3 Declaration
+annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
+  where
+    annotateDecl (dt :@: anns) = return . (:@: anns) $ case dt of
+      DGlobal n t (Just e)   -> DGlobal n t . Just . runIdentity $ traverse annotateExpr e
+      DTrigger n t e         -> DTrigger n t . runIdentity $ traverse annotateExpr e
+      DAnnotation n tis mems -> DAnnotation n tis $ map annotateAnnMem mems
+      _ -> dt
+    
+    annotateExpr e@(_ :@: anns) = return $ case partition isEType anns of
+      ([], rest) -> maybe e (\(lb,ub) -> (e @+ ETypeLB lb) @+ ETypeUB ub) $ 
+                      Map.lookup (getEUID rest) typeBounds
+
+      (_,_)      -> e
+
+    annotateAnnMem (Lifted p' n t (Just e) uid) =
+      flip (Lifted p' n t) uid . Just . runIdentity $ traverse annotateExpr e
+    
+    annotateAnnMem (Attribute p' n t (Just e) uid) =
+      flip (Lifted p' n t) uid . Just . runIdentity $ traverse annotateExpr e
+    
+    annotateAnnMem x = x    
+
+    getEUID anns = case filter isEUID anns of
+      [EUID uid] -> uid
+      []         -> error "No uid found for expression"
+      _          -> error "Multiple UIDs found for expression"
+
 
 -- |A simple monad type for sanity checking.
 newtype SanityM a = SanityM { unSanityM :: Either TypeError a }

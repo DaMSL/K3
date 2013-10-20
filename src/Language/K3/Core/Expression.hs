@@ -5,6 +5,7 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Data.List
 import Data.Tree
 import Data.Word (Word8)
 
@@ -91,18 +92,41 @@ data instance Annotation Expression
     | EImmutable
     | EAnnotation Identifier
     | ESyntax SyntaxAnnotation
-    | EType (K3 Type)
+    | ETypeLB (K3 Type)
+    | ETypeUB (K3 Type)
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Read, Show)
 
 instance Pretty (K3 Expression) where
-    prettyLines (Node (ETuple :@: as) []) = ["EUnit" ++ drawAnnotations as]
+    prettyLines (Node (ETuple :@: as) []) = 
+      let (annStr, tAnnStrs) = drawExprAnnotations as
+      in ["EUnit" ++ annStr] ++ (shift "`- " "   " tAnnStrs)
     
     prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
-        ["EConstant CEmpty" ++ drawAnnotations as, "|"] ++ prettyLines t
+      let (annStr, tAnnStrs) = drawExprAnnotations as
+      in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " tAnnStrs) ++ ["|"] ++ prettyLines t
     
-    prettyLines (Node (t :@: as) es) = (show t ++ drawAnnotations as) : drawSubTrees es
+    prettyLines (Node (t :@: as) es) =
+      let (annStr, tAnnStrs) = drawExprAnnotations as
+          shiftedTAnns       = if null es then (shift "`- " "   " tAnnStrs)
+                                          else (shift "+- " "|  " tAnnStrs)
+      in
+      [show t ++ annStr] ++ shiftedTAnns ++ drawSubTrees es
+
+drawExprAnnotations :: [Annotation Expression] -> (String, [String])
+drawExprAnnotations as = 
+  let (typeAnns, anns) = partition isEType as
+      prettyTypeAnns   = case typeAnns of
+                          []    -> []
+                          [l,u] -> drawETypeAnnotation l %+ indent 2 (drawETypeAnnotation u)
+                          _     -> error "Invalid type bound annotations"
+  in (drawAnnotations anns, prettyTypeAnns)
+
+  where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
+        drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
+        drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
+
 
 {- Expression annotation predicates -}
 
@@ -122,6 +146,11 @@ isEUID _        = False
 isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
+
+isEType :: Annotation Expression -> Bool
+isEType (ETypeLB _) = True
+isEType (ETypeUB _) = True
+isEType _           = False
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns
