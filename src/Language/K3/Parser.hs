@@ -150,14 +150,12 @@ mkSpan :: P.SourcePos -> P.SourcePos -> Span
 mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
                                    (P.sourceLine e) (P.sourceColumn e)
 
-{-                                   
 spanned :: K3Parser a -> K3Parser (a, Span)
 spanned parser = do
   start <- PP.getPosition
   result <- parser
   end <- PP.getPosition
   return (result, mkSpan start end)
--}
 
 infixl 1 <->
 infixl 1 #
@@ -568,8 +566,7 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
               , ("content",TContent) ]
 
 tDeclared :: TypeParser
-tDeclared = typeExprError "declared" $ ( TUID # ) $
-              TC.declaredVar <$> identifier
+tDeclared = typeExprError "declared" $ ( TUID # ) $ TC.declaredVar <$> identifier
 
 tAnnotations :: K3Parser [Annotation Type]
 tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
@@ -599,10 +596,10 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 eTerm :: ExpressionParser
 eTerm = do
   e <- EUID # (ESpan <-> rawTerm)
-  mi <- optional eProject
+  mi <- optional (spanned eProject)
   case mi of
     Nothing -> return e
-    Just i -> EUID # return (EC.project i e) -- TODO: span
+    Just (i, sp) -> EUID # (return $ (EC.project i e) @+ ESpan sp)
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ (try eAssign),
@@ -635,9 +632,7 @@ eTerminal = choice [eConstant,
                     eVariable]
 
 eConstant :: ExpressionParser
-eConstant = exprError "constant" $ choice [eCBool,
-                                           try eCNumber,
-                                           eCString]
+eConstant = exprError "constant" $ choice [eCBool, try eCNumber, eCString]
 
 eCBool :: ExpressionParser
 eCBool = (EC.constant . CBool) <$>
@@ -669,9 +664,9 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
   where unit          = symbol "(" *> symbol ")" >> return (EC.tuple [])
         eNested       = stripSpan  <$> parens expr
         eTupleOrSend  = do
-          elements <- parens $ commaSep1 qualifiedExpr
-          msuffix <- optional sendSuffix
-          mkTupOrSend elements msuffix        
+                          elements <- parens $ commaSep1 qualifiedExpr
+                          msuffix <- optional sendSuffix
+                          mkTupOrSend elements msuffix        
         sendSuffix    = symbol "<-" *> nonSeqExpr
 
         mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
@@ -688,6 +683,71 @@ eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
+
+eLambda :: ExpressionParser
+eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
+
+eApp :: ExpressionParser
+eApp = do
+  eTerms <- some (try eTerm) -- Have m [a], need [m a], ambivalent to effects
+  try $ foldl1 mkApp $ map return eTerms
+  where
+    mkApp :: ExpressionParser -> ExpressionParser -> ExpressionParser
+    mkApp x y = EUID # binOpSpan (EC.binop OApp) <$> x <*> y
+
+eCondition :: ExpressionParser
+eCondition = exprError "conditional" $
+  EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
+
+eAssign :: ExpressionParser
+eAssign = exprError "assign" $ mkAssign <$> sepBy1 identifier dot <*> equateNSExpr
+  where mkAssign [] _  = error "Invalid identifier list"
+        mkAssign [n] e = EC.assign n e
+        mkAssign l e   = 
+          let syms     = snd $ foldl pairSym (0::Int,[]) l
+              wSyms    = zip (init syms) (tail syms)
+              bindSyms = ((\((_,pn), (s,n)) -> (s,pn,n)) $ head wSyms)
+                          : (map (\((ps,_),(s,n)) -> (s,ps,n)) . tail $ wSyms)
+          in 
+          foldr (\(sym, prevSym, x) e' ->
+                    EC.bindAs (EC.variable prevSym) (BRecord [(x, sym)]) e')
+                (EC.assign ((\(x,_,_) -> x) $ last bindSyms) e) bindSyms
+
+        pairSym (cnt,acc) n = (cnt+1,acc++[("__"++n++"_asn"++(show cnt), n)])
+
+eLet :: ExpressionParser
+eLet = exprError "let" $ EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
+
+eCase :: ExpressionParser
+eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
+                                  <*> (braces eCaseSome) <*> (braces eCaseNone)
+  where eCaseSome = (,) <$> (iArrow "Some") <*> expr
+        eCaseNone = (keyword "None" >> symbol "->") *> expr
+        mkCase e (x, s) n = EC.caseOf e x s n
+
+eBind :: ExpressionParser
+eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind") 
+                                     <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
+
+eBinder :: BinderParser
+eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
+
+bindInd :: K3Parser Binder
+bindInd = BIndirection <$> iPrefix "ind"
+
+bindTup :: K3Parser Binder
+bindTup = BTuple <$> parens idList
+
+bindRec :: K3Parser Binder
+bindRec = BRecord <$> braces idPairList
+
+eAddress :: ExpressionParser
+eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
+  where ipAddress = EUID # EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
+        port = EUID # EC.constant . CInt . fromIntegral <$> natural
+
+eSelf :: ExpressionParser
+eSelf = exprError "self" $ keyword "self" >> return EC.self
 
 -- TODO: treating collection literals as immutable will fail when initializing mutable collections.
 eCollection :: ExpressionParser
@@ -794,57 +854,6 @@ iArrow k = iPrefix k <* symbol "->"
 
 iArrowS :: String -> K3Parser Identifier
 iArrowS s = symbol s *> identifier <* symbol "->"
-
-eLambda :: ExpressionParser
-eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
-
-eApp :: ExpressionParser
-eApp = do
-  eTerms <- some (try eTerm) -- Have m [a], need [m a], ambivalent to effects
-  try $ foldl1 mkApp $ map return eTerms
-  where
-    mkApp :: ExpressionParser -> ExpressionParser -> ExpressionParser
-    mkApp x y = EUID # binOpSpan (EC.binop OApp) <$> x <*> y
-
-eCondition :: ExpressionParser
-eCondition = exprError "conditional" $EC.ifThenElse <$> (nsPrefix "if") <*> (ePrefix "then") <*> (ePrefix "else")
-
-eAssign :: ExpressionParser
-eAssign = exprError "assign" $ EC.assign <$> identifier <*> equateNSExpr
-
-eLet :: ExpressionParser
-eLet = exprError "let" $ EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
-
-eCase :: ExpressionParser
-eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
-                                  <*> (braces eCaseSome) <*> (braces eCaseNone)
-  where eCaseSome = (,) <$> (iArrow "Some") <*> expr
-        eCaseNone = (keyword "None" >> symbol "->") *> expr
-        mkCase e (x, s) n = EC.caseOf e x s n
-
-eBind :: ExpressionParser
-eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind") 
-                                     <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
-
-eBinder :: BinderParser
-eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
-
-bindInd :: K3Parser Binder
-bindInd = BIndirection <$> iPrefix "ind"
-
-bindTup :: K3Parser Binder
-bindTup = BTuple <$> parens idList
-
-bindRec :: K3Parser Binder
-bindRec = BRecord <$> braces idPairList
-
-eAddress :: ExpressionParser
-eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
-  where ipAddress = EUID # EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
-        port = EUID # EC.constant . CInt . fromIntegral <$> natural
-
-eSelf :: ExpressionParser
-eSelf = exprError "self" $ keyword "self" >> return EC.self
 
 
 {- Literal values -}
@@ -1168,8 +1177,8 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 
             DRole n -> rebuildDecl d uid $ DRole n
             DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
-              -- ^ TODO: recur through members (e.g., attributes w/ initializers)
-              --   and ensure they have a uid
+              --  TODO: recur through members (e.g., attributes w/ initializers)
+              --  and ensure they have a uid
 
         rebuildDecl (_ :@: as) uid tg =
           let d' = tg :@: as in
