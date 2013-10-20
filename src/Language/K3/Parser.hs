@@ -357,11 +357,13 @@ parseK3 includePaths s = do
 
 -- TODO: inline testing
 program :: Bool -> DeclParser
-program asInclude = DSpan <-> (rule >>= mkEntryPoints >>= mkBuiltins)
+program asInclude = DSpan <-> (rule >>= selfContainedProgram)
   where rule = mkProgram <$> endBy (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
+        
+        selfContainedProgram d = if asInclude then return d else (mkEntryPoints d >>= mkBuiltins)
         mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
-        mkBuiltins = ensureUIDs . (if asInclude then id else declareBuiltins)
+        mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
 roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n

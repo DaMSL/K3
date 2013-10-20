@@ -1,8 +1,8 @@
 declare x : mut int = 0
 
-trigger t : { a : immut int } = \r ->
+trigger t : { a : int } = \r ->
   x = r.a
 
-source s1 : { a : immut int } = value {a : immut 5}
+source s1 : { a : int } = value {a : 5}
 
 feed s1 |> t
