@@ -5,8 +5,6 @@ import Data.Char
 
 import Options.Applicative
 
-import Language.K3.TypeSystem
-
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
@@ -14,6 +12,7 @@ import Language.K3.Utils.Pretty.Syntax
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
+import Language.K3.Driver.Typecheck
 import qualified Language.K3.Compiler.Haskell as HaskellC
 
 
@@ -31,11 +30,11 @@ dispatch op = do
     Compile   c -> compile c
     Interpret i -> interpret i
     Print     p -> printer p
+    Typecheck   -> k3Program >>= either parseError typecheck
 
-  where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of 
-          "types"   -> k3Program >>= either parseError (putStrLn . show . typecheckProgram)
+  where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
-          _         -> error "Compiler not yet implemented."
+          _         -> error $ lang ++ " compilation not supported."
 
         interpret im@(Batch _ _ _) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
