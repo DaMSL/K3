@@ -527,7 +527,7 @@ expression (tag &&& children -> (ELambda i, [b])) =
         closure :: Interpretation (Closure Value)
         closure = do
           globals <- get >>= return . getGlobals
-          vars    <- return $ filter (\n -> n /= i && not (elem n globals)) $ freeVariables b
+          vars    <- return $ filter (\n -> n /= i && n `notElem` globals) $ freeVariables b
           vals    <- mapM lookupE vars
           return $ zip vars vals
 
@@ -585,9 +585,10 @@ expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> c
     (BRecord ids, VRecord ivs) -> do
         let (idls, idbs) = unzip $ sortBy (compare `on` fst) ids
         let (ivls, ivvs) = unzip $ sortBy (compare `on` fst) ivs
-        if idls == ivls
-            then modifyE ((++) (zip idbs ivvs)) >> expression f >>= refreshBinding >>= removeAllE (zip idbs ivvs)
-            else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
+        if idls == idls
+          then modifyE ((++) (zip idbs ivvs)) >> expression f >>= refreshBinding >>= removeAllE (zip idbs ivvs)
+          else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
+    
     _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
   
   -- TODO: support run-time determination of refresh targets, e.g., 
@@ -633,9 +634,9 @@ expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 literal :: K3 Literal -> Interpretation Value
 literal (tag -> LBool b)   = return $ VBool b
 literal (tag -> LByte b)   = return $ VByte b
-literal (tag -> LInt b)    = return $ VInt b
-literal (tag -> LReal b)   = return $ VReal b
-literal (tag -> LString b) = return $ VString b
+literal (tag -> LInt i)    = return $ VInt i
+literal (tag -> LReal r)   = return $ VReal r
+literal (tag -> LString s) = return $ VString s
 literal (tag -> LNone _)   = return $ VOption Nothing
 
 literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . Just
@@ -1194,13 +1195,17 @@ initBootstrap bootstrap = flip mapM bootstrap (\(n,l) ->
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
 initProgram bootstrap prog = do
-    env <- initBootstrap bootstrap
     st  <- initState prog
-    st' <- return $ injectBootstrap st env
-    r   <- runInterpretation' st' (declaration prog)
-    initMessages r
-  where injectBootstrap (globals, vEnv, annEnv) bootEnv = 
-          (globals, map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv, annEnv)
+    r   <- runInterpretation' st (declaration prog)
+    r'  <- injectBootstrap r
+    initMessages r'
+  where 
+    injectBootstrap x@((Left _, _), _) = return x
+    injectBootstrap ((Right status, (globals, vEnv, annEnv)), logR) = do
+      bootEnv <- initBootstrap bootstrap
+      let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
+      return $ ((Right status, (globals, nvEnv, annEnv)), logR)
+
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st

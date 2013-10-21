@@ -4,6 +4,11 @@ declare c : { m : mut int, n : mut bool } = { m:9, n:false }
 declare d : { d_a : mut int, d_b : mut { db_c : mut int, db_d : mut int} } = { d_a:5, d_b:mut { db_c:mut 100, db_d:mut 1000} }
 
 trigger t : int = \x -> (
+  // Record field assignment does not currently work in the interpreter
+  // and is not supported by the typechecking spec.
+  // The parser does currently desugar this into the correct nested bind form.
+  // d.d_b.db_d = x
+
   bind a as ind y in (
     y = x
   );
@@ -14,8 +19,7 @@ trigger t : int = \x -> (
   bind c as {m:s,n:t} in (
     s = x;
     t = true
-  );
-  d.d_b.db_d = x
+  )
 )
 
 source s1 : int = value 100

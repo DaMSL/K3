@@ -168,9 +168,9 @@ freeVariables = foldMapTree extractVariable []
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs bs)  = filter (`notElem` bindings bs) $ concat chAcc
     extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)   = filter (/= i) $ let [s, n] = chAcc in filter (/= i) s ++ n
+    extractVariable chAcc (tag -> ECaseOf i)   = let [s, n] = chAcc in filter (/= i) s ++ n
     extractVariable chAcc _ = concat chAcc
 
     bindings (BIndirection i) = [i]
     bindings (BTuple is)      = is
-    bindings (BRecord ivs)    = fst (unzip ivs)
+    bindings (BRecord ivs)    = snd (unzip ivs)
