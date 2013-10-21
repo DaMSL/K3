@@ -5,6 +5,7 @@
 module Language.K3.Utils.Pretty (
     pretty,
     boxToString,
+    removeTrailingWhitespace,
 
     Pretty(..),
 

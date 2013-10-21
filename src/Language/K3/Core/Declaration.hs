@@ -82,9 +82,9 @@ instance Pretty (K3 Declaration) where
   prettyLines (Node (DAnnotation i vdecls members :@: as) ds) =
     ["DAnnotation " ++ i
     ++ if null vdecls then "" else
-          ("[" ++ boxToString (foldl1 ((%+) . ([", "] %+))
-                    (map prettyLines vdecls))
-           ++ "]")
+         ("[" ++ (removeTrailingWhitespace . boxToString $
+                   foldl1 (\a b -> a %+ [", "] %+ b) $ map prettyLines vdecls)
+         ++ "]")
     ++ drawAnnotations as, "|"]
     ++ drawAnnotationMembers members
     ++ drawSubTrees ds
