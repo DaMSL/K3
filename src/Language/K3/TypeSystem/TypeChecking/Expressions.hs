@@ -189,10 +189,12 @@ deriveExpression aEnv env expr = do
           expr' <- assert1Child expr
           (a,cs) <- deriveUnqualifiedExpression aEnv env expr'
           (QuantType _ qa _) <- lookupOrFail $ TEnvIdentifier i
-          return (a,cs `csUnion`
-                    csFromList [a <: qa,
-                                MonomorphicQualifiedUpperConstraint qa $
-                                  Set.singleton TMut])
+          a' <- freshTypecheckingUVar u
+          return (a',cs `csUnion`
+                     csFromList [ STuple [] <: a'
+                                , a <: qa
+                                , MonomorphicQualifiedUpperConstraint qa $
+                                   Set.singleton TMut])
         ECaseOf i -> do
           (expr0,expr1,expr2) <- assert3Children expr
           (a0,cs0) <- deriveUnqualifiedExpression aEnv env expr0

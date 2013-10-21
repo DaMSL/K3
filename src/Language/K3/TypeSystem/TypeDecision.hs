@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
+
 {-|
   This module implements the decision procedure used to construct a type
   environment for typechecking.
