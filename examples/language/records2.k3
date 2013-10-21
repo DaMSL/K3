@@ -1,0 +1,10 @@
+declare x : mut int = 0
+
+trigger t : { a : int } = \r -> (
+  let y = { y_a: r.a, y_b : {y_c: r.a, y_d: r.a} } in
+  x = y.y_b.y_c
+)
+
+source s1 : { a : int } = value {a : 5}
+
+feed s1 |> t
