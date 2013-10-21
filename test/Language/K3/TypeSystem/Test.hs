@@ -76,6 +76,6 @@ mkDirectSourceTest path success = do
 parseSource :: String -> String -> Either ParseError (K3 Declaration)
 parseSource name src =
   let parser = join $ mapM ensureUIDs <$>
-                  catMaybes <$> PPrim.many declaration in
+                  concat <$> PPrim.many declaration in
   let tree = role "__global" <$> runParser parser (0,[]) name src in
   tree
