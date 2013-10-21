@@ -1,24 +1,24 @@
-annotation Collection {
-  provides lifted peek    : (() -> option content)
+annotation Collection given type a, b {
+  provides lifted peek    : () -> option content
 
-  provides lifted insert  : (content -> ())
-  provides lifted delete  : (content -> ())
-  provides lifted update  : (content -> content -> ())
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
 
-  provides lifted combine : (self -> self)
-  provides lifted split   : (self -> (self, self))
+  provides lifted combine : self -> self
+  provides lifted split   : self -> (self, self)
 
-  provides lifted iterate : ((content -> ()) -> ())
+  provides lifted iterate : (content -> ()) -> ()
 
-  provides lifted map     : ((content -> int) -> collection { elem : int } @ {Collection})
+  provides lifted map     : (content -> a) -> collection { elem : a } @ {Collection}
 
-  provides lifted filter  : ((content -> bool) -> self)
+  provides lifted filter  : (content -> bool) -> self
 
-  provides lifted fold    : ((int -> content -> int) -> int -> int)
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
 
-  provides lifted groupBy : ((content -> int) -> (int -> content -> int) -> int
-                             -> collection { key : int, value : int } @ {Collection})
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {Collection}
 
-  provides lifted ext     : ((content -> collection { elem : int } @ {Collection}) 
-                             -> collection { elem : int } @ {Collection})
+  provides lifted ext     : (content -> collection { elem : a } @ {Collection}) 
+                             -> collection { elem : a } @ {Collection}
 }
