@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, TemplateHaskell #-}
 
 {-|
   This module provides a routine which manifests a type given a constraint set
@@ -14,6 +14,8 @@ module Language.K3.TypeSystem.Manifestation
 ) where
 
 import Control.Applicative
+import Data.Foldable (Foldable)
+import qualified Data.Foldable as Foldable
 import Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -26,12 +28,26 @@ import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Manifestation.Monad
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
 
 -- |A general top-level function for manifesting a type from a constraint set
 --  and a manifestable entity.
-manifestType :: (Manifestable a) => BoundType -> ConstraintSet -> a -> K3 Type
+manifestType :: (Manifestable a, Pretty a)
+             => BoundType -> ConstraintSet -> a -> K3 Type
 manifestType bt cs x =
-  runManifestM bt cs $ declareOpaques $ manifestTypeFrom $ Set.singleton x
+  let name = getBoundTypeName bt in
+  _debugI (boxToString
+    (["Manifesting " ++ name ++ " bound type for "] %+ prettyLines x %+
+      ["\\{"] %+ prettyLines cs +% ["}"])) $
+  let t = runManifestM bt cs $
+            declareOpaques $ manifestTypeFrom $ Set.singleton x in
+  _debugI (boxToString
+    (["Manifested " ++ name ++ " bound type for "] %+ prettyLines x %+
+      prettyLines cs %$ indent 2 (["Result: "] %+ prettyLines t)))
+  t
   
 -- |A helper routine which will create declarations for opaque variables as
 --  necessary.
@@ -107,43 +123,65 @@ doVariableManifestation :: (BoundType ->
                         -> Set (TVar q)
                         -> ManifestM (K3 Type)
 doVariableManifestation queryGetter vars = do
-  -- TODO: use the monad's state to address mu-recursion
+  logManifestPrefix vars
   query <- queryGetter <$> askBoundType
   bounds <- mapM (envQuery . query) $ Set.toList vars
-  manifestTypeFrom $ Set.fromList $ map shallowToDelayed $ concat bounds
+  t <- manifestTypeFrom $ Set.fromList $ map shallowToDelayed $ concat bounds
+  logManifestSuffix vars t
+  return t  
 
 instance Manifestable DelayedType where
   manifestTypeFrom ts = do
     mergeOp <- getDelayedOperation <$> askBoundType
+    logManifestPrefix ts
     let t = mergeOp $ Set.toList ts
-    case t of
-      DFunction as as' -> do
-        typ <- dualizeBoundType $ manifestTypeFrom as
-        typ' <- manifestTypeFrom as'
-        return $ TC.function typ typ'
-      DTrigger as -> TC.trigger <$> dualizeBoundType (manifestTypeFrom as)
-      DBool -> return TC.bool
-      DInt -> return TC.int
-      DReal -> return TC.real
-      DString -> return TC.string
-      DAddress -> return TC.address
-      DOption qas -> TC.option <$> manifestTypeFrom qas
-      DIndirection qas -> TC.indirection <$> manifestTypeFrom qas
-      DTuple qass -> TC.tuple <$> mapM manifestTypeFrom qass
-      DRecord m oas -> do
-        let (is,qass) = unzip $ Map.toList m
-        typs <- mapM manifestTypeFrom qass
-        if Set.null oas
-          then
-            return $ TC.record $ zip is typs
-          else do
-            oids <- mapM nameOpaque $ Set.toList oas
-            return $ TC.recordExtension (zip is typs) oids
-      DTop -> return TC.top
-      DBottom -> return TC.bottom
-      DOpaque oas -> do
-        is <- sort <$> mapM nameOpaque (Set.toList oas)
-        if length is == 1
-          then return $ TC.declaredVar $ head is
-          else TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
+    t' <-
+      case t of
+        DFunction as as' -> do
+          typ <- dualizeBoundType $ manifestTypeFrom as
+          typ' <- manifestTypeFrom as'
+          return $ TC.function typ typ'
+        DTrigger as -> TC.trigger <$> dualizeBoundType (manifestTypeFrom as)
+        DBool -> return TC.bool
+        DInt -> return TC.int
+        DReal -> return TC.real
+        DString -> return TC.string
+        DAddress -> return TC.address
+        DOption qas -> TC.option <$> manifestTypeFrom qas
+        DIndirection qas -> TC.indirection <$> manifestTypeFrom qas
+        DTuple qass -> TC.tuple <$> mapM manifestTypeFrom qass
+        DRecord m oas -> do
+          let (is,qass) = unzip $ Map.toList m
+          typs <- mapM manifestTypeFrom qass
+          if Set.null oas
+            then
+              return $ TC.record $ zip is typs
+            else do
+              oids <- mapM nameOpaque $ Set.toList oas
+              return $ TC.recordExtension (zip is typs) oids
+        DTop -> return TC.top
+        DBottom -> return TC.bottom
+        DOpaque oas -> do
+          is <- sort <$> mapM nameOpaque (Set.toList oas)
+          if length is == 1
+            then return $ TC.declaredVar $ head is
+            else TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
+    logManifestSuffix ts t'
+    return t'
 
+logManifestPrefix :: (Pretty a, Foldable f) => f a -> ManifestM ()
+logManifestPrefix xs = do
+  pfxBox <- logTopMsg "Manifesting" xs
+  _debug $ boxToString pfxBox
+
+logManifestSuffix :: (Pretty a, Foldable f) => f a -> K3 Type -> ManifestM ()
+logManifestSuffix xs t = do
+  pfxBox <- logTopMsg "Manifested" xs
+  _debug $ boxToString $ pfxBox %$
+    indent 2 (["Result: "] %+ prettyLines t)
+
+logTopMsg :: (Pretty a, Foldable f) => String -> f a -> ManifestM [String]
+logTopMsg verb xs = do
+  name <- getBoundTypeName <$> askBoundType
+  return $ [verb ++ " " ++ name ++ " bound type for ["] %+
+    intersperseBoxes [","] (map prettyLines $ Foldable.toList xs) +% ["]"]

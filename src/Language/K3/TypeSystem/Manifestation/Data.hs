@@ -12,6 +12,7 @@ module Language.K3.TypeSystem.Manifestation.Data
 , shallowToDelayed
 ) where
 
+import Data.List
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid
@@ -21,6 +22,7 @@ import Data.Set (Set)
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
+import Language.K3.Utils.Pretty
 
 -- |A data type describing bounding directions for type manifestation.  A value
 --  of this type describes how manifestation proceeds to extract constraints
@@ -28,7 +30,8 @@ import Language.K3.TypeSystem.Data
 --  type.
 data BoundType
   = BoundType
-      { getConcreteUVarBounds :: UVar -> ConstraintSetQuery ShallowType
+      { getBoundTypeName :: String
+      , getConcreteUVarBounds :: UVar -> ConstraintSetQuery ShallowType
       , getConcreteQVarBounds :: QVar -> ConstraintSetQuery ShallowType
       , getConcreteQVarQualifiers :: QVar -> ConstraintSetQuery (Set TQual)
       , getDelayedOperationTag :: DelayedOperationTag
@@ -55,7 +58,8 @@ data BoundType
 
 upperBound :: BoundType
 upperBound = BoundType
-              { getConcreteUVarBounds = QueryTypeByUVarLowerBound
+              { getBoundTypeName = "upper"
+              , getConcreteUVarBounds = QueryTypeByUVarLowerBound
               , getConcreteQVarBounds = QueryTypeByQVarLowerBound
               , getConcreteQVarQualifiers = QueryTQualSetByQVarLowerBound
               , getDelayedOperationTag = DelayedIntersectionTag
@@ -67,7 +71,8 @@ upperBound = BoundType
 
 lowerBound :: BoundType
 lowerBound = BoundType
-              { getConcreteUVarBounds = QueryTypeByUVarUpperBound
+              { getBoundTypeName = "lower"
+              , getConcreteUVarBounds = QueryTypeByUVarUpperBound
               , getConcreteQVarBounds = QueryTypeByQVarUpperBound
               , getConcreteQVarQualifiers = QueryTQualSetByQVarUpperBound
               , getDelayedOperationTag = DelayedUnionTag
@@ -105,6 +110,33 @@ data DelayedType
   | DBottom
   | DOpaque (Set OpaqueVar)
   deriving (Eq, Ord, Show)
+
+instance Pretty DelayedType where
+  prettyLines t = case t of
+    DFunction as as' -> prettySet as %+ ["->"] %+ prettySet as'
+    DTrigger as' -> ["trigger "] %+ prettySet as'
+    DBool -> ["bool"]
+    DInt -> ["int"]
+    DReal -> ["real"]
+    DString -> ["string"]
+    DAddress -> ["address"]
+    DOption qas -> ["option "] %+ prettySet qas
+    DIndirection qas -> ["ind "] %+ prettySet qas
+    DTuple qass -> ["("] %+ intersperseBoxes [","] (map prettySet qass) %+ [")"]
+    DRecord rows oas ->
+      let rowBox (i,qas) = [i++":"] %+ prettySet qas in
+      ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) +%
+      ["}"] %+
+      if Set.null oas then [] else
+        ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
+                                            Set.toList oas) +% ["}"]
+    DTop -> ["⊤"]
+    DBottom -> ["⊥"]
+    DOpaque aos -> prettySet aos
+    where
+      prettySet :: (Pretty a) => Set a -> [String]
+      prettySet xs = ["("] %+ intersperseBoxes [" | "]
+                                (map prettyLines $ Set.toList xs) %+ [")"]
 
 -- |A routine which "promotes" a shallow type to a delayed type.
 shallowToDelayed :: ShallowType -> DelayedType

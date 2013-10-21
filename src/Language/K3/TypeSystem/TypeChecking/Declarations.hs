@@ -104,10 +104,10 @@ deriveDeclaration aEnv env decl =
             u <- uidOf decl
             a3 <- freshTypecheckingUVar u
             a4 <- freshTypecheckingUVar u
-            return $ csFromList
-              [ a1 <: SFunction a3 a4
-              , a4 <: STuple []
-              , qa2 <: STrigger a3 ]
+            return $ csUnions
+              [ csSing $ a1 <: SFunction a3 a4
+              , csSing $ a4 <: STuple []
+              , qa2 ~= STrigger a3 ]
 
     DAnnotation iAnn _ mems -> do
       rEnv <- globalREnv <$> typecheckingContext
@@ -241,7 +241,7 @@ deriveDeclaration aEnv env decl =
                                         , csSing $ qa2' <: qa1']
             csUnions <$> (allCs:) <$> mapM extractConstraints posSignaturePairs
       externalCs <- getMatchingPositiveConstraints ms1 ms1'
-      tell $ Map.map (, calculateClosure $ externalCs `csUnion` exprCs)
+      tell $ Map.map (, calculateClosure (externalCs `csUnion` exprCs))
                 exprAttribs
       
       {-
@@ -299,6 +299,10 @@ deriveDeclaration aEnv env decl =
     -- |A common implementation of both initialized variables and triggers.
     --  These rules only vary by (1) the derivation used on the type expression
     --  and (2) the constraint sets which are added to the constraint closure.
+    --  The constraint sets are defined by @csPre@, a set of constraints to be
+    --  added to the type before polyinstantiation, and @csPostF@, a function
+    --  from the variables inferred during type expression and expression
+    --  derivation onto a set of constraints for consistency checking.
     basicDeclaration i expr deriv csPre csPostF = do -- DeclTypecheckM
       assert0Children decl
       u <- uidOf decl
@@ -308,7 +312,7 @@ deriveDeclaration aEnv env decl =
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
       let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
-      tell $ Map.map (, calculateClosure $ cs'' `csUnion` exprCs) exprAttribs
+      tell $ Map.map (, calculateClosure (cs'' `csUnion` exprCs)) exprAttribs
       -- We've decided upon the type, so now check for consistency.
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)

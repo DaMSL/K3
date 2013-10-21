@@ -66,7 +66,7 @@ typeDecision decl = do
         -- Next, establish an appropriate constraint set for the trigger
         a' <- freshUVar . TVarSourceOrigin =<< uidOf decl'
         qa <- freshQVar . TVarSourceOrigin =<< uidOf decl'
-        let cs' = cs `csUnion` csFromList [ STrigger a <: a' , a' <: qa ]
+        let cs' = csUnions [cs, STrigger a ~= a', a' ~= qa ]
         -- Then generalize.  Because the type expression can't refer to a normal
         -- environment, it doesn't matter which one we provide.
         let qt = generalize Map.empty qa cs'
