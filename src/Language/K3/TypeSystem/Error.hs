@@ -57,9 +57,6 @@ data TypeError
   | InitializerForNegativeAnnotationMember UID
       -- ^ Indicates that an initializer appears for a negative annotation
       --   member.
-  | NoInitializerForPositiveAnnotationMember UID
-      -- ^ Indicates that an initializer does not appear for a positive
-      --   annotation member.
   | AnnotationDepolarizationFailure UID DepolarizationError
       -- ^ Indicates that a depolarization error occurred while trying to
       --   derive over an annotation.

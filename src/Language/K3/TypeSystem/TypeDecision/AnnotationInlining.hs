@@ -250,10 +250,10 @@ closeReprs dict = do
         negSet = Set.map (second $ const Negative)
         negRepr (AnnMemRepr mem tps ntv) = AnnMemRepr (negMem mem) tps ntv
         negMem mem = case mem of
-                        Lifted _ i tExpr mexpr s ->
-                          Lifted Requires i tExpr mexpr s
-                        Attribute _ i tExpr mexpr s ->
-                          Attribute Requires i tExpr mexpr s
+                        Lifted _ i tExpr _ s ->
+                          Lifted Requires i tExpr Nothing s
+                        Attribute _ i tExpr _ s ->
+                          Attribute Requires i tExpr Nothing s
                         MAnnotation _ i s -> MAnnotation Requires i s
 
 -- |A routine which performs annotation inlining.  The input arrives in the form

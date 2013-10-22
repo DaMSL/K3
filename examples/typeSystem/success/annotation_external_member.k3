@@ -1,0 +1,10 @@
+annotation A {
+    provides lifted x : int
+}
+annotation B {
+    requires lifted x : int
+    provides lifted y : int = x + 1
+}
+declare c : collection { z : int } @ {A,B} = empty { z : int } @ {A,B}
+declare v : int = c.y
+

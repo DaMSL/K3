@@ -384,12 +384,14 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
       case pol of
         Provides -> derivePositiveMember ar i mexpr u constr
         Requires -> deriveNegativeMember ar i mexpr u constr
-    derivePositiveMember ar i mexpr u constr = do
-      expr <- maybe (typecheckError $
-                        NoInitializerForPositiveAnnotationMember u)
-                return mexpr
-      (qa,cs) <- deriveQualifiedExpression aEnv env expr
-      return (constr $ AnnMemType i Positive ar qa cs, csEmpty)
+    derivePositiveMember ar i mexpr u constr =
+      case mexpr of
+        Nothing -> do
+          qa <- freshTypecheckingQVar u
+          return (constr $ AnnMemType i Positive ar qa csEmpty, csEmpty)
+        Just expr -> do
+          (qa,cs) <- deriveQualifiedExpression aEnv env expr
+          return (constr $ AnnMemType i Positive ar qa cs, csEmpty)
     deriveNegativeMember ar i mexpr u constr = do
       unless (isNothing mexpr) $
         typecheckError $ InitializerForNegativeAnnotationMember u

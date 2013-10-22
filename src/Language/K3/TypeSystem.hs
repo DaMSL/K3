@@ -187,11 +187,11 @@ annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
 
       (_,_)      -> e
 
-    annotateAnnMem (Lifted p' n t (Just e) uid) =
-      flip (Lifted p' n t) uid . Just . runIdentity $ traverse annotateExpr e
+    annotateAnnMem (Lifted p' n t me uid) =
+      flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
     
-    annotateAnnMem (Attribute p' n t (Just e) uid) =
-      flip (Lifted p' n t) uid . Just . runIdentity $ traverse annotateExpr e
+    annotateAnnMem (Attribute p' n t me uid) =
+      flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
     
     annotateAnnMem x = x    
 
