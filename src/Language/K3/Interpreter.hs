@@ -48,6 +48,7 @@ import Control.Monad.Writer
 import Data.Function
 import Data.IORef
 import Data.List
+import Data.Maybe
 import Data.Tree
 import Data.Word (Word8)
 
@@ -583,10 +584,12 @@ expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> c
       (modifyE . (++) $ zip ts vs) >> expression f >>= refreshBinding >>= removeAllE (zip ts vs)
     
     (BRecord ids, VRecord ivs) -> do
-        let (idls, idbs) = unzip $ sortBy (compare `on` fst) ids
-        let (ivls, ivvs) = unzip $ sortBy (compare `on` fst) ivs
-        if idls == idls
-          then modifyE ((++) (zip idbs ivvs)) >> expression f >>= refreshBinding >>= removeAllE (zip idbs ivvs)
+        let (idls, ivls) = (map fst ids, map fst ivs)
+        let bindings = catMaybes $ map (\n -> lookup n ids >>= (\n' -> lookup n ivs >>= return . (n',))) idls
+        if idls `intersect` ivls == idls
+          then 
+            modifyE ((++) bindings) >> expression f
+              >>= refreshRecordBinding ids ivs >>= removeAllE bindings
           else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
     
     _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
@@ -603,8 +606,14 @@ expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> c
         refreshBinding r = const (return r) =<< case (bindId, b) of
           (Just i, BIndirection j) -> modifyIndirection =<< (,) <$> lookupE i <*> lookupE j
           (Just i, BTuple ts)      -> mapM lookupE ts >>= replaceE i . VTuple
-          (Just i, BRecord ids)    -> mapM (\(s,t) -> lookupE t >>= return . (s,)) ids >>= replaceE i . VRecord
           (_,_)                    -> return ()
+
+        refreshRecordBinding ids ivs r = const (return r) =<< case bindId of
+          Just i -> mapM (rebuildRecordElem ids) ivs >>= replaceE i . VRecord
+          _      -> return ()
+        
+        rebuildRecordElem ids (n,v) =
+          maybe (return (n,v)) (\n' -> lookupE n' >>= return . (n,)) $ lookup n ids
 
         modifyIndirection (VIndirection r, v) = liftIO $ writeIORef r v
         modifyIndirection _ = throwE $ RunTimeTypeError "Invalid indirection value"
@@ -1201,10 +1210,10 @@ initProgram bootstrap prog = do
     initMessages r'
   where 
     injectBootstrap x@((Left _, _), _) = return x
-    injectBootstrap ((Right status, (globals, vEnv, annEnv)), logR) = do
+    injectBootstrap ((Right stus, (globals, vEnv, annEnv)), logR) = do
       bootEnv <- initBootstrap bootstrap
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
-      return $ ((Right status, (globals, nvEnv, annEnv)), logR)
+      return $ ((Right stus, (globals, nvEnv, annEnv)), logR)
 
 
 finalProgram :: IState -> EngineM Value (IResult Value)
