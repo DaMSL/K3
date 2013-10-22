@@ -7,6 +7,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Parser
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Utils.Pretty
+import Language.K3.Utils.Pretty.Syntax
 
 {- Defaults -}
 defaultLanguage :: String
@@ -37,6 +38,6 @@ prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
     prettyEnvEntry (addr, bs) = prettyLines addr ++ (indent 2 $ prettyBootstrap bs)
     prettyBootstrap bs        = concatMap (prettyPair $ maxNameLength bs) bs
     prettyPair w (a,b)        = [a ++ replicate (w - length a) ' ' ++ " => " 
-                                   ++ (either (const "<syntax error>") id $ (Right $ show b))] -- TODO: pretty print literals
+                                   ++ (either (const "<syntax error>") id $ literalS b)]
     maxNameLength l           = maximum $ map (length . fst) l
 
