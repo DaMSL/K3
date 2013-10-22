@@ -38,6 +38,10 @@ isWithin :: forall c el.
             , CSL.ConstraintSetLikePromotable ConstraintSet c)
          => (QVar,c) -> (QVar,c) -> Bool
 isWithin (qa,cs) (qa',cs') =
+  _debugI
+    (boxToString $ ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
+                %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
+    ) $
   let initMap = (Map.singleton qa qa', Map.empty) in
   let initState = (Set.fromList $ CSL.toList cs', initMap) in
   let answer = map (snd . snd) $

@@ -87,7 +87,10 @@ concatAnnType :: ( CSL.ConstraintSetLike e c
                  , Transform ReplaceVariables c)
               => AnnType c -> AnnType c
               -> Either AnnotationConcatenationError (AnnType c)
-concatAnnType (AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
+concatAnnType ann1@(AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
+    _debug $ boxToString $
+      ["Concatenating annotations: "] %+
+        prettyLines ann1 %+ ["  "] %+ prettyLines ann2
     let (AnnType p2' b2' cs2') = instantiateAnnotation p1 ann2
     unless (Map.null p2') $ Left $
       IncompatibleTypeParameters p1 p2
@@ -167,28 +170,36 @@ concatAnnMembers ms1 ms2 =
           vconcats (map prettyLines mems) +% ["]"]
       let arities = nub $ map (\(AnnMemType _ _ ar _ _) -> ar) mems
       let positives = filter ((== Positive) . polOf) mems
-      case (length positives, arities) of
-        (_,_:_:_) ->
-          Left $ DifferentMorphicArities $ idOf $ head mems
-        (_,[]) ->
-          error "concatConstr provided empty list of members!"
-        (0,[MonoArity]) ->
-          let (AnnMemType i1 _ _ qa1 cs1) = head mems in
-          Right $ monoRepresentative i1 qa1 cs1 Negative $ tail mems
-        (1,[MonoArity]) ->
-          let (AnnMemType i _ _ qa' cs') = head positives in
-          Right $ monoRepresentative i qa' cs' Positive mems
-        (0,[PolyArity]) -> do
-          let (AnnMemType _ _ _ qa1 cs1) = head mems
-          mconcat <$> mapM (polyCheckEquiv (qa1,cs1) . typeOfMem) (tail mems)
-          Right $ head mems
-        (1,[PolyArity]) -> do
-          let (AnnMemType _ _ _ qa' cs') = head positives
-          mconcat <$> mapM (polyCheckEquiv (qa',cs') . typeOfMem) mems
-          Right $ head positives
-        (_,[_]) ->
-          Left $ OverlappingPositiveMember $ idOf $ head positives
+      let ans = case (length positives, arities) of
+            (_,_:_:_) ->
+              Left $ DifferentMorphicArities $ idOf $ head mems
+            (_,[]) ->
+              error "concatConstr provided empty list of members!"
+            (0,[MonoArity]) ->
+              let (AnnMemType i1 _ _ qa1 cs1) = head mems in
+              Right $ monoRepresentative i1 qa1 cs1 Negative $ tail mems
+            (1,[MonoArity]) ->
+              let (AnnMemType i _ _ qa' cs') = head positives in
+              Right $ monoRepresentative i qa' cs' Positive mems
+            (0,[PolyArity]) -> do
+              let (AnnMemType _ _ _ qa1 cs1) = head mems
+              mconcat <$> mapM (polyCheckEquiv (qa1,cs1) . typeOfMem)
+                (tail mems)
+              Right $ head mems
+            (1,[PolyArity]) -> do
+              let (AnnMemType _ _ _ qa' cs') = head positives
+              mconcat <$> mapM (polyCheckEquiv (qa',cs') . typeOfMem) mems
+              Right $ head positives
+            (_,[_]) ->
+              Left $ OverlappingPositiveMember $ idOf $ head positives
+      _debug $ boxToString $
+        ["Completed concatenation of: [ "] %+
+          vconcats (map prettyLines mems) +% ["]"] %$
+          indent 2 (["Yielding: "] %+ prettyEither ans)
+      ans
       where
+        prettyEither :: (Pretty a, Pretty b) => Either a b -> [String]
+        prettyEither = either prettyLines prettyLines 
         typeOfMem :: AnnMemType c -> (QVar, c)
         typeOfMem (AnnMemType _ _ _ qa cs) = (qa,cs)
         memTypesToCs :: (QVar -> c) -> [(QVar,c)] -> c
