@@ -127,6 +127,7 @@ library
         Language.K3.TypeSystem.Simplification.EquivalenceUnification
 
     ghc-options: -Wall
+
     other-modules: 
                    Language.K3.TypeSystem.Simplification.GarbageCollection,
                    Language.K3.TypeSystem.Manifestation,
