@@ -18,10 +18,12 @@ import System.Log.Logger
 
 import Language.K3.Utils.Pretty
 
--- FIXME: k3logI may cause a deadlock if the expression in @value@ also invokes
---        k3logI.  Because unit does not, it appears that k3logM is safe; this
---        means generated TH functions like _debug would be safe, but _debugI
---        may not be.  Figure out how to make Haskell behave correctly here.
+{-
+WARNING: This logging module makes use of unsafePerformIO to prevent polluting
+the entire codebase with a logging monad.  As a result, it is *very* fragile
+and, if modified incorrectly, is subject to subtle deadlocking problems.  Please
+be very careful when modifying.
+-}
 
 -- |A function, similar to @Debug.Trace.trace@, to log a messge in K3 in an
 --  inline fashion.
@@ -30,11 +32,11 @@ k3logI :: String -- ^The name of the module doing the logging.
        -> String -- ^The message to log.
        -> a -- ^The value to use as the result of the logging expression.
        -> a
-k3logI moduleName logLevel message value =
+k3logI moduleName logLevel message =
   deepseq message $
   unsafePerformIO $! do
     logM moduleName logLevel message
-    return value
+    return id
   
 -- |A function to log a pretty-printable value along with a prefix message.
 k3logIPretty :: (Pretty a)
