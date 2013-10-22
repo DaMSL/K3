@@ -88,6 +88,10 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (UVar, UVar)
   QueryAllQVarLowerBoundingQVar ::
     ConstraintSetQuery (QVar, QVar)
+  QueryAllQVarLowerBoundingUVar ::
+    ConstraintSetQuery (QVar, UVar)
+  QueryAllUVarLowerBoundingQVar ::
+    ConstraintSetQuery (UVar, QVar)
   QueryAllMonomorphicQualifiedUpperConstraint ::
     ConstraintSetQuery (QVar, Set TQual)
   QueryAllOpaqueLowerBoundedConstraints ::
@@ -164,6 +168,12 @@ csQuery (ConstraintSet csSet) query =
     QueryAllUVarLowerBoundingUVar -> do
       IntermediateConstraint (CRight a1) (CRight a2) <- cs
       return (a1, a2)
+    QueryAllUVarLowerBoundingQVar -> do
+      QualifiedLowerConstraint (CRight a1) qa2 <- cs
+      return (a1, qa2)
+    QueryAllQVarLowerBoundingUVar -> do
+      QualifiedUpperConstraint qa1 (CRight a2) <- cs
+      return (qa1, a2)
     QueryAllMonomorphicQualifiedUpperConstraint -> do
       MonomorphicQualifiedUpperConstraint qa qs <- cs
       return (qa, qs)
