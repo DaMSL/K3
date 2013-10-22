@@ -344,18 +344,6 @@ deriveCollectionType mrEnv aEnv tExpr = do
             recordConcat [t_c, t_f']
   let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
   let pessimal = csUnions <$> sequence pessimals
-  
-  let z :: (Monad m, Pretty x) => String -> x -> m ()
-      z s b = _debug $ boxToString $ [s ++ ": "] %+ prettyLines b
-  z "a_c' " a_c'
-  z "a_c  " a_c
-  z "a_f  " a_f
-  z "a_s  " a_s
-  z "cs_c " cs_c
-  z "cs_s " cs_s
-  z "cs_f'" cs_f'
-  z "cs'  " cs'
-  
   return (a_s, CSL.unions [cs, cs_c, cs_f', cs_s, CSL.promote cs'], pessimal)
   where
     deriveContentTypeExpression :: K3 Type -> m (ShallowType, c)
