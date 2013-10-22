@@ -71,4 +71,4 @@ prepare name outP buildP source buildDesc = do
         outFile   = buildP </> outP <.> "hs"
 
 build :: String -> FilePath -> IO ()
-build name buildP = return ()
+build _ _ = return ()

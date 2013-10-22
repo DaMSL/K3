@@ -16,6 +16,7 @@ executable k3
     build-depends:
         base,
         Cabal,
+        containers,
         directory,
         filepath,
         hslogger,

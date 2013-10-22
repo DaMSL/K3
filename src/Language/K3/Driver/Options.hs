@@ -3,11 +3,12 @@ module Language.K3.Driver.Options where
 
 import Control.Applicative
 import Options.Applicative
+import Options.Applicative.Types
 
 import System.FilePath
 import System.Log
 
-import Language.K3.Runtime.Engine (SystemEnvironment)
+import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
 import Language.K3.Utils.Pretty
@@ -28,6 +29,7 @@ data Mode
     = Compile   CompileOptions
     | Interpret InterpretOptions
     | Print     PrintOptions
+    | Typecheck
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
@@ -84,10 +86,14 @@ modeOptions = subparser (
          command "compile"   (info compileOptions   $ progDesc compileDesc)
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "print"     (info printOptions     $ progDesc printDesc)
+      <> command "typecheck" (info typeOptions      $ progDesc typeDesc)
     )
   where compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         printDesc     = "Print a K3 program"
+        typeDesc      = "Typecheck a K3 program"
+
+        typeOptions = NilP $ Just Typecheck
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -240,6 +246,7 @@ instance Pretty Mode where
   prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts] 
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
+  prettyLines Typecheck         = ["Typecheck"]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr) =
