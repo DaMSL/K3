@@ -1,2 +1,5 @@
 dist*
 tmp
+/.dist-buildwrapper
+.project
+
