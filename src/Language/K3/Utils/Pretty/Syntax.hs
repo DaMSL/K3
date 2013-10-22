@@ -7,11 +7,13 @@ module Language.K3.Utils.Pretty.Syntax (
     decl,
     expr,
     typ,
+    literal,
 
     programS,
     declS,
     exprS,
     typeS,
+    literalS,
     symbolS
 ) where
 
@@ -25,9 +27,10 @@ import Data.List hiding ( group )
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
-import Language.K3.Core.Type
-import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
+import Language.K3.Core.Literal
+import Language.K3.Core.Type
 
 import Text.PrettyPrint.ANSI.Leijen
 
@@ -54,6 +57,9 @@ exprS e = show C.<$> runSyntaxPrinter (expr e)
 
 typeS :: K3 Type -> Either String String
 typeS t = show C.<$> runSyntaxPrinter (typ t)
+
+literalS :: K3 Literal -> Either String String
+literalS l = show C.<$> runSyntaxPrinter (literal l)
 
 symbolS :: K3 Expression -> Either String String
 symbolS e = show C.<$> runSyntaxPrinter (symbol e)
@@ -377,6 +383,59 @@ tQualifier anns = qualifier isTQualified tqSyntax anns
     tqSyntax _          = throwSP "Invalid type qualifier"
 
 
+-- | Literals pretty printing
+literal :: K3 Literal -> SyntaxPrinter
+literal l@(details -> (_,_,anns)) = case commentL anns of
+  Just doc -> (doc <+>) C.<$> literal' l
+  _        -> literal' l
+
+literal' :: K3 Literal -> SyntaxPrinter
+literal' (tag -> LBool b)   = return . text $ if b then "true" else "false"
+literal' (tag -> LByte b)   = return . integer $ toInteger b
+literal' (tag -> LInt i)    = return $ int i
+literal' (tag -> LReal r)   = return $ double r
+literal' (tag -> LString s) = return . dquotes $ text s
+literal' (tag -> LNone nm)  = return $ text "None" <+> nQualifier nm
+  where nQualifier NoneMut   = text "mut"
+        nQualifier NoneImmut = text "immut"
+
+literal' (details -> (LSome, [x], _))      = qualifierAndLiteral x >>= return . uncurry someLiteral
+literal' (details -> (LIndirect, [x], _))  = qualifierAndLiteral x >>= return . uncurry indirectionLiteral
+literal' (details -> (LTuple, ch, _))      = mapM qualifierAndLiteral ch >>= return . tupleLiteral
+literal' (details -> (LRecord ids, ch, _)) = mapM qualifierAndLiteral ch >>= return . recordLiteral ids
+literal' (details -> (LEmpty t, [], anns)) = typ t >>= return . emptyLiteral (namedLAnnotations anns)
+
+literal' (details -> (LCollection t, elems, anns)) =
+  collectionLiteral (namedLAnnotations anns) C.<$> elemType t <*> mapM (elemVal t) elems  
+  where elemType (details -> (TRecord [x], [y], _)) = qualifierAndType y >>= return . tSingleElem x
+        elemType (details -> (TRecord ids, ch, _))  = mapM qualifierAndType ch >>= return . tMultiElem ids
+        elemType _ = throwSP "Invalid collection literal element type"
+
+        elemVal (tag -> TRecord [_]) (details -> (LRecord [_], [v], _)) = literal' v
+        elemVal (tag -> TRecord _) v = literal' v
+        elemVal _ _ = throwSP "Invalid collection literal element value"
+
+        tSingleElem n (qual,t') = text n <+> colon <+> qual <+> t'
+        tMultiElem ids qualC = cat $ punctuate comma $ map (\(a,b) -> text a <+> colon <+> b)
+                            $ zip ids $ map (uncurry (<+>)) qualC
+
+literal' (details -> (LAddress, [h,p], _)) 
+  | LString s <- tag h = literal' p >>= return . addressLiteral (text s)
+  | otherwise = throwSP "Invalid address literal"
+
+literal' _ = throwSP "Invalid literal during syntax printing"
+
+qualifierAndLiteral :: K3 Literal -> Printer(Doc, Doc)
+qualifierAndLiteral l@(annotations -> anns) = (,) C.<$> lQualifier anns <*> literal l
+
+lQualifier :: [Annotation Literal] -> SyntaxPrinter
+lQualifier anns = qualifier isLQualified lqSyntax anns
+  where
+    lqSyntax LImmutable = return $ text "immut"
+    lqSyntax LMutable   = return $ text "mut"
+    lqSyntax _          = throwSP "Invalid literal qualifier"
+
+
 {- Syntax constructors -}
 
 optionType :: Doc -> Doc -> Doc
@@ -453,6 +512,33 @@ addrExpr :: Doc -> Doc -> Doc
 addrExpr h p = h <> colon <> p
 
 
+
+someLiteral :: Doc -> Doc -> Doc
+someLiteral qual l = text "Some" <+> qual <+> l
+
+indirectionLiteral :: Doc -> Doc -> Doc
+indirectionLiteral qual l = text "ind" <+> qual <+> l
+
+tupleLiteral :: [(Doc, Doc)] -> Doc
+tupleLiteral qualC = tupled $ map (uncurry (<+>)) qualC
+
+recordLiteral :: [Identifier] -> [(Doc, Doc)] -> Doc
+recordLiteral ids qualC =
+  commaBrace $ map (\(a,b) -> text a <+> colon <+> b)
+             $ zip ids $ map (uncurry (<+>)) qualC
+
+emptyLiteral :: [Identifier] -> Doc -> Doc
+emptyLiteral annIds t = text "empty" <+> t <+> text "@" <+> commaBrace (map text annIds)
+
+collectionLiteral :: [Identifier] -> Doc -> [Doc] -> Doc
+collectionLiteral annIds t elems =
+  text "collection" <+> text "{|" <+> t <+> text "|" <+> (cat $ punctuate comma elems) <+> text "|}"
+                    <+> text "@" <+> commaBrace (map text annIds)
+
+addressLiteral :: Doc -> Doc -> Doc
+addressLiteral h p = h <> colon <> p
+
+
 {- Source comments -}
 comment :: SyntaxAnnotation -> Maybe Doc
 comment (SourceComment multi _ contents) = Just (string $ prefix ++ contents ++ suffix)
@@ -473,6 +559,11 @@ commentD anns = annotatedComments anns extractSyntax
 commentE :: [Annotation Expression] -> Maybe Doc
 commentE anns = annotatedComments anns extractSyntax
   where extractSyntax (ESyntax x) = Just x
+        extractSyntax _ = Nothing
+
+commentL :: [Annotation Literal] -> Maybe Doc
+commentL anns = annotatedComments anns extractSyntax
+  where extractSyntax (LSyntax x) = Just x
         extractSyntax _ = Nothing
 
 commentT :: [Annotation Type] -> Maybe Doc
