@@ -1,0 +1,8 @@
+annotation A {
+  provides lifted y : int = 5
+  provides lifted z : () -> int = \_ -> 10
+}
+
+declare c : collection { x : int } @ {A} = empty { x : int } @ {A}
+
+declare v : int = c.y + c.z()

@@ -192,19 +192,15 @@ deriveTypeExpression aEnv tExpr = do
         TIndirection -> commonSingleContainer SIndirection
         TTuple -> do
           (qas,css) <- unzip <$>
-                        mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
+                        mapM (deriveQualifiedTypeExpression aEnv)
+                             (subForest tExpr)
           a <- freshTypecheckingUVar =<< uidOf tExpr
           return (a, CSL.unions css `CSL.union` (STuple qas ~= a))
         TRecord ids -> do
-          (qas,css) <- unzip <$>
-                        mapM (deriveQualifiedTypeExpression aEnv) (subForest tExpr)
-          a' <- freshTypecheckingUVar =<< uidOf tExpr
-          t <- either (\err -> typeError =<< RecordSignatureError <$>
-                                                  uidOf tExpr <*> return err)
-                  return
-                $ recordConcat (map (\ (i, qa) ->
-                    SRecord (Map.singleton i qa) Set.empty) $ zip ids qas)
-          return (a', CSL.unions css `CSL.union` (t ~= a'))
+          u <- uidOf tExpr
+          (t,cs) <- deriveRecordTypeExpression aEnv u ids $ subForest tExpr
+          a' <- freshTypecheckingUVar u
+          return (a', cs `CSL.union` (t ~= a'))
         TCollection -> do
           (a,cs,_) <- deriveCollectionType Nothing aEnv tExpr
           return (a,cs)
@@ -283,6 +279,31 @@ qualifiersOfType tExpr = mapMaybe unQual $ annotations tExpr
       TImmutable -> Just [TImmut]
       TMutable -> Just [TMut]
       _ -> Nothing
+      
+-- |A utility function for type derivation over record types.  This is separated
+--  from the main derivation routine so that it can be called by both the main
+--  routine as well as @deriveCollectionType@ and in such a way that the derived
+--  type of the record is directly exposed.
+deriveRecordTypeExpression ::
+      forall m el c. ( Applicative m, Monad m, TypeErrorI m, FreshVarI m
+                     , CSL.ConstraintSetLike el c
+                     , CSL.ConstraintSetLikePromotable ConstraintSet c
+                     , Transform ReplaceVariables c
+                     , Reduce ExtractVariables c (Set AnyTVar)
+                     , ConstraintSetType c
+                     , WithinAlignable el, Ord el)
+   => TEnv (TypeAliasEntry c) -- ^The relevant type alias environment.
+   -> UID
+   -> [Identifier]
+   -> [K3 Type]
+   -> m (ShallowType, c)
+deriveRecordTypeExpression aEnv u ids tExprs = do
+  (qas,css) <- unzip <$> mapM (deriveQualifiedTypeExpression aEnv) tExprs
+  t <- either (typeError . RecordSignatureError u)
+          return
+        $ recordConcat (map (\ (i, qa) ->
+            SRecord (Map.singleton i qa) Set.empty) $ zip ids qas)
+  return (t,CSL.unions css)
 
 -- |A utility function for type derivation over collection types.  This is
 --  separated from the main derivation routine so that it can be called by the
@@ -295,14 +316,15 @@ deriveCollectionType ::
                      , CSL.ConstraintSetLikePromotable ConstraintSet c
                      , Transform ReplaceVariables c
                      , Reduce ExtractVariables c (Set AnyTVar)
-                     , ConstraintSetType c
+                     , ConstraintSetType c, Pretty c
                      , WithinAlignable el, Ord el)
    => Maybe TGlobalQuantEnv -> TEnv (TypeAliasEntry c) -> K3 Type
    -> m (UVar, c, Maybe ConstraintSet)
 deriveCollectionType mrEnv aEnv tExpr = do
   tExpr' <- assert1Child tExpr
   let ais = mapMaybe toAnnotationId $ annotations tExpr
-  (a_c',cs_c) <- deriveUnqualifiedTypeExpression aEnv tExpr'
+  (t_c, cs_c) <- deriveContentTypeExpression tExpr'
+  a_c' <- freshTypecheckingUVar =<< uidOf tExpr'
   u <- uidOf tExpr
   namedAnns <- mapM (\i -> aEnvLookup (TEnvIdentifier i) u) ais
   anns <- mapM (uncurry toAnnAlias) namedAnns
@@ -310,18 +332,38 @@ deriveCollectionType mrEnv aEnv tExpr = do
   (anns',pessimals) <- unzip <$> mapM performFreshen (zip ais anns)
   concattedAnns <- concatAnnTypes anns'
   AnnType p (AnnBodyType ms1 ms2) cs <-
-    either (\err -> typeError =<<
-                InvalidAnnotationConcatenation <$>
-                  uidOf tExpr <*> return err)
+    either (typeError . InvalidAnnotationConcatenation u)
       return
       concattedAnns
+  -- Ascertain the self and final types
   (a_c,a_f,a_s) <- readAnnotationSpecialParameters p
   (t_s, cs_s) <- depolarizeOrError u ms1
-  (t_f, cs_f) <- depolarizeOrError u ms2
+  (t_f', cs_f') <- depolarizeOrError u ms2
+  t_f <- either (typeError . ContentAndStructuralSchemaOverlap u)
+            return $
+            recordConcat [t_c, t_f']
   let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
   let pessimal = csUnions <$> sequence pessimals
-  return (a_s, CSL.unions [cs, cs_c, cs_f, cs_s, CSL.promote cs'], pessimal)
+  
+  let z :: (Monad m, Pretty x) => String -> x -> m ()
+      z s b = _debug $ boxToString $ [s ++ ": "] %+ prettyLines b
+  z "a_c' " a_c'
+  z "a_c  " a_c
+  z "a_f  " a_f
+  z "a_s  " a_s
+  z "cs_c " cs_c
+  z "cs_s " cs_s
+  z "cs_f'" cs_f'
+  z "cs'  " cs'
+  
+  return (a_s, CSL.unions [cs, cs_c, cs_f', cs_s, CSL.promote cs'], pessimal)
   where
+    deriveContentTypeExpression :: K3 Type -> m (ShallowType, c)
+    deriveContentTypeExpression tExpr' = do
+      u <- uidOf tExpr'
+      case tag tExpr' of
+        TRecord ids -> deriveRecordTypeExpression aEnv u ids $ subForest tExpr'
+        _ -> typeError $ NonRecordContentSchema u tExpr' 
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing

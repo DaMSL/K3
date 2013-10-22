@@ -164,7 +164,7 @@ concatAnnMembers ms1 ms2 =
     concatConstr mems = do
       _debug $ boxToString $
         ["Calculating concatenation of: [ "] %+
-          (vconcats $ map prettyLines mems) +% ["]"]
+          vconcats (map prettyLines mems) +% ["]"]
       let arities = nub $ map (\(AnnMemType _ _ ar _ _) -> ar) mems
       let positives = filter ((== Positive) . polOf) mems
       case (length positives, arities) of

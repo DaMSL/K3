@@ -45,6 +45,12 @@ data TypeError
       -- ^Indicates that, at the given node, a quantified type was expected
       --  but the named type alias identifier was bound to something other than
       --  a quantified type.
+  | NonRecordContentSchema UID (K3 Type)
+      -- ^Indicates that a collection's content schema type is not a record
+      --  type.
+  | ContentAndStructuralSchemaOverlap UID RecordConcatenationError
+      -- ^Indicates that the user-selected content schema type overlaps with the
+      --  collection's structural schema type.
   | InvalidAnnotationConcatenation UID AnnotationConcatenationError
       -- ^ Indicates that, at the given node, the concatenation of a set of
       --   annotation types has failed.
