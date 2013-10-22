@@ -16,6 +16,7 @@ import Control.Arrow
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.State
+import Data.Functor.Identity
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid
@@ -37,22 +38,21 @@ isWithin :: forall c el.
             ( Pretty c, Ord el, WithinAlignable el, CSL.ConstraintSetLike el c
             , CSL.ConstraintSetLikePromotable ConstraintSet c)
          => (QVar,c) -> (QVar,c) -> Bool
-isWithin (qa,cs) (qa',cs') =
-  _debugI
-    (boxToString $ ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
-                %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
-    ) $
-  let initMap = (Map.singleton qa qa', Map.empty) in
-  let initState = (Set.fromList $ CSL.toList cs', initMap) in
+isWithin (qa,cs) (qa',cs') = runIdentity $ do
+  _debug $ boxToString $
+       ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
+    %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
+  let initMap = (Map.singleton qa qa', Map.empty)
+  let initState = (Set.fromList $ CSL.toList cs', initMap)
   let answer = map (snd . snd) $
-        runStateT (mconcat <$> mapM deduct (CSL.toList cs)) initState in
-  _debugI
-    (boxToString $ ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
-                %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
-                %$ ["  gives: "] %+
-                  if null answer then ["failure"] else
-                    vconcats $ map prettyMap answer)
-    $ not $ null answer
+        runStateT (mconcat <$> mapM deduct (CSL.toList cs)) initState
+  _debug $ boxToString $
+       ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
+    %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
+    %$ ["  gives: "] %+
+      if null answer then ["failure"] else
+        vconcats $ map prettyMap answer
+  return $ not $ null answer
   where
     -- |Given one element, find its match and remove it.  Each step should also
     --  force alignment of the variable mapping.

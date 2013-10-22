@@ -18,6 +18,11 @@ import System.Log.Logger
 
 import Language.K3.Utils.Pretty
 
+-- FIXME: k3logI may cause a deadlock if the expression in @value@ also invokes
+--        k3logI.  Because unit does not, it appears that k3logM is safe; this
+--        means generated TH functions like _debug would be safe, but _debugI
+--        may not be.  Figure out how to make Haskell behave in this manner.
+
 -- |A function, similar to @Debug.Trace.trace@, to log a messge in K3 in an
 --  inline fashion.
 k3logI :: String -- ^The name of the module doing the logging.
