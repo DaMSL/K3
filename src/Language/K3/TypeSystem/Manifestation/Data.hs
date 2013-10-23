@@ -100,6 +100,7 @@ data DelayedType
   | DBool
   | DInt
   | DReal
+  | DNumber
   | DString
   | DAddress
   | DOption (Set QVar)
@@ -118,6 +119,7 @@ instance Pretty DelayedType where
     DBool -> ["bool"]
     DInt -> ["int"]
     DReal -> ["real"]
+    DNumber -> ["number"]
     DString -> ["string"]
     DAddress -> ["address"]
     DOption qas -> ["option "] %+ prettySet qas
@@ -146,6 +148,7 @@ shallowToDelayed t = case t of
   SBool -> DBool
   SInt -> DInt
   SReal -> DReal
+  SNumber -> DNumber
   SString -> DString
   SAddress -> DAddress
   SOption qa -> DOption (Set.singleton qa)
@@ -193,7 +196,13 @@ newtype DelayedUnion
 instance Monoid DelayedUnion where
   mempty = DelayedUnion DBottom
   mappend (DelayedUnion t) (DelayedUnion t') =
-    DelayedUnion $ delayedMerge DTop (const DTop) id Map.intersectionWith t t'
+    DelayedUnion $
+      case (t,t') of
+        (DReal, DNumber) -> DNumber
+        (DNumber, DReal) -> DNumber
+        (DInt, DNumber) -> DNumber
+        (DNumber, DInt) -> DNumber
+        _ -> delayedMerge DTop (const DTop) id Map.intersectionWith t t'
 
 -- |A routine which generalizes over the monoidal implementations of both
 --  intersection and union.
@@ -235,6 +244,8 @@ delayedMerge tDefault fTop fBottom mapMerge t t'  =
         (DInt, _) -> tDefault
         (DReal, DReal) -> DReal
         (DReal, _) -> tDefault
+        (DNumber, DNumber) -> DReal
+        (DNumber, _) -> tDefault
         (DString, DString) -> DString
         (DString, _) -> tDefault
         (DAddress, DAddress) -> DAddress

@@ -39,6 +39,7 @@ data Type
     | TByte
     | TInt
     | TReal
+    | TNumber
     | TString
     | TOption
     | TIndirection

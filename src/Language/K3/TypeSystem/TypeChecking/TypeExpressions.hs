@@ -181,6 +181,7 @@ deriveTypeExpression aEnv tExpr = do
         TByte -> error "No Byte type in spec!"
         TInt -> deriveLeafType SInt
         TReal -> deriveLeafType SReal
+        TNumber -> deriveLeafType SNumber
         TString -> deriveLeafType SString
         TFunction -> do
           (tExpr1, tExpr2) <- assert2Children tExpr

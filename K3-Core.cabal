@@ -47,7 +47,7 @@ library
 
     exposed-modules:
         Language.K3.Core.Annotation,
-        Language.K3.Core.Annotation.Syntax,        
+        Language.K3.Core.Annotation.Syntax,
         Language.K3.Core.Common,
         Language.K3.Core.Declaration,
         Language.K3.Core.Expression,
@@ -93,7 +93,6 @@ library
         Language.K3.TypeSystem.Utils,
         Language.K3.TypeSystem.TypeChecking,
         Language.K3.TypeSystem.Closure,
-        Language.K3.TypeSystem.Closure.BinOp,
         Language.K3.TypeSystem.TypeChecking.Expressions,
         Language.K3.TypeSystem.TypeChecking.Declarations,
         Language.K3.TypeSystem.TypeChecking.TypeExpressions,
@@ -131,7 +130,8 @@ library
                    Language.K3.TypeSystem.Simplification.GarbageCollection,
                    Language.K3.TypeSystem.Manifestation,
                    Language.K3.TypeSystem.Manifestation.Monad,
-                   Language.K3.TypeSystem.Manifestation.Data
+                   Language.K3.TypeSystem.Manifestation.Data,
+                   Language.K3.TypeSystem.Data.PrimitiveSubtyping
 
 test-suite all
     type: exitcode-stdio-1.0

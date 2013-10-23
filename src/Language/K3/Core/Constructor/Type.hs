@@ -4,6 +4,7 @@ module Language.K3.Core.Constructor.Type (
     byte,
     int,
     real,
+    number,
     string,
     unit,
     option,
@@ -51,6 +52,10 @@ int = leaf TInt
 -- | Decimal type.
 real :: K3 Type
 real = leaf TReal
+
+-- | Numeric supertype.
+number :: K3 Type
+number = leaf TNumber
 
 -- | String type.
 string :: K3 Type

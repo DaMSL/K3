@@ -40,6 +40,7 @@ typeOfOp op = case op of
   OAnd -> error "No and in spec yet!" -- TODO
   OOr -> error "No or in spec yet!" -- TODO
   ONot -> error "No unary operators in spec yet!" -- TODO
+  OConcat -> SomeBinaryOperator BinOpConcat
   OSeq -> SomeBinaryOperator BinOpSequence
   OApp -> SomeBinaryOperator BinOpApply
   OSnd -> SomeBinaryOperator BinOpSend

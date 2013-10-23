@@ -78,8 +78,6 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (AnyTVar,ShallowType)
   QueryAllTypesLowerBoundingTypes ::
     ConstraintSetQuery (ShallowType,ShallowType)
-  QueryAllBinaryOperations ::
-    ConstraintSetQuery (UVar,BinaryOperator,UVar,UVar)
   QueryAllQualOrVarLowerBoundingQVar ::
     ConstraintSetQuery (QualOrVar, QVar)
   QueryAllTypeOrVarLowerBoundingQVar ::
@@ -152,9 +150,6 @@ csQuery (ConstraintSet csSet) query =
     QueryAllTypesLowerBoundingTypes -> do
       IntermediateConstraint (CLeft t) (CLeft t') <- cs
       return (t,t')
-    QueryAllBinaryOperations -> do
-      BinaryOperatorConstraint a1 op a2 a3 <- cs
-      return (a1,op,a2,a3)
     QueryAllQualOrVarLowerBoundingQVar -> do
       QualifiedIntermediateConstraint qv1 qv2 <- cs
       CRight qa <- return qv2 -- guard $ "of the form QVar"

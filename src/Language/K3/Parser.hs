@@ -827,6 +827,7 @@ nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
   [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
+      map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
       map mkUnOpK  [("not", ONot)],

@@ -12,7 +12,6 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import Language.K3.Utils.Pretty
-import Language.K3.TypeSystem.Closure.BinOp
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Utils
 import Language.K3.Utils.Logger
@@ -42,7 +41,6 @@ calculateClosureStep cs =
       , (closeImmediate, "Immediate Type")
       , (closeLowerBoundingExtendedRecord, "Close Lower Ext. Record")
       , (closeUpperBoundingExtendedRecord, "Close Upper Ext. Record")
-      , (closeBinaryOperations, "Binary Operation")
       , (closeQualifiedTransitivity, "Qual Transitivity")
       , (closeQualifiedRead, "Qualified Read")
       , (closeQualifiedWrite, "Qualified Write")
@@ -135,18 +133,6 @@ closeUpperBoundingExtendedRecord cs = csUnions $ do
     Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty
     Just oa -> {-Opaque case -} return $ csSing $ t <: SOpaque oa
   
--- |Performs binary operation closure.
-closeBinaryOperations :: ConstraintSet -> ConstraintSet
-closeBinaryOperations cs = csUnions $ do
-  (a1,op,a2,a3) <- csQuery cs QueryAllBinaryOperations
-  t1 <- csQuery cs $ QueryTypeByUVarUpperBound a1
-  t2 <- csQuery cs $ QueryTypeByUVarUpperBound a2
-  let ans = binOpType op t1 t2
-  case ans of
-    Nothing -> mzero
-    Just (ta3,cs') ->
-      return $ cs' `csUnion` csFromList [ta3 <: a3{-, a1 <: t1, a2 <: t2-}]
-
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do
   (qv1,qa2) <- csQuery cs QueryAllQualOrVarLowerBoundingQVar

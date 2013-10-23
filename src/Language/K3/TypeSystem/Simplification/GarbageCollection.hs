@@ -68,7 +68,6 @@ simplifyByGarbageCollection cs = do
       QualifiedIntermediateConstraint _ _ -> Set.empty
       QualifiedLowerConstraint _ _ -> Set.empty
       QualifiedUpperConstraint _ _ -> Set.empty
-      BinaryOperatorConstraint _ _ _ _ -> Set.empty
       MonomorphicQualifiedUpperConstraint _ _ -> Set.empty
       PolyinstantiationLineageConstraint _ _ -> Set.empty
 

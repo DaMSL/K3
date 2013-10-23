@@ -152,6 +152,7 @@ instance Manifestable DelayedType where
         DBool -> return TC.bool
         DInt -> return TC.int
         DReal -> return TC.real
+        DNumber -> return TC.number
         DString -> return TC.string
         DAddress -> return TC.address
         DOption qas -> TC.option <$> manifestTypeFrom qas

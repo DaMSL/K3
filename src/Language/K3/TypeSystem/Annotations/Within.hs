@@ -111,11 +111,6 @@ instance WithinAlignable Constraint where
        ,QualifiedIntermediateConstraint qv1' qv2' ) ->
         withinAlign qv1 qv1' >> withinAlign qv2 qv2'
       (QualifiedIntermediateConstraint _ _, _) -> mzero
-      ( BinaryOperatorConstraint a1 op a2 a3
-       ,BinaryOperatorConstraint a1' op' a2' a3') ->
-        guard (op == op') >>
-          withinAlign a1 a1' >> withinAlign a2 a2' >> withinAlign a3 a3'
-      (BinaryOperatorConstraint _ _ _ _, _) -> mzero
       ( MonomorphicQualifiedUpperConstraint qa qs
        ,MonomorphicQualifiedUpperConstraint qa' qs' ) ->
         guard (qs == qs') >> withinAlign qa qa'
@@ -180,6 +175,10 @@ instance WithinAlignable ShallowType where
       (SReal, SReal) ->
         success
       (SReal, _) ->
+        mzero
+      (SNumber, SNumber) ->
+        success
+      (SNumber, _) ->
         mzero
       (SString, SString) ->
         success
