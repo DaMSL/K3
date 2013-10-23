@@ -21,7 +21,9 @@ module Language.K3.TypeSystem.Manifestation.Monad
 , tryDeclSig
 , catchSigUse
 , nameOpaque
-, grabNamedOpaques
+, getNamedOpaques
+, clearNamedOpaques
+, usingBoundType
 , dualizeBoundType
 ) where
 
@@ -173,19 +175,27 @@ nameOpaque oa = do
            , opaqueNameMap = Map.insert oa newName $ opaqueNameMap s }
       return newName
 
--- |Retrieves all declared opaque variables.  This operation will remove them
---  from the monad's stateful mapping; it is expected that the caller will
---  ensure that these variables are bound.
-grabNamedOpaques :: ManifestM (Map OpaqueVar String)
-grabNamedOpaques = do
+-- |Retrieves all declared opaque variables.
+getNamedOpaques :: ManifestM (Map OpaqueVar String)
+getNamedOpaques = opaqueNameMap <$> get
+
+-- |Clears all declared opaque variables.
+clearNamedOpaques :: ManifestM ()
+clearNamedOpaques = do
   s <- get
   put s{ opaqueNameMap = Map.empty }
-  return $ opaqueNameMap s
+  
+-- |Performs a computation under the current monad but using a specific bound
+--  type.
+usingBoundType :: BoundType -> ManifestM a -> ManifestM a
+usingBoundType bt x = do
+  env <- ask
+  let env' = env { envBoundType = bt }
+  local (const env') x
 
 -- |Performs a computation in the dual bound type.  This is used when a type
 --  must be constructed in a contravariant position.
 dualizeBoundType :: ManifestM a -> ManifestM a
 dualizeBoundType x = do
-  env <- ask
-  let env' = env { envBoundType = getDualBoundType $ envBoundType env}
-  local (const env') x
+  bt <- getDualBoundType <$> envBoundType <$> ask
+  usingBoundType bt x

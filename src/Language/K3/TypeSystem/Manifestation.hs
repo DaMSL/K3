@@ -54,27 +54,34 @@ manifestType bt cs x =
 declareOpaques :: ManifestM (K3 Type) -> ManifestM (K3 Type)
 declareOpaques xM = do
   x <- xM
-  namedOpaques <- Map.toList <$> grabNamedOpaques
-  cs <- askConstraints
-  return $ if null namedOpaques
-    then x
-    else TC.externallyBound (map (bindOpaque cs) namedOpaques) x
+  namedOpaques <- Map.toList <$> getNamedOpaques
+  if null namedOpaques
+    then return x
+    else do
+          ans <- (`TC.externallyBound` x) <$> mapM bindOpaque namedOpaques
+          clearNamedOpaques
+          return ans
   where
-    bindOpaque :: ConstraintSet -> (OpaqueVar, Identifier) -> TypeVarDecl
-    bindOpaque cs (oa,i) =
-      let bounds = csQuery cs $ QueryOpaqueBounds oa in
+    bindOpaque :: (OpaqueVar, Identifier) -> ManifestM TypeVarDecl
+    bindOpaque (oa,i) = do
+      cs <- askConstraints
+      let bounds = csQuery cs $ QueryOpaqueBounds oa
       case length bounds of
-        1 ->
-          let (t_L,t_U) = head bounds in
-          let typL = manifestFromTypeOrVar lowerBound t_L in
-          let typU = manifestFromTypeOrVar upperBound t_U in
-          TypeVarDecl i (Just typL) (Just typU)
+        1 -> do
+          let (t_L,t_U) = head bounds
+          typL <- manifestFromTypeOrVar lowerBound t_L
+          typU <- manifestFromTypeOrVar upperBound t_U
+          return $ TypeVarDecl i (Just typL) (Just typU)
         0 -> error $ "Missing opaque bound for " ++ show oa
         _ -> error $ "Multile opaque bounds for " ++ show oa
       where
-        manifestFromTypeOrVar bt tov = case tov of
-          CLeft x -> manifestType bt cs $ shallowToDelayed x
-          CRight x -> manifestType bt cs x
+        manifestFromTypeOrVar bt tov =
+          case tov of
+            CLeft x ->
+              usingBoundType bt $ manifestTypeFrom $ Set.singleton $
+                shallowToDelayed x  
+            CRight x ->
+              usingBoundType bt $ manifestTypeFrom $ Set.singleton x
 
 -- |A typeclass for entities from which types can be manifested.
 class Manifestable a where
