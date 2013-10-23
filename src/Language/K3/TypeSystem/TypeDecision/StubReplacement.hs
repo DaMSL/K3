@@ -88,16 +88,16 @@ closeStubSubstitution m scs =
   let scs' = closeInner scs in
   -- Next, replace stubs with constraints
   constraintsOf scs' `csUnion`
-    csFromList (map constraintForStub $ Set.toList $ stubsOf scs')
+    csUnions (map constraintsForStub $ Set.toList $ stubsOf scs')
   where
     closeInner :: StubbedConstraintSet -> StubbedConstraintSet
     closeInner scs' =
       let scs'' = stubSubstitution m scs' in
       if scs'' /= scs' then closeInner scs'' else scs'
-    constraintForStub :: Stub -> Constraint
-    constraintForStub stub =
+    constraintsForStub :: Stub -> ConstraintSet
+    constraintsForStub stub =
       let (info,(qa,_)) = stubLookup stub m in
-      qa <: stubVar info
+      qa ~= stubVar info
 
 -- |Performs a single pass of stub substitution.
 stubSubstitution
