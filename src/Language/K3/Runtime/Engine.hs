@@ -178,8 +178,6 @@ $(customLoggingFunctions ["EngineSteps"])
 
 data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
-                       --, bareFormat      :: WireDesc a -- We had a good name for this
-                       -- This is causing problems for now
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
                        , queues          :: MessageQueues a
