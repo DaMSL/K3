@@ -123,8 +123,6 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 {- Collections and annotations -}
 
---class Dataspace ds where
---    insert :: ds -> Value -> ds
 data CollectionDataspaceType = InMemory | External
 data CollectionDataspace = InMemoryDS [Value] | ExternalDS Identifier
 
@@ -277,6 +275,7 @@ sendE addr n val = liftEngine $ send addr n val
 vunit :: Value
 vunit = VTuple []
 
+{- Collection operations -}
 emptyCollectionNamespace :: CollectionNamespace Value
 emptyCollectionNamespace = CollectionNamespace [] []
 
@@ -293,12 +292,17 @@ emptyCollectionBody dst n =
 defaultCollectionBody :: [Value] -> Collection Value
 defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
 
-emptyAnnotatedCollection :: Identifier -> Interpretation Value
-emptyAnnotatedCollection n = liftIO (newMVar $ emptyCollectionBody n) >>= return . VCollection 
+emptyAnnotatedCollection :: CollectionDataspaceType -> Identifier -> Interpretation Value
+emptyAnnotatedCollection dst n =
+  do
+    collection <- liftEngine $ emptyCollectionBody dst n
+    liftIO (newMVar collection) >>= return . VCollection 
 
+-- This gets used as the default collection, so it's an InMemory store
 emptyCollection :: Interpretation Value
-emptyCollection = emptyAnnotatedCollection ""
+emptyCollection = emptyAnnotatedCollection InMemory ""
 
+-- CopyDataspace goes around here
 
 {- Identifiers -}
 collectionAnnotationId :: Identifier
@@ -694,12 +698,60 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 {- Interpretation utility functions -}
 
+openCollectionFile :: Identifier -> String -> EngineM Value ()
+openCollectionFile name mode =
+  do
+    engine <- ask
+    void $ openFile name name syntaxValueWD Nothing mode
+    return ()
+
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
 getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, namedTAnnotations anns)
 
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
 getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
+
+foldFile :: Identifier -> (a -> Value -> a) -> a -> Interpretation a
+foldFile file_id accumulation initial_accumulator =
+  do
+    file_over <- liftEngine $ hasRead file_id
+    case file_over of
+      Nothing -> return initial_accumulator -- Hiding an error...
+      Just False -> return initial_accumulator
+      Just True ->
+        do
+          cur_val <- liftEngine $ doRead file_id
+          case cur_val of
+            Nothing -> return initial_accumulator
+            Just val -> do
+              let new_acc = accumulation initial_accumulator val
+              foldFile file_id accumulation new_acc
+
+-- Takes the file id of an external collection, then runs the second argument on
+-- each argument, then return sthe identifier of the new collection
+mapFile :: Identifier -> ( Value -> Value ) -> Interpretation Identifier
+mapFile file_id function = do
+  new_id <- liftEngine $ generateCollectionFilename
+  mapFile_int file_id new_id function
+
+mapFile_int :: Identifier -> Identifier -> ( Value -> Value ) -> Interpretation Identifier
+mapFile_int old_file_id new_file_id function =
+  do
+    file_over <- liftEngine $ hasRead old_file_id
+    case file_over of
+      Nothing -> return new_file_id -- Hiding an error...
+      Just False -> return new_file_id
+      Just True ->
+        do
+          cur_val <- liftEngine $ doRead old_file_id
+          case cur_val of
+            Nothing -> return new_file_id
+            Just val -> do
+              let new_val = function val
+              --TODO check hasWrite and errors and things
+              liftEngine $ doWrite new_file_id new_val
+              mapFile_int old_file_id new_file_id function
 
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
@@ -720,16 +772,39 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkInitializer :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitializer Value
     mkInitializer comboId namedAnnDefs = const $ do
-      newCMV <- liftIO . newMVar $ emptyCollectionBody comboId
+      collection <- liftEngine $ emptyCollectionBody backingType comboId
+      newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return newCMV
+      return $ newCMV
+        where
+         backingType =
+            case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
+                Nothing -> InMemory 
+                otherwise -> External
 
     mkConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkConstructor comboId namedAnnDefs = \coll -> do
+    mkConstructor comboId namedAnnDefs = \c -> do
+      newDS <- copyDataspace $ dataspace c
+      let coll = Collection (namespace coll) (newDS) (extensionId c)
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       return newCMV
+    
+    copyDataspace :: CollectionDataspace -> Interpretation (CollectionDataspace)
+    copyDataspace ds = 
+        case ds of
+            InMemoryDS ls -> do return $ InMemoryDS ls
+            ExternalDS old_id ->
+              do
+                new_id <- liftEngine $ generateCollectionFilename
+                liftEngine $ openCollectionFile new_id "w"
+                liftEngine $ openCollectionFile old_id "r"
+                join $ foldFile old_id (\_ val -> do
+                  liftEngine $ doWrite new_id val
+                  ) (return ()) --What?? why do I need the return here
+                return $ ExternalDS new_id
+                   
 
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
@@ -901,6 +976,11 @@ providesError :: String -> Identifier -> a
 providesError kind n = error $ 
   "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
+{-
+ - Collection API : head, map, fold, append/concat, delete
+ - these can handle in memory vs external
+ - other functions here use this api
+ -}
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
 builtinLiftedAttribute annId n t uid 
@@ -916,6 +996,7 @@ builtinLiftedAttribute annId n t uid
   | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
   | annId == "Collection" && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
+  --  annId == "Persistent" && n == "peek"    = return $ Just (n, persistentPeekFn)
   | otherwise = providesError "lifted attribute" n
 
   where 
@@ -925,21 +1006,84 @@ builtinLiftedAttribute annId n t uid
           return $ VCollection c'
 
         -- | Collection accessor implementation
-        peekFn = valWithCollection $ \_ (Collection ns (InMemoryDS ds) extId) -> 
+        peekFn = valWithCollection $ \_ (Collection ns ds extId) -> 
           case ds of
-            []    -> return $ VOption Nothing
-            (h:t) -> return . VOption $ Just h
+            InMemoryDS ls ->
+              case ls of
+                []    -> return $ VOption Nothing
+                (h:t) -> return . VOption $ Just h
+            ExternalDS ext_id ->
+              do
+                liftEngine $ openCollectionFile ext_id "r"
+                can_read <- liftEngine $ hasRead ext_id
+                case can_read of
+                    Nothing     -> return $ VOption Nothing
+                        -- TODO Error reading should propagate an error up to K3?
+                    Just False  -> return $ VOption Nothing
+                    Just True   -> do
+                        opt_read <- liftEngine $ doRead ext_id
+                        return $ VOption opt_read
+                
 
         -- | Collection modifier implementation
         insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
         deleteFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (deleteCollection el)
         updateFn = valWithCollectionMV $ \old cmv -> ivfun $ \new -> modifyCollection cmv (updateCollection old new)
 
-        modifyCollection cmv f = liftIO (modifyMVar_ cmv f) >> return vunit
+        -- BREAKING EXCEPTION SAFETY
+        modifyCollection :: MVar (Collection Value) -> (Collection Value -> Interpretation (Collection Value)) -> Interpretation Value
+        --TODO modifyMVar_ function has to be over IO
+        modifyCollection cmv f = do
+            old_col <- liftIO $ readMVar cmv
+            result <- f old_col
+            --liftIO $ putMVar cmv result
+            liftIO $ modifyMVar_ cmv (const $ return result)
+            return vunit
 
-        insertCollection v    (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS (ds++[v])) extId
-        deleteCollection v    (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS (delete v ds)) extId
-        updateCollection v v' (Collection ns (InMemoryDS ds) extId) = return $ Collection ns (InMemoryDS ((delete v ds)++[v'])) extId
+        insertCollection :: Value -> Collection (Value) -> Interpretation (Collection Value)
+        insertCollection v  (Collection ns ds extId) =
+          case ds of
+            InMemoryDS ls -> return $ Collection ns (InMemoryDS (ls++[v])) extId
+            ExternalDS file_id -> do
+              liftEngine $ openCollectionFile file_id "a"
+              -- can_write <- liftEngine $ hasWrite ext_id -- TODO How to handle errors here?
+              liftEngine $ doWrite file_id v
+              liftEngine $ close file_id
+              return $ Collection ns ds extId
+
+        deleteCollection v    (Collection ns ds extId) =
+          case ds of 
+            InMemoryDS ls -> return $ Collection ns (InMemoryDS (delete v ls)) extId
+            ExternalDS file_id -> do
+              liftEngine $ openCollectionFile file_id "w"
+              join $ foldFile file_id(\found_it val -> do
+                truth <- found_it
+                if truth == False && val == v
+                  then return True
+                  else do
+                    liftEngine $ doWrite file_id val --TODO error check
+                    return False
+                ) (return False)
+              liftEngine $ close file_id
+              return $ Collection ns ds extId
+
+        updateCollection v v' (Collection ns ds extId) =
+          case ds of 
+            InMemoryDS ls -> return $ Collection ns (InMemoryDS ((delete v ls)++[v'])) extId
+            ExternalDS file_id -> do
+              liftEngine $ openCollectionFile file_id "w"
+              join $ foldFile file_id(\found_it val -> do
+                truth <- found_it
+                if truth == False && val == v
+                  then do
+                    liftEngine $ doWrite file_id v'
+                    return True
+                  else do
+                    liftEngine $ doWrite file_id val --TODO error check
+                    return False
+                ) (return False)
+              liftEngine $ close file_id
+              return $ Collection ns ds extId
 
         -- | Collection effector implementation
         iterateFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) -> 
@@ -1052,8 +1196,7 @@ builtinLiftedAttribute annId n t uid
         partitionFnError = throwE $ RunTimeTypeError "Invalid grouping function"
         curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"
         extError         = throwE $ RunTimeTypeError "Invalid function argument for ext"
-
-
+        
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
                     -> Interpretation (Maybe (Identifier, Value))
 builtinAttribute annId n t uid = providesError "attribute" n
