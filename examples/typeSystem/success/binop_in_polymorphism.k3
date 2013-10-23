@@ -1,0 +1,3 @@
+declare applyInt : forall a. (a -> int) -> a -> int
+declare n : int = applyInt (\n -> n + 1) 3
+
