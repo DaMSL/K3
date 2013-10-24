@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE TemplateHaskell, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances, ConstraintKinds #-}
 
 {-|
   This module defines an operation which extracts all variables which "appear"
@@ -8,6 +8,7 @@
 module Language.K3.TypeSystem.Morphisms.ExtractVariables
 ( ExtractVariables(..)
 , extractVariables
+, VariableExtractable
 ) where
 
 import Control.Applicative
@@ -20,11 +21,12 @@ import Language.K3.Utils.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.TypeDecision.Data
 
+type VariableExtractable a = (Reduce ExtractVariables a VariableReduction)
+
 type VariableReduction = Set AnyTVar
 
 -- |A function to extract variables from type system data.
-extractVariables :: (Reduce ExtractVariables a VariableReduction)
-                 => a -> Set AnyTVar
+extractVariables :: (VariableExtractable a) => a -> Set AnyTVar
 extractVariables = reduce ExtractVariables
 
 -- |A transformation (as in @Language.K3.Utils.TemplateHaskell.Transform@) for

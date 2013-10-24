@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, TemplateHaskell, FlexibleContexts #-}
 
 {-|
   This module provides a routine which manifests a type given a constraint set
@@ -28,6 +28,8 @@ import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Manifestation.Monad
+import Language.K3.TypeSystem.Morphisms.ExtractVariables
+import Language.K3.TypeSystem.Simplification
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
@@ -35,19 +37,25 @@ $(loggingFunctions)
 
 -- |A general top-level function for manifesting a type from a constraint set
 --  and a manifestable entity.
-manifestType :: (Manifestable a, Pretty a)
+manifestType :: ( Manifestable a, Pretty a, VariableExtractable a)
              => BoundType -> ConstraintSet -> a -> K3 Type
 manifestType bt cs x =
   let name = getBoundTypeName bt in
   _debugI (boxToString
     (["Manifesting " ++ name ++ " bound type for "] %+ prettyLines x %+
       ["\\{"] %+ prettyLines cs +% ["}"])) $
-  let t = runManifestM bt cs $
+  let simpCs = lfp doSimpl cs in
+  let t = runManifestM bt simpCs $
             declareOpaques $ manifestTypeFrom $ Set.singleton x in
   _debugI (boxToString
     (["Manifested " ++ name ++ " bound type for "] %+ prettyLines x %+
       prettyLines cs %$ indent 2 (["Result: "] %+ prettyLines t)))
   t
+  where
+    doSimpl = runSimplifyM SimplificationConfig
+                            { preserveVars = extractVariables x }
+      . simplifyByUnification
+    lfp f v = let v' = f v in if v == v' then v' else lfp f v'
   
 -- |A helper routine which will create declarations for opaque variables as
 --  necessary.

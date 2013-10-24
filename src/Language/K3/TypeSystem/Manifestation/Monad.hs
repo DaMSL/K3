@@ -25,6 +25,7 @@ module Language.K3.TypeSystem.Manifestation.Monad
 , clearNamedOpaques
 , usingBoundType
 , dualizeBoundType
+, typeComputationCache
 ) where
 
 import Control.Applicative
@@ -35,7 +36,9 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 
@@ -57,7 +60,8 @@ runManifestM bt cs x =
                                        , definedSignatures = Set.empty } in
   let initialState = ManifestState { unusedNames = initialNames
                                    , variableNameMap = Map.empty
-                                   , opaqueNameMap = Map.empty } in
+                                   , opaqueNameMap = Map.empty
+                                   , resultCache = Map.empty } in
   let (result,_,_) = runRWS (unManifestM x) initialEnviron initialState in
   result
   
@@ -91,6 +95,7 @@ data ManifestState
       { unusedNames :: [String]
       , variableNameMap :: Map VariableSignature String
       , opaqueNameMap :: Map OpaqueVar String
+      , resultCache :: Map VariableSignature (K3 Type)
       }
 
 initialNames :: [String]
@@ -199,3 +204,18 @@ dualizeBoundType :: ManifestM a -> ManifestM a
 dualizeBoundType x = do
   bt <- getDualBoundType <$> envBoundType <$> ask
   usingBoundType bt x
+
+-- |Either performs a computation or retrieves a cached version based upon the
+--  provided variable signature.
+typeComputationCache :: VariableSignature
+                     -> ManifestM (K3 Type)
+                     -> ManifestM (K3 Type)
+typeComputationCache sig x = do
+  cache <- resultCache <$> get
+  case Map.lookup sig cache of
+    Just result -> return result
+    Nothing -> do
+      result <- x
+      s <- get
+      put $ s {resultCache = Map.insert sig result $ resultCache s}
+      return result

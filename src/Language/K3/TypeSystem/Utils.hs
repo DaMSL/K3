@@ -101,6 +101,8 @@ getUpperBoundsOf cs ta =
     CLeft t -> [t]
     CRight a -> nub $ csQuery cs $ QueryTypeByUVarLowerBound a
 
+-- TODO: get rid of quasi-fresh stuff; it's no longer used
+
 -- |A class defining ad-hoc overloading for a routine which generates a
 --  quasi-fresh variable.
 class QuasiFreshVarConstruction q where
