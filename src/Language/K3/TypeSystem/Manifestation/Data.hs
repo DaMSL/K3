@@ -177,7 +177,12 @@ instance Monoid DelayedIntersection where
   mempty = DelayedIntersection DTop
   mappend (DelayedIntersection t) (DelayedIntersection t') =
     DelayedIntersection $
-      delayedMerge DBottom id (const DBottom) Map.unionWith t t'
+      case (t,t') of
+        (DReal, DNumber) -> DReal
+        (DNumber, DReal) -> DReal
+        (DInt, DNumber) -> DInt
+        (DNumber, DInt) -> DInt
+        _ -> delayedMerge DBottom id (const DBottom) Map.unionWith t t'
 
 -- |An implementation of intersection over a list of delayed types.  Note that
 --  this operation is shallow; it is the responsibility of other code to address
