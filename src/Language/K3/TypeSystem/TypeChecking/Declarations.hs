@@ -185,7 +185,7 @@ deriveDeclaration aEnv env decl =
 
       -- Build the set of constraints to connect the opaque types to their
       -- corresponding type variables.
-      let cs' = csUnions [ SOpaque oa_c ~= a_c
+      let cs'1 = csUnions [ SOpaque oa_c ~= a_c
                           , SOpaque oa_f ~= a_f
                           , SOpaque oa_s ~= a_s
                           , csFromList
@@ -197,6 +197,7 @@ deriveDeclaration aEnv env decl =
                              , OpaqueBoundConstraint oa_s
                                   (CLeft SBottom) (CLeft t_s)
                              ] ]
+      let cs'2 = csUnions $ map (\(_,_,_,cs_i') -> cs_i') $ Map.elems qEnv
       
       -- Derive appropriate types for the members.
       let arityMaps =
@@ -220,7 +221,7 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b') 
-      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
