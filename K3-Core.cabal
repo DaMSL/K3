@@ -35,7 +35,6 @@ library
         network-transport-tcp,
         optparse-applicative,
         parsec,
-        parsec-parsers,
         parsers,
         process,
         split,
