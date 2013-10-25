@@ -120,10 +120,10 @@ library
         Language.K3.Codegen.Haskell,
         Language.K3.Codegen,
         Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
-        Language.K3.TypeSystem.Annotations.Within,
         Language.K3.TypeSystem.Simplification,
         Language.K3.TypeSystem.Simplification.Data,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification,
+        Language.K3.TypeSystem.Within
 
     ghc-options: -Wall
     other-modules: 
