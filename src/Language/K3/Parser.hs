@@ -50,8 +50,6 @@ import Text.Parser.Expression
 import Text.Parser.Token
 import Text.Parser.Token.Style
 
-import Text.Parser.Parsec()
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
