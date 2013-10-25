@@ -21,7 +21,7 @@ executable k3
         filepath,
         hslogger,
         mtl,
-        optparse-applicative,
+        optparse-applicative >= 0.7.0.2,
         readline,
         split,
 

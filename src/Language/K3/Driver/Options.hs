@@ -199,7 +199,7 @@ loggingOptions = many $ option (
                        long "log"
                     <> help "Logging directive"
                     <> metavar "LOG_INSTRUCTION"
-                    <> reader (either (Left . ErrorMsg) Right . parseInstruction)
+                    <> eitherReader parseInstruction
                  )
 
 -- | Path options.
