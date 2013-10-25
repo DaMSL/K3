@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, DataKinds #-}
+{-# LANGUAGE TupleSections, DataKinds, TemplateHaskell #-}
 
 {-|
   This module contains general type manipulation utilities.
@@ -10,6 +10,7 @@ module Language.K3.TypeSystem.Utils
 , RecordConcatenationError(..)
 , getLowerBoundsOf
 , getUpperBoundsOf
+, leastFixedPoint
 , quasiFreshVar
 ) where
 
@@ -40,6 +41,7 @@ typeOfOp op = case op of
   OAnd -> error "No and in spec yet!" -- TODO
   OOr -> error "No or in spec yet!" -- TODO
   ONot -> error "No unary operators in spec yet!" -- TODO
+  OConcat -> SomeBinaryOperator BinOpConcat
   OSeq -> SomeBinaryOperator BinOpSequence
   OApp -> SomeBinaryOperator BinOpApply
   OSnd -> SomeBinaryOperator BinOpSend
@@ -99,6 +101,15 @@ getUpperBoundsOf cs ta =
   case ta of
     CLeft t -> [t]
     CRight a -> nub $ csQuery cs $ QueryTypeByUVarLowerBound a
+
+-- |Calculates the least fixed point of an operation given a value.
+leastFixedPoint :: (Eq a) => (a -> a) -> a -> a
+leastFixedPoint f x =
+  let xs = iterate f x in
+  let pairs = zip xs $ tail xs in
+  snd $ head $ Data.List.filter (uncurry (==)) pairs
+
+-- TODO: get rid of quasi-fresh stuff; it's no longer used
 
 -- |A class defining ad-hoc overloading for a routine which generates a
 --  quasi-fresh variable.

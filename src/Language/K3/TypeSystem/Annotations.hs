@@ -28,7 +28,7 @@ import Language.K3.Utils.TemplateHaskell.Reduce
 import Language.K3.Utils.TemplateHaskell.Transform
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Annotations.Error
-import Language.K3.TypeSystem.Annotations.Within
+import Language.K3.TypeSystem.Within
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
@@ -213,7 +213,8 @@ concatAnnMembers ms1 ms2 =
         polyCheckEquiv :: (QVar,c) -> (QVar,c)
                        -> Either AnnotationConcatenationError ()
         polyCheckEquiv x y =
-          if isWithin x y && isWithin y x then Right ()
+          if x `mutuallyWithin` y
+            then Right ()
             else Left $ PolymorphicArityMembersNotEquivalent $ idOf $ head mems
             
 -- |Defines depolarization of annotation members.  If depolarization is not

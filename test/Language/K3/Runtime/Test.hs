@@ -38,6 +38,7 @@ import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
 import Language.K3.Utils.Pretty
 
+{-
 constructBuffer :: [Test]
 constructBuffer = [
       testCase "Empty exclusive singleton" $ empty $ exclusive emptySingletonBuffer    
@@ -390,10 +391,11 @@ engineTests = [
                 senders        = tail nodesAndEngines
                 msgAction      = mapM_ (\(_,sAddr) -> testValue >>= \y -> send rAddr testTrigger y sAddr) senders
             in pushMessages msgsToSend (length senders, msgAction) recvr
-
+-}
 
 tests :: [Test]
 tests = [
+{-
     testGroup "Buffers"            bufferTests,
     testGroup "Transport"          transportTests,
     testGroup "Connections"        connectionTests,
@@ -402,4 +404,5 @@ tests = [
     testGroup "Notifications"      notificationTests,
     testGroup "Engine components"  engineComponentTests,
     testGroup "Engine"             engineTests
+-}
   ]

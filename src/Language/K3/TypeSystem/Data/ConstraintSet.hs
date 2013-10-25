@@ -78,8 +78,6 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (AnyTVar,ShallowType)
   QueryAllTypesLowerBoundingTypes ::
     ConstraintSetQuery (ShallowType,ShallowType)
-  QueryAllBinaryOperations ::
-    ConstraintSetQuery (UVar,BinaryOperator,UVar,UVar)
   QueryAllQualOrVarLowerBoundingQVar ::
     ConstraintSetQuery (QualOrVar, QVar)
   QueryAllTypeOrVarLowerBoundingQVar ::
@@ -88,6 +86,10 @@ data ConstraintSetQuery r where
     ConstraintSetQuery (UVar, UVar)
   QueryAllQVarLowerBoundingQVar ::
     ConstraintSetQuery (QVar, QVar)
+  QueryAllQVarLowerBoundingUVar ::
+    ConstraintSetQuery (QVar, UVar)
+  QueryAllUVarLowerBoundingQVar ::
+    ConstraintSetQuery (UVar, QVar)
   QueryAllMonomorphicQualifiedUpperConstraint ::
     ConstraintSetQuery (QVar, Set TQual)
   QueryAllOpaqueLowerBoundedConstraints ::
@@ -148,9 +150,6 @@ csQuery (ConstraintSet csSet) query =
     QueryAllTypesLowerBoundingTypes -> do
       IntermediateConstraint (CLeft t) (CLeft t') <- cs
       return (t,t')
-    QueryAllBinaryOperations -> do
-      BinaryOperatorConstraint a1 op a2 a3 <- cs
-      return (a1,op,a2,a3)
     QueryAllQualOrVarLowerBoundingQVar -> do
       QualifiedIntermediateConstraint qv1 qv2 <- cs
       CRight qa <- return qv2 -- guard $ "of the form QVar"
@@ -164,6 +163,12 @@ csQuery (ConstraintSet csSet) query =
     QueryAllUVarLowerBoundingUVar -> do
       IntermediateConstraint (CRight a1) (CRight a2) <- cs
       return (a1, a2)
+    QueryAllUVarLowerBoundingQVar -> do
+      QualifiedLowerConstraint (CRight a1) qa2 <- cs
+      return (a1, qa2)
+    QueryAllQVarLowerBoundingUVar -> do
+      QualifiedUpperConstraint qa1 (CRight a2) <- cs
+      return (qa1, a2)
     QueryAllMonomorphicQualifiedUpperConstraint -> do
       MonomorphicQualifiedUpperConstraint qa qs <- cs
       return (qa, qs)

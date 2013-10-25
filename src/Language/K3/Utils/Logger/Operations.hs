@@ -9,6 +9,8 @@ module Language.K3.Utils.Logger.Operations
 , k3logIPretty
 , k3logM
 , k3logMPretty
+, bracketLog
+, bracketLogM
 ) where
 
 import Control.DeepSeq
@@ -48,7 +50,10 @@ k3logIPretty :: (Pretty a)
 k3logIPretty moduleName logLevel prefix value =
   k3logI moduleName logLevel (boxToString $ [prefix] %+ prettyLines value) value
 
--- |A function to log a message in a monad.
+-- |A function to log a message in a monad.  *Note:* This routine is only
+--  helpful if the monad is sufficiently strict to pull on the resulting unit.
+--  A monad under @EitherT@ is strict enough; a monad under @ReaderT@ or
+--  @StateT@ is not.
 k3logM :: (Monad m) => String -> Priority -> String -> m ()
 k3logM moduleName logLevel message =
   k3logI moduleName logLevel message $ return ()
@@ -58,3 +63,18 @@ k3logMPretty :: (Monad m, Pretty a)
              => String -> Priority -> String -> a -> m ()
 k3logMPretty moduleName logLevel prefix value =
   k3logM moduleName logLevel (boxToString $ [prefix] %+ prettyLines value)
+
+-- |A bracket logging function designed for wrapping around a computation.
+--  It expects a logging routine such as @_debugI@.  The start message is
+--  generic; the end message is based on the reuslt of computation.  The "end"
+--  of this bracket occurs whenever the data on which the end logging message
+--  function pulls has been computed.
+bracketLog :: (String -> a -> a) -> String -> (a -> String) -> a -> a
+bracketLog logFn startMsg endMsgFn val =
+  let result = logFn startMsg val in logFn (endMsgFn result) result
+
+bracketLogM :: (Monad m)
+            => (String -> m a -> m a) -> String -> (a -> String) -> m a -> m a
+bracketLogM logFn startMsg endMsgFn val = do
+  result <- logFn startMsg val
+  logFn (endMsgFn result) $ return result
