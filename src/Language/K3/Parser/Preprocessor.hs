@@ -20,8 +20,6 @@ import Text.Parser.Combinators
 import Text.Parser.Token
 import Text.Parser.Token.Style
 
-import Text.Parser.Parsec()
-
 import System.FilePath
 import qualified System.FilePath.Find as SF
 

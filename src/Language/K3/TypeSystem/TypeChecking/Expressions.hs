@@ -162,14 +162,14 @@ deriveExpression aEnv env expr = do
           return (a'', cs `csUnion`
                               csFromList [SFunction a a' <: a'', a <: qa])
         EOperate op -> do
-          a <- freshTypecheckingUVar u
+          a0 <- freshTypecheckingUVar u
           case typeOfOp op of
             SomeBinaryOperator binop -> do
               (expr1, expr2) <- assert2Children expr
               (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
               (a2,cs2) <- deriveUnqualifiedExpression aEnv env expr2
-              let cs' = csSing $ BinaryOperatorConstraint a1 binop a2 a
-              return (a, csUnions [cs1, cs2, cs'])
+              cs3 <- binOpConstraints a1 binop a2 a0
+              return (a0, csUnions [cs1, cs2, cs3])
         EProject i -> do
           expr' <- assert1Child expr
           (a', cs) <- deriveUnqualifiedExpression aEnv env expr'
@@ -276,6 +276,34 @@ deriveExpression aEnv env expr = do
       envRequireM (UnboundEnvironmentIdentifier <$> uidOf expr
                                                 <*> return envId)
         envId env
+    binOpConstraints :: UVar -> BinaryOperator -> UVar -> UVar
+                     -> ExprTypecheckM ConstraintSet
+    binOpConstraints a1 binop a2 a0 =
+      csFromList <$> case binop of
+        BinOpAdd -> return arithConstraints
+        BinOpSubtract -> return arithConstraints
+        BinOpMultiply -> return arithConstraints
+        BinOpDivide -> return arithConstraints
+        BinOpEquals -> return [ a1 <: a2, a2 <: a1, SBool <: a0 ]
+        BinOpLess -> return arithCompConstraints
+        BinOpLessEq -> return arithCompConstraints
+        BinOpGreater -> return arithCompConstraints
+        BinOpGreaterEq -> return arithCompConstraints
+        BinOpConcat -> return [ a1 <: SString, a2 <: SString, SString <: a0 ]
+        BinOpSequence -> return [ a2 <: a0 ]
+        BinOpApply -> return [ a1 <: SFunction a2 a0 ]
+        BinOpSend -> do
+          qa1' <- freshTypecheckingQVar =<< uidOf expr
+          qa2' <- freshTypecheckingQVar =<< uidOf expr
+          return [ a1 <: STuple [qa1',qa2']
+                 , qa1' <: STrigger a2
+                 , qa2' <: SAddress
+                 , STuple [] <: a0
+                 ]
+      where
+        arithConstraints = [a1 <: SNumber, a2 <: SNumber, a1 <: a0, a2 <: a0 ]
+        arithCompConstraints = [ a1 <: SNumber, a2 <: SNumber, SBool <: a0 ]
+        
 
 -- |Obtains the type qualifiers of a given expression.  If no type qualifier
 --  tags appear, a type error is generated.  The qualifiers are obtained as a

@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, TemplateHaskell #-}
 
 {-|
   A module defining a monad (and associated data types) for type manifestation.
@@ -21,8 +21,11 @@ module Language.K3.TypeSystem.Manifestation.Monad
 , tryDeclSig
 , catchSigUse
 , nameOpaque
-, grabNamedOpaques
+, getNamedOpaques
+, clearNamedOpaques
+, usingBoundType
 , dualizeBoundType
+, typeComputationCache
 ) where
 
 import Control.Applicative
@@ -33,9 +36,15 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
 
 -- * Monad definitions
 
@@ -55,7 +64,8 @@ runManifestM bt cs x =
                                        , definedSignatures = Set.empty } in
   let initialState = ManifestState { unusedNames = initialNames
                                    , variableNameMap = Map.empty
-                                   , opaqueNameMap = Map.empty } in
+                                   , opaqueNameMap = Map.empty
+                                   , resultCache = Map.empty } in
   let (result,_,_) = runRWS (unManifestM x) initialEnviron initialState in
   result
   
@@ -63,6 +73,13 @@ runManifestM bt cs x =
 --  mu-recursive types.
 data VariableSignature = VariableSignature (Set AnyTVar) DelayedOperationTag
   deriving (Eq, Ord, Show)
+
+instance Pretty VariableSignature where
+  prettyLines (VariableSignature vars dtag) =
+    (case dtag of
+      DelayedIntersectionTag -> ["Intersection"]
+      DelayedUnionTag -> ["Union"]) %+
+    ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList vars) %+ ["}"]
 
 -- |A structure for the manifestation environment.
 data ManifestEnviron
@@ -89,6 +106,7 @@ data ManifestState
       { unusedNames :: [String]
       , variableNameMap :: Map VariableSignature String
       , opaqueNameMap :: Map OpaqueVar String
+      , resultCache :: Map VariableSignature (K3 Type)
       }
 
 initialNames :: [String]
@@ -173,19 +191,48 @@ nameOpaque oa = do
            , opaqueNameMap = Map.insert oa newName $ opaqueNameMap s }
       return newName
 
--- |Retrieves all declared opaque variables.  This operation will remove them
---  from the monad's stateful mapping; it is expected that the caller will
---  ensure that these variables are bound.
-grabNamedOpaques :: ManifestM (Map OpaqueVar String)
-grabNamedOpaques = do
+-- |Retrieves all declared opaque variables.
+getNamedOpaques :: ManifestM (Map OpaqueVar String)
+getNamedOpaques = opaqueNameMap <$> get
+
+-- |Clears all declared opaque variables.
+clearNamedOpaques :: ManifestM ()
+clearNamedOpaques = do
   s <- get
   put s{ opaqueNameMap = Map.empty }
-  return $ opaqueNameMap s
+  
+-- |Performs a computation under the current monad but using a specific bound
+--  type.
+usingBoundType :: BoundType -> ManifestM a -> ManifestM a
+usingBoundType bt x = do
+  env <- ask
+  let env' = env { envBoundType = bt }
+  local (const env') x
 
 -- |Performs a computation in the dual bound type.  This is used when a type
 --  must be constructed in a contravariant position.
 dualizeBoundType :: ManifestM a -> ManifestM a
 dualizeBoundType x = do
-  env <- ask
-  let env' = env { envBoundType = getDualBoundType $ envBoundType env}
-  local (const env') x
+  bt <- getDualBoundType <$> envBoundType <$> ask
+  usingBoundType bt x
+
+-- |Either performs a computation or retrieves a cached version based upon the
+--  provided variable signature.
+typeComputationCache :: VariableSignature
+                     -> ManifestM (K3 Type)
+                     -> ManifestM (K3 Type)
+typeComputationCache sig x = do
+  cache <- resultCache <$> get
+  case Map.lookup sig cache of
+    Just result -> do
+      _debug $ boxToString $
+        ["Manifestation cache hit: "] %+ prettyLines sig %+ [" => "] %+
+          prettyLines result 
+      return result
+    Nothing -> do
+      _debug $ boxToString $
+        ["Manifestation cache miss: "] %+ prettyLines sig
+      result <- x
+      s <- get
+      put $ s {resultCache = Map.insert sig result $ resultCache s}
+      return result

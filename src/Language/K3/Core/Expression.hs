@@ -72,6 +72,7 @@ data Operator
     | OAnd
     | OOr
     | ONot
+    | OConcat
     | OSeq
     | OApp
     | OSnd

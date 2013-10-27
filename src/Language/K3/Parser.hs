@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -46,11 +47,9 @@ import qualified Text.Parsec.Prim     as PP
 
 import Text.Parser.Char
 import Text.Parser.Combinators
-import Text.Parser.Expression
+import Text.Parser.Expression hiding ( buildExpressionParser )
 import Text.Parser.Token
 import Text.Parser.Token.Style
-
-import Text.Parser.Parsec()
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -827,6 +826,7 @@ nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
   [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
+      map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
       map mkUnOpK  [("not", ONot)],
@@ -1199,3 +1199,66 @@ propagateQualifier (tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> 
   | any isEQualified eas || inApplicable ttag = Just e
   | otherwise = Just $ if any isTImmutable tas then (e @+ EImmutable) else (e @+ EMutable)
   where inApplicable = flip elem [TTrigger, TSink, TSource]
+
+
+-- | Duplicate implementation of buildExpressionParser adopted from the parsers-0.10 source.
+--   This applies a bugfix for detecting ambiguous operators.
+buildExpressionParser :: forall m a. (Parsing m, Applicative m)
+                      => OperatorTable m a -> m a -> m a
+buildExpressionParser operators simpleExpr
+    = foldl makeParser simpleExpr operators
+    where
+      makeParser term ops
+        = let (rassoc,lassoc,nassoc,prefix',postfix') = foldr splitOp ([],[],[],[],[]) ops
+              rassocOp   = choice rassoc
+              lassocOp   = choice lassoc
+              nassocOp   = choice nassoc
+              prefixOp   = choice prefix'  <?> ""
+              postfixOp  = choice postfix' <?> ""
+
+              -- Note: parsers-0.10 does not employ a 'try' parser here. 
+              ambiguous assoc op = try $ op *> empty <?> ("ambiguous use of a " ++ assoc ++ "-associative operator")
+
+              ambiguousRight    = ambiguous "right" rassocOp
+              ambiguousLeft     = ambiguous "left" lassocOp
+              ambiguousNon      = ambiguous "non" nassocOp
+
+              termP      = (prefixP <*> term) <**> postfixP
+
+              postfixP   = postfixOp <|> pure id
+
+              prefixP    = prefixOp <|> pure id
+
+              rassocP, rassocP1, lassocP, lassocP1, nassocP :: m (a -> a)
+
+              rassocP  = (flip <$> rassocOp <*> (termP <**> rassocP1)
+                          <|> ambiguousLeft
+                          <|> ambiguousNon)
+
+              rassocP1 = rassocP <|> pure id
+
+              lassocP  = ((flip <$> lassocOp <*> termP) <**> ((.) <$> lassocP1)
+                          <|> ambiguousRight
+                          <|> ambiguousNon)
+
+              lassocP1 = lassocP <|> pure id
+
+              nassocP = (flip <$> nassocOp <*> termP)
+                        <**> (ambiguousRight
+                              <|> ambiguousLeft
+                              <|> ambiguousNon
+                              <|> pure id)
+           in termP <**> (rassocP <|> lassocP <|> nassocP <|> pure id) <?> "operator"
+
+
+      splitOp (Infix op assoc) (rassoc,lassoc,nassoc,prefix',postfix')
+        = case assoc of
+            AssocNone  -> (rassoc,lassoc,op:nassoc,prefix',postfix')
+            AssocLeft  -> (rassoc,op:lassoc,nassoc,prefix',postfix')
+            AssocRight -> (op:rassoc,lassoc,nassoc,prefix',postfix')
+
+      splitOp (Prefix op) (rassoc,lassoc,nassoc,prefix',postfix')
+        = (rassoc,lassoc,nassoc,op:prefix',postfix')
+
+      splitOp (Postfix op) (rassoc,lassoc,nassoc,prefix',postfix')
+        = (rassoc,lassoc,nassoc,prefix',op:postfix')

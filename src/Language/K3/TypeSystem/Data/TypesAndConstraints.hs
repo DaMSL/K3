@@ -312,6 +312,7 @@ data ShallowType
   | SBool
   | SInt
   | SReal
+  | SNumber
   | SString
   | SAddress
   | SOption QVar
@@ -330,6 +331,7 @@ instance Pretty ShallowType where
     SBool -> ["bool"]
     SInt -> ["int"]
     SReal -> ["real"]
+    SNumber -> ["number"]
     SString -> ["string"]
     SAddress -> ["address"]
     SOption qa -> ["option "] %+ prettyLines qa
@@ -423,9 +425,6 @@ data Constraint
   | QualifiedLowerConstraint TypeOrVar QVar
   | QualifiedUpperConstraint QVar TypeOrVar
   | QualifiedIntermediateConstraint QualOrVar QualOrVar
-  | BinaryOperatorConstraint UVar BinaryOperator UVar UVar
-  -- TODO: unary prefix operator constraint?  it's not in the spec, but the
-  --       implementation parses "!"
   | MonomorphicQualifiedUpperConstraint QVar (Set TQual)
   | PolyinstantiationLineageConstraint QVar QVar
   | OpaqueBoundConstraint OpaqueVar TypeOrVar TypeOrVar
@@ -438,9 +437,6 @@ instance Pretty Constraint where
       QualifiedLowerConstraint ta qa -> binPretty ta qa
       QualifiedUpperConstraint qa ta -> binPretty qa ta
       QualifiedIntermediateConstraint qv1 qv2 -> binPretty qv1 qv2
-      BinaryOperatorConstraint a1 op a2 a3 ->
-        prettyLines a1 %+ prettyLines op %+ prettyLines a2 %+ ["<:"] %+
-        prettyLines a3
       MonomorphicQualifiedUpperConstraint qa qs ->
         prettyLines qa %+ ["<:"] %+ prettyLines qs
       PolyinstantiationLineageConstraint qa1 qa2 ->
@@ -462,6 +458,7 @@ data BinaryOperator
   | BinOpLess
   | BinOpGreaterEq
   | BinOpLessEq
+  | BinOpConcat
   | BinOpSequence
   | BinOpApply
   | BinOpSend
@@ -478,6 +475,7 @@ instance Pretty BinaryOperator where
       BinOpLess -> "<"
       BinOpGreaterEq -> ">="
       BinOpLessEq -> "<="
+      BinOpConcat -> "++"
       BinOpSequence -> ";"
       BinOpApply -> ""
       BinOpSend -> "<-"

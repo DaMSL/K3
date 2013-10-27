@@ -8,9 +8,11 @@ module Language.K3.TypeSystem.Annotations.Error
 ) where
 
 import Data.Set (Set)
+import Data.List.Split
 
 import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
+import Language.K3.Utils.Pretty
 
 -- |A data type describing the errors which can occur in concatenation.
 data AnnotationConcatenationError
@@ -27,6 +29,12 @@ data AnnotationConcatenationError
       -- ^Produced when a concatenated member uses polymorphic signatures and
       --  those signatures are not equivalent.
   deriving (Eq, Show)
+  
+instance Pretty AnnotationConcatenationError where
+  prettyLines x = case x of
+    DifferentMorphicArities i ->
+      ["Member " ++ i ++ " cannot be both polymorphic and monomorphic!"]
+    _ -> splitOn "\n" $ show x
 
 -- |A type describing an error in depolarization.
 data DepolarizationError

@@ -32,7 +32,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.Utils.TemplateHaskell.Reduce
 import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Annotations
-import Language.K3.TypeSystem.Annotations.Within
+import Language.K3.TypeSystem.Within
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
@@ -181,6 +181,7 @@ deriveTypeExpression aEnv tExpr = do
         TByte -> error "No Byte type in spec!"
         TInt -> deriveLeafType SInt
         TReal -> deriveLeafType SReal
+        TNumber -> deriveLeafType SNumber
         TString -> deriveLeafType SString
         TFunction -> do
           (tExpr1, tExpr2) <- assert2Children tExpr

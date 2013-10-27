@@ -13,8 +13,8 @@ import qualified Language.K3.Core.Constructor.Literal as LC
 import Language.K3.Parser
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 
-peerBReader :: String -> Either ParseError (Address, PeerBootstrap)
-peerBReader peerDesc = either (Left . ErrorMsg . show) Right $ runK3Parser parser peerDesc
+peerBReader :: String -> Either String (Address, PeerBootstrap)
+peerBReader peerDesc = either (Left . show) Right $ runK3Parser parser peerDesc
   where parser       = mkBootstrap <$> ipAddressP <* colon <*> portP
                                    <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> literal)         
         ipAddressP   = some $ choice [alphaNum, oneOf "."]
@@ -30,7 +30,7 @@ peerBOptions :: Parser (Address, PeerBootstrap)
 peerBOptions = nullOption (
         short 'p'
      <> long "peer"
-     <> reader peerBReader
+     <> eitherReader peerBReader
      <> help "Peer configuration in the format role:host:port."
     )
 

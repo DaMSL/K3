@@ -1,0 +1,8 @@
+annotation A {
+    requires lifted f : int -> int
+}
+annotation B given type t {
+    requires lifted f : t -> t
+}
+declare c : collection {}@{A,B} = empty {}@{A,B}
+

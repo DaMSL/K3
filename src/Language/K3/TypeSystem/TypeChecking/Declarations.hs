@@ -17,6 +17,7 @@ import qualified Data.Foldable as Foldable
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe
+import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 import Data.Tree
 
@@ -184,7 +185,7 @@ deriveDeclaration aEnv env decl =
 
       -- Build the set of constraints to connect the opaque types to their
       -- corresponding type variables.
-      let cs' = csUnions [ SOpaque oa_c ~= a_c
+      let cs'1 = csUnions [ SOpaque oa_c ~= a_c
                           , SOpaque oa_f ~= a_f
                           , SOpaque oa_s ~= a_s
                           , csFromList
@@ -196,6 +197,7 @@ deriveDeclaration aEnv env decl =
                              , OpaqueBoundConstraint oa_s
                                   (CLeft SBottom) (CLeft t_s)
                              ] ]
+      let cs'2 = csUnions $ map (\(_,_,_,cs_i') -> cs_i') $ Map.elems qEnv
       
       -- Derive appropriate types for the members.
       let arityMaps =
@@ -219,7 +221,7 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
           indent 2 (prettyLines b') 
-      let allCs = csUnions $ cs:cs_s:cs_h:cs':cs''s
+      let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
@@ -241,7 +243,8 @@ deriveDeclaration aEnv env decl =
                                         , csSing $ qa2' <: qa1']
             csUnions <$> (allCs:) <$> mapM extractConstraints posSignaturePairs
       externalCs <- getMatchingPositiveConstraints ms1 ms1'
-      tell $ Map.map (, calculateClosure (externalCs `csUnion` exprCs))
+      tell $ Map.map (, loggedClosure ("annotation " ++ iAnn ++ " ascription")
+                          (externalCs `csUnion` exprCs))
                 exprAttribs
       
       {-
@@ -256,7 +259,10 @@ deriveDeclaration aEnv env decl =
       -- (1) consistency-checking the constraints and (2) ensuring that each
       -- inferred negative identifier is reported in the environment.
       either (typecheckError . AnnotationClosureInconsistencyInternal iAnn
-                  . Foldable.toList) return $ checkClosureConsistent allCs
+                  . Foldable.toList) return $
+        checkConsistent $
+          loggedClosure ("annotation " ++ iAnn ++ " negative member checking")
+            allCs
       let negIdentsFor ms =
             Set.fromList $ map fst $ mapMaybe (digestMemFromPol Negative) ms
       let missingNegatives = (negIdentsFor ms1 `Set.union` negIdentsFor ms2)
@@ -288,8 +294,11 @@ deriveDeclaration aEnv env decl =
                           indent 2 (prettyLines csToClose)
                       either (typecheckError . AnnotationClosureInconsistency
                                                   iAnn i' .
-                        Foldable.toList) return $
-                          checkClosureConsistent csToClose
+                        Foldable.toList) return $ checkConsistent $
+                          loggedClosure
+                            ("annotation " ++ iAnn ++ " positive member " ++
+                              i' ++ " checking")
+                            csToClose
             mconcat <$> gatherParallelErrors
                           (map verifySignaturePair posSignaturePairs)
       mconcat <$> gatherParallelErrors
@@ -311,8 +320,10 @@ deriveDeclaration aEnv env decl =
       QuantType sas qa' cs2' <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
-      let cs'' = calculateClosure $ csUnions [cs1,cs2,csPost]
-      tell $ Map.map (, calculateClosure (cs'' `csUnion` exprCs)) exprAttribs
+      let cs'' = loggedClosure ("declaration " ++ i ++ " checking") $
+                    csUnions [cs1,cs2,csPost]
+      tell $ Map.map (, loggedClosure ("declaration " ++ i ++ " ascription")
+                          (cs'' `csUnion` exprCs)) exprAttribs
       -- We've decided upon the type, so now check for consistency.
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)
@@ -420,3 +431,13 @@ requireQuantType :: UID -> Identifier -> TNormEnv
 requireQuantType u i =
   envRequire (UnboundEnvironmentIdentifier u $ TEnvIdentifier i)
              (TEnvIdentifier i)
+
+loggedClosure :: String -> ConstraintSet -> ConstraintSet
+loggedClosure msg cs =
+  _debugI ("Calculating closure for " ++ msg) $
+  let ans = calculateClosure cs in
+  let errs = either Seq.length (const 0) $ checkConsistent ans in
+  _debugI ("Calculated closure for " ++ msg ++ " (" ++
+            show (Set.size $ csToSet ans) ++ " constraint(s), " ++
+            show errs ++ " consistency error(s))")
+  ans

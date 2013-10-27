@@ -1,0 +1,10 @@
+annotation A {
+    provides lifted get : () -> content
+}
+
+declare c : collection {x:int}@{A}
+
+declare v : int =
+    bind c.get() as {x:n} in
+    n + 1
+

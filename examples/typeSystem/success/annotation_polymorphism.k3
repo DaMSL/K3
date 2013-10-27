@@ -1,0 +1,4 @@
+annotation A given type a {
+    provides lifted f : a -> a = \x -> x
+}
+

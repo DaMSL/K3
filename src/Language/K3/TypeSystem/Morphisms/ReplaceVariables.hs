@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, TypeSynonymInstances, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE TemplateHaskell, TypeSynonymInstances, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, UndecidableInstances, ConstraintKinds #-}
 
 {-|
   This module defines an operation which substitutes variables for other
@@ -7,6 +7,7 @@
 module Language.K3.TypeSystem.Morphisms.ReplaceVariables
 ( ReplaceVariables(..)
 , replaceVariables
+, VariableReplacable
 ) where
 
 import Control.Applicative
@@ -17,6 +18,8 @@ import Data.Maybe
 import Language.K3.Core.Common
 import Language.K3.Utils.TemplateHaskell.Transform
 import Language.K3.TypeSystem.Data
+
+type VariableReplacable a = (Transform ReplaceVariables a)
 
 -- |The data type defining the transformation.
 data ReplaceVariables = ReplaceVariables (Map QVar QVar) (Map UVar UVar)
