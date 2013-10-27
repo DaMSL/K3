@@ -130,7 +130,9 @@ library
                    Language.K3.TypeSystem.Manifestation,
                    Language.K3.TypeSystem.Manifestation.Monad,
                    Language.K3.TypeSystem.Manifestation.Data,
-                   Language.K3.TypeSystem.Data.PrimitiveSubtyping
+                   Language.K3.TypeSystem.Data.PrimitiveSubtyping,
+                   Language.K3.Utils.IndexedSet.TemplateHaskell,
+                   Language.K3.Utils.IndexedSet.Common
 
 test-suite all
     type: exitcode-stdio-1.0
