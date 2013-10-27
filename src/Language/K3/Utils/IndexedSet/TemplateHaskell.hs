@@ -10,9 +10,7 @@ module Language.K3.Utils.IndexedSet.TemplateHaskell
 ) where
 
 import Control.Applicative
-import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Language.Haskell.TH
@@ -95,6 +93,7 @@ createIndexedSet idxStrName queryTypName elTyp descs = do
           , insertDefinition
           , unionDefinition
           , queryDefinition
+          , toSetDefinition
           ]
       where
         mkIdxStrP :: Name -> [Name] -> Q Pat
@@ -150,7 +149,7 @@ createIndexedSet idxStrName queryTypName elTyp descs = do
           let idxStrP = mkIdxStrP allName indexNames
           let expr = caseE (varE qName) $
                         map (mkMatchForQuery qName) $ zip indexNames descs
-          funD 'ISC.query [clause [varP qName, idxStrP] (normalB expr) []]
+          funD 'ISC.query [clause [idxStrP, varP qName] (normalB expr) []]
           where
             mkMatchForQuery qName (idxName, desc) = do
               argName <- newName "arg"
@@ -158,6 +157,12 @@ createIndexedSet idxStrName queryTypName elTyp descs = do
                 (normalB $
                   [|multiMapLookup $(varE argName) $(varE $ idxName)|]
                 ) []
+        toSetDefinition :: Q Dec
+        toSetDefinition = do
+          allName <- newName "a"
+          let wilds = map (const wildP) descs
+          let idxStrP = conP (mkName $ idxStrName) ((varP allName):wilds)
+          funD 'ISC.toSet [clause [idxStrP] (normalB $ varE allName) []]
             
 -- |Determines the name of the field in the record of the indexed structure
 --  which contains a set of all values in the structure.

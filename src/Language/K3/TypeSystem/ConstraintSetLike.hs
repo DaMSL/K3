@@ -10,8 +10,8 @@ module Language.K3.TypeSystem.ConstraintSetLike
 , ConstraintSetLikePromotable(..)
 ) where
 
+import Language.K3.TypeSystem.Data.Constraints
 import Language.K3.TypeSystem.Data.ConstraintSet
-import Language.K3.TypeSystem.Data.TypesAndConstraints
 
 class ConstraintSetLike e c | c -> e where
   empty :: c

@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, TemplateHaskell, LambdaCase, MultiParamTypeClasses #-}
 
 {-|
   A module defining the behavior of constraint sets.  The actual constraint set
@@ -9,6 +9,7 @@ module Language.K3.TypeSystem.Data.ConstraintSet
 ( csEmpty
 , csNull
 , csSing
+, csInsert
 , csFromList
 , csToList
 , csFromSet
@@ -17,279 +18,87 @@ module Language.K3.TypeSystem.Data.ConstraintSet
 , csUnion
 , csUnions
 , csQuery
+, ConstraintSet(..)
 , ConstraintSetQuery(..)
 ) where
 
-import Control.Monad
+import Data.Function
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Language.K3.TypeSystem.Data.Coproduct
-import Language.K3.TypeSystem.Data.TypesAndConstraints
+import Language.K3.TypeSystem.Data.Constraints
+import Language.K3.TypeSystem.Data.ConstraintSet.Queries
+import Language.K3.Utils.IndexedSet
+import Language.K3.Utils.Pretty
 
--- TODO: Implement a considerably more efficient underlying data structure for
--- constraint sets.
+-- * Constraint set data structure definition.
+
+$(createIndexedSet "ConstraintSet" "ConstraintSetQuery" [t|Constraint|]
+    constraintSetQueryDescriptors)
+
+instance Eq ConstraintSet where
+  (==) = (==) `on` toSet
+instance Ord ConstraintSet where
+  compare = compare `on` toSet
+instance Show ConstraintSet where
+  show = show . toSet
+
+instance Pretty ConstraintSet where
+  prettyLines cs =
+    -- Filter out self-constraints.
+    let filteredCs = filter (not . silly) $ csToList cs in
+    ["{ "] %+
+    sequenceBoxes (max 1 $ maxWidth - 4) ", " (map prettyLines filteredCs) +%
+    [" }"] +%
+    ["*" | Set.size (toSet cs) /= length filteredCs]
+    where
+      silly :: Constraint -> Bool
+      silly c = case c of
+        IntermediateConstraint x y -> x == y
+        QualifiedIntermediateConstraint x y -> x == y
+        _ -> False
+
+instance Monoid ConstraintSet where
+  mempty = csEmpty
+  mappend = csUnion
+    
+-- * Constraint set operations
 
 csEmpty :: ConstraintSet
-csEmpty = ConstraintSet Set.empty
+csEmpty = empty
 
 csNull :: ConstraintSet -> Bool
-csNull (ConstraintSet cs) = Set.null cs
+csNull = Set.null . toSet
 
 csSing :: Constraint -> ConstraintSet
-csSing = ConstraintSet . Set.singleton
+csSing = singleton
+
+csInsert :: Constraint -> ConstraintSet -> ConstraintSet
+csInsert = insert
 
 csFromList :: [Constraint] -> ConstraintSet
-csFromList = ConstraintSet . Set.fromList
+csFromList = fromSet . Set.fromList
 
 csToList :: ConstraintSet -> [Constraint]
-csToList (ConstraintSet cs) = Set.toList cs
+csToList = Set.toList . toSet
 
 csFromSet :: Set Constraint -> ConstraintSet
-csFromSet = ConstraintSet
+csFromSet = fromSet
 
 csToSet :: ConstraintSet -> Set Constraint
-csToSet (ConstraintSet s) = s
+csToSet = toSet
 
 csSubset :: ConstraintSet -> ConstraintSet -> Bool
-csSubset (ConstraintSet a) (ConstraintSet b) = Set.isSubsetOf a b
+csSubset = Set.isSubsetOf `on` toSet
 
 csUnion :: ConstraintSet -> ConstraintSet -> ConstraintSet
-csUnion (ConstraintSet a) (ConstraintSet b) = ConstraintSet $ a `Set.union` b
+csUnion = union
 
 csUnions :: [ConstraintSet] -> ConstraintSet
-csUnions css = ConstraintSet $ Set.unions $ map (\(ConstraintSet s) -> s) css
+csUnions = unions
 
-{-|
-  Queries against the constraint set are managed via the ConstraintSetQuery
-  data type.  This data type allows queries to be expressed in such a way that
-  an efficient implementation of ConstraintSet can use a uniform policy for
-  indexing the answers.
-  
-  The @QueryBoundingConstraintsByQVar@ and @QueryBoundingConstraintsByUVar@
-  query forms find all constraints bounding the given variable.  This only
-  includes immediate bounds; it does not include e.g. binary operation
-  constraints.
--}
-data ConstraintSetQuery r where
-  QueryAllTypesLowerBoundingAnyVars ::
-    ConstraintSetQuery (ShallowType,AnyTVar)
-  QueryAllTypesUpperBoundingAnyVars ::
-    ConstraintSetQuery (AnyTVar,ShallowType)
-  QueryAllTypesLowerBoundingTypes ::
-    ConstraintSetQuery (ShallowType,ShallowType)
-  QueryAllQualOrVarLowerBoundingQVar ::
-    ConstraintSetQuery (QualOrVar, QVar)
-  QueryAllTypeOrVarLowerBoundingQVar ::
-    ConstraintSetQuery (TypeOrVar, QVar)
-  QueryAllUVarLowerBoundingUVar ::
-    ConstraintSetQuery (UVar, UVar)
-  QueryAllQVarLowerBoundingQVar ::
-    ConstraintSetQuery (QVar, QVar)
-  QueryAllQVarLowerBoundingUVar ::
-    ConstraintSetQuery (QVar, UVar)
-  QueryAllUVarLowerBoundingQVar ::
-    ConstraintSetQuery (UVar, QVar)
-  QueryAllMonomorphicQualifiedUpperConstraint ::
-    ConstraintSetQuery (QVar, Set TQual)
-  QueryAllOpaqueLowerBoundedConstraints ::
-    ConstraintSetQuery (OpaqueVar, ShallowType)
-  QueryAllOpaqueUpperBoundedConstraints ::
-    ConstraintSetQuery (ShallowType, OpaqueVar)
-  QueryTypeOrAnyVarByAnyVarLowerBound ::
-    AnyTVar -> ConstraintSetQuery UVarBound
-  QueryTypeOrAnyVarByAnyVarUpperBound ::
-    AnyTVar -> ConstraintSetQuery UVarBound
-  QueryTypeByUVarLowerBound ::
-    UVar -> ConstraintSetQuery ShallowType
-  QueryTypeByUVarUpperBound ::
-    UVar -> ConstraintSetQuery ShallowType
-  QueryTypeByQVarLowerBound ::
-    QVar -> ConstraintSetQuery ShallowType
-  QueryTypeByQVarUpperBound ::
-    QVar -> ConstraintSetQuery ShallowType
-  QueryQualOrVarByQVarLowerBound ::
-    QVar -> ConstraintSetQuery QualOrVar
-  QueryTypeOrVarByQVarLowerBound ::
-    QVar -> ConstraintSetQuery TypeOrVar
-  QueryTypeOrVarByQVarUpperBound ::
-    QVar -> ConstraintSetQuery TypeOrVar
-  QueryTQualSetByQVarLowerBound ::
-    QVar -> ConstraintSetQuery (Set TQual)
-  QueryTQualSetByQVarUpperBound ::
-    QVar -> ConstraintSetQuery (Set TQual)
-  QueryBoundingConstraintsByUVar ::
-    UVar -> ConstraintSetQuery Constraint
-  QueryBoundingConstraintsByQVar ::
-    QVar -> ConstraintSetQuery Constraint
-  QueryPolyLineageByOrigin ::
-    QVar -> ConstraintSetQuery QVar
-  QueryOpaqueBounds ::
-    OpaqueVar -> ConstraintSetQuery (TypeOrVar, TypeOrVar) -- lower, upper
-
--- TODO: this routine is a prime candidate for optimization once the
---       ConstraintSet type is fancier.
 -- |Performs a query against a constraint set.  The results are returned as a
 --  list in no particular order.
 csQuery :: (Ord r) => ConstraintSet -> ConstraintSetQuery r -> [r]
-csQuery (ConstraintSet csSet) query =
-  let cs = Set.toList csSet in
-  case query of
-    QueryAllTypesLowerBoundingAnyVars -> do
-      c <- cs
-      case c of
-        IntermediateConstraint (CLeft t) (CRight a) -> return (t,someVar a)
-        QualifiedLowerConstraint (CLeft t) qa -> return (t,someVar qa)
-        _ -> mzero
-    QueryAllTypesUpperBoundingAnyVars -> do
-      c <- cs
-      case c of
-        IntermediateConstraint (CRight a) (CLeft t) -> return (someVar a,t)
-        QualifiedUpperConstraint qa (CLeft t) -> return (someVar qa,t)
-        _ -> mzero
-    QueryAllTypesLowerBoundingTypes -> do
-      IntermediateConstraint (CLeft t) (CLeft t') <- cs
-      return (t,t')
-    QueryAllQualOrVarLowerBoundingQVar -> do
-      QualifiedIntermediateConstraint qv1 qv2 <- cs
-      CRight qa <- return qv2 -- guard $ "of the form QVar"
-      return (qv1,qa)
-    QueryAllTypeOrVarLowerBoundingQVar -> do
-      QualifiedLowerConstraint ta qa <- cs
-      return (ta,qa)
-    QueryAllQVarLowerBoundingQVar -> do
-      QualifiedIntermediateConstraint (CRight qa1) (CRight qa2) <- cs
-      return (qa1, qa2)
-    QueryAllUVarLowerBoundingUVar -> do
-      IntermediateConstraint (CRight a1) (CRight a2) <- cs
-      return (a1, a2)
-    QueryAllUVarLowerBoundingQVar -> do
-      QualifiedLowerConstraint (CRight a1) qa2 <- cs
-      return (a1, qa2)
-    QueryAllQVarLowerBoundingUVar -> do
-      QualifiedUpperConstraint qa1 (CRight a2) <- cs
-      return (qa1, a2)
-    QueryAllMonomorphicQualifiedUpperConstraint -> do
-      MonomorphicQualifiedUpperConstraint qa qs <- cs
-      return (qa, qs)
-    QueryAllOpaqueLowerBoundedConstraints -> do
-      IntermediateConstraint (CLeft (SOpaque oa)) (CLeft t) <- cs
-      return (oa, t)
-    QueryAllOpaqueUpperBoundedConstraints -> do
-      IntermediateConstraint (CLeft t) (CLeft (SOpaque oa)) <- cs
-      return (t, oa)
-    QueryTypeOrAnyVarByAnyVarLowerBound sa ->
-      case sa of
-        SomeUVar a -> do
-          c <- cs
-          case c of
-            IntermediateConstraint (CRight a') ta | a == a' ->
-              return $ CLeft ta
-            QualifiedLowerConstraint (CRight a') qa | a == a' ->
-              return $ CRight qa
-            _ -> mzero
-        SomeQVar qa -> do
-          c <- cs
-          case c of
-            QualifiedUpperConstraint qa' ta | qa == qa' ->
-              return $ CLeft ta
-            QualifiedIntermediateConstraint (CRight qa') (CRight qa'')
-                | qa == qa' ->
-              return $ CRight qa''
-            _ -> mzero
-    QueryTypeOrAnyVarByAnyVarUpperBound sa ->
-      case sa of
-        SomeUVar a -> do
-          c <- cs
-          case c of
-            IntermediateConstraint ta (CRight a') | a == a' ->
-              return $ CLeft ta
-            QualifiedUpperConstraint qa (CRight a') | a == a' ->
-              return $ CRight qa
-            _ -> mzero
-        SomeQVar qa -> do
-          c <- cs
-          case c of
-            QualifiedLowerConstraint ta qa' | qa == qa' ->
-              return $ CLeft ta
-            QualifiedIntermediateConstraint (CRight qa'') (CRight qa')
-                | qa == qa' ->
-              return $ CRight qa''
-            _ -> mzero
-    QueryTypeByUVarLowerBound a -> do
-      IntermediateConstraint (CRight a') (CLeft t) <- cs
-      guard $ a == a'
-      return t
-    QueryTypeByUVarUpperBound a -> do
-      IntermediateConstraint (CLeft t) (CRight a') <- cs
-      guard $ a == a'
-      return t
-    QueryTypeByQVarLowerBound qa -> do
-      QualifiedUpperConstraint qa' (CLeft t) <- cs
-      guard $ qa == qa'
-      return t
-    QueryTypeByQVarUpperBound qa -> do
-      QualifiedLowerConstraint (CLeft t) qa' <- cs
-      guard $ qa == qa'
-      return t
-    QueryQualOrVarByQVarLowerBound qa -> do
-      QualifiedIntermediateConstraint qv1 qv2 <- cs
-      guard $ CRight qa == qv1
-      return qv2
-    QueryTypeOrVarByQVarLowerBound qa -> do
-      QualifiedUpperConstraint qa' ta <- cs
-      guard $ qa == qa'
-      return ta
-    QueryTypeOrVarByQVarUpperBound qa -> do
-      QualifiedLowerConstraint ta qa' <- cs
-      guard $ qa == qa'
-      return ta
-    QueryTQualSetByQVarLowerBound qa -> do
-      QualifiedIntermediateConstraint (CRight qa') (CLeft qs) <- cs
-      guard $ qa == qa'
-      return qs
-    QueryTQualSetByQVarUpperBound qa -> do
-      QualifiedIntermediateConstraint (CLeft qs) (CRight qa') <- cs
-      guard $ qa == qa'
-      return qs
-    QueryBoundingConstraintsByUVar a ->
-      (do
-        c@(IntermediateConstraint _ (CRight a')) <- cs
-        guard $ a == a'
-        return c
-      ) ++
-      (do
-        c@(IntermediateConstraint (CRight a') _) <- cs
-        guard $ a == a'
-        return c
-      )
-    QueryBoundingConstraintsByQVar qa ->
-      (do
-        c@(QualifiedLowerConstraint _ qa') <- cs
-        guard $ qa == qa'
-        return c
-      ) ++
-      (do
-        c@(QualifiedUpperConstraint qa' _) <- cs
-        guard $ qa == qa'
-        return c
-      ) ++
-      (do
-        c@(QualifiedIntermediateConstraint _ (CRight qa')) <- cs
-        guard $ qa == qa'
-        return c
-      ) ++
-      (do
-        c@(QualifiedIntermediateConstraint (CRight qa') _) <- cs
-        guard $ qa == qa'
-        return c
-      )
-    QueryPolyLineageByOrigin qa -> do
-      PolyinstantiationLineageConstraint qa1 qa2 <- cs
-      guard $ qa == qa2
-      return qa1
-    QueryOpaqueBounds oa -> do
-      OpaqueBoundConstraint oa' lb ub <- cs
-      guard $ oa == oa'
-      return (lb,ub)
-
+csQuery cs = Set.toList . query cs

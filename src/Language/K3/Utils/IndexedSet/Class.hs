@@ -20,7 +20,10 @@ class IndexedSet s e q | s -> e, s -> q where
   insert :: e -> s -> s
   union :: s -> s -> s
   unions :: [s] -> s
-  query :: q r -> s -> Set r
+  query :: s -> q r -> Set r
+  toSet :: s -> Set e
+  fromSet :: Set e -> s
   -- defaults implementations:
   unions = foldr union empty
   singleton = (`insert` empty)
+  fromSet = foldr insert empty . Set.toList

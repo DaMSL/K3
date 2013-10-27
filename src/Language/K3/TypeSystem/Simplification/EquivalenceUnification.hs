@@ -49,15 +49,15 @@ simplifyByConstraintEquivalenceUnification cs =
     _debug $ boxToString $
       ["Unifying by constraint equivalence on: "] %+ prettyLines cs
     uvarEquivs <- findEquivPairs onlyUVar $
-                    csQuery cs QueryAllUVarLowerBoundingUVar
+                    csQuery cs $ QueryAllUVarLowerBoundingUVar ()
     qvarEquivs <- findEquivPairs onlyQVar $
-                    csQuery cs QueryAllQVarLowerBoundingQVar
+                    csQuery cs $ QueryAllQVarLowerBoundingQVar ()
     uvarCrossEquivs <- findProductPairs onlyUVar
-                          (csQuery cs QueryAllUVarLowerBoundingQVar)
-                          (csQuery cs QueryAllQVarLowerBoundingUVar)
+                          (csQuery cs $ QueryAllUVarLowerBoundingQVar ())
+                          (csQuery cs $ QueryAllQVarLowerBoundingUVar ())
     qvarCrossEquivs <- findProductPairs onlyQVar
-                          (csQuery cs QueryAllQVarLowerBoundingUVar)
-                          (csQuery cs QueryAllUVarLowerBoundingQVar)
+                          (csQuery cs $ QueryAllQVarLowerBoundingUVar ())
+                          (csQuery cs $ QueryAllUVarLowerBoundingQVar ())
     let qvarRepls = mconcat $ map equivToSubstitutions $ Map.toList $
                       Map.unionWith Set.union qvarEquivs qvarCrossEquivs
     let uvarRepls = mconcat $ map equivToSubstitutions $ Map.toList $
