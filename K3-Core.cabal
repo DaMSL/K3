@@ -96,7 +96,6 @@ library
         Language.K3.TypeSystem.TypeChecking.Declarations,
         Language.K3.TypeSystem.TypeChecking.TypeExpressions,
         Language.K3.TypeSystem.Data.Coproduct,
-        Language.K3.TypeSystem.Data.TypesAndConstraints,
         Language.K3.TypeSystem.Data.Convenience,
         Language.K3.TypeSystem.Data.ConstraintSet,
         Language.K3.TypeSystem.TypeDecision,
@@ -119,18 +118,26 @@ library
         Language.K3.Codegen.Haskell,
         Language.K3.Codegen,
         Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
-        Language.K3.TypeSystem.Annotations.Within,
         Language.K3.TypeSystem.Simplification,
         Language.K3.TypeSystem.Simplification.Data,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification,
+        Language.K3.TypeSystem.Within,
+        Language.K3.TypeSystem.Data.Types,
+        Language.K3.TypeSystem.Simplification.GarbageCollection,
+        Language.K3.TypeSystem.Manifestation,
+        Language.K3.TypeSystem.Manifestation.Monad,
+        Language.K3.TypeSystem.Manifestation.Data,
+        Language.K3.TypeSystem.Data.PrimitiveSubtyping,
+        Language.K3.Utils.IndexedSet.TemplateHaskell,
+        Language.K3.Utils.IndexedSet.Common,
+        Language.K3.Utils.IndexedSet.Class,
+        Language.K3.TypeSystem.Data.Environments,
+        Language.K3.TypeSystem.Data.Environments.Common,
+        Language.K3.TypeSystem.Data.Environments.Type,
+        Language.K3.TypeSystem.Data.Constraints,
+        Language.K3.TypeSystem.Data.ConstraintSet.Queries
 
     ghc-options: -Wall
-    other-modules: 
-                   Language.K3.TypeSystem.Simplification.GarbageCollection,
-                   Language.K3.TypeSystem.Manifestation,
-                   Language.K3.TypeSystem.Manifestation.Monad,
-                   Language.K3.TypeSystem.Manifestation.Data,
-                   Language.K3.TypeSystem.Data.PrimitiveSubtyping
 
 test-suite all
     type: exitcode-stdio-1.0

@@ -29,8 +29,7 @@ import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 
 import Language.K3.Core.Common
-import Language.K3.TypeSystem.Data.ConstraintSet
-import Language.K3.TypeSystem.Data.TypesAndConstraints
+import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
 import Language.K3.TypeSystem.Monad.Iface.FreshVar

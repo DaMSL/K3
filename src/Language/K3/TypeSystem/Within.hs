@@ -6,8 +6,11 @@
   operator used in annotation concatenation.
 -}
 
-module Language.K3.TypeSystem.Annotations.Within
-( isWithin
+module Language.K3.TypeSystem.Within
+( mutuallyWithin
+, isWithin
+, proveMutuallyWithin
+, proveWithin
 , WithinAlignable(..)
 ) where
 
@@ -31,28 +34,90 @@ import Language.K3.Utils.Pretty
 $(loggingFunctions)
 
 -- PERF: This whole thing uses a naive set exploration.  Just indexing the
---       constraints before the work is done could speed things up a bit.  To be
---       fair, this computation is going to be expensive regardless...
+--       constraints before the work is done could speed things up a bit.  This
+--       improvement will probably be achieved just by creating a sensible
+--       ConstraintSet data structure.  (To be fair, this kind of operation is
+--       easily worst-case exponential; K3, however, tends not to generate many
+--       union types and so it shouldn't be bad in practice.)
 
-isWithin :: forall c el.
-            ( Pretty c, Ord el, WithinAlignable el, CSL.ConstraintSetLike el c
+-- |Determines whether or not two constrained types are structurally equivalent.
+mutuallyWithin :: forall c el q.
+                  ( Pretty c, Ord el, WithinAlignable el
+                  , WithinAlignable (TVar q)
+                  , CSL.ConstraintSetLike el c
+                  , CSL.ConstraintSetLikePromotable ConstraintSet c)
+               => (TVar q,c) -> (TVar q,c) -> Bool
+mutuallyWithin ct1 ct2 = not $ null $ proveMutuallyWithin ct1 ct2
+
+-- |Determines whether or not one constrained type is contained by another.
+isWithin :: forall c el q.
+            ( Pretty c, Ord el, WithinAlignable el
+            , WithinAlignable (TVar q)
+            , CSL.ConstraintSetLike el c
             , CSL.ConstraintSetLikePromotable ConstraintSet c)
-         => (QVar,c) -> (QVar,c) -> Bool
-isWithin (qa,cs) (qa',cs') = runIdentity $ do
+         => (TVar q,c) -> (TVar q,c) -> Bool
+isWithin = isWithinUnder (Map.empty, Map.empty)
+
+-- |Determines whether or not one constrained type is contained by another under
+--  some set of alignment constraints.  All proofs will use the provided
+--  alignment mapping.
+isWithinUnder :: forall c el q.
+                 ( Pretty c, Ord el, WithinAlignable el
+                 , WithinAlignable (TVar q)
+                 , CSL.ConstraintSetLike el c
+                 , CSL.ConstraintSetLikePromotable ConstraintSet c)
+              => WithinMap -> (TVar q,c) -> (TVar q,c) -> Bool
+isWithinUnder m ct1 ct2 = not $ null $ proveWithinUnder m ct1 ct2
+
+-- |Proves that two constrained types are structurally equivalent.
+proveMutuallyWithin :: forall c el q.
+                       ( Pretty c, Ord el, WithinAlignable el
+                       , WithinAlignable (TVar q)
+                       , CSL.ConstraintSetLike el c
+                       , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                    => (TVar q,c) -> (TVar q,c) -> [WithinMap]
+proveMutuallyWithin ct1 ct2 = concat $ do
+  proof <- proveWithin ct1 ct2
+  return $ proveWithinUnder proof ct2 ct1
+
+-- |Proves that a constrained type is structurally contained within another.
+--  The result of this function is a list of variable mapping pairs that align
+--  the variables from the first set with the variables from the second set.
+--  Each variable mapping that appears is a separate proof.
+proveWithin :: forall c el q.
+               ( Pretty c, Ord el, WithinAlignable el
+               , WithinAlignable (TVar q)
+               , CSL.ConstraintSetLike el c
+               , CSL.ConstraintSetLikePromotable ConstraintSet c)
+            => (TVar q,c) -> (TVar q,c) -> [WithinMap]
+proveWithin = proveWithinUnder (Map.empty, Map.empty)
+
+-- |Proves that a constrained type is structurally contained within another.
+--  The result of this function is a list of variable mapping pairs that align
+--  the variables from the first set with the variables from the second set.
+--  Each variable mapping that appears is a separate proof.
+proveWithinUnder :: forall c el q.
+                    ( Pretty c, Ord el, WithinAlignable el
+                    , WithinAlignable (TVar q)
+                    , CSL.ConstraintSetLike el c
+                    , CSL.ConstraintSetLikePromotable ConstraintSet c)
+                 => WithinMap -> (TVar q,c) -> (TVar q,c) -> [WithinMap]
+proveWithinUnder initMap (v,cs) (v',cs') = runIdentity $ do
   _debug $ boxToString $
-       ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
-    %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
-  let initMap = (Map.singleton qa qa', Map.empty)
+       ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs
+    %$ ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs'
   let initState = (Set.fromList $ CSL.toList cs', initMap)
   let answer = map (snd . snd) $
-        runStateT (mconcat <$> mapM deduct (CSL.toList cs)) initState
+        runStateT
+          (withinAlign v v' >> mconcat <$> mapM deduct (CSL.toList cs))
+          initState
   _debug $ boxToString $
-       ["Checking "] %+ prettyLines qa %+ ["\\"] %+ prettyLines cs
-    %$ ["  within "] %+ prettyLines qa' %+ ["\\"] %+ prettyLines cs'
+       ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs
+    %$ ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs'
     %$ ["  gives: "] %+
       if null answer then ["failure"] else
         vconcats $ map prettyMap answer
-  return $ not $ null answer
+  return answer
   where
     -- |Given one element, find its match and remove it.  Each step should also
     --  force alignment of the variable mapping.

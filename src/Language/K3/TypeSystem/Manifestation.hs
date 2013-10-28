@@ -14,6 +14,7 @@ module Language.K3.TypeSystem.Manifestation
 ) where
 
 import Control.Applicative
+import Control.Monad
 import Data.Foldable (Foldable)
 import qualified Data.Foldable as Foldable
 import Data.List
@@ -30,6 +31,7 @@ import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Manifestation.Monad
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Simplification
+import Language.K3.TypeSystem.Utils
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
@@ -42,21 +44,57 @@ manifestType :: ( Manifestable a, Pretty a, VariableExtractable a)
 manifestType bt cs x =
   let name = getBoundTypeName bt in
   _debugI (boxToString
-    (["Manifesting " ++ name ++ " bound type for "] %+ prettyLines x %+
-      ["\\{"] %+ prettyLines cs +% ["}"])) $
-  let simpCs = lfp doSimpl cs in
+    (["Manifesting " ++ name ++ " bound type for constrained type "] %+
+      prettyLines x %+ ["\\"] %+ prettyLines simpCs)) $
   let t = runManifestM bt simpCs $
             declareOpaques $ manifestTypeFrom $ Set.singleton x in
   _debugI (boxToString
-    (["Manifested " ++ name ++ " bound type for "] %+ prettyLines x %+
-      prettyLines cs %$ indent 2 (["Result: "] %+ prettyLines t)))
+    (["Manifested " ++ name ++ " bound type for constrained type "] %+
+      prettyLines x %+ ["\\"] %+ prettyLines simpCs %$
+      indent 2 (["Result: "] %+ prettyLines t)))
   t
   where
-    doSimpl = runSimplifyM SimplificationConfig
-                            { preserveVars = extractVariables x }
-      . simplifyByUnification
-    lfp f v = let v' = f v in if v == v' then v' else lfp f v'
-  
+    -- |Simplified constraints.  This must be done on a per-manifestation-target
+    --  basis for variable preservation reasons.
+    simpCs :: ConstraintSet
+    simpCs =
+      let config = SimplificationConfig { preserveVars = extractVariables x } in
+      let cs1 = runSimplifyM config $
+                  simplifyByConstraintEquivalenceUnification cs in
+      let cs2 = keepOnlyStrictlyNecessary cs1 in
+      let cs3 = runSimplifyM config $ simplifyByGarbageCollection cs2 in
+      leastFixedPoint (simplifier config) cs3
+      where
+        simplifier :: SimplificationConfig -> ConstraintSet -> ConstraintSet
+        simplifier config =
+          runSimplifyM config .
+            (simplifyByBoundEquivalenceUnification >=>
+             simplifyByStructuralEquivalenceUnification)
+        -- |Eliminates all constraints that do not provide immediate bounding
+        --  information.  This only makes sense for a closed constraint set and the
+        --  resulting set should never be extended or subjected to closure.
+        keepOnlyStrictlyNecessary :: ConstraintSet -> ConstraintSet
+        keepOnlyStrictlyNecessary =
+          csFromList . filter strictlyNecessary . csToList
+          where
+            strictlyNecessary :: Constraint -> Bool
+            strictlyNecessary c = case c of
+              IntermediateConstraint (CLeft _) (CLeft _) -> False
+              IntermediateConstraint (CLeft _) (CRight _) -> True
+              IntermediateConstraint (CRight _) (CLeft _) -> True
+              IntermediateConstraint (CRight _) (CRight _) -> False
+              QualifiedLowerConstraint (CLeft _) _ -> True
+              QualifiedLowerConstraint (CRight _) _ -> False
+              QualifiedUpperConstraint _ (CLeft _) -> True
+              QualifiedUpperConstraint _ (CRight _) -> False
+              QualifiedIntermediateConstraint (CLeft _) (CLeft _) -> False
+              QualifiedIntermediateConstraint (CLeft _) (CRight _) -> True
+              QualifiedIntermediateConstraint (CRight _) (CLeft _) -> True
+              QualifiedIntermediateConstraint (CRight _) (CRight _) -> False
+              MonomorphicQualifiedUpperConstraint _ _ -> False
+              PolyinstantiationLineageConstraint _ _ -> False
+              OpaqueBoundConstraint _ _ _ -> True
+
 -- |A helper routine which will create declarations for opaque variables as
 --  necessary.
 declareOpaques :: ManifestM (K3 Type) -> ManifestM (K3 Type)
