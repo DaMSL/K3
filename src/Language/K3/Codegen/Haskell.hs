@@ -603,7 +603,6 @@ typ' t@(tag &&& children -> (TCollection, [x])) =
 
 typ' (tag -> TCollection) = throwCG $ CodeGenerationError "Invalid collection type"
 
--- TODO
 typ' t@(tag &&& children -> (TRecord ids, ch)) = do
   sig     <- signature t
   specOpt <- lookupRecordSpec sig
@@ -845,45 +844,22 @@ sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "send"
 
 {- Records embedding -}
 
--- TODO: change for statically typed records
 -- | Ad-hoc record constructor
-buildRecordE :: [Identifier] -> [(HS.Exp, HStructure)] -> CodeGeneration CGExpr
-buildRecordE names subE = do
-  lSym <- gensymCG "__lbl"
-  rSym <- gensymCG "__record"
+-- This requires the given sub expressions to be provided in the same order as identifiers.
+buildRecordE :: [Identifier] -> Maybe (K3 Type, K3 Type) -> [(HS.Exp, HStructure)]
+             -> CodeGeneration CGExpr
+buildRecordE names tyBounds subE = case tyBounds of 
+  Nothing    -> throwCG $ CodeGenerationError "Invalid record construction, no type bounds available"
+  Just (l,_) -> 
+    do
+      -- Track the record type as part of the code generation state.
+      void $ typ' l
+      sig <- signature l
+      let (exps, strucs) = unzip subE
+      return $ mkPCG (HB.appFun (recordCstr sig) exps) (HRecord $ zip names $ map Pure strucs)
 
-  (_, namedLblE, recFieldE) <- accumulateLabelAndFieldE names subE
-  lblCE <- spliceManyE lSym (buildMultiValueSpliceF HB.listE) namedLblE
-  recCE <- foldM concatRecField (mkPValue [hs| emptyRecord |]) recFieldE
-  spliceManyE rSym mkRecord [lblCE, recCE]
-  
-  where
-    mkRecord [(lblE,_), (recE,_)] = return $ mkPValue $ HB.tuple [lblE, recE]
-    mkRecord _                    = argError "mkRecord"
+  where recordCstr recSig = HS.Con . HS.UnQual . HB.name $ recordReprId recSig
 
-    accumulateLabelAndFieldE names' subE' = 
-      foldM buildRecordFieldE (mkPValue [hs| firstLabel |], [], []) $ zip names' subE'
-
-    buildRecordFieldE (keyCE, nlblAcc, recAcc) (n,(ce,s)) = do
-      [kSym, kvSym, nkSym] <- mapM gensymCG ["__key", "__kv", "__nk"]
-      nextKeyE  <- spliceE nkSym keyCE $
-                      \keyE _ -> return $ mkPCG [hs| nextLabel $keyE |] s
-      
-      namedKeyE <- spliceManyE kSym
-                      (buildMultiValueSpliceF HB.tuple)
-                      [mkPValue (HB.strE n), keyCE]
-      
-      fieldE    <- spliceManyE kvSym mkField [keyCE, mkPCG ce s]
-      return (nextKeyE, nlblAcc++[namedKeyE], recAcc++[fieldE])
-
-    mkField [(keyE,_), (ce,_)] = return $ mkPValue [hs| $keyE .=. $ce |]
-    mkField _                  = argError "mkField"
-    
-    concatRecField a b = gensymCG "__crf" >>= \sym -> spliceManyE sym extendRecord [a, b]
-    extendRecord [(a,_), (b,_)] = return $ mkPValue [hs| $b .*. $a |]
-    extendRecord _      = argError "extendRecord"
-
--- TODO: change for statically typed records
 -- | Record field lookup expression construction
 recordFieldLookupE :: SpliceFunction -> Identifier -> CGExpr -> CodeGeneration CGExpr
 recordFieldLookupE accessF n rCE = do
@@ -926,8 +902,14 @@ defaultValue' (tag -> TIndirection) = throwCG $ CodeGenerationError "Invalid ind
 defaultValue' (tag &&& children -> (TTuple, ch)) =
   mapM defaultValue' ch >>= spliceManyE "__f" (buildMultiSpliceF HB.tuple $ Pure . HTuple . map Pure)
 
--- TODO
-defaultValue' (tag -> TRecord _) = throwCG $ CodeGenerationError "Default records not implemented"
+defaultValue' t@(tag &&& children -> (TRecord ids, ch)) = do
+  -- Track record type in code generation state
+  void $ typ' t 
+  sig <- signature t
+  mapM defaultValue' ch >>= spliceManyE "__f" (recordSpliceF sig)
+  
+  where recordSpliceF sig = buildMultiSpliceF (HB.appFun (recordCstr sig)) $ Pure . HRecord . zip ids . map Pure
+        recordCstr recSig = HS.Con . HS.UnQual . HB.name $ recordReprId recSig
 
 defaultValue' (tag &&& annotations -> (TCollection, anns)) = 
   return . mkAValue $ case annotationComboIdT anns of
@@ -1253,15 +1235,13 @@ expression' ke = exprCG ke >>= (\ce -> lineage ke ce >>= uncurry addLineage >> r
       spliceManyE n (buildMultiSpliceF HB.tuple $ Pure . HTuple . map Pure) [h', p']
 
     -- | Record constructor
-    -- TODO: records need heterogeneous lists. Find another encoding (e.g., Dynamic/HList).
-    -- TODO: record labels used in ad-hoc records
-    exprCG (tag &&& children -> (ERecord is, cs)) = do
+    exprCG e@(tag &&& children -> (ERecord is, cs)) = do
       cs' <- mapM expression' cs
       sym <- gensymCG "__record"
-      spliceManyE sym (buildRecordE is) cs'
+      _debug (boxToString $ prettyLines e ++ [show $ exprBounds e])
+      spliceManyE sym (buildRecordE is $ exprBounds e) cs'
 
     -- | Projections
-    -- TODO: records need heterogeneous lists. Find another encoding.
     exprCG (tag &&& children -> (EProject i, [r])) = do
       sym <- gensymCG "__proj"
       r'  <- expression' r
