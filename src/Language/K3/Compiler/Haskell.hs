@@ -1,5 +1,7 @@
 module Language.K3.Compiler.Haskell where
 
+import qualified Data.Sequence as Seq
+
 import Distribution.Package
 import Distribution.PackageDescription hiding ( includes )
 import Distribution.PackageDescription.Parse
@@ -9,9 +11,11 @@ import System.Directory
 import System.FilePath
 
 import qualified Language.K3.Codegen.Haskell as CG
+import Language.K3.TypeSystem
 
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
+import Language.K3.Driver.Typecheck
 
 compile :: Options -> CompileOptions -> IO ()
 compile opts (CompileOptions _ name outOpt buildOpt) = 
@@ -20,12 +24,17 @@ compile opts (CompileOptions _ name outOpt buildOpt) =
     case prog of 
       Left e  -> parseError e
       Right p ->
-        let source = mkSource name p in
-        case source of 
-          Left e' -> compileError e'
-          Right s -> case (outOpt, buildOpt) of
-                        (Just outP, Just buildP) -> doStages outP buildP s
-                        (_,_)                    -> outputError
+
+        let (errs, _, typedP) = typecheckProgram p in
+        if Seq.null errs then 
+          let source = mkSource name typedP in
+          case source of 
+            Left e' -> compileError e'
+            Right s -> case (outOpt, buildOpt) of
+                          (Just outP, Just buildP) -> doStages outP buildP s
+                          (_,_)                    -> outputError
+          
+        else putStrLn $ prettyTCErrors typedP errs
 
   where
     parseError s   = putStrLn $ "Could not parse input: " ++ s
