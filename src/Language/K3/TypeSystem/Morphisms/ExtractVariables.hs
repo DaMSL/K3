@@ -17,9 +17,9 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 
 import Language.K3.Core.Common
-import Language.K3.Utils.TemplateHaskell.Reduce
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.TypeDecision.Data
+import Language.K3.Utils.TemplateHaskell.Reduce
 
 type VariableExtractable a = (Reduce ExtractVariables a VariableReduction)
 
@@ -34,15 +34,17 @@ extractVariables = reduce ExtractVariables
 data ExtractVariables = ExtractVariables
 
 instance Reduce ExtractVariables UVar VariableReduction where
-  reduce _ a = Set.singleton $ SomeUVar a
+  reduce ExtractVariables a = Set.singleton $ SomeUVar a
   
 instance Reduce ExtractVariables QVar VariableReduction where
-  reduce _ a = Set.singleton $ SomeQVar a
+  reduce ExtractVariables a = Set.singleton $ SomeQVar a
+  
+instance Reduce ExtractVariables ConstraintSet VariableReduction where
+  reduce ExtractVariables cs = reduce ExtractVariables $ csToList cs
 
 $(
   concat <$> mapM (defineCatInstance [t|VariableReduction|] ''ExtractVariables)
-                [ ''ConstraintSet
-                , ''Constraint
+                [ ''Constraint
                 , ''BinaryOperator
                 , ''Coproduct
                 , ''TQual

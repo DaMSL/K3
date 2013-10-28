@@ -6,7 +6,7 @@ module Language.K3.TypeSystem.Data.PrimitiveSubtyping
 ( isPrimitiveSubtype
 ) where
 
-import Language.K3.TypeSystem.Data.TypesAndConstraints
+import Language.K3.TypeSystem.Data.Types
 
 isPrimitiveSubtype :: ShallowType -> ShallowType -> Bool
 isPrimitiveSubtype t1 t2 = case (t1,t2) of
