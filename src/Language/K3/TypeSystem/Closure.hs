@@ -68,14 +68,14 @@ calculateClosureStep cs =
 closeTransitivity :: ConstraintSet -> ConstraintSet
 closeTransitivity cs = csFromList $
   (do
-    (t,sa) <- csQuery cs QueryAllTypesLowerBoundingAnyVars
+    (t,sa) <- csQuery cs $ QueryAllTypesLowerBoundingAnyVars ()
     bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarLowerBound sa
     return $ case bnd of
       CLeft ta -> t <: ta
       CRight qa -> t <: qa
   ) ++
   (do
-    (sa,t) <- csQuery cs QueryAllTypesUpperBoundingAnyVars
+    (sa,t) <- csQuery cs $ QueryAllTypesUpperBoundingAnyVars ()
     bnd <- csQuery cs $ QueryTypeOrAnyVarByAnyVarUpperBound sa
     return $ case bnd of
       CLeft ta -> ta <: t
@@ -86,7 +86,7 @@ closeTransitivity cs = csFromList $
 --  all immediate type-to-type constraints.
 closeImmediate :: ConstraintSet -> ConstraintSet
 closeImmediate cs = csUnions $ do
-  (t1,t2) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  (t1,t2) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
   case (t1,t2) of
     (SFunction a1 a2, SFunction a3 a4) ->
       give [a2 <: a4, a3 <: a1]
@@ -109,7 +109,7 @@ closeImmediate cs = csUnions $ do
 -- |Performs closure for opaque-extended records in a lower-bounding position.
 closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeLowerBoundingExtendedRecord cs = csUnions $ do
-  (SRecord m oas, t) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  (SRecord m oas, t) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
   case t of
     SOpaque oa -> guard $ not $ oa `Set.member` oas
     _ -> return ()
@@ -127,7 +127,7 @@ closeLowerBoundingExtendedRecord cs = csUnions $ do
 -- |Performs closure for opaque-extended records in an upper-bounding position.
 closeUpperBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeUpperBoundingExtendedRecord cs = csUnions $ do
-  (t,SRecord m oas) <- csQuery cs QueryAllTypesLowerBoundingTypes
+  (t,SRecord m oas) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
   moa <- Nothing : map Just (Set.toList oas) {- Nothing adds base record -}
   case moa of
     Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty
@@ -135,36 +135,36 @@ closeUpperBoundingExtendedRecord cs = csUnions $ do
   
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do
-  (qv1,qa2) <- csQuery cs QueryAllQualOrVarLowerBoundingQVar
+  (qv1,qa2) <- csQuery cs $ QueryAllQualOrVarLowerBoundingQVar ()
   qv3 <- csQuery cs $ QueryQualOrVarByQVarLowerBound qa2
   return $ qv1 <: qv3
 
 closeQualifiedRead :: ConstraintSet -> ConstraintSet
 closeQualifiedRead cs = csFromList $ do
-  (ta,qa) <- csQuery cs QueryAllTypeOrVarLowerBoundingQVar
+  (ta,qa) <- csQuery cs $ QueryAllTypeOrVarLowerBoundingQVar ()
   ta' <- csQuery cs $ QueryTypeOrVarByQVarLowerBound qa
   return $ ta <: ta'
 
 closeQualifiedWrite :: ConstraintSet -> ConstraintSet
 closeQualifiedWrite cs = csFromList $ do
-  (qa1,qa2) <- csQuery cs QueryAllQVarLowerBoundingQVar
+  (qa1,qa2) <- csQuery cs $ QueryAllQVarLowerBoundingQVar ()
   ta <- csQuery cs $ QueryTypeOrVarByQVarUpperBound qa2
   return $ ta <: qa1
 
 closeMonomorphicTransitivity :: ConstraintSet -> ConstraintSet
 closeMonomorphicTransitivity cs = csFromList $ do
-  (qa2,qs) <- csQuery cs QueryAllMonomorphicQualifiedUpperConstraint
+  (qa2,qs) <- csQuery cs $ QueryAllMonomorphicQualifiedUpperConstraint ()
   qa1 <- csQuery cs $ QueryPolyLineageByOrigin qa2
   return $ MonomorphicQualifiedUpperConstraint qa1 qs
 
 closeMonomorphicBounding :: ConstraintSet -> ConstraintSet
 closeMonomorphicBounding cs = csFromList $ do
-  (qa2,qs) <- csQuery cs QueryAllMonomorphicQualifiedUpperConstraint
+  (qa2,qs) <- csQuery cs $ QueryAllMonomorphicQualifiedUpperConstraint ()
   return $ qa2 <: qs
 
 opaqueLowerBound :: ConstraintSet -> ConstraintSet
 opaqueLowerBound cs = csFromList $ do
-  (oa,t) <- csQuery cs QueryAllOpaqueLowerBoundedConstraints
+  (oa,t) <- csQuery cs $ QueryAllOpaqueLowerBoundedConstraints ()
   guard $ SOpaque oa /= t
   guard $ SRecord Map.empty (Set.singleton oa) /= t
   (_,ub) <- csQuery cs $ QueryOpaqueBounds oa
@@ -173,7 +173,7 @@ opaqueLowerBound cs = csFromList $ do
 
 opaqueUpperBound :: ConstraintSet -> ConstraintSet
 opaqueUpperBound cs = csFromList $ do
-  (t,oa) <- csQuery cs QueryAllOpaqueUpperBoundedConstraints
+  (t,oa) <- csQuery cs $ QueryAllOpaqueUpperBoundedConstraints ()
   guard $ SOpaque oa /= t
   case t of
     SRecord _ oas -> guard $ not $ Set.member oa oas
