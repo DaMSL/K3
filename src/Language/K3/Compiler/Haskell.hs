@@ -51,6 +51,7 @@ k3PackageDescription progName = emptyPackageDescription {
                 [ Dependency (PackageName "base") anyVersion
                 , Dependency (PackageName "containers") anyVersion
                 , Dependency (PackageName "optparse-applicative") anyVersion
+                , Dependency (PackageName "mtl") anyVersion
                 , Dependency (PackageName "transformers") anyVersion
                 , Dependency (PackageName "K3-Core") anyVersion ]
     , executables  = [Executable progName (progName <.> "hs") k3BuildInfo]
