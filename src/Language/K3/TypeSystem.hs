@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell, TupleSections #-}
 
 module Language.K3.TypeSystem
 ( typecheck
@@ -51,7 +51,7 @@ data TypecheckResult
       { tcAEnv :: Maybe TAliasEnv
       , tcEnv :: Maybe TNormEnv
       , tcREnv :: Maybe TGlobalQuantEnv
-      , tcExprTypes :: Maybe (Map UID (AnyTVar, ConstraintSet))
+      , tcExprTypes :: Maybe (Map UID AnyTVar, ConstraintSet)
       , tcExprBounds :: Maybe (Map UID (K3 Type, K3 Type))
       }
   deriving (Eq, Show)
@@ -87,8 +87,10 @@ typecheck aEnv env rEnv decl =
   let exprTypesBox =
         case tcExprTypes result of
           Nothing -> ["(No expression types inferred.)"]
-          Just ts -> ["Inferred expression types:"] %$ indent 2
-                        (vconcats $ map prettyExprType $ Map.toList ts)
+          Just (vars,cs) ->
+            let ts = Map.map (,cs) vars in
+            ["Inferred expression types:"] %$ indent 2
+              (vconcats $ map prettyExprType $ Map.toList ts)
   in
   let exprBoundsBox =
         case tcExprBounds result of
@@ -132,17 +134,18 @@ doTypecheck aEnv env rEnv ast = do
   ((aEnv',env',rEnv'),idx) <- hoistEither $ runDecideM 0 $ typeDecision ast'
   tell $ mempty { tcAEnv = Just aEnv', tcEnv = Just env', tcREnv = Just rEnv' }
   -- 3. Check that types inferred for the declarations match these types.
-  let (eErrs, attribs) = runDeclTypecheckM (rEnv' `mappend` rEnv) idx
-                            (deriveDeclarations aEnv env aEnv' env' ast')
+  let (eErrs, attribs@(attVars,attCs)) =
+        runTypecheckM (rEnv' `mappend` rEnv) idx
+          (deriveDeclarations aEnv env aEnv' env' ast')
   tell $ mempty { tcExprTypes = Just attribs }
   ((), _) <- hoistEither eErrs
   -- 4. Post-process all of the attributions so we can extract meaningful type
   --    definitions from them.
-  tell $ mempty { tcExprBounds = Just $ Map.map manifestBounds attribs }
+  tell $ mempty { tcExprBounds = Just $ Map.map (manifestBounds attCs) attVars }
   return ()
   where
-    manifestBounds :: (AnyTVar, ConstraintSet) -> (K3 Type, K3 Type)
-    manifestBounds (sa,cs) =
+    manifestBounds :: ConstraintSet -> AnyTVar -> (K3 Type, K3 Type)
+    manifestBounds cs sa =
       case sa of
         SomeQVar qa -> manifestBounds' qa
         SomeUVar a -> manifestBounds' a

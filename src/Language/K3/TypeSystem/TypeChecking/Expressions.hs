@@ -44,7 +44,7 @@ deriveQualifiedExpression ::
       TAliasEnv -- ^The relevant type alias environment.
    -> TNormEnv -- ^The relevant type environment.
    -> K3 Expression
-   -> ExprTypecheckM (QVar, ConstraintSet)
+   -> TypecheckM (QVar, ConstraintSet)
 deriveQualifiedExpression aEnv env expr = do
   (a,cs) <- deriveExpression aEnv env expr
   let quals = qualifiersOfExpr expr
@@ -55,8 +55,8 @@ deriveQualifiedExpression aEnv env expr = do
       qa <- freshTypecheckingQVar u
       let csOut = cs `csUnion` csFromList
                     [a <: qa, Set.fromList (concat quals) <: qa]
-      attributeExprVar u $ someVar qa
-      attributeExprConstraints csOut
+      attributeVar u $ someVar qa
+      attributeConstraints csOut
       return (qa, csOut)
 
 -- |A function to derive the type of an unqualified expression.  An error is
@@ -65,7 +65,7 @@ deriveUnqualifiedExpression ::
       TAliasEnv -- ^The relevant type alias environment.
    -> TNormEnv -- ^The relevant type environment.
    -> K3 Expression
-   -> ExprTypecheckM (UVar, ConstraintSet)
+   -> TypecheckM (UVar, ConstraintSet)
 deriveUnqualifiedExpression aEnv env expr =
   if null $ qualifiersOfExpr expr
     then deriveExpression aEnv env expr
@@ -76,7 +76,7 @@ deriveUnqualifiedExpression aEnv env expr =
 deriveExpression :: TAliasEnv -- ^The relevant type alias environment.
                  -> TNormEnv -- ^The relevant type environment.
                  -> K3 Expression
-                 -> ExprTypecheckM (UVar, ConstraintSet)
+                 -> TypecheckM (UVar, ConstraintSet)
 deriveExpression aEnv env expr = do
   _debug $ boxToString $ ["Deriving type for expression: "] %+ prettyLines expr
   u <- uidOf expr
@@ -118,7 +118,7 @@ deriveExpression aEnv env expr = do
               rEnv <- globalREnv <$> typecheckingContext
               (a,cs,pessimals) <- deriveCollectionType
                                 (Just rEnv) aEnv (tExpr @+ TUID u)
-              attributeExprConstraints $ fromJust pessimals
+              attributeConstraints $ fromJust pessimals
               return (a,cs)
         EVariable x -> do
           assert0Children expr
@@ -209,7 +209,7 @@ deriveExpression aEnv env expr = do
         EBindAs binder -> do
           (expr1,expr2) <- assert2Children expr
           (a1,cs1) <- deriveUnqualifiedExpression aEnv env expr1
-          let handleBinder :: ExprTypecheckM (TNormEnv, ConstraintSet)
+          let handleBinder :: TypecheckM (TNormEnv, ConstraintSet)
               handleBinder = case binder of
                 BIndirection i -> do
                   qa <- freshTypecheckingQVar u
@@ -262,8 +262,8 @@ deriveExpression aEnv env expr = do
       ["Expression: "] %+ prettyLines expr %$
       ["Inferred type: "] %+ prettyLines a %+ ["\\"] %+ prettyLines cs
     )
-  attributeExprVar u $ someVar a
-  attributeExprConstraints cs
+  attributeVar u $ someVar a
+  attributeConstraints cs
   return (a,cs)
   where
     commonSingleContainer constr = do
@@ -271,13 +271,13 @@ deriveExpression aEnv env expr = do
       (qa, cs) <- deriveQualifiedExpression aEnv env expr'
       a <- freshTypecheckingUVar =<< uidOf expr
       return (a, cs `csUnion` csSing (constr qa <: a))
-    lookupOrFail :: TEnvId -> ExprTypecheckM NormalQuantType
+    lookupOrFail :: TEnvId -> TypecheckM NormalQuantType
     lookupOrFail envId =
       envRequireM (UnboundEnvironmentIdentifier <$> uidOf expr
                                                 <*> return envId)
         envId env
     binOpConstraints :: UVar -> BinaryOperator -> UVar -> UVar
-                     -> ExprTypecheckM ConstraintSet
+                     -> TypecheckM ConstraintSet
     binOpConstraints a1 binop a2 a0 =
       csFromList <$> case binop of
         BinOpAdd -> return arithConstraints
