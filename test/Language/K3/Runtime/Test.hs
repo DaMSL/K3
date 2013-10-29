@@ -38,6 +38,10 @@ import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
 import Language.K3.Utils.Pretty
 
+-- TODO: uncomment this stuff and make it compile again
+-- This code has been broken for a while and definitely needs fixed; I've
+-- commented out these unit tests for now to allow the others to work.
+--   -- ZEP (2013-10-29)
 {-
 constructBuffer :: [Test]
 constructBuffer = [
