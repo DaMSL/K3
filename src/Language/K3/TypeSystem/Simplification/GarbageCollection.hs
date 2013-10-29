@@ -20,7 +20,7 @@ import qualified Data.Set as Set
 
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
-import Language.K3.TypeSystem.Simplification.Data
+import Language.K3.TypeSystem.Simplification.Common
 
 -- FIXME: This simplification destroys opaque bounding constraints!  (It's not
 --        marking opaque variables as "alive".)

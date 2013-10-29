@@ -1,4 +1,4 @@
-module Language.K3.TypeSystem.Simplification.Data
+module Language.K3.TypeSystem.Simplification.Common
 ( SimplificationConfig(..)
 , SimplifyM
 , runSimplifyM
