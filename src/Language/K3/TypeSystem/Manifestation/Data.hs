@@ -4,10 +4,17 @@
 
 module Language.K3.TypeSystem.Manifestation.Data
 ( BoundType(..)
-, upperBound
-, lowerBound
-
 , DelayedOperationTag(..)
+
+, getBoundTypeName
+, getConcreteUVarBounds
+, getConcreteQVarBounds
+, getConcreteQVarQualifiers
+, getDelayedOperation
+, getQualifierOperation
+, getDualBoundType
+, getTyVarOp
+
 , DelayedType(..)
 , shallowToDelayed
 ) where
@@ -24,71 +31,62 @@ import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.Utils.Pretty
 
--- |A data type describing bounding directions for type manifestation.  A value
---  of this type describes how manifestation proceeds to extract constraints
---  from the constraint set and controls the bounding direction of the resulting
---  type.
+-- |A data type representing a bounding direction.
 data BoundType
-  = BoundType
-      { getBoundTypeName :: String
-      , getConcreteUVarBounds :: UVar -> ConstraintSetQuery ShallowType
-      , getConcreteQVarBounds :: QVar -> ConstraintSetQuery ShallowType
-      , getConcreteQVarQualifiers :: QVar -> ConstraintSetQuery (Set TQual)
-      , getDelayedOperationTag :: DelayedOperationTag
-      , getDelayedOperation :: [DelayedType] -> DelayedType
-      , getQualifierOperation :: [Set TQual] -> Set TQual
-      , getDualBoundType :: BoundType
-      , getTyVarOp :: TypeVariableOperator
-      }
-      {-^
-        Represents a bounding type.  The elements are:
-        
-            * @getConcreteUVarBounds@: A query to retrieve the concrete bounds
-              for a given @UVar@ in the appropriate direction.
+  = UpperBound
+  | LowerBound
 
-            * @getConcreteQVarBounds@: A query to retrieve the concrete type
-              bounds for a given @QVar@ in the appropriate direction.
-
-            * @getConcreteQVarQualifiers@: A query to retrieve the qualifier
-              sets for a given @QVar@ in the appropriate direction.
-              
-            * @getDelayedOperation@: Retrieves a @DelayedOperation@ which
-              describes this bound's operation for joining types.
-      -}
-
-upperBound :: BoundType
-upperBound = BoundType
-              { getBoundTypeName = "upper"
-              , getConcreteUVarBounds = QueryTypeByUVarLowerBound
-              , getConcreteQVarBounds = QueryTypeByQVarLowerBound
-              , getConcreteQVarQualifiers = QueryTQualSetByQVarLowerBound
-              , getDelayedOperationTag = DelayedIntersectionTag
-              , getDelayedOperation = delayedIntersections
-              , getQualifierOperation = Set.unions
-              , getDualBoundType = lowerBound
-              , getTyVarOp = TyVarOpIntersection
-              }
-
-lowerBound :: BoundType
-lowerBound = BoundType
-              { getBoundTypeName = "lower"
-              , getConcreteUVarBounds = QueryTypeByUVarUpperBound
-              , getConcreteQVarBounds = QueryTypeByQVarUpperBound
-              , getConcreteQVarQualifiers = QueryTQualSetByQVarUpperBound
-              , getDelayedOperationTag = DelayedUnionTag
-              , getDelayedOperation = delayedUnions
-              , getQualifierOperation =
-                  foldl Set.intersection (Set.fromList [TMut, TImmut])
-              , getDualBoundType = upperBound
-              , getTyVarOp = TyVarOpUnion
-              }
-              
 -- |An enumeration identifying the delayed operations over groups of types which
 --  are used during manifestation.
 data DelayedOperationTag
   = DelayedIntersectionTag
   | DelayedUnionTag
   deriving (Eq, Ord, Show)
+
+-- |Retrieves the name of a bound type.
+getBoundTypeName :: BoundType -> String
+getBoundTypeName UpperBound = "upper"
+getBoundTypeName LowerBound = "lower"
+
+-- |Retrieves a function to generate an unqualified variable bounding query
+--  based on bounding type.
+getConcreteUVarBounds :: BoundType -> UVar -> ConstraintSetQuery ShallowType
+getConcreteUVarBounds UpperBound = QueryTypeByUVarLowerBound
+getConcreteUVarBounds LowerBound = QueryTypeByUVarUpperBound
+
+-- |Retrieves a function to generate a qualified variable bounding query based
+--  on bounding type.
+getConcreteQVarBounds :: BoundType -> QVar -> ConstraintSetQuery ShallowType
+getConcreteQVarBounds UpperBound = QueryTypeByQVarLowerBound
+getConcreteQVarBounds LowerBound = QueryTypeByQVarUpperBound
+
+-- |Retrieves a function to generate a query for a set of qualifiers based on
+--  bounding type.
+getConcreteQVarQualifiers :: BoundType -> QVar -> ConstraintSetQuery (Set TQual)
+getConcreteQVarQualifiers UpperBound = QueryTQualSetByQVarLowerBound
+getConcreteQVarQualifiers LowerBound = QueryTQualSetByQVarUpperBound
+
+-- |Retrieves a delayed type merging operation based on bounding type.
+getDelayedOperation :: BoundType -> [DelayedType] -> DelayedType
+getDelayedOperation UpperBound = delayedIntersections
+getDelayedOperation LowerBound = delayedUnions
+
+-- |Retrieves a qualifier set merging operation based on bounding types.
+getQualifierOperation :: BoundType -> [Set TQual] -> Set TQual
+getQualifierOperation UpperBound = Set.unions
+getQualifierOperation LowerBound =
+  foldl Set.intersection (Set.fromList [TMut, TImmut])
+
+-- |Retrieves the dual of a bounding type.
+getDualBoundType :: BoundType -> BoundType
+getDualBoundType UpperBound = LowerBound
+getDualBoundType LowerBound = UpperBound
+
+-- |Retrieves the type variable operator identifying the sort of operation
+--  performed by a given bounding type.
+getTyVarOp :: BoundType -> TypeVariableOperator
+getTyVarOp UpperBound = TyVarOpIntersection
+getTyVarOp LowerBound = TyVarOpUnion
 
 -- |A version of @ShallowType@ which represents a partially distributed logical
 --  connective over types (either union or intersection).  The option form, for

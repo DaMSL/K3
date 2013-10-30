@@ -8,9 +8,9 @@
 
 module Language.K3.TypeSystem.Manifestation
 ( manifestType
-, Manifestable
-, upperBound
-, lowerBound
+--, Manifestable
+--, upperBound
+--, lowerBound
 ) where
 
 import Control.Applicative
@@ -38,10 +38,43 @@ import Language.K3.Utils.Pretty
 $(loggingFunctions)
 
 -- |A general top-level function for manifesting a type from a constraint set
+--  and a type variable.  This function preserves work in a partial application
+--  closure; a caller providing just a constraint set can use the resulting
+--  function numerous times to compute different bounds without repeating work.
+manifestType :: ConstraintSet -> BoundType -> AnyTVar -> K3 Type
+manifestType cs =
+  {-
+    This routine proceeds as follows:
+      1. Simplify the constraint set.  This will prevent a lot of redundant
+         work.  It involves unifying equivalent variables, eliminating
+         unnecessary constraints , and so forth.  The resulting set is not
+         equivalent, but it is suitable for manifestation's use.
+      2. Eliminate branching from the constraint set.  This is achieved by
+         introducing fresh variables for each bounding type and then merging
+         the shallow bounds recursively.  This process is technically lossy,
+         but the kinds of types available in K3 as of this writing (2013-10-29)
+         are unaffected by it.
+      3. Simplify again.  The branching elimination often introduces structures
+         that turn out to be equivalent.
+      4. Construct from the resulting non-branching constraint set a dictionary
+         from each variable to its corresponding bounds.
+      5. Using this dictionary, expand the provided type.
+    In order to prevent duplicate work, this function performs all but the last
+    step once a constraint set is applied; this allows the resulting function to
+    hold the bound dictionary in its closure.
+  -}
+  undefined -- TODO
+
+{-
+
+
+
+
+-- |A general top-level function for manifesting a type from a constraint set
 --  and a manifestable entity.
-manifestType :: ( Manifestable a, Pretty a, VariableExtractable a)
+_manifestType :: ( Manifestable a, Pretty a, VariableExtractable a)
              => BoundType -> ConstraintSet -> a -> K3 Type
-manifestType bt cs x =
+_manifestType bt cs x =
   let name = getBoundTypeName bt in
   _debugI (boxToString
     (["Manifesting " ++ name ++ " bound type for constrained type "] %+
@@ -239,3 +272,4 @@ logTopMsg verb xs = do
   name <- getBoundTypeName <$> askBoundType
   return $ [verb ++ " " ++ name ++ " bound type for ["] %+
     intersperseBoxes [","] (map prettyLines $ Foldable.toList xs) +% ["]"]
+-}
