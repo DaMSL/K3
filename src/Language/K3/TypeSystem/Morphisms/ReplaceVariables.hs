@@ -35,10 +35,12 @@ instance Transform ReplaceVariables QVar where
 instance Transform ReplaceVariables UVar where
   transform (ReplaceVariables _ m) a = fromMaybe a $ Map.lookup a m
 
+instance Transform ReplaceVariables ConstraintSet where
+  transform trans cs = csFromList $ map (transform trans) $ csToList cs
+
 $(
   concat <$> mapM (defineHomInstance ''ReplaceVariables)
-                [ ''ConstraintSet
-                , ''Constraint
+                [ ''Constraint
                 , ''BinaryOperator
                 , ''Coproduct
                 , ''TQual

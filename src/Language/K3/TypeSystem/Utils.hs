@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, DataKinds #-}
+{-# LANGUAGE TupleSections, DataKinds, TemplateHaskell #-}
 
 {-|
   This module contains general type manipulation utilities.
@@ -10,6 +10,7 @@ module Language.K3.TypeSystem.Utils
 , RecordConcatenationError(..)
 , getLowerBoundsOf
 , getUpperBoundsOf
+, leastFixedPoint
 , quasiFreshVar
 ) where
 
@@ -100,6 +101,13 @@ getUpperBoundsOf cs ta =
   case ta of
     CLeft t -> [t]
     CRight a -> nub $ csQuery cs $ QueryTypeByUVarLowerBound a
+
+-- |Calculates the least fixed point of an operation given a value.
+leastFixedPoint :: (Eq a) => (a -> a) -> a -> a
+leastFixedPoint f x =
+  let xs = iterate f x in
+  let pairs = zip xs $ tail xs in
+  snd $ head $ Data.List.filter (uncurry (==)) pairs
 
 -- TODO: get rid of quasi-fresh stuff; it's no longer used
 

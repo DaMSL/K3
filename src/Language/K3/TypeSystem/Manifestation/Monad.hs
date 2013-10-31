@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TupleSections, TemplateHaskell #-}
 
 {-|
   A module defining a monad (and associated data types) for type manifestation.
@@ -41,6 +41,10 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
+import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
 
 -- * Monad definitions
 
@@ -69,6 +73,13 @@ runManifestM bt cs x =
 --  mu-recursive types.
 data VariableSignature = VariableSignature (Set AnyTVar) DelayedOperationTag
   deriving (Eq, Ord, Show)
+
+instance Pretty VariableSignature where
+  prettyLines (VariableSignature vars dtag) =
+    (case dtag of
+      DelayedIntersectionTag -> ["Intersection"]
+      DelayedUnionTag -> ["Union"]) %+
+    ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList vars) %+ ["}"]
 
 -- |A structure for the manifestation environment.
 data ManifestEnviron
@@ -213,8 +224,14 @@ typeComputationCache :: VariableSignature
 typeComputationCache sig x = do
   cache <- resultCache <$> get
   case Map.lookup sig cache of
-    Just result -> return result
+    Just result -> do
+      _debug $ boxToString $
+        ["Manifestation cache hit: "] %+ prettyLines sig %+ [" => "] %+
+          prettyLines result 
+      return result
     Nothing -> do
+      _debug $ boxToString $
+        ["Manifestation cache miss: "] %+ prettyLines sig
       result <- x
       s <- get
       put $ s {resultCache = Map.insert sig result $ resultCache s}

@@ -1,10 +1,14 @@
 {-# LANGUAGE TemplateHaskell, MultiParamTypeClasses, FlexibleInstances #-}
 
 {-|
-  A module containing convenience functions for users of the type system.
+  A module containing convenience definitions for users of the type system.
 -}
 module Language.K3.TypeSystem.Data.Convenience
-( emptyAnnotation
+( NormalQuantType
+, NormalAnnType
+, NormalAnnBodyType
+, NormalAnnMemType
+, emptyAnnotation
 , ConstraintConstructor2(..)
 , (<:)
 , constraintEquiv
@@ -16,9 +20,22 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 
 import qualified Language.K3.TypeSystem.ConstraintSetLike as CSL
+import Language.K3.TypeSystem.Data.Constraints
 import Language.K3.TypeSystem.Data.ConstraintSet
 import Language.K3.TypeSystem.Data.Coproduct
-import Language.K3.TypeSystem.Data.TypesAndConstraints
+import Language.K3.TypeSystem.Data.Types
+
+-- |A type alias for normal quantified types (which use normal constraint sets).
+type NormalQuantType = QuantType ConstraintSet
+
+-- |A type alias for normal annotation types (which use normal constraint sets).
+type NormalAnnType = AnnType ConstraintSet
+
+-- |An alias for normal annotation body types.
+type NormalAnnBodyType = AnnBodyType ConstraintSet
+
+-- |An alias for normal annotation member types.
+type NormalAnnMemType = AnnMemType ConstraintSet
 
 -- |A value defining the empty annotation.
 emptyAnnotation :: NormalAnnType

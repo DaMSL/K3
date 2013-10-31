@@ -106,7 +106,7 @@ typecheck aEnv env rEnv decl =
             SimplificationConfig { preserveVars = Set.singleton sa } in
       let simpCs = runSimplifyM simpConfig $
                       simplifyByGarbageCollection =<<
-                      simplifyByUnification cs in
+                      simplifyByConstraintEquivalenceUnification cs in
       [n ++ " → "] %+ prettyLines sa %+ ["\\"] %+ prettyLines simpCs
     prettyExprBounds :: (UID,(K3 Type, K3 Type)) -> [String]
     prettyExprBounds (u,(lb,ub)) =
