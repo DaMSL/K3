@@ -860,14 +860,14 @@ iArrowS s = symbol s *> identifier <* symbol "->"
 
 literal :: LiteralParser
 literal = parseError "literal" "k3" $ choice [ 
+    try lAddress,
     lTerminal,
     lOption,
     lIndirection,
     lTuple,
     lRecord,
     lEmpty,
-    lCollection,
-    lAddress ]
+    lCollection ]
 
 qualifiedLiteral :: LiteralParser
 qualifiedLiteral = litError "qualified" $ flip (@+) <$> (option LImmutable litQualifier) <*> literal
