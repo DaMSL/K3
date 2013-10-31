@@ -35,7 +35,7 @@ data Declaration
     | DAnnotation   Identifier [TypeVarDecl] [AnnMemDecl]
 
     -- | Type synonym declaration.
-    | DType         Identifier (K3 Type)
+    | DTypeDef      Identifier (K3 Type)
   deriving (Eq, Read, Show)
 
 -- | Annotation declaration members
