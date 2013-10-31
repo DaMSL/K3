@@ -6,6 +6,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- TODO: cyclic scoping
+-- TODO: regular attributes
+-- TODO: ad-hoc record iread/ishow
+-- TODO: safe record w/ member function serdes and messaging
+
 -- | K3-to-Haskell code generation.
 module Language.K3.Codegen.Haskell where
 
@@ -46,7 +51,8 @@ data CodeGenerationError = CodeGenerationError String deriving (Eq, Show)
 type SymbolCounters = [(Identifier, Int)]
 
 -- | An environment to track effectful bindings.
-type CGEffectEnv = [(Identifier, (HEffectfulValue, HQualifier))]
+type CGEffectEnv  = [(Identifier, (EQualifier, MQualifier))]
+type CGAEffectEnv = [(Identifier, CGEffectEnv)]
 
 -- | Lineage of generated code, as a map of EUIDs to K3 and CG expressions
 type CGLineage = Map UID (K3 Expression, CGExpr)
@@ -59,7 +65,8 @@ type RecordSpec  = [(Identifier, HS.Type, Maybe HS.Exp)] -- TODO: separate lifte
 type RecordSpecs = [(Identifier, RecordSpec)]
 
 data AnnotationState = AnnotationState { annotationSpecs  :: RecordSpecs
-                                       , compositionSpecs :: RecordSpecs }
+                                       , compositionSpecs :: RecordSpecs
+                                       , annEffectEnv     :: CGAEffectEnv }
 
 type CGState = (CGLineage, CGEffectEnv, SymbolCounters, TriggerDispatchSpec, RecordSpecs, AnnotationState)
 
@@ -76,32 +83,32 @@ data HaskellEmbedding
     deriving (Eq, Show)
 
 {- Intermediate code generation representations -}
-data HQualifier = HImmutable | HMutable deriving (Eq, Read, Show)
+data MQualifier = HImmutable | HMutable deriving (Eq, Read, Show)
 
-data HEffectfulValue
-    = Pure           HStructure
-    | PartialAction  HStructure
-    | Action         HStructure
+data EQualifier
+    = Pure           EStructure
+    | PartialAction  EStructure
+    | Action         EStructure
   deriving (Eq, Read, Show)
 
-data HStructure
+data EStructure
     = HValue
-    | HOption       HEffectfulValue
-    | HIndirection  HEffectfulValue
-    | HFunction     HEffectfulValue
-    | HTuple        [HEffectfulValue]
-    | HRecord       [(Identifier, HEffectfulValue)]
+    | HOption       EQualifier
+    | HIndirection  EQualifier
+    | HTuple        [EQualifier]
+    | HRecord       [(Identifier, EQualifier)]
+    | HFunction     EQualifier
   deriving (Eq, Read, Show)
 
-type CGExpr = (HS.Exp, HEffectfulValue)
+type CGExpr = (HS.Exp, EQualifier)
 
-type SpliceFunction       = HS.Exp -> HStructure -> CodeGeneration CGExpr
-type MultiSpliceFunction  = [(HS.Exp, HStructure)] -> CodeGeneration CGExpr
-type BranchSpliceFunction = (HS.Exp, HStructure) -> [([HS.Stmt], (HS.Exp, HStructure))] -> CodeGeneration CGExpr
+type SpliceFunction       = HS.Exp -> EStructure -> CodeGeneration CGExpr
+type MultiSpliceFunction  = [(HS.Exp, EStructure)] -> CodeGeneration CGExpr
+type BranchSpliceFunction = (HS.Exp, EStructure) -> [([HS.Stmt], (HS.Exp, EStructure))] -> CodeGeneration CGExpr
 
 -- | An initial code generation state
 emptyCGState :: CGState
-emptyCGState = (Map.empty, [], [], [], [], AnnotationState [] [])
+emptyCGState = (Map.empty, [], [], [], [], AnnotationState [] [] [])
 
 -- | Runs the code generation monad, yielding a possibly erroneous result, and a final state.
 runCodeGeneration :: CGState -> CodeGeneration a -> (Either CodeGenerationError a, CGState)
@@ -158,10 +165,10 @@ throwCG = Control.Monad.Trans.Either.left
 addLineage :: UID -> (K3 Expression, CGExpr) -> CodeGeneration ()
 addLineage uid ep = modify $ modifyLineage_ (Map.insert uid ep)
 
-addEffectfulBinding :: Identifier -> HEffectfulValue -> HQualifier -> CodeGeneration ()
+addEffectfulBinding :: Identifier -> EQualifier -> MQualifier -> CodeGeneration ()
 addEffectfulBinding n v q = modify $ modifyEffectEnv_ ((n,(v,q)):)
 
-lookupEffectfulBinding :: Identifier -> CodeGeneration (HEffectfulValue, HQualifier)
+lookupEffectfulBinding :: Identifier -> CodeGeneration (EQualifier, MQualifier)
 lookupEffectfulBinding n = get >>= maybe lookupError return . lookup n . getEffectEnv
   where lookupError = throwCG . CodeGenerationError $ "No effect binding available for " ++ n
 
@@ -191,13 +198,23 @@ getAnnotationSpec n = get >>= return . lookup n . annotationSpecs . getAnnotatio
 getCompositionSpec :: Identifier -> CodeGeneration (Maybe RecordSpec)
 getCompositionSpec n = get >>= return . lookup n . compositionSpecs . getAnnotationState
 
+getAnnotationEffects :: Identifier -> CodeGeneration CGEffectEnv
+getAnnotationEffects n = get >>= return . lookup n . annEffectEnv . getAnnotationState
+
 modifyAnnotationSpecs :: (RecordSpecs -> RecordSpecs) -> CodeGeneration ()
 modifyAnnotationSpecs f =
-  modify $ modifyAnnotationState (\s -> AnnotationState (f $ annotationSpecs s) (compositionSpecs s))
+  modify $ modifyAnnotationState
+    (\s -> AnnotationState (f $ annotationSpecs s) (compositionSpecs s) (annEffectEnv s))
 
 modifyCompositionSpecs :: (RecordSpecs -> RecordSpecs) -> CodeGeneration ()
 modifyCompositionSpecs f =
-  modify $ modifyAnnotationState (\s -> AnnotationState (annotationSpecs s) (f $ compositionSpecs s))
+  modify $ modifyAnnotationState
+    (\s -> AnnotationState (annotationSpecs s) (f $ compositionSpecs s) (annEffectEnv s))
+
+modifyAnnotationEffects :: (CGAEffectEnv -> CGAEffectEnv) -> CodeGeneration ()
+modifyAnnotationEffects f =
+  modify $ modifyAnnotationState
+    (\s -> AnnotationState (annotationSpecs s) (compositionSpecs s) (f $ annEffectEnv s))
 
 
 {- Symbols and identifiers -}
@@ -286,14 +303,14 @@ exprBounds e = case nub $ filter isEType $ annotations e of
   [ETypeUB t, ETypeLB t'] -> Just (t', t)
   _ -> Nothing
 
-mutableT :: K3 Type -> Maybe HQualifier
+mutableT :: K3 Type -> Maybe MQualifier
 mutableT (annotations -> anns) = case nub $ filter isTQualified anns of
   []           -> Nothing
   [TImmutable] -> Just HImmutable
   [TMutable]   -> Just HMutable
   _            -> Nothing
 
-mutableE :: K3 Expression -> Maybe HQualifier
+mutableE :: K3 Expression -> Maybe MQualifier
 mutableE e = case exprBounds e of 
   Nothing -> Nothing
   Just (l,u) -> case nub $ catMaybes $ map mutableT [l,u] of
@@ -303,43 +320,43 @@ mutableE e = case exprBounds e of
                   _            -> error "Ambiguous mutability qualifier in type bounds"
 
 
-optionTMutability :: K3 Type -> CodeGeneration HQualifier
+optionTMutability :: K3 Type -> CodeGeneration MQualifier
 optionTMutability (tag &&& children -> (TOption, [x])) = case mutableT x of
   Just q  -> return q
   Nothing -> throwCG $ CodeGenerationError "Invalid option type child, no qualifier found"
 
 optionTMutability _ = throwCG $ CodeGenerationError "Invalid option type"
 
-optionEMutability :: K3 Expression -> CodeGeneration HQualifier
+optionEMutability :: K3 Expression -> CodeGeneration MQualifier
 optionEMutability e = case exprBounds e of
   Nothing -> throwCG $ CodeGenerationError "Untyped option expression"
   Just (l,_) -> optionTMutability l
 
-indirectionTMutability :: K3 Type -> CodeGeneration HQualifier
+indirectionTMutability :: K3 Type -> CodeGeneration MQualifier
 indirectionTMutability (tag &&& children -> (TIndirection, [x])) = case mutableT x of 
   Just q  -> return q
   Nothing -> throwCG $ CodeGenerationError "Invalid indirection type child, no qualifier found"
 
 indirectionTMutability _ = throwCG $ CodeGenerationError "Invalid indirection type"
 
-indirectionEMutability :: K3 Expression -> CodeGeneration HQualifier
+indirectionEMutability :: K3 Expression -> CodeGeneration MQualifier
 indirectionEMutability e = case exprBounds e of
   Nothing -> throwCG $ CodeGenerationError "Untyped indirection expression"
   Just (l,_) -> indirectionTMutability l
 
-tupleTMutability :: K3 Type -> CodeGeneration [HQualifier]
+tupleTMutability :: K3 Type -> CodeGeneration [MQualifier]
 tupleTMutability (tag &&& children -> (TTuple, ch)) = flip mapM ch $ \x -> case mutableT x of 
   Just q  -> return q
   Nothing -> throwCG $ CodeGenerationError "Invalid tuple type child, no qualifier found"
 
 tupleTMutability _ = throwCG $ CodeGenerationError "Invalid tuple type"
 
-tupleEMutability :: K3 Expression -> CodeGeneration [HQualifier]
+tupleEMutability :: K3 Expression -> CodeGeneration [MQualifier]
 tupleEMutability e = case exprBounds e of
   Nothing -> throwCG $ CodeGenerationError "Untyped tuple expression"
   Just (l,_) -> tupleTMutability l
 
-recordTMutability :: K3 Type -> CodeGeneration [(Identifier, HQualifier)]
+recordTMutability :: K3 Type -> CodeGeneration [(Identifier, MQualifier)]
 recordTMutability (tag &&& children -> (TRecord ids, ch)) = flip mapM (zip ids ch) $ \(n,x) ->
   case mutableT x of 
     Just q  -> return (n,q)
@@ -347,26 +364,26 @@ recordTMutability (tag &&& children -> (TRecord ids, ch)) = flip mapM (zip ids c
 
 recordTMutability _ = throwCG $ CodeGenerationError "Invalid record type"
 
-recordEMutability :: K3 Expression -> CodeGeneration [(Identifier, HQualifier)]
+recordEMutability :: K3 Expression -> CodeGeneration [(Identifier, MQualifier)]
 recordEMutability e = case exprBounds e of
   Nothing -> throwCG $ CodeGenerationError "Untyped record expression"
   Just (l,_) -> recordTMutability l
 
 
 {- Code generator expression methods -}
-qualifier :: (HEffectfulValue, HQualifier) -> HQualifier
+qualifier :: (EQualifier, MQualifier) -> MQualifier
 qualifier = snd
 
-mkCG :: HS.Exp -> HEffectfulValue -> CGExpr
+mkCG :: HS.Exp -> EQualifier -> CGExpr
 mkCG = (,)
 
-mkPCG :: HS.Exp -> HStructure -> CGExpr
+mkPCG :: HS.Exp -> EStructure -> CGExpr
 mkPCG e s = mkCG e $ Pure s
 
-mkPACG :: HS.Exp -> HStructure -> CGExpr
+mkPACG :: HS.Exp -> EStructure -> CGExpr
 mkPACG e s = mkCG e $ PartialAction s
 
-mkACG :: HS.Exp -> HStructure -> CGExpr
+mkACG :: HS.Exp -> EStructure -> CGExpr
 mkACG e s = mkCG e $ Action s
 
 mkPValue :: HS.Exp -> CGExpr
@@ -381,56 +398,56 @@ pvarCG n = mkPValue $ HB.var $ HB.name n
 avarCG :: Identifier -> CGExpr
 avarCG n = mkAValue $ HB.var $ HB.name n
 
-vvarCG :: Identifier -> HEffectfulValue -> CGExpr
+vvarCG :: Identifier -> EQualifier -> CGExpr
 vvarCG n v = mkCG (HB.var $ HB.name n) v
 
 hsExpression :: CGExpr -> HS.Exp
 hsExpression = fst
 
-effectfulValue :: CGExpr -> HEffectfulValue
-effectfulValue = snd
+eQualifier :: CGExpr -> EQualifier
+eQualifier = snd
 
-valueStructure :: HEffectfulValue -> HStructure
-valueStructure = \case
+eQStructure :: EQualifier -> EStructure
+eQStructure = \case
   Pure s          -> s
   PartialAction s -> s
   Action s        -> s
 
-exprStructure :: CGExpr -> HStructure
-exprStructure = valueStructure . effectfulValue
+eStructure :: CGExpr -> EStructure
+eStructure = eQStructure . eQualifier
 
-hsExpAndStructure :: CGExpr -> (HS.Exp, HStructure)
-hsExpAndStructure = hsExpression &&& exprStructure
+hsExpAndStructure :: CGExpr -> (HS.Exp, EStructure)
+hsExpAndStructure = hsExpression &&& eStructure
 
-unifyStructure :: HStructure -> HStructure -> HStructure
+unifyStructure :: EStructure -> EStructure -> EStructure
 unifyStructure a b = if a == b then a else HValue
 
 isPure :: CGExpr -> Bool
-isPure (effectfulValue -> Pure _) = True
+isPure (eQualifier -> Pure _) = True
 isPure _ = False
 
 isAction :: CGExpr -> Bool
-isAction (effectfulValue -> Action _) = True
+isAction (eQualifier -> Action _) = True
 isAction _ = False
 
 isPureOrPartial :: CGExpr -> Bool
-isPureOrPartial (effectfulValue -> Pure _) = True
-isPureOrPartial (effectfulValue -> PartialAction _) = True
+isPureOrPartial (eQualifier -> Pure _) = True
+isPureOrPartial (eQualifier -> PartialAction _) = True
 isPureOrPartial _ = False
 
 {- View pattern helpers -}
 action :: CGExpr -> Maybe HS.Exp
-action e@(effectfulValue -> Action _) = Just $ hsExpression e
+action e@(eQualifier -> Action _) = Just $ hsExpression e
 action _ = Nothing
 
 pureOrPartial :: CGExpr -> Maybe HS.Exp
-pureOrPartial e@(effectfulValue -> Pure _) = Just $ hsExpression e
-pureOrPartial e@(effectfulValue -> PartialAction _) = Just $ hsExpression e
+pureOrPartial e@(eQualifier -> Pure _) = Just $ hsExpression e
+pureOrPartial e@(eQualifier -> PartialAction _) = Just $ hsExpression e
 pureOrPartial _ = Nothing
 
 partialOrAction :: CGExpr -> Maybe HS.Exp
-partialOrAction e@(effectfulValue -> PartialAction _) = Just $ hsExpression e
-partialOrAction e@(effectfulValue -> Action _) = Just $ hsExpression e
+partialOrAction e@(eQualifier -> PartialAction _) = Just $ hsExpression e
+partialOrAction e@(eQualifier -> Action _) = Just $ hsExpression e
 partialOrAction _ = Nothing
 
 
@@ -624,10 +641,10 @@ typ' _ = throwCG $ CodeGenerationError "Cannot generate Haskell type"
 applySpliceF :: SpliceFunction -> CGExpr -> CodeGeneration CGExpr
 applySpliceF f = uncurry f . hsExpAndStructure
 
-buildSpliceF :: (HS.Exp -> HS.Exp) -> (HStructure -> HEffectfulValue) -> SpliceFunction
+buildSpliceF :: (HS.Exp -> HS.Exp) -> (EStructure -> EQualifier) -> SpliceFunction
 buildSpliceF eF sF = \e s -> return $ mkCG (eF e) (sF s)
 
-buildMultiSpliceF :: ([HS.Exp] -> HS.Exp) -> ([HStructure] -> HEffectfulValue) -> MultiSpliceFunction
+buildMultiSpliceF :: ([HS.Exp] -> HS.Exp) -> ([EStructure] -> EQualifier) -> MultiSpliceFunction
 buildMultiSpliceF eF sF = \esl -> let (e,s) = unzip esl in return $ mkCG (eF e) (sF s)
 
 buildMultiValueSpliceF :: ([HS.Exp] -> HS.Exp) -> MultiSpliceFunction
@@ -660,7 +677,7 @@ spliceManyE n f args = case all isPureOrPartial args of
         bindName n' (stmtAcc, argAcc) ce = gensymCG n' >>= \n'' ->
           let nN       = HB.name n''
               (nV,nPV) = (HB.var nN, HB.pvar nN)
-          in return (stmtAcc++[HB.genStmt HL.noLoc nPV $ hsExpression ce], argAcc++[(nV, exprStructure ce)])
+          in return (stmtAcc++[HB.genStmt HL.noLoc nPV $ hsExpression ce], argAcc++[(nV, eStructure ce)])
 
 -- | Builds a CG expression for a branching expression (i.e., case and if-then-else).
 --   Unlike spliceManyE, action subexpressions are scoped while being bound to prefixed names.
@@ -678,7 +695,7 @@ spliceBranchE n f common branches = case all isPureOrPartial (common:branches) o
         bindName n' ce = gensymCG n' >>= \n'' -> 
           let nN       = HB.name n''
               (nV,nPV) = (HB.var nN, HB.pvar nN)
-          in return ([HB.genStmt HL.noLoc nPV $ hsExpression ce], (nV, exprStructure ce))
+          in return ([HB.genStmt HL.noLoc nPV $ hsExpression ce], (nV, eStructure ce))
 
 
 {- Name bindings. These construct partial action expressions. -}
@@ -724,16 +741,16 @@ storeE n ce = lookupEffectfulBinding n >>= return . qualifier >>= \case
 prefixDoE :: [HS.Stmt] -> CGExpr -> CodeGeneration CGExpr
 prefixDoE [] ce = return ce
 
-prefixDoE context (pureOrPartial &&& exprStructure -> (Just (HS.Do stmts), s)) =
+prefixDoE context (pureOrPartial &&& eStructure -> (Just (HS.Do stmts), s)) =
   return $ mkPACG (HB.doE $ context ++ stmts) s
 
-prefixDoE context (pureOrPartial &&& exprStructure -> (Just e, s)) =
+prefixDoE context (pureOrPartial &&& eStructure -> (Just e, s)) =
   return $ mkPACG (HB.doE $ context ++ [HB.qualStmt e]) s
 
-prefixDoE context (action &&& effectfulValue -> (Just (HS.Do stmts), m)) =
+prefixDoE context (action &&& eQualifier -> (Just (HS.Do stmts), m)) =
   return $ mkCG (HB.doE $ context ++ stmts) m
 
-prefixDoE context (action &&& effectfulValue -> (Just e, m)) =
+prefixDoE context (action &&& eQualifier -> (Just e, m)) =
   return $ mkCG (HB.doE $ context ++ [HB.qualStmt e]) m
 
 prefixDoE _ _ = argError "prefixDoE"
@@ -747,13 +764,13 @@ prefixDoE _ _ = argError "prefixDoE"
 extractValueE :: CGExpr -> CodeGeneration ([HS.Stmt], CGExpr)
 extractValueE (pureOrPartial -> Just (HS.Do [])) = blockError
 
-extractValueE (pureOrPartial &&& exprStructure -> (Just (HS.Do stmts), s)) =
+extractValueE (pureOrPartial &&& eStructure -> (Just (HS.Do stmts), s)) =
   case (init stmts, last stmts) of
     ([], HS.Qualifier e) -> return ([], mkPCG e s)
     (c,  HS.Qualifier e) -> return (c,  mkPCG e s)
     _ -> blockError
 
-extractValueE (pureOrPartial &&& exprStructure -> (Just e, s)) = return ([], mkPCG e s)
+extractValueE (pureOrPartial &&& eStructure -> (Just e, s)) = return ([], mkPCG e s)
 extractValueE _ = pureOrPartialArgError "extractValueE"
 
 
@@ -765,7 +782,7 @@ seqDoE e e2 = do
   (e2Stmts, e2RetE) <- extractValueE e2
   case (eStmts, e2Stmts) of
     ([],[]) -> return e2RetE
-    _ -> return $ flip mkCG (PartialAction $ exprStructure e2RetE) $
+    _ -> return $ flip mkCG (PartialAction $ eStructure e2RetE) $
           HB.doE $ eStmts ++ e2Stmts ++ [HB.qualStmt $ hsExpression e2RetE]
 
 spliceValueE :: CGExpr -> SpliceFunction -> CodeGeneration CGExpr
@@ -803,20 +820,20 @@ spliceBranchValuesE f commonE subE = do
 ensureActionE :: CGExpr -> CodeGeneration CGExpr
 ensureActionE (pureOrPartial -> Just (HS.Do [])) = blockError
 
-ensureActionE (pureOrPartial &&& exprStructure -> (Just (HS.Do stmts), s)) =
+ensureActionE (pureOrPartial &&& eStructure -> (Just (HS.Do stmts), s)) =
   case (init stmts, last stmts) of
     ([], HS.Qualifier e) -> return $ mkACG [hs| return $e |] s
     (c,  HS.Qualifier e) -> return $ mkACG (HS.Do $ c ++ [ HS.Qualifier [hs| return $e |] ]) s
     _ -> blockError
 
-ensureActionE (pureOrPartial &&& exprStructure -> (Just e, s)) =
+ensureActionE (pureOrPartial &&& eStructure -> (Just e, s)) =
   return $ mkACG [hs| return ( $e ) |] s
 
 ensureActionE e = return e
 
 -- | Composes two monadic actions with a custom sequencing function.
 spliceActionEWithSeq :: Identifier -> CGExpr -> SpliceFunction
-                     -> ((HS.Exp, HStructure) -> (HS.Exp, HStructure) -> CodeGeneration CGExpr)
+                     -> ((HS.Exp, EStructure) -> (HS.Exp, EStructure) -> CodeGeneration CGExpr)
                      -> CodeGeneration CGExpr
 spliceActionEWithSeq n e spliceF composeF =
   composeActions =<< ((,) <$> (ensureActionE e) <*> (applySpliceF spliceF (pvarCG n) >>= ensureActionE))
@@ -846,7 +863,7 @@ sendFnE = HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "send"
 
 -- | Ad-hoc record constructor
 -- This requires the given sub expressions to be provided in the same order as identifiers.
-buildRecordE :: [Identifier] -> Maybe (K3 Type, K3 Type) -> [(HS.Exp, HStructure)]
+buildRecordE :: [Identifier] -> Maybe (K3 Type, K3 Type) -> [(HS.Exp, EStructure)]
              -> CodeGeneration CGExpr
 buildRecordE names tyBounds subE = case tyBounds of 
   Nothing    -> throwCG $ CodeGenerationError "Invalid record construction, no type bounds available"
@@ -965,7 +982,7 @@ binary op e e' = do
         appBinary f [(a,_),(b,_)] = return . mkPValue $ HB.appFun f [a,b]
         appBinary _ _     = argError "binary funapp"
 
-        sequenceActions (ae, ae') = return $ mkACG [hs| ( $(hsExpression ae) ) >> ( $(hsExpression ae') ) |] $ exprStructure ae'
+        sequenceActions (ae, ae') = return $ mkACG [hs| ( $(hsExpression ae) ) >> ( $(hsExpression ae') ) |] $ eStructure ae'
 
         applyFn [(a, fs), (b,_)] = case fs of
           HFunction (Pure s)   -> return $ mkPCG (HB.appFun a [b]) s
@@ -1034,12 +1051,24 @@ expression' ke = exprCG ke >>= (\ce -> lineage ke ce >>= uncurry addLineage >> r
       n  <- gensymCG "__tup"  
       spliceManyE n (buildMultiSpliceF HB.tuple $ Pure . HTuple . map Pure) cs'
 
+    -- | Record constructor
+    exprCG e@(tag &&& children -> (ERecord is, cs)) = do
+      cs' <- mapM expression' cs
+      sym <- gensymCG "__record"
+      spliceManyE sym (buildRecordE is $ exprBounds e) cs'
+
+    -- | Projections
+    exprCG (tag &&& children -> (EProject i, [r])) = do
+      sym <- gensymCG "__proj"
+      r'  <- expression' r
+      spliceE sym r' $ \e s -> recordFieldLookupE (\fe fs -> return $ mkPCG fe fs) i $ mkPCG e s
+
     -- | Functions
     exprCG (tag &&& children -> (ELambda i,[b])) = do
       b' <- addEffectfulBinding i (Pure HValue) HImmutable
               >> expression' b >>= (\x -> removeEffectfulBinding i >> return x)
       nb <- if isPure b' then return b' else ensureActionE b' 
-      return $ mkPCG [hs| \((ni)) -> $(hsExpression nb) |] $ HFunction $ effectfulValue nb
+      return $ mkPCG [hs| \((ni)) -> $(hsExpression nb) |] $ HFunction $ eQualifier nb
       where ni = HB.name i
 
     exprCG (tag -> ELambda _) = throwCG $ CodeGenerationError "Invalid lambda expression"
@@ -1054,7 +1083,7 @@ expression' ke = exprCG ke >>= (\ce -> lineage ke ce >>= uncurry addLineage >> r
     exprCG (tag &&& children -> (ELetIn i, [e, b])) = do
       eQual    <- maybe qualError return $ mutableE e
       e'       <- expression' e
-      b'       <- addEffectfulBinding i (effectfulValue e') eQual 
+      b'       <- addEffectfulBinding i (eQualifier e') eQual 
                     >> expression' b >>= (\x -> removeEffectfulBinding i >> return x)
       (n, n')  <- (,) <$> gensymCG "__letE" <*> gensymCG "__letB"
       spliceE n e' $ \ne s -> do
@@ -1234,19 +1263,6 @@ expression' ke = exprCG ke >>= (\ce -> lineage ke ce >>= uncurry addLineage >> r
       n  <- gensymCG "__addr"
       spliceManyE n (buildMultiSpliceF HB.tuple $ Pure . HTuple . map Pure) [h', p']
 
-    -- | Record constructor
-    exprCG e@(tag &&& children -> (ERecord is, cs)) = do
-      cs' <- mapM expression' cs
-      sym <- gensymCG "__record"
-      _debug (boxToString $ prettyLines e ++ [show $ exprBounds e])
-      spliceManyE sym (buildRecordE is $ exprBounds e) cs'
-
-    -- | Projections
-    exprCG (tag &&& children -> (EProject i, [r])) = do
-      sym <- gensymCG "__proj"
-      r'  <- expression' r
-      spliceE sym r' $ \e s -> recordFieldLookupE (\fe fs -> return $ mkPCG fe fs) i $ mkPCG e s
-
     exprCG (tag -> EProject _) = throwCG $ CodeGenerationError "Invalid record projection"
 
     -- TODO
@@ -1261,7 +1277,7 @@ expression e = expression' e >>= return . HExpression . hsExpression
 {- Declarations -}
 
 promoteDeclType :: HS.Type -> CGExpr -> CodeGeneration (HS.Type, HS.Exp)
-promoteDeclType t e = case effectfulValue e of
+promoteDeclType t e = case eQualifier e of
       Pure _          -> return (t, hsExpression e)
       PartialAction _ -> ensureActionE e >>= return . (engineType t,) . hsExpression
       Action _        -> return (engineType t, hsExpression e)
@@ -1277,10 +1293,10 @@ mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> CGExpr -> CodeGene
 mkGlobalDecl n anns nType nInit = do
   (declType, declInit) <- promoteDeclType nType nInit  
   case filter isTQualified anns of
-    [TImmutable] -> addEffectfulBinding n (effectfulValue nInit) HImmutable
+    [TImmutable] -> addEffectfulBinding n (eQualifier nInit) HImmutable
                       >> mkTypedDecl n declType declInit    
     
-    [TMutable]   -> addEffectfulBinding n (effectfulValue nInit) HMutable
+    [TMutable]   -> addEffectfulBinding n (eQualifier nInit) HMutable
                       >> gensymCG "__decl"
                       >>= \sym -> spliceE sym nInit (\e s -> return $ mkACG [hs| liftIO $ newMVar ( $e ) |] s)
                       >>= mkTypedDecl n (engineType $ indirectionType nType) . hsExpression
@@ -1315,7 +1331,7 @@ global n t@(tag -> TFunction) Nothing  = builtin n t
 -- | Functions, like triggers, operate in the EngineM monad.
 global n t@(tag -> TFunction) (Just e) = do
   e' <- expression' e
-  rtAct <- case exprStructure e' of
+  rtAct <- case eStructure e' of
             HFunction (Pure _) -> return False
             HFunction _        -> return True
             HValue             -> return False
@@ -1371,7 +1387,7 @@ trigger n t e = do
   e'   <- expression' e
   t'   <- typ' t
 
-  rtAct <- case exprStructure e' of
+  rtAct <- case eStructure e' of
             HFunction (Pure _) -> return False
             HFunction _        -> return True
             HValue             -> return False
@@ -1410,6 +1426,35 @@ annotationMember annId = \case
           t' <- typ' t 
           (t'', e'') <- promoteDeclType t' e'
           return $ Just (n, t'', Just e'')
+
+
+{- Top-level functions -}
+
+declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
+declaration decl = case (tag &&& children) decl of
+  (DGlobal n t eO, ch) -> do 
+    d     <- global n t eO >>= extractDeclarations
+    decls <- mapM (declaration >=> extractDeclarations) ch
+    return . HDeclarations $ d ++ concat decls
+  
+  (DTrigger n t e, cs) -> do
+    HDeclarations d <- trigger n t e
+    decls           <- mapM (declaration >=> extractDeclarations) cs
+    return . HDeclarations $ d ++ concat decls
+  
+  (DRole _, ch) -> do
+    decls <- mapM (declaration >=> extractDeclarations) ch
+    return . HDeclarations $ concat decls
+      -- TODO: qualify names?
+
+  (DAnnotation n vdecls members, []) ->
+    annotation n vdecls members >> return HNoRepr
+
+  _ -> throwCG $ CodeGenerationError "Invalid declaration"
+
+  where extractDeclarations (HDeclarations decls) = return decls
+        extractDeclarations HNoRepr               = return []
+        extractDeclarations _ = throwCG $ CodeGenerationError "Invalid declaration"
 
 
 {- Builtins -}
@@ -1568,35 +1613,6 @@ builtinLiftedAttribute _ _ _ _ = throwCG $ CodeGenerationError "Builtin lifted a
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
 builtinAttribute _ _ _ _ = throwCG $ CodeGenerationError "Builtin attributes not implemented"
-
-
-{- Top-level functions -}
-
-declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
-declaration decl = case (tag &&& children) decl of
-  (DGlobal n t eO, ch) -> do 
-    d     <- global n t eO >>= extractDeclarations
-    decls <- mapM (declaration >=> extractDeclarations) ch
-    return . HDeclarations $ d ++ concat decls
-  
-  (DTrigger n t e, cs) -> do
-    HDeclarations d <- trigger n t e
-    decls           <- mapM (declaration >=> extractDeclarations) cs
-    return . HDeclarations $ d ++ concat decls
-  
-  (DRole _, ch) -> do
-    decls <- mapM (declaration >=> extractDeclarations) ch
-    return . HDeclarations $ concat decls
-      -- TODO: qualify names?
-
-  (DAnnotation n vdecls members, []) ->
-    annotation n vdecls members >> return HNoRepr
-
-  _ -> throwCG $ CodeGenerationError "Invalid declaration"
-
-  where extractDeclarations (HDeclarations decls) = return decls
-        extractDeclarations HNoRepr               = return []
-        extractDeclarations _ = throwCG $ CodeGenerationError "Invalid declaration"
 
 
 {- Record and collection generation -}
@@ -1834,160 +1850,164 @@ collectionL anns elemL = case annotationComboIdT anns of
 {- Program-level code generation -}
 
 -- | Top-level code generation function, returning a Haskell module.
--- TODO: record label, type and default constructor generation
--- TODO: main, argument processing
 generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
-generate progName p = declaration p >>= mkProgram
+generate progName p = do
+    (eEnv, aEnv) <- initEffectEnv p
+    void $ modifyEffectEnv_ (++ eEnv)
+    void $ modifyAnnotationEffects (++ aEnv)
+    compiledP <- declaration p
+    mkProgram compiledP
+
   where 
-        mkProgram (HDeclarations decls) = programDecls decls
-          >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName $ sanitize progName) pragmas warning expts impts
+    mkProgram (HDeclarations decls) = programDecls decls
+      >>= return . HProgram . HS.Module HL.noLoc HS.main_mod pragmas warning expts impts
+    
+    mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
+
+    pragmas   = [ HS.LanguagePragma HL.noLoc $ [ HB.name "MultiParamTypeClasses"
+                                               , HB.name "TupleSections"
+                                               , HB.name "FlexibleInstances"] ]
+    warning   = Nothing
+    expts     = Nothing
+    
+    programDecls decls =
+      generateRecords >>= \recordDecls ->
+      generateCollectionCompositions >>= \comboDecls -> 
+      generateDispatch >>= postDecls >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++)
+
+    impts = [ imprtDecl "Control.Concurrent"             False Nothing
+            , imprtDecl "Control.Concurrent.MVar"        False Nothing
+            , imprtDecl "Control.Monad"                  False Nothing
+            , imprtDecl "Control.Monad.IO.Class"         False Nothing
+            , imprtDecl "Control.Monad.Reader"           False Nothing
+            , imprtDecl "Options.Applicative"            False Nothing
+            , imprtDecl "Language.K3.Core.Annotation"    False Nothing
+            , imprtDecl "Language.K3.Core.Common"        False Nothing
+            , imprtDecl "Language.K3.Core.Literal"       False Nothing
+            , imprtDecl "Language.K3.Utils.Pretty"       False Nothing
+            , imprtDecl "Language.K3.Runtime.Common"     False Nothing
+            , imprtDecl "Language.K3.Runtime.Literal"    True  (Just literalModuleAliasId)
+            , imprtDecl "Language.K3.Runtime.Engine"     True  (Just engineModuleAliasId)
+            , imprtDecl "Language.K3.Runtime.Options"    False Nothing
+            , imprtDecl "Data.Map.Lazy"                  True  (Just "M") ]
+
+    preDecls = 
+      [ typeSig programId stringType,
+        namedVal programId $ HB.strE $ sanitize progName
+
+      , [dec| class Collection a b where
+                getData      :: a -> b
+                modifyData   :: a -> (b -> b) -> a
+                copyWithData :: a -> b -> a |]
+
+      , [dec| instance Pretty (Either E.EngineError ()) where
+                prettyLines rts = [show rts] |]
+
+      , [dec| data Trigger a = Trigger { __triggerHandleFnId__ :: Identifier
+                                       , __triggerImplFnId__   :: a } |] 
+
+      , [dec| type RuntimeStatus = Either E.EngineError () |] ]
+
+
+    msgProcFn n argE = do 
+      fnE <- loadNameE n
+      flip (spliceManyE "__app") [fnE, argE] $ \l -> case l of
+        [(a, fs), (b,_)] ->
+          case fs of
+            HFunction (Pure s)   -> return $ mkPCG (HB.appFun a [b]) s
+            HFunction (Action s) -> return $ mkACG (HB.appFun a [b]) s
+            HValue               -> return $ mkPValue $ HB.appFun a [b]
+            _                    -> throwCG $ CodeGenerationError "Invalid function structure"
+
+        _ -> argError "funapp"
+
+    msgProcDecls = do
+      initE <- msgProcFn "atInit" (mkPValue [hs| () |]) >>= ensureActionE
+                 >>= \x -> return [hs| $(hsExpression x) >>= return . Right |]
+      
+      exitE <- msgProcFn "atExit" (mkPValue [hs| () |]) >>= ensureActionE
+                 >>= \x -> return [hs| $(hsExpression x) >>= return . Right |]
+
+      let r = [dec| compiledMsgPrcsr = E.MessageProcessor {
+                                     E.initialize = initializeRT
+                                   , E.process    = processRT
+                                   , E.status     = statusRT
+                                   , E.finalize   = finalizeRT
+                                   , E.report     = reportRT
+                                 }
+                where
+                  statusRT rts = either Left (Right . Right) rts
+                                        
+                  reportRT (Left err) = liftIO $ print err
+                  reportRT (Right _)  = return ()
+
+                  processRT (addr, n, msg) rts = dispatch addr n msg |]
+
+      case r of 
+        HS.PatBind loc mPat tOpt rhs (HS.BDecls decls) ->
+          return $ HS.PatBind loc mPat tOpt rhs
+            (HS.BDecls $ decls ++ 
+              [ constFun "initializeRT" initE
+              , constFun "finalizeRT" exitE ])
+
+        _ -> throwCG $ CodeGenerationError "Invalid message processor declaration"
+
+    postDecls dispatchDeclOpt = msgProcDecls >>= \mpDecl -> return $
+      [ 
+        [dec| getBootstrap :: String -> E.EngineM String (Maybe (K3 Literal)) |]
+      , [dec| getBootstrap n = do
+                engine <- ask
+                case E.deployment engine of 
+                  [(addr, bootstrap)] -> return $ lookup n bootstrap
+                  _ -> E.throwEngineError $ E.EngineError "Invalid system environment" |]
+
+      , [dec| identityWD :: E.WireDesc String |]
+      , [dec| identityWD = E.WireDesc return (return . Just) (E.Delimiter "\n") |]
+
+      , [dec| compiledMsgPrcsr :: E.MessageProcessor () String RuntimeStatus E.EngineError |] ]
+      ++ [mpDecl]
+      ++ (case dispatchDeclOpt of
+            Nothing -> []
+            Just dispatchDecl ->
+              [ [dec| dispatch :: Address -> Identifier -> String -> E.EngineM String RuntimeStatus |]
+              , dispatchDecl ]
+          )
+      ++
+      [ [dec| main = do
+                       sysEnv <- liftIO $ execParser options
+                       engine <- E.networkEngine sysEnv identityWD
+                       void $ E.runEngineM (E.runEngine compiledMsgPrcsr ()) engine
+                     where options = info (helper <*> sysEnvOptions) $ fullDesc 
+                                      <> progDesc (__programId__ ++ " K3 binary.")
+                                      <> header (__programId__ ++ " K3 binary.")
+            |] ]
+
+    (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
+    dispatchNV    = dispatchVars !! 1
+    dispatchMsgV  = dispatchVars !! 2
+    
+    generateDispatch = do
+      alts <- dispatchCaseAlts
+      case alts of 
+        [] -> return Nothing
+        _  -> return . Just . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
+
+    dispatchCaseAlts = do
+      trigIds <- getTriggerDispatchCG
+      return $ map (\(n,t,rtAct) -> HB.alt HL.noLoc (HB.strP n) $ HB.paren $ dispatchMsg n t rtAct) trigIds
+
+    dispatchMsg n argT rtAct = 
+      let trigFn e = if rtAct then [hs| __n__ >>= ($ $e) . __triggerImplFnId__ |]
+                              else [hs| __n__ >>= return . ($ $e) . __triggerImplFnId__ |]
+      in
+      HB.doE
+        [ HB.genStmt HL.noLoc (HB.pvar $ HB.name "payload")
+              (HB.paren $ typedExpr [hs| liftIO ( iread $dispatchMsgV ) |] $ engineType $ maybeType argT)
         
-        mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
-
-        pragmas   = [ HS.LanguagePragma HL.noLoc $ [ HB.name "MultiParamTypeClasses"
-                                                   , HB.name "TupleSections"
-                                                   , HB.name "FlexibleInstances"] ]
-        warning   = Nothing
-        expts     = Nothing
-        
-        programDecls decls =
-          generateRecords >>= \recordDecls ->
-          generateCollectionCompositions >>= \comboDecls -> 
-          generateDispatch >>= postDecls >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++)
-
-        impts = [ imprtDecl "Control.Concurrent"             False Nothing
-                , imprtDecl "Control.Concurrent.MVar"        False Nothing
-                , imprtDecl "Control.Monad"                  False Nothing
-                , imprtDecl "Control.Monad.IO.Class"         False Nothing
-                , imprtDecl "Control.Monad.Reader"           False Nothing
-                , imprtDecl "Options.Applicative"            False Nothing
-                , imprtDecl "Language.K3.Core.Annotation"    False Nothing
-                , imprtDecl "Language.K3.Core.Common"        False Nothing
-                , imprtDecl "Language.K3.Core.Literal"       False Nothing
-                , imprtDecl "Language.K3.Utils.Pretty"       False Nothing
-                , imprtDecl "Language.K3.Runtime.Common"     False Nothing
-                , imprtDecl "Language.K3.Runtime.Literal"    True  (Just literalModuleAliasId)
-                , imprtDecl "Language.K3.Runtime.Engine"     True  (Just engineModuleAliasId)
-                , imprtDecl "Language.K3.Runtime.Options"    False Nothing
-                , imprtDecl "Data.Map.Lazy"                  True  (Just "M") ]
-
-        preDecls = 
-          [ typeSig programId stringType,
-            namedVal programId $ HB.strE $ sanitize progName
-
-          , [dec| class Collection a b where
-                    getData      :: a -> b
-                    modifyData   :: a -> (b -> b) -> a
-                    copyWithData :: a -> b -> a |]
-
-          , [dec| instance Pretty (Either E.EngineError ()) where
-                    prettyLines rts = [show rts] |]
-
-          , [dec| data Trigger a = Trigger { __triggerHandleFnId__ :: Identifier
-                                           , __triggerImplFnId__   :: a } |] 
-
-          , [dec| type RuntimeStatus = Either E.EngineError () |] ]
-
-
-        msgProcFn n argE = do 
-          fnE <- loadNameE n
-          flip (spliceManyE "__app") [fnE, argE] $ \l -> case l of
-            [(a, fs), (b,_)] ->
-              case fs of
-                HFunction (Pure s)   -> return $ mkPCG (HB.appFun a [b]) s
-                HFunction (Action s) -> return $ mkACG (HB.appFun a [b]) s
-                HValue               -> return $ mkPValue $ HB.appFun a [b]
-                _                    -> throwCG $ CodeGenerationError "Invalid function structure"
-
-            _ -> argError "funapp"
-
-        msgProcDecls = do
-          initE <- msgProcFn "atInit" (mkPValue [hs| () |]) >>= ensureActionE
-                     >>= \x -> return [hs| $(hsExpression x) >>= return . Right |]
-          
-          exitE <- msgProcFn "atExit" (mkPValue [hs| () |]) >>= ensureActionE
-                     >>= \x -> return [hs| $(hsExpression x) >>= return . Right |]
-
-          let r = [dec| compiledMsgPrcsr = E.MessageProcessor {
-                                         E.initialize = initializeRT
-                                       , E.process    = processRT
-                                       , E.status     = statusRT
-                                       , E.finalize   = finalizeRT
-                                       , E.report     = reportRT
-                                     }
-                    where
-                      statusRT rts = either Left (Right . Right) rts
-                                            
-                      reportRT (Left err) = liftIO $ print err
-                      reportRT (Right _)  = return ()
-
-                      processRT (addr, n, msg) rts = dispatch addr n msg |]
-
-          case r of 
-            HS.PatBind loc mPat tOpt rhs (HS.BDecls decls) ->
-              return $ HS.PatBind loc mPat tOpt rhs
-                (HS.BDecls $ decls ++ 
-                  [ constFun "initializeRT" initE
-                  , constFun "finalizeRT" exitE ])
-
-            _ -> throwCG $ CodeGenerationError "Invalid message processor declaration"
-
-        postDecls dispatchDeclOpt = msgProcDecls >>= \mpDecl -> return $
-          [ 
-            [dec| getBootstrap :: String -> E.EngineM String (Maybe (K3 Literal)) |]
-          , [dec| getBootstrap n = do
-                    engine <- ask
-                    case E.deployment engine of 
-                      [(addr, bootstrap)] -> return $ lookup n bootstrap
-                      _ -> E.throwEngineError $ E.EngineError "Invalid system environment" |]
-
-          , [dec| identityWD :: E.WireDesc String |]
-          , [dec| identityWD = E.WireDesc return (return . Just) (E.Delimiter "\n") |]
-
-          , [dec| compiledMsgPrcsr :: E.MessageProcessor () String RuntimeStatus E.EngineError |] ]
-          ++ [mpDecl]
-          ++ (case dispatchDeclOpt of
-                Nothing -> []
-                Just dispatchDecl ->
-                  [ [dec| dispatch :: Address -> Identifier -> String -> E.EngineM String RuntimeStatus |]
-                  , dispatchDecl ]
-              )
-          ++
-          [ [dec| main = do
-                           sysEnv <- liftIO $ execParser options
-                           engine <- E.networkEngine sysEnv identityWD
-                           void $ E.runEngineM (E.runEngine compiledMsgPrcsr ()) engine
-                         where options = info (helper <*> sysEnvOptions) $ fullDesc 
-                                          <> progDesc (__programId__ ++ " K3 binary.")
-                                          <> header (__programId__ ++ " K3 binary.")
-                |] ]
-
-        (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
-        dispatchNV    = dispatchVars !! 1
-        dispatchMsgV  = dispatchVars !! 2
-        
-        generateDispatch = do
-          alts <- dispatchCaseAlts
-          case alts of 
-            [] -> return Nothing
-            _  -> return . Just . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
-
-        dispatchCaseAlts = do
-          trigIds <- getTriggerDispatchCG
-          return $ map (\(n,t,rtAct) -> HB.alt HL.noLoc (HB.strP n) $ HB.paren $ dispatchMsg n t rtAct) trigIds
-
-        dispatchMsg n argT rtAct = 
-          let trigFn e = if rtAct then [hs| __n__ >>= ($ $e) . __triggerImplFnId__ |]
-                                  else [hs| __n__ >>= return . ($ $e) . __triggerImplFnId__ |]
-          in
-          HB.doE
-            [ HB.genStmt HL.noLoc (HB.pvar $ HB.name "payload")
-                  (HB.paren $ typedExpr [hs| liftIO ( iread $dispatchMsgV ) |] $ engineType $ maybeType argT)
-            
-            , HB.qualStmt [hs| case payload of 
-                                  Nothing -> error "Failed to extract message payload" -- TODO: throw engine error
-                                  Just v  -> $(trigFn . HB.var $ HB.name "v") >>= return . Right |]
-            ]          
+        , HB.qualStmt [hs| case payload of 
+                              Nothing -> error "Failed to extract message payload" -- TODO: throw engine error
+                              Just v  -> $(trigFn . HB.var $ HB.name "v") >>= return . Right |]
+        ]          
 
 
 compile :: CodeGeneration HaskellEmbedding -> Either String String
@@ -2013,12 +2033,132 @@ compile cg = processCG $ runCodeGeneration emptyCGState cg
       [] lineage
 
 
-{- Analysis -}
+{- Code generation state initialization -}
 
--- | Attaches purity annotations to a K3 expression tree.
-purifyExpression :: K3 Expression -> K3 Expression
-purifyExpression = undefined
+initEffectEnv :: K3 Declaration -> CodeGeneration (CGEffectEnv, CGAEffectEnv)
+initEffectEnv d = foldTree declEffect (return ([], [])) d
+  where 
+    declEffect envs (tag -> DGlobal n t eOpt) =
+      envs >>= (\(eEnv, aEnv) -> globalEffect (eEnv, aEnv) n t eOpt >>= return . (,aEnv) . (eEnv ++) . (:[]))
+    
+    declEffect envs (tag -> DTrigger n t eOpt) =
+      envs >>= (\(eEnv, aEnv) -> return $ (eEnv ++ [(n, (Action HValue, HImmutable))], aEnv))
+    
+    declEffect envs (tag -> DRole _) = return envs
 
+    declEffect envs (tag -> DAnnotation n tvars mems) = 
+      envs >>= (\(eEnv, aEnv) -> mapM (annotationEffect (eEnv, aEnv)) mems
+                                   >>= return . (eEnv,) . (aEnv ++) . maybe [] ((:[]) . (n,)))
+
+    globalEffect :: (CGEffectEnv, CGAEffectEnv) -> Identifier -> K3 Type -> Maybe (K3 Expression)
+                 -> CodeGeneration (Identifier, (EQualifier, MQualifier))
+
+    -- TODO: collections as HRecords based on type.
+    globalEffect envs n t@(tag -> TFunction) Nothing  = builtinEffect n t
+    globalEffect envs n t (Just e) = case mutableE e of 
+      Just mq -> return (n, (exprEffect envs e, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid declaration, no mutability qualifier found on expression"
+
+    globalEffect effEnv n t Nothing  = case mutableT of 
+      Just mq -> return (n, (Action HValue, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid declaration, no mutability qualifier found on type"
+
+    
+    -- TODO: separate lifted vs regular attributes
+    annotationEffect :: (CGEffectEnv, CGAEffectEnv) -> AnnMemDecl
+                     -> CodeGeneration (Maybe (Identifier, (EQualifier, MQualifier)))
+    
+    annotationEffect (eEnv, aEnv) (Lifted pol n t@(tag -> TFunction) Nothing uid) =
+      builtinLiftedAnnotationEffect n t
+
+    annotationEffect (eEnv, aEnv) (Lifted _ n _ (Just e) _) = case mutableE e of
+      Just mq -> return $ Just (n, (exprEffect eEnv e, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid annotation member, no mutability qualifier found on expression"
+
+    annotationEffect (Lifted _ n t Nothing _) = case mutableT t of
+      Just mq -> return $ Just (n, (Pure HValue, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid annotation member, no mutability qualifier found on type"
+    
+    annotationEffect (Attribute _ n _ (Just e) _) = case mutableE e of
+      Just mq -> return $ Just (n, (exprEffect eEnv e, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid annotation member, no mutability qualifier found on expression"
+
+    annotationEffect (Attribute _ n t Nothing _)  = case mutableT t of
+      Just mq -> return $ Just (n, (Pure HValue, mq))
+      Nothing -> throwCG $ CodeGenerationError
+                    "Invalid annotation member, no mutability qualifier found on type"
+
+    annotationEffect (MAnnotation _ _ _) = Nothing
+
+    
+    exprEffect :: CGEffectEnv -> K3 Expression -> CodeGeneration EQualifier
+
+    -- TODO: collection constants
+    exprEffect _ (tag -> EConstant _) = return $ Pure HValue
+
+    exprEffect effEnv (tag -> EVariable i) = return $ maybe (Pure HValue) id $ lookup i effEnv
+    
+    exprEffect effEnv (tag &&& children -> (ESome, [x]))      = promoteNested effEnv HSome x
+    exprEffect effEnv (tag &&& children -> (EIndirect, [x]))  = promoteNested effEnv HIndirection x
+    exprEffect effEnv (tag &&& children -> (ETuple, ch))      = promoteMulti effEnv HTuple ch
+    exprEffect effEnv (tag &&& children -> (ERecord ids, ch)) = promoteMulti effEnv (HRecord . zip ids) ch
+
+    exprEffect effEnv (tag &&& children -> (EOperate op, ch))  = promoteMulti effEnv unify ch
+    exprEffect effEnv (tag &&& children -> (ELambda i, [b]))   = exprEffect effEnv b >>= return . Pure . HFunction
+    exprEffect effEnv (tag &&& children -> (ELetIn i, [e, b])) = promoteMultiPrimary effEnv [b, e]
+    
+    exprEffect effEnv (tag &&& children -> (EProject i, [e])) = exprEffect effEnv e >>= \case
+      HRecord namedEffects -> maybe (recordLookupError i) return $ lookup i namedEffects
+      _ -> recordInvalidError
+    
+    exprEffect effEnv (tag &&& children -> (EAssign i, [e]))         = promoteEffect effEnv e
+    exprEffect effEnv (tag &&& children -> (ECaseOf i, [s, n]))      = promoteMulti effEnv unify [s, n]
+    exprEffect effEnv (tag &&& children -> (EBindAs binder, [e, b])) = promoteMultiPrimary effEnv [b, e]
+
+    exprEffect effEnv (tag &&& children -> (EIfThenElse, [p, t, e])) = 
+      mapM promoteMultiPrimary [ [t,p], [e,p] ] >>= promoteMultiEffect unify
+
+    exprEffect effEnv (tag &&& children -> (EAddress, [h, p])) =
+      promoteMulti effEnv (const HValue) [h, p]
+
+    -- TODO
+    exprEffect _ (tag -> ESelf) = undefined
+
+    exprEffect _ _ = error "Invalid expression during effect computation"
+
+    promoteMulti env f l      = mapM (exprEffect env) l >>= promoteMultiEffect f    
+    promoteMultiPrimary env l = mapM (exprEffect env) l >>= (\l' -> return $ foldl1 promotePrimary l)
+    promoteMultiEffect f l    = return . (if all pureEffect l then Pure else Action) $ f l
+
+    promoteNested env f sub = exprEffect env sub >>= \case
+      Action _        -> return . Action $ f sub
+      PartialAction _ -> return . Action $ f sub
+      Pure _          -> return . Pure $ f sub
+
+    promotePrimary (Action hv) _        = Action hv
+    promotePrimary (Pure hv) (Action _) = Action hv
+    promotePrimary (Pure hv) _          = Pure hv
+
+    promoteEffect effEnv x = exprEffect effEnv x >>= \case 
+      Pure hv -> return $ Action hv
+      x       -> return $ x
+
+    pureEffect (Pure _) = True
+    pureEffect _        = False
+
+    unify x y = if x == y then x else HValue
+
+    recordLookupError  i = throwCG $ CodeGenerationError $ "Unknown record effect " ++ i
+    recordInvalidError   = throwCG $ CodeGenerationError "Invalid record effect" 
+
+    -- TODO
+    builtinEffect n t           = undefined
+    builtinAnnotationEffect n t = undefined
 
 
 {- Declaration and expression constructors -}
