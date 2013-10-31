@@ -24,7 +24,7 @@ import qualified Data.Set as Set
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Morphisms.ReplaceVariables
-import Language.K3.TypeSystem.Simplification.Data
+import Language.K3.TypeSystem.Simplification.Common
 import Language.K3.TypeSystem.Within
 import Language.K3.TypeSystem.Utils
 import Language.K3.Utils.Logger
