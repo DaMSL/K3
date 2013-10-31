@@ -17,7 +17,8 @@ module Language.K3.Core.Annotation (
     children,
     mapTree,
     foldMapTree,
-    foldTree
+    foldTree,
+    bifoldTree
 ) where
 
 import Data.List (delete, find)
@@ -157,3 +158,10 @@ foldTree :: (b -> Tree a -> b) -> b -> Tree a -> b
 foldTree f x n@(Node _ []) = f x n
 foldTree f x n@(Node _ ch) = flip f n $ foldl (foldTree f) x ch
 
+-- | Fold over a tree with both top-down and bottom-up state. The top-down state is
+--   distributed to all children, while the bottom-pu state is threaded.
+bifoldTree :: (b -> Tree a -> b) -> (b -> c -> Tree a -> c) -> b -> c -> Tree a -> c
+bifoldTree tdF buF tdAcc buAcc n@(Node _ []) = buF (tdF tdAcc n) buAcc n
+bifoldTree tdF buF tdAcc buAcc n@(Node _ ch) = 
+  let x = tdF tdAcc n
+  in buF x (foldl (bifoldTree x) buAcc ch) n
