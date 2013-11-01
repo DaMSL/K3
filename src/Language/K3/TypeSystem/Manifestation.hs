@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, TemplateHaskell, FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, TemplateHaskell, FlexibleContexts, TupleSections #-}
 
 {-|
   This module provides a routine which manifests a type given a constraint set
@@ -8,16 +8,13 @@
 
 module Language.K3.TypeSystem.Manifestation
 ( manifestType
-, Manifestable
-, upperBound
-, lowerBound
+-- re-export
+, BoundType(..)
 ) where
 
 import Control.Applicative
 import Control.Monad
-import Data.Foldable (Foldable)
-import qualified Data.Foldable as Foldable
-import Data.List
+import Control.Monad.Writer
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -27,9 +24,9 @@ import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Type as TC
 import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
+import Language.K3.TypeSystem.Manifestation.BranchSemiElimination
 import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Manifestation.Monad
-import Language.K3.TypeSystem.Morphisms.ExtractVariables
 import Language.K3.TypeSystem.Simplification
 import Language.K3.TypeSystem.Utils
 import Language.K3.Utils.Logger
@@ -37,63 +34,290 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
+--------------------------------------------------------------------------------
+-- * Manifestation routine
+
 -- |A general top-level function for manifesting a type from a constraint set
---  and a manifestable entity.
-manifestType :: ( Manifestable a, Pretty a, VariableExtractable a)
-             => BoundType -> ConstraintSet -> a -> K3 Type
-manifestType bt cs x =
-  let name = getBoundTypeName bt in
+--  and a type variable.  This function preserves work in a partial application
+--  closure; a caller providing just a constraint set can use the resulting
+--  function numerous times to compute different bounds without repeating work.
+manifestType :: ConstraintSet -> BoundType -> AnyTVar -> K3 Type
+manifestType csIn =
+  {-
+    This routine proceeds as follows:
+      1. Simplify the constraint set.  This will prevent a lot of redundant
+         work.  It involves unifying equivalent variables, eliminating
+         unnecessary constraints , and so forth.  The resulting set is not
+         equivalent, but it is suitable for manifestation's use.
+      2. Eliminate branching from the constraint set.  This is achieved by
+         introducing fresh variables for each bounding type and then merging
+         the shallow bounds recursively.  This process is technically lossy,
+         but the kinds of types available in K3 as of this writing (2013-10-29)
+         are unaffected by it.
+      3. Simplify again.  The branching elimination often introduces structures
+         that turn out to be equivalent.
+      4. Construct from the resulting non-branching constraint set a dictionary
+         from each variable to its corresponding bounds.
+      5. Using this dictionary, expand the provided type.
+    In order to prevent duplicate work, this function performs all but the last
+    step once a constraint set is applied; this allows the resulting function to
+    hold the bound dictionary in its closure.
+  -}
   _debugI (boxToString
-    (["Manifesting " ++ name ++ " bound type for constrained type "] %+
-      prettyLines x %+ ["\\"] %+ prettyLines simpCs)) $
-  let t = runManifestM bt simpCs $
-            declareOpaques $ manifestTypeFrom $ Set.singleton x in
+      (["Preparing type manifestation for constraints:"] %$
+        indent 2 (prettyLines csIn))) $
+  -- Perform all of the simplification steps in the following monadic context
+  let (simpCs,result) =
+        runWriter $ do
+          cs1 <- bracketLogM _debugI
+                    (boxToString $
+                      ["Performing pre-elimination simplification for:"] %$
+                      indent 2 (prettyLines csIn))
+                    (\cs -> boxToString $
+                      ["Performed pre-elimination simplification:"] %$
+                      indent 2 (prettyLines cs))
+                    $ doSimplify firstSimplifier csIn
+          let cs2 =
+                bracketLog _debugI
+                  (boxToString $
+                    ["Performing branch elimination for:"] %$
+                    indent 2 (prettyLines cs1))
+                  (\cs -> boxToString $
+                    ["Performed branch elimination:"] %$
+                    indent 2 (prettyLines cs))
+                  $ semiEliminateBranches cs1
+          bracketLogM _debugI
+            (boxToString $
+              ["Performing post-elimination simplification for:"] %$
+              indent 2 (prettyLines cs2))
+            (\cs -> boxToString $
+              ["Performed post-elimination simplification:"] %$
+              indent 2 (prettyLines cs))
+            $ doSimplify secondSimplifier cs2
+  in
+  -- Calculate the bounding dictionary and substitutions
+  let dictionary = computeBoundDictionary simpCs in
+  let substitutions = simplificationVarMap result in
   _debugI (boxToString
-    (["Manifested " ++ name ++ " bound type for constrained type "] %+
-      prettyLines x %+ ["\\"] %+ prettyLines simpCs %$
-      indent 2 (["Result: "] %+ prettyLines t)))
-  t
+      (["Completed preparations for manifestation of constraints:"] %$
+        indent 2 (
+          ["Constraints:   "] %+ prettyLines simpCs %$
+          ["Bounds:        "] %+ prettyLines dictionary %$
+          ["Substitutions: "] %+ prettySubstitution "~=" substitutions))) $
+  -- Return a function with these values embedded in context
+  performLookup dictionary substitutions
   where
-    -- |Simplified constraints.  This must be done on a per-manifestation-target
-    --  basis for variable preservation reasons.
-    simpCs :: ConstraintSet
-    simpCs =
-      let config = SimplificationConfig { preserveVars = extractVariables x } in
-      let cs1 = runSimplifyM config $
-                  simplifyByConstraintEquivalenceUnification cs in
-      let cs2 = keepOnlyStrictlyNecessary cs1 in
-      let cs3 = runSimplifyM config $ simplifyByGarbageCollection cs2 in
-      leastFixedPoint (simplifier config) cs3
+    performLookup :: BoundDictionary -> VariableSubstitution
+                  -> BoundType -> AnyTVar -> K3 Type
+    performLookup dict substs bt sa =
+      case sa of
+        SomeUVar a -> performLookup' a
+        SomeQVar qa -> performLookup' qa
       where
-        simplifier :: SimplificationConfig -> ConstraintSet -> ConstraintSet
-        simplifier config =
-          runSimplifyM config .
-            (simplifyByBoundEquivalenceUnification >=>
-             simplifyByStructuralEquivalenceUnification)
-        -- |Eliminates all constraints that do not provide immediate bounding
-        --  information.  This only makes sense for a closed constraint set and the
-        --  resulting set should never be extended or subjected to closure.
-        keepOnlyStrictlyNecessary :: ConstraintSet -> ConstraintSet
-        keepOnlyStrictlyNecessary =
-          csFromList . filter strictlyNecessary . csToList
+        performLookup' var =
+          runManifestM bt dict $ declareOpaques $ manifestTypeFrom $
+              substitutionLookup var substs
+    
+    computeBoundDictionary :: ConstraintSet -> BoundDictionary
+    computeBoundDictionary cs =
+      let bd = mconcat $ map constraintToBounds $ csToList cs in
+      -- Give top and bottom to any variable bounded only by opaques
+      bd `mappend` extremeBounds bd
+      where
+        constraintToBounds :: Constraint -> BoundDictionary
+        constraintToBounds c = case c of
+          IntermediateConstraint (CLeft _) (CLeft _) -> mempty
+          IntermediateConstraint (CLeft t) (CRight a) ->
+            singletonUVarDict a LowerBound t
+          IntermediateConstraint (CRight a) (CLeft t) ->
+            singletonUVarDict a UpperBound t
+          IntermediateConstraint (CRight _) (CRight _) -> mempty
+          QualifiedLowerConstraint (CLeft t) qa ->
+            singletonQVarDict qa LowerBound t
+          QualifiedLowerConstraint (CRight _) _ -> mempty
+          QualifiedUpperConstraint qa (CLeft t) ->
+            singletonQVarDict qa UpperBound t
+          QualifiedUpperConstraint _ (CRight _) -> mempty
+          QualifiedIntermediateConstraint (CLeft _) (CLeft _) -> mempty
+          QualifiedIntermediateConstraint (CLeft qs) (CRight qa) ->
+            mempty { qvarQualDict = Map.singleton (qa, LowerBound) qs }
+          QualifiedIntermediateConstraint (CRight qa) (CLeft qs) ->
+            mempty { qvarQualDict = Map.singleton (qa, UpperBound) qs }
+          QualifiedIntermediateConstraint (CRight _) (CRight _) -> mempty
+          MonomorphicQualifiedUpperConstraint _ _ -> mempty
+          PolyinstantiationLineageConstraint _ _ -> mempty
+          OpaqueBoundConstraint oa lb ub ->
+            mempty { ovarRangeDict = Map.fromList
+                        [ ((oa,LowerBound),lb) , ((oa,UpperBound),ub) ] }
           where
-            strictlyNecessary :: Constraint -> Bool
-            strictlyNecessary c = case c of
-              IntermediateConstraint (CLeft _) (CLeft _) -> False
-              IntermediateConstraint (CLeft _) (CRight _) -> True
-              IntermediateConstraint (CRight _) (CLeft _) -> True
-              IntermediateConstraint (CRight _) (CRight _) -> False
-              QualifiedLowerConstraint (CLeft _) _ -> True
-              QualifiedLowerConstraint (CRight _) _ -> False
-              QualifiedUpperConstraint _ (CLeft _) -> True
-              QualifiedUpperConstraint _ (CRight _) -> False
-              QualifiedIntermediateConstraint (CLeft _) (CLeft _) -> False
-              QualifiedIntermediateConstraint (CLeft _) (CRight _) -> True
-              QualifiedIntermediateConstraint (CRight _) (CLeft _) -> True
-              QualifiedIntermediateConstraint (CRight _) (CRight _) -> False
-              MonomorphicQualifiedUpperConstraint _ _ -> False
-              PolyinstantiationLineageConstraint _ _ -> False
-              OpaqueBoundConstraint _ _ _ -> True
+            singletonUVarDict :: UVar -> BoundType -> ShallowType
+                              -> BoundDictionary
+            singletonUVarDict a bt t =
+              case t of
+                SOpaque oa ->
+                  mempty { uvarOpaqueBoundDict =
+                            Map.singleton (a, bt) $ Set.singleton oa }
+                _ -> mempty { uvarBoundDict = Map.singleton (a, bt) t }
+            singletonQVarDict :: QVar -> BoundType -> ShallowType
+                              -> BoundDictionary
+            singletonQVarDict qa bt t =
+              case t of
+                SOpaque oa ->
+                  mempty { qvarOpaqueBoundDict =
+                            Map.singleton (qa, bt) $ Set.singleton oa }
+                _ -> mempty { qvarBoundDict = Map.singleton (qa, bt) t }
+        extremeBounds :: BoundDictionary -> BoundDictionary
+        extremeBounds bd =
+          let as = map fst $
+                      Map.keys (uvarBoundDict bd) ++
+                      Map.keys (uvarOpaqueBoundDict bd) in
+          let qas = map fst $
+                      Map.keys (qvarBoundDict bd) ++
+                      Map.keys (qvarOpaqueBoundDict bd) ++
+                      Map.keys (qvarQualDict bd) in
+          mempty { uvarBoundDict = Map.union
+                      (Map.fromList $ map ((,STop) . (,UpperBound)) as)
+                      (Map.fromList $ map ((,SBottom) . (,LowerBound)) as)
+                 , qvarBoundDict = Map.union
+                      (Map.fromList $ map ((,STop) . (,UpperBound)) qas)
+                      (Map.fromList $ map ((,SBottom) . (,LowerBound)) qas)
+                 }
+    
+    simplificationConfig :: SimplificationConfig
+    simplificationConfig = SimplificationConfig { preserveVars = Set.empty }
+    
+    doSimplify :: (ConstraintSet -> SimplifyM ConstraintSet)
+               -> ConstraintSet -> Writer SimplificationResult ConstraintSet
+    doSimplify simplifier cs =
+      runConfigSimplifyM simplificationConfig $ simplifier cs
+    
+    firstSimplifier :: ConstraintSet -> SimplifyM ConstraintSet
+    firstSimplifier =
+      simplifyByConstraintEquivalenceUnification >=>
+      return . keepOnlyStrictlyNecessary >=>
+      leastFixedPointM
+        (leastFixedPointM simplifyByBoundEquivalenceUnification {- >=>
+         simplifyByStructuralEquivalenceUnification -} )
+
+    secondSimplifier :: ConstraintSet -> SimplifyM ConstraintSet
+    secondSimplifier =
+      leastFixedPointM
+        (leastFixedPointM simplifyByBoundEquivalenceUnification {- >=>
+         simplifyByStructuralEquivalenceUnification -} )
+
+--------------------------------------------------------------------------------
+-- * Manifestation type class instances
+
+class Manifestable a where
+  manifestTypeFrom :: a -> ManifestM (K3 Type)
+
+instance Manifestable AnyTVar where
+  manifestTypeFrom (SomeUVar a) = manifestTypeFrom a
+  manifestTypeFrom (SomeQVar qa) = manifestTypeFrom qa
+
+instance Manifestable TypeOrVar where
+  manifestTypeFrom (CLeft t) = manifestTypeFrom (t, Set.empty :: Set OpaqueVar)
+  manifestTypeFrom (CRight a) = manifestTypeFrom a
+
+instance Manifestable UVar where
+  manifestTypeFrom a = considerMuType a $ do
+    dict <- askDictionary
+    bt <- askBoundType
+    case ( Map.lookup (a, bt) $ uvarBoundDict dict
+         , Map.findWithDefault Set.empty (a, bt) $ uvarOpaqueBoundDict dict ) of
+      (Nothing, _) ->
+        error $ "Manifestation of " ++ pretty bt ++ " of " ++ pretty a ++
+                "failed: no binding in bound dictionary"
+      (Just t, oas) -> manifestTypeFrom (t, oas)
+
+instance Manifestable QVar where
+  manifestTypeFrom qa = considerMuType qa $ do
+    dict <- askDictionary
+    bt <- askBoundType
+    case ( Map.lookup (qa, bt) $ qvarBoundDict dict
+         , Map.findWithDefault Set.empty (qa, bt) $ qvarOpaqueBoundDict dict
+         , Map.lookup (qa, bt) $ qvarQualDict dict ) of
+      (Nothing, _, _) ->
+        error $ "Manifestation of " ++ getBoundTypeName bt ++ " of " ++
+                  pretty qa ++ "failed: no binding in bound dictionary"
+      (Just _, _, Nothing) ->
+        error $ "Manifestation of " ++ getBoundTypeName bt ++ " of " ++
+                  pretty qa ++ "failed: no binding in qualifier dictionary"
+      (Just t, oas, Just qs) -> do
+        typ <- manifestTypeFrom (t, oas)
+        return $ foldr addQual typ $ Set.toList qs
+    where
+      addQual :: TQual -> K3 Type -> K3 Type
+      addQual q typ = case q of
+        TMut -> typ @+ TMutable
+        TImmut -> typ @+ TImmutable
+
+instance Manifestable (ShallowType, Set OpaqueVar) where
+  manifestTypeFrom (t, withOas) = attachOpaques $ do
+    logManifestPrefix t
+    t' <-
+      case t of
+        SFunction a a' -> do
+          typ <- dualizeBoundType $ manifestTypeFrom a
+          typ' <- manifestTypeFrom a'
+          return $ TC.function typ typ'
+        STrigger a -> TC.trigger <$> dualizeBoundType (manifestTypeFrom a)
+        SBool -> return TC.bool
+        SInt -> return TC.int
+        SReal -> return TC.real
+        SNumber -> return TC.number
+        SString -> return TC.string
+        SAddress -> return TC.address
+        SOption qas -> TC.option <$> manifestTypeFrom qas
+        SIndirection qas -> TC.indirection <$> manifestTypeFrom qas
+        STuple qass -> TC.tuple <$> mapM manifestTypeFrom qass
+        SRecord m oas -> do
+          let (is,qass) = unzip $ Map.toList m
+          typs <- mapM manifestTypeFrom qass
+          if Set.null oas
+            then
+              return $ TC.record $ zip is typs
+            else do
+              oids <- mapM nameOpaque $ Set.toList oas
+              return $ TC.recordExtension (zip is typs) oids
+        STop -> return TC.top
+        SBottom -> return TC.bottom
+        SOpaque oa -> do
+          i <- nameOpaque oa
+          return $ TC.declaredVar i
+    logManifestSuffix t t'
+    return t'
+    where
+      attachOpaques :: ManifestM (K3 Type) -> ManifestM (K3 Type)
+      attachOpaques tM =
+        if Set.null withOas then tM else do
+          t' <- getBoundDefaultType <$> askBoundType
+          if t == t' && Set.size withOas == 1
+            then manifestTypeFrom ( SOpaque $ Set.findMin withOas
+                                  , Set.empty :: Set OpaqueVar)
+            else
+              TC.declaredVarOp <$>
+                mapM nameOpaque (Set.toList withOas) <*>
+                (getTyVarOp <$> askBoundType) <*>
+                tM
+
+-- ** Supporting routines
+
+considerMuType :: TVar q -> ManifestM (K3 Type) -> ManifestM (K3 Type)
+considerMuType var computation =
+  tryVisitVar (someVar var) alreadyDefined (justDefined $ someVar var)
+  where
+    -- |Used when this point has already been witnessed before in the same
+    --  branch of tree.
+    alreadyDefined :: Identifier -> ManifestM (K3 Type)
+    alreadyDefined i = return $ TC.declaredVar i
+    -- |Used when this point is new, which is the most common case.
+    justDefined :: AnyTVar -> ManifestM (K3 Type)
+    justDefined sa = do
+      (typ, usedName) <- catchVarUse sa computation
+      return $ case usedName of
+        Just name -> TC.mu name typ
+        Nothing -> typ
 
 -- |A helper routine which will create declarations for opaque variables as
 --  necessary.
@@ -110,132 +334,59 @@ declareOpaques xM = do
   where
     bindOpaque :: (OpaqueVar, Identifier) -> ManifestM TypeVarDecl
     bindOpaque (oa,i) = do
-      cs <- askConstraints
-      let bounds = csQuery cs $ QueryOpaqueBounds oa
-      case length bounds of
-        1 -> do
-          let (t_L,t_U) = head bounds
-          typL <- manifestFromTypeOrVar lowerBound t_L
-          typU <- manifestFromTypeOrVar upperBound t_U
-          return $ TypeVarDecl i (Just typL) (Just typU)
-        0 -> error $ "Missing opaque bound for " ++ show oa
-        _ -> error $ "Multile opaque bounds for " ++ show oa
+      dict <- askDictionary
+      let tov_L = _fromJustD $ Map.lookup (oa, LowerBound) $ ovarRangeDict dict
+      let tov_U = _fromJustD $ Map.lookup (oa, UpperBound) $ ovarRangeDict dict 
+      typL <- manifestFromTypeOrVar LowerBound tov_L
+      typU <- manifestFromTypeOrVar UpperBound tov_U
+      return $ TypeVarDecl i (Just typL) (Just typU)
       where
-        manifestFromTypeOrVar bt tov =
-          case tov of
-            CLeft x ->
-              usingBoundType bt $ manifestTypeFrom $ Set.singleton $
-                shallowToDelayed x  
-            CRight x ->
-              usingBoundType bt $ manifestTypeFrom $ Set.singleton x
+        _fromJustD (Just x) = x
+        _fromJustD Nothing =
+          error "Opaque does not have appropriate bounds in manifestation dictionary!"
+        manifestFromTypeOrVar bt = usingBoundType bt . manifestTypeFrom
 
--- |A typeclass for entities from which types can be manifested.
-class Manifestable a where
-  -- |Given a list of entities to be combined, produces a manifested type.  This
-  --  list will be combined in a way dictated by the bound type.
-  manifestTypeFrom :: Set a -> ManifestM (K3 Type)
-
-instance Manifestable UVar where
-  manifestTypeFrom as =
-    considerMuType as $ doVariableManifestation getConcreteUVarBounds as
-
-instance Manifestable QVar where
-  manifestTypeFrom qas = considerMuType qas $ do
-    typ <- doVariableManifestation getConcreteQVarBounds qas
-    qualQuery <- getConcreteQVarQualifiers <$> askBoundType
-    qss <- concat <$> mapM (envQuery . qualQuery) (Set.toList qas)
-    qualMergeOp <- getQualifierOperation <$> askBoundType
-    let qs = qualMergeOp qss
-    return $ foldr addQual typ $ Set.toList qs
-    where
-      addQual :: TQual -> K3 Type -> K3 Type
-      addQual q typ = case q of
-        TMut -> typ @+ TMutable
-        TImmut -> typ @+ TImmutable
-
-considerMuType :: Set (TVar q) -> ManifestM (K3 Type) -> ManifestM (K3 Type)
-considerMuType vars computation = do
-  let sas = Set.map someVar vars
-  sig <- VariableSignature sas <$> getDelayedOperationTag <$> askBoundType
-  tryDeclSig sig alreadyDefined (justDefined sig)
+-- |A routine to remove all constraints from a constraint set which are not
+--  necessary for manifestation.  The removed constraints are of the variety
+--  which propagate information but carry no immediate meaning after closure is
+--  complete.
+keepOnlyStrictlyNecessary :: ConstraintSet -> ConstraintSet
+keepOnlyStrictlyNecessary =
+  csFromList . filter strictlyNecessary . csToList
   where
-    -- |Used when this point has already been witnessed before in the same
-    --  branch of tree.
-    alreadyDefined :: Identifier -> ManifestM (K3 Type)
-    alreadyDefined i = return $ TC.declaredVar i
-    -- |Used when this point is new, which is the most common case.
-    justDefined :: VariableSignature -> ManifestM (K3 Type)
-    justDefined sig = do
-      (typ, usedName) <- catchSigUse sig computation
-      return $ case usedName of
-        Just name -> TC.mu name typ
-        Nothing -> typ
+    strictlyNecessary :: Constraint -> Bool
+    strictlyNecessary c = case c of
+      IntermediateConstraint (CLeft _) (CLeft _) -> False
+      IntermediateConstraint (CLeft _) (CRight _) -> True
+      IntermediateConstraint (CRight _) (CLeft _) -> True
+      IntermediateConstraint (CRight _) (CRight _) -> False
+      QualifiedLowerConstraint (CLeft _) _ -> True
+      QualifiedLowerConstraint (CRight _) _ -> False
+      QualifiedUpperConstraint _ (CLeft _) -> True
+      QualifiedUpperConstraint _ (CRight _) -> False
+      QualifiedIntermediateConstraint (CLeft _) (CLeft _) -> False
+      QualifiedIntermediateConstraint (CLeft _) (CRight _) -> True
+      QualifiedIntermediateConstraint (CRight _) (CLeft _) -> True
+      QualifiedIntermediateConstraint (CRight _) (CRight _) -> False
+      MonomorphicQualifiedUpperConstraint _ _ -> False
+      PolyinstantiationLineageConstraint _ _ -> False
+      OpaqueBoundConstraint _ _ _ -> True
 
-doVariableManifestation :: (BoundType ->
-                              TVar q -> ConstraintSetQuery ShallowType)
-                        -> Set (TVar q)
-                        -> ManifestM (K3 Type)
-doVariableManifestation queryGetter vars = do
-  logManifestPrefix vars
-  query <- queryGetter <$> askBoundType
-  bounds <- mapM (envQuery . query) $ Set.toList vars
-  t <- manifestTypeFrom $ Set.fromList $ map shallowToDelayed $ concat bounds
-  logManifestSuffix vars t
-  return t  
+--------------------------------------------------------------------------------
+-- * Logging tools
 
-instance Manifestable DelayedType where
-  manifestTypeFrom ts = do
-    mergeOp <- getDelayedOperation <$> askBoundType
-    logManifestPrefix ts
-    let t = mergeOp $ Set.toList ts
-    t' <-
-      case t of
-        DFunction as as' -> do
-          typ <- dualizeBoundType $ manifestTypeFrom as
-          typ' <- manifestTypeFrom as'
-          return $ TC.function typ typ'
-        DTrigger as -> TC.trigger <$> dualizeBoundType (manifestTypeFrom as)
-        DBool -> return TC.bool
-        DInt -> return TC.int
-        DReal -> return TC.real
-        DNumber -> return TC.number
-        DString -> return TC.string
-        DAddress -> return TC.address
-        DOption qas -> TC.option <$> manifestTypeFrom qas
-        DIndirection qas -> TC.indirection <$> manifestTypeFrom qas
-        DTuple qass -> TC.tuple <$> mapM manifestTypeFrom qass
-        DRecord m oas -> do
-          let (is,qass) = unzip $ Map.toList m
-          typs <- mapM manifestTypeFrom qass
-          if Set.null oas
-            then
-              return $ TC.record $ zip is typs
-            else do
-              oids <- mapM nameOpaque $ Set.toList oas
-              return $ TC.recordExtension (zip is typs) oids
-        DTop -> return TC.top
-        DBottom -> return TC.bottom
-        DOpaque oas -> do
-          is <- sort <$> mapM nameOpaque (Set.toList oas)
-          if length is == 1
-            then return $ TC.declaredVar $ head is
-            else TC.declaredVarOp is <$> getTyVarOp <$> askBoundType
-    logManifestSuffix ts t'
-    return t'
-
-logManifestPrefix :: (Pretty a, Foldable f) => f a -> ManifestM ()
-logManifestPrefix xs = do
-  pfxBox <- logTopMsg "Manifesting" xs
+logManifestPrefix :: (Pretty a) => a -> ManifestM ()
+logManifestPrefix x = do
+  pfxBox <- logManifestTopMsg "Manifesting" x
   _debug $ boxToString pfxBox
 
-logManifestSuffix :: (Pretty a, Foldable f) => f a -> K3 Type -> ManifestM ()
-logManifestSuffix xs t = do
-  pfxBox <- logTopMsg "Manifested" xs
+logManifestSuffix :: (Pretty a) => a -> K3 Type -> ManifestM ()
+logManifestSuffix x t = do
+  pfxBox <- logManifestTopMsg "Manifested" x
   _debug $ boxToString $ pfxBox %$
     indent 2 (["Result: "] %+ prettyLines t)
 
-logTopMsg :: (Pretty a, Foldable f) => String -> f a -> ManifestM [String]
-logTopMsg verb xs = do
+logManifestTopMsg :: (Pretty a) => String -> a -> ManifestM [String]
+logManifestTopMsg verb x = do
   name <- getBoundTypeName <$> askBoundType
-  return $ [verb ++ " " ++ name ++ " bound type for ["] %+
-    intersperseBoxes [","] (map prettyLines $ Foldable.toList xs) +% ["]"]
+  return $ [verb ++ " " ++ name ++ " bound type for "] %+ prettyLines x

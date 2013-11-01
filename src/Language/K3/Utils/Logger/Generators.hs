@@ -35,6 +35,9 @@ import Language.K3.Utils.Pretty
     * Monadic value logging functions of the form @_debugPretty@ with type
       @(Monad m, Display a) => String -> a -> m()@.
 -}
+loggingFunctions :: Q [Dec]
+loggingFunctions = loggerGenerator ""
+
 loggerGenerator :: String -> Q [Dec]
 loggerGenerator suffixTag = do
   let levels = [ ("_debug", [|DEBUG|])
@@ -75,9 +78,6 @@ loggerGenerator suffixTag = do
       let signature = sigD fnName typ
       let decl      = funD fnName [clause [] (normalB [| $(baseFn) $(logName) $(prioExpr) |]) []]
       sequence [signature, decl]
-
-loggingFunctions :: Q [Dec]
-loggingFunctions = loggerGenerator ""
 
 customLoggingFunctions :: [String] -> Q [Dec]
 customLoggingFunctions tags = concat <$> (mapM loggerGenerator $ nub tags)

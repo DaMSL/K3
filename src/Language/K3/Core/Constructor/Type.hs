@@ -123,8 +123,8 @@ recordExtension :: [(Identifier, K3 Type)] -> [Identifier] -> K3 Type
 recordExtension idts ids' = Node (TRecordExtension ids ids' :@: []) ts
   where (ids, ts) = unzip idts
 
-declaredVarOp :: [Identifier] -> TypeVariableOperator -> K3 Type
-declaredVarOp ids op = Node (TDeclaredVarOp ids op :@: []) []
+declaredVarOp :: [Identifier] -> TypeVariableOperator -> K3 Type -> K3 Type
+declaredVarOp ids op transtyp = Node (TDeclaredVarOp ids op :@: []) [transtyp]
 
 mu :: Identifier -> K3 Type -> K3 Type
 mu i t = Node (TMu i :@: []) [t]

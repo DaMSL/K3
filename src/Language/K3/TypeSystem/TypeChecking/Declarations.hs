@@ -32,6 +32,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Environment
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.FreshOpaque
+import Language.K3.TypeSystem.Monad.Iface.TypeAttribution
 import Language.K3.TypeSystem.Monad.Utils
 import Language.K3.TypeSystem.Polymorphism
 import Language.K3.TypeSystem.TypeChecking.Expressions
@@ -50,7 +51,7 @@ deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
                    -> TNormEnv -- ^The type environment to check.
                    -> K3 Declaration -- ^The AST of global declarations to use
                                      --  in the checking process.
-                   -> DeclTypecheckM ()
+                   -> TypecheckM ()
 deriveDeclarations aEnv env aEnv' env' decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
@@ -72,7 +73,7 @@ deriveDeclarations aEnv env aEnv' env' decls =
 deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
                   -> K3 Declaration -- ^The AST of the declaration to check.
-                  -> DeclTypecheckM Identifier
+                  -> TypecheckM Identifier
 deriveDeclaration aEnv env decl =
   case tag decl of
 
@@ -203,11 +204,10 @@ deriveDeclaration aEnv env decl =
       let arityMaps =
             let f = Map.fromList . map (\(AnnMemType i _ ar _ _) -> (i,ar)) in
             (f ms1, f ms2)
-      ((bs,cs''s),(exprAttribs,exprCs))
-                <- first unzip <$> captureExprInDeclTypecheckM
-                      (mapM (deriveAnnotationMember arityMaps
+      
+      (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember arityMaps
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
-                                (envMerge (envMerge env env'1) env'2)) mems)
+                                (envMerge (envMerge env env'1) env'2)) mems
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " has inferred bodies:"] %$
           indent 2 (
@@ -225,9 +225,14 @@ deriveDeclaration aEnv env decl =
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
           indent 2 (prettyLines allCs)
+
+      -- Perform an early attribution just in case something goes wrong.
+      attributeConstraints allCs
           
       -- Now creating and recording our learned constraint sets for each member
-      -- for the typechecking result.  See below for rationale.
+      -- for the typechecking result.  See below for rationale.  We're doing
+      -- this now so that we can attribute as much as possible before we
+      -- generate a type error.
       -- TODO: refactor for code reuse re: checkPositiveMatches below
       let getMatchingPositiveConstraints ms ms' = do
             let posInferredDict = Map.fromList $
@@ -243,9 +248,9 @@ deriveDeclaration aEnv env decl =
                                         , csSing $ qa2' <: qa1']
             csUnions <$> (allCs:) <$> mapM extractConstraints posSignaturePairs
       externalCs <- getMatchingPositiveConstraints ms1 ms1'
-      tell $ Map.map (, loggedClosure ("annotation " ++ iAnn ++ " ascription")
-                          (externalCs `csUnion` exprCs))
-                exprAttribs
+      attributeConstraints $
+        loggedClosure ("annotation " ++ iAnn ++ " ascription") $
+          externalCs `csUnion` allCs
       
       {-
         It remains to show the two forall conditions at the end of the
@@ -312,18 +317,16 @@ deriveDeclaration aEnv env decl =
     --  added to the type before polyinstantiation, and @csPostF@, a function
     --  from the variables inferred during type expression and expression
     --  derivation onto a set of constraints for consistency checking.
-    basicDeclaration i expr deriv csPre csPostF = do -- DeclTypecheckM
+    basicDeclaration i expr deriv csPre csPostF = do -- TypecheckM
       assert0Children decl
       u <- uidOf decl
-      ((v1,cs1),(exprAttribs,exprCs))
-          <- captureExprInDeclTypecheckM $ deriv aEnv env expr
+      (v1,cs1) <- deriv aEnv env expr
       QuantType sas qa' cs2' <- requireQuantType u i env
       (v2,cs2) <- polyinstantiate u $ QuantType sas qa' $ csUnion cs2' csPre
       csPost <- csPostF v1 v2
       let cs'' = loggedClosure ("declaration " ++ i ++ " checking") $
                     csUnions [cs1,cs2,csPost]
-      tell $ Map.map (, loggedClosure ("declaration " ++ i ++ " ascription")
-                          (cs'' `csUnion` exprCs)) exprAttribs
+      attributeConstraints cs''
       -- We've decided upon the type, so now check for consistency.
       either (typecheckError . DeclarationClosureInconsistency i cs''
                                   (someVar v1) (someVar v2) . Foldable.toList)
@@ -341,7 +344,7 @@ deriveAnnotationMember :: ( Map Identifier MorphismArity
                        -> TAliasEnv -- ^The relevant type alias environment.
                        -> TNormEnv -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
-                       -> ExprTypecheckM (NormalAnnBodyType, ConstraintSet)
+                       -> TypecheckM (NormalAnnBodyType, ConstraintSet)
 deriveAnnotationMember (ars1,ars2) aEnv env decl = do
   _debug $ boxToString $ ["Deriving type for annotation member: "] %$
                             indent 2 (prettyLines decl)
@@ -408,7 +411,7 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
         typecheckError $ InitializerForNegativeAnnotationMember u
       qa <- freshTypecheckingQVar u
       return (constr $ AnnMemType i Negative ar qa csEmpty, csEmpty)
-    lookupSpecialVar :: TEnvId -> ExprTypecheckM UVar
+    lookupSpecialVar :: TEnvId -> TypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
       let badForm = typecheckError $ badFormErr $ Just mqt 
@@ -427,7 +430,7 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
 -- |Obtains a quantified type entry from the type environment, generating an
 --  error if it cannot be found.
 requireQuantType :: UID -> Identifier -> TNormEnv
-                 -> DeclTypecheckM NormalQuantType
+                 -> TypecheckM NormalQuantType
 requireQuantType u i =
   envRequire (UnboundEnvironmentIdentifier u $ TEnvIdentifier i)
              (TEnvIdentifier i)
