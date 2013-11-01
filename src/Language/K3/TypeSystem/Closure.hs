@@ -51,7 +51,6 @@ calculateClosureStep cs =
       ]
     applyClosureFunction (fn, name) =
       let cs' = fn cs in
-      -- TODO: if we're not on debugging level, avoid calculating "learned"
       let learned = csFromSet $ csToSet cs' Set.\\ csToSet cs in
       if csNull learned then cs' else
         flip _debugI cs' $ boxToString $

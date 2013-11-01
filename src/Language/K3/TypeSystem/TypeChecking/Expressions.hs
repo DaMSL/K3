@@ -92,7 +92,7 @@ deriveExpression aEnv env expr = do
               a <- freshTypecheckingUVar u
               return (a, csSing $ SInt <: a)
             CByte _ ->
-              error "No Byte type defined in the specification!" -- TODO
+              error "No Byte type defined in the specification!" -- TODO: define byte type in spec
             CReal _ -> do
               a <- freshTypecheckingUVar u
               return (a, csSing $ SReal <: a)

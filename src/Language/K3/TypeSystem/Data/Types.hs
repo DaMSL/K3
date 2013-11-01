@@ -6,6 +6,7 @@ module Language.K3.TypeSystem.Data.Types
 , TVarID(..)
 , TVarQuasiFreshIndex
 , tvarId
+, tvarIdNum
 , ConstraintSetType
 , TVarOrigin(..)
 , QVar
@@ -14,6 +15,7 @@ module Language.K3.TypeSystem.Data.Types
 , onlyUVar
 , onlyQVar
 , someVar
+, anyTVarId
 , TQual(..)
 , allQuals
 , QuantType(..)
@@ -94,6 +96,11 @@ tvarId a = case a of
             QTVar n _ -> n
             UTVar n _ -> n
 
+tvarIdNum :: TVarID -> Int
+tvarIdNum x = case x of
+                TVarBasicID n -> n
+                TVarQuasiFreshID i _ -> tvarIdNum i
+
 instance Eq (TVar a) where
   (==) = (==) `on` tvarId
 instance Ord (TVar a) where
@@ -137,6 +144,9 @@ data TVarOrigin (a :: TVarQualification)
       --  names the declared type variable.
   | TVarQuasiFreshOrigin AnyTVar TVarQuasiFreshIndex
       -- ^Type variable was created as a quasi-fresh variable.
+  | TVarFreshInBranchElimination (Set (TVar a))
+      -- ^Type variable was created during branch elimination to represent a
+      --  particular combination of other variables.
 
 deriving instance Show (TVarOrigin a)
 
@@ -172,6 +182,11 @@ someVar a = case a of
   QTVar{} -> SomeQVar a
   UTVar{} -> SomeUVar a
   
+anyTVarId :: AnyTVar -> TVarID
+anyTVarId sa = case sa of
+  SomeQVar qa -> tvarId qa
+  SomeUVar a -> tvarId a
+
 
 --------------------------------------------------------------------------------
 -- * Types

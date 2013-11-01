@@ -20,10 +20,10 @@ module Language.K3.TypeSystem.Simplification.EquivalenceUnification
 import Control.Applicative
 import Control.Arrow
 import Control.Monad.Reader
+import Control.Monad.Writer
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -54,6 +54,7 @@ simplifyByEquivalenceUnification (Equivocator name eqvrFn) cs =
       (qvarEquivs,uvarEquivs) <- eqvrFn cs
       let uvarRepls = mconcat $ map equivToSubstitutions $ Map.toList uvarEquivs
       let qvarRepls = mconcat $ map equivToSubstitutions $ Map.toList qvarEquivs
+      tellSubstitution (qvarRepls, uvarRepls)
       return $ logDiscoveries qvarRepls uvarRepls $
         replaceVariables qvarRepls uvarRepls cs
     where

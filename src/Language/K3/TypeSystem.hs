@@ -88,9 +88,16 @@ typecheck aEnv env rEnv decl =
         case tcExprTypes result of
           Nothing -> ["(No expression types inferred.)"]
           Just (vars,cs) ->
-            let ts = Map.map (,cs) vars in
+            let simpConfig =
+                  SimplificationConfig { preserveVars = Set.empty } in
+            let (simpCs,simpResult) =
+                  runSimplifyM simpConfig $
+                    simplifyByGarbageCollection =<<
+                    simplifyByConstraintEquivalenceUnification cs in
+            let simpVarMap = simplificationVarMap simpResult in
             ["Inferred expression types:"] %$ indent 2
-              (vconcats $ map prettyExprType $ Map.toList ts)
+              (vconcats $ map (prettyExprType simpVarMap simpCs) $
+                  Map.toList vars)
   in
   let exprBoundsBox =
         case tcExprBounds result of
@@ -101,15 +108,12 @@ typecheck aEnv env rEnv decl =
   let outputBox = errsBox %$ indent 2 exprTypesBox %$ indent 2 exprBoundsBox in
   _debugI (boxToString outputBox) (errs, result)
   where
-    prettyExprType :: (UID,(AnyTVar, ConstraintSet)) -> [String]
-    prettyExprType (u,(sa,cs)) =
+    prettyExprType :: VariableSubstitution -> ConstraintSet -> (UID,AnyTVar)
+                   -> [String]
+    prettyExprType subst cs (u,sa) =
       let n = take 10 $ show u ++ repeat ' ' in
-      let simpConfig =
-            SimplificationConfig { preserveVars = Set.singleton sa } in
-      let simpCs = runSimplifyM simpConfig $
-                      simplifyByGarbageCollection =<<
-                      simplifyByConstraintEquivalenceUnification cs in
-      [n ++ " → "] %+ prettyLines sa %+ ["\\"] %+ prettyLines simpCs
+      let sa' = substitutionLookupAny sa subst in
+      [n ++ " → "] %+ prettyLines sa' %+ ["\\"] %+ prettyLines cs
     prettyExprBounds :: (UID,(K3 Type, K3 Type)) -> [String]
     prettyExprBounds (u,(lb,ub)) =
       let n = take 10 $ show u ++ repeat ' ' in
@@ -146,12 +150,11 @@ doTypecheck aEnv env rEnv ast = do
   where
     manifestBounds :: ConstraintSet -> AnyTVar -> (K3 Type, K3 Type)
     manifestBounds cs sa =
-      case sa of
-        SomeQVar qa -> manifestBounds' qa
-        SomeUVar a -> manifestBounds' a
-      where
-        manifestBounds' var =
-          (manifestType lowerBound cs var, manifestType upperBound cs var)
+      -- First, curry in the constraint set to create a closure that has done
+      -- all the heavy lifting.
+      let f = manifestType cs in
+      -- Now, answer the question about the variable.
+      (f LowerBound sa, f UpperBound sa)
     stripUnspecifiedNodes :: K3 Declaration -> Maybe (K3 Declaration)
     stripUnspecifiedNodes decl =
       case tag decl of

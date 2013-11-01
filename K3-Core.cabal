@@ -138,6 +138,9 @@ library
         Language.K3.TypeSystem.Data.ConstraintSet.Queries
 
     ghc-options: -Wall
+    other-modules: 
+                   Language.K3.Utils.Pretty.Common,
+                   Language.K3.TypeSystem.Manifestation.BranchSemiElimination
 
 test-suite all
     type: exitcode-stdio-1.0
