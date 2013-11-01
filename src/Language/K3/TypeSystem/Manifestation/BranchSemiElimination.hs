@@ -208,17 +208,16 @@ _calculateBoundsOfVars freshVar sigsM insertSigsM getConcreteVarBounds vars =
   $
   do
     sigs <- sigsM
-    reprVar <- case Map.lookup vars sigs of
-                  Just var -> return var
-                  Nothing -> do
-                    var' <- case Set.toList vars of
-                              [var] -> return var
-                              _ -> freshVar $ TVarFreshInBranchElimination vars
-                    insertSigsM vars var'
-                    calculateOneBoundOfVar var' UpperBound
-                    calculateOneBoundOfVar var' LowerBound
-                    return var'
-    return reprVar
+    case Map.lookup vars sigs of
+      Just var -> return var
+      Nothing -> do
+        var' <- case Set.toList vars of
+                  [var] -> return var
+                  _ -> freshVar $ TVarFreshInBranchElimination vars
+        insertSigsM vars var'
+        calculateOneBoundOfVar var' UpperBound
+        calculateOneBoundOfVar var' LowerBound
+        return var'
   where
     calculateOneBoundOfVar :: ( ConstraintConstructor2 (TVar q) ShallowType
                                , ConstraintConstructor2 ShallowType (TVar q))
