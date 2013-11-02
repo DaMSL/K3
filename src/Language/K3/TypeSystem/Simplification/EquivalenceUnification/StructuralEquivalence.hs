@@ -184,7 +184,9 @@ instance StructEquivAlign ShallowType where
     (SOption _, _) -> mzero
     (SIndirection a, SIndirection a') -> align a a'
     (SIndirection _, _) -> mzero
-    (STuple as, STuple a's) -> mconcat <$> zipWithM align as a's
+    (STuple as, STuple a's) -> do
+      guard $ length as == length a's
+      mconcat <$> zipWithM align as a's
     (STuple _, _) -> mzero
     (SRecord m oas, SRecord m' oas') -> do
       guard $ oas == oas'
