@@ -1,0 +1,35 @@
+// Generate rooted Spanning Tree for Asynchronous Network 
+
+// collection includes addresses for all neighbours
+declare all_nrbs :   mut collection { nrb : address } @ { Collection }
+// collection includes addresses for all neighbours except parent
+declare nrbs :       mut collection { nrb : address } @ { Collection }
+// parent's addr, use 127.0.0.1:10000 as null
+declare parent :     mut address = 127.0.0.1:10000
+// flag to indicate wether node has found parent
+declare reported :   mut bool = false 
+// root of tree
+declare root :       mut address = 127.0.0.1:40000
+
+trigger init_bcast : () = \_ ->
+  if me == root
+  then all_nrbs.fold (\acc -> (\nrb_addr -> (send_search, me) <- nrb_addr)) 0 // root broadcasting
+  else reported = false // do nothing for averge peer 
+
+trigger bcast : () = \_ -> (
+  nrbs = all_nrbs.delete {nrb : parent};
+  nrbs.fold (\acc -> (\nrb_addr -> (send_search, me) <- nrb_addr)) 0
+)
+  
+trigger send_search : address = \nrb_addr -> (receive, nrb_addr) <- me
+
+trigger receive_search : address = \rec_addr -> (
+  if me /= 127.0.0.1:4000 && parent == 127.0.0.1:10000
+  then (parent = rec_addr;
+        (bcast, me) <- value ())
+  else  report = true
+)
+
+source go : () = value ()
+
+feed go |> init_bcast
