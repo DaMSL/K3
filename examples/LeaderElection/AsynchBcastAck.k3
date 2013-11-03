@@ -1,0 +1,68 @@
+/*
+   Leader Election Algorithm based on AsynchBcastAck Algorithm
+   TODO : add election function 
+*/
+   
+declare leader :     mut address = 127.0.0.1:10000
+declare uid :        mut int = 0
+declare maxUid :     mut int = 0
+declare isLeader :   mut bool = false
+declare root :       immut address = 127.0.0.1:40000
+declare parent :     mut address = 127.0.0.1:20000
+declare all_nrbs :   mut collection { nrb : address } @ { Collection }
+declare nrbs :       mut collection { nrb : address } @ { Collection }
+declare kids :       mut collection { kid : address } @ { Collection }
+declare acked_nrbs : mut collection { acked_nrb : address } @ { Collection }
+declare reported :   mut bool = false
+
+trigger init : () = \_ -> (
+  if me == root
+  then (nrbs = all_nrbs;
+        nrbs.fold (\acc -> (\nrb_addr -> (send_search, me) <- nrb_addr)) 0 )
+  else reported = false 
+)
+  
+trigger bcast_search : () = \_ -> (
+  nrbs = all_nrbs.delete{nrb : parent};
+  nrbs.fold(\acc -> (\nrb_addr -> (send_search, me) <- nrb_addr)) 0
+)  
+  
+trigger bcast_ack : () = \_ -> (
+  reported = true;
+  nrbs.fold(\acc -> (\nrb_addr -> (send_ack, me) <- nrb_addr)) 0
+)
+  
+trigger send_search : address = \nrb_addr -> (receive_search, nrb_addr) <- me
+
+trigger send_ack : address = \nrb_addr -> (receive_ack, nrb_addr) <- me
+
+trigger send_isKid : () = \_ -> (receive_isKid, par_addr) <- parent
+
+trigger receive_search : address = \nrb_addr -> (
+  if parent == 127.0.0.1:20000
+  then parent = nrb_addr
+       (bcast_search, me) <- value ()
+  else reported = false 
+)
+
+trigger receive_ack : address = \acked_nrb_addr -> (
+  acked_nrbs.insert {acked_nrb : nrb_addr};
+  if acked_nrbs == nrbs
+  then if me == root 
+       then report = true // terminate the whole procedure here
+       else ((send_isKid, me) <- value ();
+             (bcast_ack, me) <- value ())
+  else report = false   
+)
+  
+trigger receive_isKid : address = \kid_addr -> (
+  kids.insert {kid : kid_addr};
+  acked_nrbs.insert {acked_nrb : address};
+  if acked_nrbs == nrbs && me == root
+  then report = true
+  else (bcast_ack, me) <- value ()
+)
+  
+source go : () = value()
+
+feed go |> init_bcast
