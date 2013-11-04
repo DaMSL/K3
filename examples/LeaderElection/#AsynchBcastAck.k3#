@@ -42,7 +42,6 @@ trigger receive_search : address = \nrb_addr ->
               (bcast_search, me) <- value ()))
   else (send_ack, me) <- nrb_addr 
 
-
 trigger receive_ack : address = \acked_nrb_addr -> 
   acked_nrbs.insert {acked_nrb : acked_nrb_addr};
   if acked_nrbs == nrbs
