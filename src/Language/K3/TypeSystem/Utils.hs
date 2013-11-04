@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, DataKinds, TemplateHaskell #-}
+{-# LANGUAGE TupleSections, DataKinds #-}
 
 {-|
   This module contains general type manipulation utilities.
@@ -11,6 +11,7 @@ module Language.K3.TypeSystem.Utils
 , getLowerBoundsOf
 , getUpperBoundsOf
 , leastFixedPoint
+, leastFixedPointM
 , quasiFreshVar
 ) where
 
@@ -31,16 +32,16 @@ typeOfOp op = case op of
   OSub -> SomeBinaryOperator BinOpSubtract
   OMul -> SomeBinaryOperator BinOpMultiply
   ODiv -> SomeBinaryOperator BinOpDivide
-  ONeg -> error "No unary operators in spec yet!" -- TODO
+  ONeg -> error "No unary operators in spec yet!" -- TODO: unary operators specification
   OEqu -> SomeBinaryOperator BinOpEquals
-  ONeq -> error "No not-equals in spec yet!" -- TODO
+  ONeq -> error "No not-equals in spec yet!" -- TODO: unary operators specification
   OLth -> SomeBinaryOperator BinOpLess
   OLeq -> SomeBinaryOperator BinOpLessEq
   OGth -> SomeBinaryOperator BinOpGreater
   OGeq -> SomeBinaryOperator BinOpGreaterEq
-  OAnd -> error "No and in spec yet!" -- TODO
-  OOr -> error "No or in spec yet!" -- TODO
-  ONot -> error "No unary operators in spec yet!" -- TODO
+  OAnd -> error "No and in spec yet!" -- TODO: binary logic operators in specification
+  OOr -> error "No or in spec yet!" -- TODO: binary logic operators in specification
+  ONot -> error "No unary operators in spec yet!" -- TODO: unary operators in specification
   OConcat -> SomeBinaryOperator BinOpConcat
   OSeq -> SomeBinaryOperator BinOpSequence
   OApp -> SomeBinaryOperator BinOpApply
@@ -108,6 +109,17 @@ leastFixedPoint f x =
   let xs = iterate f x in
   let pairs = zip xs $ tail xs in
   snd $ head $ Data.List.filter (uncurry (==)) pairs
+  
+-- |Calculates the least fixed point of a monadic operation given a value.  Note
+--  that the behavior of the monad is not taken into account; this operation
+--  will stop iterating once the value does not change regardless of the monad's
+--  behavior.  The result will be the element which was most recently computed.
+leastFixedPointM :: (Monad m, Eq a) => (a -> m a) -> a -> m a
+leastFixedPointM f x = do
+  x' <- f x
+  if x == x'
+    then return x'
+    else leastFixedPointM f x'
 
 -- TODO: get rid of quasi-fresh stuff; it's no longer used
 

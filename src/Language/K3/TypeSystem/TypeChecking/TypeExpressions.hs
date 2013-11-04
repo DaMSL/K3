@@ -206,8 +206,8 @@ deriveTypeExpression aEnv tExpr = do
           (a,cs,_) <- deriveCollectionType Nothing aEnv tExpr
           return (a,cs)
         TAddress -> deriveLeafType SAddress
-        TSource -> error "Source type is deprecated (should be annotation)!" -- TODO
-        TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO
+        TSource -> error "Source type is deprecated (should be annotation)!" -- TODO: consider using DSource annotation
+        TSink -> error "Sink type is deprecated (should be annotation)!" -- TODO: consider using DSink annotation
         TTrigger -> do
           tExpr' <- assert1Child tExpr
           (a,cs) <- deriveUnqualifiedTypeExpression aEnv tExpr'

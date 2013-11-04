@@ -1,0 +1,610 @@
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("init",VTuple [])]),(127.0.0.1:70000,[("init",VTuple [])]),(127.0.0.1:40000,[("init",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("send",VTuple [])]),(127.0.0.1:70000,[("init",VTuple [])]),(127.0.0.1:40000,[("init",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("init",VTuple []),("elect",VInt 4)]),(127.0.0.1:40000,[("init",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("elect",VInt 4),("send",VTuple [])]),(127.0.0.1:40000,[("init",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple []),("send",VTuple [])]),(127.0.0.1:40000,[("init",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple [])]),(127.0.0.1:40000,[("init",VTuple []),("elect",VInt 4)]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("init",VTuple []),("elect",VInt 4),("elect",VInt 4)]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 4),("elect",VInt 4),("send",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 4),("send",VTuple []),("send",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])]),(127.0.0.1:50000,[("init",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple []),("send",VTuple [])]),(127.0.0.1:50000,[("init",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple [])]),(127.0.0.1:50000,[("init",VTuple []),("elect",VInt 2),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("init",VTuple []),("elect",VInt 2),("elect",VInt 2),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 2),("elect",VInt 2),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 2),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 3)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("send",VTuple [])]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("elect",VInt 4)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple [])]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 1)]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple [])]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 3)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("send",VTuple [])]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("elect",VInt 4)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple [])]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 4)]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple [])]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 3)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("send",VTuple [])]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("elect",VInt 4)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple [])]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 1)]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple [])]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 3)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("send",VTuple [])]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("elect",VInt 4)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("send",VTuple [])]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("elect",VInt 4)]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("send",VTuple [])]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("elect",VInt 2),("elect",VInt 4)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 4),("elect",VInt 2),("elect",VInt 4),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 2),("elect",VInt 4),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("elect",VInt 4),("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 4)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple [])])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("send",VTuple []),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 4)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("send",VTuple []),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 4)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:50000,[("send",VTuple []),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("send",VTuple []),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("elect",VInt 4)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000),("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[("announce",VAddress 127.0.0.1:60000)])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[("announce",VAddress 127.0.0.1:60000)]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[])]
+}
+
+
+EVENT LOOP {
+  Queues:
+  fromList [(127.0.0.1:60000,[]),(127.0.0.1:70000,[]),(127.0.0.1:40000,[]),(127.0.0.1:50000,[])]
+}
+
+
+Terminated:
+
+127.0.0.1:40000
+  Status:
+  VTuple []
+  Environment:
+    announce                    => VTrigger <function>
+    args                        => VTuple [VCollection <opaque>,VCollection <opaque>]
+    atExit                      => VFunction <function>
+    atInit                      => VFunction <function>
+    close                       => VFunction <function>
+    elect                       => VTrigger <function>
+    goProcess                   => VFunction <function>
+    init                        => VTrigger <function>
+    initDecls                   => VFunction <function>
+    isLeader                    => VBool False
+    leader                      => VAddress 127.0.0.1:60000
+    maxUid                      => VInt 4
+    me                          => VAddress 127.0.0.1:40000
+    openBuiltin                 => VFunction <function>
+    openFile                    => VFunction <function>
+    openSocket                  => VFunction <function>
+    parseArgs                   => VFunction <function>
+    peers                       => VCollection <opaque>
+    processRole                 => VFunction <function>
+    registerFileCloseTrigger    => VFunction <function>
+    registerFileDataTrigger     => VFunction <function>
+    registerSocketAcceptTrigger => VFunction <function>
+    registerSocketCloseTrigger  => VFunction <function>
+    registerSocketDataTrigger   => VFunction <function>
+    role                        => VString "go"
+    send                        => VTrigger <function>
+    successor                   => VAddress 127.0.0.1:50000
+    uid                         => VInt 2
+  Annotations:
+    []
+
+127.0.0.1:50000
+  Status:
+  VTuple []
+  Environment:
+    announce                    => VTrigger <function>
+    args                        => VTuple [VCollection <opaque>,VCollection <opaque>]
+    atExit                      => VFunction <function>
+    atInit                      => VFunction <function>
+    close                       => VFunction <function>
+    elect                       => VTrigger <function>
+    goProcess                   => VFunction <function>
+    init                        => VTrigger <function>
+    initDecls                   => VFunction <function>
+    isLeader                    => VBool False
+    leader                      => VAddress 127.0.0.1:60000
+    maxUid                      => VInt 4
+    me                          => VAddress 127.0.0.1:50000
+    openBuiltin                 => VFunction <function>
+    openFile                    => VFunction <function>
+    openSocket                  => VFunction <function>
+    parseArgs                   => VFunction <function>
+    peers                       => VCollection <opaque>
+    processRole                 => VFunction <function>
+    registerFileCloseTrigger    => VFunction <function>
+    registerFileDataTrigger     => VFunction <function>
+    registerSocketAcceptTrigger => VFunction <function>
+    registerSocketCloseTrigger  => VFunction <function>
+    registerSocketDataTrigger   => VFunction <function>
+    role                        => VString "go"
+    send                        => VTrigger <function>
+    successor                   => VAddress 127.0.0.1:60000
+    uid                         => VInt 3
+  Annotations:
+    []
+
+127.0.0.1:60000
+  Status:
+  VTuple []
+  Environment:
+    announce                    => VTrigger <function>
+    args                        => VTuple [VCollection <opaque>,VCollection <opaque>]
+    atExit                      => VFunction <function>
+    atInit                      => VFunction <function>
+    close                       => VFunction <function>
+    elect                       => VTrigger <function>
+    goProcess                   => VFunction <function>
+    init                        => VTrigger <function>
+    initDecls                   => VFunction <function>
+    isLeader                    => VBool True
+    leader                      => VAddress 127.0.0.1:60000
+    maxUid                      => VInt 4
+    me                          => VAddress 127.0.0.1:60000
+    openBuiltin                 => VFunction <function>
+    openFile                    => VFunction <function>
+    openSocket                  => VFunction <function>
+    parseArgs                   => VFunction <function>
+    peers                       => VCollection <opaque>
+    processRole                 => VFunction <function>
+    registerFileCloseTrigger    => VFunction <function>
+    registerFileDataTrigger     => VFunction <function>
+    registerSocketAcceptTrigger => VFunction <function>
+    registerSocketCloseTrigger  => VFunction <function>
+    registerSocketDataTrigger   => VFunction <function>
+    role                        => VString "go"
+    send                        => VTrigger <function>
+    successor                   => VAddress 127.0.0.1:70000
+    uid                         => VInt 4
+  Annotations:
+    []
+
+127.0.0.1:70000
+  Status:
+  VTuple []
+  Environment:
+    announce                    => VTrigger <function>
+    args                        => VTuple [VCollection <opaque>,VCollection <opaque>]
+    atExit                      => VFunction <function>
+    atInit                      => VFunction <function>
+    close                       => VFunction <function>
+    elect                       => VTrigger <function>
+    goProcess                   => VFunction <function>
+    init                        => VTrigger <function>
+    initDecls                   => VFunction <function>
+    isLeader                    => VBool False
+    leader                      => VAddress 127.0.0.1:60000
+    maxUid                      => VInt 4
+    me                          => VAddress 127.0.0.1:70000
+    openBuiltin                 => VFunction <function>
+    openFile                    => VFunction <function>
+    openSocket                  => VFunction <function>
+    parseArgs                   => VFunction <function>
+    peers                       => VCollection <opaque>
+    processRole                 => VFunction <function>
+    registerFileCloseTrigger    => VFunction <function>
+    registerFileDataTrigger     => VFunction <function>
+    registerSocketAcceptTrigger => VFunction <function>
+    registerSocketCloseTrigger  => VFunction <function>
+    registerSocketDataTrigger   => VFunction <function>
+    role                        => VString "go"
+    send                        => VTrigger <function>
+    successor                   => VAddress 127.0.0.1:40000
+    uid                         => VInt 1
+  Annotations:
+    []
+
+Finished.
+Mode: Interpret
+  Batch
+    Network: False
+    System environment:
+    127.0.0.1:40000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 40000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 2 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 50000 :@: [], subForest = []}]}
+    127.0.0.1:50000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 50000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 3 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 60000 :@: [], subForest = []}]}
+    127.0.0.1:60000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 60000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 4 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 70000 :@: [], subForest = []}]}
+    127.0.0.1:70000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 70000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 1 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 40000 :@: [], subForest = []}]}
+    Expression: False
+
+Verbosity: NullV
+Input: "/home/chao/work/K3/LeaderElectionK3/LCR.k3"

@@ -1,0 +1,2824 @@
+INIT 127.0.0.1:40000 {
+  Value: ()
+  Environment:
+  announce                    => <trigger announce >
+  args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+  atExit                      => <function>
+  atInit                      => <function>
+  close                       => <function>
+  elect                       => <trigger elect >
+  goProcess                   => <function>
+  init                        => <trigger init >
+  initDecls                   => <function>
+  isLeader                    => False
+  leader                      => 127.0.0.1:30000
+  maxUid                      => 0
+  me                          => 127.0.0.1:40000
+  openBuiltin                 => <function>
+  openFile                    => <function>
+  openSocket                  => <function>
+  parseArgs                   => <function>
+  peers                       => {CNS={},ANS={},DS=[],}
+  processRole                 => <function>
+  registerFileCloseTrigger    => <function>
+  registerFileDataTrigger     => <function>
+  registerSocketAcceptTrigger => <function>
+  registerSocketCloseTrigger  => <function>
+  registerSocketDataTrigger   => <function>
+  role                        => "go"
+  send                        => <trigger send >
+  successor                   => 127.0.0.1:50000
+  uid                         => 2
+}
+
+INIT 127.0.0.1:50000 {
+  Value: ()
+  Environment:
+  announce                    => <trigger announce >
+  args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+  atExit                      => <function>
+  atInit                      => <function>
+  close                       => <function>
+  elect                       => <trigger elect >
+  goProcess                   => <function>
+  init                        => <trigger init >
+  initDecls                   => <function>
+  isLeader                    => False
+  leader                      => 127.0.0.1:30000
+  maxUid                      => 0
+  me                          => 127.0.0.1:50000
+  openBuiltin                 => <function>
+  openFile                    => <function>
+  openSocket                  => <function>
+  parseArgs                   => <function>
+  peers                       => {CNS={},ANS={},DS=[],}
+  processRole                 => <function>
+  registerFileCloseTrigger    => <function>
+  registerFileDataTrigger     => <function>
+  registerSocketAcceptTrigger => <function>
+  registerSocketCloseTrigger  => <function>
+  registerSocketDataTrigger   => <function>
+  role                        => "go"
+  send                        => <trigger send >
+  successor                   => 127.0.0.1:60000
+  uid                         => 3
+}
+
+INIT 127.0.0.1:60000 {
+  Value: ()
+  Environment:
+  announce                    => <trigger announce >
+  args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+  atExit                      => <function>
+  atInit                      => <function>
+  close                       => <function>
+  elect                       => <trigger elect >
+  goProcess                   => <function>
+  init                        => <trigger init >
+  initDecls                   => <function>
+  isLeader                    => False
+  leader                      => 127.0.0.1:30000
+  maxUid                      => 0
+  me                          => 127.0.0.1:60000
+  openBuiltin                 => <function>
+  openFile                    => <function>
+  openSocket                  => <function>
+  parseArgs                   => <function>
+  peers                       => {CNS={},ANS={},DS=[],}
+  processRole                 => <function>
+  registerFileCloseTrigger    => <function>
+  registerFileDataTrigger     => <function>
+  registerSocketAcceptTrigger => <function>
+  registerSocketCloseTrigger  => <function>
+  registerSocketDataTrigger   => <function>
+  role                        => "go"
+  send                        => <trigger send >
+  successor                   => 127.0.0.1:70000
+  uid                         => 4
+}
+
+INIT 127.0.0.1:70000 {
+  Value: ()
+  Environment:
+  announce                    => <trigger announce >
+  args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+  atExit                      => <function>
+  atInit                      => <function>
+  close                       => <function>
+  elect                       => <trigger elect >
+  goProcess                   => <function>
+  init                        => <trigger init >
+  initDecls                   => <function>
+  isLeader                    => False
+  leader                      => 127.0.0.1:30000
+  maxUid                      => 0
+  me                          => 127.0.0.1:70000
+  openBuiltin                 => <function>
+  openFile                    => <function>
+  openSocket                  => <function>
+  parseArgs                   => <function>
+  peers                       => {CNS={},ANS={},DS=[],}
+  processRole                 => <function>
+  registerFileCloseTrigger    => <function>
+  registerFileDataTrigger     => <function>
+  registerSocketAcceptTrigger => <function>
+  registerSocketCloseTrigger  => <function>
+  registerSocketDataTrigger   => <function>
+  role                        => "go"
+  send                        => <trigger send >
+  successor                   => 127.0.0.1:40000
+  uid                         => 1
+}
+
+
+TRIGGER init 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 0
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER send 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER init 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 0
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:70000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 1
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER init 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 0
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER init 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 0
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 2
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 2
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 2
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 3
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER send 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:70000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 1
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 1
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 3
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER send 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:70000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 1
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 3
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER send 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:70000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 1
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 1
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 3
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER send 127.0.0.1:60000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:70000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 1
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER send 127.0.0.1:70000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:40000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 2
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:40000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 2
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 2
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:50000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 3
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:70000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:40000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:70000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:40000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:70000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:40000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER send 127.0.0.1:50000 {
+  Args: ()
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER elect 127.0.0.1:60000 {
+  Args: 4
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:70000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:70000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:40000
+    uid                         => 1
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:40000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:40000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:50000
+    uid                         => 2
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:50000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:60000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:30000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:50000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:60000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:50000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:60000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:50000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => False
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:50000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:60000
+    uid                         => 3
+  }
+}
+
+
+TRIGGER announce 127.0.0.1:60000 {
+  Args: 127.0.0.1:60000
+  BEFORE {
+    Value: ()
+    Environment:
+    announce                    => <trigger announce >
+    args                        => ({CNS={},ANS={},DS=[],},{CNS={},ANS={},DS=[],})
+    atExit                      => <function>
+    atInit                      => <function>
+    close                       => <function>
+    elect                       => <trigger elect >
+    goProcess                   => <function>
+    init                        => <trigger init >
+    initDecls                   => <function>
+    isLeader                    => True
+    leader                      => 127.0.0.1:60000
+    maxUid                      => 4
+    me                          => 127.0.0.1:60000
+    openBuiltin                 => <function>
+    openFile                    => <function>
+    openSocket                  => <function>
+    parseArgs                   => <function>
+    peers                       => {CNS={},ANS={},DS=[],}
+    processRole                 => <function>
+    registerFileCloseTrigger    => <function>
+    registerFileDataTrigger     => <function>
+    registerSocketAcceptTrigger => <function>
+    registerSocketCloseTrigger  => <function>
+    registerSocketDataTrigger   => <function>
+    role                        => "go"
+    send                        => <trigger send >
+    successor                   => 127.0.0.1:70000
+    uid                         => 4
+  }
+}
+
+Mode: Interpret
+  Batch
+    Network: False
+    System environment:
+    127.0.0.1:40000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 40000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 2 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 50000 :@: [], subForest = []}]}
+    127.0.0.1:50000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 50000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 3 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 60000 :@: [], subForest = []}]}
+    127.0.0.1:60000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 60000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 4 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 70000 :@: [], subForest = []}]}
+    127.0.0.1:70000
+      me        => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 70000 :@: [], subForest = []}]}
+      role      => Node {rootLabel = LString "go" :@: [], subForest = []}
+      uid       => Node {rootLabel = LInt 1 :@: [], subForest = []}
+      successor => Node {rootLabel = LAddress :@: [], subForest = [Node {rootLabel = LString "127.0.0.1" :@: [], subForest = []},Node {rootLabel = LInt 40000 :@: [], subForest = []}]}
+    Expression: False
+
+Verbosity: NullV
+Input: "/home/chao/work/K3/LeaderElectionK3/LCR.k3"

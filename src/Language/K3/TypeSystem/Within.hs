@@ -19,7 +19,6 @@ import Control.Arrow
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.State
-import Data.Functor.Identity
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid
@@ -102,22 +101,21 @@ proveWithinUnder :: forall c el q.
                     , CSL.ConstraintSetLike el c
                     , CSL.ConstraintSetLikePromotable ConstraintSet c)
                  => WithinMap -> (TVar q,c) -> (TVar q,c) -> [WithinMap]
-proveWithinUnder initMap (v,cs) (v',cs') = runIdentity $ do
-  _debug $ boxToString $
-       ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs
-    %$ ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs'
-  let initState = (Set.fromList $ CSL.toList cs', initMap)
-  let answer = map (snd . snd) $
-        runStateT
-          (withinAlign v v' >> mconcat <$> mapM deduct (CSL.toList cs))
-          initState
-  _debug $ boxToString $
-       ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs
-    %$ ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs'
-    %$ ["  gives: "] %+
-      if null answer then ["failure"] else
-        vconcats $ map prettyMap answer
-  return answer
+proveWithinUnder initMap (v,cs) (v',cs') =
+  bracketLog _debugI
+    (boxToString $
+      ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs %$
+      ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs')
+    (\answer -> boxToString $
+      ["Checking "] %+ prettyLines v %+ ["\\"] %+ prettyLines cs %$
+      ["  within "] %+ prettyLines v' %+ ["\\"] %+ prettyLines cs' %$
+      ["    was: "] %+
+        if null answer then ["unsuccessful"] else ["successful"]) $
+  let initState = (Set.fromList $ CSL.toList cs', initMap) in
+  map (snd . snd) $
+      runStateT
+        (withinAlign v v' >> mconcat <$> mapM deduct (CSL.toList cs))
+        initState
   where
     -- |Given one element, find its match and remove it.  Each step should also
     --  force alignment of the variable mapping.
@@ -131,17 +129,6 @@ proveWithinUnder initMap (v,cs) (v',cs') = runIdentity $ do
           el' <- lift =<< Set.toList . fst <$> get
           withinAlign el el'
           return el'
-    prettyMap :: WithinMap -> [String]
-    prettyMap (qm,um) =
-      ["〈"] %+ (
-         ["["] %+ intersperseBoxes [","] (map prettyPair $ Map.toList qm)
-            %+ ["],"]
-      %$ ["["] %+ intersperseBoxes [","] (map prettyPair $ Map.toList um)
-            %+ ["]"]
-      ) +% ["〉"]
-      where
-        prettyPair :: (Pretty a, Pretty b) => (a,b) -> [String]
-        prettyPair (x,y) = prettyLines x %+ ["→"] %+ prettyLines y
 
 -- |A data type for the mappings used to align variables during the @isWithin@
 --  test.
