@@ -100,6 +100,7 @@ data instance Annotation Expression
     | ESyntax SyntaxAnnotation
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
+    | EImplementationType (K3 Type)
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Read, Show)
