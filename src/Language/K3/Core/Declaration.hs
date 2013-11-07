@@ -97,7 +97,7 @@ instance Pretty (K3 Declaration) where
             concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
             ++ terminalShift (last x)
 
-    prettyLines (Node (DType i t :@: _) _) = ["DType " ++ i ++ " "] `hconcatTop` prettyLines t
+    prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
 
 instance Pretty AnnMemDecl where
   prettyLines (Lifted      pol n t eOpt uid) =

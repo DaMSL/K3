@@ -4,7 +4,8 @@ module Language.K3.Core.Constructor.Declaration (
     Language.K3.Core.Constructor.Declaration.trigger,
     endpoint,
     role,
-    annotation
+    annotation,
+    typeDef
 ) where
 
 import Data.Tree
