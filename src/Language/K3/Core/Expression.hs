@@ -35,6 +35,11 @@ data Expression
     | EIfThenElse
     | EAddress
     | ESelf
+    | EImperative ImperativeExpression
+  deriving (Eq, Read, Show)
+
+data ImperativeExpression
+    = EWhile
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.
