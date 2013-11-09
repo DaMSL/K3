@@ -51,14 +51,6 @@ trigger receive_ack : address = \acked_nrb_addr ->
        else (send_isKid, me) <- value ()          
   else ()
 	   
-/*
- * trigger receive_ack : address = \acked_nrb_addr -> 
- *   acked_nrbs.insert {acked_nrb : acked_nrb_addr};
- *   if acked_nrbs == nrbs
- *   then (send_isKid, me) <- value ()          
- *   else ()  
- */
- 
 trigger receive_isKid : address = \kid_addr ->
   kids.insert {kid : kid_addr};
   acked_nrbs.insert {acked_nrb : address};

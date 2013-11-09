@@ -1,8 +1,8 @@
-declare leader :     mut address = 127.0.0.1:30000
+declare leader :     mut address = 127.0.0.1:10000
 declare uid :        mut int = 0
 declare maxUid :     mut int = 0
 declare isLeader :   mut bool = false
-declare successor :  mut address = 127.0.0.1:30000
+declare successor :  mut address = 127.0.0.1:10000
 
 trigger init : () = \_ -> ( maxUid = uid;
                             (send, me) <- ()
