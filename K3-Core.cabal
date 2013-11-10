@@ -115,6 +115,7 @@ library
         Language.K3.TypeSystem.TypeDecision.StubReplacement,
         Language.K3.TypeSystem.Annotations.Error,
         Language.K3.Core.Annotation.Codegen,
+        Language.K3.Codegen.Common,
         Language.K3.Codegen.Haskell,
         Language.K3.Codegen.Imperative,
         Language.K3.Codegen,

@@ -34,8 +34,9 @@ import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Literal
 import Language.K3.Core.Type
+
+import Language.K3.Codegen.Common
 
 
 data CodeGenerationError = CodeGenerationError String deriving (Eq, Show)
@@ -214,23 +215,6 @@ collectionDataSegId = "__data"
 recordReprId :: Identifier -> Identifier
 recordReprId n = n
 
-
-{- Annotation identifiers. -}
-
-annotationComboId :: [Identifier] -> Identifier
-annotationComboId annIds = intercalate "_" annIds
-
-annotationComboIdT :: [Annotation Type] -> Maybe Identifier
-annotationComboIdT (namedTAnnotations -> [])  = Nothing
-annotationComboIdT (namedTAnnotations -> ids) = Just $ annotationComboId ids
-
-annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
-annotationComboIdE (namedEAnnotations -> [])  = Nothing
-annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
-
-annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
-annotationComboIdL (namedLAnnotations -> [])  = Nothing
-annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 
 
 {- Code generation annotations -}
