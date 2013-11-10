@@ -19,6 +19,7 @@ module Language.K3.Codegen.Imperative (
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Data.Maybe
 import Data.Functor
 import Data.Tree
 
@@ -29,6 +30,10 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+import qualified Language.K3.Core.Constructor.Type as T
+
+import Language.K3.Codegen.Common
+
 type ImperativeE = ()
 type ImperativeS = ()
 
@@ -38,12 +43,15 @@ runImperativeM :: ImperativeM a -> ImperativeS -> (Either ImperativeE a, Imperat
 runImperativeM m s = flip runState s $ runEitherT m
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
-declaration = undefined
-
--- | Given a list of annotations corresponding to a collection declaration, construct the name of
--- the composite which will fulfill the annotation.
-constructComposite :: [Annotation Expression] -> K3 Type
-constructComposite = undefined
+declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
+    me' <- expression e
+    cs' <- mapM declaration cs
+    return $ Node (DGlobal i t (Just me') :@: as) cs'
+declaration (Node (DTrigger i t e :@: as) cs) = do
+    ne' <- expression e
+    cs' <- mapM declaration cs
+    return $ Node (DGlobal i (T.function t T.unit) (Just ne') :@: as) cs'
+declaration (Node t cs) = Node t <$> mapM declaration cs
 
 -- | Given a list of record labels, construct the name of the composite which will represent the
 -- record type.
@@ -57,8 +65,10 @@ expression :: K3 Expression -> ImperativeM (K3 Expression)
 
 -- Constant expressions remain largely unchanged; empty collection declarations need to have their
 -- corresponding composite type generated based on their declared annotations.
+-- TODO: Find out if it's safe to use @fromJust@ here -- if annotation list on empty will every
+-- itself be empty.
 expression e@(Node (EConstant c :@: as) _) = case c of
-    CEmpty _ -> return $ e @+ (EImplementationType $ constructComposite as)
+    CEmpty _ -> return $ e @+ (EImplementationType $ fromJust $ annotationComboIdE as)
     _ -> return e
 
 -- Function application must be rewritten to a let-in, if the function to be applied is an anonymous
