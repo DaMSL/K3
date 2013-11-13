@@ -4,14 +4,14 @@
  
 include "Annotation/Collection.k3"
 
-declare numOfPeers :        mut int = 0
-declare nodes :             mut collection {node : address} @ { Collection }
+declare numOfPeers :        mut int = 4
+declare nodes :             mut collection {node : address} @ { Collection } = {|node : address| 127.0.0.1:50000, 127.0.0.1:60000, 127.0.0.1:70000 |} @ { Collection }
 declare nodeCounter :       mut int = 0
-declare rendezvous :        immut address = 192.168.0.138:40000
+declare rendezvous :        immut address = 127.0.0.1:40000
 declare leader :            mut address = 127.0.0.1:10000
 declare successor :         mut address = 127.0.0.1:10000
 declare uid :               mut int = 0
-declare maxUis :            mut int = 0
+declare maxUid :            mut int = 0
 declare isLeader :          mut bool = false
 
 trigger join : () = \_ -> (
@@ -22,12 +22,13 @@ trigger join : () = \_ -> (
 trigger register : int = \x -> (
   nodeCounter = nodeCounter + x;
   if nodeCounter == numOfPeers
-  then (bcast, me) <- () 
+  then (bcast, me) <- ()
+  else ()
 )
 
-trigger bcast : () = \x -> (
-  nodes.fold (\acc -> (\nodeAddr -> (send, nodeAddr) <- ()) 0) 
-)
+trigger bcast : () = \_ ->
+  (send, 127.0.0.1:50000) <- ()
+  //nodes.fold (\acc -> (\nodeAddr -> (send, nodeAddr) <- ()) 0)
 
 trigger send : () = \_ -> (elect, successor) <- maxUid
 
