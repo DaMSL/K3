@@ -321,7 +321,7 @@ data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
   = BuiltinH (WireDesc a) SIO.Handle Builtin
-  | FileH    (WireDesc a) SIO.Handle
+  | FileH    (WireDesc a) SIO.Handle -- TODO bool about temporaries
   | SocketH  (WireDesc a) (Either NEndpoint NConnection)
 
 data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
@@ -936,9 +936,15 @@ genericDoWrite n arg endpoints = getEndpoint n endpoints >>= maybe (return ()) w
 openBuiltin :: Identifier -> Identifier -> WireDesc a -> EngineM a ()
 openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoints . endpoints
 
+-- | Open a file endpoint.
+-- Takes a name for the endpoint, the path to the file, a wire description, a thingy,
+-- an IO mode, and returns a monadic thingy?
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
+-- |Takes: a name for the socket, the target address, the wire description of data written to the socket,
+-- (Maybe (K3 Type)? what is this?), and the file mode (r,w,a, etc.).
+-- Returns something?
 openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openSocket eid addr wd tOpt mode = do
     engine <- ask
@@ -947,9 +953,11 @@ openSocket eid addr wd tOpt mode = do
     let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) externalListenerProcessor
     genericOpenSocket eid addr wd tOpt mode lst eep
 
+-- |Closes the external endpoint identified by the first argument
 close :: String -> EngineM a ()
 close n = ask >>= genericClose n . externalEndpoints . endpoints
 
+-- TODO Nothing from Maybe Bool should get rolled into EngineError
 hasRead :: Identifier -> EngineM a (Maybe Bool)
 hasRead n = ask >>= genericHasRead n . externalEndpoints . endpoints
 
@@ -1425,6 +1433,7 @@ modifyMVE v f = do
         Right (r, x) -> return x
 
 -- Persistent collection helpers
+-- Put these into __DATA/peerID/collection_name
 generateCollectionFilename :: EngineM b Identifier
 generateCollectionFilename = do
     engine <- ask

@@ -7,6 +7,8 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- | The K3 Interpreter
 module Language.K3.Interpreter (
@@ -124,6 +126,7 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 {- Collections and annotations -}
 
 data CollectionDataspaceType = InMemory | External
+-- Add a parameter v instead of Value
 data CollectionDataspace = InMemoryDS [Value] | ExternalDS Identifier
 
 -- | Collection implementation.
@@ -289,8 +292,10 @@ emptyCollectionBody dst n =
             let ds = ExternalDS filename
             return $ Collection emptyCollectionNamespace ds n
 
-defaultCollectionBody :: [Value] -> Collection Value
-defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
+--defaultCollectionBody :: [Value] -> Collection Value
+--defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
+defaultCollectionBody :: CollectionDataspace -> Collection Value
+defaultCollectionBody v = Collection emptyCollectionNamespace v collectionAnnotationId
 
 emptyAnnotatedCollection :: CollectionDataspaceType -> Identifier -> Interpretation Value
 emptyAnnotatedCollection dst n =
@@ -302,7 +307,244 @@ emptyAnnotatedCollection dst n =
 emptyCollection :: Interpretation Value
 emptyCollection = emptyAnnotatedCollection InMemory ""
 
--- CopyDataspace goes around here
+{- TODO take out dependence on Interpretation (-> m)
+ - move the typeclasses to Runtime/Dataspace.hs
+ - (move the instances to Interpreter/IDataspace.hs)
+ -}
+class DataSpace ds v where
+  newDS         :: ds -> v -> Interpretation ds -- this is bad?
+  copyDataspace :: ds -> v -> Interpretation ds
+  peekDS        :: ds -> Interpretation (Maybe v)
+  --emptyDS       :: ds -> Interpretation Bool
+  insertDS      :: ds -> v -> Interpretation ds
+  deleteDS      :: v -> ds -> Interpretation ds
+  updateDS      :: v -> v -> ds -> Interpretation ds
+  foldDS        :: ( a -> v -> Interpretation a ) -> a -> ds -> Interpretation a
+  mapDS         :: ( v -> Interpretation v ) -> ds -> Interpretation ds
+  mapDS_        :: ( v -> Interpretation v ) -> ds -> Interpretation ()
+  filterDS      :: ( v -> Interpretation Bool ) -> ds -> Interpretation ds
+  combineDS     :: ds -> ds -> v -> Interpretation ds
+  splitDS       :: ds -> v -> Interpretation (ds, ds)
+{- casting? -}
+
+{- move embed / extract into its own typeclass -}
+class (DataSpace ds v) => AssociativeDataSpace ds k v where
+  lookupKV       :: ds -> k -> Interpretation (Maybe v)
+  removeKV       :: ds -> k -> v -> Interpretation ds
+  insertKV       :: ds -> k -> v -> Interpretation ds
+  replaceKV      :: ds -> k -> v -> Interpretation ds
+  extractKey     :: ds -> v -> Interpretation k
+  embedKey       :: ds -> k -> v -> v
+
+{- associative dataspace for groupby, with lookup and such-}
+
+{- generalize on value, move to Runtime/Dataspace.hs -}
+instance DataSpace [Value] Value where
+  newDS _ _      = return []
+  copyDataspace ls _ = return ls
+  peekDS ls = case ls of
+    []    -> return Nothing
+    (h:t) -> return $ Just h
+  insertDS ls v    = return $ ls ++ [v]
+  deleteDS v ls    = return $ delete v ls
+  updateDS v v' ls = return $ (delete v ls) ++ [v']
+  foldDS           = foldM
+  mapDS            = mapM
+  mapDS_           = mapM_
+  filterDS         = filterM
+  combineDS l r _  = return $ l ++ r
+  splitDS l _      = return $ if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
+    where
+      threshold = 10
+
+{- move these into Runtime/FileDataSpace.hs
+ - These are generic functions for operating on collections in files
+ -}
+openCollectionFile :: Identifier -> String -> EngineM Value ()
+openCollectionFile name mode =
+  do
+    engine <- ask
+    void $ openFile name name syntaxValueWD Nothing mode
+    return ()
+
+foldFile :: (a -> Value -> Interpretation a) -> a -> Identifier -> Interpretation a
+foldFile accumulation initial_accumulator file_id =
+ do
+   file_over <- liftEngine $ hasRead file_id
+   case file_over of
+     Nothing -> return initial_accumulator -- Hiding an error...
+     Just False -> return initial_accumulator
+     Just True ->
+       do
+         cur_val <- liftEngine $ doRead file_id
+         case cur_val of
+           Nothing -> return initial_accumulator
+           Just val -> do
+             new_acc <- accumulation initial_accumulator val
+             foldFile accumulation new_acc file_id
+
+mapFile :: (Value -> Interpretation Value) -> Identifier -> Interpretation Identifier
+mapFile function file_id = do
+  new_id <- liftEngine $ generateCollectionFilename
+  liftEngine $ openCollectionFile new_id "w"
+  foldFile (inner_func new_id) () file_id
+  liftEngine $ close new_id
+  return new_id
+  where
+    inner_func :: Identifier -> () -> Value -> Interpretation ()
+    inner_func new_id _ v = do
+      new_val <- function v
+      liftEngine $ doWrite new_id new_val
+      return ()
+mapFile_ :: (Value -> Interpretation a) -> Identifier -> Interpretation ()
+mapFile_ function file_id = do
+  foldFile inner_func () file_id
+  where
+    inner_func :: () -> Value -> Interpretation ()
+    inner_func _ v = do
+      function v
+      return ()
+filterFile :: (Value -> Interpretation Bool) -> Identifier -> Interpretation Identifier
+filterFile predicate old_id = do
+  new_id <- liftEngine $ generateCollectionFilename
+  liftEngine $ openCollectionFile new_id "w"
+  foldFile (inner_func new_id) () old_id
+  liftEngine $ close new_id
+  return new_id
+  where
+    inner_func :: Identifier -> () -> Value -> Interpretation ()
+    inner_func new_id _ v = do
+      include <- predicate v
+      if include then
+        liftEngine $ doWrite new_id v
+      else
+        return ()
+
+{- TODO have the engine delete all the collection files in it's cleanup
+ - generalize Value -> b (in EngineM b), and monad -> engine
+ -}
+instance DataSpace Identifier Value where
+  newDS _ _ = liftEngine $ generateCollectionFilename
+  copyDataspace old_id _ = do
+    new_id <- liftEngine $ generateCollectionFilename
+    liftEngine $ openCollectionFile new_id "w"
+    foldFile (\_ val -> do
+      liftEngine $ doWrite new_id val -- TODO hasWrite
+      return ()
+      ) () old_id
+    liftEngine $ close new_id
+    return new_id
+  peekDS ext_id = do
+    liftEngine $ openCollectionFile ext_id "r"
+    can_read <- liftEngine $ hasRead ext_id
+    result <-
+      case can_read of
+        Nothing     -> return Nothing
+        Just False  -> return Nothing
+        Just True   -> do
+          opt_read <- liftEngine $ doRead ext_id
+          return opt_read
+    liftEngine $ close ext_id
+    return result
+  insertDS file_id v = do
+    liftEngine $ openCollectionFile file_id "a"
+    -- can_write <- liftEngine $ hasWrite ext_id -- TODO handle errors here
+    liftEngine $ doWrite file_id v
+    liftEngine $ close file_id
+    return $ file_id
+  deleteDS v file_id = do -- broken because reading / writing from the same file
+    liftEngine $ openCollectionFile file_id "w"
+    foldFile (\truth val -> do
+      if truth == False && val == v
+        then return True
+        else do
+          liftEngine $ doWrite file_id val --TODO error check
+          return False
+      ) False file_id
+    liftEngine $ close file_id
+    return $ file_id
+  updateDS v v' file_id = do
+    liftEngine $ openCollectionFile file_id "w"
+    foldFile (\truth val -> do
+      if truth == False && val == v
+        then do
+          liftEngine $ doWrite file_id v'
+          return True
+        else do
+          liftEngine $ doWrite file_id val --TODO error check
+          return False
+      ) False file_id
+    liftEngine $ close file_id
+    return $ file_id
+  foldDS = foldFile
+  -- Takes the file id of an external collection, then runs the second argument on
+  -- each argument, then returns the identifier of the new collection
+  mapDS function file_id = do
+    mapFile function file_id
+  mapDS_ function file_id =
+    mapFile_ function file_id
+    {-mapDS (\v -> do
+      _ <- function v
+      return ()
+     ) file_id -- why is this expected to be a unit? -}
+  filterDS = filterFile
+  combineDS self values _ = do
+    liftEngine $ openCollectionFile self "a"
+    foldFile (\_ v -> do
+        liftEngine $ doWrite self v
+        return ()
+      ) () values
+    liftEngine $ close self
+    return self
+  splitDS self _ = do
+    left  <- liftEngine generateCollectionFilename
+    right <- liftEngine generateCollectionFilename
+    liftEngine $ openCollectionFile left "w"
+    liftEngine $ openCollectionFile right "w"
+    foldFile (\file cur_val -> do
+      liftEngine $ doWrite file cur_val
+      return ( if file == left then right else left )
+      ) left self
+    liftEngine $ close left
+    liftEngine $ close right
+    return (left, right)
+
+
+instance DataSpace CollectionDataspace Value 
+
+{- moves to Runtime/Dataspace.hs -}
+matchPair :: Value -> Interpretation (Value, Value)
+matchPair v =
+  case v of
+    VTuple (h:t) -> 
+      case t of
+        (p:[])    -> return (h, p)
+        otherwise ->throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
+    otherwise    -> throwE $ RunTimeTypeError "Non-tuple"
+instance (DataSpace dst Value) => AssociativeDataSpace dst Value Value where
+  lookupKV ds key = 
+    foldDS (\result cur_val ->  do
+      (cur_key, cur_val) <- matchPair cur_val
+      return $ case result of
+        Nothing -> if cur_key == key then Just cur_val else Nothing
+        Just val -> Just val
+     ) Nothing ds
+  removeKV ds key _ =
+    filterDS (inner) ds
+     where
+        inner :: Value -> Interpretation Bool
+        inner val = do
+          cur_val <- extractKey ds val
+          return $ if cur_val == key then False else True
+  insertKV ds key value = insertDS ds $ embedKey ds key value
+  replaceKV ds k v = do
+    val_removed <- removeKV ds k vunit
+    insertKV ds k v
+  extractKey _ value = do
+    (key, _) <- matchPair value
+    return key
+  embedKey _ key value = VTuple [key, value]
+
 
 {- Identifiers -}
 collectionAnnotationId :: Identifier
@@ -616,6 +858,7 @@ global _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Inv
 global _ (tag -> TSource) _           = return ()
 global n (tag -> TFunction) _         = return () -- Functions have already been initialized.
 
+-- n is the name of the variable
 global n t@(tag -> TCollection) eOpt = elemE n >>= \case
   True  -> void . getComposedAnnotationT $ annotations t
   False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection eOpt . maybe "" id
@@ -698,12 +941,6 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 {- Interpretation utility functions -}
 
-openCollectionFile :: Identifier -> String -> EngineM Value ()
-openCollectionFile name mode =
-  do
-    engine <- ask
-    void $ openFile name name syntaxValueWD Nothing mode
-    return ()
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
@@ -712,46 +949,6 @@ getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, na
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
 getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
 
-foldFile :: Identifier -> (a -> Value -> a) -> a -> Interpretation a
-foldFile file_id accumulation initial_accumulator =
-  do
-    file_over <- liftEngine $ hasRead file_id
-    case file_over of
-      Nothing -> return initial_accumulator -- Hiding an error...
-      Just False -> return initial_accumulator
-      Just True ->
-        do
-          cur_val <- liftEngine $ doRead file_id
-          case cur_val of
-            Nothing -> return initial_accumulator
-            Just val -> do
-              let new_acc = accumulation initial_accumulator val
-              foldFile file_id accumulation new_acc
-
--- Takes the file id of an external collection, then runs the second argument on
--- each argument, then return sthe identifier of the new collection
-mapFile :: Identifier -> ( Value -> Value ) -> Interpretation Identifier
-mapFile file_id function = do
-  new_id <- liftEngine $ generateCollectionFilename
-  mapFile_int file_id new_id function
-
-mapFile_int :: Identifier -> Identifier -> ( Value -> Value ) -> Interpretation Identifier
-mapFile_int old_file_id new_file_id function =
-  do
-    file_over <- liftEngine $ hasRead old_file_id
-    case file_over of
-      Nothing -> return new_file_id -- Hiding an error...
-      Just False -> return new_file_id
-      Just True ->
-        do
-          cur_val <- liftEngine $ doRead old_file_id
-          case cur_val of
-            Nothing -> return new_file_id
-            Just val -> do
-              let new_val = function val
-              --TODO check hasWrite and errors and things
-              liftEngine $ doWrite new_file_id new_val
-              mapFile_int old_file_id new_file_id function
 
 getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
 getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
@@ -772,7 +969,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkInitializer :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitializer Value
     mkInitializer comboId namedAnnDefs = const $ do
-      collection <- liftEngine $ emptyCollectionBody backingType comboId
+      collection <- liftEngine $ emptyCollectionBody backingType comboId -- extra parameter for the name
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
@@ -784,27 +981,16 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
                 otherwise -> External
 
     mkConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkConstructor comboId namedAnnDefs = \c -> do
-      newDS <- copyDataspace $ dataspace c
-      let coll = Collection (namespace coll) (newDS) (extensionId c)
-      newCMV <- liftIO (newMVar coll)
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      return newCMV
-    
-    copyDataspace :: CollectionDataspace -> Interpretation (CollectionDataspace)
-    copyDataspace ds = 
-        case ds of
-            InMemoryDS ls -> do return $ InMemoryDS ls
-            ExternalDS old_id ->
-              do
-                new_id <- liftEngine $ generateCollectionFilename
-                liftEngine $ openCollectionFile new_id "w"
-                liftEngine $ openCollectionFile old_id "r"
-                join $ foldFile old_id (\_ val -> do
-                  liftEngine $ doWrite new_id val
-                  ) (return ()) --What?? why do I need the return here
-                return $ ExternalDS new_id
-                   
+    mkConstructor comboId namedAnnDefs = the_func
+      where
+        the_func :: Collection Value -> Interpretation (MVar (Collection Value))
+        the_func c = do
+          let old_ds = dataspace c
+          newDS <- copyDataspace old_ds vunit -- extra ID for name
+          let coll = Collection (namespace coll) (newDS) (extensionId c)
+          newCMV <- liftIO (newMVar coll)
+          void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
+          return newCMV
 
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
@@ -996,7 +1182,6 @@ builtinLiftedAttribute annId n t uid
   | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
   | annId == "Collection" && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
-  --  annId == "Persistent" && n == "peek"    = return $ Just (n, persistentPeekFn)
   | otherwise = providesError "lifted attribute" n
 
   where 
@@ -1006,24 +1191,9 @@ builtinLiftedAttribute annId n t uid
           return $ VCollection c'
 
         -- | Collection accessor implementation
-        peekFn = valWithCollection $ \_ (Collection ns ds extId) -> 
-          case ds of
-            InMemoryDS ls ->
-              case ls of
-                []    -> return $ VOption Nothing
-                (h:t) -> return . VOption $ Just h
-            ExternalDS ext_id ->
-              do
-                liftEngine $ openCollectionFile ext_id "r"
-                can_read <- liftEngine $ hasRead ext_id
-                case can_read of
-                    Nothing     -> return $ VOption Nothing
-                        -- TODO Error reading should propagate an error up to K3?
-                    Just False  -> return $ VOption Nothing
-                    Just True   -> do
-                        opt_read <- liftEngine $ doRead ext_id
-                        return $ VOption opt_read
-                
+        peekFn = valWithCollection $ \_ (Collection ns ds extId) -> do 
+          inner_val <- peekDS ds
+          return $ VOption inner_val
 
         -- | Collection modifier implementation
         insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
@@ -1040,107 +1210,99 @@ builtinLiftedAttribute annId n t uid
             liftIO $ modifyMVar_ cmv (const $ return result)
             return vunit
 
+        -- TODO move wrapping / unwrapping DataSpace into modifyCollection?
         insertCollection :: Value -> Collection (Value) -> Interpretation (Collection Value)
-        insertCollection v  (Collection ns ds extId) =
-          case ds of
-            InMemoryDS ls -> return $ Collection ns (InMemoryDS (ls++[v])) extId
-            ExternalDS file_id -> do
-              liftEngine $ openCollectionFile file_id "a"
-              -- can_write <- liftEngine $ hasWrite ext_id -- TODO How to handle errors here?
-              liftEngine $ doWrite file_id v
-              liftEngine $ close file_id
-              return $ Collection ns ds extId
+        insertCollection v  (Collection ns ds extId) = do
+            new_ds <- insertDS ds v
+            return $ Collection ns new_ds extId
 
-        deleteCollection v    (Collection ns ds extId) =
-          case ds of 
-            InMemoryDS ls -> return $ Collection ns (InMemoryDS (delete v ls)) extId
-            ExternalDS file_id -> do
-              liftEngine $ openCollectionFile file_id "w"
-              join $ foldFile file_id(\found_it val -> do
-                truth <- found_it
-                if truth == False && val == v
-                  then return True
-                  else do
-                    liftEngine $ doWrite file_id val --TODO error check
-                    return False
-                ) (return False)
-              liftEngine $ close file_id
-              return $ Collection ns ds extId
+        deleteCollection v    (Collection ns ds extId) = do
+            new_ds <- deleteDS v ds
+            return $ Collection ns new_ds extId
 
-        updateCollection v v' (Collection ns ds extId) =
-          case ds of 
-            InMemoryDS ls -> return $ Collection ns (InMemoryDS ((delete v ls)++[v'])) extId
-            ExternalDS file_id -> do
-              liftEngine $ openCollectionFile file_id "w"
-              join $ foldFile file_id(\found_it val -> do
-                truth <- found_it
-                if truth == False && val == v
-                  then do
-                    liftEngine $ doWrite file_id v'
-                    return True
-                  else do
-                    liftEngine $ doWrite file_id val --TODO error check
-                    return False
-                ) (return False)
-              liftEngine $ close file_id
-              return $ Collection ns ds extId
+        updateCollection v v' (Collection ns ds extId) = do
+            new_ds <- updateDS v v' ds
+            return $ Collection ns new_ds extId
 
         -- | Collection effector implementation
-        iterateFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) -> 
+        iterateFn = valWithCollection $ \f (Collection ns ds extId) -> 
           flip (matchFunction iterateFnError) f $
-          \f' -> mapM_ (withClosure f') ds >> return vunit
+          \f' -> mapDS_ (withClosure f') ds >> return vunit
 
         -- | Collection transformer implementation
-        combineFn = valWithCollection $ \other (Collection ns (InMemoryDS ds) extId) ->
+        combineFn = valWithCollection $ \other (Collection ns ds extId) ->
           flip (matchCollection collectionError) other $ 
-            \(Collection ns' (InMemoryDS ds') extId') ->
+            \(Collection ns' ds' extId') ->
               if extId /= extId' then combineError
-              else copy $ Collection ns (InMemoryDS (ds++ds')) extId
+              else do 
+                new_ds <- combineDS ds ds' vunit
+                copy $ Collection ns new_ds extId
 
-        splitFn = valWithCollection $ \_ (Collection ns (InMemoryDS ds) extId) ->
-          let (l, r) = splitImpl ds in do
-            lc <- copy (Collection ns (InMemoryDS l) extId)
-            rc <- copy (Collection ns (InMemoryDS r) extId)
+        splitFn = valWithCollection $ \_ (Collection ns ds extId) -> do
+            (l, r) <- splitDS ds vunit
+            lc <- copy (Collection ns l extId)
+            rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
 
-        mapFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
+        mapFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction mapFnError) f $ 
-            \f'  -> mapM (withClosure f') ds >>= 
+            \f'  -> mapDS (withClosure f') ds >>= 
             \ds' -> copy (defaultCollectionBody ds')
 
-        filterFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
+        filterFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction filterFnError) f $
-            \f'  -> filterM (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
-            \ds' -> copy (Collection ns (InMemoryDS ds') extId)
+            \f'  -> filterDS (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
+            \ds' -> copy (Collection ns ds' extId)
 
-        foldFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) ->
+        foldFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction foldFnError) f $
-            \f' -> ivfun $ \accInit -> foldM (curryFoldFn f') accInit ds
+            \f' -> ivfun $ \accInit -> foldDS (curryFoldFn f') accInit ds
 
-        curryFoldFn f' acc v = withClosure f' acc >>= (matchFunction curryFnError) (flip withClosure v)
+        curryFoldFn :: (Value -> Interpretation Value, Closure Value) -> Value -> Value -> Interpretation Value
+        curryFoldFn f' acc v = do
+          result <- withClosure f' acc
+          (matchFunction curryFnError) (flip withClosure v) result
 
         -- TODO: replace assoc lists with a hashmap.
-        groupByFn = valWithCollection $ \gb (Collection ns (InMemoryDS ds) extId) ->
+        -- TODO: external store
+        groupByFn = valWithCollection $ \gb (Collection ns ds extId) ->
           flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
           flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
             do
-              kvPairs   <- foldM (groupByElement gb' f' accInit) [] ds
-              kvRecords <- return $ map (\(k,v) -> VRecord [("key", k), ("value", v)]) kvPairs
+              new_space <- newDS ds vunit
+              kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
+              -- TODO typecheck that collection
               copy (defaultCollectionBody kvRecords)
 
+        groupByElement :: (AssociativeDataSpace ads Value Value) =>
+          (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
         groupByElement gb' f' accInit acc v = do
           k <- withClosure gb' v
-          case lookup k acc of
-            Nothing         -> curryFoldFn f' accInit v    >>= return . (acc++) . (:[]) . (k,)
-            Just partialAcc -> curryFoldFn f' partialAcc v >>= return . replaceAssoc acc k 
+          look_result <- lookupKV acc k
+          case look_result of
+            Nothing         -> do
+              val <- curryFoldFn f' accInit v 
+              tmp_ds <- newDS acc vunit
+              insertKV tmp_ds k val
+              combineDS acc tmp_ds vunit
+            Just partialAcc -> do 
+              new_val <- curryFoldFn f' partialAcc v
+              replaceKV acc k new_val
 
-        extFn = valWithCollection $ \f (Collection ns (InMemoryDS ds) extId) -> 
+        extFn = valWithCollection $ \f (Collection ns ds extId) -> 
           flip (matchFunction extError) f $ 
           \f' -> do
-                    vals <- mapM (withClosure f') ds
-                    case vals of
-                      []    -> copy (defaultCollectionBody [])
-                      (h:t) -> foldM combine' (Just h) (map Just t) >>= maybe combineError return
+                val_ds <- mapDS (withClosure f') ds
+                first_subcol <- peekDS val_ds
+                case first_subcol of
+                  Nothing -> extError -- Maybe not the right error here
+                                      -- really, I should create an empty VCollection
+                                      -- with the right type (that of f(elem)), but I
+                                      -- don't have a value to copy the type out of
+                  Just sub_val -> do
+                    deleteDS sub_val val_ds
+                    result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
+                    maybe combineError return result
 
         combine' :: Maybe Value -> Maybe Value -> Interpretation (Maybe Value)
         combine' Nothing _ = return Nothing
@@ -1148,10 +1310,12 @@ builtinLiftedAttribute annId n t uid
 
         -- TODO: make more efficient by avoiding intermediate MVar construction.
         combine' (Just acc) (Just cv) =
-          flip (matchCollection $ return Nothing) acc $ \(Collection ns1 (InMemoryDS ds1) extId1) -> 
-          flip (matchCollection $ return Nothing) cv  $ \(Collection ns2 (InMemoryDS ds2) extId2) -> 
+          flip (matchCollection $ return Nothing) acc $ \(Collection ns1 ds1 extId1) -> 
+          flip (matchCollection $ return Nothing) cv  $ \(Collection ns2 ds2 extId2) -> 
           if extId1 /= extId2 then return Nothing
-          else copy (Collection ns1 (InMemoryDS (ds1++ds2)) extId1) >>= return . Just
+          else do
+            new_ds <- combineDS ds1 ds2 vunit
+            copy (Collection ns1 new_ds extId1) >>= return . Just
 
 
         -- | Collection implementation helpers.
@@ -1181,10 +1345,6 @@ builtinLiftedAttribute annId n t uid
         matchBool :: Interpretation Bool -> Value -> Interpretation Bool
         matchBool err (VBool b) = return b
         matchBool err _ = err
-
-
-        splitImpl l = if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
-        threshold = 10
 
         collectionError  = throwE $ RunTimeTypeError "Invalid collection"
         combineError     = throwE $ RunTimeTypeError "Mismatched collection types for combine"
@@ -1653,6 +1813,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     -- Need to pattern match on kind of dataspace
     packCollectionDataspace d (InMemoryDS v) =
       (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v
+    -- for now, external ds are shared file path
     
     packDoublyNamedValues d (n, nv)  = (.) <$> rt (showString $ n ++ "=") <*> packNamedValues d nv
 
