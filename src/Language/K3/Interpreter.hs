@@ -327,14 +327,17 @@ class DataSpace ds v where
   splitDS       :: ds -> v -> Interpretation (ds, ds)
 {- casting? -}
 
+-- TODO monads
+class EmbeddedKV v k where
+  extractKey :: v -> Interpretation k
+  embedKey   :: k -> v -> v
+
 {- move embed / extract into its own typeclass -}
 class (DataSpace ds v) => AssociativeDataSpace ds k v where
   lookupKV       :: ds -> k -> Interpretation (Maybe v)
   removeKV       :: ds -> k -> v -> Interpretation ds
   insertKV       :: ds -> k -> v -> Interpretation ds
   replaceKV      :: ds -> k -> v -> Interpretation ds
-  extractKey     :: ds -> v -> Interpretation k
-  embedKey       :: ds -> k -> v -> v
 
 {- associative dataspace for groupby, with lookup and such-}
 
@@ -521,6 +524,13 @@ matchPair v =
         (p:[])    -> return (h, p)
         otherwise ->throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
     otherwise    -> throwE $ RunTimeTypeError "Non-tuple"
+
+instance EmbeddedKV Value Value where
+  extractKey value = do
+    (key, _) <- matchPair value
+    return key
+  embedKey key value = VTuple [key, value]
+  
 instance (DataSpace dst Value) => AssociativeDataSpace dst Value Value where
   lookupKV ds key = 
     foldDS (\result cur_val ->  do
@@ -534,16 +544,12 @@ instance (DataSpace dst Value) => AssociativeDataSpace dst Value Value where
      where
         inner :: Value -> Interpretation Bool
         inner val = do
-          cur_val <- extractKey ds val
+          cur_val <- extractKey val
           return $ if cur_val == key then False else True
-  insertKV ds key value = insertDS ds $ embedKey ds key value
+  insertKV ds key value = insertDS ds $ embedKey key value
   replaceKV ds k v = do
     val_removed <- removeKV ds k vunit
     insertKV ds k v
-  extractKey _ value = do
-    (key, _) <- matchPair value
-    return key
-  embedKey _ key value = VTuple [key, value]
 
 
 {- Identifiers -}
