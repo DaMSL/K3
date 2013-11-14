@@ -221,22 +221,28 @@ instance Manifestable TypeOrVar where
 
 instance Manifestable UVar where
   manifestTypeFrom a = considerMuType a $ do
+    logManifestPrefix a
     dict <- askDictionary
     bt <- askBoundType
-    case ( Map.lookup (a, bt) $ uvarBoundDict dict
-         , Map.findWithDefault Set.empty (a, bt) $ uvarOpaqueBoundDict dict ) of
+    t' <- case ( Map.lookup (a, bt) $ uvarBoundDict dict
+               , Map.findWithDefault Set.empty (a, bt) $
+                  uvarOpaqueBoundDict dict ) of
       (Nothing, _) ->
         error $ "Manifestation of " ++ pretty bt ++ " of " ++ pretty a ++
                 "failed: no binding in bound dictionary"
       (Just t, oas) -> manifestTypeFrom (t, oas)
+    logManifestSuffix a t'
+    return t'
 
 instance Manifestable QVar where
   manifestTypeFrom qa = considerMuType qa $ do
+    logManifestPrefix qa
     dict <- askDictionary
     bt <- askBoundType
-    case ( Map.lookup (qa, bt) $ qvarBoundDict dict
-         , Map.findWithDefault Set.empty (qa, bt) $ qvarOpaqueBoundDict dict
-         , Map.lookup (qa, bt) $ qvarQualDict dict ) of
+    t' <- case ( Map.lookup (qa, bt) $ qvarBoundDict dict
+               , Map.findWithDefault Set.empty (qa, bt) $
+                    qvarOpaqueBoundDict dict
+               , Map.lookup (qa, bt) $ qvarQualDict dict ) of
       (Nothing, _, _) ->
         error $ "Manifestation of " ++ getBoundTypeName bt ++ " of " ++
                   pretty qa ++ "failed: no binding in bound dictionary"
@@ -246,6 +252,8 @@ instance Manifestable QVar where
       (Just t, oas, Just qs) -> do
         typ <- manifestTypeFrom (t, oas)
         return $ foldr addQual typ $ Set.toList qs
+    logManifestSuffix qa t'
+    return t'
     where
       addQual :: TQual -> K3 Type -> K3 Type
       addQual q typ = case q of
