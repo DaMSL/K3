@@ -1,0 +1,8 @@
+annotation X {
+    provides lifted f : self -> self = \x -> x
+}
+declare c : collection {}@{X} =
+  let x = empty {}@{X} in
+  x.f(x)
+
+
