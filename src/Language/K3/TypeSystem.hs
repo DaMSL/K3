@@ -88,11 +88,12 @@ typecheck aEnv env rEnv decl =
         case tcExprTypes result of
           Nothing -> ["(No expression types inferred.)"]
           Just (vars,cs) ->
+            -- Simplify the constraints by equivalence.  Further simplification
+            -- happens on a per-variable basis.
             let simpConfig =
                   SimplificationConfig { preserveVars = Set.empty } in
             let (simpCs,simpResult) =
                   runSimplifyM simpConfig $
-                    simplifyByGarbageCollection =<<
                     simplifyByConstraintEquivalenceUnification cs in
             let simpVarMap = simplificationVarMap simpResult in
             ["Inferred expression types:"] %$ indent 2
@@ -113,7 +114,11 @@ typecheck aEnv env rEnv decl =
     prettyExprType subst cs (u,sa) =
       let n = take 10 $ show u ++ repeat ' ' in
       let sa' = substitutionLookupAny sa subst in
-      [n ++ " → "] %+ prettyLines sa' %+ ["\\"] %+ prettyLines cs
+      [n ++ " → "] %+ prettyLines sa' %+ ["\\"] %+ prettyLines (simplify cs)
+      where
+        simplify = fst . runSimplifyM
+            SimplificationConfig{ preserveVars = Set.singleton sa } .
+            simplifyByGarbageCollection
     prettyExprBounds :: (UID,(K3 Type, K3 Type)) -> [String]
     prettyExprBounds (u,(lb,ub)) =
       let n = take 10 $ show u ++ repeat ' ' in
