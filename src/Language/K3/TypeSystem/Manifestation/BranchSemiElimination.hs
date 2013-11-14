@@ -33,6 +33,7 @@ import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
+import Language.K3.Utils.Conditional
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Common
@@ -227,8 +228,8 @@ _calculateBoundsOfVars freshVar sigsM insertSigsM getConcreteVarBounds vars =
       let bounds = Set.fromList $
                       concatMap (csQuery cs . getConcreteVarBounds bt)
                                 (Set.toList vars)
-      (oas,t) <- calculateBoundOfTypes bt bounds
-      addBoundingConstraint bt t reprVar
+      (oas,mt) <- calculateBoundOfTypes bt bounds
+      whenJust mt $ \t -> addBoundingConstraint bt t reprVar
       mconcat <$> mapM (\oa -> addBoundingConstraint bt (SOpaque oa) reprVar)
                        (Set.toList oas)
 
@@ -236,32 +237,30 @@ _calculateBoundsOfVars freshVar sigsM insertSigsM getConcreteVarBounds vars =
 --  concrete shallow types.  This bound is in the form of a single transparent
 --  type and a set of opaque types.
 calculateBoundOfTypes :: BoundType -> Set ShallowType
-                      -> BranchElimM (Set OpaqueVar, ShallowType)
+                      -> BranchElimM (Set OpaqueVar, Maybe ShallowType)
 calculateBoundOfTypes bt ts =
   let DelayedType oas mt =
         getDelayedOperation bt $ map shallowToDelayed $ Set.toList ts in
   (oas,) <$>
-  case fromMaybe defaultBoundDelayedType mt of
-    DFunction as a's ->
-      SFunction <$> calculateBoundsOfUVars as <*> calculateBoundsOfUVars a's
-    DTrigger as -> STrigger <$> calculateBoundsOfUVars as
-    DBool -> return SBool
-    DInt -> return SInt
-    DReal -> return SReal
-    DNumber -> return SNumber
-    DString -> return SString
-    DAddress -> return SAddress
-    DOption qas -> SOption <$> calculateBoundsOfQVars qas
-    DIndirection qas -> SIndirection <$> calculateBoundsOfQVars qas
-    DTuple qass -> STuple <$> mapM calculateBoundsOfQVars qass
-    DRecord m oas' -> SRecord <$> Trav.mapM calculateBoundsOfQVars m
-                              <*> pure oas' -- TODO: is this handling correct?
-    DTop -> return STop
-    DBottom -> return SBottom
-  where
-    defaultBoundDelayedType = case bt of
-                                LowerBound -> DBottom
-                                UpperBound -> DTop
+  case mt of
+    Just t -> Just <$> case t of
+      DFunction as a's ->
+        SFunction <$> calculateBoundsOfUVars as <*> calculateBoundsOfUVars a's
+      DTrigger as -> STrigger <$> calculateBoundsOfUVars as
+      DBool -> return SBool
+      DInt -> return SInt
+      DReal -> return SReal
+      DNumber -> return SNumber
+      DString -> return SString
+      DAddress -> return SAddress
+      DOption qas -> SOption <$> calculateBoundsOfQVars qas
+      DIndirection qas -> SIndirection <$> calculateBoundsOfQVars qas
+      DTuple qass -> STuple <$> mapM calculateBoundsOfQVars qass
+      DRecord m oas' -> SRecord <$> Trav.mapM calculateBoundsOfQVars m
+                                <*> pure oas' -- TODO: is this handling correct?
+      DTop -> return STop
+      DBottom -> return SBottom
+    Nothing -> return Nothing
 
 -- * Delayed types
 
