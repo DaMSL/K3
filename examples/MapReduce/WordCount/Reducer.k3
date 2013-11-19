@@ -1,0 +1,31 @@
+/*
+ * Reducer for word count
+ * TODO check empty collection
+ */
+
+declare resultMap :        mut collection { finalWord : string, count : int } @ { Collection }
+declare existing :         mut bool = false
+
+// trigger for starting the reducer
+
+trigger init : () = \_ -> ()
+
+trigger reduce : immut collection { receivedWords : string, count : int } @ { Collection } =\receivedWordMap  -> (
+
+  receivedWordMap.iterate (\wordTuple ->    
+    resultMap.iterate (\resultTuple ->
+      if wordTuple.existingWord == resultTuple.finalWord
+	  then ( resultTuple.count = resultTuple.count + 1;
+	         existing = true)
+	  else () 
+    )
+	if existing == false
+	then resultMap.insert{ finalWord : wordTuple.existingWord, count : 1 }
+	else ()
+  )
+
+)
+
+source go : () = value ()
+
+feed go |> init
