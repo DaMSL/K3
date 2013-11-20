@@ -7,13 +7,15 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import qualified Data.Set as S
+
 import Text.PrettyPrint.ANSI.Leijen
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
 
 type CPPGenS = ()
-type CPPGenE = ()
+data CPPGenE = CPPGenE
 
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
@@ -62,6 +64,27 @@ constant (CBool True) = return $ text "true"
 constant (CBool False) = return $ text "false"
 constant (CInt i) = return $ int i
 constant (CReal d) = return $ double d
+constant (CString s) = return $ text "string" <> (parens . text $ show s)
+constant (CNone _) = return $ text "null"
+
+cType :: K3 Tyype -> CPPGenM CPPGenR
+cType (tag -> TBool) = return $ text "bool"
+cType (tag -> TByte) = return $ text "unsigned char"
+cType (tag -> TInt) = return $ text "int"
+cType (tag -> TReal) = return $ text "double"
+cType (tag &&& children -> (TOption, [t])) = return . text $ "shared_ptr" <> angles (cType t)
+cType (tag &&& children -> (TIndirection, [t])) = return $ "shared_ptr" <> angles (cType t)
+cType (tag &&& children -> (TTuple, ts)) = return $ "tuple" <> angles . sep . punctuate comma $ map cType ts
+cType (tag &&& children -> (TRecord ids, ts)) = return . text . recordName $ zip ids ts
+
+-- TODO: Three pieces of information necessary to generate a collection type:
+--  1. The list of named annotations on the collections.
+--  2. The types provided to each annotation to fulfill their type variable requirements.
+--  3. The content type.
+cType (tag &&& children &&& annotations -> (TCollection, (cs, as))) = throwE CPPGenE
+
+-- TODO: Are these all the cases that need to be handled?
+cType _ = throwE CPPGenE
 
 expression :: K3 Expression -> CPPGenM Doc
 expression (tag -> EConstant c) = constant c
