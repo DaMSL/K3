@@ -17,6 +17,21 @@ type CPPGenE = ()
 
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
+data RContext
+    = RForget
+    | RReturn
+    | RName Identifier
+    | RSplice ([CPPGenR] -> CPPGenR)
+
+instance Show RContext where
+    show RForget = "RForget"
+    show RReturn = "RReturn"
+    show RName i = "RName \"" ++ i ++ "\""
+    show RSplice f = "RSplice <opaque>"
+
+newtype CPPGenR = Doc
+
+throwE :: CPPGenE -> CPPGenM a
 throwE = left
 
 runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
