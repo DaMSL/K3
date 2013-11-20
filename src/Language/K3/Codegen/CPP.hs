@@ -86,6 +86,26 @@ cType (tag &&& children &&& annotations -> (TCollection, (cs, as))) = throwE CPP
 -- TODO: Are these all the cases that need to be handled?
 cType _ = throwE CPPGenE
 
+cDecl :: K3 Type -> K3 Expression -> CPPGenM CPPGenR
+cDecl = undefined
+
+inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
+inline e = do
+    k <- genSym
+    decl <- cDecl (canonicalType e) k
+    effects <- reify (RName k) e
+    return $ (decl <> semi <$> effects, text k)
+
+reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
+reify r e = do
+    (effects, value) <- inline e
+    let reification = case r of
+        RForget -> empty
+        RName k -> text k <+> equals <+> value <> semi
+        RReturn -> text "return" <+> value <> semi
+        RSplice f -> f [value]
+    return $ effects <$> reification
+
 expression :: K3 Expression -> CPPGenM Doc
 expression (tag -> EConstant c) = constant c
 expression (tag &&& children -> (EIfThenElse, [p, t, e])) = do

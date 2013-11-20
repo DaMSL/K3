@@ -33,3 +33,8 @@ annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
 annotationComboIdL (namedLAnnotations -> [])  = Nothing
 annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
+
+-- Record Identifiers
+
+recordName :: [(Identifier, Type)] -> Identifier
+recordName = undefined
