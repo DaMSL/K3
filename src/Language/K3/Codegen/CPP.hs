@@ -37,7 +37,27 @@ throwE = left
 runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
-constant :: Constant -> CPPGenM Doc
+unarySymbol :: Operator -> CPPGenM CPPGenR
+unarySymbol ONot = return $ text "!"
+unarySymbol ONeg = return $ text "-"
+unarySymbol _ = throwE CPPGenE
+
+binarySymbol :: Operator -> CPPGenM CPPGenR
+binarySymbol OAdd = return $ text "+"
+binarySymbol OSub = return $ text "-"
+binarySymbol OMul = return $ text "*"
+binarySymbol ODiv = return $ text "/"
+binarySymbol OEqu = return $ text "=="
+binarySymbol ONeq = return $ text "!="
+binarySymbol OLth = return $ text "<"
+binarySymbol OLeq = return $ text "<="
+binarySymbol OGth = return $ text ">"
+binarySymbol OGeq = return $ text ">="
+binarySymbol OAnd = return $ text "&&"
+binarySymbol OOr = return $ text "||"
+binarySymbol _ = throwE CPPGenE
+
+constant :: Constant -> CPPGenM CPPGenR
 constant (CBool True) = return $ text "true"
 constant (CBool False) = return $ text "false"
 constant (CInt i) = return $ int i
@@ -66,23 +86,3 @@ binary op a b = do
     b' <- expression b
     bs <- binarySymbol op
     return $ parens $ a' <+> text bs <+> b'
-
-binarySymbol :: Operator -> CPPGenM String
-binarySymbol OAdd = return "+"
-binarySymbol OSub = return "-"
-binarySymbol OMul = return "*"
-binarySymbol ODiv = return "/"
-binarySymbol OEqu = return "=="
-binarySymbol ONeq = return "!="
-binarySymbol OLth = return "<"
-binarySymbol OLeq = return "<="
-binarySymbol OGth = return ">"
-binarySymbol OGeq = return ">="
-binarySymbol OAnd = return "&&"
-binarySymbol OOr = return "||"
-binarySymbol _ = throwE ()
-
-unarySymbol :: Operator -> CPPGenM String
-unarySymbol ONot = return "!"
-unarySymbol ONeg = return "-"
-unarySymbol _ = throwE ()
