@@ -28,7 +28,6 @@ trigger register : int = \x -> (
 
 trigger bcast : () = \_ ->
   (send, 127.0.0.1:50000) <- ()
-  //nodes.fold (\acc -> (\nodeAddr -> (send, nodeAddr) <- ()) 0)
 
 trigger send : () = \_ -> (elect, successor) <- maxUid
 
