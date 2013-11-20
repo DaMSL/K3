@@ -7,12 +7,14 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import qualified Data.Set as S
-
 import Text.PrettyPrint.ANSI.Leijen
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
+import Language.K3.Core.Common
+import Language.K3.Core.Type
+
+import Language.K3.Codegen.Common
 
 type CPPGenS = ()
 data CPPGenE = CPPGenE
@@ -28,10 +30,10 @@ data RContext
 instance Show RContext where
     show RForget = "RForget"
     show RReturn = "RReturn"
-    show RName i = "RName \"" ++ i ++ "\""
-    show RSplice f = "RSplice <opaque>"
+    show (RName i) = "RName \"" ++ i ++ "\""
+    show (RSplice _) = "RSplice <opaque>"
 
-newtype CPPGenR = Doc
+type CPPGenR = Doc
 
 throwE :: CPPGenE -> CPPGenM a
 throwE = left
@@ -39,10 +41,25 @@ throwE = left
 runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
+genSym :: CPPGenM Identifier
+genSym = undefined
+
+include :: String -> CPPGenM ()
+include = undefined
+
+namespace :: String -> CPPGenM ()
+namespace = undefined
+
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
 unarySymbol ONeg = return $ text "-"
 unarySymbol _ = throwE CPPGenE
+
+unary :: Operator -> K3 Expression -> CPPGenM Doc
+unary op a = do
+    a' <- expression a
+    us <- unarySymbol op
+    return $ us <> parens a'
 
 binarySymbol :: Operator -> CPPGenM CPPGenR
 binarySymbol OAdd = return $ text "+"
@@ -59,6 +76,13 @@ binarySymbol OAnd = return $ text "&&"
 binarySymbol OOr = return $ text "||"
 binarySymbol _ = throwE CPPGenE
 
+binary :: Operator -> K3 Expression -> K3 Expression -> CPPGenM Doc
+binary op a b = do
+    a' <- expression a
+    b' <- expression b
+    bs <- binarySymbol op
+    return $ parens $ a' <+> bs <+> b'
+
 constant :: Constant -> CPPGenM CPPGenR
 constant (CBool True) = return $ text "true"
 constant (CBool False) = return $ text "false"
@@ -66,27 +90,33 @@ constant (CInt i) = return $ int i
 constant (CReal d) = return $ double d
 constant (CString s) = return $ text "string" <> (parens . text $ show s)
 constant (CNone _) = return $ text "null"
+constant _ = throwE CPPGenE
 
-cType :: K3 Tyype -> CPPGenM CPPGenR
+cType :: K3 Type -> CPPGenM CPPGenR
 cType (tag -> TBool) = return $ text "bool"
 cType (tag -> TByte) = return $ text "unsigned char"
 cType (tag -> TInt) = return $ text "int"
 cType (tag -> TReal) = return $ text "double"
-cType (tag &&& children -> (TOption, [t])) = return . text $ "shared_ptr" <> angles (cType t)
-cType (tag &&& children -> (TIndirection, [t])) = return $ "shared_ptr" <> angles (cType t)
-cType (tag &&& children -> (TTuple, ts)) = return $ "tuple" <> angles . sep . punctuate comma $ map cType ts
+cType (tag &&& children -> (TOption, [t])) = cType t >>= return . (text "shared_ptr" <>) . angles
+cType (tag &&& children -> (TIndirection, [t])) = cType t >>= return . (text "shared_ptr" <>) . angles
+cType (tag &&& children -> (TTuple, ts))
+    = mapM cType ts >>= return . (text "tuple" <>) . angles . sep . punctuate comma
 cType (tag &&& children -> (TRecord ids, ts)) = return . text . recordName $ zip ids ts
 
 -- TODO: Three pieces of information necessary to generate a collection type:
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType (tag &&& children &&& annotations -> (TCollection, (cs, as))) = throwE CPPGenE
+cType (tag &&& children &&& annotations -> (TCollection, (_, _))) = throwE CPPGenE
 
 -- TODO: Are these all the cases that need to be handled?
 cType _ = throwE CPPGenE
 
-cDecl :: K3 Type -> K3 Expression -> CPPGenM CPPGenR
+-- TODO: This really needs to go somewhere else.
+canonicalType :: K3 Expression -> K3 Type
+canonicalType = undefined
+
+cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl = undefined
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
@@ -94,38 +124,38 @@ inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
     effects <- reify (RName k) e
-    return $ (decl <> semi <$> effects, text k)
+    return (decl <> semi <$> effects, text k)
 
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
 reify r e = do
     (effects, value) <- inline e
-    let reification = case r of
+    return $ effects <$> case r of
         RForget -> empty
         RName k -> text k <+> equals <+> value <> semi
         RReturn -> text "return" <+> value <> semi
         RSplice f -> f [value]
-    return $ effects <$> reification
 
 expression :: K3 Expression -> CPPGenM Doc
 expression (tag -> EConstant c) = constant c
+expression (tag -> EVariable i) = return $ text i
+
+expression (tag &&& children -> (ETuple, es)) = do
+    include "boost/tuple/tuple.hpp"
+    namespace "boost::tuples"
+    es' <- mapM expression es
+    return $ call (text "make_tuple") es'
+
+expression (tag &&& children -> (EProject i, [r])) = do
+    r' <- expression r
+    return $ r' <> dot <> text i
+
+expression (tag &&& children -> (EOperate op, [a])) = unary op a
+expression (tag &&& children -> (EOperate op, [a, b])) = binary op a b
+
 expression (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     p' <- expression p
     t' <- expression t
     e' <- expression e
     return $ text "if" <+> parens p' <+> braces t' <+> text "else" <+> braces e'
 
-expression (tag &&& children -> (EOperate op, [a])) = unary op a
-expression (tag &&& children -> (EOperate op, [a, b])) = binary op a b
-
-unary :: Operator -> K3 Expression -> CPPGenM Doc
-unary op a = do
-    a' <- expression a
-    us <- unarySymbol op
-    return $ text us <> parens a'
-
-binary :: Operator -> K3 Expression -> K3 Expression -> CPPGenM Doc
-binary op a b = do
-    a' <- expression a
-    b' <- expression b
-    bs <- binarySymbol op
-    return $ parens $ a' <+> text bs <+> b'
+expression _ = throwE CPPGenE

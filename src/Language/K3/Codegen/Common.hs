@@ -5,12 +5,14 @@ module Language.K3.Codegen.Common (
     annotationComboId,
     annotationComboIdT,
     annotationComboIdE,
-    annotationComboIdL
+    annotationComboIdL,
+
+    recordName
 ) where
 
 import Language.K3.Core.Common
 
-import Language.K3.Core.Annotation (Annotation)
+import Language.K3.Core.Annotation (K3, Annotation)
 import Language.K3.Core.Expression (Expression, namedEAnnotations)
 import Language.K3.Core.Literal (Literal, namedLAnnotations)
 import Language.K3.Core.Type (Type, namedTAnnotations)
@@ -36,5 +38,5 @@ annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 
 -- Record Identifiers
 
-recordName :: [(Identifier, Type)] -> Identifier
+recordName :: [(Identifier, K3 Type)] -> Identifier
 recordName = undefined
