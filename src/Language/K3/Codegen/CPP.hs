@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP where
@@ -123,6 +124,18 @@ cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl = undefined
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
+inline (tag -> EConstant c) = (empty,) <$> constant c
+inline (tag -> EVariable v) = return (empty, text v)
+inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
+    (e, v) <- inline c
+    t <- cType (canonicalType c)
+    return (e, text "shared_ptr" <> angles t <> parens v)
+inline (tag &&& children -> (ETuple, cs)) = do
+    (es, vs) <- unzip <$> mapM inline cs
+    return (vsep es, text "make_tuple" <> tupled vs)
+inline (tag &&& children -> (ERecord ids, cs)) = do
+    (es, vs) <- unzip <$> mapM inline cs
+    return (vsep es, text (recordName $ zip ids (map canonicalType cs)) <> tupled vs)
 inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
