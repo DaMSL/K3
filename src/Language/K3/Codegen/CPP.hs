@@ -7,7 +7,10 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import Text.PrettyPrint.ANSI.Leijen
+import Data.Functor
+
+import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import qualified Text.PrettyPrint.ANSI.Leijen as PL
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
@@ -97,10 +100,10 @@ cType (tag -> TBool) = return $ text "bool"
 cType (tag -> TByte) = return $ text "unsigned char"
 cType (tag -> TInt) = return $ text "int"
 cType (tag -> TReal) = return $ text "double"
-cType (tag &&& children -> (TOption, [t])) = cType t >>= return . (text "shared_ptr" <>) . angles
-cType (tag &&& children -> (TIndirection, [t])) = cType t >>= return . (text "shared_ptr" <>) . angles
+cType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> cType t
+cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> cType t
 cType (tag &&& children -> (TTuple, ts))
-    = mapM cType ts >>= return . (text "tuple" <>) . angles . sep . punctuate comma
+    = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
 cType (tag &&& children -> (TRecord ids, ts)) = return . text . recordName $ zip ids ts
 
 -- TODO: Three pieces of information necessary to generate a collection type:
@@ -124,12 +127,12 @@ inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
     effects <- reify (RName k) e
-    return (decl <> semi <$> effects, text k)
+    return (decl <> semi PL.<$> effects, text k)
 
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
 reify r e = do
     (effects, value) <- inline e
-    return $ effects <$> case r of
+    return $ effects PL.<$> case r of
         RForget -> empty
         RName k -> text k <+> equals <+> value <> semi
         RReturn -> text "return" <+> value <> semi
