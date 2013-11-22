@@ -20,8 +20,8 @@ import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
 
-type CPPGenS = ()
-data CPPGenE = CPPGenE
+data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR }
+data CPPGenE = CPPGenE deriving (Eq, Read, Show)
 
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
@@ -45,8 +45,14 @@ throwE = left
 runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
+defaultCPPGenS :: CPPGenS
+defaultCPPGenS = CPPGenS 0 empty empty
+
 genSym :: CPPGenM Identifier
-genSym = undefined
+genSym = do
+    current <- uuid <$> get
+    modify (\s -> s { uuid = succ (uuid s) })
+    return $ '_':  show current
 
 include :: String -> CPPGenM ()
 include = undefined
