@@ -127,7 +127,9 @@ canonicalType :: K3 Expression -> K3 Type
 canonicalType = undefined
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
-cDecl = undefined
+cDecl t i = do
+    ct <- cType t
+    return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline (tag -> EConstant c) = (empty,) <$> constant c
