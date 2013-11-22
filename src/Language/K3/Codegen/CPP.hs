@@ -144,6 +144,20 @@ inline (tag &&& children -> (ETuple, cs)) = do
 inline (tag &&& children -> (ERecord ids, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text (recordName $ zip ids (map canonicalType cs)) <> tupled vs)
+inline (tag &&& children -> (EOperate uop, [c])) = do
+    (ce, cv) <- inline c
+    usym <- unarySymbol uop
+    return (ce, usym <> cv)
+inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
+    ae <- reify RForget a
+    (be, bv) <- inline b
+    sym <- binarySymbol OSeq
+    return (ae PL.<$> be, bv)
+inline (tag &&& children -> (EOperate bop, [a, b])) = do
+    (ae, av) <- inline a
+    (be, bv) <- inline b
+    bsym <- binarySymbol bop
+    return (ae PL.<$> be, av <+> bsym <+> bv)
 inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
