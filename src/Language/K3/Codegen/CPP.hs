@@ -148,7 +148,7 @@ inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
     effects <- reify (RName k) e
-    return (decl <> semi PL.<$> effects, text k)
+    return (decl PL.<$> effects, text k)
 
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
 reify r e = do
