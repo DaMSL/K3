@@ -165,6 +165,25 @@ inline e = do
     return (decl PL.<$> effects, text k)
 
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
+reify r (tag &&& children -> (ELetIn x, [e, b])) = do
+    d <- cDecl (canonicalType e) x
+    ee <- reify (RName x) e
+    be <- reify r b
+    return $ braces $ vsep [d, ee, be]
+reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
+    d <- cDecl (head . children $ canonicalType e) x
+    (ee, ev) <- inline e
+    se <- reify r s
+    ne <- reify r n
+    return $ ee PL.<$>
+        text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
+        braces (d PL.<$> text x <+> equals <+> text "*" <> ev <> semi PL.<$> se) <+> text "else" <+>
+        braces ne
+reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
+    (pe, pv) <- inline p
+    te <- reify r t
+    ee <- reify r e
+    return $ pe PL.<$> (hang 4 $ text "if" <+> parens pv <+> braces te <+> text "else" <+> braces ee)
 reify r e = do
     (effects, value) <- inline e
     return $ effects PL.<$> case r of
