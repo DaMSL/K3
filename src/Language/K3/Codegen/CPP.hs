@@ -146,6 +146,8 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
     return (ce, usym <> cv)
+
+-- TODO: Solve unnecessary reification issuse when right operand to OSeq is itself a reification form.
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
@@ -155,6 +157,7 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (be, bv) <- inline b
     bsym <- binarySymbol bop
     return (ae PL.<$> be, av <+> bsym <+> bv)
+inline (tag &&& children -> (EAssign x, [e])) = (,text "null") <$> reify (RName x) e
 inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
@@ -176,6 +179,20 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
         text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
         braces (d PL.<$> text x <+> equals <+> text "*" <> ev <> semi PL.<$> se) <+> text "else" <+>
         braces ne
+reify r (tag &&& children -> (EBindAs b, [a, e])) = do
+    (ae, g) <- case a of
+        (tag -> EVariable v) -> return (empty, v)
+        _ -> do
+            g' <- genSym
+            ae' <- reify (RName g') a
+            return (ae', g')
+    ee <- reify r e
+    return $ (ae PL.<$>) . braces . (PL.<$> ee) $ case b of
+        BIndirection i -> text i <+> equals <+> text "*" <> text g <> semi
+        BTuple is -> vsep
+            [text i <+> equals <+> text "get" <> angles (int x) <> parens (text g) <> semi | (i, x) <- zip is [0..]]
+        BRecord iis -> vsep
+            [text i <+> equals <+> text g <> dot <> text v <> semi | (i, v) <- iis]
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
