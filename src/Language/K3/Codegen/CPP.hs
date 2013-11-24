@@ -185,18 +185,18 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
         braces ne
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
-        (tag -> EVariable v) -> return (empty, v)
+        (tag -> EVariable v) -> return (empty, text v)
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
-            return (ae', g')
+            return (ae', text g')
     ee <- reify r e
     return $ (ae PL.<$>) . braces . (PL.<$> ee) $ case b of
-        BIndirection i -> text i <+> equals <+> text "*" <> text g <> semi
+        BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
         BTuple is -> vsep
-            [text i <+> equals <+> text "get" <> angles (int x) <> parens (text g) <> semi | (i, x) <- zip is [0..]]
+            [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
         BRecord iis -> vsep
-            [text i <+> equals <+> text g <> dot <> text v <> semi | (i, v) <- iis]
+            [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
@@ -211,26 +211,4 @@ reify r e = do
         RSplice f -> f [value]
 
 expression :: K3 Expression -> CPPGenM Doc
-expression (tag -> EConstant c) = constant c
-expression (tag -> EVariable i) = return $ text i
-
-expression (tag &&& children -> (ETuple, es)) = do
-    include "boost/tuple/tuple.hpp"
-    namespace "boost::tuples"
-    es' <- mapM expression es
-    return $ call (text "make_tuple") es'
-
-expression (tag &&& children -> (EProject i, [r])) = do
-    r' <- expression r
-    return $ r' <> dot <> text i
-
-expression (tag &&& children -> (EOperate op, [a])) = unary op a
-expression (tag &&& children -> (EOperate op, [a, b])) = binary op a b
-
-expression (tag &&& children -> (EIfThenElse, [p, t, e])) = do
-    p' <- expression p
-    t' <- expression t
-    e' <- expression e
-    return $ text "if" <+> parens p' <+> braces t' <+> text "else" <+> braces e'
-
 expression _ = throwE CPPGenE
