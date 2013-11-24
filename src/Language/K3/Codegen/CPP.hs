@@ -107,6 +107,7 @@ cType (tag -> TBool) = return $ text "bool"
 cType (tag -> TByte) = return $ text "unsigned char"
 cType (tag -> TInt) = return $ text "int"
 cType (tag -> TReal) = return $ text "double"
+cType (tag -> TString) = return $ text "string"
 cType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> cType t
 cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> cType t
 cType (tag &&& children -> (TTuple, ts))
@@ -127,6 +128,10 @@ canonicalType :: K3 Expression -> K3 Type
 canonicalType = undefined
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
+cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
+    ctr <- cType tr
+    cta <- cType ta
+    return $ ctr <+> text i <> parens cta <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
