@@ -20,7 +20,7 @@ import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
 
-data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR }
+data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR } deriving Show
 data CPPGenE = CPPGenE deriving (Eq, Read, Show)
 
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
