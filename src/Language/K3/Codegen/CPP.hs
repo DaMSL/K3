@@ -14,11 +14,15 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PL
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Expression
 import Language.K3.Core.Common
+import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
+
+import qualified Language.K3.Core.Constructor.Declaration as D
+import qualified Language.K3.Core.Constructor.Type as T
 
 data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR } deriving Show
 data CPPGenE = CPPGenE deriving (Eq, Read, Show)
@@ -217,3 +221,30 @@ reify r e = do
 
 expression :: K3 Expression -> CPPGenM Doc
 expression _ = throwE CPPGenE
+
+declaration :: K3 Declaration -> CPPGenM CPPGenR
+declaration (tag -> DGlobal i t Nothing) = cDecl t i
+declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
+            (Just (tag &&& children -> (ELambda x, [b])))) = do
+    newF <- cDecl t i
+    modify (\s -> s { forwards = forwards s PL.<$> newF })
+    body <- reify RReturn b
+    cta <- cType ta
+    ctr <- cType tr
+    return $ ctr <+> text i <> parens (cta <+> text x) <+> braces body
+declaration (tag -> DGlobal i t (Just e)) = do
+    newI <- reify (RName i) e
+    modify (\s -> s { initializations = initializations s PL.<$> newI })
+    cDecl t i
+declaration (tag -> DTrigger i t e) = declaration (D.global i t (Just e))
+declaration (tag &&& children -> (DRole n, cs)) = do
+    subDecls <- vsep <$> mapM declaration cs
+    return $ text "namespace" <+> text n <+> braces subDecls
+declaration _ = return empty
+
+program :: K3 Declaration -> CPPGenM CPPGenR
+program d = do
+    p <- declaration d
+    currentS <- get
+    i <- cType T.unit >>= \ctu -> return $ ctu <+> text "atInit" <> parens ctu <+> braces (initializations currentS)
+    return $ vsep [forwards currentS, i, p]
