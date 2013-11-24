@@ -146,8 +146,6 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
     return (ce, usym <> cv)
-
--- TODO: Solve unnecessary reification issuse when right operand to OSeq is itself a reification form.
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
@@ -165,6 +163,12 @@ inline e = do
     return (decl PL.<$> effects, text k)
 
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
+
+-- TODO: Is this the fix we need for the unnecessary reification issues?
+reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
+    ae <- reify RForget a
+    be <- reify r b
+    return $ ae PL.<$> be
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     d <- cDecl (canonicalType e) x
     ee <- reify (RName x) e
