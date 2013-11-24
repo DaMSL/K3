@@ -127,9 +127,7 @@ canonicalType :: K3 Expression -> K3 Type
 canonicalType = undefined
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
-cDecl t i = do
-    ct <- cType t
-    return $ ct <+> text i <> semi
+cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline (tag -> EConstant c) = (empty,) <$> constant c
@@ -151,7 +149,6 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    sym <- binarySymbol OSeq
     return (ae PL.<$> be, bv)
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
@@ -183,7 +180,7 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
     ee <- reify r e
-    return $ pe PL.<$> (hang 4 $ text "if" <+> parens pv <+> braces te <+> text "else" <+> braces ee)
+    return $ pe PL.<$> hang 4 (text "if" <+> parens pv <+> braces te <+> text "else" <+> braces ee)
 reify r e = do
     (effects, value) <- inline e
     return $ effects PL.<$> case r of
