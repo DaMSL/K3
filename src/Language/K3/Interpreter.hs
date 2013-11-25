@@ -308,20 +308,6 @@ emptyAnnotatedCollection dst n =
 emptyCollection :: Interpretation Value
 emptyCollection = emptyAnnotatedCollection InMemory ""
 
--- TODO monads
-class EmbeddedKV v k where
-  extractKey :: v -> Interpretation k
-  embedKey   :: k -> v -> v
-
-{- move embed / extract into its own typeclass -}
-class (Monad m, Dataspace m ds v) => AssociativeDataSpace m ds k v where
-  lookupKV       :: ds -> k -> m (Maybe v)
-  removeKV       :: ds -> k -> v -> m ds
-  insertKV       :: ds -> k -> v -> m ds
-  replaceKV      :: ds -> k -> v -> m ds
-
-{- associative dataspace for groupby, with lookup and such-}
-
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
   newDS _ _      = return []
@@ -514,13 +500,13 @@ matchPair v =
     otherwise    -> throwE $ RunTimeTypeError "Non-tuple"
 
 -- TODO kill dependence on Interpretation for error handling
-instance EmbeddedKV Value Value where
+instance EmbeddedKV Interpretation Value Value where
   extractKey value = do
     (key, _) <- matchPair value
     return key
-  embedKey key value = VTuple [key, value]
+  embedKey key value = return $ VTuple [key, value]
   
-instance (Dataspace Interpretation dst Value) => AssociativeDataSpace Interpretation dst Value Value where
+instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
   lookupKV ds key = 
     foldDS (\result cur_val ->  do
       (cur_key, cur_val) <- matchPair cur_val
@@ -535,7 +521,7 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataSpace Interpreta
         inner val = do
           cur_val <- extractKey val
           return $ if cur_val == key then False else True
-  insertKV ds key value = insertDS ds $ embedKey key value
+  insertKV ds key value = embedKey key value >>= insertDS ds
   replaceKV ds k v = do
     val_removed <- removeKV ds k vunit
     insertKV ds k v
@@ -1272,7 +1258,7 @@ builtinLiftedAttribute annId n t uid
               -- TODO typecheck that collection
               copy (defaultCollectionBody kvRecords)
 
-        groupByElement :: (AssociativeDataSpace (Interpretation) ads Value Value) =>
+        groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value) =>
           (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
         groupByElement gb' f' accInit acc v = do
           k <- withClosure gb' v

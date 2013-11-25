@@ -2,7 +2,6 @@
 
 module Language.K3.Runtime.Dataspace (
   Dataspace,
-
   newDS,
   copyDataspace,
   peekDS,
@@ -14,7 +13,17 @@ module Language.K3.Runtime.Dataspace (
   mapDS_,
   filterDS,
   combineDS,
-  splitDS
+  splitDS,
+  
+  EmbeddedKV,
+  extractKey,
+  embedKey,
+
+  AssociativeDataspace,
+  lookupKV,
+  removeKV,
+  insertKV,
+  replaceKV,
 ) where
 
 {- TODO take out dependence on Interpretation (-> m)
@@ -35,3 +44,16 @@ class (Monad m) => Dataspace m ds v where
   combineDS     :: ds -> ds -> v -> m ds
   splitDS       :: ds -> v -> m (ds, ds)
 {- casting? -}
+
+-- TODO monads
+class (Monad m) => EmbeddedKV m v k where
+  extractKey :: v -> m k
+  embedKey   :: k -> v -> m v
+
+{- move embed / extract into its own typeclass -}
+class (Monad m, Dataspace m ds v) => AssociativeDataspace m ds k v where
+  lookupKV       :: ds -> k -> m (Maybe v)
+  removeKV       :: ds -> k -> v -> m ds
+  insertKV       :: ds -> k -> v -> m ds
+  replaceKV      :: ds -> k -> v -> m ds
+
