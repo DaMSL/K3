@@ -311,20 +311,19 @@ emptyCollection = emptyAnnotatedCollection InMemory ""
  - move the typeclasses to Runtime/Dataspace.hs
  - (move the instances to Interpreter/IDataspace.hs)
  -}
-class DataSpace ds v where
-  newDS         :: ds -> v -> Interpretation ds -- this is bad?
-  copyDataspace :: ds -> v -> Interpretation ds
-  peekDS        :: ds -> Interpretation (Maybe v)
-  --emptyDS       :: ds -> Interpretation Bool
-  insertDS      :: ds -> v -> Interpretation ds
-  deleteDS      :: v -> ds -> Interpretation ds
-  updateDS      :: v -> v -> ds -> Interpretation ds
-  foldDS        :: ( a -> v -> Interpretation a ) -> a -> ds -> Interpretation a
-  mapDS         :: ( v -> Interpretation v ) -> ds -> Interpretation ds
-  mapDS_        :: ( v -> Interpretation v ) -> ds -> Interpretation ()
-  filterDS      :: ( v -> Interpretation Bool ) -> ds -> Interpretation ds
-  combineDS     :: ds -> ds -> v -> Interpretation ds
-  splitDS       :: ds -> v -> Interpretation (ds, ds)
+class (Monad m) => DataSpace m ds v where
+  newDS         :: ds -> v -> m ds -- this is bad?
+  copyDataspace :: ds -> v -> m ds
+  peekDS        :: ds -> m (Maybe v)
+  insertDS      :: ds -> v -> m ds
+  deleteDS      :: v -> ds -> m ds
+  updateDS      :: v -> v -> ds -> m ds
+  foldDS        :: ( a -> v -> m a ) -> a -> ds -> m a
+  mapDS         :: ( v -> m v ) -> ds -> m ds
+  mapDS_        :: ( v -> m v ) -> ds -> m ()
+  filterDS      :: ( v -> m Bool ) -> ds -> m ds
+  combineDS     :: ds -> ds -> v -> m ds
+  splitDS       :: ds -> v -> m (ds, ds)
 {- casting? -}
 
 -- TODO monads
@@ -333,16 +332,16 @@ class EmbeddedKV v k where
   embedKey   :: k -> v -> v
 
 {- move embed / extract into its own typeclass -}
-class (DataSpace ds v) => AssociativeDataSpace ds k v where
-  lookupKV       :: ds -> k -> Interpretation (Maybe v)
-  removeKV       :: ds -> k -> v -> Interpretation ds
-  insertKV       :: ds -> k -> v -> Interpretation ds
-  replaceKV      :: ds -> k -> v -> Interpretation ds
+class (Monad m, DataSpace m ds v) => AssociativeDataSpace m ds k v where
+  lookupKV       :: ds -> k -> m (Maybe v)
+  removeKV       :: ds -> k -> v -> m ds
+  insertKV       :: ds -> k -> v -> m ds
+  replaceKV      :: ds -> k -> v -> m ds
 
 {- associative dataspace for groupby, with lookup and such-}
 
 {- generalize on value, move to Runtime/Dataspace.hs -}
-instance DataSpace [Value] Value where
+instance (Monad m) => DataSpace m [Value] Value where
   newDS _ _      = return []
   copyDataspace ls _ = return ls
   peekDS ls = case ls of
@@ -371,8 +370,11 @@ openCollectionFile name mode =
     openFile name name wd Nothing mode
     return ()
 
-foldFile :: (a -> Value -> Interpretation a) -> a -> Identifier -> Interpretation a
-foldFile accumulation initial_accumulator file_id =
+-- Pass a lift into these functions, so that "inner loop" can be in 
+-- some Monad m.  foldDS etc. can know which lift to use, since they
+-- are in the instance of the typeclass.
+--foldFile :: (Monad m) => (EngineM b c -> m c ) -> (a -> b -> m a) -> a -> Identifier -> m a
+foldFile liftM accumulation initial_accumulator file_id =
  do
    file_over <- liftEngine $ hasRead file_id
    case file_over of
@@ -385,38 +387,41 @@ foldFile accumulation initial_accumulator file_id =
            Nothing -> return initial_accumulator
            Just val -> do
              new_acc <- accumulation initial_accumulator val
-             foldFile accumulation new_acc file_id
+             foldFile liftM accumulation new_acc file_id
 
-mapFile :: (Value -> Interpretation Value) -> Identifier -> Interpretation Identifier
-mapFile function file_id = do
-  new_id <- liftEngine $ generateCollectionFilename
+--mapFile :: (Monad m) => (EngineM b c -> m c) -> (b -> EngineM b b) -> Identifier -> EngineM b Identifier
+mapFile liftM function file_id = do
+  new_id <- liftEngine generateCollectionFilename
   liftEngine $ openCollectionFile new_id "w"
-  foldFile (inner_func new_id) () file_id
+  foldFile liftM (inner_func new_id) () file_id
   liftEngine $ close new_id
   return new_id
   where
-    inner_func :: Identifier -> () -> Value -> Interpretation ()
+    --The typechecker didn't think the b here and the b in mapFile
+    --were the same b, so it didn't typecheck.  Letting it infer
+    --everything lets it figure it out
+    --inner_func :: Identifier -> () -> b -> EngineM b ()
     inner_func new_id _ v = do
       new_val <- function v
       liftEngine $ doWrite new_id new_val
       return ()
-mapFile_ :: (Value -> Interpretation a) -> Identifier -> Interpretation ()
-mapFile_ function file_id = do
-  foldFile inner_func () file_id
+--mapFile_ :: (Monad m) => (EngineM b c -> m c) -> (b -> m a) -> Identifier -> m ()
+mapFile_ liftM function file_id = do
+  foldFile liftM inner_func () file_id
   where
-    inner_func :: () -> Value -> Interpretation ()
+    --inner_func :: () -> b -> EngineM b ()
     inner_func _ v = do
       function v
       return ()
-filterFile :: (Value -> Interpretation Bool) -> Identifier -> Interpretation Identifier
-filterFile predicate old_id = do
-  new_id <- liftEngine $ generateCollectionFilename
+--filterFile :: (b -> EngineM b Bool) -> Identifier -> EngineM b Identifier
+filterFile liftM predicate old_id = do
+  new_id <- liftEngine generateCollectionFilename
   liftEngine $ openCollectionFile new_id "w"
-  foldFile (inner_func new_id) () old_id
-  liftEngine $ close new_id
+  foldFile liftM (inner_func new_id) () old_id
+  liftM $ close new_id
   return new_id
   where
-    inner_func :: Identifier -> () -> Value -> Interpretation ()
+    --inner_func :: Identifier -> () -> Value -> EngineM b ()
     inner_func new_id _ v = do
       include <- predicate v
       if include then
@@ -427,12 +432,12 @@ filterFile predicate old_id = do
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
-instance DataSpace Identifier Value where
-  newDS _ _ = liftEngine $ generateCollectionFilename
+instance DataSpace Interpretation Identifier Value where
+  newDS _ _ = liftEngine generateCollectionFilename
   copyDataspace old_id _ = do
     new_id <- liftEngine $ generateCollectionFilename
     liftEngine $ openCollectionFile new_id "w"
-    foldFile (\_ val -> do
+    foldFile liftEngine (\_ val -> do
       liftEngine $ doWrite new_id val -- TODO hasWrite
       return ()
       ) () old_id
@@ -452,13 +457,13 @@ instance DataSpace Identifier Value where
     return result
   insertDS file_id v = do
     liftEngine $ openCollectionFile file_id "a"
-    -- can_write <- liftEngine $ hasWrite ext_id -- TODO handle errors here
+    -- can_write <- hasWrite ext_id -- TODO handle errors here
     liftEngine $ doWrite file_id v
     liftEngine $ close file_id
     return $ file_id
   deleteDS v file_id = do -- broken because reading / writing from the same file
     liftEngine $ openCollectionFile file_id "w"
-    foldFile (\truth val -> do
+    foldFile liftEngine (\truth val -> do
       if truth == False && val == v
         then return True
         else do
@@ -469,7 +474,7 @@ instance DataSpace Identifier Value where
     return $ file_id
   updateDS v v' file_id = do
     liftEngine $ openCollectionFile file_id "w"
-    foldFile (\truth val -> do
+    foldFile liftEngine (\truth val -> do
       if truth == False && val == v
         then do
           liftEngine $ doWrite file_id v'
@@ -480,32 +485,32 @@ instance DataSpace Identifier Value where
       ) False file_id
     liftEngine $ close file_id
     return $ file_id
-  foldDS = foldFile
+  foldDS = foldFile liftEngine
   -- Takes the file id of an external collection, then runs the second argument on
   -- each argument, then returns the identifier of the new collection
   mapDS function file_id = do
-    mapFile function file_id
+    mapFile liftEngine function file_id
   mapDS_ function file_id =
-    mapFile_ function file_id
+    mapFile_ liftEngine function file_id
     {-mapDS (\v -> do
       _ <- function v
       return ()
      ) file_id -- why is this expected to be a unit? -}
-  filterDS = filterFile
+  filterDS = filterFile liftEngine
   combineDS self values _ = do
     liftEngine $ openCollectionFile self "a"
-    foldFile (\_ v -> do
+    foldFile liftEngine (\_ v -> do
         liftEngine $ doWrite self v
         return ()
       ) () values
     liftEngine $ close self
     return self
   splitDS self _ = do
-    left  <- liftEngine generateCollectionFilename
-    right <- liftEngine generateCollectionFilename
+    left  <- liftEngine $ generateCollectionFilename
+    right <- liftEngine $ generateCollectionFilename
     liftEngine $ openCollectionFile left "w"
     liftEngine $ openCollectionFile right "w"
-    foldFile (\file cur_val -> do
+    foldFile liftEngine (\file cur_val -> do
       liftEngine $ doWrite file cur_val
       return ( if file == left then right else left )
       ) left self
@@ -514,7 +519,7 @@ instance DataSpace Identifier Value where
     return (left, right)
 
 
-instance DataSpace CollectionDataspace Value 
+instance DataSpace Interpretation CollectionDataspace Value 
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
@@ -526,13 +531,14 @@ matchPair v =
         otherwise ->throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
     otherwise    -> throwE $ RunTimeTypeError "Non-tuple"
 
+-- TODO kill dependence on Interpretation for error handling
 instance EmbeddedKV Value Value where
   extractKey value = do
     (key, _) <- matchPair value
     return key
   embedKey key value = VTuple [key, value]
   
-instance (DataSpace dst Value) => AssociativeDataSpace dst Value Value where
+instance (DataSpace Interpretation dst Value) => AssociativeDataSpace Interpretation dst Value Value where
   lookupKV ds key = 
     foldDS (\result cur_val ->  do
       (cur_key, cur_val) <- matchPair cur_val
@@ -1251,10 +1257,13 @@ builtinLiftedAttribute annId n t uid
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
 
-        mapFn = valWithCollection $ \f (Collection ns ds extId) ->
-          flip (matchFunction mapFnError) f $ 
-            \f'  -> mapDS (withClosure f') ds >>= 
-            \ds' -> copy (defaultCollectionBody ds')
+        mapFn = valWithCollection $ func
+          where
+            func:: Value -> Collection Value -> Interpretation Value
+            func f (Collection ns ds extId) =
+              flip (matchFunction mapFnError) f $ 
+                \f'  -> mapDS (withClosure f') ds >>= 
+                \ds' -> copy (defaultCollectionBody ds')
 
         filterFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction filterFnError) f $
@@ -1281,7 +1290,7 @@ builtinLiftedAttribute annId n t uid
               -- TODO typecheck that collection
               copy (defaultCollectionBody kvRecords)
 
-        groupByElement :: (AssociativeDataSpace ads Value Value) =>
+        groupByElement :: (AssociativeDataSpace (Interpretation) ads Value Value) =>
           (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
         groupByElement gb' f' accInit acc v = do
           k <- withClosure gb' v
@@ -1821,6 +1830,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     packCollectionDataspace d (InMemoryDS v) =
       (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v
     -- for now, external ds are shared file path
+    -- Need to preserve copy semantics for external dataspaces
     
     packDoublyNamedValues d (n, nv)  = (.) <$> rt (showString $ n ++ "=") <*> packNamedValues d nv
 
