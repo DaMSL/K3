@@ -1,7 +1,7 @@
 include "Annotation/Collection.k3"
 
 declare nodeCounter : mut int = 0
-declare rendezvous : immut address = 192.168.0.138:40000
+declare rendezvous : immut address = 127.0.0.1:40000
 
 trigger join : () = \_ -> (register, rendezvous) <- 1
 
