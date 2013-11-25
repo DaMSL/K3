@@ -66,6 +66,7 @@ import Language.K3.Core.Type
 
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
+import Language.K3.Runtime.Dataspace
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -307,32 +308,13 @@ emptyAnnotatedCollection dst n =
 emptyCollection :: Interpretation Value
 emptyCollection = emptyAnnotatedCollection InMemory ""
 
-{- TODO take out dependence on Interpretation (-> m)
- - move the typeclasses to Runtime/Dataspace.hs
- - (move the instances to Interpreter/IDataspace.hs)
- -}
-class (Monad m) => DataSpace m ds v where
-  newDS         :: ds -> v -> m ds -- this is bad?
-  copyDataspace :: ds -> v -> m ds
-  peekDS        :: ds -> m (Maybe v)
-  insertDS      :: ds -> v -> m ds
-  deleteDS      :: v -> ds -> m ds
-  updateDS      :: v -> v -> ds -> m ds
-  foldDS        :: ( a -> v -> m a ) -> a -> ds -> m a
-  mapDS         :: ( v -> m v ) -> ds -> m ds
-  mapDS_        :: ( v -> m v ) -> ds -> m ()
-  filterDS      :: ( v -> m Bool ) -> ds -> m ds
-  combineDS     :: ds -> ds -> v -> m ds
-  splitDS       :: ds -> v -> m (ds, ds)
-{- casting? -}
-
 -- TODO monads
 class EmbeddedKV v k where
   extractKey :: v -> Interpretation k
   embedKey   :: k -> v -> v
 
 {- move embed / extract into its own typeclass -}
-class (Monad m, DataSpace m ds v) => AssociativeDataSpace m ds k v where
+class (Monad m, Dataspace m ds v) => AssociativeDataSpace m ds k v where
   lookupKV       :: ds -> k -> m (Maybe v)
   removeKV       :: ds -> k -> v -> m ds
   insertKV       :: ds -> k -> v -> m ds
@@ -341,7 +323,7 @@ class (Monad m, DataSpace m ds v) => AssociativeDataSpace m ds k v where
 {- associative dataspace for groupby, with lookup and such-}
 
 {- generalize on value, move to Runtime/Dataspace.hs -}
-instance (Monad m) => DataSpace m [Value] Value where
+instance (Monad m) => Dataspace m [Value] Value where
   newDS _ _      = return []
   copyDataspace ls _ = return ls
   peekDS ls = case ls of
@@ -432,7 +414,7 @@ filterFile liftM predicate old_id = do
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
-instance DataSpace Interpretation Identifier Value where
+instance Dataspace Interpretation Identifier Value where
   newDS _ _ = liftEngine generateCollectionFilename
   copyDataspace old_id _ = do
     new_id <- liftEngine $ generateCollectionFilename
@@ -519,7 +501,7 @@ instance DataSpace Interpretation Identifier Value where
     return (left, right)
 
 
-instance DataSpace Interpretation CollectionDataspace Value 
+instance Dataspace Interpretation CollectionDataspace Value 
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
@@ -538,7 +520,7 @@ instance EmbeddedKV Value Value where
     return key
   embedKey key value = VTuple [key, value]
   
-instance (DataSpace Interpretation dst Value) => AssociativeDataSpace Interpretation dst Value Value where
+instance (Dataspace Interpretation dst Value) => AssociativeDataSpace Interpretation dst Value Value where
   lookupKV ds key = 
     foldDS (\result cur_val ->  do
       (cur_key, cur_val) <- matchPair cur_val
