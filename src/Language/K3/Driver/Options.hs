@@ -30,6 +30,7 @@ data Mode
     | Interpret InterpretOptions
     | Print     PrintOptions
     | Typecheck
+    | Analyze   AnalyzeOptions
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
@@ -52,6 +53,12 @@ data PrintOptions
     = PrintAST
     | PrintSyntax
   deriving (Eq, Read, Show)
+
+-- | Analyze Options.
+data AnalyzeOptions
+    = Conflicts
+  deriving (Eq, Read, Show) 
+
 
 -- | Logging and information output options.
 data InfoSpec = InfoSpec { logging   :: LoggerOptions
@@ -87,11 +94,13 @@ modeOptions = subparser (
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "print"     (info printOptions     $ progDesc printDesc)
       <> command "typecheck" (info typeOptions      $ progDesc typeDesc)
+      <> command "analyze"   (info analyzeOptions   $ progDesc analyzeDesc)
     )
   where compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         printDesc     = "Print a K3 program"
         typeDesc      = "Typecheck a K3 program"
+        analyzeDesc   = "Analyze a K3 program"
 
         typeOptions = NilP $ Just Typecheck
 
@@ -187,7 +196,13 @@ astPrintOpt = flag' PrintAST (   long "ast"
 syntaxPrintOpt :: Parser PrintOptions
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
+-- | Analyze options
+analyzeOptions :: Parser Mode
+analyzeOptions = Analyze <$> (conflictsOpt)
 
+conflictsOpt :: Parser AnalyzeOptions
+conflictsOpt = flag' Conflicts (   long "conflicts"
+                              <> help "Print Conflicts output" )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
@@ -247,6 +262,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
   prettyLines Typecheck         = ["Typecheck"]
+  prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr) =

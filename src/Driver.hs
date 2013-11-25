@@ -9,6 +9,8 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Transform.Conflicts
+
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
@@ -31,7 +33,7 @@ dispatch op = do
     Interpret i -> interpret i
     Print     p -> printer p
     Typecheck   -> k3Program >>= either parseError typecheck
-
+    Analyze   a -> analyzer a
   where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
           _         -> error $ lang ++ " compilation not supported."
@@ -44,6 +46,9 @@ dispatch op = do
         k3Program           = parseK3Input (includes $ paths op) (input op)
         printProgram        = either syntaxError putStrLn . programS
 
+        analyzer Conflicts  = k3Program 
+           >>= either parseError (putStrLn . pretty . startConflicts . startAnnotate)
+        
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
 
