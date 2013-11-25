@@ -363,11 +363,12 @@ instance DataSpace [Value] Value where
 {- move these into Runtime/FileDataSpace.hs
  - These are generic functions for operating on collections in files
  -}
-openCollectionFile :: Identifier -> String -> EngineM Value ()
+openCollectionFile :: Identifier -> String -> EngineM a ()
 openCollectionFile name mode =
   do
     engine <- ask
-    void $ openFile name name syntaxValueWD Nothing mode
+    let wd = valueFormat engine
+    openFile name name wd Nothing mode
     return ()
 
 foldFile :: (a -> Value -> Interpretation a) -> a -> Identifier -> Interpretation a
