@@ -177,6 +177,7 @@ $(customLoggingFunctions ["EngineSteps"])
 
 
 data Engine a = Engine { config          :: EngineConfiguration
+                       , valueFormat     :: WireDesc a
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
@@ -462,7 +463,7 @@ perTriggerQueues peers triggerIds =
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
 simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-simulationEngine systemEnv (internalizeWD -> internalWD) = do
+simulationEngine systemEnv wd@(internalizeWD -> internalWD) = do
   config          <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers         <- newEmptyMVar >>= return . Uniprocess
@@ -474,13 +475,13 @@ simulationEngine systemEnv (internalizeWD -> internalWD) = do
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ config
   connState       <- return $ EConnectionState (Nothing, externalConns)
   colCount        <- newMVar 0
-  return $ Engine config internalWD ctrl systemEnv q workers listeners endpoints connState colCount
+  return $ Engine config wd internalWD ctrl systemEnv q workers listeners endpoints connState colCount
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-networkEngine systemEnv (internalizeWD -> internalWD) = do
+networkEngine systemEnv wd@(internalizeWD -> internalWD) = do
   config        <- return $ configureWithAddress $ head peers
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers       <- newEmptyMVar >>= return . Uniprocess
@@ -491,7 +492,7 @@ networkEngine systemEnv (internalizeWD -> internalWD) = do
   externalConns <- emptyConns externalSendAddress config
   connState     <- return $ EConnectionState (internalConns, externalConns)
   colCount      <- newMVar 0
-  engine        <- return $ Engine config internalWD ctrl systemEnv q workers listnrs endpoints connState colCount
+  engine        <- return $ Engine config wd internalWD ctrl systemEnv q workers listnrs endpoints connState colCount
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
