@@ -76,6 +76,7 @@ expression e@(Node (EConstant c :@: as) _) = case c of
 expression (Node (EOperate OApp :@: as) [f, x]) = case f of
     (tag -> EVariable _) -> Node (EOperate OApp :@: as) <$> mapM expression [f, x]
     Node (ELambda i :@: as') [b]  -> Node (ELetIn i :@: (EImmutable:as')) <$> mapM expression [x, b]
+    _ -> Node (EOperate OApp :@: as) <$> mapM expression [f, x]
 expression (Node (EOperate op :@: as) cs) = Node (EOperate op :@: as) <$> mapM expression cs
 
 -- Catch-all case for remaining forms.
