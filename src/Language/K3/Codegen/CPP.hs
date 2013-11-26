@@ -101,22 +101,30 @@ cType (tag -> TReal) = return $ text "double"
 cType (tag -> TString) = return $ text "string"
 cType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> cType t
 cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> cType t
+cType (tag &&& children -> (TTuple, [])) = return $ text "unit_t"
 cType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
-cType (tag &&& children -> (TRecord ids, ts)) = return . text . recordName $ zip ids ts
+cType t@(tag -> TRecord _) = text <$> signature t
 
 -- TODO: Three pieces of information necessary to generate a collection type:
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType (tag &&& children &&& annotations -> (TCollection, (_, _))) = throwE CPPGenE
+cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+    ct <- cType et
+    case annotationComboIdT as of
+        Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show et
+        Just i' -> return $ text i' <> angles ct
 
 -- TODO: Are these all the cases that need to be handled?
-cType _ = throwE CPPGenE
+cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This really needs to go somewhere else.
 canonicalType :: K3 Expression -> K3 Type
-canonicalType = undefined
+canonicalType e = case e @~ isEType of
+    Nothing -> undefined
+    Just (ETypeUB t) -> t
+    Just (ETypeLB t) -> t
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
