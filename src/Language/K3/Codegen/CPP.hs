@@ -25,7 +25,7 @@ import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
 data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR } deriving Show
-data CPPGenE = CPPGenE deriving (Eq, Read, Show)
+data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
 
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
@@ -67,13 +67,7 @@ namespace = undefined
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
 unarySymbol ONeg = return $ text "-"
-unarySymbol _ = throwE CPPGenE
-
-unary :: Operator -> K3 Expression -> CPPGenM Doc
-unary op a = do
-    a' <- expression a
-    us <- unarySymbol op
-    return $ us <> parens a'
+unarySymbol u = throwE $ CPPGenE $ "Invalid Unary Operator " ++ show u
 
 binarySymbol :: Operator -> CPPGenM CPPGenR
 binarySymbol OAdd = return $ text "+"
@@ -88,14 +82,7 @@ binarySymbol OGth = return $ text ">"
 binarySymbol OGeq = return $ text ">="
 binarySymbol OAnd = return $ text "&&"
 binarySymbol OOr = return $ text "||"
-binarySymbol _ = throwE CPPGenE
-
-binary :: Operator -> K3 Expression -> K3 Expression -> CPPGenM Doc
-binary op a b = do
-    a' <- expression a
-    b' <- expression b
-    bs <- binarySymbol op
-    return $ parens $ a' <+> bs <+> b'
+binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
 constant :: Constant -> CPPGenM CPPGenR
 constant (CBool True) = return $ text "true"
@@ -104,7 +91,7 @@ constant (CInt i) = return $ int i
 constant (CReal d) = return $ double d
 constant (CString s) = return $ text "string" <> (parens . text $ show s)
 constant (CNone _) = return $ text "null"
-constant _ = throwE CPPGenE
+constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
 cType :: K3 Type -> CPPGenM CPPGenR
 cType (tag -> TBool) = return $ text "bool"
