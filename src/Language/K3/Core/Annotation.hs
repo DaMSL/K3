@@ -156,4 +156,3 @@ foldMapTree f x n@(Node _ ch) = flip f n $ map (foldMapTree f x) ch
 foldTree :: (b -> Tree a -> b) -> b -> Tree a -> b
 foldTree f x n@(Node _ []) = f x n
 foldTree f x n@(Node _ ch) = flip f n $ foldl (foldTree f) x ch
-

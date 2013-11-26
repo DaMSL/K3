@@ -34,8 +34,9 @@ import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Literal
 import Language.K3.Core.Type
+
+import Language.K3.Codegen.Common
 
 
 data CodeGenerationError = CodeGenerationError String deriving (Eq, Show)
@@ -215,23 +216,6 @@ recordReprId :: Identifier -> Identifier
 recordReprId n = n
 
 
-{- Annotation identifiers. -}
-
-annotationComboId :: [Identifier] -> Identifier
-annotationComboId annIds = intercalate "_" annIds
-
-annotationComboIdT :: [Annotation Type] -> Maybe Identifier
-annotationComboIdT (namedTAnnotations -> [])  = Nothing
-annotationComboIdT (namedTAnnotations -> ids) = Just $ annotationComboId ids
-
-annotationComboIdE :: [Annotation Expression] -> Maybe Identifier
-annotationComboIdE (namedEAnnotations -> [])  = Nothing
-annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
-
-annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
-annotationComboIdL (namedLAnnotations -> [])  = Nothing
-annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
-
 
 {- Code generation annotations -}
 
@@ -367,40 +351,6 @@ ioType t = monadicType "IO" t
 
 engineType :: HS.Type -> HS.Type
 engineType t = HS.TyApp (qMonadicType engineModuleAliasId "EngineM" $ namedType engineValueTypeId) t
-
-
-signature :: K3 Type -> CodeGeneration Identifier
-signature (tag -> TBool)        = return "P"
-signature (tag -> TByte)        = return "B"
-signature (tag -> TInt)         = return "N"
-signature (tag -> TReal)        = return "D"
-signature (tag -> TString)      = return "S"
-signature (tag -> TAddress)     = return "A"
-
-signature (tag &&& children -> (TOption, [x])) = signature x >>= return . ("O" ++)
-
-signature (tag &&& children -> (TTuple, ch)) =
-  mapM signature ch >>= return . (("T" ++ (show $ length ch)) ++) . concat
-
-signature (tag &&& children -> (TRecord ids, ch)) =
-  mapM signature ch 
-  >>= return . intercalate "_" . map (\(x,y) -> (sanitize x) ++ "_" ++ y) . zip ids
-  >>= return . (("R" ++ (show $ length ch)) ++)
-
-signature (tag &&& children -> (TIndirection, [x])) = signature x >>= return . ("I" ++)
-signature (tag &&& children -> (TCollection, [x]))  = signature x >>= return . ("C" ++)
-
-signature (tag &&& children -> (TFunction, [a,r]))  = signature a >>= \s -> signature r >>= return . (("F" ++ s) ++)
-signature (tag &&& children -> (TSink, [x]))        = signature x >>= return . ("K" ++)
-signature (tag &&& children -> (TSource, [x]))      = signature x >>= return . ("U" ++)
-
-signature (tag &&& children -> (TTrigger, [x])) = signature x >>= return . ("G" ++)
-
--- TODO
-signature (tag -> TBuiltIn _)   = throwCG $ CodeGenerationError "Cannot create type signature for builtins"
-
-signature (tag -> _)  = throwCG $ CodeGenerationError "Invalid type found when constructing a signature"
-
 
 typ :: K3 Type -> CodeGeneration HaskellEmbedding
 typ t = typ' t >>= return . HType
