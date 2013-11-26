@@ -134,18 +134,23 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
+inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
+        Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
+        Just ac -> cType t >>= \ct -> return (empty, text ac <> angles ct)
 inline (tag -> EConstant c) = (empty,) <$> constant c
 inline (tag -> EVariable v) = return (empty, text v)
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     t <- cType (canonicalType c)
     return (e, text "shared_ptr" <> angles t <> parens v)
+inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text "make_tuple" <> tupled vs)
-inline (tag &&& children -> (ERecord ids, cs)) = do
+inline e@(tag &&& children -> (ERecord ids, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    return (vsep es, text (recordName $ zip ids (map canonicalType cs)) <> tupled vs)
+    sig <- signature $ canonicalType e
+    return (vsep es, text sig <> tupled vs)
 inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
