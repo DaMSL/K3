@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.K3.Codegen.CPP where
 
@@ -121,11 +122,24 @@ cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This really needs to go somewhere else.
+-- The correct procedure:
+--  - Take the lower bound for everything except functions.
+--  - For functions, take the upper bound for the argument type and lower bound for the return type,
+--  put them together in a TFunction for the correct type.
 canonicalType :: K3 Expression -> K3 Type
-canonicalType e = case e @~ isEType of
-    Nothing -> undefined
-    Just (ETypeUB t) -> t
-    Just (ETypeLB t) -> t
+canonicalType e@(tag -> ELambda _) = T.function aub rlb
+  where
+    elb = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
+    eub = let ETypeUB t = fromMaybe undefined (e @~ (\case (ETypeUB _) -> True; _ -> False)) in t
+
+    aub = case eub of
+        (tag &&& children -> (TFunction, [a, _])) -> a
+        _ -> undefined
+
+    rlb = case elb of
+        (tag &&& children -> (TFunction, [_, r])) -> r
+        _ -> undefined
+canonicalType e = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
