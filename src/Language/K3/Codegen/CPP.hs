@@ -275,5 +275,5 @@ program d = do
     p <- declaration d
     currentS <- get
     i <- cType T.unit >>= \ctu ->
-        return $ ctu <+> text "atInit" <> parens empty <+> braces (initializations currentS)
+        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> braces (initializations currentS)
     return $ vsep [forwards currentS, i, p]
