@@ -9,6 +9,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 
 import Data.Functor
+import Data.Maybe
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PL
@@ -162,7 +163,7 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
-        (tag -> EVariable v) -> return $ (ae, text v <> parens av)
+        (tag -> EVariable v) -> return (ae, text v <> parens av)
         (tag -> EProject _) -> do
             (pe, pv) <- inline f
             return (ae PL.<//> pe, pv <> parens av)
@@ -175,7 +176,7 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 inline (tag &&& children -> (EProject v, [e])) = do
     (ee, ev) <- inline e
     return (ee, ev <> dot <> text v)
-inline (tag &&& children -> (EAssign x, [e])) = (,text "null") <$> reify (RName x) e
+inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
 inline e = do
     k <- genSym
     decl <- cDecl (canonicalType e) k
