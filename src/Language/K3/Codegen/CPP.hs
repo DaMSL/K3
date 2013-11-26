@@ -12,6 +12,9 @@ import Control.Monad.Trans.Either
 import Data.Functor
 import Data.Maybe
 
+import qualified Data.Map as M
+import qualified Data.Set as S
+
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PL
 
@@ -26,15 +29,50 @@ import Language.K3.Codegen.Common
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
-data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR } deriving Show
+-- | State carried around during C++ code generation.
+data CPPGenS = CPPGenS {
+        -- | UUID counter for generating identifiers.
+        uuid :: Int,
+
+        -- | Code necessary to initialize global declarations.
+        initializations :: CPPGenR,
+
+        -- | Forward declarations for constructs as a result of cyclic scope.
+        forwards :: CPPGenR,
+
+        -- | Mapping of record signatures to corresponding record structure, for generation of
+        -- record classes.
+        recordMap :: M.Map Identifier [(Identifier, K3 Type)],
+
+        -- | Mapping of annotation class names to list of member declarations, for eventual
+        -- declaration of composite classes.
+        annotationMap :: M.Map Identifier [AnnMemDecl],
+
+        -- | Set of annotation combinations actually encountered during the program.
+        composites :: S.Set Identifier
+    } deriving Show
+
+-- | Error messages thrown by C++ code generation.
 data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
 
+-- | The C++ code generation monad.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
+-- | Reification context, used to determine how an expression should reify its result.
 data RContext
+
+    -- | Indicates that the calling context will ignore the callee's result.
     = RForget
+
+    -- | Indicates that the calling context is a C++ function, in which case the result may be
+    -- 'returned' from the callee.
     | RReturn
+
+    -- | Indicates that the calling context requires the callee's result to be stored in a variable
+    -- of a pre-specified name.
     | RName Identifier
+
+    -- | A free-form reification context, for special cases.
     | RSplice ([CPPGenR] -> CPPGenR)
 
 instance Show RContext where
@@ -52,7 +90,7 @@ runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty
 
 genSym :: CPPGenM Identifier
 genSym = do
