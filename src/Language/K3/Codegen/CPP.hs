@@ -60,12 +60,6 @@ genSym = do
     modify (\s -> s { uuid = succ (uuid s) })
     return $ '_':  show current
 
-include :: String -> CPPGenM ()
-include = undefined
-
-namespace :: String -> CPPGenM ()
-namespace = undefined
-
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
 unarySymbol ONeg = return $ text "-"
@@ -112,7 +106,7 @@ cType t@(tag -> TRecord _) = text <$> signature t
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- cType et
     case annotationComboIdT as of
         Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show et
@@ -162,7 +156,7 @@ inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> pare
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text "make_tuple" <> tupled vs)
-inline e@(tag &&& children -> (ERecord ids, cs)) = do
+inline e@(tag &&& children -> (ERecord _, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     sig <- signature $ canonicalType e
     return (vsep es, text sig <> tupled vs)
