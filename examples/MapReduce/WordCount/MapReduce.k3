@@ -5,13 +5,13 @@ include "Annotation/Collection.k3"
  */
 
 declare wordsList :            mut collection{ word : string } @ { Collection } = { |word : string| "first", "first", "first", "first" |} @ { Collection }
-//declare wordsList :            mut collection{ word: string } @ { Collection }  
+/* declare wordsList :            mut collection{ word: string } @ { Collection }  */
 declare reducer :              immut address = 127.0.0.1:40000
 declare wordsMap :             mut collection{ existingWord : string, count : int } @ { Collection }
 declare existing :             mut bool = false
 declare resultMap :            mut collection { finalWord : string, count : int } @ { Collection }
 declare existingReduce :       mut bool = false
-// fields for debugging
+/* fields for debugging */
 declare checkResult :          mut int = 0
 declare checkResult_reducer :  mut int = 0
 declare checkWord_reducer :    mut string = "test"
