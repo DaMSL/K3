@@ -247,7 +247,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
     newI <- reify (RName i) e
     modify (\s -> s { initializations = initializations s PL.<$> newI })
     cDecl t i
-declaration (tag -> DTrigger i t e) = declaration (D.global i t (Just e))
+declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep <$> mapM declaration cs
     return $ text "namespace" <+> text n <+> braces subDecls
@@ -257,5 +257,6 @@ program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     p <- declaration d
     currentS <- get
-    i <- cType T.unit >>= \ctu -> return $ ctu <+> text "atInit" <> parens ctu <+> braces (initializations currentS)
+    i <- cType T.unit >>= \ctu ->
+        return $ ctu <+> text "atInit" <> parens ctu <+> braces (initializations currentS)
     return $ vsep [forwards currentS, i, p]
