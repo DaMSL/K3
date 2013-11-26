@@ -159,11 +159,22 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
+inline (tag &&& children -> (EOperate OApp, [f, a])) = do
+    (ae, av) <- inline a
+    case f of
+        (tag -> EVariable v) -> return $ (ae, text v <> parens av)
+        (tag -> EProject _) -> do
+            (pe, pv) <- inline f
+            return (ae PL.<$> pe, pv <> parens av)
+        _ -> throwE CPPGenE
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
     bsym <- binarySymbol bop
     return (ae PL.<$> be, av <+> bsym <+> bv)
+inline (tag &&& children -> (EProject v, [e])) = do
+    (ee, ev) <- inline e
+    return (ee, ev <> dot <> text v)
 inline (tag &&& children -> (EAssign x, [e])) = (,text "null") <$> reify (RName x) e
 inline e = do
     k <- genSym
