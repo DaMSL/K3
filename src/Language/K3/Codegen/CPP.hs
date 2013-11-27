@@ -49,7 +49,7 @@ data CPPGenS = CPPGenS {
         annotationMap :: M.Map Identifier [AnnMemDecl],
 
         -- | Set of annotation combinations actually encountered during the program.
-        composites :: S.Set Identifier
+        composites :: S.Set (S.Set Identifier)
     } deriving Show
 
 -- | Error messages thrown by C++ code generation.
@@ -97,6 +97,15 @@ genSym = do
     current <- uuid <$> get
     modify (\s -> s { uuid = succ (uuid s) })
     return $ '_':  show current
+
+addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
+addAnnotation i amds = modify (\s -> s { annotationMap = M.insert i amds (annotationMap s) })
+
+addComposite :: [Identifier] -> CPPGenM ()
+addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (composites s) })
+
+addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
+addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
 
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
@@ -182,8 +191,9 @@ cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
-        Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
-        Just ac -> cType t >>= \ct -> return (empty, text ac <> angles ct)
+    Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
+    Just ac -> cType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
+
 inline (tag -> EConstant c) = (empty,) <$> constant c
 inline (tag -> EVariable v) = return (empty, text v)
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
@@ -196,8 +206,14 @@ inline (tag &&& children -> (ETuple, cs)) = do
     return (vsep es, text "make_tuple" <> tupled vs)
 inline e@(tag &&& children -> (ERecord _, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    sig <- signature $ canonicalType e
-    return (vsep es, text sig <> tupled vs)
+    let t = canonicalType e
+    case t of
+        (tag &&& children -> (TRecord ids, ts)) -> do
+            sig <- signature t
+            addRecord sig (zip ids ts)
+            return (vsep es, text sig <> tupled vs)
+        _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
+
 inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
