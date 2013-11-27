@@ -196,6 +196,9 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- cType tr
     cta <- cType ta
     return $ ctr <+> text i <> parens cta <> semi
+cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
+    Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Declaration " ++ i
+    Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
