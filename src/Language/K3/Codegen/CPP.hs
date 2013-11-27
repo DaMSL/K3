@@ -153,10 +153,10 @@ cType t@(tag -> TRecord _) = text <$> signature t
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- cType et
     case annotationComboIdT as of
-        Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show et
+        Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show t
         Just i' -> return $ text i' <> angles ct
 
 -- TODO: Are these all the cases that need to be handled?
