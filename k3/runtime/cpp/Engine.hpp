@@ -1,24 +1,16 @@
-#ifndef K3_ENGINE_H
-#define K3_ENGINE_H
+#ifndef K3_RUNTIME_ENGINE_H
+#define K3_RUNTIME_ENGINE_H
 
 #include <map>
 #include <list>
 #include <tuple>
 #include <boost/shared_ptr.hpp>
+#include <k3/runtime/Common.hpp>
 
 namespace K3 {
 
   using namespace std;
   using namespace boost;
-
-  typedef string Identifier;
-  typedef tuple<string, int> Address;
-
-  string addressHost(Address& addr) { return get<0>(addr); }
-  int    addressPort(Address& addr) { return get<1>(addr); }
-
-  template<typename Value>
-  class Message : public tuple<Address, Identifier, Value> {};
 
   //--------------------
   // Wire descriptions
@@ -34,164 +26,6 @@ namespace K3 {
     virtual Value  unpack(string& s) = 0;
     virtual FrameDesc frame()        = 0;
   };
-
-
-  //------------
-  // Queues
-  template<typename Message>
-  class MessageQueues {
-  public:
-    enum QueueType { Peer, MultiPeer, MultiTrigger };
-    
-    typedef tuple<Address, list<tuple<Identifier, Message> > > PeerMessages;
-    typedef map<Address, list<tuple<Identifier, Message> > >   MultiPeerMessages;
-    typedef map<tuple<Address, Identifier>, list<Message> >    MultiTriggerMessages;
-
-    MessageQueues() {}
-    MessageQueues(QueueType qt) {}
-
-  protected:
-    shared_ptr<PeerMessages>         peerMsgs;
-    shared_ptr<MultiPeerMessages>    multiPeerMsgs;
-    shared_ptr<MultiTriggerMessages> multiTriggerMsgs;
-  };
-
-
-  //------------
-  // Workers
-  class Workers {
-  public:
-    enum WorkersType { Uniprocess, MultiThreaded, MultiProcess };
-    typedef int WorkerId;
-    typedef int ProcessId;
-
-    Workers() {}
-    Workers(WorkersType wt) {}
-
-  protected:
-    shared_ptr<WorkerId> uniProcessor;
-    shared_ptr<list<WorkerId> > threadedProcessor;
-    shared_ptr<list<ProcessId> > multiProcessor;
-  };
-
-  //------------
-  // Listeners
-  typedef map<Identifier, ThreadId> Listeners;
-
-  //--------------------------
-  // Low-level networking.
-  // TODO: NEndpoint
-  // TODO: NConnection
-  // TODO: nanomsg, Boost ASIO network implementations.
-
-  //--------------------------
-  // IO handles
-  typedef tuple<int, int> BufferSpec;
-  int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
-
-  template<typename Value>
-  class IOHandle {
-  public:
-    bool hasRead()      = 0;
-    bool hasWrite()     = 0;
-    Value read()        = 0;
-    void write(Value v) = 0;
-
-    shared_ptr<WireDesc<Value> > wireDesc;
-  };
-
-  template<typename Value>
-  class BuiltinHandle : public IOHandle<Value> {
-  public:
-    enum BuiltinId { Stdin, Stdout, Stderr };
-    BuiltinId handleId;
-  };
-
-  template<typename Value>
-  class FileHandle : public IOHandle<Value> {};
-
-  template<typename Value>
-  class NetworkHandle : public IOHandle<Value> {
-  public:
-    shared_ptr<NEndpoint>   endpoint;
-    shared_ptr<NConnection> connection;
-  };
-
-  //------------------------
-  // Buffer contents.
-  template<typename Value>
-  class BufferContents {
-    // TODO: common buffer content methods.
-  };
-
-  template<typename Value>
-  class SingletonBuffer : public BufferContents<Value> {
-  public:
-    shared_ptr<Value> contents;
-  };
-
-  template<typename Value>
-  class MultiBuffer : public BufferContents<Value> {
-  public:
-    list<Value> contents;
-    BufferSpec spec;
-  };
-
-
-  //------------------------
-  // Endpoint buffers.
-  template<typename Value>
-  class EndpointBuffer {
-    // TODO: common endpoint buffer methods.
-  };
-
-  // TODO: locked endpoint buffer access.
-  template<typename Value>
-  class ExclusiveBuffer : public EndpointBuffer<Value> {};
-
-  template<typename Value>
-  class SharedBuffer : public EndpointBuffer<Value> {};
-
-
-  //---------------------------------
-  // Endpoint bindings and endpoints.
-  enum EndpointNotification { FileData, FileClose, SocketAccept, SocketData, SocketClose };
-  template<typename Value> class EndpointBindings : public map<EndpointNotification, Value> {};
-
-  class Endpoint {
-  public:
-    Endpoint() {}
-    IOHandle handle;
-    EndpointBuffer buffer;
-    EndpointBindings subscribers;
-  };
-
-
-  //-------------------------------------
-  // Endpoint and connection containers
-  typedef map<Identifier, Endpoint> EEndpoints;
-  
-  class EConnectionMap {
-  public:
-    tuple<Address, shared_ptr<NEndpoint> > anchor;
-    map<Address, NConnection> cache;
-  };
-  
-  class EndpointState {
-  public:
-    EEndpointState() {}
-    EEndpoints internalEndpoints;
-    EEndpoints externalEndpoints;
-  };
-
-  class ConnectionState {
-  public:
-    ConnectionState() {}
-    EConnectionMap internalConnections;
-    EConnectionMap externalConnections;
-  };
-
 
   //-------------------
   // Message processor
@@ -219,6 +53,23 @@ namespace K3 {
   // Configuration
   class EngineConfiguration {
   public:
+    EngineConfiguration() { defaultConfiguration(); }
+    EngineConfiguration(Address& addr) { configureWithAddress(addr); }
+
+    void defaultConfiguration() {
+      address           = defaultAddress;
+      defaultBufferSpec = BufferSpec(100,10);
+      connectionRetries = 5;
+      waitForNetwork    = false;
+    }
+    
+    void configureWithAddress(Address addr) {
+      address = addr;
+      defaultBufferSpec = BufferSpec(100,10);
+      connectionRetries = 5;
+      waitForNetwork    = false;
+    }
+
     Address address;
     BufferSpec defaultBufferSpec;
     int connectionRetries;
@@ -239,20 +90,59 @@ namespace K3 {
   public:
     Engine() {}
     
-    Engine(bool simulation, SystemEnvironment sysEnv, WireDesc<Value> wd)
+    Engine(bool simulation, SystemEnvironment& sysEnv, WireDesc<Value>& wd)
     {
+      list<Address> peerAddrs = deployedNodes(sysEnv);
+      Address initialAddress;
+      if ( !peerAddrs.empty() ) {
+        initialAddress = peerAddrs.front();
+      } else {
+        // Error
+      }
+
       if ( simulation ) {
         // Simulation engine initialization.
-      } else {
+        config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
+        ctrl        = shared_ptr<EngineControl>(new EngineControl()); // TODO: control.
+        deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sysEnv));
+
+        valueFormat = shared_ptr<WireDesc<Value> >(new WireDesc<Value>(wd));
+        msgFormat   = internalizeWireDesc(wd);
+        
+        queues      = peerAddrs.size() <= 1 ? simpleQueues<Value>(initialAddress)
+                                            : perPeerQueues<Value>(peerAddrs);
+
+        workers     = shared_ptr<WorkerPool>(new InlinePool());
+        listeners   = shared_ptr<Listeners>(new Listeners());
+        endpoints   = shared_ptr<EndpointState>(new EndpointState());
+
+        // TODO: address for external anchor as needed.
+        connections = shared_ptr<ConnectionState>(new ConnectionState(true));
+      } 
+      else {
         // Network engine initialization.
+        config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
+        ctrl        = shared_ptr<EngineControl>(new EngineControl()); // TODO: control.
+        deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sysEnv));
+
+        valueFormat = shared_ptr<WireDesc<Value> >(new WireDesc<Value>(wd));
+        msgFormat   = internalizeWireDesc(wd);
+        
+        queues      = perPeerQueues<Value>(peerAddrs);
+
+        workers     = shared_ptr<WorkerPool>(new InlinePool());
+        listeners   = shared_ptr<Listeners>(new Listeners());
+        endpoints   = shared_ptr<EndpointState>(new EndpointState());
+
+        // TODO: address for internal and external anchor as needed.
+        connections = shared_ptr<ConnectionState>(new ConnectionState(false));
+
+        // TODO: start network listeners.
       }
     }
 
     // TODO: engine API.
-    void send() {}
-
-    void enqueue() {}
-    void dequeue() {}
+    void send(Address addr, Identifier triggerId, Value v) {}
 
     void openBuiltin() {}
     void openFile() {}
@@ -273,13 +163,41 @@ namespace K3 {
     void terminateEngine() {}
     void cleanupEngine() {}
 
+    // TODO
+    shared_ptr<WireDesc<Message<Value> > internalizeWireDesc(WireDesc<Value>& wd) {
+      return shared_ptr<WireDesc<Message<Value> >();
+    }
+
+    // Engine statistics.
+    list<Address> nodes() { 
+      list<Address> r;
+      if ( deployment ) { r = deployedNodes(*deployment); }
+      return r;
+    }
+
+    tuple<size_t, size_t> statistics() {
+      return make_tuple(queues? queues->size() : 0,
+                        endpoints? endpoints->numEndpoints() : 0);
+    }
+
+    bool simulation() {
+      if ( connections ) { return connections->hasInternalConnections(); }
+      // Error
+      return false;
+    }
+
+    typedef map<Identifier, Listener> Listeners;
+
   protected:
+    void startListener() {}
+
     shared_ptr<EngineConfiguration>        config;    
     shared_ptr<EngineControl>              control;
+    shared_ptr<SystemEnvironment>          deployment;
     shared_ptr<WireDesc<Value> >           valueFormat;
     shared_ptr<WireDesc<Message<Value> > > msgFormat;
     shared_ptr<MessageQueues<Value> >      queues;
-    shared_ptr<Workers>                    workers;
+    shared_ptr<WorkerPool>                 workers;
     shared_ptr<Listeners>                  listeners;
     shared_ptr<EndpointState>              endpoints;
     shared_ptr<ConnectionState>            connections;
