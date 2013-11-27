@@ -335,6 +335,7 @@ declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.un
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep <$> mapM declaration cs
     return $ text "namespace" <+> text n <+> braces subDecls
+declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
 reserved :: [Identifier]
