@@ -210,7 +210,8 @@ inline (tag -> EConstant c) = (empty,) <$> constant c
 inline (tag -> EVariable v) = return (empty, text v)
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
-    t <- cType (canonicalType c)
+    ct <- canonicalType c
+    t <- cType ct
     return (e, text "shared_ptr" <> angles t <> parens v)
 inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
 inline (tag &&& children -> (ETuple, cs)) = do
@@ -218,7 +219,7 @@ inline (tag &&& children -> (ETuple, cs)) = do
     return (vsep es, text "make_tuple" <> tupled vs)
 inline e@(tag &&& children -> (ERecord _, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    let t = canonicalType e
+    t <- canonicalType e
     case t of
         (tag &&& children -> (TRecord ids, ts)) -> do
             sig <- signature t
@@ -253,7 +254,8 @@ inline (tag &&& children -> (EProject v, [e])) = do
 inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
 inline e = do
     k <- genSym
-    decl <- cDecl (canonicalType e) k
+    ct <- canonicalType e
+    decl <- cDecl ct k
     effects <- reify (RName k) e
     return (decl PL.<//> effects, text k)
 
@@ -268,12 +270,14 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     be <- reify r b
     return $ ae PL.<//> be
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
-    d <- cDecl (canonicalType e) x
+    ct <- canonicalType e
+    d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
     return $ braces $ vsep [d, ee, be]
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    d <- cDecl (head . children $ canonicalType e) x
+    ct <- canonicalType e
+    d <- cDecl (head $ children ct) x
     (ee, ev) <- inline e
     se <- reify r s
     ne <- reify r n
