@@ -167,20 +167,29 @@ cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 --  - Take the lower bound for everything except functions.
 --  - For functions, take the upper bound for the argument type and lower bound for the return type,
 --  put them together in a TFunction for the correct type.
-canonicalType :: K3 Expression -> K3 Type
-canonicalType e@(tag -> ELambda _) = T.function aub rlb
-  where
-    elb = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
-    eub = let ETypeUB t = fromMaybe undefined (e @~ (\case (ETypeUB _) -> True; _ -> False)) in t
+canonicalType :: K3 Expression -> CPPGenM (K3 Type)
+canonicalType (tag -> EConstant (CEmpty t)) = return $ T.collection t
+canonicalType e@(tag -> ELambda _) = do
+    ETypeLB elb <- case (e @~ (\case (ETypeLB _) -> True; _ -> False)) of
+        Just x -> return x
+        Nothing -> throwE $ CPPGenE $ "Invalid Lower Bound for " ++ show e
+    ETypeUB eub <- case (e @~ (\case (ETypeUB _) -> True; _ -> False)) of
+        Just x -> return x
+        Nothing -> throwE $ CPPGenE $ "Invalid Upper Bound for " ++ show e
 
-    aub = case eub of
-        (tag &&& children -> (TFunction, [a, _])) -> a
-        _ -> undefined
+    aub <- case eub of
+        (tag &&& children -> (TFunction, [a, _])) -> return a
+        _ -> throwE $ CPPGenE $ "Invalid Function Type " ++ show eub
 
-    rlb = case elb of
-        (tag &&& children -> (TFunction, [_, r])) -> r
-        _ -> undefined
-canonicalType e = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
+    rlb <- case elb of
+        (tag &&& children -> (TFunction, [_, r])) -> return r
+        _ -> throwE $ CPPGenE $ "Invalid Function Type " ++ show elb
+
+    return $ T.function aub rlb
+
+canonicalType e = case (e @~ (\case (ETypeLB _) -> True; _ -> False)) of
+    Just (ETypeLB t) -> return t
+    _ -> throwE $ CPPGenE $ "Unknown Lower Bound for type of " ++ show e
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
