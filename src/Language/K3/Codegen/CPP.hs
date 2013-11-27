@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.K3.Codegen.CPP where
 
@@ -10,6 +11,9 @@ import Control.Monad.Trans.Either
 
 import Data.Functor
 import Data.Maybe
+
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PL
@@ -25,15 +29,50 @@ import Language.K3.Codegen.Common
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
-data CPPGenS = CPPGenS { uuid :: Int, initializations :: CPPGenR, forwards :: CPPGenR } deriving Show
+-- | State carried around during C++ code generation.
+data CPPGenS = CPPGenS {
+        -- | UUID counter for generating identifiers.
+        uuid :: Int,
+
+        -- | Code necessary to initialize global declarations.
+        initializations :: CPPGenR,
+
+        -- | Forward declarations for constructs as a result of cyclic scope.
+        forwards :: CPPGenR,
+
+        -- | Mapping of record signatures to corresponding record structure, for generation of
+        -- record classes.
+        recordMap :: M.Map Identifier [(Identifier, K3 Type)],
+
+        -- | Mapping of annotation class names to list of member declarations, for eventual
+        -- declaration of composite classes.
+        annotationMap :: M.Map Identifier [AnnMemDecl],
+
+        -- | Set of annotation combinations actually encountered during the program.
+        composites :: S.Set Identifier
+    } deriving Show
+
+-- | Error messages thrown by C++ code generation.
 data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
 
+-- | The C++ code generation monad.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
 
+-- | Reification context, used to determine how an expression should reify its result.
 data RContext
+
+    -- | Indicates that the calling context will ignore the callee's result.
     = RForget
+
+    -- | Indicates that the calling context is a C++ function, in which case the result may be
+    -- 'returned' from the callee.
     | RReturn
+
+    -- | Indicates that the calling context requires the callee's result to be stored in a variable
+    -- of a pre-specified name.
     | RName Identifier
+
+    -- | A free-form reification context, for special cases.
     | RSplice ([CPPGenR] -> CPPGenR)
 
 instance Show RContext where
@@ -51,19 +90,13 @@ runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty
 
 genSym :: CPPGenM Identifier
 genSym = do
     current <- uuid <$> get
     modify (\s -> s { uuid = succ (uuid s) })
     return $ '_':  show current
-
-include :: String -> CPPGenM ()
-include = undefined
-
-namespace :: String -> CPPGenM ()
-namespace = undefined
 
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
@@ -111,7 +144,7 @@ cType t@(tag -> TRecord _) = text <$> signature t
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- cType et
     case annotationComboIdT as of
         Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show et
@@ -121,11 +154,24 @@ cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This really needs to go somewhere else.
+-- The correct procedure:
+--  - Take the lower bound for everything except functions.
+--  - For functions, take the upper bound for the argument type and lower bound for the return type,
+--  put them together in a TFunction for the correct type.
 canonicalType :: K3 Expression -> K3 Type
-canonicalType e = case e @~ isEType of
-    Nothing -> undefined
-    Just (ETypeUB t) -> t
-    Just (ETypeLB t) -> t
+canonicalType e@(tag -> ELambda _) = T.function aub rlb
+  where
+    elb = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
+    eub = let ETypeUB t = fromMaybe undefined (e @~ (\case (ETypeUB _) -> True; _ -> False)) in t
+
+    aub = case eub of
+        (tag &&& children -> (TFunction, [a, _])) -> a
+        _ -> undefined
+
+    rlb = case elb of
+        (tag &&& children -> (TFunction, [_, r])) -> r
+        _ -> undefined
+canonicalType e = let ETypeLB t = fromMaybe undefined (e @~ (\case (ETypeLB _) -> True; _ -> False)) in t
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
@@ -148,7 +194,7 @@ inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> pare
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text "make_tuple" <> tupled vs)
-inline e@(tag &&& children -> (ERecord ids, cs)) = do
+inline e@(tag &&& children -> (ERecord _, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     sig <- signature $ canonicalType e
     return (vsep es, text sig <> tupled vs)
@@ -267,5 +313,5 @@ program d = do
     p <- declaration d
     currentS <- get
     i <- cType T.unit >>= \ctu ->
-        return $ ctu <+> text "atInit" <> parens empty <+> braces (initializations currentS)
+        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> braces (initializations currentS)
     return $ vsep [forwards currentS, i, p]
