@@ -148,6 +148,7 @@ cType (tag &&& children -> (TTuple, [])) = return $ text "unit_t"
 cType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
 cType t@(tag -> TRecord _) = text <$> signature t
+cType (tag -> TDeclaredVar t) = return $ text t
 
 -- TODO: Three pieces of information necessary to generate a collection type:
 --  1. The list of named annotations on the collections.
