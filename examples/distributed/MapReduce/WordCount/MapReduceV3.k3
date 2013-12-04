@@ -1,10 +1,9 @@
 include "Annotation/Collection.k3"
 
 /*
- * Simple wordCount implementation under simulation mode by using K3 
+ * Simple wordCount implementation by using K3 
  */
 
-/* use file as source */
 declare wordsList :          mut collection {word : string} @ { Collection }
 declare numOfWords :         mut int = 50
 declare wordsInWordsLst :    mut int = 0
@@ -19,26 +18,20 @@ declare mapperLst2 :         mut collection {word : string} @ { Collection }
 declare mapperLst3 :         mut collection {word : string} @ { Collection }
 declare master :             immut address = 127.0.0.1:40000
 declare mappersList :        mut collection {mapper : address} @ { Collection } = { |mapper : address| 127.0.0.1:51000, 127.0.0.1:52000, 127.0.0.1:53000| } @ { Collection }
-
 declare shufflersTable :     mut collection {shuffler : address, word : string} @ { Collection } = { |shuffler : address, word : string| {shuffler : 127.0.0.1:61000, word : "foo" }, {shuffler : 127.0.0.1:62000, word : "bar" }, {shuffler : 127.0.0.1:63000, word : "baz"} | } @ { Collection }
 declare reducer :            immut address = 127.0.0.1:70000
 
-/* wordsLs for node to store local wordLst */
+/* mapper's local word list */
 declare localLst :           mut collection {word : string} @ { Collection }
 
-/* intermediate wordsMap for shuffler */
-declare wordsMap1 :          mut collection { word : string, count : int } @ { Collection } = { |word : string, count : int| {word : "foo", count : 0} |} @ { Collection }
-declare wordsMap2 :          mut collection { word : string, count : int } @ { Collection } = { |word : string, count : int| {word : "bar", count : 0} |} @ { Collection }
-declare wordsMap3 :          mut collection { word : string, count : int } @ { Collection } = { |word : string, count : int| {word : "baz", count : 0} |} @ { Collection }
-declare finalWordsMap :      mut collection { word : string, count : int } @ { Collection }
-declare count1 :             mut int = 0
-declare count2 :             mut int = 0
-declare count3 :             mut int = 0
-
+/* shuffer's local word map */
 declare wordsMap :           mut collection { word : string, count : int } @ { Collection } 
 declare countWord :          mut int = 0
 
-/* fields for bootstrap */
+/* result word map */
+declare finalWordsMap :      mut collection { word : string, count : int } @ { Collection }
+
+/* bootstrap */
 declare totalNodes :        immut int = 8
 declare currentNodes :      mut int = 0
 
@@ -86,29 +79,7 @@ trigger splitWordLst : ()= \_ -> (
   (wordMap, 127.0.0.1:53000) <- mapperLst3
 )  				   
 
-/*
 trigger wordMap : (collection { word : string } @ { Collection }) = \wordLst -> (
-  
-  localLst = wordLst;
-  localLst.iterate (\wordRecord -> 
-    if wordRecord.word == "foo"
-    then ((shuffle1, 127.0.0.1:61000) <- "word";
-  	      (shuffle2, 127.0.0.1:62000) <- "none";
-  	      (shuffle3, 127.0.0.1:63000) <- "none")
-  	else if wordRecord.word == "bar"
-  	     then ((shuffle1, 127.0.0.1:61000) <- "none";
-  	           (shuffle2, 127.0.0.1:62000) <- "word";
-  		       (shuffle3, 127.0.0.1:63000) <- "none")
-   	     else ((shuffle1, 127.0.0.1:61000) <- "none";
-  	           (shuffle2, 127.0.0.1:62000) <- "none";
-  		       (shuffle3, 127.0.0.1:63000) <- "word")
-  );		 
-  
-)
-*/
-
-trigger wordMap : (collection { word : string } @ { Collection }) = \wordLst -> (
-  
   localLst = wordLst;
   localLst.iterate (\wordRecord -> 
     shufflersTable.iterate (\shufflerRerd ->
@@ -116,75 +87,27 @@ trigger wordMap : (collection { word : string } @ { Collection }) = \wordLst -> 
 	  then (shuffle, shufflerRerd.shuffler) <- wordRecord.word
 	  else (shuffle, shufflerRerd.shuffler) <- "none"
     )
-  );		 
-    
-  /* test = localLst.fold(\acc -> (\_ -> acc + 1)) 0 */
-  
+  )		      
 ) 
 
 /* general reducer  */
 trigger shuffle : string = \msg -> (
-
   (if msg == "none"
    then currNumWords = currNumWords + 1
-   else ( countWord = countWord + 1;
-          currNumWords = currNumWords + 1;
-          (if countWord == 1
-           then wordsMap.insert {word : msg, count : countWord}
-	       else ( wordsMap.delete {word : msg, count : countWord};
+   else ( currNumWords = currNumWords + 1;
+          (if countWord == 0
+           then ( countWord = countWord + 1;
+		          wordsMap.insert {word : msg, count : countWord})
+		   else ( wordsMap.delete {word : msg, count : countWord};
+		          countWord = countWord + 1;		  
 		          wordsMap.insert {word : msg, count : countWord} )
 		  ) 
         )
   );		  
-  currNumWords = currNumWords + 1;
   if currNumWords == numOfWords
   then (reduce, reducer) <- wordsMap
-  else()  
-)
-
-/*
-trigger shuffle1 : string = \msg -> (
-  
-  (if msg == "word"
-   then (wordsMap1.delete {word : "foo", count : count1}; 
-         count1 = count1 + 1;
-         wordsMap1.insert {word : "foo", count : count1})
-   else ());
-  currNumWords = currNumWords + 1;
-  if currNumWords == numOfWords
-  then (reduce, reducer) <- wordsMap1
   else()
-  
 )
-
-trigger shuffle2 : string =\msg -> (
-
-  (if msg == "word"
-   then (wordsMap2.delete {word : "bar", count : count2}; 
-         count2 = count2 + 1;
-         wordsMap2.insert {word : "bar", count : count2})
-   else ());
-  currNumWords = currNumWords + 1;
-  if currNumWords == numOfWords
-  then (reduce, reducer) <- wordsMap2
-  else()
-  
-)
-
-trigger shuffle3 : string =\msg -> (
-
-  (if msg == "word"
-   then (wordsMap3.delete {word : "baz", count : count3}; 
-         count3 = count3 + 1;
-         wordsMap3.insert {word : "baz", count : count3})
-   else ());
-  currNumWords = currNumWords + 1;
-  if currNumWords == numOfWords
-  then (reduce, reducer) <- wordsMap3
-  else()
-  
-)
-*/
 
 trigger reduce : (collection { word : string, count : int } @ { Collection }) = \wordMap -> (
 
@@ -197,13 +120,12 @@ trigger reduce : (collection { word : string, count : int } @ { Collection }) = 
    
   /* test the final wordsMap  */ 
   finalWordsMap.iterate (\wordRecord -> (
-      if wordRecord.word == "bar"   
+      if wordRecord.word == "baz"   
       then (wordTest = wordRecord.word;   
             countTest = wordRecord.count)
 	  else ()
     ) 
-  )
-	
+  )	
 )
 
 source go : () = value ()
@@ -211,4 +133,3 @@ source master : string = file "/home/chao/work/K3/K3-Core/examples/distributed/M
 
 feed go |> join
 feed master |> initWordsLst
-
