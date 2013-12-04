@@ -34,7 +34,10 @@ module Language.K3.Interpreter (
   unpackValueSyntax,
 
   valueWD,
-  syntaxValueWD
+  syntaxValueWD,
+  
+  -- Take this out, because Runtime.FileDataspace.hs needs it
+  liftEngine
 
 ) where
 
@@ -67,6 +70,7 @@ import Language.K3.Core.Type
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.Dataspace
+import Language.K3.Runtime.FileDataspace
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -327,168 +331,24 @@ instance (Monad m) => Dataspace m [Value] Value where
     where
       threshold = 10
 
-{- move these into Runtime/FileDataSpace.hs
- - These are generic functions for operating on collections in files
- -}
-openCollectionFile :: Identifier -> String -> EngineM a ()
-openCollectionFile name mode =
-  do
-    engine <- ask
-    let wd = valueFormat engine
-    openFile name name wd Nothing mode
-    return ()
-
--- Pass a lift into these functions, so that "inner loop" can be in 
--- some Monad m.  foldDS etc. can know which lift to use, since they
--- are in the instance of the typeclass.
---foldFile :: (Monad m) => (EngineM b c -> m c ) -> (a -> b -> m a) -> a -> Identifier -> m a
-foldFile :: forall (m :: * -> *) a b.
-            Monad m =>
-            (forall c. EngineM b c -> m c)
-            -> (a -> b -> m a) -> a -> Identifier -> m a
-foldFile liftM accumulation initial_accumulator file_id =
-  do
-    file_over <- liftM $ hasRead file_id
-    case file_over of
-      Nothing -> return initial_accumulator -- Hiding an error...
-      Just False -> return initial_accumulator
-      Just True ->
-        do
-          cur_val <- liftM $ doRead file_id
-          case cur_val of
-            Nothing -> return initial_accumulator
-            Just val -> do
-              new_acc <- accumulation initial_accumulator val
-              foldFile liftM accumulation new_acc file_id
-
-mapFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m b) -> Identifier -> m Identifier
-mapFile liftM function file_id = do
-  new_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile new_id "w"
-  foldFile liftM (inner_func new_id) () file_id
-  liftM $ close new_id
-  return new_id
-  where
-    --The typechecker didn't think the b here and the b in mapFile
-    --were the same b, so it didn't typecheck.  Letting it infer
-    --everything lets it figure it out
-    --inner_func :: Identifier -> () -> b -> EngineM b ()
-    inner_func new_id _ v = do
-      new_val <- function v
-      liftM $ doWrite new_id new_val
-      return ()
-mapFile_ :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m a) -> Identifier -> m ()
-mapFile_ liftM function file_id = do
-  foldFile liftM inner_func () file_id
-  where
-    --inner_func :: () -> b -> EngineM b ()
-    inner_func _ v = do
-      function v
-      return ()
-filterFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m Bool) -> Identifier -> m Identifier
-filterFile liftM predicate old_id = do
-  new_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile new_id "w"
-  foldFile liftM (inner_func new_id) () old_id
-  liftM $ close new_id
-  return new_id
-  where
-    --inner_func :: Identifier -> () -> Value -> EngineM b ()
-    inner_func new_id _ v = do
-      include <- predicate v
-      if include then
-        liftM $ doWrite new_id v
-      else
-        return ()
-
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
 instance Dataspace Interpretation Identifier Value where
   newDS _ _ = liftEngine generateCollectionFilename
-  copyDataspace old_id _ = do
-    new_id <- liftEngine $ generateCollectionFilename
-    liftEngine $ openCollectionFile new_id "w"
-    foldFile liftEngine (\_ val -> do
-      liftEngine $ doWrite new_id val -- TODO hasWrite
-      return ()
-      ) () old_id
-    liftEngine $ close new_id
-    return new_id
-  peekDS ext_id = do
-    liftEngine $ openCollectionFile ext_id "r"
-    can_read <- liftEngine $ hasRead ext_id
-    result <-
-      case can_read of
-        Nothing     -> return Nothing
-        Just False  -> return Nothing
-        Just True   -> do
-          opt_read <- liftEngine $ doRead ext_id
-          return opt_read
-    liftEngine $ close ext_id
-    return result
-  insertDS file_id v = do
-    liftEngine $ openCollectionFile file_id "a"
-    -- can_write <- hasWrite ext_id -- TODO handle errors here
-    liftEngine $ doWrite file_id v
-    liftEngine $ close file_id
-    return $ file_id
-  deleteDS v file_id = do -- broken because reading / writing from the same file
-    liftEngine $ openCollectionFile file_id "w"
-    foldFile liftEngine (\truth val -> do
-      if truth == False && val == v
-        then return True
-        else do
-          liftEngine $ doWrite file_id val --TODO error check
-          return False
-      ) False file_id
-    liftEngine $ close file_id
-    return $ file_id
-  updateDS v v' file_id = do
-    liftEngine $ openCollectionFile file_id "w"
-    foldFile liftEngine (\truth val -> do
-      if truth == False && val == v
-        then do
-          liftEngine $ doWrite file_id v'
-          return True
-        else do
-          liftEngine $ doWrite file_id val --TODO error check
-          return False
-      ) False file_id
-    liftEngine $ close file_id
-    return $ file_id
+  copyDataspace old_id _ = liftEngine $ copyFile old_id
+  peekDS ext_id = peekFile liftEngine ext_id
+  insertDS = insertFile liftEngine
+  deleteDS = deleteFile liftEngine
+  updateDS = updateFile liftEngine
   foldDS = foldFile liftEngine
   -- Takes the file id of an external collection, then runs the second argument on
   -- each argument, then returns the identifier of the new collection
-  mapDS function file_id = do
-    mapFile liftEngine function file_id
-  mapDS_ function file_id =
-    mapFile_ liftEngine function file_id
-    {-mapDS (\v -> do
-      _ <- function v
-      return ()
-     ) file_id -- why is this expected to be a unit? -}
+  mapDS = mapFile liftEngine
+  mapDS_ = mapFile_ liftEngine
   filterDS = filterFile liftEngine
-  combineDS self values _ = do
-    liftEngine $ openCollectionFile self "a"
-    foldFile liftEngine (\_ v -> do
-        liftEngine $ doWrite self v
-        return ()
-      ) () values
-    liftEngine $ close self
-    return self
-  splitDS self _ = do
-    left  <- liftEngine $ generateCollectionFilename
-    right <- liftEngine $ generateCollectionFilename
-    liftEngine $ openCollectionFile left "w"
-    liftEngine $ openCollectionFile right "w"
-    foldFile liftEngine (\file cur_val -> do
-      liftEngine $ doWrite file cur_val
-      return ( if file == left then right else left )
-      ) left self
-    liftEngine $ close left
-    liftEngine $ close right
-    return (left, right)
+  combineDS = combineFile liftEngine
+  splitDS = splitFile liftEngine
 
 instance Dataspace Interpretation CollectionDataspace Value 
 
