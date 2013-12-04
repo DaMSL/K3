@@ -342,27 +342,31 @@ openCollectionFile name mode =
 -- some Monad m.  foldDS etc. can know which lift to use, since they
 -- are in the instance of the typeclass.
 --foldFile :: (Monad m) => (EngineM b c -> m c ) -> (a -> b -> m a) -> a -> Identifier -> m a
+foldFile :: forall (m :: * -> *) a b.
+            Monad m =>
+            (forall c. EngineM b c -> m c)
+            -> (a -> b -> m a) -> a -> Identifier -> m a
 foldFile liftM accumulation initial_accumulator file_id =
- do
-   file_over <- liftEngine $ hasRead file_id
-   case file_over of
-     Nothing -> return initial_accumulator -- Hiding an error...
-     Just False -> return initial_accumulator
-     Just True ->
-       do
-         cur_val <- liftEngine $ doRead file_id
-         case cur_val of
-           Nothing -> return initial_accumulator
-           Just val -> do
-             new_acc <- accumulation initial_accumulator val
-             foldFile liftM accumulation new_acc file_id
+  do
+    file_over <- liftM $ hasRead file_id
+    case file_over of
+      Nothing -> return initial_accumulator -- Hiding an error...
+      Just False -> return initial_accumulator
+      Just True ->
+        do
+          cur_val <- liftM $ doRead file_id
+          case cur_val of
+            Nothing -> return initial_accumulator
+            Just val -> do
+              new_acc <- accumulation initial_accumulator val
+              foldFile liftM accumulation new_acc file_id
 
---mapFile :: (Monad m) => (EngineM b c -> m c) -> (b -> EngineM b b) -> Identifier -> EngineM b Identifier
+mapFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m b) -> Identifier -> m Identifier
 mapFile liftM function file_id = do
-  new_id <- liftEngine generateCollectionFilename
-  liftEngine $ openCollectionFile new_id "w"
+  new_id <- liftM generateCollectionFilename
+  liftM $ openCollectionFile new_id "w"
   foldFile liftM (inner_func new_id) () file_id
-  liftEngine $ close new_id
+  liftM $ close new_id
   return new_id
   where
     --The typechecker didn't think the b here and the b in mapFile
@@ -371,9 +375,9 @@ mapFile liftM function file_id = do
     --inner_func :: Identifier -> () -> b -> EngineM b ()
     inner_func new_id _ v = do
       new_val <- function v
-      liftEngine $ doWrite new_id new_val
+      liftM $ doWrite new_id new_val
       return ()
---mapFile_ :: (Monad m) => (EngineM b c -> m c) -> (b -> m a) -> Identifier -> m ()
+mapFile_ :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m a) -> Identifier -> m ()
 mapFile_ liftM function file_id = do
   foldFile liftM inner_func () file_id
   where
@@ -381,10 +385,10 @@ mapFile_ liftM function file_id = do
     inner_func _ v = do
       function v
       return ()
---filterFile :: (b -> EngineM b Bool) -> Identifier -> EngineM b Identifier
+filterFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m Bool) -> Identifier -> m Identifier
 filterFile liftM predicate old_id = do
-  new_id <- liftEngine generateCollectionFilename
-  liftEngine $ openCollectionFile new_id "w"
+  new_id <- liftM generateCollectionFilename
+  liftM $ openCollectionFile new_id "w"
   foldFile liftM (inner_func new_id) () old_id
   liftM $ close new_id
   return new_id
@@ -393,7 +397,7 @@ filterFile liftM predicate old_id = do
     inner_func new_id _ v = do
       include <- predicate v
       if include then
-        liftEngine $ doWrite new_id v
+        liftM $ doWrite new_id v
       else
         return ()
 
@@ -485,7 +489,6 @@ instance Dataspace Interpretation Identifier Value where
     liftEngine $ close left
     liftEngine $ close right
     return (left, right)
-
 
 instance Dataspace Interpretation CollectionDataspace Value 
 
