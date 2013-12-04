@@ -12,21 +12,6 @@ namespace K3 {
   using namespace std;
   using namespace boost;
 
-  //--------------------
-  // Wire descriptions
-
-  // TODO: FrameDesc
-  // TODO: protobuf, msgpack, json WireDesc implementations.
-
-  template<typename Value>
-  class WireDesc {
-  public:
-    WireDesc() {}
-    virtual string pack(Value& v)    = 0;
-    virtual Value  unpack(string& s) = 0;
-    virtual FrameDesc frame()        = 0;
-  };
-
   //-------------------
   // Message processor
 
