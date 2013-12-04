@@ -1,0 +1,33 @@
+declare leader :     mut address = 127.0.0.1:10000
+declare uid :        mut int = 0
+declare maxUid :     mut int = 0
+declare isLeader :   mut bool = false
+declare successor :  mut address = 127.0.0.1:10000
+
+trigger init : () = \_ -> ( maxUid = uid;
+                            (send, me) <- ()
+                          )
+
+trigger send : () = \_ -> (elect, successor) <- maxUid
+
+trigger elect : int = \i -> 
+  if i == uid
+  then (isLeader = true;
+       (announce, successor) <- me)
+  else 
+    if i > maxUid
+    then (maxUid = i;
+	      (send, me) <- ())
+    else (maxUid = uid;
+          (send, me) <- ())   
+
+trigger announce : address = \add ->
+  if isLeader == true
+  then leader = me
+  else (leader = add; 
+        (announce, successor) <- add)
+
+source go : () = value ()
+
+feed go |> init
+	
