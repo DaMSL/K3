@@ -5,7 +5,7 @@ include "Annotation/Collection.k3"
  */
 
 declare wordsList :          mut collection {word : string} @ { Collection }
-declare numOfWords :         mut int = 300 
+declare numOfWords :         mut int = 50 
 declare wordsInWordsLst :    mut int = 0
 declare currNumWords :       mut int = 0
 declare numOfShufflers :     mut int = 3
