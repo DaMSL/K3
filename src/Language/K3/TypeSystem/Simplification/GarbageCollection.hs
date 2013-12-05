@@ -11,7 +11,7 @@ module Language.K3.TypeSystem.Simplification.GarbageCollection
 ) where
 
 import Control.Applicative
-import Control.Monad.Trans.Reader
+import Control.Monad.Reader
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -20,10 +20,7 @@ import qualified Data.Set as Set
 
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Morphisms.ExtractVariables
-import Language.K3.TypeSystem.Simplification.Data
-
--- FIXME: This simplification destroys opaque bounding constraints!  (It's not
---        marking opaque variables as "alive".)
+import Language.K3.TypeSystem.Simplification.Common
 
 -- |Performs garbage collection on the provided constraint set.
 simplifyByGarbageCollection :: ConstraintSet -> SimplifyM ConstraintSet

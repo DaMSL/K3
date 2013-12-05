@@ -13,13 +13,11 @@ module Language.K3.TypeSystem.Manifestation.Monad
 ( ManifestM(..)
 , runManifestM
 
-, VariableSignature(..)
-, askConstraints
+, askDictionary
 , askBoundType
-, envQuery
 
-, tryDeclSig
-, catchSigUse
+, tryVisitVar
+, catchVarUse
 , nameOpaque
 , getNamedOpaques
 , clearNamedOpaques
@@ -57,11 +55,11 @@ newtype ManifestM a
            , MonadReader ManifestEnviron, MonadWriter ManifestLog)
   
 -- |Executes a type manifesting computation.
-runManifestM :: BoundType -> ConstraintSet -> ManifestM a -> a
-runManifestM bt cs x =
-  let initialEnviron = ManifestEnviron { envConstraints = cs
+runManifestM :: BoundType -> BoundDictionary -> ManifestM a -> a
+runManifestM bt dict x =
+  let initialEnviron = ManifestEnviron { envDict = dict
                                        , envBoundType = bt
-                                       , definedSignatures = Set.empty } in
+                                       , visitedVariables = Set.empty } in
   let initialState = ManifestState { unusedNames = initialNames
                                    , variableNameMap = Map.empty
                                    , opaqueNameMap = Map.empty
@@ -69,34 +67,22 @@ runManifestM bt cs x =
   let (result,_,_) = runRWS (unManifestM x) initialEnviron initialState in
   result
   
--- |A structure which defines the identifier used when creating bindings for
---  mu-recursive types.
-data VariableSignature = VariableSignature (Set AnyTVar) DelayedOperationTag
-  deriving (Eq, Ord, Show)
-
-instance Pretty VariableSignature where
-  prettyLines (VariableSignature vars dtag) =
-    (case dtag of
-      DelayedIntersectionTag -> ["Intersection"]
-      DelayedUnionTag -> ["Union"]) %+
-    ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList vars) %+ ["}"]
-
 -- |A structure for the manifestation environment.
 data ManifestEnviron
   = ManifestEnviron
-      { envConstraints :: ConstraintSet
+      { envDict :: BoundDictionary
       , envBoundType :: BoundType
-      , definedSignatures :: Set VariableSignature
+      , visitedVariables :: Set AnyTVar
       }
 
 -- |A structure for the generated manifestation info.
 data ManifestLog
   = ManifestLog
-      { usedSignatures :: Set VariableSignature
+      { usedVariables :: Set AnyTVar
       }
 
 instance Monoid ManifestLog where
-  mempty = ManifestLog { usedSignatures = Set.empty }
+  mempty = ManifestLog { usedVariables = Set.empty }
   mappend (ManifestLog a) (ManifestLog a') =
     ManifestLog (a `Set.union` a') 
 
@@ -104,9 +90,9 @@ instance Monoid ManifestLog where
 data ManifestState
   = ManifestState
       { unusedNames :: [String]
-      , variableNameMap :: Map VariableSignature String
+      , variableNameMap :: Map AnyTVar String
       , opaqueNameMap :: Map OpaqueVar String
-      , resultCache :: Map VariableSignature (K3 Type)
+      , resultCache :: Map AnyTVar (K3 Type)
       }
 
 initialNames :: [String]
@@ -122,65 +108,59 @@ initialNames = iterate nextName "a"
 -- * Monad operations
 
 -- |Retrieves the constraints in context.
-askConstraints :: ManifestM ConstraintSet
-askConstraints = envConstraints <$> ask
+askDictionary :: ManifestM BoundDictionary
+askDictionary = envDict <$> ask
 
 -- |Retrieves the bound type in context.
 askBoundType :: ManifestM BoundType
 askBoundType = envBoundType <$> ask
 
--- |Runs a query on the in-context constraint set.
-envQuery :: (Ord r) => ConstraintSetQuery r -> ManifestM [r]
-envQuery query = (`csQuery` query) <$> askConstraints
-
 -- |Attempts to bind a variable for mu recursion.  If the variable has already
 --  been bound in the environment, it is marked as used and the @alreadyDefined@
 --  computation runs.  If it has not yet been bound, it is marked as bound and
 --  the @justDefined@ computation runs.
-tryDeclSig :: VariableSignature
-           -> (Identifier -> ManifestM a)
-                -- ^Accepts the variable name for the definition.
-           -> ManifestM a -- ^Runs if the variable was not yet bound.
-           -> ManifestM a -- ^The result
-tryDeclSig sig alreadyDefined justDefined = do
-  dsigs <- definedSignatures <$> ask
-  if Set.member sig dsigs
+tryVisitVar :: AnyTVar
+            -> (Identifier -> ManifestM a)
+                 -- ^Accepts the variable name for the definition.
+            -> ManifestM a -- ^Runs if the variable was not yet bound.
+            -> ManifestM a -- ^The result
+tryVisitVar var alreadyDefined justDefined = do
+  visitedVars <- visitedVariables <$> ask
+  if Set.member var visitedVars
     then do
-      name <- getVarName sig
-      tell ManifestLog{ usedSignatures = Set.singleton sig }
+      name <- getVarName var
+      tell ManifestLog{ usedVariables = Set.singleton var }
       alreadyDefined name
     else
-      local defSig justDefined
+      local defVar justDefined
   where
-    defSig :: ManifestEnviron -> ManifestEnviron
-    defSig e = e { definedSignatures = Set.insert sig $ definedSignatures e }
-    getVarName :: VariableSignature -> ManifestM Identifier
-    getVarName sig' = do
+    defVar :: ManifestEnviron -> ManifestEnviron
+    defVar e = e { visitedVariables = Set.insert var $ visitedVariables e }
+    getVarName :: AnyTVar -> ManifestM Identifier
+    getVarName var' = do
       s <- get
-      case Map.lookup sig' $ variableNameMap s of
+      case Map.lookup var' $ variableNameMap s of
         Just name -> return name
         Nothing -> do
           let name:rest = unusedNames s
           put s{ unusedNames = rest
-               , variableNameMap = Map.insert sig' name $ variableNameMap s }
+               , variableNameMap = Map.insert var' name $ variableNameMap s }
           return name
 
 -- |Determines whether a given variable signature was used or not.  If it was
 --  used, the return value contains the name it was assigned; otherwise, the
 --  return value contains a @Nothing@.
-catchSigUse :: VariableSignature -> ManifestM a
-            -> ManifestM (a, Maybe Identifier)
-catchSigUse sig x = do
+catchVarUse :: AnyTVar -> ManifestM a -> ManifestM (a, Maybe Identifier)
+catchVarUse var x = do
   (v,w) <- ManifestM $ listen (unManifestM x)
-  tell w
-  name <- if Set.member sig $ usedSignatures w
-    then Map.lookup sig <$> variableNameMap <$> get
-    else return Nothing
+  name <- if Set.member var $ usedVariables w
+            then Map.lookup var <$> variableNameMap <$> get
+            else return Nothing
   return (v, name)
   
 -- |Defines a name for the provided opaque variable if one does not already
 --  exist.  In either case, returns the name for the given opaque variable.
-nameOpaque :: OpaqueVar -> ManifestM String
+nameOpaque :: OpaqueVar -> ManifestM Identifier
 nameOpaque oa = do
   s <- get
   case Map.lookup oa $ opaqueNameMap s of
@@ -192,7 +172,7 @@ nameOpaque oa = do
       return newName
 
 -- |Retrieves all declared opaque variables.
-getNamedOpaques :: ManifestM (Map OpaqueVar String)
+getNamedOpaques :: ManifestM (Map OpaqueVar Identifier)
 getNamedOpaques = opaqueNameMap <$> get
 
 -- |Clears all declared opaque variables.
@@ -218,21 +198,21 @@ dualizeBoundType x = do
 
 -- |Either performs a computation or retrieves a cached version based upon the
 --  provided variable signature.
-typeComputationCache :: VariableSignature
+typeComputationCache :: AnyTVar
                      -> ManifestM (K3 Type)
                      -> ManifestM (K3 Type)
-typeComputationCache sig x = do
+typeComputationCache var x = do
   cache <- resultCache <$> get
-  case Map.lookup sig cache of
+  case Map.lookup var cache of
     Just result -> do
       _debug $ boxToString $
-        ["Manifestation cache hit: "] %+ prettyLines sig %+ [" => "] %+
+        ["Manifestation cache hit: "] %+ prettyLines var %+ [" => "] %+
           prettyLines result 
       return result
     Nothing -> do
       _debug $ boxToString $
-        ["Manifestation cache miss: "] %+ prettyLines sig
+        ["Manifestation cache miss: "] %+ prettyLines var
       result <- x
       s <- get
-      put $ s {resultCache = Map.insert sig result $ resultCache s}
+      put $ s {resultCache = Map.insert var result $ resultCache s}
       return result

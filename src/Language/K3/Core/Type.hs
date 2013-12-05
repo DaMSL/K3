@@ -67,10 +67,11 @@ data Type
         --  extension; the second list names the type variables with which this
         --  record concatenates.
     | TDeclaredVarOp [Identifier] TypeVariableOperator
-        -- ^Represents an n-ary operation over declared type variables.  This
-        --  type is generated when multiple opaque variables are aligned during
-        --  type manifestation, since computing the appropriate bounds is
-        --  inconvenient and quite complex.
+        -- ^Represents a deferred operation involving opaque variables.  This
+        --  occurs when the type is constructed as the union or intersection
+        --  of multiple bounds.  All but one of these bounds are opaque type
+        --  variables; the other bound is a transparent type which is the sole
+        --  child of this node.
     | TMu Identifier
         -- ^Represents a mu-recursive binding.  This type is generated when a
         --  self-referential type is encountered.  This type has one child: the

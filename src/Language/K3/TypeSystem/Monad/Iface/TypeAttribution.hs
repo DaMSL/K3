@@ -6,8 +6,7 @@
 -}
 
 module Language.K3.TypeSystem.Monad.Iface.TypeAttribution
-( TypeAttrI(..)
-, TypeVarAttrI(..)
+( TypeVarAttrI(..)
 ) where
 
 import Language.K3.Core.Common
@@ -18,11 +17,5 @@ import Language.K3.TypeSystem.Data
 --  will represent them.  The relevant constraints are assumed to be available
 --  in context.
 class (Monad m) => TypeVarAttrI m where
-  attributeExprVar :: UID -> AnyTVar -> m ()
-  attributeExprConstraints :: ConstraintSet -> m ()
-
--- |The typeclass defining the interface of monads supporting constrained type
---  attribution.  This allows UIDs to be matched with the constrained types
---  which will represent them.
-class (Monad m) => TypeAttrI m where
-  attributeExprType :: UID -> AnyTVar -> ConstraintSet -> m ()
+  attributeVar :: UID -> AnyTVar -> m ()
+  attributeConstraints :: ConstraintSet -> m ()

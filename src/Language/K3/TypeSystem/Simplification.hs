@@ -9,6 +9,6 @@ module Language.K3.TypeSystem.Simplification
 ( module X
 ) where
 
-import Language.K3.TypeSystem.Simplification.Data as X
+import Language.K3.TypeSystem.Simplification.Common as X
 import Language.K3.TypeSystem.Simplification.EquivalenceUnification as X
 import Language.K3.TypeSystem.Simplification.GarbageCollection as X

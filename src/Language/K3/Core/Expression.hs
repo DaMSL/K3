@@ -103,7 +103,17 @@ data instance Annotation Expression
     | EImplementationType Identifier
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
+    | ERead Identifier UID
+    | EWrite Identifier UID
+    | EConflict Conflict
   deriving (Eq, Read, Show)
+
+-- | Data Conflicts
+data Conflict
+    = RW [(Annotation Expression)] (Annotation Expression)
+    | WR (Annotation Expression) [(Annotation Expression)]
+    | WW (Annotation Expression) (Annotation Expression)
+  deriving (Eq, Read, Show) 
 
 instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) = 

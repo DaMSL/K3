@@ -33,9 +33,9 @@ library
         network,
         network-transport,
         network-transport-tcp,
-        optparse-applicative,
+        optparse-applicative >= 0.7,
         parsec,
-        parsers,
+        parsers >= 0.10,
         process,
         split,
         SafeSemaphore,
@@ -80,6 +80,7 @@ library
         Language.K3.Runtime.Literal,
         Language.K3.Runtime.Options,
         Language.K3.Transform.Alpha,
+        Language.K3.Transform.Conflicts
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -122,7 +123,7 @@ library
         Language.K3.Codegen,
         Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
         Language.K3.TypeSystem.Simplification,
-        Language.K3.TypeSystem.Simplification.Data,
+        Language.K3.TypeSystem.Simplification.Common,
         Language.K3.TypeSystem.Simplification.EquivalenceUnification,
         Language.K3.TypeSystem.Within,
         Language.K3.TypeSystem.Data.Types,
@@ -141,6 +142,13 @@ library
         Language.K3.TypeSystem.Data.ConstraintSet.Queries
 
     ghc-options: -Wall
+    other-modules: 
+                   Language.K3.Utils.Pretty.Common,
+                   Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
+                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
+                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
+                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
+                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
 
 test-suite all
     type: exitcode-stdio-1.0
