@@ -16,7 +16,7 @@ import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 import qualified Language.K3.Compiler.Haskell as HaskellC
-
+import qualified Language.K3.Compiler.CPP as CPPC
 
 -- | Mode Dispatch.
 dispatch :: Options -> IO ()
@@ -36,9 +36,10 @@ dispatch op = do
     Analyze   a -> analyzer a
   where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
+          "cpp" -> CPPC.compile op cOpts
           _         -> error $ lang ++ " compilation not supported."
 
-        interpret im@(Batch _ _ _) = runBatch op im
+        interpret im@(Batch {}) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
 
         printer PrintAST    = k3Program >>= either parseError (putStrLn . pretty)
