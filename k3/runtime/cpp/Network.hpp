@@ -17,6 +17,18 @@ namespace K3
   using namespace boost::iostreams;
   using namespace boost::asio;
 
+  template<typename NContext>
+  class NEndpoint : public virtual LogMT {
+  public:
+    NEndpoint(string logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+  };
+
+  template<typename NContext>
+  class NConnection : public virtual LogMT {
+  public:
+    NConnection(string logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+  };
+
   namespace Asio
   {
     //--------------------------
@@ -66,39 +78,53 @@ namespace K3
       shared_ptr<ip::tcp::socket> socket;
     };
 
-    class NEndpoint : public virtual LogMT
+    class NContext {
+    public:
+      shared_ptr<io_service> service;
+      ip::address address;
+      unsigned short port;
+    };
+
+    class NEndpoint : public ::K3::NEndpoint<NContext>
     {
     public:
-      NEndpoint(shared_ptr<io_service> ios, ip::address addr, unsigned short port) 
-        : LogMT("NEndpoint")
+      NEndpoint(shared_ptr<NContext> ctxt)
+        : ::K3::NEndpoint<NContext>("NEndpoint", ctxt), LogMT("NEndpoint")
       {
-        ip::tcp::endpoint ep(addr, port);
-        acceptor = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*ios, ep));
+        if ( ctxt ) {
+          ip::tcp::endpoint ep(ctxt->address, ctxt->port);
+          acceptor = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service), ep));
+        } else {
+          logAt(warning, "Invalid network context in constructing an NEndpoint");
+        }
       }
     
     protected:
       shared_ptr<ip::tcp::acceptor> acceptor;
     };
 
-    class NConnection : public stream<AsioDevice>, public virtual LogMT
+    class NConnection : public stream<AsioDevice>, public ::K3::NConnection<NContext>
     {
     public:
-      NConnection(shared_ptr<io_service> ios, ip::address addr, unsigned short port)
-        : NConnection(shared_ptr<ip::tcp::socket>(new ip::tcp::socket(*ios)))
+      NConnection(shared_ptr<NContext> ctxt)
+        : NConnection(ctxt, shared_ptr<ip::tcp::socket>(new ip::tcp::socket(*(ctxt->service))))
       {
-        if ( socket ) {
-          ip::tcp::endpoint ep(addr, port);
-          shared_ptr<LogMT> logger(static_cast<LogMT*>(this));
-          socket->async_connect(ep,
-            [=](const boost::system::error_code& error) { 
-              BOOST_LOG(*logger) << "connected to " << addr.to_string() << port;
-            } );
-        }
+        if ( ctxt ) {
+          if ( socket ) {
+            ip::tcp::endpoint ep(ctxt->address, ctxt->port);
+            shared_ptr<LogMT> logger(static_cast<LogMT*>(this));
+            socket->async_connect(ep,
+              [=](const boost::system::error_code& error) { 
+                BOOST_LOG(*logger) << "connected to " << ctxt->address.to_string() << ctxt->port;
+              } );
+          } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
+        } else { logAt(warning, "Invalid network context in constructing an NConnection"); }
       }
 
     protected:
-      NConnection(shared_ptr<ip::tcp::socket> s)
-        : stream<AsioDevice>(s), LogMT("NConnection"), socket(s)
+      NConnection(shared_ptr<NContext> ctxt, shared_ptr<ip::tcp::socket> s)
+        : ::K3::NConnection<NContext>("NConnection", ctxt), 
+          stream<AsioDevice>(s), LogMT("NConnection"), socket(s)
       {}
       
       shared_ptr<ip::tcp::socket> socket;

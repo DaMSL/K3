@@ -179,7 +179,7 @@ namespace K3 {
     }
   };
 
-
+  // TODO: for dynamic changes to the queues container, use a shared lock
   template<typename Value>
   class MultiPeerQueue
     : public IndexedMessageQueues<Value, Address, MsgQueue<tuple<Identifier, Value> > >
@@ -248,6 +248,7 @@ namespace K3 {
   };
 
 
+  // TODO: for dynamic changes to the queues container, use a shared lock
   template<typename Value>
   class MultiTriggerQueue
     : public IndexedMessageQueues<Value, tuple<Address, Identifier>, MsgQueue<Value> >

@@ -5,6 +5,7 @@
 #include <map>
 #include <tuple>
 #include <boost/any.hpp>
+#include <boost/asio.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/sources/severity_channel_logger.hpp>
@@ -23,26 +24,41 @@ namespace K3 {
   using namespace boost::log::trivial;
   using namespace boost::phoenix;
 
+  namespace Asio { 
+    typedef tuple<boost::asio::ip::address, unsigned short> Address;
+    Address make_address(string host, unsigned short port) { 
+      return Address(boost::asio::ip::address::from_string(host), port);
+    }
+    
+    inline string addressHost(Address& addr) { return get<0>(addr).to_string(); }
+    inline int addressPort(Address& addr) { return get<1>(addr); }
+  }
+  
+  namespace NanoMsg {
+    typedef tuple<string, int> Address;
+    Address make_address(string host, unsigned short port) { return Address(host, port); }
+    inline string addressHost(Address& addr) { return get<0>(addr); }
+    inline int addressPort(Address& addr) { return get<1>(addr); }
+  }
+
+  using namespace Asio;
+
   typedef string Identifier;
-  typedef tuple<string, int> Address;
 
   //---------------
   // Addresses.
-  Address defaultAddress("127.0.0.1", 40000);
+  Address defaultAddress = make_address("127.0.0.1", 40000);
 
-  string addressHost(Address& addr) { return get<0>(addr); }
-  int    addressPort(Address& addr) { return get<1>(addr); }
-  
   string addressAsString(Address& addr) {
     return addressHost(addr) + to_string(addressPort(addr));
   }
 
   Address internalSendAddress(Address addr) {
-    return Address(addressHost(addr), addressPort(addr)+1);
+    return make_address(addressHost(addr), addressPort(addr)+1);
   }
 
   Address externalSendAddress(Address addr) {
-    return Address(addressHost(addr), addressPort(addr)+2);
+    return make_address(addressHost(addr), addressPort(addr)+2);
   }
 
   //-------------
@@ -97,8 +113,8 @@ namespace K3 {
     Log() {}
     Log(severity_level lvl) : defaultLevel(lvl) {}
 
-    virtual void log(string& msg) = 0;
-    virtual void logAt(string& msg, severity_level lvl) = 0;
+    virtual void log(string msg) = 0;
+    virtual void logAt(severity_level lvl, string msg) = 0;
   
   protected:
     severity_level defaultLevel;
@@ -112,8 +128,8 @@ namespace K3 {
     LogST(string chan) : logger(keywords::channel = chan), Log(severity_level::info) {}
     LogST(string chan, severity_level lvl) : logger(keywords::channel = chan), Log(lvl) {}
     
-    void log(string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void logAt(string& msg, severity_level lvl) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(string msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void logAt(severity_level lvl, string msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
   
   class LogMT : public severity_channel_logger_mt<severity_level,string>, public Log
@@ -124,8 +140,8 @@ namespace K3 {
     LogMT(string chan) : logger(keywords::channel = chan), Log(severity_level::info) {}
     LogMT(string chan, severity_level lvl) : logger(keywords::channel = chan), Log(lvl) {}
 
-    void log(string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void logAt(string& msg, severity_level lvl) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(string msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void logAt(severity_level lvl, string msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
 
 }

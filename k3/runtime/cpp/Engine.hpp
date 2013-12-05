@@ -75,6 +75,7 @@ namespace K3 {
   public:
     Engine() {}
     
+    // TODO; initialize network context.
     Engine(bool simulation, SystemEnvironment& sysEnv, WireDesc<Value>& wd)
     {
       list<Address> peerAddrs = deployedNodes(sysEnv);
@@ -184,6 +185,7 @@ namespace K3 {
     shared_ptr<MessageQueues<Value> >      queues;
     shared_ptr<WorkerPool>                 workers;
     shared_ptr<Listeners>                  listeners;
+    shared_ptr<NContext>                   networkCtxt;
     shared_ptr<EndpointState>              endpoints;
     shared_ptr<ConnectionState>            connections;
   };

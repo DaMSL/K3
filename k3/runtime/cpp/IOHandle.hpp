@@ -14,10 +14,9 @@ namespace K3
   using namespace boost;
   using namespace boost::iostreams;
 
-  using std::shared_ptr;
-  
-  using Asio::NEndpoint;
-  using Asio::NConnection;
+  namespace Net = K3::Asio;
+
+  using std::shared_ptr;  
 
   //--------------------------
   // IO handles
@@ -205,8 +204,8 @@ namespace K3
   class NetworkHandle : public IOHandle<Value>
   {
   public:
-    NetworkHandle(shared_ptr<NConnection> c) : connection(c) {}
-    NetworkHandle(shared_ptr<NEndpoint> e) : endpoint(e) {}
+    NetworkHandle(shared_ptr<Net::NConnection> c) : connection(c) {}
+    NetworkHandle(shared_ptr<Net::NEndpoint> e) : endpoint(e) {}
 
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
@@ -234,8 +233,8 @@ namespace K3
     }
 
   protected:
-    shared_ptr<NConnection> connection;
-    shared_ptr<NEndpoint> endpoint;
+    shared_ptr<Net::NConnection> connection;
+    shared_ptr<Net::NEndpoint> endpoint;
   };
 }
 
