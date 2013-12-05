@@ -5,7 +5,7 @@ include "Annotation/Collection.k3"
  */
 
 declare wordsList :          mut collection {word : string} @ { Collection }
-declare numOfWords :         mut int = 50
+declare numOfWords :         mut int = 300 
 declare wordsInWordsLst :    mut int = 0
 declare currNumWords :       mut int = 0
 declare numOfShufflers :     mut int = 3
@@ -13,15 +13,12 @@ declare currNumShufflers :   mut int = 0
 
 /* fields for splitting wordsList */
 declare count :              mut int = 0
-declare mapperLst1 :         mut collection {word : string} @ { Collection }
-declare mapperLst2 :         mut collection {word : string} @ { Collection }
-declare mapperLst3 :         mut collection {word : string} @ { Collection }
 declare master :             immut address = 127.0.0.1:40000
-declare mappersList :        mut collection {mapper : address} @ { Collection } = { |mapper : address| 127.0.0.1:51000, 127.0.0.1:52000, 127.0.0.1:53000| } @ { Collection }
 declare shufflersTable :     mut collection {shuffler : address, word : string} @ { Collection } = { |shuffler : address, word : string| {shuffler : 127.0.0.1:61000, word : "foo" }, {shuffler : 127.0.0.1:62000, word : "bar" }, {shuffler : 127.0.0.1:63000, word : "baz"} | } @ { Collection }
 declare reducer :            immut address = 127.0.0.1:70000
 
 /* mapper's local word list */
+declare lstLength :          mut int = 0
 declare localLst :           mut collection {word : string} @ { Collection }
 
 /* shuffer's local word map */
@@ -37,10 +34,12 @@ declare currentNodes :      mut int = 0
 
 /* fields for debug */
 declare test :              mut int = 0
-declare allMappersDone :    mut bool = false
 declare done :              mut bool = false
 declare wordTest :          mut string = "init"
 declare countTest :         mut int = 0
+declare testInt1 :          mut int = 0
+declare testInt2 :          mut int = 0
+declare testInt3 :          mut int = 0
 
 trigger initWordsLst : string = \str -> (
   wordsList.insert {word : str};
@@ -63,31 +62,38 @@ trigger register : () = \_ -> (
 )
 
 trigger splitWordLst : ()= \_ -> (
-   
   wordsList.iterate (\wordRecord -> (
-      count = count + 1;
-      if count < 15
-	  then mapperLst1.insert{word : wordRecord.word}
-	  else if count < 31
-	       then mapperLst2.insert{word : wordRecord.word}
-	       else mapperLst3.insert{word : wordRecord.word}
+      count = count + 1;      
+      if count < numOfWords/3
+	  then (testInt1 = numOfWords/3 - 1;
+	        (genWordLst, 127.0.0.1:51000) <- (testInt1, wordRecord.word))	       
+	  else if count < (numOfWords/3)*2
+	       then (testInt2 = (numOfWords/3)*2 - 1 - testInt1;
+	             (genWordLst, 127.0.0.1:52000) <- (testInt2, wordRecord.word)) 
+		   else (testInt3 = numOfWords - testInt1 - testInt2;
+				 (genWordLst, 127.0.0.1:53000) <- (testInt3, wordRecord.word))
     )  
-  );
-	
-  (wordMap, 127.0.0.1:51000) <- mapperLst1;
-  (wordMap, 127.0.0.1:52000) <- mapperLst2;
-  (wordMap, 127.0.0.1:53000) <- mapperLst3
-)  				   
+  )
+)
 
-trigger wordMap : (collection { word : string } @ { Collection }) = \wordLst -> (
-  localLst = wordLst;
+trigger genWordLst : (immut int, immut string) = \x -> 
+  bind x as (length, recWord) in (
+    localLst.insert {word : recWord};
+    lstLength = lstLength + 1;
+	(if lstLength == length
+	 then (wordMap, me) <- ()
+	 else ())
+  )
+
+
+trigger wordMap : () = \_ -> (
   localLst.iterate (\wordRecord -> 
     shufflersTable.iterate (\shufflerRerd ->
       if wordRecord.word == shufflerRerd.word
 	  then (shuffle, shufflerRerd.shuffler) <- wordRecord.word
 	  else (shuffle, shufflerRerd.shuffler) <- "none"
     )
-  )		      
+  )
 ) 
 
 /* general reducer  */
