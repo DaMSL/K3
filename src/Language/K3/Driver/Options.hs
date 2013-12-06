@@ -57,6 +57,7 @@ data PrintOptions
 -- | Analyze Options.
 data AnalyzeOptions
     = Conflicts
+    | Frontier
   deriving (Eq, Read, Show) 
 
 
@@ -198,11 +199,15 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (conflictsOpt)
+analyzeOptions = Analyze <$> (conflictsOpt <|> frontierOpt)
 
 conflictsOpt :: Parser AnalyzeOptions
 conflictsOpt = flag' Conflicts (   long "conflicts"
-                              <> help "Print Conflicts output" )
+                              <> help "Print Conflicting Data Accesses for a K3 Program" )
+
+frontierOpt :: Parser AnalyzeOptions
+frontierOpt = flag' Frontier (   long "frontier"
+                              <> help "Print the 'Conflict Frontier' for a K3 Program" )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec

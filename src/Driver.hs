@@ -9,6 +9,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Transform.Alpha
 import Language.K3.Transform.Conflicts
 
 import Language.K3.Driver.Batch
@@ -46,12 +47,17 @@ dispatch op = do
         k3Program           = parseK3Input (includes $ paths op) (input op)
         printProgram        = either syntaxError putStrLn . programS
 
-        analyzer Conflicts  = k3Program 
-           >>= either parseError (putStrLn . pretty . startConflicts . startAnnotate)
-        
+        analyzer Conflicts  = k3Program >>= either parseError (putStrLn . pretty . getConflicts) 
+        analyzer Frontier   = k3Program >>= either parseError (printFrontier . getFrontier)       
+
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
+       
+        getConflicts = (startConflicts . startAnnotate)
+        getFrontier  = (buildFrontier . startConflicts . startAnnotate)        
 
+        printFrontier (Just a,_)    = (putStrLn . pretty) a
+        printFrontier (Nothing ,b)  = mapM_ (putStrLn . pretty ) b
 
 -- | Top-Level.
 main :: IO ()
