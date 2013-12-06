@@ -1,0 +1,17 @@
+Usage: 'python run_k3.py -t "path/to/Topology1.csv,path/to/Topology2.csv,..."'
+
+The script will execute the topologies in order with a 10 second break in between topology executions
+Typically you want to set up a bunch of k3 triggers and ensure they are running before starting to send
+messages to said triggers. You can accomplish this with two topologies; the first will set up your nodes with
+triggers and the second will sent a "start" message to begin computation
+
+Topology format:
+/Path/To/k3_program.k3
+Hostname,peer,param1,role,param3,...     <-- this line is the key
+qp1-k3VM,192.168.0.174:40000,"valueforparam1",\"go\","param3value",...
+
+see example in ./NetworkRing/
+
+output will be redirected to the ./output/ folder for each peer
+
+
