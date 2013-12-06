@@ -112,7 +112,7 @@ conflictsExpression  (Node (exp :@: as) cs) =
   tuplesll     = map (snd) (M.toList x) -- values from hash map (group by)
   full         = map combineReads tuplesll
   confs        = concat $ map buildConflicts full
-  in ((Node (exp :@: (confs++(concat $ (map (map fst) tuplesll))++as)) newcs), (concat fullaccll)) 
+  in ((Node (exp :@: (confs++as)) newcs), (concat fullaccll)) 
 
 -- Utils 
 getAccesses :: [Annotation Expression] -> [Annotation Expression]
