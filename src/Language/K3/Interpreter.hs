@@ -1676,18 +1676,18 @@ unpackValueSyntax = readSingleParse unpackValue
             Ident "I" <- lexP
             v <- step unpackValue
             return (v >>= newIORef >>= rt . VIndirection))
-
-      +++ readCollectionPrec
       
+      +++ readCollectionPrec
+
       +++ (readPrec >>= return . rt . VAddress))
 
     readCollectionPrec = parens $
       (prec appPrec $ do
         Punc "{" <- lexP
         ns       <- step $ readCollectionNamespace
-        Char ',' <- lexP
+        Punc "," <- lexP
         v        <- step $ readCollectionDataspace
-        Char ',' <- lexP
+        Punc "," <- lexP
         Ident n  <- lexP
         Punc "}" <- lexP
         return $ (do
@@ -1698,10 +1698,10 @@ unpackValueSyntax = readSingleParse unpackValue
 
     readCollectionNamespace :: ReadPrec (IO (CollectionNamespace Value))
     readCollectionNamespace = parens $
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         void      $ readExpectedName "CNS"
         cns      <- readNamedValues unpackValue
-        Char ',' <- lexP
+        Punc "," <- lexP
         void      $ readExpectedName "ANS"
         ans      <- readDoublyNamedValues
         return $ (do
@@ -1711,26 +1711,26 @@ unpackValueSyntax = readSingleParse unpackValue
 
     readCollectionDataspace :: ReadPrec (IO [Value])
     readCollectionDataspace = parens $
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         void $ readExpectedName "DS"
         v <- readBrackets unpackValue
         return $ sequence v)
 
     readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
     readDoublyNamedValues = parens $
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         v <- readBraces $ readNamedPrec $ readNamedValues unpackValue
         return $ sequence v)
 
     readNamedValues :: ReadPrec (IO a) -> ReadPrec (IO [(String, a)])
     readNamedValues readF = parens $
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         v <- readBraces $ readNamedPrec readF
         return $ sequence v)
 
     readNamedPrec :: ReadPrec (IO a) -> ReadPrec (IO (String, a))
     readNamedPrec readF = parens $ 
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         n <- readName 
         v <- step readF
         return $ v >>= rt . (n,))
@@ -1755,8 +1755,8 @@ unpackValueSyntax = readSingleParse unpackValue
     readSingleParse readP s =
       case [ x | (x,"") <- readPrec_to_S read' minPrec s ] of
         [x] -> x
-        []  -> error "Interpreter.unpackValue: no parse"
-        l   -> error $ "Interpreter.unpackValue: ambiguous parse (" ++ (show $ length l) ++ " variants)"
+        []  -> error ("Interpreter.unpackValueSyntax: no parse for " ++ s)
+        l   -> error $ "Interpreter.unpackValueSyntax: ambiguous parse (" ++ (show $ length l) ++ " variants)"
       where read' = do
               x <- readP
               TR.lift P.skipSpaces
