@@ -1,0 +1,1 @@
+{CNS={},ANS={},DS=[{word="foo"},{word="bar"},{word="baz"}],Collection}
