@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Transform.Conflicts (startAnnotate,startConflicts) where
+module Language.K3.Transform.Conflicts (startAnnotate,startConflicts,buildFrontier) where
 
 import Control.Arrow hiding ( (+++) )
 import Data.List
@@ -12,33 +12,60 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common
 
+
+-- Build Frontier Top Level. Given AST Annotated with Conflicts
+buildFrontier :: K3 Declaration -> (Maybe (K3 Declaration), [K3 Expression])
+buildFrontier x@(Node (DRole r :@: as) cs)
+  | hasUConflict as =  (Just x, [])
+  | otherwise       =  (Nothing, (concat $ map buildEFrontier (map (getTriggerExpression) (getTriggers cs))))
+
+-- Filter subForest of Declarations to only Trigger Declarations 
+getTriggers :: [K3 Declaration] -> [K3 Declaration]
+getTriggers [] = []
+getTriggers (x@(Node (DTrigger _ _ _ :@: _) _):rest) = x:(getTriggers rest)
+getTriggers                                  (_:rest)  = (getTriggers rest)
+
+-- Get the top level expression from a Trigger
+getTriggerExpression :: K3 Declaration -> K3 Expression
+getTriggerExpression (Node (DTrigger n t e :@: as) cs) = e
+getTriggerExpression _                                 = error "Cannot get Trigger Expression from Non-Trigger Declaration"
+
+-- Build Frontier at expression level. 
+buildEFrontier :: K3 Expression -> [K3 Expression]
+buildEFrontier x@(Node (_ :@: as) cs) 
+  | hasConflict as = [x]
+  | otherwise      = concat $ map buildEFrontier cs
+
+
+hasConflict :: [Annotation Expression] -> Bool
+hasConflict [] = False
+hasConflict ((EConflict x):t) = True
+hasConflict (_:t)             = hasConflict t
+
+hasUConflict :: [Annotation Declaration] -> Bool
+hasUConflict [] = False
+hasUConflict ((DConflict x):t) = True
+hasUConflict (_:t) = hasUConflict t
+
 -- Annotate Data Accesses
 startAnnotate :: K3 Declaration -> K3 Declaration
-startAnnotate x@(Node (DRole r :@: as) cs) = 
-  let globals = globalVars x 
-  in (Node (DRole r :@: as) (map (annotateTrigger globals) cs))
+startAnnotate x@(Node (DRole r :@: as) cs) = (Node (DRole r :@: as) (map annotateTrigger cs))
 
-annotateTrigger :: [String] -> K3 Declaration -> K3 Declaration
-annotateTrigger globals (Node (DTrigger n t e :@: as) cs) = 
-  let vars = globals `intersect` (freeVariables e) 
-  in (Node (DTrigger n t (annotateExpression vars e) :@: as) cs)
-annotateTrigger vars x = x
+annotateTrigger :: K3 Declaration -> K3 Declaration
+annotateTrigger (Node (DTrigger n t e :@: as) cs) =  (Node (DTrigger n t (annotateExpression e) :@: as) cs)
+annotateTrigger x = x
 
-annotateExpression :: [String] -> K3 Expression -> K3 Expression
-annotateExpression vars exp@(Node (EVariable i :@: as) cs) 
-  | i `elem` vars = let 
-    uid = getUID as 
-     in Node (EVariable i :@: ((ERead  i uid):as)) (map (annotateExpression vars) cs)
-  | otherwise        = exp {subForest = (map (annotateExpression vars) (subForest exp))}
-annotateExpression vars exp@(Node (EAssign   i :@: as) cs)
-  | i `elem` vars = let
-    uid = getUID as 
-     in Node (EAssign   i :@: ((EWrite i uid):as)) (map (annotateExpression vars) cs)
-  | otherwise        = exp {subForest = (map (annotateExpression vars) (subForest exp))}
-annotateExpression vars exp = exp {subForest = (map (annotateExpression vars) (subForest exp))}
+annotateExpression :: K3 Expression -> K3 Expression
+annotateExpression exp@(Node (EVariable i :@: as) cs) = let
+   uid = getUID as 
+     in Node (EVariable i :@: ((ERead  i uid):as)) (map annotateExpression cs)
+annotateExpression exp@(Node (EAssign i :@: as) cs) = let
+   uid = getUID as 
+     in Node (EAssign   i :@: ((EWrite i uid):as)) (map annotateExpression cs)
+annotateExpression exp = exp {subForest = (map annotateExpression (subForest exp))}
 
 getUID :: [Annotation Expression] -> UID
-getUID []          = error "no UID found!"
+getUID []            = error "no UID found!"
 getUID ((EUID x):as) = x 
 getUID (a:as)        = getUID as
 
@@ -52,11 +79,26 @@ appendIfGlobal lst _ = lst
 
 -- Annotate Conflicts
 startConflicts :: K3 Declaration -> K3 Declaration
-startConflicts (Node (DRole r :@: as) cs) = (Node (DRole r :@: as) (map conflictsTrigger cs))
+startConflicts (Node (DRole r :@: as) cs) = 
+  let 
+  childresults = map conflictsTrigger (cs)
+  newcs       = map fst childresults
+  annll       = map snd childresults
+  childaccll  = map getAccesses annll
+  fullaccll   = childaccll
+  x           = groupMap fullaccll
+  tuplesll    = map (snd) (M.toList x)
+  full        = map combineReads tuplesll
+  confs       = concat $ map buildConflicts full
+  dConfs      = map convertToUnordered confs
+  in (Node (DRole r :@: (dConfs ++ as)) newcs)
 
-conflictsTrigger :: K3 Declaration -> K3 Declaration
-conflictsTrigger (Node (DTrigger n t e :@: as) cs) = (Node (DTrigger n t (fst . conflictsExpression $ e) :@: as) cs)
-conflictsTrigger x = x
+conflictsTrigger :: K3 Declaration -> (K3 Declaration, [Annotation Expression])
+conflictsTrigger (Node (DTrigger n t e :@: as) cs) = 
+  let
+  (newE, anns)  = conflictsExpression e
+  in ((Node (DTrigger n t newE :@: as) cs), anns)
+conflictsTrigger x = (x,[])
 
 conflictsExpression :: K3 Expression -> (K3 Expression, [Annotation Expression])
 conflictsExpression  (Node (exp :@: as) cs) = 
@@ -70,7 +112,7 @@ conflictsExpression  (Node (exp :@: as) cs) =
   tuplesll     = map (snd) (M.toList x) -- values from hash map (group by)
   full         = map combineReads tuplesll
   confs        = concat $ map buildConflicts full
-  in ((Node (exp :@: (confs++as)) newcs), (concat fullaccll)) 
+  in ((Node (exp :@: (confs++(concat $ (map (map fst) tuplesll))++as)) newcs), (concat fullaccll)) 
 
 -- Utils 
 getAccesses :: [Annotation Expression] -> [Annotation Expression]
@@ -122,6 +164,12 @@ combineReads' (currlst, result) curr          = case currlst of
   _ -> ([curr], result++[currlst]) 
 
 -- Utilities for Building Conflicts
+convertToUnordered :: Annotation Expression -> Annotation Declaration
+convertToUnordered (EConflict  (RW a b)) = (DConflict  (URW a b))
+convertToUnordered (EConflict  (WR b a)) = (DConflict  (URW a b))
+convertToUnordered (EConflict  (WW a b)) = (DConflict  (UWW a b))
+
+
 diffChild :: Int -> (Annotation Expression, Int) -> Bool
 diffChild n (_, n2) = (n/=n2)
 
