@@ -65,6 +65,7 @@ module Language.K3.Runtime.Engine (
   , showMessageQueues
   , showEngine
 
+  , generateCollectionFilename
 #ifdef TEST
   , LoopStatus(..)
 
@@ -160,6 +161,7 @@ $(customLoggingFunctions ["EngineSteps"])
 
 -- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
+                       , valueFormat     :: WireDesc a
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
@@ -167,7 +169,8 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
-                       , connections     :: EConnectionState }
+                       , connections     :: EConnectionState
+                       , collectionCount :: MVar Int }
 
 data EngineError = EngineError String deriving (Eq, Read, Show)
 
@@ -299,7 +302,7 @@ data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
   = BuiltinH (WireDesc a) SIO.Handle Builtin
-  | FileH    (WireDesc a) SIO.Handle
+  | FileH    (WireDesc a) SIO.Handle -- TODO bool about temporaries
   | SocketH  (WireDesc a) (Either NEndpoint NConnection)
 
 data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
@@ -431,7 +434,7 @@ perTriggerQueues peers triggerIds =
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
 simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-simulationEngine systemEnv (internalizeWD -> internalWD) = do
+simulationEngine systemEnv wd@(internalizeWD -> internalWD) = do
   config'         <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers'        <- newEmptyMVar >>= return . Uniprocess
@@ -442,13 +445,14 @@ simulationEngine systemEnv (internalizeWD -> internalWD) = do
   endpoints'      <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ config'
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine config' internalWD ctrl systemEnv q workers' listeners' endpoints' connState
+  colCount        <- newMVar 0
+  return $ Engine config' wd internalWD ctrl systemEnv q workers' listeners' endpoints' connState colCount
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-networkEngine systemEnv (internalizeWD -> internalWD) = do
+networkEngine systemEnv wd@(internalizeWD -> internalWD) = do
   config'       <- return $ configureWithAddress $ head peers
   ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
   workers'      <- newEmptyMVar >>= return . Uniprocess
@@ -458,7 +462,8 @@ networkEngine systemEnv (internalizeWD -> internalWD) = do
   internalConns <- emptyConns internalSendAddress config' >>= return . Just
   externalConns <- emptyConns externalSendAddress config'
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine config' internalWD ctrl systemEnv q workers' listnrs endpoints' connState
+  colCount     <- newMVar 0
+  engine        <- return $ Engine config' wd internalWD ctrl systemEnv q workers' listnrs endpoints' connState colCount
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -903,9 +908,15 @@ genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ())
 openBuiltin :: Identifier -> Identifier -> WireDesc a -> EngineM a ()
 openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoints . endpoints
 
+-- | Open a file endpoint.
+-- Takes a name for the endpoint, the path to the file, a wire description, a thingy,
+-- an IO mode, and returns a monadic thingy?
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
+-- |Takes: a name for the socket, the target address, the wire description of data written to the socket,
+-- (Maybe (K3 Type)? what is this?), and the file mode (r,w,a, etc.).
+-- Returns something?
 openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openSocket eid addr wd tOpt mode = do
     engine <- ask
@@ -914,9 +925,11 @@ openSocket eid addr wd tOpt mode = do
     let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) externalListenerProcessor
     genericOpenSocket eid addr wd tOpt mode lst eep
 
+-- |Closes the external endpoint identified by the first argument
 close :: String -> EngineM a ()
 close n = ask >>= genericClose n . externalEndpoints . endpoints
 
+-- TODO Nothing from Maybe Bool should get rolled into EngineError
 hasRead :: Identifier -> EngineM a (Maybe Bool)
 hasRead n = ask >>= genericHasRead n . externalEndpoints . endpoints
 
@@ -939,8 +952,8 @@ openBuiltinInternal eid bid = do
     let iep = internalEndpoints $ endpoints engine
     genericOpenBuiltin eid bid ife iep
 
-openFileInternal :: Identifier -> String -> String -> EngineM a ()
-openFileInternal eid path mode = do
+openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> EngineM a ()
+openFileInternal eid path mode f = do
     engine <- ask
     let ife = internalFormat engine
     let iep = internalEndpoints $ endpoints engine
@@ -1396,3 +1409,14 @@ modifyMVE v f = do
     case result of
         Left e -> left e
         Right (_, x) -> return x
+
+-- Persistent collection helpers
+-- Put these into __DATA/peerID/collection_name
+generateCollectionFilename :: EngineM b Identifier
+generateCollectionFilename = do
+    engine <- ask
+    let counter = collectionCount engine
+    number <- liftIO $ readMVar counter
+    let filename = "collection_" ++ (show number)
+    liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
+    return filename
