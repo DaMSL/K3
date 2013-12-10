@@ -3,11 +3,11 @@
 ;;===============================================================
 
 ;; define several class of keywords
-(setq k3-keywords '("declare" "trigger" "varD" "trgD" "annD" "then" "else" "if" "return" "annotation" "source" "value" "me" "bind" "as" "in"))
+(setq k3-keywords '("declare" "trigger" "varD" "trgD" "annD" "then" "else" "if" "return" "annotation" "source" "sink" "feed" "value" "me" "bind" "as" "let" "in" "case" "of" "Some"))
 (setq k3-types '("float" "integer" "key" "list" "rotation" "string" "vector" "int" "bool" "Collection" "lifted" "address"))
-(setq k3-constants '("immut" "mut" "Null" "false" "true"))
+(setq k3-constants '("immut" "mut" "Null" "false" "true" "None"))
 (setq k3-events '("attach" "provides"))
-(setq k3-functions '("map" "maximum" "peek" "insert" "delete" "update" "combine" "split" "iterate" "filter" "fold" "groupBy" "ext" "&&" "||"))
+(setq k3-functions '("map" "maximum" "peek" "insert" "delete" "update" "combine" "split" "iterate" "filter" "fold" "groupBy" "ext" "&&" "||" "|>"))
 
 ;; create the regex string for each class of keywords
 (setq k3-keywords-regexp (regexp-opt k3-keywords 'words))
