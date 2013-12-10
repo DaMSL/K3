@@ -4,10 +4,13 @@
 #include <ios>
 #include <memory>
 #include <system_error>
+#include <tuple>
 #include <boost/asio.hpp>
 #include <boost/iostreams/categories.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/thread/thread.hpp>
+#include <k3/runtime/cpp/Common.hpp>
 
 namespace K3
 {
@@ -20,13 +23,15 @@ namespace K3
   template<typename NContext>
   class NEndpoint : public virtual LogMT {
   public:
-    NEndpoint(string logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+    NEndpoint(const string& logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+    NEndpoint(const char* logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
   };
 
   template<typename NContext>
   class NConnection : public virtual LogMT {
   public:
-    NConnection(string logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+    NConnection(const string& logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
+    NConnection(const char* logId, shared_ptr<NContext> ctxt) : LogMT(logId) {}
   };
 
   namespace Asio
@@ -78,56 +83,85 @@ namespace K3
       shared_ptr<ip::tcp::socket> socket;
     };
 
+    // Boost implementation of a network context.
     class NContext {
     public:
+      NContext(Address addr) {
+        service = shared_ptr<io_service>(new io_service());
+        service_threads = shared_ptr<thread_group>(new thread_group());
+      }
+
+      NContext(Address addr, size_t concurrency) {
+        service = shared_ptr<io_service>(new io_service(concurrency));
+        service_threads = shared_ptr<thread_group>(new thread_group());
+      }
+
+      NContext(shared_ptr<io_service> ios) : service(ios) {}
+
+      void operator()() { if ( service ) { service->run(); } }
+
       shared_ptr<io_service> service;
-      ip::address address;
-      unsigned short port;
+      shared_ptr<thread_group> service_threads;
     };
 
+    // TODO: close method for IOHandle
+    // Low-level endpoint class. This is a wrapper around a Boost tcp acceptor.
     class NEndpoint : public ::K3::NEndpoint<NContext>
     {
     public:
-      NEndpoint(shared_ptr<NContext> ctxt)
+      NEndpoint(shared_ptr<NContext> ctxt, Address addr)
         : ::K3::NEndpoint<NContext>("NEndpoint", ctxt), LogMT("NEndpoint")
       {
         if ( ctxt ) {
-          ip::tcp::endpoint ep(ctxt->address, ctxt->port);
-          acceptor = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service), ep));
+          ip::tcp::endpoint ep(get<0>(addr), get<1>(addr));
+          acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service), ep));
         } else {
           logAt(warning, "Invalid network context in constructing an NEndpoint");
         }
       }
-    
+
+      shared_ptr<ip::tcp::acceptor> acceptor() { return acceptor_; }
+      void close() { if ( acceptor_ ) { acceptor_->close(); } }
+
     protected:
-      shared_ptr<ip::tcp::acceptor> acceptor;
+      shared_ptr<ip::tcp::acceptor> acceptor_;
     };
 
+    // TODO: close method for IOHandle
+    // Low-level connection class. This is a wrapper around a Boost tcp socket.
     class NConnection : public stream<AsioDevice>, public ::K3::NConnection<NContext>
     {
     public:
       NConnection(shared_ptr<NContext> ctxt)
         : NConnection(ctxt, shared_ptr<ip::tcp::socket>(new ip::tcp::socket(*(ctxt->service))))
+      {}
+
+      NConnection(shared_ptr<NContext> ctxt, Address addr)
+        : NConnection(ctxt, shared_ptr<ip::tcp::socket>(new ip::tcp::socket(*(ctxt->service))))
       {
         if ( ctxt ) {
-          if ( socket ) {
-            ip::tcp::endpoint ep(ctxt->address, ctxt->port);
+          if ( socket_ ) {
+            ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
             shared_ptr<LogMT> logger(static_cast<LogMT*>(this));
-            socket->async_connect(ep,
-              [=](const boost::system::error_code& error) { 
-                BOOST_LOG(*logger) << "connected to " << ctxt->address.to_string() << ctxt->port;
+            socket_->async_connect(ep,
+              [=,&addr] (const boost::system::error_code& error) { 
+                BOOST_LOG(*logger) << "connected to " << ::K3::addressAsString(addr);
               } );
           } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
         } else { logAt(warning, "Invalid network context in constructing an NConnection"); }
       }
 
+      shared_ptr<ip::tcp::socket> socket() { return socket_; }
+
+      void close() { if ( socket_ ) { socket_->close(); } }
+
     protected:
       NConnection(shared_ptr<NContext> ctxt, shared_ptr<ip::tcp::socket> s)
         : ::K3::NConnection<NContext>("NConnection", ctxt), 
-          stream<AsioDevice>(s), LogMT("NConnection"), socket(s)
+          stream<AsioDevice>(s), LogMT("NConnection"), socket_(s)
       {}
       
-      shared_ptr<ip::tcp::socket> socket;
+      shared_ptr<ip::tcp::socket> socket_;
     };
   }
 

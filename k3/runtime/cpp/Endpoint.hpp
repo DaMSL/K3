@@ -15,6 +15,11 @@
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.
+
+// TODO: remove dependency on Net namespace alias, lifting usage to
+// K3::NEndpoint<Net::NContext> and K3::NConnection<Net::NContext> in 
+// EndpointState and ConnectionState.
+
 namespace K3
 {
   using namespace std;
@@ -77,7 +82,30 @@ namespace K3
   // Endpoint buffers.
   template<typename Value>
   class EndpointBuffer {
-    // TODO: common endpoint buffer methods.
+  public:
+
+    virtual bool empty() = 0;
+    virtual bool full() = 0;
+    virtual size_t size() = 0;
+    virtual size_t capacity() = 0;
+
+    // Appends to this buffer, returning the value if the append fails.
+    virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
+
+    // Transfers from this buffer into the given queues.
+    virtual void enqueue(shared_ptr<MessageQueues> queues) = 0;
+
+    // TODO
+    // Writes the content of this buffer to the given IO handle. 
+    // Returns a notification if the write is successfully performed.
+    virtual shared_ptr<EndpointNotification>
+    flush(shared_ptr<IOHandle<Value> > ioh) = 0;
+    
+    // Refresh this buffer by reading a value from the IO handle.
+    // If the buffer is full, a value is returned. Also, a notification
+    // is returned if the read is successfully performed.
+    virtual tuple<shared_ptr<Value>, shared_ptr<EndpointNotification> >
+    refresh(shared_ptr<IOHandle<Value> > ioh) = 0;
   };
 
   /*
@@ -127,8 +155,8 @@ namespace K3
                   shared_ptr<EndpointBindings<Value> > >
               EndpointDetails;
 
-    EndpointState(shared_ptr<NContext> ctxt) 
-      : eplockable(), LogMT("EndpointState"), networkCtxt(ctxt),
+    EndpointState() 
+      : eplockable(), LogMT("EndpointState"),
         internalEndpoints(emptyEndpointMap()),
         externalEndpoints(emptyEndpointMap())
     {}
@@ -176,7 +204,6 @@ namespace K3
     }
 
   protected:
-    shared_ptr<Net::NContext> networkCtxt;
     shared_ptr<ConcurrentEndpointMap> internalEndpoints;
     shared_ptr<ConcurrentEndpointMap> externalEndpoints;
 
@@ -189,6 +216,7 @@ namespace K3
   //-------------------------------------
   // Connections and their containers.
 
+  // TODO: generalize from Net::NConnection to K3::NConnection or parameterized type.
   // TODO: addresses for anchors as needed.
   class ConnectionState : public shared_lockable_adapter<shared_mutex>,
                           public virtual LogMT
@@ -239,11 +267,12 @@ namespace K3
       map<Address, shared_ptr<Net::NConnection> > cache;
     };
 
+  public:
+    typedef shared_lockable_adapter<shared_mutex> shlockable;
+    
     typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
               ConcurrentConnectionMap;
 
-  public:
-    typedef shared_lockable_adapter<shared_mutex> shlockable;
 
     ConnectionState(shared_ptr<Net::NContext> ctxt)
       : shlockable(), LogMT("ConnectionState"),
@@ -277,7 +306,9 @@ namespace K3
       shared_ptr<ConcurrentConnectionMap> cMap =
         internal? internalConnections : externalConnections;
 
-      shared_ptr<Net::NConnection> conn = shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt));
+      shared_ptr<Net::NConnection> conn =
+        shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
+      
       return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
     }
 

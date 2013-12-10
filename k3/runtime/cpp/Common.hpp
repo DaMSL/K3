@@ -3,7 +3,10 @@
 
 #include <list>
 #include <map>
+#include <memory>
+#include <stdexcept>
 #include <tuple>
+#include <utility>
 #include <boost/any.hpp>
 #include <boost/asio.hpp>
 #include <boost/log/core.hpp>
@@ -24,21 +27,41 @@ namespace K3 {
   using namespace boost::log::trivial;
   using namespace boost::phoenix;
 
+  using std::shared_ptr;
+
   namespace Asio { 
     typedef tuple<boost::asio::ip::address, unsigned short> Address;
-    Address make_address(string host, unsigned short port) { 
+    
+    Address make_address(const string& host, unsigned short port) {
       return Address(boost::asio::ip::address::from_string(host), port);
     }
+
+    Address make_address(const char* host, unsigned short port) {
+      return Address(boost::asio::ip::address::from_string(host), port);
+    }
+
+    Address make_address(const string&& host, unsigned short port) {
+      return Address(boost::asio::ip::address::from_string(host), port);
+    }
+
+    inline string addressHost(const Address& addr) { return get<0>(addr).to_string(); }
+    inline string addressHost(Address&& addr) { return get<0>(std::forward<Address>(addr)).to_string(); }
     
-    inline string addressHost(Address& addr) { return get<0>(addr).to_string(); }
-    inline int addressPort(Address& addr) { return get<1>(addr); }
+    inline int addressPort(const Address& addr) { return get<1>(addr); }
+    inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
   }
   
   namespace NanoMsg {
     typedef tuple<string, int> Address;
-    Address make_address(string host, unsigned short port) { return Address(host, port); }
-    inline string addressHost(Address& addr) { return get<0>(addr); }
-    inline int addressPort(Address& addr) { return get<1>(addr); }
+    Address make_address(const string& host, unsigned short port) { return Address(host, port); }
+    Address make_address(const char* host, unsigned short port) { return Address(host, port); }
+    Address make_address(const string&& host, unsigned short port) { return Address(host, port); }
+
+    inline string addressHost(const Address& addr) { return get<0>(addr); }
+    inline string addressHost(Address&& addr) { return get<0>(std::forward<Address>(addr)); }
+    
+    inline int addressPort(const Address& addr) { return get<1>(addr); }
+    inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
   }
 
   using namespace Asio;
@@ -49,16 +72,31 @@ namespace K3 {
   // Addresses.
   Address defaultAddress = make_address("127.0.0.1", 40000);
 
-  string addressAsString(Address& addr) {
-    return addressHost(addr) + to_string(addressPort(addr));
+  string addressAsString(const Address& addr) {
+    return addressHost(addr) + ":" + to_string(addressPort(addr));
   }
 
-  Address internalSendAddress(Address addr) {
+  string addressAsString(Address&& addr) {
+    return addressHost(std::forward<Address>(addr))
+            + ":" + to_string(addressPort(std::forward<Address>(addr)));
+  }
+
+  Address internalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+1);
   }
+  
+  Address internalSendAddress(Address&& addr) {
+    return make_address(addressHost(std::forward<Address>(addr)),
+                        addressPort(std::forward<Address>(addr))+1);
+  }
 
-  Address externalSendAddress(Address addr) {
+  Address externalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+2);
+  }
+  
+  Address externalSendAddress(Address&& addr) {
+    return make_address(addressHost(std::forward<Address>(addr)),
+                        addressPort(std::forward<Address>(addr))+2);
   }
 
   //-------------
@@ -66,31 +104,24 @@ namespace K3 {
   template<typename Value>
   class Message : public tuple<Address, Identifier, Value> {
   public:
-    Message(Address addr, Identifier id, Value v)
-      : tuple<Address, Identifier, Value>(addr, id, v)
+    Message(Address addr, Identifier id, const Value& v)
+      : tuple<Address, Identifier, Value>(std::move(addr), std::move(id), v)
     {}
-    
-    Address    address()  { return get<0>(*this); }
-    Identifier id()       { return get<1>(*this); }
-    Value      contents() { return get<2>(*this); }
+
+    Message(Address addr, Identifier id, Value&& v)
+      : tuple<Address, Identifier, Value>(std::move(addr), std::move(id), std::forward<Value>(v))
+    {}
+
+    Message(Address&& addr, Identifier&& id, Value&& v)
+      : tuple<Address, Identifier, Value>(std::forward<Address>(addr),
+                                          std::forward<Identifier>(id),
+                                          std::forward<Value>(v))
+    {}
+
+    Address&    address()  { return get<0>(*this); }
+    Identifier& id()       { return get<1>(*this); }
+    Value&      contents() { return get<2>(*this); }
   };
-
-  //--------------------
-  // Wire descriptions
-
-  // TODO: FrameDesc
-  class FrameDesc;
-
-  template<typename Value>
-  class WireDesc {
-  public:
-    WireDesc() {}
-    virtual string pack(Value& v)    = 0;
-    virtual Value  unpack(string& s) = 0;
-    virtual FrameDesc frame()        = 0;
-  };
-
-  // TODO: protobuf, msgpack, json WireDesc implementations.  
 
   //--------------------
   // System environment.
@@ -103,7 +134,7 @@ namespace K3 {
   list<Address> deployedNodes(SystemEnvironment& sysEnv) {
     list<Address> r;
     for ( auto x : sysEnv ) { r.push_back(x.first); }
-    return r;
+    return std::move(r);
   }
 
   //-------------
@@ -113,8 +144,10 @@ namespace K3 {
     Log() {}
     Log(severity_level lvl) : defaultLevel(lvl) {}
 
-    virtual void log(string msg) = 0;
-    virtual void logAt(severity_level lvl, string msg) = 0;
+    virtual void log(const string& msg) = 0;
+    virtual void log(const char* msg) = 0;
+    virtual void logAt(severity_level lvl, const string& msg) = 0;
+    virtual void logAt(severity_level lvl, const char* msg) = 0;
   
   protected:
     severity_level defaultLevel;
@@ -128,8 +161,11 @@ namespace K3 {
     LogST(string chan) : logger(keywords::channel = chan), Log(severity_level::info) {}
     LogST(string chan, severity_level lvl) : logger(keywords::channel = chan), Log(lvl) {}
     
-    void log(string msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void logAt(severity_level lvl, string msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(const string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    
+    void logAt(severity_level lvl, const string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void logAt(severity_level lvl, const char& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
   
   class LogMT : public severity_channel_logger_mt<severity_level,string>, public Log
@@ -140,9 +176,43 @@ namespace K3 {
     LogMT(string chan) : logger(keywords::channel = chan), Log(severity_level::info) {}
     LogMT(string chan, severity_level lvl) : logger(keywords::channel = chan), Log(lvl) {}
 
-    void log(string msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void logAt(severity_level lvl, string msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(const string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+
+    void logAt(severity_level lvl, const string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void logAt(severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
+
+  //--------------------
+  // Wire descriptions
+
+  // A generic exception that can be thrown by wire descriptor methods.
+  class WireDescException : public runtime_error {
+  public:
+    WireDescException(const string& msg) : runtime_error(msg) {}
+    WireDescException(const char* msg) : runtime_error(msg) {}
+  };
+
+  // Message serializtion/deserialization abstract base class.
+  // Implementations can encapsulate framing concerns as well as serdes operations.
+  //
+  // The unpack method may be supplied a complete or incomplete string corresponding
+  // to a value. It is left to the implementation to determine the scope of functionality
+  // supported, for example partial unpacking (e.g., for network sockets).
+  // The semantics of repeated invocations are dependent on the actual implementation
+  // of the wire description (including factors such as message loss). 
+  // This includes the conditions under which an exception is thrown.
+  template<typename Value>
+  class WireDesc : public virtual LogMT {
+  public:
+    WireDesc() {}
+    virtual string pack(const Value& v) = 0;
+    virtual string pack(Value&& v) = 0;
+    virtual shared_ptr<Value> unpack(const string& s) = 0;
+    virtual shared_ptr<Value> unpack(string&& s) = 0;
+  };
+
+  // TODO: protobuf, msgpack, json WireDesc implementations.  
 
 }
 
