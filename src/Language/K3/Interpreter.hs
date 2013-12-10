@@ -164,10 +164,17 @@ data AEnvironment v =
 type AnnotationDefinitions v  = [(Identifier, IEnvironment v)]
 type AnnotationCombinations v = [(Identifier, CollectionBinders v)]
 
-type CollectionBinders v = (CInitializer v, CCopyConstructor v)
+data CollectionBinders v =
+  CollectionBinders { emptyCtor   :: CEmptyConstructor v
+                    , initialCtor :: CInitialConstructor v
+                    , copyCtor    :: CCopyConstructor v }
 
 -- | A collection initializer that populates default lifted attributes.
-type CInitializer v = () -> Interpretation (MVar (Collection v))
+type CEmptyConstructor v = () -> Interpretation (MVar (Collection v))
+
+-- | A collection initializer that takes a list of values and builds
+--   a collection populated with those values.
+type CInitialConstructor v = [v] -> Interpretation (MVar (Collection v))
 
 -- | A copy constructor that takes a collection, copies its non-function fields,
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
@@ -433,7 +440,8 @@ annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 -- TODO any dataspace
 initialAnnotatedCollectionBody :: Identifier -> [Value] -> Interpretation (MVar (Collection Value))
 initialAnnotatedCollectionBody comboId vals = do
-    (initF, _) <- lookupACombo comboId
+    binders <- lookupACombo comboId
+    let initF = emptyCtor binders
     cmv        <- initF ()
     void $ liftIO (modifyMVar_ cmv (\(Collection ns _ cid) -> return $ Collection ns (InMemoryDS vals) cid))
     return cmv
@@ -766,7 +774,7 @@ literal (tag -> LRecord _) = throwE $ RunTimeTypeError "Invalid record literal"
 
 literal (details -> (LEmpty _, [], anns)) =
   getComposedAnnotationL anns >>= maybe emptyCollection initEmptyCollection
-  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . fst >>= return . VCollection
+  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . emptyCtor >>= return . VCollection
 
 literal (tag -> LEmpty _) = throwE $ RunTimeTypeError "Invalid empty literal"
 
@@ -801,7 +809,7 @@ global n t@(tag -> TCollection) eOpt = elemE n >>= \case
   False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection . maybe "" id
   where
     initializeCollection comboId = case eOpt of
-      Nothing | not (null comboId) -> lookupACombo comboId >>= \(initC,_) -> initC () >>= modifyE . (:) . (n,) . VCollection
+      Nothing | not (null comboId) -> lookupACombo comboId >>= ($ ()) . emptyCtor >>= modifyE . (:) . (n,) . VCollection
       Just e  | not (null comboId) -> expression e >>= verifyInitialCollection comboId
 
       -- TODO: error on these cases. All collections must have at least the builtin Collection annotation.
@@ -903,11 +911,12 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     addComposedAnnotation comboId namedAnnDefs = 
       modifyACombos . (:) . (comboId,) $ mkCBinder comboId namedAnnDefs
 
+    mkCBinder :: Identifier -> [(Identifier, IEnvironment Value)] -> CollectionBinders Value
     mkCBinder comboId namedAnnDefs =
-      (mkInitializer comboId namedAnnDefs, mkConstructor namedAnnDefs)
+      CollectionBinders (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkConstructor namedAnnDefs)
 
-    mkInitializer :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitializer Value
-    mkInitializer comboId namedAnnDefs = const $ do
+    mkEmptyConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
+    mkEmptyConstructor comboId namedAnnDefs = const $ do
       collection <- liftEngine $ emptyCollectionBody backingType comboId -- extra parameter for the name
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
@@ -918,7 +927,22 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
             case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
                 Nothing -> InMemory 
                 otherwise -> External
-
+    
+    mkInitialConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitialConstructor Value
+    mkInitialConstructor comboID namedAnnDefs = const $ do
+      collection <- liftEngine $ emptyCollectionBody backingType comboID -- extra parameter for the name
+      -- insert values into collection
+      newCMV <- liftIO $ newMVar collection
+      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
+      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
+      return $ newCMV
+        where
+         backingType =
+            case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
+                Nothing -> InMemory 
+                otherwise -> External
+    
+    
     mkConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
     mkConstructor namedAnnDefs = \coll -> do
       newDS <- copyDS (dataspace coll) vunit
@@ -1121,7 +1145,8 @@ builtinLiftedAttribute annId n _ _
 
   where 
         copy newC = do
-          (_, copyCstr) <- lookupACombo $ extensionId newC
+          binders <- lookupACombo $ extensionId newC
+          let copyCstr = copyCtor binders
           c'            <- copyCstr newC
           return $ VCollection c'
 
