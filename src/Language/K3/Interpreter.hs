@@ -35,10 +35,6 @@ module Language.K3.Interpreter (
 
   valueWD,
   syntaxValueWD,
-  
-  -- Take this out, because Runtime.FileDataspace.hs needs it
-  liftEngine
-
 ) where
 
 import Control.Applicative
@@ -326,7 +322,8 @@ emptyAnnotatedCollection dst n =
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
   newDS _ _      = return []
-  copyDataspace ls _ = return ls
+  initialDS vals = return vals
+  copyDS ls _ = return ls
   peekDS ls = case ls of
     []    -> return Nothing
     (h:t) -> return $ Just h
@@ -346,20 +343,21 @@ instance (Monad m) => Dataspace m [Value] Value where
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
 instance Dataspace Interpretation Identifier Value where
-  newDS _ _ = liftEngine generateCollectionFilename
-  copyDataspace old_id _ = liftEngine $ copyFile old_id
-  peekDS ext_id = peekFile liftEngine ext_id
-  insertDS = insertFile liftEngine
-  deleteDS = deleteFile liftEngine
-  updateDS = updateFile liftEngine
-  foldDS = foldFile liftEngine
+  newDS _ _       = liftEngine generateCollectionFilename
+  initialDS       = initialFile liftEngine
+  copyDS old_id _ = liftEngine $ copyFile old_id
+  peekDS ext_id   = peekFile liftEngine ext_id
+  insertDS        = insertFile liftEngine
+  deleteDS        = deleteFile liftEngine
+  updateDS        = updateFile liftEngine
+  foldDS          = foldFile liftEngine
   -- Takes the file id of an external collection, then runs the second argument on
   -- each argument, then returns the identifier of the new collection
-  mapDS = mapFile liftEngine
-  mapDS_ = mapFile_ liftEngine
-  filterDS = filterFile liftEngine
-  combineDS = combineFile liftEngine
-  splitDS = splitFile liftEngine
+  mapDS           = mapFile liftEngine
+  mapDS_          = mapFile_ liftEngine
+  filterDS        = filterFile liftEngine
+  combineDS       = combineFile liftEngine
+  splitDS         = splitFile liftEngine
 
 instance Dataspace Interpretation CollectionDataspace Value 
 
@@ -923,7 +921,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
     mkConstructor namedAnnDefs = \coll -> do
-      newDS <- copyDataspace (dataspace coll) vunit
+      newDS <- copyDS (dataspace coll) vunit
       let newcol = Collection (namespace coll) (newDS) (extensionId coll)
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs

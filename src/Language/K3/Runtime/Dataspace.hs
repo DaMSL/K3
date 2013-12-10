@@ -3,7 +3,8 @@
 module Language.K3.Runtime.Dataspace (
   Dataspace,
   newDS,
-  copyDataspace,
+  initialDS,
+  copyDS,
   peekDS,
   insertDS,
   deleteDS,
@@ -32,7 +33,13 @@ module Language.K3.Runtime.Dataspace (
  -}
 class (Monad m) => Dataspace m ds v where
   newDS         :: ds -> v -> m ds -- this is bad?
-  copyDataspace :: ds -> v -> m ds
+  -- rename to emptyDS
+  initialDS     :: [v] -> m ds
+  copyDS        :: ds -> v -> m ds
+  -- ideal:
+  -- newDS      :: () -> m ds
+  -- copyDS     :: ds -> m ds
+  -- initialDS  :: [v] -> m ds
   peekDS        :: ds -> m (Maybe v)
   insertDS      :: ds -> v -> m ds
   deleteDS      :: v -> ds -> m ds

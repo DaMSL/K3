@@ -4,6 +4,7 @@
 
 module Language.K3.Runtime.FileDataspace (
   openCollectionFile,
+  initialFile,
   copyFile,
   peekFile,
   foldFile,
@@ -40,6 +41,17 @@ copyFile old_id = do
   close new_id
   return new_id
   
+initialFile :: (Monad m) => (forall c. EngineM b c -> m c) -> [b] -> m String
+initialFile liftM vals = do
+  new_id <- liftM generateCollectionFilename
+  liftM $ openCollectionFile new_id "w"
+  foldM (\_ val -> do
+    liftM $ doWrite new_id val -- TODO hasWrite
+    return ()
+    ) () vals
+  liftM $ close new_id
+  return new_id
+
 peekFile :: (Monad m) => (forall c. EngineM b c -> m c) -> String -> m (Maybe b)
 peekFile liftM ext_id = do
   liftM $ openCollectionFile ext_id "r"
