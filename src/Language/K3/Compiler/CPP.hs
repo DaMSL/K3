@@ -1,5 +1,8 @@
 module Language.K3.Compiler.CPP (compile) where
 
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath (joinPath, replaceExtension, takeBaseName)
+
 import qualified Data.Sequence as S
 
 import Language.K3.TypeSystem (typecheckProgram)
@@ -24,7 +27,9 @@ compile opts copts = do
                     let (r, _) = CPP.runCPPGenM CPP.defaultCPPGenS (CPP.program typedProgram)
                     case r of 
                         Left e -> print e
-                        Right s -> case outputFile copts of
-                            Nothing -> print "Error: No output file specified."
-                            Just "-" -> print s
-                            Just f -> writeFile f (show s)
+                        Right s -> case buildDir copts of
+                            Nothing -> print "Error: No build directory specified."
+                            Just b -> do
+                                createDirectoryIfMissing True b
+                                let outFile = joinPath [b, replaceExtension (takeBaseName $ input opts) "cpp"]
+                                writeFile outFile (show s)
