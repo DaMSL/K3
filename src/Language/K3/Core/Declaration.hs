@@ -9,6 +9,7 @@ module Language.K3.Core.Declaration (
     -- * User defined Annotations
     Polarity(..),
     AnnMemDecl(..),
+    UnorderedConflict(..),    
 
     isDSpan,
     isDUID,
@@ -57,8 +58,14 @@ data instance Annotation Declaration
     = DSpan   Span
     | DUID    UID
     | DSyntax SyntaxAnnotation
+    | DConflict UnorderedConflict
   deriving (Eq, Read, Show)
 
+-- | Unordered Data Conflicts (between triggers)
+data UnorderedConflict
+    = URW [(Annotation Expression)] (Annotation Expression)
+    | UWW (Annotation Expression) (Annotation Expression)
+  deriving (Eq, Read, Show)
 
 instance Pretty (K3 Declaration) where
   prettyLines (Node (DGlobal i t me :@: as) ds) =
