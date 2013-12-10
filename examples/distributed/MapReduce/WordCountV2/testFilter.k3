@@ -1,0 +1,23 @@
+include "Annotation/Collection.k3"
+
+/*
+ * Test the filter function and the case statement
+ */
+
+declare origCollection :            mut collection { word : string } @ { Collection } = {| word : string | "foo", "bar", "baz", "foo" |} @ { Collection }
+declare resultCollection :          mut collection { word : string } @ { Collection }
+declare testRerd :                  mut { word : string }
+declare testWord :                  mut string = "none"
+declare length :                    mut int = 0
+
+trigger test : () = \_ -> (
+    resultCollection = origCollection.filter(\record -> (record.word == "foo"));
+    length = resultCollection.fold(\acc -> (\ele -> acc + 1)) 0;
+    (let testRerd = resultCollection.peek() in
+     case testRerd of { Some y -> testWord = y.word }
+	                  { None   -> testWord = "empty collection" })
+	
+)
+
+source go : () = value()
+feed go |> test
