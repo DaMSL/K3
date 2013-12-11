@@ -1,3 +1,5 @@
+include "Core/Builtins.k3"
+
 trigger test : string = \x -> (
   (s1, me) <- x;
   (s2, me) <- x)
