@@ -1,13 +1,11 @@
 include "Annotation/Collection.k3"
 
 declare size : mut int = 0
-declare myWords : mut collection {word : string} @{ Collection }
 
 trigger test : collection {word : string} @{ Collection } = \words -> (
-  myWords = myWords.combine words;
-  size = myWords.fold (\acc -> (\_ -> acc + 1)) 0
+  size = size + words.fold (\acc -> (\_ -> acc + 1)) 0
 )
 
-source s1 : collection {word : string} @{ Collection } = file "/Users/yanif/work/k3/devel/k3-core/data/expr-cs.txt" k3
+source s1 : collection {word : string} @{ Collection } = file "data/expr-cs.txt" k3
 
 feed s1 |> test

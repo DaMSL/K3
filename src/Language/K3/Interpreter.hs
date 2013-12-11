@@ -113,7 +113,7 @@ data InterpretationError
 type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
-type IState = (Globals, IEnvironment Value, AEnvironment Value)
+type IState = (Globals, IEnvironment Value, AEnvironment Value, StaticEnvironment Value)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
@@ -183,19 +183,22 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 {- State and result accessors -}
 
 getGlobals :: IState -> Globals
-getGlobals (x,_,_) = x
+getGlobals (x,_,_,_) = x
 
 getEnv :: IState -> IEnvironment Value
-getEnv (_,x,_) = x
+getEnv (_,x,_,_) = x
 
 getAnnotEnv :: IState -> AEnvironment Value
-getAnnotEnv (_,_,x) = x
+getAnnotEnv (_,_,x,_) = x
+
+getStaticEnv :: IState -> StaticEnvironment Value
+getStaticEnv (_,_,_,x) = x
 
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
-modifyStateEnv f (w, x, y) = (w, f x, y)
+modifyStateEnv f (w, x, y, z) = (w, f x, y, z)
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (w, x, y) = (w, x, f y)
+modifyStateAEnv f (w, x, y, z) = (w, x, f y, z)
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -284,11 +287,11 @@ sendE addr n val = liftEngine $ send addr n val
 vunit :: Value
 vunit = VTuple []
 
-emptyState :: IState
-emptyState = ([], [], AEnvironment [] [])
-
 emptyStaticEnv :: StaticEnvironment Value
 emptyStaticEnv = ([], AEnvironment [] [])
+
+emptyState :: IState
+emptyState = ([], [], AEnvironment [] [], emptyStaticEnv)
 
 simpleEngine :: IO (Engine Value)
 simpleEngine = simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
@@ -888,74 +891,6 @@ contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
       CollectionNamespace newGlobalNS $ annotationNS ns
 
 
--- | Constructs a static environment for all globals and annotation
---   combinations by interpreting the program declarations.
---   By ensuring that global and annotation member functions use
---   static initializers (i.e. initializers that do not depend on runtime values),
---   we can simply populate the static environment from the interpreter
---   environment resulting immediately after declaration initialization.
-staticEnvironment :: K3 Declaration -> EngineM Value (StaticEnvironment Value)
-staticEnvironment prog = do
-  initResult <- initProgram [] prog
-  logResult "STATIC ENV " Nothing initResult
-  let st = getResultState initResult
-  annotEnv <- staticAnnotations st
-  return (staticFunctions $ getEnv st, annotEnv)
-
-  where
-    staticFunctions = filter (functionValue . snd)
-    functionValue (VFunction _) = True
-    functionValue _             = False
-
-    staticAnnotations st = do
-      let annEnvI = foldM addRealization (getAnnotEnv st) $ nub $ declCombos prog
-      resultAEnv <- runInterpretation' st annEnvI >>= liftError "(constructing static environment)"
-      case getResultVal resultAEnv of
-        Left err                 -> throwEngineError . EngineError $ show err
-        Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
-    
-    addRealization aEnv@(AEnvironment d r) annNames = do
-      comboIdOpt <- getComposedAnnotation $ (Just $ annotationComboId annNames, annNames)
-      case comboIdOpt of
-        Nothing  -> return aEnv
-        Just cId -> lookupACombo cId >>= return . AEnvironment d . (:r) . (cId,)
-
-    declCombos :: K3 Declaration -> [[Identifier]]
-    declCombos = foldTree extractDeclCombos []
-
-    typeCombos :: K3 Type -> [[Identifier]]
-    typeCombos = foldTree extractTypeCombos []
-
-    exprCombos :: K3 Expression -> [[Identifier]]
-    exprCombos = foldTree extractExprCombos []    
-    
-    extractDeclCombos :: [[Identifier]] -> K3 Declaration -> [[Identifier]]
-    extractDeclCombos st (tag -> DGlobal _ t eOpt)     = st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
-    extractDeclCombos st (tag -> DTrigger _ t e)       = st ++ typeCombos t ++ exprCombos e
-    extractDeclCombos st (tag -> DAnnotation _ _ mems) = st ++ concatMap memCombos mems
-    extractDeclCombos st _ = st
-    
-    extractTypeCombos :: [[Identifier]] -> K3 Type -> [[Identifier]]
-    extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) = 
-      case namedTAnnotations tAnns of
-        []        -> c
-        namedAnns -> namedAnns:c
-    
-    extractTypeCombos c _ = c
-
-    extractExprCombos :: [[Identifier]] -> K3 Expression -> [[Identifier]]
-    extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) = 
-      case namedEAnnotations eAnns of
-        []        -> c ++ typeCombos et
-        namedAnns -> (namedAnns:c) ++ typeCombos et
-    extractExprCombos c _ = c
-
-    memCombos :: AnnMemDecl -> [[Identifier]]
-    memCombos (Lifted _ _ t eOpt _)    = typeCombos t ++ (maybe [] exprCombos eOpt)
-    memCombos (Attribute _ _ t eOpt _) = typeCombos t ++ (maybe [] exprCombos eOpt)
-    memCombos _ = []
-
-
 {- Built-in functions -}
 
 ignoreFn :: Value -> Value
@@ -988,8 +923,12 @@ genBuiltin "parseArgs" _ =
 genBuiltin "openBuiltin" _ =
   ivfun $ \(VString cid) -> 
     ivfun $ \(VString builtinId) ->
-      ivfun $ \(VString format) ->
-        liftEngine (openBuiltin cid builtinId (wireDesc emptyStaticEnv format)) >> return vunit
+      ivfun $ \(VString format) -> 
+        do   
+          sEnv <- get >>= return . getStaticEnv
+          let wd = wireDesc sEnv format
+          void $ liftEngine (openBuiltin cid builtinId wd)
+          return vunit
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
@@ -997,7 +936,11 @@ genBuiltin "openFile" t =
     ivfun $ \(VString path) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          liftEngine (openFile cid path (wireDesc emptyStaticEnv format) (Just t) mode) >> return vunit
+          do
+            sEnv <- get >>= return . getStaticEnv
+            let wd = wireDesc sEnv format
+            void $ liftEngine (openFile cid path wd (Just t) mode)
+            return vunit
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
@@ -1005,7 +948,12 @@ genBuiltin "openSocket" t =
     ivfun $ \(VAddress addr) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          liftEngine (openSocket cid addr (wireDesc emptyStaticEnv format) (Just t) mode) >> return vunit
+          do
+            sEnv <- get >>= return . getStaticEnv
+            let wd = wireDesc sEnv format
+            void $ liftEngine (openSocket cid addr wd (Just t) mode)
+            return vunit
+
 
 -- close :: ChannelId -> ()
 genBuiltin "close" _ = ivfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
@@ -1225,6 +1173,75 @@ builtinAttribute _ n _ _ = providesError "attribute" n
 
 {- Program initialization methods -}
 
+-- | Constructs a static environment for all globals and annotation
+--   combinations by interpreting the program declarations.
+--   By ensuring that global and annotation member functions use
+--   static initializers (i.e. initializers that do not depend on runtime values),
+--   we can simply populate the static environment from the interpreter
+--   environment resulting immediately after declaration initialization.
+staticEnvironment :: K3 Declaration -> EngineM Value (StaticEnvironment Value)
+staticEnvironment prog = do
+  st      <- initState prog
+  staticR <- runInterpretation' st (declaration prog)
+  logState "STATIC " Nothing $ getResultState staticR
+  let st = getResultState staticR
+  annotEnv <- staticAnnotations st
+  return (staticFunctions $ getEnv st, annotEnv)
+
+  where
+    staticFunctions = filter (functionValue . snd)
+    functionValue (VFunction _) = True
+    functionValue _             = False
+
+    staticAnnotations st = do
+      let annEnvI = foldM addRealization (getAnnotEnv st) $ nub $ declCombos prog
+      resultAEnv <- runInterpretation' st annEnvI >>= liftError "(constructing static environment)"
+      case getResultVal resultAEnv of
+        Left err                 -> throwEngineError . EngineError $ show err
+        Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
+    
+    addRealization aEnv@(AEnvironment d r) annNames = do
+      comboIdOpt <- getComposedAnnotation $ (Just $ annotationComboId annNames, annNames)
+      case comboIdOpt of
+        Nothing  -> return aEnv
+        Just cId -> lookupACombo cId >>= return . AEnvironment d . (:r) . (cId,)
+
+    declCombos :: K3 Declaration -> [[Identifier]]
+    declCombos = foldTree extractDeclCombos []
+
+    typeCombos :: K3 Type -> [[Identifier]]
+    typeCombos = foldTree extractTypeCombos []
+
+    exprCombos :: K3 Expression -> [[Identifier]]
+    exprCombos = foldTree extractExprCombos []    
+    
+    extractDeclCombos :: [[Identifier]] -> K3 Declaration -> [[Identifier]]
+    extractDeclCombos st (tag -> DGlobal _ t eOpt)     = st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
+    extractDeclCombos st (tag -> DTrigger _ t e)       = st ++ typeCombos t ++ exprCombos e
+    extractDeclCombos st (tag -> DAnnotation _ _ mems) = st ++ concatMap memCombos mems
+    extractDeclCombos st _ = st
+    
+    extractTypeCombos :: [[Identifier]] -> K3 Type -> [[Identifier]]
+    extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) = 
+      case namedTAnnotations tAnns of
+        []        -> c
+        namedAnns -> namedAnns:c
+    
+    extractTypeCombos c _ = c
+
+    extractExprCombos :: [[Identifier]] -> K3 Expression -> [[Identifier]]
+    extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) = 
+      case namedEAnnotations eAnns of
+        []        -> c ++ typeCombos et
+        namedAnns -> (namedAnns:c) ++ typeCombos et
+    extractExprCombos c _ = c
+
+    memCombos :: AnnMemDecl -> [[Identifier]]
+    memCombos (Lifted _ _ t eOpt _)    = typeCombos t ++ (maybe [] exprCombos eOpt)
+    memCombos (Attribute _ _ t eOpt _) = typeCombos t ++ (maybe [] exprCombos eOpt)
+    memCombos _ = []
+
+
 initEnvironment :: K3 Declaration -> IState -> EngineM Value IState
 initEnvironment decl st =
   let declGState  = foldTree registerDecl st decl
@@ -1258,7 +1275,7 @@ initEnvironment decl st =
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
-    registerGlobal n (w,x,y) = (n:w, x, y)
+    registerGlobal n (w,x,y,z) = (n:w, x, y, z)
 
     registerDecl :: IState -> K3 Declaration -> IState
     registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
@@ -1284,18 +1301,24 @@ initBootstrap bootstrap = flip mapM bootstrap (\(n,l) ->
       >>= either invalidErr (return . (n,)) . getResultVal)
   where invalidErr = const $ throwEngineError $ EngineError "Invalid result"
 
-initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
-initProgram bootstrap prog = do
-    st  <- initState prog
-    r   <- runInterpretation' st (declaration prog)
-    r'  <- injectBootstrap r
-    initMessages r'
-  where 
-    injectBootstrap x@((Left _, _), _) = return x
-    injectBootstrap ((Right stus, (globals, vEnv, annEnv)), logR) = do
+injectBootstrap :: PeerBootstrap -> IResult a -> EngineM Value (IResult a)
+injectBootstrap bootstrap r = case r of
+  ((Left _, _), _) -> return r
+  ((Right val, (globs, vEnv, annEnv, sEnv)), rLog) -> do
       bootEnv <- initBootstrap bootstrap
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
-      return $ ((Right stus, (globals, nvEnv, annEnv)), logR)
+      return ((Right val, (globs, nvEnv, annEnv, sEnv)), rLog)
+
+
+initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
+initProgram bootstrap prog = do
+    initSt   <- initState prog
+    staticSt <- buildStaticEnv initSt
+    declR    <- runInterpretation' staticSt (declaration prog)
+    bootR    <- injectBootstrap bootstrap declR
+    initMessages bootR
+  where 
+    buildStaticEnv (gl, iEnv, aEnv, _) = staticEnvironment prog >>= return . (gl, iEnv, aEnv,)
 
 
 finalProgram :: IState -> EngineM Value (IResult Value)
@@ -1495,6 +1518,9 @@ debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
 debugDecl n t = _debugI . boxToString $
   [concat ["Declaring ", show n, " : "]] ++ (indent 2 $ prettyLines t)
 
+showState :: String -> IState -> EngineM Value [String]
+showState str st = return $ [str ++ " { "] ++ (indent 2 $ prettyLines st) ++ ["}"]
+
 showResult :: String -> IResult Value -> EngineM Value [String]
 showResult str r = 
   prettyIResult r >>= return . ([str ++ " { "] ++) . (++ ["}"]) . indent 2
@@ -1507,6 +1533,11 @@ showDispatch addr name args r =
     wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
                   ++ ["  Args: " ++ arg] 
                   ++ res ++ ["}"]
+
+logState :: String -> Maybe Address -> IState -> EngineM Value ()
+logState tag' addr st = do
+    msg <- showState (tag' ++ (maybe "" show $ addr)) st
+    void $ _notice_Dispatch $ boxToString msg
 
 logResult :: String -> Maybe Address -> IResult Value -> EngineM Value ()
 logResult tag' addr r = do
@@ -1521,9 +1552,10 @@ logTrigger addr n args r = do
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (_, vEnv, aEnv) =
+  prettyLines (_, vEnv, aEnv, sEnv) =
          ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) vEnv)
       ++ ["Annotations:"] ++ (indent 2 $ lines $ show aEnv)
+      ++ ["Static:"]      ++ (indent 2 $ lines $ show sEnv)
     where
       prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
       maxNameLength        = maximum $ map (length . fst) vEnv
