@@ -16,16 +16,10 @@
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.
 
-// TODO: remove dependency on Net namespace alias, lifting usage to
-// K3::NEndpoint<Net::NContext> and K3::NConnection<Net::NContext> in 
-// EndpointState and ConnectionState.
-
 namespace K3
 {
   using namespace std;
   using namespace boost;
-
-  namespace Net = K3::Asio;
 
   using std::shared_ptr;
   using boost::mutex;
@@ -34,8 +28,7 @@ namespace K3
 
   enum class EndpointNotification { FileData, FileClose, SocketAccept, SocketData, SocketClose };
   template<typename Value> class Endpoint;
-  template<typename Value> using EndpointMap      = map<Identifier, shared_ptr<Endpoint<Value> > >;
-  template<typename Value> using EndpointBindings = map<EndpointNotification, Value>;
+  template<typename Value> using EndpointMap = map<Identifier, shared_ptr<Endpoint<Value> > >;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
@@ -93,7 +86,7 @@ namespace K3
     virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
 
     // Transfers from this buffer into the given queues.
-    virtual void enqueue(shared_ptr<MessageQueues> queues) = 0;
+    virtual void enqueue(shared_ptr<MessageQueues<Value> > queues) = 0;
 
     // TODO
     // Writes the content of this buffer to the given IO handle. 
@@ -116,6 +109,68 @@ namespace K3
   template<typename Value>
   class SharedBuffer : public EndpointBuffer<Value> {};
   */
+
+
+  //----------------------------
+  // I/O event notifications.
+
+  template<typename Value>
+  class EndpointBindings : public LogMT {
+  public:
+    // TODO: value or value ref? Synchronize with Engine.hpp
+    typedef std::function<void(Address,Identifier,Value)> SendFunctionPtr;
+
+    typedef list<Message<Value> > Subscribers;
+    typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
+
+    EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
+
+    void attachNotifier(EndpointNotification nt, shared_ptr<Message<Value> > subscriber)
+    {
+      if ( subscriber ) {
+        shared_ptr<Subscribers> s = eventSubscriptions[nt];
+        if ( !s ) { 
+          s = shared_ptr<Subscribers>(new Subscribers());
+          eventSubscriptions[nt] = s;
+        }
+
+        s->push_back(*subscriber);
+      }
+      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); } 
+    }
+    
+    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr)
+    {
+      auto it = eventSubscriptions.find(nt);
+      if ( it != eventSubscriptions.end() ) {
+        shared_ptr<Subscribers> s = it->second;
+        if ( s ) { 
+          s->remove_if(
+            [&subId, &subAddr](const Message<Value>& m){
+              return m.id() == subId && m.address() == subAddr;
+            });
+        }
+      }
+    }
+
+    void notifyEvent(EndpointNotification nt)
+    {
+      auto it = eventSubscriptions.find(nt);
+      if ( it != eventSubscriptions.end() ) {
+        shared_ptr<Subscribers> s = it->second;
+        if ( s ) {
+          for (const Message<Value>& sub : *s) {
+            sendFn(sub.id(), sub.address(), sub.contents());
+          }
+        }
+      }
+    }
+
+  protected:
+    SendFunctionPtr sendFn;
+    Subscriptions eventSubscriptions;
+  };
+  
 
 
   //---------------------------------
@@ -216,7 +271,6 @@ namespace K3
   //-------------------------------------
   // Connections and their containers.
 
-  // TODO: generalize from Net::NConnection to K3::NConnection or parameterized type.
   // TODO: addresses for anchors as needed.
   class ConnectionState : public shared_lockable_adapter<shared_mutex>,
                           public virtual LogMT
@@ -335,7 +389,7 @@ namespace K3
     }
 
     // TODO: Ideally, this should be a shared lock.
-    // TODO: investiage why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
+    // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
     shared_ptr<Net::NConnection> getConnection(Address addr)
     {
       strict_lock<ConnectionState> guard(*this);

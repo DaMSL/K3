@@ -29,42 +29,25 @@ namespace K3 {
 
   using std::shared_ptr;
 
-  namespace Asio { 
-    typedef tuple<boost::asio::ip::address, unsigned short> Address;
-    
-    Address make_address(const string& host, unsigned short port) {
-      return Address(boost::asio::ip::address::from_string(host), port);
-    }
-
-    Address make_address(const char* host, unsigned short port) {
-      return Address(boost::asio::ip::address::from_string(host), port);
-    }
-
-    Address make_address(const string&& host, unsigned short port) {
-      return Address(boost::asio::ip::address::from_string(host), port);
-    }
-
-    inline string addressHost(const Address& addr) { return get<0>(addr).to_string(); }
-    inline string addressHost(Address&& addr) { return get<0>(std::forward<Address>(addr)).to_string(); }
-    
-    inline int addressPort(const Address& addr) { return get<1>(addr); }
-    inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
-  }
+  typedef tuple<boost::asio::ip::address, unsigned short> Address;
   
-  namespace NanoMsg {
-    typedef tuple<string, int> Address;
-    Address make_address(const string& host, unsigned short port) { return Address(host, port); }
-    Address make_address(const char* host, unsigned short port) { return Address(host, port); }
-    Address make_address(const string&& host, unsigned short port) { return Address(host, port); }
-
-    inline string addressHost(const Address& addr) { return get<0>(addr); }
-    inline string addressHost(Address&& addr) { return get<0>(std::forward<Address>(addr)); }
-    
-    inline int addressPort(const Address& addr) { return get<1>(addr); }
-    inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
+  Address make_address(const string& host, unsigned short port) {
+    return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  using namespace Asio;
+  Address make_address(const char* host, unsigned short port) {
+    return Address(boost::asio::ip::address::from_string(host), port);
+  }
+
+  Address make_address(const string&& host, unsigned short port) {
+    return Address(boost::asio::ip::address::from_string(host), port);
+  }
+
+  inline string addressHost(const Address& addr) { return get<0>(addr).to_string(); }
+  inline string addressHost(Address&& addr) { return get<0>(std::forward<Address>(addr)).to_string(); }
+  
+  inline int addressPort(const Address& addr) { return get<1>(addr); }
+  inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
 
   typedef string Identifier;
 

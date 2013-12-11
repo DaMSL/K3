@@ -3,7 +3,10 @@
 
 #include <atomic>
 #include <memory>
+#include <boost/array.hpp>
 #include <boost/thread/condition_variable.hpp>
+#include <boost/thread/locks.hpp> 
+#include <boost/thread/lock_types.hpp> 
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 #include <k3/runtime/cpp/Common.hpp>
@@ -17,8 +20,11 @@ namespace K3 {
   using namespace boost;
 
   using std::atomic_uint;
-  using boost::mutex;
+
   using boost::condition_variable;
+  using boost::lock_guard;
+  using boost::mutex;
+  using boost::unique_lock;
 
   //--------------------------------------------
   // A reference counter for listener instances.
@@ -46,18 +52,18 @@ namespace K3 {
     // Waits on the message available condition variable.
     void waitForMessage()
     {
-      unique_lock<mutex> lock(msgAvailMutex);
-      while ( !msgAvailable ) { msgAvailCondition.wait(lock); }
+      unique_lock<mutex> lock(*msgAvailMutex);
+      while ( !msgAvailable ) { msgAvailCondition->wait(lock); }
     }
 
     // Notifies one waiter on the message available condition variable.
     void messageAvailable()
     {
       {
-        lock_guard<mutex> lock(msgAvailMutex);
+        lock_guard<mutex> lock(*msgAvailMutex);
         msgAvailable = true;
       }
-      msgAvailCondition.notify_one();
+      msgAvailCondition->notify_one();
     }
 
     shared_ptr<ListenerCounter> counter() { return listenerCounter; }
@@ -95,45 +101,51 @@ namespace K3 {
   // Listener processor implementations.
 
   template<typename Value>
-  class InternalListenerProcessor : public ListenerProcessor<Message<Value> > {
+  class InternalListenerProcessor : public ListenerProcessor<Message<Value> >
+  {
   public:
-    InternalListenerProcessor(shared_ptr<MessageQueues> q,
+    InternalListenerProcessor(shared_ptr<MessageQueues<Value> > q,
                               shared_ptr<ListenerControl> c,
                               shared_ptr<Endpoint<Value> > e)
       : ListenerProcessor<Message<Value> >(c, e), engineQueues(q)
     {}
 
     void operator()() {
-      if ( control && endpoint && engineQueues )
+      if ( this->control && this->endpoint && engineQueues )
       {
         // Enqueue from the endpoint's buffer into the engine queues,
         // and signal message availability.
-        endpoint->buffer()->enqueue(engineQueues);
-        control->messageAvailable();
+        this->endpoint->buffer()->enqueue(engineQueues);
+        this->control->messageAvailable();
       }
-      else { logAt(boost::log::trivial::error, "Invalid listener processor members"); }
+      else { 
+        this->logAt(boost::log::trivial::error, "Invalid listener processor members");
+      }
     }
 
   protected:
-    shared_ptr<MessageQueues> engineQueues;
+    shared_ptr<MessageQueues<Value> > engineQueues;
   };
   
   template<typename Value>
-  class ExternalListenerProcessor : public ListenerProcessor<Value> {
+  class ExternalListenerProcessor : public ListenerProcessor<Value>
+  {
   public:
     ExternalListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint<Value> > e)
       : ListenerProcessor<Value>(c, e)
     {}
 
     void operator()() {
-      if ( control && endpoint )
+      if ( this->control && this->endpoint )
       {
         // Notify the endpoint's subscribers of a socket data event,
         // and signal message availability.
-        endpoint->subscribers()->notifyEvent(EndpointBindings::SocketData);
-        control->messageAvailable();
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData);
+        this->control->messageAvailable();
       }
-      else { logAt(boost::log::trivial::error, "Invalid listener processor members"); }
+      else { 
+        this->logAt(boost::log::trivial::error, "Invalid listener processor members");
+      }
     }
   };
 
@@ -146,25 +158,27 @@ namespace K3 {
     using namespace boost::log;
     using namespace boost::system;
 
+    using boost::system::error_code;
+
     // TODO: close method, terminating all incoming connections to this acceptor.
     template<typename Value>
     class Listener : public basic_lockable_adapter<mutex>, public virtual LogMT
     {
     public:
       typedef basic_lockable_adapter<mutex> llockable;
-      typedef list<shared_ptr<NConnection> > ConnectionList
+      typedef list<shared_ptr<NConnection> > ConnectionList;
       typedef externally_locked<shared_ptr<ConnectionList>, Listener> ConcurrentConnectionList;
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<Endpoint> ep,
+               shared_ptr<Endpoint<Value> > ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<ListenerProcessor<Value> > p)
         : llockable(), LogMT("Listener_"+n),
           name(n), endpoint_(ep), control_(ctrl), processor_(p), connections_(emptyConnections())
       {
         if ( endpoint_ ) {
-          IOHandle::SourceDetails source = ep->handle()->networkSource();
+          typename IOHandle<Value>::SourceDetails source = ep->handle()->networkSource();
           nEndpoint_ = get<0>(source);
           wireDesc_ = get<1>(source);
         }
@@ -180,7 +194,7 @@ namespace K3 {
     protected:
       Identifier name;
       
-      shared_ptr<Endpoint> endpoint_;
+      shared_ptr<Endpoint<Value> > endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
       shared_ptr<WireDesc<Value> > wireDesc_;
         // We assume this wire description performs the framing necessary
@@ -230,7 +244,7 @@ namespace K3 {
           
           // Notify subscribers of socket accept event.
           if ( endpoint_ ) { 
-            endpoint_->subscribers()->notifyEvent(EndpointBindings::SocketAccept);
+            endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
           }
           
           // Start connection.
@@ -253,7 +267,7 @@ namespace K3 {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
           // may invoke this handler simultaneously (i.e. for different connections).
-          typedef SocketBuffer array<char, 8192>;
+          typedef boost::array<char, 8192> SocketBuffer;
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
 
           async_read(c->socket(), buffer(buffer_->c_array(), buffer_->size()),
@@ -267,7 +281,7 @@ namespace K3 {
                 if ( v ) { 
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   endpoint_->buffer()->append(v);
-                  (*processor)();
+                  (*processor_)();
                 }
                 
                 // Recursive invocation for the next message.
@@ -280,7 +294,7 @@ namespace K3 {
               }
             });
         }
-        else { logAt(trivial::error, "Invalid listener connection") }
+        else { logAt(trivial::error, "Invalid listener connection"); }
       }
     };
   }

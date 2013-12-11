@@ -14,9 +14,7 @@ namespace K3
   using namespace boost;
   using namespace boost::iostreams;
 
-  namespace Net = K3::Asio;
-
-  using std::shared_ptr;  
+  using std::shared_ptr;
 
   //--------------------------
   // IO handles
@@ -25,8 +23,8 @@ namespace K3
   class IOHandle : public virtual LogMT
   {
   public:
-    typedef tuple<shared_ptr<WireDesc<Value>, shared_ptr<NEndpoint> > SourceDetails;
-    typedef tuple<shared_ptr<WireDesc<Value>, shared_ptr<NConnection> > SinkDetails;
+    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NEndpoint> > SourceDetails;
+    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NConnection> > SinkDetails;
 
     IOHandle(shared_ptr<WireDesc<Value> > wd) : LogMT("IOHandle"), wireDesc(wd) {}
 
@@ -204,12 +202,14 @@ namespace K3
       : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
     {}
 
-    SourceDetails networkSource() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<NEndpoint>());
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
     }
 
-    SinkDetails networkSink() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<NConnection>());
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
     }
   };
 
@@ -227,17 +227,17 @@ namespace K3
       : LineBasedHandle<Value>(wd, o, file_sink(path))
     {}
 
-    SourceDetails networkSource() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<NEndpoint>());
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
     }
 
-    SinkDetails networkSink() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<NConnection>());
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
     }
   };
 
-  // TODO: this implementation is specific to K3::Asio::NConnection
-  // rather than K3::NConnection.
   template<typename Value>
   class NetworkHandle : public IOHandle<Value>
   {
@@ -275,13 +275,15 @@ namespace K3
       else if ( endpoint ) { endpoint->close(); }
     }
 
-    SourceDetails networkSource() {
-      shared_ptr<WireDesc<Value> > wd = endpoint? wireDesc : shared_ptr<WireDesc<Value> >();
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      shared_ptr<WireDesc<Value> > wd = endpoint? this->wireDesc : shared_ptr<WireDesc<Value> >();
       return make_tuple(wd, endpoint);
     }
 
-    SinkDetails networkSink() {
-      shared_ptr<WireDesc<Value> > wd = connection? wireDesc : shared_ptr<WireDesc<Value> >();
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      shared_ptr<WireDesc<Value> > wd = connection? this->wireDesc : shared_ptr<WireDesc<Value> >();
       return make_tuple(wd, connection);
     }
 
