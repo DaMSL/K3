@@ -309,10 +309,10 @@ initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= re
 
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
-  newDS _ _      = return []
-  initialDS vals = return vals
-  copyDS ls _ = return ls
-  peekDS ls = case ls of
+  emptyDS _ _      = return []
+  initialDS vals   = return vals
+  copyDS ls _      = return ls
+  peekDS ls        = case ls of
     []    -> return Nothing
     (h:t) -> return $ Just h
   insertDS ls v    = return $ ls ++ [v]
@@ -331,7 +331,7 @@ instance (Monad m) => Dataspace m [Value] Value where
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
 instance Dataspace Interpretation Identifier Value where
-  newDS _ _       = liftEngine generateCollectionFilename
+  emptyDS _ _     = liftEngine generateCollectionFilename
   initialDS       = initialFile liftEngine
   copyDS old_id _ = liftEngine $ copyFile old_id
   peekDS ext_id   = peekFile liftEngine ext_id
@@ -1208,7 +1208,7 @@ builtinLiftedAttribute annId n _ _
           flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
           flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
             do
-              new_space <- newDS ds vunit
+              new_space <- emptyDS ds vunit
               kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
               -- TODO typecheck that collection
               copy (Collection ns kvRecords ext)
@@ -1221,7 +1221,7 @@ builtinLiftedAttribute annId n _ _
           case look_result of
             Nothing         -> do
               val <- curryFoldFn f' accInit v 
-              tmp_ds <- newDS acc vunit
+              tmp_ds <- emptyDS acc vunit
               insertKV tmp_ds k val
               combineDS acc tmp_ds vunit
             Just partialAcc -> do 

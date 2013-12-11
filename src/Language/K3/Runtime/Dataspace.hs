@@ -2,7 +2,7 @@
 
 module Language.K3.Runtime.Dataspace (
   Dataspace,
-  newDS,
+  emptyDS,
   initialDS,
   copyDS,
   peekDS,
@@ -32,8 +32,7 @@ module Language.K3.Runtime.Dataspace (
  - (move the instances to Interpreter/IDataspace.hs)
  -}
 class (Monad m) => Dataspace m ds v where
-  newDS         :: ds -> v -> m ds -- this is bad?
-  -- rename to emptyDS
+  emptyDS       :: ds -> v -> m ds -- this is bad?
   initialDS     :: [v] -> m ds
   copyDS        :: ds -> v -> m ds
   -- ideal:
