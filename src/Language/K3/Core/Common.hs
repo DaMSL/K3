@@ -29,10 +29,9 @@ module Language.K3.Core.Common (
 
 import Control.Concurrent.MVar
 
+import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
-import Data.List
-import Data.List.Split ( splitOn )
 
 import Text.ParserCombinators.ReadP    as TP
 import Text.ParserCombinators.ReadPrec as TRP
@@ -103,10 +102,11 @@ instance Show Address where
   show (Address (host, port)) = host ++ ":" ++ show port
 
 instance Read Address where
-  readsPrec _ str =
-    let strl = splitOn ":" str
-        tryPort = (readMaybe $ last strl) :: Maybe Int
-    in maybe [] (\x -> [(Address (intercalate ":" $ init strl, x), "")]) tryPort
+  readPrec = parens $ do
+          host       <- lift $ munch1 $ \c -> isAlpha c || isDigit c || c == '.'
+          Symbol ":" <- lexP
+          port       <- readPrec
+          return (Address (host, port))
 
 instance Hashable Address where
   hashWithSalt salt (Address (host,port)) = hashWithSalt salt (host, port)

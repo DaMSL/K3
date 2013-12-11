@@ -32,7 +32,9 @@ module Language.K3.Interpreter (
   unpackValueSyntax,
 
   valueWD,
-  syntaxValueWD
+  syntaxValueWD,
+
+  emptyStaticEnv
 
 ) where
 
@@ -166,6 +168,11 @@ type CInitializer v = () -> Interpretation (MVar (Collection v))
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
+-- | An environment for rebuilding static values after their serialization.
+--   The static value can either be a value (e.g., a global function) or a 
+--   collection namespace associated with an annotation combination id.
+type StaticEnvironment v = (IEnvironment v, AEnvironment v)
+
 
 {- Misc. helpers-}
 
@@ -174,9 +181,6 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 
 
 {- State and result accessors -}
-
-emptyState :: IState
-emptyState = ([], [], AEnvironment [] [])
 
 getGlobals :: IState -> Globals
 getGlobals (x,_,_) = x
@@ -279,6 +283,15 @@ sendE addr n val = liftEngine $ send addr n val
 {- Constants -}
 vunit :: Value
 vunit = VTuple []
+
+emptyState :: IState
+emptyState = ([], [], AEnvironment [] [])
+
+emptyStaticEnv :: StaticEnvironment Value
+emptyStaticEnv = ([], AEnvironment [] [])
+
+simpleEngine :: IO (Engine Value)
+simpleEngine = simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
 
 
 {- Identifiers -}
@@ -875,6 +888,74 @@ contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
       CollectionNamespace newGlobalNS $ annotationNS ns
 
 
+-- | Constructs a static environment for all globals and annotation
+--   combinations by interpreting the program declarations.
+--   By ensuring that global and annotation member functions use
+--   static initializers (i.e. initializers that do not depend on runtime values),
+--   we can simply populate the static environment from the interpreter
+--   environment resulting immediately after declaration initialization.
+staticEnvironment :: K3 Declaration -> EngineM Value (StaticEnvironment Value)
+staticEnvironment prog = do
+  initResult <- initProgram [] prog
+  logResult "STATIC ENV " Nothing initResult
+  let st = getResultState initResult
+  annotEnv <- staticAnnotations st
+  return (staticFunctions $ getEnv st, annotEnv)
+
+  where
+    staticFunctions = filter (functionValue . snd)
+    functionValue (VFunction _) = True
+    functionValue _             = False
+
+    staticAnnotations st = do
+      let annEnvI = foldM addRealization (getAnnotEnv st) $ nub $ declCombos prog
+      resultAEnv <- runInterpretation' st annEnvI >>= liftError "(constructing static environment)"
+      case getResultVal resultAEnv of
+        Left err                 -> throwEngineError . EngineError $ show err
+        Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
+    
+    addRealization aEnv@(AEnvironment d r) annNames = do
+      comboIdOpt <- getComposedAnnotation $ (Just $ annotationComboId annNames, annNames)
+      case comboIdOpt of
+        Nothing  -> return aEnv
+        Just cId -> lookupACombo cId >>= return . AEnvironment d . (:r) . (cId,)
+
+    declCombos :: K3 Declaration -> [[Identifier]]
+    declCombos = foldTree extractDeclCombos []
+
+    typeCombos :: K3 Type -> [[Identifier]]
+    typeCombos = foldTree extractTypeCombos []
+
+    exprCombos :: K3 Expression -> [[Identifier]]
+    exprCombos = foldTree extractExprCombos []    
+    
+    extractDeclCombos :: [[Identifier]] -> K3 Declaration -> [[Identifier]]
+    extractDeclCombos st (tag -> DGlobal _ t eOpt)     = st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
+    extractDeclCombos st (tag -> DTrigger _ t e)       = st ++ typeCombos t ++ exprCombos e
+    extractDeclCombos st (tag -> DAnnotation _ _ mems) = st ++ concatMap memCombos mems
+    extractDeclCombos st _ = st
+    
+    extractTypeCombos :: [[Identifier]] -> K3 Type -> [[Identifier]]
+    extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) = 
+      case namedTAnnotations tAnns of
+        []        -> c
+        namedAnns -> namedAnns:c
+    
+    extractTypeCombos c _ = c
+
+    extractExprCombos :: [[Identifier]] -> K3 Expression -> [[Identifier]]
+    extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) = 
+      case namedEAnnotations eAnns of
+        []        -> c ++ typeCombos et
+        namedAnns -> (namedAnns:c) ++ typeCombos et
+    extractExprCombos c _ = c
+
+    memCombos :: AnnMemDecl -> [[Identifier]]
+    memCombos (Lifted _ _ t eOpt _)    = typeCombos t ++ (maybe [] exprCombos eOpt)
+    memCombos (Attribute _ _ t eOpt _) = typeCombos t ++ (maybe [] exprCombos eOpt)
+    memCombos _ = []
+
+
 {- Built-in functions -}
 
 ignoreFn :: Value -> Value
@@ -895,6 +976,7 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 genBuiltin "parseArgs" _ =
   emptyCollection >>= \x -> return $ ignoreFn $ VTuple [x,x]
 
+-- TODO: static environment for wire descriptor
 
 -- TODO: error handling on all open/close/read/write methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
@@ -907,7 +989,7 @@ genBuiltin "openBuiltin" _ =
   ivfun $ \(VString cid) -> 
     ivfun $ \(VString builtinId) ->
       ivfun $ \(VString format) ->
-        liftEngine (openBuiltin cid builtinId (wireDesc format)) >> return vunit
+        liftEngine (openBuiltin cid builtinId (wireDesc emptyStaticEnv format)) >> return vunit
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
@@ -915,7 +997,7 @@ genBuiltin "openFile" t =
     ivfun $ \(VString path) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          liftEngine (openFile cid path (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openFile cid path (wireDesc emptyStaticEnv format) (Just t) mode) >> return vunit
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
@@ -923,7 +1005,7 @@ genBuiltin "openSocket" t =
     ivfun $ \(VAddress addr) ->
       ivfun $ \(VString format) ->
         ivfun $ \(VString mode) ->
-          liftEngine (openSocket cid addr (wireDesc format) (Just t) mode) >> return vunit
+          liftEngine (openSocket cid addr (wireDesc emptyStaticEnv format) (Just t) mode) >> return vunit
 
 -- close :: ChannelId -> ()
 genBuiltin "close" _ = ivfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
@@ -1226,7 +1308,7 @@ finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup
 {- Standalone (i.e., single peer) evaluation -}
 
 standaloneInterpreter :: (IEngine -> IO a) -> IO a
-standaloneInterpreter f = simulationEngine defaultSystem syntaxValueWD >>= f
+standaloneInterpreter f = simpleEngine >>= f
 
 runExpression :: K3 Expression -> IO (Maybe Value)
 runExpression e = standaloneInterpreter (withEngine')
@@ -1242,20 +1324,35 @@ runExpression_ e = runExpression e >>= putStrLn . show
 
 -- | Single-machine system simulation.
 runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
-runProgram systemEnv prog = do
-    engine <- simulationEngine systemEnv syntaxValueWD
-    flip runEngineM engine $ runEngine virtualizedProcessor prog
+runProgram systemEnv prog = buildStaticEnv >>= \case
+    Left err   -> return $ Left err
+    Right sEnv -> do
+      engine <- simulationEngine systemEnv $ syntaxValueWD sEnv
+      flip runEngineM engine $ runEngine virtualizedProcessor prog
+
+  where buildStaticEnv = do
+          preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+          flip runEngineM preEngine $ staticEnvironment prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: SystemEnvironment -> K3 Declaration -> IO [Either EngineError (Address, Engine Value, ThreadId)]
+runNetwork :: SystemEnvironment -> K3 Declaration
+           -> IO [Either EngineError (Address, Engine Value, ThreadId)]
 runNetwork systemEnv prog =
-  let nodeBootstraps = map (:[]) systemEnv in do
-    engines       <- mapM (flip networkEngine syntaxValueWD) nodeBootstraps
-    namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
-    engineThreads <- mapM fork namedEngines
-    return engineThreads
+  let nodeBootstraps = map (:[]) systemEnv in 
+    buildStaticEnv >>= \case
+      Left err   -> return $ [Left err]
+      Right sEnv -> do
+        engines       <- mapM (flip networkEngine $ syntaxValueWD sEnv) nodeBootstraps
+        namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
+        engineThreads <- mapM fork namedEngines
+        return engineThreads
+
   where
+    buildStaticEnv = do
+      preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+      flip runEngineM preEngine $ staticEnvironment prog
+
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
     fork (addr, engine) = do
       threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor prog
@@ -1314,7 +1411,7 @@ virtualizedProcessor = MessageProcessor {
     initNode node program systemEnv = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
         iProgram <- initProgram initEnv program
-        logResult "INIT " node iProgram
+        logResult "INIT " (Just node) iProgram
         return (node, iProgram)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
@@ -1353,12 +1450,14 @@ virtualizedProcessor = MessageProcessor {
 valueWD :: WireDesc Value
 valueWD = WireDesc (return . show) (return . Just . read) $ Delimiter "\n"
 
-syntaxValueWD :: WireDesc Value
-syntaxValueWD = WireDesc (packValueSyntax True) (\s -> unpackValueSyntax s >>= return . Just) $ Delimiter "\n"
+syntaxValueWD :: StaticEnvironment Value -> WireDesc Value
+syntaxValueWD sEnv =
+  WireDesc (packValueSyntax True)
+           (\s -> unpackValueSyntax sEnv s >>= return . Just) $ Delimiter "\n"
 
-wireDesc :: String -> WireDesc Value
-wireDesc "k3" = syntaxValueWD
-wireDesc fmt  = error $ "Invalid format " ++ fmt
+wireDesc :: StaticEnvironment Value -> String -> WireDesc Value
+wireDesc sEnv "k3" = syntaxValueWD sEnv
+wireDesc _ fmt  = error $ "Invalid format " ++ fmt
 
 
 {- Pretty printing -}
@@ -1409,9 +1508,9 @@ showDispatch addr name args r =
                   ++ ["  Args: " ++ arg] 
                   ++ res ++ ["}"]
 
-logResult :: String -> Address -> IResult Value -> EngineM Value ()
+logResult :: String -> Maybe Address -> IResult Value -> EngineM Value ()
 logResult tag' addr r = do
-    msg <- showResult (tag' ++ show addr) r 
+    msg <- showResult (tag' ++ (maybe "" show $ addr)) r 
     void $ _notice_Dispatch $ boxToString msg
 
 logTrigger :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
@@ -1609,9 +1708,10 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
 
     packCollectionNamespace d (cns, ans) =
       (\a b c d' e -> a . b . c . d' . e)
-        <$> rt (showString "CNS=") <*> packNamedValues d cns
+        <$> rt (showString "CNS=") <*> packNamedValues d (namespaceNonFunctions cns) 
         <*> rt (showChar ',')
-        <*> rt (showString "ANS=") <*> braces (packDoublyNamedValues d) ans
+        <*> rt (showString "ANS=") 
+        <*> braces (packDoublyNamedValues d) (map (\(x,y) -> (x, namespaceNonFunctions y)) ans)
     
     packCollectionDataspace d v' =
       (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v'
@@ -1633,39 +1733,44 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     appPrec  = 10
     appPrec1 = 11  
 
+    namespaceNonFunctions = filter (nonFunction . snd)
+    nonFunction (VFunction _) = False
+    nonFunction _             = True
+
     True  ? x = const x  
     False ? _ = id
 
 
-unpackValueSyntax :: String -> IO Value
-unpackValueSyntax = readSingleParse unpackValue
+unpackValueSyntax :: StaticEnvironment Value -> String -> IO Value
+unpackValueSyntax sEnv = readSingleParse unpackValue
   where
     rt :: a -> IO a
     rt = return
 
     unpackValue :: ReadPrec (IO Value)
-    unpackValue = parens $ 
-          (readPrec  >>= return . rt . VInt)
+    unpackValue = parens $ reset $
+           (readPrec  >>= return . rt . VInt)
       <++ ((readPrec >>= return . rt . VBool)
-      +++ (readPrec  >>= return . rt . VReal)
-      +++ (readPrec  >>= return . rt . VString)
+      +++  (readPrec  >>= return . rt . VReal)
+      +++  (readPrec  >>= return . rt . VString)
+      +++  (readPrec  >>= return . rt . VAddress)
 
       +++ (do
             Ident "B" <- lexP
-            v <- prec appPrec1 readPrec
+            v <- readPrec
             return . rt $ VByte v)
 
       +++ (do
             Ident "Just" <- lexP
-            v <- prec appPrec1 unpackValue
+            v <- unpackValue
             return (v >>= rt . VOption . Just))
 
       +++ (do
             Ident "Nothing" <- lexP
             return . rt $ VOption Nothing)
 
-      +++ (prec appPrec $ do
-            v <- step $ readParens unpackValue
+      +++ (prec appPrec1 $ do
+            v <- readParens unpackValue
             return (sequence v >>= rt . VTuple))
 
       +++ (do
@@ -1674,26 +1779,24 @@ unpackValueSyntax = readSingleParse unpackValue
 
       +++ (do
             Ident "I" <- lexP
-            v <- step unpackValue
+            v <- unpackValue
             return (v >>= newIORef >>= rt . VIndirection))
       
-      +++ readCollectionPrec
-
-      +++ (readPrec >>= return . rt . VAddress))
+      +++ readCollectionPrec)
 
     readCollectionPrec = parens $
-      (prec appPrec $ do
+      (prec appPrec1 $ do
         Punc "{" <- lexP
-        ns       <- step $ readCollectionNamespace
+        ns       <- readCollectionNamespace
         Punc "," <- lexP
-        v        <- step $ readCollectionDataspace
+        v        <- readCollectionDataspace
         Punc "," <- lexP
         Ident n  <- lexP
         Punc "}" <- lexP
         return $ (do
           x   <- ns
           y   <- v
-          cmv <- newMVar $ Collection x y n
+          cmv <- rebuildCollection n $ Collection x y n
           rt $ VCollection cmv))
 
     readCollectionNamespace :: ReadPrec (IO (CollectionNamespace Value))
@@ -1710,30 +1813,26 @@ unpackValueSyntax = readSingleParse unpackValue
           rt $ CollectionNamespace cns' ans'))
 
     readCollectionDataspace :: ReadPrec (IO [Value])
-    readCollectionDataspace = parens $
-      (prec appPrec1 $ do
+    readCollectionDataspace = parens $ do
         void $ readExpectedName "DS"
         v <- readBrackets unpackValue
-        return $ sequence v)
+        return $ sequence v
 
     readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
-    readDoublyNamedValues = parens $
-      (prec appPrec1 $ do
+    readDoublyNamedValues = parens $ do
         v <- readBraces $ readNamedPrec $ readNamedValues unpackValue
-        return $ sequence v)
+        return $ sequence v
 
     readNamedValues :: ReadPrec (IO a) -> ReadPrec (IO [(String, a)])
-    readNamedValues readF = parens $
-      (prec appPrec1 $ do
+    readNamedValues readF = parens $ do
         v <- readBraces $ readNamedPrec readF
-        return $ sequence v)
+        return $ sequence v
 
     readNamedPrec :: ReadPrec (IO a) -> ReadPrec (IO (String, a))
-    readNamedPrec readF = parens $ 
-      (prec appPrec1 $ do
+    readNamedPrec readF = parens $ do
         n <- readName 
         v <- step readF
-        return $ v >>= rt . (n,))
+        return $ v >>= rt . (n,)
 
     readExpectedName :: String -> ReadPrec ()
     readExpectedName expected = do
@@ -1781,7 +1880,13 @@ unpackValueSyntax = readSingleParse unpackValue
            xs <- listRest True
            return (x:xs)
 
-    appPrec = 10
+    rebuildCollection comboId c = 
+      case lookup comboId $ realizations $ snd sEnv of
+        Nothing -> newMVar c
+        Just (_, copyCstr) -> do
+          cCopyResult <- simpleEngine >>= \e -> runInterpretation e emptyState (copyCstr c)
+          either (const $ newMVar c) (either (const $ newMVar c) return . getResultVal) cCopyResult
+    
     appPrec1 = 11  
 
 
