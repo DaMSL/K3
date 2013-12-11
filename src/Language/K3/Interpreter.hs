@@ -299,32 +299,13 @@ emptyCollectionNamespace :: CollectionNamespace Value
 emptyCollectionNamespace = CollectionNamespace [] []
 
 -- TODO any dataspace
-initialCollectionBody :: Identifier -> [Value] -> Collection Value
-initialCollectionBody n vals = Collection emptyCollectionNamespace (InMemoryDS vals) n
-
+-- Used to interpret literals, so InMemory?
 initialCollection :: [Value] -> Interpretation Value
 initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= return . VCollection
-
-emptyCollectionBody :: CollectionDataspaceType -> Identifier -> EngineM b (Collection Value)
-emptyCollectionBody dst n =
-    case dst of
-        InMemory -> return $ Collection emptyCollectionNamespace (InMemoryDS[]) n
-        External ->
-          do
-            filename <- generateCollectionFilename
-            let ds = ExternalDS filename
-            return $ Collection emptyCollectionNamespace ds n
-
---defaultCollectionBody :: [Value] -> Collection Value
---defaultCollectionBody v = Collection emptyCollectionNamespace (InMemoryDS v) collectionAnnotationId
-defaultCollectionBody :: CollectionDataspace -> Collection Value
-defaultCollectionBody v = Collection emptyCollectionNamespace v collectionAnnotationId
-
-{-emptyAnnotatedCollection :: CollectionDataspaceType -> Identifier -> Interpretation Value
-emptyAnnotatedCollection dst n =
-  do
-    collection <- liftEngine $ emptyCollectionBody dst n
-    liftIO (newMVar collection) >>= return . VCollection -}
+  where
+    initialCollectionBody :: Identifier -> [Value] -> Collection Value
+    initialCollectionBody n vals = Collection emptyCollectionNamespace (InMemoryDS vals) n
+    
 
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
@@ -913,43 +894,42 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkCBinder :: Identifier -> [(Identifier, IEnvironment Value)] -> CollectionBinders Value
     mkCBinder comboId namedAnnDefs =
-      CollectionBinders (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkConstructor namedAnnDefs)
+      CollectionBinders (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkCopyConstructor namedAnnDefs)
 
     mkEmptyConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
     mkEmptyConstructor comboId namedAnnDefs = const $ do
-      collection <- liftEngine $ emptyCollectionBody backingType comboId -- extra parameter for the name
+      collection <- liftEngine $ emptyCollectionBody namedAnnDefs comboId -- extra parameter for the name
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
       return $ newCMV
-        where
-         backingType =
-            case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-                Nothing -> InMemory 
-                otherwise -> External
     
     mkInitialConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitialConstructor Value
     mkInitialConstructor comboID namedAnnDefs = const $ do
-      collection <- liftEngine $ emptyCollectionBody backingType comboID -- extra parameter for the name
+      collection <- liftEngine $ emptyCollectionBody namedAnnDefs comboID -- extra parameter for the name
       -- insert values into collection
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
       return $ newCMV
-        where
-         backingType =
-            case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-                Nothing -> InMemory 
-                otherwise -> External
     
-    
-    mkConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkConstructor namedAnnDefs = \coll -> do
-      newDS <- copyDS (dataspace coll) vunit
-      let newcol = Collection (namespace coll) (newDS) (extensionId coll)
+    mkCopyConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
+    mkCopyConstructor namedAnnDefs = \coll -> do
+      newDataSpace <- copyDS (dataspace coll) vunit
+      let newcol = Collection (namespace coll) (newDataSpace) (extensionId coll)
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       return newCMV
+
+    emptyCollectionBody :: [(Identifier, IEnvironment Value)] -> Identifier -> EngineM b (Collection Value)
+    emptyCollectionBody namedAnnDefs n =
+       case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
+            Nothing -> return $ Collection emptyCollectionNamespace (InMemoryDS []) n
+            otherwise ->
+              do
+                filename <- generateCollectionFilename
+                let ds = ExternalDS filename
+                return $ Collection emptyCollectionNamespace ds n
 
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
@@ -1203,11 +1183,11 @@ builtinLiftedAttribute annId n _ _
             lc <- copy (Collection ns l extId)
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
-
-        mapFn = valWithCollection $ \f (Collection _ ds _) ->
+        -- Pass in the namespace
+        mapFn = valWithCollection $ \f (Collection ns ds ext) ->
           flip (matchFunction mapFnError) f $ 
             \f'  -> mapDS (withClosure f') ds >>= 
-            \ds' -> copy (defaultCollectionBody ds')
+            \ds' -> copy (Collection ns ds' ext)
 
         filterFn = valWithCollection $ \f (Collection ns ds extId) ->
           flip (matchFunction filterFnError) f $
@@ -1224,14 +1204,14 @@ builtinLiftedAttribute annId n _ _
           (matchFunction curryFnError) (flip withClosure v) result
 
         -- TODO: replace assoc lists with a hashmap.
-        groupByFn = valWithCollection $ \gb (Collection _ ds _) ->
+        groupByFn = valWithCollection $ \gb (Collection ns ds ext) -> -- Am I passing the right namespace & stuff to the later collections?
           flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
           flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
             do
               new_space <- newDS ds vunit
               kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
               -- TODO typecheck that collection
-              copy (defaultCollectionBody kvRecords)
+              copy (Collection ns kvRecords ext)
 
         groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value) =>
           (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
