@@ -87,6 +87,7 @@ openSocketFn = EC.variable "openSocket"
 closeFn :: K3 Expression
 closeFn = EC.variable "close"
 
+{- -- Unused
 registerFileDataTriggerFn :: K3 Expression
 registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
 
@@ -96,11 +97,13 @@ registerFileCloseTriggerFn = EC.variable "registerFileCloseTrigger"
 registerSocketAcceptTriggerFn :: K3 Expression
 registerSocketAcceptTriggerFn = EC.variable "registerSocketAcceptTrigger"
 
+registerSocketCloseTriggerFn :: K3 Expression
+registerSocketCloseTriggerFn = EC.variable "registerSocketCloseTrigger"
+-}
+
 registerSocketDataTriggerFn :: K3 Expression
 registerSocketDataTriggerFn = EC.variable "registerSocketDataTrigger"
 
-registerSocketCloseTriggerFn :: K3 Expression
-registerSocketCloseTriggerFn = EC.variable "registerSocketCloseTrigger"
 
 {- Top-level functions -}
 initId :: Identifier
@@ -126,12 +129,6 @@ roleFnId = "processRole"
 
 roleFn :: K3 Expression
 roleFn = EC.variable roleFnId
-
-parseArgsId :: Identifier
-parseArgsId = "parseArgs"
-
-parseArgsFn :: K3 Expression
-parseArgsFn   = EC.variable parseArgsId
 
 replace_children :: K3 a -> [K3 a] -> K3 a
 replace_children (Node n _) nc = Node n nc
@@ -301,7 +298,6 @@ mkRunSinkE n = EC.applyMany (EC.variable $ ciName n) [EC.unit]
 
 
 -- TODO: at_exit function body
--- TODO: stdin, stdout, stderr
 declareBuiltins :: K3 Declaration -> K3 Declaration
 declareBuiltins d
   | DRole n <- tag d, n == defaultRoleName = replace_children d new_children
@@ -309,13 +305,6 @@ declareBuiltins d
   where new_children = runtimeDecls ++ peerDecls ++ (children d) ++ topLevelDecls
 
         runtimeDecls = [
-          mkGlobal parseArgsId (mkRUnitFnT argT) Nothing,
-
-          mkGlobal "openBuiltin" (mkCurriedFnT [idT, TC.string, TC.string, TC.unit]) Nothing,
-          mkGlobal "openFile"    (mkCurriedFnT [idT, TC.string,  TC.string, TC.string, TC.unit]) Nothing,
-          mkGlobal "openSocket"  (mkCurriedFnT [idT, TC.address, TC.string, TC.string, TC.unit]) Nothing,
-          mkGlobal "close"       (mkAUnitFnT idT) Nothing,
-
           mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
           mkGlobal "registerFileCloseTrigger"    (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
           mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
@@ -333,8 +322,7 @@ declareBuiltins d
           mkGlobal exitId unitFnT $ Just atExitE ]
 
         atInitE = EC.lambda "_" $
-          EC.block [--EC.assign argsId (EC.applyMany parseArgsFn [EC.unit]),
-                    EC.applyMany initDeclFn [EC.unit],
+          EC.block [EC.applyMany initDeclFn [EC.unit],
                     EC.applyMany roleFn [EC.unit]]
 
         atExitE = EC.lambda "_" $ EC.tuple []
@@ -349,8 +337,8 @@ declareBuiltins d
 
         mkCurriedFnT tl = foldr1 TC.function tl
 
-        mkAUnitFnT at = TC.function at TC.unit
-        mkRUnitFnT rt = TC.function TC.unit rt
+        --mkAUnitFnT at = TC.function at TC.unit
+        --mkRUnitFnT rt = TC.function TC.unit rt
         unitFnT       = TC.function TC.unit TC.unit
 
         mkCollection fields = TC.collection $ TC.record $ map (qualifyT <$>) fields

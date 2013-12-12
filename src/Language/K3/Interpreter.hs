@@ -113,7 +113,7 @@ data InterpretationError
 type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
-type IState = (Globals, IEnvironment Value, AEnvironment Value, StaticEnvironment Value)
+type IState = (Globals, IEnvironment Value, AEnvironment Value, SEnvironment Value)
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
@@ -171,7 +171,7 @@ type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 -- | An environment for rebuilding static values after their serialization.
 --   The static value can either be a value (e.g., a global function) or a 
 --   collection namespace associated with an annotation combination id.
-type StaticEnvironment v = (IEnvironment v, AEnvironment v)
+type SEnvironment v = (IEnvironment v, AEnvironment v)
 
 
 {- Misc. helpers-}
@@ -191,7 +191,7 @@ getEnv (_,x,_,_) = x
 getAnnotEnv :: IState -> AEnvironment Value
 getAnnotEnv (_,_,x,_) = x
 
-getStaticEnv :: IState -> StaticEnvironment Value
+getStaticEnv :: IState -> SEnvironment Value
 getStaticEnv (_,_,_,x) = x
 
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
@@ -287,7 +287,7 @@ sendE addr n val = liftEngine $ send addr n val
 vunit :: Value
 vunit = VTuple []
 
-emptyStaticEnv :: StaticEnvironment Value
+emptyStaticEnv :: SEnvironment Value
 emptyStaticEnv = ([], AEnvironment [] [])
 
 emptyState :: IState
@@ -541,6 +541,11 @@ expression (tag &&& children -> (ELambda i, [b])) =
   mkFunction $ \v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
   where mkFunction f = closure >>= \cl -> return $ VFunction . (, cl) $ f
 
+        -- TODO: currently, this definition of a closure captures 
+        -- annotation member variables during annotation member initialization.
+        -- This invalidates the use of annotation member function contextualization
+        -- since the context is overridden by the closure whenever applying the
+        -- member function.
         closure :: Interpretation (Closure Value)
         closure = do
           globals <- get >>= return . getGlobals
@@ -855,6 +860,10 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
           ans'   = maybe ans (replaceAssoc ans annId) annEnv
       in (cns', ans')
 
+-- | Creates a contextualized collection member function. That is, the member function
+--   will add all collection members to the interpretation environment prior to its
+--   evaluation. This way, the member function's body can directly refer to other members
+--   by name, rather than using the 'self' keyword.
 contextualizeFunction :: MVar (Collection Value) -> (Value -> Interpretation Value, Closure Value) -> Value
 contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
       bindings <- liftCollection
@@ -910,8 +919,6 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 -- parseArgs :: () -> ([String], [(String, String)])
 genBuiltin "parseArgs" _ =
   emptyCollection >>= \x -> return $ ignoreFn $ VTuple [x,x]
-
--- TODO: static environment for wire descriptor
 
 -- TODO: error handling on all open/close/read/write methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
@@ -1179,7 +1186,7 @@ builtinAttribute _ n _ _ = providesError "attribute" n
 --   static initializers (i.e. initializers that do not depend on runtime values),
 --   we can simply populate the static environment from the interpreter
 --   environment resulting immediately after declaration initialization.
-staticEnvironment :: K3 Declaration -> EngineM Value (StaticEnvironment Value)
+staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
 staticEnvironment prog = do
   st      <- initState prog
   staticR <- runInterpretation' st (declaration prog)
@@ -1473,12 +1480,12 @@ virtualizedProcessor = MessageProcessor {
 valueWD :: WireDesc Value
 valueWD = WireDesc (return . show) (return . Just . read) $ Delimiter "\n"
 
-syntaxValueWD :: StaticEnvironment Value -> WireDesc Value
+syntaxValueWD :: SEnvironment Value -> WireDesc Value
 syntaxValueWD sEnv =
   WireDesc (packValueSyntax True)
            (\s -> unpackValueSyntax sEnv s >>= return . Just) $ Delimiter "\n"
 
-wireDesc :: StaticEnvironment Value -> String -> WireDesc Value
+wireDesc :: SEnvironment Value -> String -> WireDesc Value
 wireDesc sEnv "k3" = syntaxValueWD sEnv
 wireDesc _ fmt  = error $ "Invalid format " ++ fmt
 
@@ -1773,7 +1780,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     False ? _ = id
 
 
-unpackValueSyntax :: StaticEnvironment Value -> String -> IO Value
+unpackValueSyntax :: SEnvironment Value -> String -> IO Value
 unpackValueSyntax sEnv = readSingleParse unpackValue
   where
     rt :: a -> IO a
