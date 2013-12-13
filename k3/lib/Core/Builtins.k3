@@ -1,0 +1,8 @@
+include "Annotation/Collection.k3"
+
+declare parseArgs   : collection {arg : string} @ { Collection } -> ()
+
+declare openBuiltin : string -> string -> string -> ()
+declare openFile    : string -> string -> string -> string -> ()
+declare openSocket  : string -> address -> string -> string -> ()
+declare close       : string -> ()

@@ -123,7 +123,7 @@ namespace K3 {
     tuple<QueueIndex, shared_ptr<Queue> > nonEmptyQueue() = 0;
 
     void enqueue(Message<Value>& m, shared_ptr<Queue> q);
-    shared_ptr<Message<Value> > dequeue(tuple<QueueIndex, shared_ptr<Queue> > q) = 0;
+    shared_ptr<Message<Value> > dequeue(const tuple<QueueIndex, shared_ptr<Queue> >& q) = 0;
   };
 
 
@@ -161,7 +161,7 @@ namespace K3 {
       }
     }
 
-    shared_ptr<Message<Value> > dequeue(tuple<QueueKey, shared_ptr<Queue> > idxQ)
+    shared_ptr<Message<Value> > dequeue(const tuple<QueueKey, shared_ptr<Queue> >& idxQ)
     {
       shared_ptr<Message<Value> > r;
       tuple<Identifier, Value> entry;
@@ -179,7 +179,7 @@ namespace K3 {
     }
   };
 
-
+  // TODO: for dynamic changes to the queues container, use a shared lock
   template<typename Value>
   class MultiPeerQueue
     : public IndexedMessageQueues<Value, Address, MsgQueue<tuple<Identifier, Value> > >
@@ -190,7 +190,7 @@ namespace K3 {
     typedef map<QueueKey, shared_ptr<Queue> > MultiPeerMessages;
 
     MultiPeerQueue() {}
-    MultiPeerQueue(list<Address>& addresses) {
+    MultiPeerQueue(const list<Address>& addresses) {
       for ( auto x : addresses ) {
         multiPeerMsgs.insert(make_pair(x, shared_ptr<Queue>(new Queue())));
       }
@@ -229,7 +229,7 @@ namespace K3 {
       }
     }
     
-    shared_ptr<Message<Value> > dequeue(tuple<QueueKey, shared_ptr<Queue> > idxQ)
+    shared_ptr<Message<Value> > dequeue(const tuple<QueueKey, shared_ptr<Queue> >& idxQ)
     {
       shared_ptr<Message<Value> > r;
       tuple<Identifier, Value> entry;
@@ -248,6 +248,7 @@ namespace K3 {
   };
 
 
+  // TODO: for dynamic changes to the queues container, use a shared lock
   template<typename Value>
   class MultiTriggerQueue
     : public IndexedMessageQueues<Value, tuple<Address, Identifier>, MsgQueue<Value> >
@@ -259,9 +260,10 @@ namespace K3 {
 
     MultiTriggerQueue() {}
 
-    MultiTriggerQueue(list<Address>& addresses, list<Identifier>& triggerIds) {
-      for (Address& addr : addresses) {
-        for (Identifier& id : triggerIds) {
+    MultiTriggerQueue(const list<Address>& addresses, const list<Identifier>& triggerIds)
+    {
+      for ( auto addr : addresses ) {
+        for ( auto id : triggerIds ) {
           multiTriggerMsgs.insert(
             make_pair(make_tuple(addr, id), shared_ptr<Queue>(new Queue())));
         }
@@ -303,7 +305,7 @@ namespace K3 {
       }
     }
     
-    shared_ptr<Message<Value> > dequeue(tuple<QueueKey, shared_ptr<Queue> > idxQ)
+    shared_ptr<Message<Value> > dequeue(const tuple<QueueKey, shared_ptr<Queue> >& idxQ)
     {
       shared_ptr<Message<Value> > r;
       Value entry;
@@ -331,13 +333,14 @@ namespace K3 {
   }
 
   template<typename Value>
-  shared_ptr<MessageQueues<Value> > perPeerQueues(list<Address> addresses)
+  shared_ptr<MessageQueues<Value> > perPeerQueues(const list<Address>& addresses)
   {
     return shared_ptr<MessageQueues<Value> >(new MultiPeerQueue<Value>(addresses));
   }
 
   template<typename Value>
-  shared_ptr<MessageQueues<Value> > perTriggerQueues(list<Address> addresses, list<Identifier> triggerIds)
+  shared_ptr<MessageQueues<Value> >
+  perTriggerQueues(const list<Address>& addresses, const list<Identifier>& triggerIds)
   {
     return shared_ptr<MessageQueues<Value> >(new MultiTriggerQueue<Value>(addresses, triggerIds));
   }

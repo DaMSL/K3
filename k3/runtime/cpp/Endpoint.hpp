@@ -5,12 +5,16 @@
 #include <map>
 #include <memory>
 #include <tuple>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/lockable_adapter.hpp>
 #include <boost/thread/externally_locked.hpp>
+#include <boost/thread/lockable_adapter.hpp>
+#include <boost/thread/shared_lock_guard.hpp>
+#include <boost/thread/shared_mutex.hpp>
 #include <k3/runtime/cpp/Common.hpp>
 #include <k3/runtime/cpp/Network.hpp>
 #include <k3/runtime/cpp/IOHandle.hpp>
+
+// TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
+// Ideally we want to use a shared_lock since the most common operation will be read accesses.
 
 namespace K3
 {
@@ -20,15 +24,11 @@ namespace K3
   using std::shared_ptr;
   using boost::mutex;
 
-  using Asio::NEndpoint;
-  using Asio::NConnection;
-
   typedef tuple<int, int> BufferSpec;
 
   enum class EndpointNotification { FileData, FileClose, SocketAccept, SocketData, SocketClose };
   template<typename Value> class Endpoint;
-  template<typename Value> using EndpointMap      = map<Identifier, shared_ptr<Endpoint<Value> > >;
-  template<typename Value> using EndpointBindings = map<EndpointNotification, Value>;
+  template<typename Value> using EndpointMap = map<Identifier, shared_ptr<Endpoint<Value> > >;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
@@ -75,7 +75,30 @@ namespace K3
   // Endpoint buffers.
   template<typename Value>
   class EndpointBuffer {
-    // TODO: common endpoint buffer methods.
+  public:
+
+    virtual bool empty() = 0;
+    virtual bool full() = 0;
+    virtual size_t size() = 0;
+    virtual size_t capacity() = 0;
+
+    // Appends to this buffer, returning the value if the append fails.
+    virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
+
+    // Transfers from this buffer into the given queues.
+    virtual void enqueue(shared_ptr<MessageQueues<Value> > queues) = 0;
+
+    // TODO
+    // Writes the content of this buffer to the given IO handle. 
+    // Returns a notification if the write is successfully performed.
+    virtual shared_ptr<EndpointNotification>
+    flush(shared_ptr<IOHandle<Value> > ioh) = 0;
+    
+    // Refresh this buffer by reading a value from the IO handle.
+    // If the buffer is full, a value is returned. Also, a notification
+    // is returned if the read is successfully performed.
+    virtual tuple<shared_ptr<Value>, shared_ptr<EndpointNotification> >
+    refresh(shared_ptr<IOHandle<Value> > ioh) = 0;
   };
 
   /*
@@ -88,12 +111,74 @@ namespace K3
   */
 
 
-  //---------------------------------
-  // Endpoints and their containers.
-  // TODO: thread-safe methods.
+  //----------------------------
+  // I/O event notifications.
 
   template<typename Value>
-  class Endpoint {
+  class EndpointBindings : public LogMT {
+  public:
+    // TODO: value or value ref? Synchronize with Engine.hpp
+    typedef std::function<void(Address,Identifier,Value)> SendFunctionPtr;
+
+    typedef list<Message<Value> > Subscribers;
+    typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
+
+    EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
+
+    void attachNotifier(EndpointNotification nt, shared_ptr<Message<Value> > subscriber)
+    {
+      if ( subscriber ) {
+        shared_ptr<Subscribers> s = eventSubscriptions[nt];
+        if ( !s ) { 
+          s = shared_ptr<Subscribers>(new Subscribers());
+          eventSubscriptions[nt] = s;
+        }
+
+        s->push_back(*subscriber);
+      }
+      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); } 
+    }
+    
+    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr)
+    {
+      auto it = eventSubscriptions.find(nt);
+      if ( it != eventSubscriptions.end() ) {
+        shared_ptr<Subscribers> s = it->second;
+        if ( s ) { 
+          s->remove_if(
+            [&subId, &subAddr](const Message<Value>& m){
+              return m.id() == subId && m.address() == subAddr;
+            });
+        }
+      }
+    }
+
+    void notifyEvent(EndpointNotification nt)
+    {
+      auto it = eventSubscriptions.find(nt);
+      if ( it != eventSubscriptions.end() ) {
+        shared_ptr<Subscribers> s = it->second;
+        if ( s ) {
+          for (const Message<Value>& sub : *s) {
+            sendFn(sub.id(), sub.address(), sub.contents());
+          }
+        }
+      }
+    }
+
+  protected:
+    SendFunctionPtr sendFn;
+    Subscriptions eventSubscriptions;
+  };
+  
+
+
+  //---------------------------------
+  // Endpoints and their containers.
+
+  template<typename Value>
+  class Endpoint
+  {
   public:
     Endpoint(shared_ptr<IOHandle<Value> > ioh,
              shared_ptr<EndpointBuffer<Value> > buf,
@@ -111,12 +196,11 @@ namespace K3
     shared_ptr<EndpointBindings<Value> > subscribers_;
   };
 
-  // TODO: shared (i.e., multi-reader) lock.
   template<typename Value>
-  class EndpointState : public basic_lockable_adapter<mutex>
+  class EndpointState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
   {
   public:
-    typedef basic_lockable_adapter<mutex> eplockable;
+    typedef shared_lockable_adapter<shared_mutex> eplockable;
     
     typedef externally_locked<shared_ptr<EndpointMap<Value> >, EndpointState>
               ConcurrentEndpointMap;
@@ -126,9 +210,10 @@ namespace K3
                   shared_ptr<EndpointBindings<Value> > >
               EndpointDetails;
 
-    EndpointState() : eplockable(),
-                      internalEndpoints(emptyEndpointMap()),
-                      externalEndpoints(emptyEndpointMap())
+    EndpointState() 
+      : eplockable(), LogMT("EndpointState"),
+        internalEndpoints(emptyEndpointMap()),
+        externalEndpoints(emptyEndpointMap())
     {}
 
     shared_ptr<ConcurrentEndpointMap> emptyEndpointMap() {
@@ -137,50 +222,128 @@ namespace K3
                 *this, shared_ptr<EndpointMap<Value> >(new EndpointMap<Value>())));
     }
 
-    virtual void addEndpoint(Identifier id, EndpointDetails details) = 0;
+    void addEndpoint(Identifier id, EndpointDetails details)
+    {
+      strict_lock<EndpointState> guard(*this);
+      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
+      auto lb = epMap->get(guard)->lower_bound(id);
+      if ( lb == epMap->get(guard)->end() || id != lb->first ) {
+        shared_ptr<Endpoint<Value> > ep = shared_ptr<Endpoint<Value> >(
+          new Endpoint<Value>(get<0>(details), get<1>(details), get<2>(details)));      
+        epMap->get(guard)->insert(lb, make_pair(id, ep));
+      } else {
+        BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << id;
+      }
+    }
 
-    virtual void removeEndpoint(Identifier id) = 0;
+    void removeEndpoint(Identifier id)
+    {
+      strict_lock<EndpointState> guard(*this);
+      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
+      epMap->get(guard)->erase(id);
+    }
 
-    virtual shared_ptr<Endpoint<Value> > getEndpoint(Identifier id, bool internal) = 0;
+    shared_ptr<Endpoint<Value> > getEndpoint(Identifier id)
+    {
+      shared_lock_guard<EndpointState> guard(*this);
+      shared_ptr<Endpoint<Value> > r;
+      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
+      auto it = epMap->get(guard)->find(id);
+      if ( it != epMap->get(guard)->end() ) { r = it->second; }
+      return r;
+    }
 
-    size_t numEndpoints() {}
+    size_t numEndpoints() {
+      shared_lock_guard<EndpointState> guard(*this);
+      return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
+    }
 
   protected:
     shared_ptr<ConcurrentEndpointMap> internalEndpoints;
     shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+
+    shared_ptr<ConcurrentEndpointMap> mapForId(Identifier& id) {
+      return externalEndpointId(id) ? externalEndpoints : internalEndpoints;
+    }
   };
 
 
   //-------------------------------------
   // Connections and their containers.
-  // TODO: thread-safe methods.
-
-  class ConnectionMap {
-  public:
-    Address anchorAddress;
-    shared_ptr<NEndpoint> anchorEndpoint;
-    map<Address, shared_ptr<NConnection> > cache;
-  };
 
   // TODO: addresses for anchors as needed.
-  class ConnectionState : public basic_lockable_adapter<mutex>
+  class ConnectionState : public shared_lockable_adapter<shared_mutex>,
+                          public virtual LogMT
   {
+  protected:
+    // Connection maps are not thread-safe themselves, but are only
+    // ever used by ConnectionState methods (which are thread-safe).
+    class ConnectionMap : public virtual LogMT {
+    public:
+      ConnectionMap() : LogMT("ConnectionMap") {}
+      
+      ConnectionMap(Address anchorAddr, shared_ptr<Net::NEndpoint> anchorEP)
+        : LogMT("ConnectionMap"), anchorAddress(anchorAddr), anchorEndpoint(anchorEP)
+      {}
+
+      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c)
+      {
+        bool r = false;
+        auto lb = cache.lower_bound(addr);
+        if ( lb == cache.end() || addr != lb->first ) {
+          auto it = cache.insert(lb, make_pair(addr, c));
+          r = it->first == addr;
+        } else {
+          BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << addressAsString(addr);
+        }
+        return r;
+      }
+
+      shared_ptr<Net::NConnection> getConnection(Address& addr)
+      {
+        shared_ptr<Net::NConnection> r;
+        try {
+          r = cache.at(addr);
+        } catch (const out_of_range& oor) {}
+        if ( !r ) { BOOST_LOG(*this) << "No connection found for " << addressAsString(addr); }
+        return r;
+      }
+
+      void removeConnection(Address& addr) { cache.erase(addr); }
+
+      void clearConnections() { cache.clear(); }
+
+      size_t size() { return cache.size(); }
+
+    protected:
+      Address anchorAddress;
+      shared_ptr<Net::NEndpoint> anchorEndpoint;
+      map<Address, shared_ptr<Net::NConnection> > cache;
+    };
+
   public:
-    typedef basic_lockable_adapter<mutex> clocklable;
+    typedef shared_lockable_adapter<shared_mutex> shlockable;
     
     typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
               ConcurrentConnectionMap;
-    
-    ConnectionState()
-      : clocklable(),
+
+
+    ConnectionState(shared_ptr<Net::NContext> ctxt)
+      : shlockable(), LogMT("ConnectionState"),
+        networkCtxt(ctxt),
         internalConnections(uninitializedConnectionMap()),
         externalConnections(emptyConnectionMap())
     {}
 
-    ConnectionState(bool simulation) : ConnectionState()
+    ConnectionState(shared_ptr<Net::NContext> ctxt, bool simulation) : ConnectionState(ctxt)
     {
       if ( !simulation ) { internalConnections = emptyConnectionMap(); }
     }
+
+    void lock()          { shlockable::lock(); }
+    void lock_shared()   { shlockable::lock_shared(); }
+    void unlock()        { shlockable::unlock(); }
+    void unlock_shared() { shlockable::unlock_shared(); }
 
     bool hasInternalConnections() {
       bool r = false;
@@ -191,37 +354,124 @@ namespace K3
       return r;
     }
 
+    shared_ptr<Net::NConnection> addConnection(Address addr, bool internal)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap =
+        internal? internalConnections : externalConnections;
+
+      shared_ptr<Net::NConnection> conn =
+        shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
+      
+      return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
+    }
+
+    void removeConnection(Address addr)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
+      if ( cMap ) {
+        cMap->get(guard)->removeConnection(addr);
+      } else {
+        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
+      }
+    }
+    
+    void removeConnection(Address addr, bool internal)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
+      if ( cMap ) {
+        cMap->get(guard)->removeConnection(addr);
+      } else {
+        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
+      }      
+    }
+
+    // TODO: Ideally, this should be a shared lock.
+    // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
+    shared_ptr<Net::NConnection> getConnection(Address addr)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
+      return getConnection(addr, cMap, guard);
+    }
+
+    // TODO: Ideally, this should be a shared lock.
+    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal) 
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
+      return getConnection(addr, cMap, guard);
+    }
+
+    // TODO
+    virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;    
+    virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
+
+    void clearConnections() {
+      strict_lock<ConnectionState> guard(*this);
+      if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
+      if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
+    }
+    
+    void clearConnections(bool internal) {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = 
+        internal ? internalConnections : externalConnections;
+      if ( cMap ) { cMap->get(guard)->clearConnections(); }
+    };
+
+    size_t numConnections() {
+      strict_lock<ConnectionState> guard(*this);
+      size_t r = 0;
+      if ( internalConnections ) { r += internalConnections->get(guard)->size(); }
+      if ( externalConnections ) { r += externalConnections->get(guard)->size(); }
+      return r;
+    }
+
+  protected:
+    shared_ptr<Net::NContext> networkCtxt;
+    shared_ptr<ConcurrentConnectionMap> internalConnections;
+    shared_ptr<ConcurrentConnectionMap> externalConnections;
+
     shared_ptr<ConcurrentConnectionMap> uninitializedConnectionMap() {
       return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this));
     }
 
     shared_ptr<ConcurrentConnectionMap> emptyConnectionMap() {
       shared_ptr<ConnectionMap> mp(new ConnectionMap());
-      ConcurrentConnectionMap cmp(*this, mp);
-      return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(cmp));
+      return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));
     }
 
-    virtual shared_ptr<NConnection> addConnection(Address addr) = 0;
-    virtual shared_ptr<NConnection> addConnection(Identifier id, Address addr) = 0;
-    virtual shared_ptr<NConnection> addConnection(Address addr, bool internal) = 0;
+    shared_ptr<ConcurrentConnectionMap> mapForId(Identifier& id) {
+      return externalEndpointId(id) ? externalConnections : internalConnections;
+    }
 
-    virtual void removeConnection(Address addr) = 0;
-    virtual void removeConnection(Address addr, bool internal) = 0;
+    // TODO: implement an alternative using a shared_lock_guard
+    shared_ptr<ConcurrentConnectionMap>
+    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard)
+    {
+      shared_ptr<ConcurrentConnectionMap> r;
+      if ( internalConnections && getConnection(addr, internalConnections, guard) ) {
+        r = internalConnections;
+        if ( !r && externalConnections && getConnection(addr, externalConnections, guard) ) {
+          r = externalConnections;
+        }
+      }
+      return r;
+    }
 
-    virtual shared_ptr<NConnection> getConnection(Address addr) = 0;
-    virtual shared_ptr<NConnection> getConnection(Address addr, bool internal) = 0;
-
-    virtual shared_ptr<NConnection> getEstablishedConnection(Address addr) = 0;
-    virtual shared_ptr<NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
-
-    virtual void clearConnections(bool internal) = 0;
-
-    virtual size_t numInternalConnections() = 0;
-    virtual size_t numExternalConnections() = 0;
-
-  protected:
-    shared_ptr<ConcurrentConnectionMap> internalConnections;
-    shared_ptr<ConcurrentConnectionMap> externalConnections;
+    // TODO: implement an alternative using a shared_lock_guard
+    shared_ptr<Net::NConnection>
+    getConnection(Address& addr,
+                  shared_ptr<ConcurrentConnectionMap> connections,
+                  strict_lock<ConnectionState>& guard)
+    {
+      shared_ptr<Net::NConnection> r;
+      if ( connections ) { r = connections->get(guard)->getConnection(addr); }
+      return r;
+    }
   };
 }
 

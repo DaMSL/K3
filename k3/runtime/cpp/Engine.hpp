@@ -12,6 +12,8 @@ namespace K3 {
   using namespace std;
   using namespace boost;
 
+  using Net = K3::Asio;
+
   //-------------------
   // Message processor
 
@@ -63,66 +65,128 @@ namespace K3 {
 
   //---------------
   // Control
-  class EngineControl {
+  class EngineControl : public virtual LogMT
+  {
   public:
-    // TODO: control primitives.
+    EngineControl(shared_ptr<EngineConfiguration> config)
+      : LogMT("EngineControl"), configuration(config)
+    {
+      terminateV        = shared_ptr<atomic_bool>(new atomic_bool(false));
+      listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
+      waitMutex         = shared_ptr<mutex>(new mutex());
+      waitCondition     = shared_ptr<condition_variable>(new condition_variable());
+      msgAvailMutex     = shared_ptr<mutex>(new mutex());
+      msgAvailCondition = shared_ptr<condition_variable>(new condition_variable());
+    }
+
+    bool terminate() { 
+      bool done = networkDone() || !config->waitForNetwork;
+      return done && (terminateV? terminateV->load() : false);
+    }
+
+    bool networkDone() { return listenerCounter? (*listenerCounter)() : false; }
+    
+    // Wait for a notification that the engine associated
+    // with this control object is finished.
+    void waitForEngine()
+    {
+      if ( waitMutex && waitCondition ) {
+        unique_lock<mutex> lock(*waitMutex);
+        while ( !this->terminate() ) { waitCondition->wait(lock); }
+      } else { logAt(warning, "Could not wait for engine, no condition variable available."); }
+    }
+
+    // Wait for a notification that the engine associated
+    // with this control object has queued messages.
+    template<typename Predicate>
+    void waitForMessage(shared_ptr<Predicate> pred)
+    {
+      if ( p && msgAvailMutex && msgAvailCondition ) {
+        unique_lock<mutex> lock(*msgAvailMutex);
+        while ( (*pred)() ) { msgAvailCondition->wait(lock); }
+      } else { logAt(warning, "Could not wait for message, no condition variable available."); }
+    }
+
+    shared_ptr<ListenerControl> listenerControl() {
+      return shared_ptr<ListenerControl>(
+              new ListenerControl(msgAvailMutex, msgAvailCondition, listenerCounter));
+    }
+
+  protected:
+    // Engine configuration, indicating whether we wait for the network when terminating.
+    shared_ptr<EngineConfiguration> config;
+
+    // Engine termination indicator
+    shared_ptr<atomic_bool> terminateV;
+
+    // Network listener completion indicator.
+    shared_ptr<ListenerCounter> listenerCounter;    
+
+    // Notifications for threads waiting on the engine.
+    shared_ptr<mutex> waitMutex;
+    shared_ptr<condition_variable> waitCondition;
+
+    // Notifications for engine worker threads waiting on messages.
+    shared_ptr<mutex> msgAvailMutex;
+    shared_ptr<condition_variable> msgAvailCondition;
   };
 
   //------------
   // Engine
   template<typename Value>
-  class Engine {
+  class Engine : public virtual LogMT {
   public:
-    Engine() {}
-    
+    Engine() : LogMT("Engine") {}
+
     Engine(bool simulation, SystemEnvironment& sysEnv, WireDesc<Value>& wd)
+      : LogMT("Engine")
     {
-      list<Address> peerAddrs = deployedNodes(sysEnv);
+      list<Address> processAddrs = deployedNodes(sysEnv);
       Address initialAddress;
-      if ( !peerAddrs.empty() ) {
-        initialAddress = peerAddrs.front();
+      if ( !processAddrs.empty() ) {
+        initialAddress = processAddrs.front();
       } else {
-        // Error
+        logAt(warning, "No deployment peer addresses found, using a default address.");
+        initialAddress = defaultAddress;
       }
 
       if ( simulation ) {
         // Simulation engine initialization.
         config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-        ctrl        = shared_ptr<EngineControl>(new EngineControl()); // TODO: control.
+        ctrl        = shared_ptr<EngineControl>(new EngineControl(config));
         deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sysEnv));
 
         valueFormat = shared_ptr<WireDesc<Value> >(new WireDesc<Value>(wd));
         msgFormat   = internalizeWireDesc(wd);
         
-        queues      = peerAddrs.size() <= 1 ? simpleQueues<Value>(initialAddress)
-                                            : perPeerQueues<Value>(peerAddrs);
+        queues      = processAddrs.size() <= 1 ? simpleQueues<Value>(initialAddress)
+                                            : perPeerQueues<Value>(processAddrs);
 
         workers     = shared_ptr<WorkerPool>(new InlinePool());
-        listeners   = shared_ptr<Listeners>(new Listeners());
-        endpoints   = shared_ptr<EndpointState>(new EndpointState());
-
-        // TODO: address for external anchor as needed.
-        connections = shared_ptr<ConnectionState>(new ConnectionState(true));
+        networkCtxt = shared_ptr<Net::NContext>(new NContext(initialAddress));
+        listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
+        endpoints   = shared_ptr<EndpointState>(new EndpointState(networkCtxt));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, true));
       } 
       else {
         // Network engine initialization.
         config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-        ctrl        = shared_ptr<EngineControl>(new EngineControl()); // TODO: control.
+        ctrl        = shared_ptr<EngineControl>(new EngineControl(config));
         deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sysEnv));
 
         valueFormat = shared_ptr<WireDesc<Value> >(new WireDesc<Value>(wd));
         msgFormat   = internalizeWireDesc(wd);
         
-        queues      = perPeerQueues<Value>(peerAddrs);
+        queues      = perPeerQueues<Value>(processAddrs);
 
         workers     = shared_ptr<WorkerPool>(new InlinePool());
-        listeners   = shared_ptr<Listeners>(new Listeners());
-        endpoints   = shared_ptr<EndpointState>(new EndpointState());
+        networkCtxt = shared_ptr<Net::NContext>(new NContext(initialAddress));
+        listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
+        endpoints   = shared_ptr<EndpointState>(new EndpointState(networkCtxt));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, false));
 
-        // TODO: address for internal and external anchor as needed.
-        connections = shared_ptr<ConnectionState>(new ConnectionState(false));
-
-        // TODO: start network listeners.
+        // TODO: start network listeners. Note this means opening up the listener sockets,
+        // while the openSocket() method is the function that actually starts the thread.
       }
     }
 
@@ -138,6 +202,8 @@ namespace K3 {
     bool  hasWrite() {}
     Value doRead() {}
     void  doWrite(Value v) {}
+
+    // TODO: IOHandle constructor functions, i.e. openFileHandle, openSocketHandle, etc.
 
     void processMessage() {}
     void runMessages() {}
@@ -157,6 +223,7 @@ namespace K3 {
     list<Address> nodes() { 
       list<Address> r;
       if ( deployment ) { r = deployedNodes(*deployment); }
+      else { logAt(error, "Invalid system environment."); }
       return r;
     }
 
@@ -167,7 +234,7 @@ namespace K3 {
 
     bool simulation() {
       if ( connections ) { return connections->hasInternalConnections(); }
-      // Error
+      else { logAt(error, "Invalid connection state."); }
       return false;
     }
 
@@ -183,6 +250,7 @@ namespace K3 {
     shared_ptr<WireDesc<Message<Value> > > msgFormat;
     shared_ptr<MessageQueues<Value> >      queues;
     shared_ptr<WorkerPool>                 workers;
+    shared_ptr<NContext>                   networkCtxt;
     shared_ptr<Listeners>                  listeners;
     shared_ptr<EndpointState>              endpoints;
     shared_ptr<ConnectionState>            connections;
