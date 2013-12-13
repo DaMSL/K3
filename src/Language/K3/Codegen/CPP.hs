@@ -236,7 +236,7 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    return (ae PL.<//> be, bv)
+    return (ae <> semi PL.<//> be, bv)
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -270,7 +270,7 @@ reify RForget e@(tag -> EOperate OApp) = do
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae PL.<//> be
+    return $ ae <> semi PL.<//> be
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     ct <- canonicalType e
     d <- cDecl ct x
