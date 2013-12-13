@@ -336,30 +336,37 @@ declaration (tag -> DGlobal i t (Just e)) = do
 declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep <$> mapM declaration cs
-    return $ text "namespace" <+> text n <+> braces subDecls
+    return $ text "namespace" <+> text n <+> hangBrace subDecls
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
 reserved :: [Identifier]
 reserved = ["openBuiltin"]
 
+hangBrace :: Doc -> Doc
+hangBrace d = text "{" PL.<$$> indent 4 d PL.<$$> text "}"
+
+templateLine :: [Doc] -> Doc
+templateLine [] = empty
+templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typename" <+> td | td <- ts])
+
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
 composite cName ans = do
     members <- vsep <$> mapM annMemDecl positives
-    return $ text "class" <+> text cName <+> braces members
+    return $ templateLine [text "CONTENT"] PL.<$$> text "class" <+> text cName <+> hangBrace members <> semi
   where
     onlyPositives :: AnnMemDecl -> Bool
     onlyPositives (Lifted Provides _ _ _ _) = True
     onlyPositives (Attribute Provides _ _ _ _) = True
     onlyPositives (MAnnotation Provides _ _) = True
-    onlypositives _ = False
+    onlyPositives _ = False
 
     positives = filter onlyPositives (concat . snd $ unzip ans)
 
 annMemDecl :: AnnMemDecl -> CPPGenM CPPGenR
 annMemDecl (Lifted _ i t me _)  = do
     memDefinition <- definition i t me
-    return $ templateLine PL.<$$> memDefinition
+    return $ templateLine (map text typeVars) PL.<$$> memDefinition
   where
     findTypeVars :: K3 Type -> [Identifier]
     findTypeVars (tag -> TDeclaredVar v) = [v]
@@ -368,24 +375,19 @@ annMemDecl (Lifted _ i t me _)  = do
 
     typeVars = nub $ findTypeVars t
 
-    templateLine = if null typeVars
-        then empty
-        else (text "template" <> angles (sep $ punctuate comma $ map text typeVars))
-
 annMemDecl (Attribute _ i _ _ _) = return $ text i
 annMemDecl (MAnnotation _ i _) = return $ text i
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i t@(tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
     body <- reify RReturn b
-    return $ body
     cta <- cType ta
     ctr <- cType tr
-    return $ ctr <+> text i <> parens (cta <+> text x) <+> braces body
+    return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 definition i t (Just e) = do
     newI <- reify (RName i) e
     d <- cDecl t i
-    return $ newI PL.<//> d
+    return $ d PL.<//> newI
 definition i t Nothing = cDecl t i
 
 program :: K3 Declaration -> CPPGenM CPPGenR
