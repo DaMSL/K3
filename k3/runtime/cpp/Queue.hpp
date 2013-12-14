@@ -84,16 +84,17 @@ namespace K3 {
   class MessageQueues : public virtual LogMT {
   public:
     MessageQueues() : LogMT("queue") {}
-    virtual void enqueue(Message<Value> m) = 0;
-    virtual shared_ptr<Message<Value> > dequeue() = 0;
+    virtual void enqueue(Value m) = 0;
+    virtual shared_ptr<Value> dequeue() = 0;
   };
 
   template<typename Value, typename QueueIndex, typename Queue>
-  class IndexedMessageQueues : public MessageQueues<Value>
+  class IndexedMessageQueues : public MessageQueues<Message<Value> >
   {
   public:
     IndexedMessageQueues() {}
 
+    // TODO: use a ref / rvalue ref to avoid copying
     void enqueue(Message<Value> m)
     {
       if ( validTarget(m) ) { enqueue(m, queue(m)); }

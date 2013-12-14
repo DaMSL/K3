@@ -242,8 +242,14 @@ namespace K3
 
     class NContext {
     public:
+      NContext() {
+        listenerThreads = shared_ptr<thread_group>(new thread_group());
+      }
+
       // K3 Nanomsg endpoints use the TCP transport.
       string urlOfAddress(Address addr) { return string("tcp://") + addressAsString(addr); }
+
+      shared_ptr<thread_group> listenerThreads;
     };
 
     class NEndpoint : public ::K3::NEndpoint<NContext, int>

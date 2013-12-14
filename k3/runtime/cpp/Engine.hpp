@@ -36,12 +36,16 @@ namespace K3 {
     MPStatus<Result, Error> report() {}
   };
 
+
   //---------------
   // Configuration
+
   class EngineConfiguration {
   public:
     EngineConfiguration() { defaultConfiguration(); }
     EngineConfiguration(Address& addr) { configureWithAddress(addr); }
+
+  protected:
 
     void defaultConfiguration() {
       address           = defaultAddress;
@@ -63,8 +67,10 @@ namespace K3 {
     bool waitForNetwork;
   };
 
+  
   //---------------
   // Control
+  
   class EngineControl : public virtual LogMT
   {
   public:
@@ -131,10 +137,13 @@ namespace K3 {
     shared_ptr<condition_variable> msgAvailCondition;
   };
 
+  
   //------------
   // Engine
+  
   template<typename Value>
-  class Engine : public virtual LogMT {
+  class Engine : public virtual LogMT
+  {
   public:
     Engine() : LogMT("Engine") {}
 
