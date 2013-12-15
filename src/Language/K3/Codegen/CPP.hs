@@ -215,7 +215,7 @@ inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- canonicalType c
     t <- cType ct
-    return (e, text "shared_ptr" <> angles t <> parens v)
+    return (e, text "shared_ptr" <> angles t <> parens (text "new" <+> t <> parens v))
 inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
