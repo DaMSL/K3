@@ -36,6 +36,9 @@ namespace K3
 
     virtual void close() = 0;
 
+    virtual bool builtin() = 0;
+    virtual bool file() = 0;
+
     virtual SourceDetails networkSource() = 0;
     virtual SinkDetails networkSink() = 0;
 
@@ -202,6 +205,9 @@ namespace K3
       : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
     {}
 
+    bool builtin () { return true; }
+    bool file() { return false; }
+
     typename IOHandle<Value>::SourceDetails
     networkSource() {
       return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
@@ -226,6 +232,9 @@ namespace K3
                typename LineBasedHandle<Value>::Output o)
       : LineBasedHandle<Value>(wd, o, file_sink(path))
     {}
+
+    bool builtin () { return false; }
+    bool file() { return true; }
 
     typename IOHandle<Value>::SourceDetails
     networkSource() {
@@ -274,6 +283,9 @@ namespace K3
       if ( connection ) { connection->close(); }
       else if ( endpoint ) { endpoint->close(); }
     }
+
+    bool builtin () { return false; }
+    bool file() { return false; }
 
     typename IOHandle<Value>::SourceDetails
     networkSource() {

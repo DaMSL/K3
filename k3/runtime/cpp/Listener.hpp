@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <memory>
+#include <unordered_set>
 #include <boost/array.hpp>
 #include <boost/thread/condition_variable.hpp>
 #include <boost/thread/locks.hpp> 
@@ -152,6 +153,39 @@ namespace K3 {
   //------------
   // Listeners
 
+  // Abstract base class for listeners.
+  template<typename Value, typename NContext, typename NEndpoint>
+  class Listener : public virtual LogMT
+  {
+  public:
+    Listener(Identifier n,
+             shared_ptr<NContext> ctxt,
+             shared_ptr<Endpoint<Value> > ep,
+             shared_ptr<ListenerControl> ctrl,
+             shared_ptr<ListenerProcessor<Value> > p)
+      : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
+    {
+      if ( endpoint_ ) {
+        typename IOHandle<Value>::SourceDetails source = ep->handle()->networkSource();
+        nEndpoint_ = get<0>(source);
+        wireDesc_ = get<1>(source);
+      }
+    }
+
+  protected:
+    Identifier name;
+    
+    shared_ptr<NContext> ctxt_;
+    shared_ptr<Endpoint<Value> > endpoint_;
+    shared_ptr<NEndpoint> nEndpoint_;
+    shared_ptr<WireDesc<Value> > wireDesc_;
+      // We assume this wire description performs the framing necessary
+      // for partial network messages.
+    
+    shared_ptr<ListenerControl> control_;
+    shared_ptr<ListenerProcessor<Value> > processor_;
+  };
+
   namespace Asio
   {
     using namespace boost::asio;
@@ -160,9 +194,13 @@ namespace K3 {
 
     using boost::system::error_code;
 
+    template<typename Value, typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<Value, NContext, NEndpoint>;
+
     // TODO: close method, terminating all incoming connections to this acceptor.
     template<typename Value>
-    class Listener : public basic_lockable_adapter<mutex>, public virtual LogMT
+    class Listener : public BaseListener<Value, NContext, NEndpoint>,
+                     public basic_lockable_adapter<mutex>
     {
     public:
       typedef basic_lockable_adapter<mutex> llockable;
@@ -174,36 +212,21 @@ namespace K3 {
                shared_ptr<Endpoint<Value> > ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<ListenerProcessor<Value> > p)
-        : llockable(), LogMT("Listener_"+n),
-          name(n), endpoint_(ep), control_(ctrl), processor_(p), connections_(emptyConnections())
+        : BaseListener<Value, NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
+          llockable(), connections_(emptyConnections())
       {
-        if ( endpoint_ ) {
-          typename IOHandle<Value>::SourceDetails source = ep->handle()->networkSource();
-          nEndpoint_ = get<0>(source);
-          wireDesc_ = get<1>(source);
-        }
-
-        if ( nEndpoint_ && wireDesc_ && ctxt && ctxt->service_threads ) {
+        if ( this->nEndpoint_ && this->wireDesc_
+                && this->ctxt_ && this->ctxt_->service_threads )
+        {
           acceptConnection();
-          thread_ = shared_ptr<thread>(ctxt->service_threads->create_thread<NContext>(*ctxt));
+          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
         } else {
-          logAt(trivial::error, "Invalid listener arguments.");
+          this->logAt(trivial::error, "Invalid listener arguments.");
         }
       }
 
     protected:
-      Identifier name;
-      
-      shared_ptr<Endpoint<Value> > endpoint_;
-      shared_ptr<NEndpoint> nEndpoint_;
-      shared_ptr<WireDesc<Value> > wireDesc_;
-        // We assume this wire description performs the framing necessary
-        // for partial network messages.
-      
       shared_ptr<thread> thread_;
-      shared_ptr<ListenerControl> control_;
-      shared_ptr<ListenerProcessor<Value> > processor_;
-
       shared_ptr<externally_locked<shared_ptr<ConnectionList>, Listener> > connections_;
 
       //---------
@@ -218,20 +241,20 @@ namespace K3 {
       //---------------------
       // Endpoint execution.
 
-      void acceptConnection(shared_ptr<NContext> ctxt)
+      void acceptConnection()
       {
-        if ( endpoint_ && wireDesc_ ) {
-          shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(ctxt));
+        if ( this->endpoint_ && this->wireDesc_ ) {
+          shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           
-          nEndpoint_->acceptor()->async_accept(nextConnection,
+          this->nEndpoint_->acceptor()->async_accept(nextConnection,
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
-              else { logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
+              else { this->logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
             });
 
-          acceptConnection(ctxt);
+          acceptConnection();
         }
-        else { logAt(trivial::error, "Invalid listener endpoint or wire description"); }
+        else { this->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
       }
 
       void registerConnection(shared_ptr<NConnection> c)
@@ -243,8 +266,8 @@ namespace K3 {
           }
           
           // Notify subscribers of socket accept event.
-          if ( endpoint_ ) { 
-            endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
+          if ( this->endpoint_ ) { 
+            this->endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
           }
           
           // Start connection.
@@ -262,7 +285,7 @@ namespace K3 {
 
       void receiveMessages(shared_ptr<NConnection> c)
       {
-        if ( c && c->socket() && processor_ )
+        if ( c && c->socket() && this->processor_ )
         {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
@@ -277,11 +300,11 @@ namespace K3 {
               {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = wireDesc_->unpack(string(buffer_->c_array(), buffer_->size()));                
+                shared_ptr<Value> v = this->wireDesc_->unpack(string(buffer_->c_array(), buffer_->size()));
                 if ( v ) { 
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
-                  endpoint_->buffer()->append(v);
-                  (*processor_)();
+                  this->endpoint_->buffer()->append(v);
+                  (*(this->processor_))();
                 }
                 
                 // Recursive invocation for the next message.
@@ -290,11 +313,90 @@ namespace K3 {
               else 
               {
                 deregisterConnection(c);
-                logAt(trivial::error, string("Connection error: ")+ec.message());
+                this->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
         }
-        else { logAt(trivial::error, "Invalid listener connection"); }
+        else { this->logAt(trivial::error, "Invalid listener connection"); }
+      }
+    };
+  }
+
+  namespace Nanomsg 
+  {
+    using std::atomic_bool;
+
+    template<typename Value, typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<Value, NContext, NEndpoint>;
+
+    template<typename Value>
+    class Listener : public BaseListener<Value, NContext, NEndpoint>
+    {
+    public:
+      Listener(Identifier n,
+               shared_ptr<NContext> ctxt,
+               shared_ptr<Endpoint<Value> > ep,
+               shared_ptr<ListenerControl> ctrl,
+               shared_ptr<ListenerProcessor<Value> > p)
+        : BaseListener<Value, NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
+      {
+        if ( this->nEndpoint_ && this->wireDesc_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
+          // Instantiate a new thread to listen for messages on the nanomsg
+          // socket, tracking it in the network context.
+          terminated_ = false;
+          thread_ = shared_ptr<thread>(this->ctxt_->listenerThreads->create_thread(*this));
+        } else {
+          this->logAt(trivial::error, "Invalid listener arguments.");
+        }
+      }
+
+      void operator()()
+      {
+        typedef boost::array<char, 8192> SocketBuffer;
+        SocketBuffer buffer_;
+
+        while ( !terminated_ ) {
+          // Receive a message.          
+          int bytes = nn_recv(this->endpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
+          if ( bytes >= 0 ) {
+            // Unpack, process.
+            shared_ptr<Value> v = this->wireDesc_->unpack(string(buffer_.c_array(), buffer_.static_size));
+            if ( v ) { 
+              // Simulate accept events for nanomsg.
+              refreshSenders(v);
+
+              // Add the value to the endpoint's buffer, and invoke the listener processor.
+              this->endpoint_->buffer()->append(v);
+              (*(this->processor_))();
+            }
+          }
+          else {
+            this->logAt(trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));
+            terminate();
+          }
+        }
+      }
+
+      void terminate() { terminated_ = true; }
+
+    protected:
+      shared_ptr<thread> thread_;
+      atomic_bool terminated_;
+      unordered_set<string> senders;
+
+      // TODO: simulate socket accept notifications. Since nanomsg is not connection-oriented,
+      // we simulate connections based on the arrival of messages from unseen addresses.
+      // TODO: break assumption that value is a Message.
+      void refreshSenders(shared_ptr<Value> v) {
+        /*
+        if ( senders.find(v->address()) == senders.end() ) {
+          senders.insert(v->address());
+          endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
+        }
+
+        // TODO: remove addresses from the recipients pool based on a timeout.
+        // TODO: time out stale senders.
+        */
       }
     };
   }
