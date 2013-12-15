@@ -329,7 +329,7 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
     body <- reify RReturn b
     cta <- cType ta
     ctr <- cType tr
-    return $ ctr <+> text i <> parens (cta <+> text x) <+> braces body
+    return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 declaration (tag -> DGlobal i t (Just e)) = do
     newI <- reify (RName i) e
     modify (\s -> s { initializations = initializations s PL.<//> newI })
