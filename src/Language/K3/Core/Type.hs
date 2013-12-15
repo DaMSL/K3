@@ -76,6 +76,21 @@ data Type
         -- ^Represents a mu-recursive binding.  This type is generated when a
         --  self-referential type is encountered.  This type has one child: the
         --  body of the type declaration.
+
+    -- | Implementation Types. These should never be produced by the parser, nor should they be
+    -- considered by the typechecker.
+    | TImperative ImperativeType
+  deriving (Eq, Read, Show)
+
+-- | Types specific to an imperative implementation backend.
+data ImperativeType
+    -- | A named type synonym, usually for the instantiation of a class. Requires the name of the
+    -- class, and the template type parameters to instantiate with.
+    = TNamed Identifier [K3 Type]
+
+    -- | An imperative class type. Requires the name of the class, list of superclasses, and the
+    -- list of named template variables.
+    | TClass Identifier [Identifier] [Identifier]
   deriving (Eq, Read, Show)
 
 -- | The built-in type references.

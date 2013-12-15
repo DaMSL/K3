@@ -4,7 +4,8 @@ module Language.K3.Core.Constructor.Declaration (
     Language.K3.Core.Constructor.Declaration.trigger,
     endpoint,
     role,
-    annotation
+    annotation,
+    typeDef
 ) where
 
 import Data.Tree
@@ -31,6 +32,8 @@ endpoint i t eOpt = Node (DGlobal i t eOpt :@: [])
 role :: Identifier -> [K3 Declaration] -> K3 Declaration
 role i = Node (DRole i :@: [])
 
+typeDef :: Identifier -> K3 Type -> K3 Declaration
+typeDef i t = Node (DTypeDef i t :@: []) []
 -- | Create a user-defined annotation.  Arguments are annotation name,
 --   declared type parameters, and member declarations.
 annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration

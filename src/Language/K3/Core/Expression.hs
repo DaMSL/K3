@@ -35,6 +35,11 @@ data Expression
     | EIfThenElse
     | EAddress
     | ESelf
+    | EImperative ImperativeExpression
+  deriving (Eq, Read, Show)
+
+data ImperativeExpression
+    = EWhile
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.
@@ -95,6 +100,7 @@ data instance Annotation Expression
     | ESyntax SyntaxAnnotation
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
+    | EImplementationType Identifier
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
     | ERead Identifier UID
