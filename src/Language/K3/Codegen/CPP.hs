@@ -363,7 +363,8 @@ templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typen
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
 composite cName ans = do
     members <- vsep <$> mapM annMemDecl positives
-    return $ templateLine [text "CONTENT"] PL.<$$> text "class" <+> text cName <+> hangBrace members <> semi
+    return $ templateLine [text "CONTENT"]
+        PL.<$$> text "class" <+> text cName <+> hangBrace (text "public:" PL.<$$> indent 4 members) <> semi
   where
     onlyPositives :: AnnMemDecl -> Bool
     onlyPositives (Lifted Provides _ _ _ _) = True
