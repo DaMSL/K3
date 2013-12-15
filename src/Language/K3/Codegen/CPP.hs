@@ -9,9 +9,10 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Data.Function
 import Data.Functor
+import Data.List (nub, sortBy)
 import Data.Maybe
-import Data.List (nub)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -148,7 +149,7 @@ cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angle
 cType (tag &&& children -> (TTuple, [])) = return $ text "unit_t"
 cType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
-cType t@(tag -> TRecord _) = text <$> signature t
+cType t@(tag -> TRecord ids) = signature t >>= \sig -> addRecord sig (zip ids (children t)) >> return (text sig)
 cType (tag -> TDeclaredVar t) = return $ text t
 
 -- TODO: Three pieces of information necessary to generate a collection type:
@@ -336,7 +337,16 @@ declaration (tag -> DGlobal i t (Just e)) = do
 declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep <$> mapM declaration cs
-    return $ text "namespace" <+> text n <+> hangBrace subDecls
+    currentS <- get
+    i <- cType T.unit >>= \ctu ->
+        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> braces (initializations currentS)
+    let amp = annotationMap currentS
+    compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
+        composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
+    recordDecls <- forM (M.toList $ recordMap currentS) $ \(k, idts) -> record k idts
+    put defaultCPPGenS
+    return $ text "namespace" <+> text n <+> hangBrace (
+        vsep $ [forwards currentS] ++ compositeDecls ++ recordDecls ++ [subDecls, i])
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
@@ -378,6 +388,11 @@ annMemDecl (Lifted _ i t me _)  = do
 annMemDecl (Attribute _ i _ _ _) = return $ text i
 annMemDecl (MAnnotation _ i _) = return $ text i
 
+record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
+record rName idts = do
+    members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
+    return $ text "struct" <+> text rName <+> hangBrace members <> semi
+
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i t@(tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
     body <- reify RReturn b
@@ -393,10 +408,13 @@ definition i t Nothing = cDecl t i
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     p <- declaration d
-    currentS <- get
-    i <- cType T.unit >>= \ctu ->
-        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> braces (initializations currentS)
-    let amp = annotationMap currentS
-    compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
-        composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
-    return $ vsep $ compositeDecls ++ [forwards currentS, i, p]
+    return $ vsep genIncludes PL.<$$> vsep genNamespaces PL.<$$> text "typedef struct {} unit_t;" PL.<$$> p
+  where
+    genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
+    genNamespaces = [text "using namespace " <+> (text n) <+> semi | n <- namespaces]
+
+includes :: [Identifier]
+includes = ["boost/smart_ptr/shared_ptr.hpp"]
+
+namespaces :: [Identifier]
+namespaces = ["boost"]
