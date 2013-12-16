@@ -28,12 +28,12 @@ namespace K3
 
   enum class EndpointNotification { NullEvent, FileData, FileClose, SocketAccept, SocketData, SocketClose };
 
-  template<typename Value> class Endpoint;
-  template<typename Value> using EndpointMap = map<Identifier, shared_ptr<Endpoint<Value> > >;
+  template<typename Value, typename EventValue> class Endpoint;
+  template<typename Value, typename EventValue> using EndpointMap
+      = map<Identifier, shared_ptr<Endpoint<Value, EventValue> > >;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
-  BufferSpec defaultBufferSpec()        { return make_tuple(-1,-1); }
 
   string internalEndpointPrefix() { return string("__");  }
   
@@ -221,7 +221,8 @@ namespace K3
   public:
     typedef list<Value> BufferContents;
 
-    ContainerEPBufferST() {
+    ContainerEPBufferST(BufferSpec s) : spec(s)
+    {
       contents = shared_ptr<BufferContents>(new BufferContents());
     }
 
@@ -320,7 +321,7 @@ namespace K3
     typedef externally_locked<shared_ptr<BufferContents>, ContainerEPBufferMT>
               ConcurrentBufferContents;
     
-    ContainerEPBufferMT() : bclockable() {
+    ContainerEPBufferMT(BufferSpec s) : bclockable(), spec(s) {
       shared_ptr<BufferContents> cb = shared_ptr<BufferContents>(new BufferContents());
       contents = shared_ptr<BufferContents>(new ConcurrentBufferContents(*this, cb));
     }
@@ -511,24 +512,26 @@ namespace K3
   //---------------------------------
   // Endpoints and their containers.
 
-  template<typename Value>
+  template<typename Value, typename EventValue>
   class Endpoint
   {
   public:
     Endpoint(shared_ptr<IOHandle<Value> > ioh,
              shared_ptr<EndpointBuffer<Value> > buf,
-             shared_ptr<EndpointBindings<Value> > subs)
+             shared_ptr<EndpointBindings<EventValue> > subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {}
 
     shared_ptr<IOHandle<Value> > handle() { return handle_; }
     shared_ptr<EndpointBuffer<Value> > buffer() { return buffer_; }
-    shared_ptr<EndpointBindings<Value> > subscribers() { return subscribers_; }
+    shared_ptr<EndpointBindings<EventValue> > subscribers() { return subscribers_; }
+
+    // TODO: hasRead, doRead, hasWrite, doWrite API wrappers for the handle.
 
   protected:
     shared_ptr<IOHandle<Value> > handle_;
     shared_ptr<EndpointBuffer<Value> > buffer_;
-    shared_ptr<EndpointBindings<Value> > subscribers_;
+    shared_ptr<EndpointBindings<EventValue> > subscribers_;
   };
 
   template<typename Value>
@@ -537,55 +540,55 @@ namespace K3
   public:
     typedef shared_lockable_adapter<shared_mutex> eplockable;
     
-    typedef externally_locked<shared_ptr<EndpointMap<Value> >, EndpointState>
-              ConcurrentEndpointMap;
+    template<typename EndpointValue> using ConcurrentEndpointMap =
+      externally_locked<shared_ptr<EndpointMap<EndpointValue, Value> >, EndpointState>;
     
-    typedef tuple<shared_ptr<IOHandle<Value> >, 
-                  shared_ptr<EndpointBuffer<Value> >,
-                  shared_ptr<EndpointBindings<Value> > >
-              EndpointDetails;
+    template<typename EndpointValue>
+    using EndpointDetails = tuple<shared_ptr<IOHandle<EndpointValue> >, 
+                                  shared_ptr<EndpointBuffer<EndpointValue> >,
+                                  shared_ptr<EndpointBindings<Value> > >;
 
     EndpointState() 
       : eplockable(), LogMT("EndpointState"),
-        internalEndpoints(emptyEndpointMap()),
-        externalEndpoints(emptyEndpointMap())
+        internalEndpoints(emptyEndpointMap<Message<Value> >()),
+        externalEndpoints(emptyEndpointMap<Value>())
     {}
 
-    shared_ptr<ConcurrentEndpointMap> emptyEndpointMap() {
-      return shared_ptr<ConcurrentEndpointMap>(
-          new ConcurrentEndpointMap(
-                *this, shared_ptr<EndpointMap<Value> >(new EndpointMap<Value>())));
-    }
-
-    void addEndpoint(Identifier id, EndpointDetails details)
-    {
-      strict_lock<EndpointState> guard(*this);
-      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
-      auto lb = epMap->get(guard)->lower_bound(id);
-      if ( lb == epMap->get(guard)->end() || id != lb->first ) {
-        shared_ptr<Endpoint<Value> > ep = shared_ptr<Endpoint<Value> >(
-          new Endpoint<Value>(get<0>(details), get<1>(details), get<2>(details)));      
-        epMap->get(guard)->insert(lb, make_pair(id, ep));
-      } else {
-        BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << id;
+    void addEndpoint(Identifier id, EndpointDetails<Message<Value> > details) {
+      if ( !externalEndpointId(id) ) { 
+        addEndpoint(id, details, internalEndpoints); 
+      } else { 
+        string errorMsg = "Invalid internal endpoint identifier";
+        logAt(trivial::error, errorMsg);
+        throw runtime_error(errorMsg);
       }
     }
 
-    void removeEndpoint(Identifier id)
-    {
-      strict_lock<EndpointState> guard(*this);
-      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
-      epMap->get(guard)->erase(id);
+    void addEndpoint(Identifier id, EndpointDetails<Value> details) {
+      if ( externalEndpointId(id) ) {
+        addEndpoint(id, details, externalEndpoints);
+      } else {
+        string errorMsg = "Invalid external endpoint identifier";
+        logAt(trivial::error, errorMsg);
+        throw runtime_error(errorMsg);
+      }
     }
 
-    shared_ptr<Endpoint<Value> > getEndpoint(Identifier id)
-    {
-      shared_lock_guard<EndpointState> guard(*this);
-      shared_ptr<Endpoint<Value> > r;
-      shared_ptr<ConcurrentEndpointMap> epMap = mapForId(id);
-      auto it = epMap->get(guard)->find(id);
-      if ( it != epMap->get(guard)->end() ) { r = it->second; }
-      return r;
+    void removeEndpoint(Identifier id) { 
+      if ( !externalEndpointId(id) ) { 
+        removeEndpoint<Value>(id, externalEndpoints);
+      } else { 
+        removeEndpoint<Message<Value> >(id, internalEndpoints);
+      }
+    }
+
+    // TODO: endpoint id validation.
+    shared_ptr<Endpoint<Message<Value>, Value> > getInternalEndpoint(Identifier id) {
+      return getEndpoint<Message<Value> >(id, internalEndpoints);
+    }
+
+    shared_ptr<Endpoint<Value, Value> > getExternalEndpoint(Identifier id) {
+      return getEndpoint<Value>(id, externalEndpoints);
     }
 
     size_t numEndpoints() {
@@ -594,12 +597,58 @@ namespace K3
     }
 
   protected:
-    shared_ptr<ConcurrentEndpointMap> internalEndpoints;
-    shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+    shared_ptr<ConcurrentEndpointMap<Message<Value> > > internalEndpoints;
+    shared_ptr<ConcurrentEndpointMap<Value> >           externalEndpoints;
 
-    shared_ptr<ConcurrentEndpointMap> mapForId(Identifier& id) {
-      return externalEndpointId(id) ? externalEndpoints : internalEndpoints;
+    template<typename EndpointValue>
+    shared_ptr<ConcurrentEndpointMap<EndpointValue> > 
+    emptyEndpointMap()
+    {
+      shared_ptr<EndpointMap<EndpointValue, Value> > m =
+        shared_ptr<EndpointMap<EndpointValue, Value> >(
+          new EndpointMap<EndpointValue, Value>());
+
+      return shared_ptr<ConcurrentEndpointMap<EndpointValue> >(
+              new ConcurrentEndpointMap<EndpointValue>(*this, m));
     }
+
+
+    template<typename EndpointValue>
+    void addEndpoint(Identifier id, EndpointDetails<EndpointValue> details,
+                     shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      auto lb = epMap->get(guard)->lower_bound(id);
+      if ( lb == epMap->get(guard)->end() || id != lb->first )
+      {
+        shared_ptr<Endpoint<EndpointValue, Value> > ep =
+          shared_ptr<Endpoint<EndpointValue, Value> >(
+            new Endpoint<EndpointValue, Value>(get<0>(details), get<1>(details), get<2>(details)));
+
+        epMap->get(guard)->insert(lb, make_pair(id, ep));
+      } else {
+        BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << id;
+      }
+    }
+
+    template<typename EndpointValue>
+    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      epMap->get(guard)->erase(id);
+    }
+
+    template<typename EndpointValue>
+    shared_ptr<Endpoint<EndpointValue, Value> > 
+    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    {
+      shared_lock_guard<EndpointState> guard(*this);
+      shared_ptr<Endpoint<EndpointValue, Value> > r;
+      auto it = epMap->get(guard)->find(id);
+      if ( it != epMap->get(guard)->end() ) { r = it->second; }
+      return r;
+    }
+
   };
 
 

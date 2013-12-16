@@ -29,8 +29,16 @@ namespace K3 {
 
   using std::shared_ptr;
 
+  typedef string Identifier;
+
   typedef tuple<boost::asio::ip::address, unsigned short> Address;
+
+  enum class Builtin { Stdin, Stdout, Stderr };
+  enum class IOMode  { Read, Write, Append, ReadWrite };
   
+  //---------------
+  // Addresses.
+
   Address make_address(const string& host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
@@ -48,12 +56,6 @@ namespace K3 {
   
   inline int addressPort(const Address& addr) { return get<1>(addr); }
   inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
-
-  typedef string Identifier;
-
-  //---------------
-  // Addresses.
-  Address defaultAddress = make_address("127.0.0.1", 40000);
 
   string addressAsString(const Address& addr) {
     return addressHost(addr) + ":" + to_string(addressPort(addr));
@@ -82,8 +84,12 @@ namespace K3 {
                         addressPort(std::forward<Address>(addr))+2);
   }
 
+  Address defaultAddress = make_address("127.0.0.1", 40000);
+
+
   //-------------
   // Messages.
+
   template<typename Value>
   class Message : public tuple<Address, Identifier, Value> {
   public:
@@ -104,6 +110,7 @@ namespace K3 {
     Address&    address()  { return get<0>(*this); }
     Identifier& id()       { return get<1>(*this); }
     Value&      contents() { return get<2>(*this); }
+    string      target()   { return id() + "@" + addressAsString(address()); }
   };
 
   //--------------------
@@ -114,10 +121,14 @@ namespace K3 {
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
 
-  list<Address> deployedNodes(SystemEnvironment& sysEnv) {
+  list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     list<Address> r;
     for ( auto x : sysEnv ) { r.push_back(x.first); }
     return std::move(r);
+  }
+
+  bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
+    return sysEnv.find(addr) != sysEnv.end();
   }
 
   //-------------

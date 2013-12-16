@@ -83,10 +83,10 @@ namespace K3 {
   //-------------------------------
   // Listener processor base class.
 
-  template<typename Value>
+  template<typename Value, typename EventValue>
   class ListenerProcessor : public virtual LogMT {
   public:
-    ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint<Value> > e)
+    ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint<Value, EventValue> > e)
       : LogMT("ListenerProcessor"), control(c), endpoint(e)
     {}
 
@@ -95,20 +95,20 @@ namespace K3 {
   
   protected:
     shared_ptr<ListenerControl> control;
-    shared_ptr<Endpoint<Value> > endpoint;
+    shared_ptr<Endpoint<Value, EventValue> > endpoint;
   };
 
   //------------------------------------
   // Listener processor implementations.
 
-  template<typename Value>
-  class InternalListenerProcessor : public ListenerProcessor<Message<Value> >
+  template<typename Value, typename EventValue>
+  class InternalListenerProcessor : public ListenerProcessor<Message<Value>, EventValue>
   {
   public:
     InternalListenerProcessor(shared_ptr<MessageQueues<Value> > q,
                               shared_ptr<ListenerControl> c,
-                              shared_ptr<Endpoint<Value> > e)
-      : ListenerProcessor<Message<Value> >(c, e), engineQueues(q)
+                              shared_ptr<Endpoint<Value, EventValue> > e)
+      : ListenerProcessor<Message<Value>, EventValue>(c, e), engineQueues(q)
     {}
 
     void operator()() {
@@ -128,12 +128,13 @@ namespace K3 {
     shared_ptr<MessageQueues<Value> > engineQueues;
   };
   
-  template<typename Value>
-  class ExternalListenerProcessor : public ListenerProcessor<Value>
+  template<typename Value, typename EventValue>
+  class ExternalListenerProcessor : public ListenerProcessor<Value, EventValue>
   {
   public:
-    ExternalListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint<Value> > e)
-      : ListenerProcessor<Value>(c, e)
+    ExternalListenerProcessor(shared_ptr<ListenerControl> c,
+                              shared_ptr<Endpoint<Value, EventValue> > e)
+      : ListenerProcessor<Value, EventValue>(c, e)
     {}
 
     void operator()() {
@@ -154,15 +155,15 @@ namespace K3 {
   // Listeners
 
   // Abstract base class for listeners.
-  template<typename Value, typename NContext, typename NEndpoint>
+  template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
   class Listener : public virtual LogMT
   {
   public:
     Listener(Identifier n,
              shared_ptr<NContext> ctxt,
-             shared_ptr<Endpoint<Value> > ep,
+             shared_ptr<Endpoint<Value, EventValue> > ep,
              shared_ptr<ListenerControl> ctrl,
-             shared_ptr<ListenerProcessor<Value> > p)
+             shared_ptr<ListenerProcessor<Value, EventValue> > p)
       : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
     {
       if ( endpoint_ ) {
@@ -176,14 +177,14 @@ namespace K3 {
     Identifier name;
     
     shared_ptr<NContext> ctxt_;
-    shared_ptr<Endpoint<Value> > endpoint_;
+    shared_ptr<Endpoint<Value, EventValue> > endpoint_;
     shared_ptr<NEndpoint> nEndpoint_;
     shared_ptr<WireDesc<Value> > wireDesc_;
       // We assume this wire description performs the framing necessary
       // for partial network messages.
     
     shared_ptr<ListenerControl> control_;
-    shared_ptr<ListenerProcessor<Value> > processor_;
+    shared_ptr<ListenerProcessor<Value, EventValue> > processor_;
   };
 
   namespace Asio
@@ -194,12 +195,12 @@ namespace K3 {
 
     using boost::system::error_code;
 
-    template<typename Value, typename NContext, typename NEndpoint>
-    using BaseListener = ::K3::Listener<Value, NContext, NEndpoint>;
+    template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<Value, EventValue, NContext, NEndpoint>;
 
     // TODO: close method, terminating all incoming connections to this acceptor.
-    template<typename Value>
-    class Listener : public BaseListener<Value, NContext, NEndpoint>,
+    template<typename Value, typename EventValue>
+    class Listener : public BaseListener<Value, EventValue, NContext, NEndpoint>,
                      public basic_lockable_adapter<mutex>
     {
     public:
@@ -209,10 +210,10 @@ namespace K3 {
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<Endpoint<Value> > ep,
+               shared_ptr<Endpoint<Value, EventValue> > ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<ListenerProcessor<Value> > p)
-        : BaseListener<Value, NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
+               shared_ptr<ListenerProcessor<Value, EventValue> > p)
+        : BaseListener<Value, EventValue, NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
           llockable(), connections_(emptyConnections())
       {
         if ( this->nEndpoint_ && this->wireDesc_
@@ -326,19 +327,19 @@ namespace K3 {
   {
     using std::atomic_bool;
 
-    template<typename Value, typename NContext, typename NEndpoint>
-    using BaseListener = ::K3::Listener<Value, NContext, NEndpoint>;
+    template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<Value, EventValue, NContext, NEndpoint>;
 
-    template<typename Value>
-    class Listener : public BaseListener<Value, NContext, NEndpoint>
+    template<typename Value, typename EventValue>
+    class Listener : public BaseListener<Value, EventValue, NContext, NEndpoint>
     {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<Endpoint<Value> > ep,
+               shared_ptr<Endpoint<Value, EventValue> > ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<ListenerProcessor<Value> > p)
-        : BaseListener<Value, NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
+               shared_ptr<ListenerProcessor<Value, EventValue> > p)
+        : BaseListener<Value, EventValue, NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
       {
         if ( this->nEndpoint_ && this->wireDesc_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg

@@ -328,22 +328,22 @@ namespace K3 {
   // Queue constructors.
 
   template<typename Value>
-  shared_ptr<MessageQueues<Value> > simpleQueues(Address addr)
+  shared_ptr<MessageQueues<Message<Value> > > simpleQueues(Address addr)
   {
-    return shared_ptr<MessageQueues<Value> >(new SinglePeerQueue<Value>(addr));
+    return shared_ptr<MessageQueues<Message<Value> > >(new SinglePeerQueue<Value>(addr));
   }
 
   template<typename Value>
-  shared_ptr<MessageQueues<Value> > perPeerQueues(const list<Address>& addresses)
+  shared_ptr<MessageQueues<Message<Value> > > perPeerQueues(const list<Address>& addresses)
   {
-    return shared_ptr<MessageQueues<Value> >(new MultiPeerQueue<Value>(addresses));
+    return shared_ptr<MessageQueues<Message<Value> > >(new MultiPeerQueue<Value>(addresses));
   }
 
   template<typename Value>
-  shared_ptr<MessageQueues<Value> >
+  shared_ptr<MessageQueues<Message<Value> > >
   perTriggerQueues(const list<Address>& addresses, const list<Identifier>& triggerIds)
   {
-    return shared_ptr<MessageQueues<Value> >(new MultiTriggerQueue<Value>(addresses, triggerIds));
+    return shared_ptr<MessageQueues<Message<Value> > >(new MultiTriggerQueue<Value>(addresses, triggerIds));
   }
 }
 
