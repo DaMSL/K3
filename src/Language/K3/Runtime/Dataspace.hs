@@ -3,6 +3,7 @@
 module Language.K3.Runtime.Dataspace (
   Dataspace,
   emptyDS,
+  newDS,
   initialDS,
   copyDS,
   peekDS,
@@ -27,19 +28,13 @@ module Language.K3.Runtime.Dataspace (
   replaceKV,
 ) where
 
-{- TODO take out dependence on Interpretation (-> m)
- - move the typeclasses to Runtime/Dataspace.hs
- - (move the instances to Interpreter/IDataspace.hs)
- -}
+-- (move the instances to Interpreter/IDataspace.hs)
 class (Monad m) => Dataspace m ds v where
-  emptyDS       :: ds -> v -> m ds -- this is bad?
+  emptyDS       :: () -> m ds
+  newDS         :: ds -> v -> m ds
   initialDS     :: [v] -> m ds
   copyDS        :: ds -> v -> m ds
-  -- ideal:
-  -- newDS      :: () -> m ds
-  -- copyDS     :: ds -> m ds
-  -- initialDS  :: [v] -> m ds
-  peekDS        :: ds -> m (Maybe v)
+  peekDS        :: ds -> v -> m (Maybe v)
   insertDS      :: ds -> v -> m ds
   deleteDS      :: v -> ds -> m ds
   updateDS      :: v -> v -> ds -> m ds
@@ -51,7 +46,6 @@ class (Monad m) => Dataspace m ds v where
   splitDS       :: ds -> v -> m (ds, ds)
 {- casting? -}
 
--- TODO monads
 class (Monad m) => EmbeddedKV m v k where
   extractKey :: v -> m k
   embedKey   :: k -> v -> m v

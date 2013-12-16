@@ -9,6 +9,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The K3 Interpreter
 module Language.K3.Interpreter (
@@ -29,6 +30,9 @@ module Language.K3.Interpreter (
 
   runNetwork,
   runProgram,
+
+  emptyState,
+  getResultVal,
 
   packValueSyntax,
   unpackValueSyntax,
@@ -128,7 +132,6 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 {- Collections and annotations -}
 
-data CollectionDataspaceType = InMemory | External
 -- Add a parameter v instead of Value
 data CollectionDataspace = InMemoryDS [Value] | ExternalDS Identifier
 
@@ -167,7 +170,8 @@ type AnnotationCombinations v = [(Identifier, CollectionBinders v)]
 data CollectionBinders v =
   CollectionBinders { emptyCtor   :: CEmptyConstructor v
                     , initialCtor :: CInitialConstructor v
-                    , copyCtor    :: CCopyConstructor v }
+                    , copyCtor    :: CCopyConstructor v
+                    , emplaceCtor :: CEmplaceConstructor v }
 
 -- | A collection initializer that populates default lifted attributes.
 type CEmptyConstructor v = () -> Interpretation (MVar (Collection v))
@@ -179,6 +183,8 @@ type CInitialConstructor v = [v] -> Interpretation (MVar (Collection v))
 -- | A copy constructor that takes a collection, copies its non-function fields,
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
+
+type CEmplaceConstructor v = CollectionDataspace -> Interpretation (MVar (Collection v))
 
 
 {- Misc. helpers-}
@@ -309,12 +315,13 @@ initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= re
 
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
-  emptyDS _ _      = return []
+  emptyDS _        = return []
+  newDS _ _        = return []
   initialDS vals   = return vals
   copyDS ls _      = return ls
-  peekDS ls        = case ls of
+  peekDS ls _      = case ls of
     []    -> return Nothing
-    (h:t) -> return $ Just h
+    (h:_) -> return $ Just h
   insertDS ls v    = return $ ls ++ [v]
   deleteDS v ls    = return $ delete v ls
   updateDS v v' ls = return $ (delete v ls) ++ [v']
@@ -331,10 +338,11 @@ instance (Monad m) => Dataspace m [Value] Value where
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
 instance Dataspace Interpretation Identifier Value where
-  emptyDS _ _     = liftEngine generateCollectionFilename
+  emptyDS _       = liftEngine generateCollectionFilename
+  newDS _ _       = liftEngine generateCollectionFilename
   initialDS       = initialFile liftEngine
   copyDS old_id _ = liftEngine $ copyFile old_id
-  peekDS ext_id   = peekFile liftEngine ext_id
+  peekDS ext_id _ = peekFile liftEngine ext_id
   insertDS        = insertFile liftEngine
   deleteDS        = deleteFile liftEngine
   updateDS        = updateFile liftEngine
@@ -867,6 +875,11 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 {- Interpretation utility functions -}
 
+emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> EngineM b (CollectionDataspace)
+emptyDataspaceLookup namedAnnDefs = do
+  case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
+    Nothing -> return $ InMemoryDS []
+    otherwise -> generateCollectionFilename >>= return . ExternalDS
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
@@ -894,7 +907,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkCBinder :: Identifier -> [(Identifier, IEnvironment Value)] -> CollectionBinders Value
     mkCBinder comboId namedAnnDefs =
-      CollectionBinders (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkCopyConstructor namedAnnDefs)
+      CollectionBinders (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkCopyConstructor namedAnnDefs) (mkEmplaceConstructor comboId namedAnnDefs)
 
     mkEmptyConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
     mkEmptyConstructor comboId namedAnnDefs = const $ do
@@ -920,16 +933,27 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       return newCMV
+   
+    mkEmplaceConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmplaceConstructor Value
+    mkEmplaceConstructor comboID namedAnnDefs = \dataspace -> do
+      let newcol = Collection emptyCollectionNamespace dataspace comboID
+      newCMV <- liftIO (newMVar newcol)
+      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
+      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
+      return newCMV
+
 
     emptyCollectionBody :: [(Identifier, IEnvironment Value)] -> Identifier -> EngineM b (Collection Value)
-    emptyCollectionBody namedAnnDefs n =
-       case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
+    emptyCollectionBody namedAnnDefs n = do
+      ds <- emptyDataspaceLookup namedAnnDefs
+      return $ Collection emptyCollectionNamespace ds n
+       {-case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
             Nothing -> return $ Collection emptyCollectionNamespace (InMemoryDS []) n
             otherwise ->
               do
                 filename <- generateCollectionFilename
                 let ds = ExternalDS filename
-                return $ Collection emptyCollectionNamespace ds n
+                return $ Collection emptyCollectionNamespace ds n -}
 
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
@@ -1132,7 +1156,7 @@ builtinLiftedAttribute annId n _ _
 
         -- | Collection accessor implementation
         peekFn = valWithCollection $ \_ (Collection _ ds _) -> do 
-          inner_val <- peekDS ds
+          inner_val <- peekDS ds vunit
           return $ VOption inner_val
 
         -- | Collection modifier implementation
@@ -1204,14 +1228,17 @@ builtinLiftedAttribute annId n _ _
           (matchFunction curryFnError) (flip withClosure v) result
 
         -- TODO: replace assoc lists with a hashmap.
-        groupByFn = valWithCollection $ \gb (Collection ns ds ext) -> -- Am I passing the right namespace & stuff to the later collections?
-          flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
-          flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
-            do
-              new_space <- emptyDS ds vunit
-              kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
-              -- TODO typecheck that collection
-              copy (Collection ns kvRecords ext)
+        groupByFn = valWithCollection heres_the_answer
+          where
+            heres_the_answer :: Value -> Collection Value -> Interpretation Value
+            heres_the_answer gb (Collection ns ds ext) = -- Am I passing the right namespace & stuff to the later collections?
+              flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
+              flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
+                do
+                  new_space <- newDS ds vunit
+                  kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
+                  -- TODO typecheck that collection
+                  copy (Collection ns kvRecords ext)
 
         groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value) =>
           (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
@@ -1221,7 +1248,8 @@ builtinLiftedAttribute annId n _ _
           case look_result of
             Nothing         -> do
               val <- curryFoldFn f' accInit v 
-              tmp_ds <- emptyDS acc vunit
+              --tmp_ds <- emptyDS ()
+              tmp_ds <- newDS acc vunit
               insertKV tmp_ds k val
               combineDS acc tmp_ds vunit
             Just partialAcc -> do 
@@ -1232,7 +1260,7 @@ builtinLiftedAttribute annId n _ _
           flip (matchFunction extError) f $ 
           \f' -> do
                 val_ds <- mapDS (withClosure f') ds
-                first_subcol <- peekDS val_ds
+                first_subcol <- peekDS val_ds vunit
                 case first_subcol of
                   Nothing -> extError -- Maybe not the right error here
                                       -- really, I should create an empty VCollection
