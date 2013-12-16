@@ -13,7 +13,7 @@ For wordCountV2.k3
    -p 127.0.0.1:61000:role=\"go\"
    -p 127.0.0.1:62000:role=\"go\"
    -p 127.0.0.1:63000:role=\"go\"
-   -p 127.0.0.1:70000:role=\"go\"  /home/chao/work/K3/K3-Core/examples/distributed/MapReduce/WordCountV3/wordCountV2.k3 --log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3.Runtime.Engine#EngineSteps:debug"
+   -p 127.0.0.1:70000:role=\"go\"  /home/chao/work/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordCountV2.k3 --log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3.Runtime.Engine#EngineSteps:debug"
 
 TODO
 ----

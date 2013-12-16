@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
 
 /*
  * Test read collections from file
@@ -6,10 +7,11 @@ include "Annotation/Collection.k3"
 
 declare myWordList :       mut collection {word : string} @ { Collection }
 declare numOfColls :       mut int = 0
+declare totalWords :       mut int = 0
 
 trigger test : (collection {word : string} @ {Collection}) = \receivedLst -> (
     myWordList = myWordList.combine receivedLst;
-    numOfColls = numOfColls + 1
+    numOfColls = numOfColls + 1;
 )
 	
 source go :  (collection {word : string} @ {Collection}) = file "/home/chao/work/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordsCollection.txt" k3
