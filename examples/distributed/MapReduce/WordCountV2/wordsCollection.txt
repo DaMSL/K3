@@ -1,10 +1,20 @@
-{CNS={}, ANS={}, DS=[{word="bar"}, {word="bar"}, {word="bar"}, {word="baz"}], Collection}
-{CNS={}, ANS={}, DS=[{word="baz"}, {word="baz"}, {word="foo"}, {word="foo"}, {word="bar"}], Collection}
-{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="baz"}, {word="foo"}, {word="baz"}, {word="bar"}], Collection}
-{CNS={}, ANS={}, DS=[{word="foo"}, {word="baz"}, {word="foo"}, {word="baz"}, {word="baz"}, {word="bar"}, {word="baz"}], Collection}
-{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}, {word="foo"}, {word="baz"}, {word="foo"}, {word="foo"}, {word="baz"}, {word="foo"}, {word="bar"}, {word="baz"}], Collection}
-{CNS={}, ANS={}, DS=[{word="bar"}, {word="baz"}, {word="foo"}, {word="bar"}, {word="foo"}, {word="baz"}, {word="foo"}], Collection}
-{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}], Collection}
-{CNS={}, ANS={}, DS=[{word="baz"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="bar"}, {word="baz"}, {word="foo"}, {word="foo"}, {word="foo"}], Collection}
-{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="baz"}, {word="foo"}, {word="bar"}, {word="bar"}, {word="bar"}, {word="baz"}], Collection}
-{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="foo"}, {word="foo"}, {word="baz"}, {word="baz"}, {word="baz"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="foo"}, {word="baz"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="foo"}, {word="foo"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}, {word="baz"}, {word="bar"}, {word="bar"}, {word="bar"}, {word="baz"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="baz"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="foo"}, {word="bar"}, {word="bar"}, {word="baz"}, {word="baz"}, {word="foo"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}, {word="baz"}, {word="baz"}, {word="baz"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="baz"}, {word="foo"}, {word="foo"}, {word="bar"}, {word="bar"}, {word="baz"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="foo"}, {word="baz"}, {word="baz"}, {word="baz"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="baz"}, {word="foo"}, {word="bar"}, {word="foo"}, {word="bar"}, {word="foo"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="foo"}, {word="baz"}, {word="bar"}, {word="baz"}, {word="bar"}, {word="baz"}, {word="bar"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="bar"}, {word="bar"}, {word="baz"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="bar"}, {word="baz"}, {word="bar"}, {word="foo"}], Collection}
+{CNS={}, ANS={}, DS=[{word="baz"}, {word="foo"}, {word="foo"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="baz"}, {word="bar"}, {word="baz"}, {word="baz"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="bar"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="foo"}], Collection}
+{CNS={}, ANS={}, DS=[{word="bar"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="baz"}, {word="baz"}, {word="baz"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="bar"}, {word="bar"}, {word="bar"}], Collection}
+{CNS={}, ANS={}, DS=[{word="foo"}, {word="foo"}, {word="baz"}, {word="baz"}, {word="bar"}, {word="foo"}, {word="baz"}], Collection}
