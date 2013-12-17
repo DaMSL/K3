@@ -12,7 +12,7 @@ k3_path = "/home/vagrant/K3/K3-Driver/dist/build/k3/k3"
 
 def simulation_mode(topology_fns,ssh):
   for topology_fn in topology_fns:  
-    time.sleep(10)
+    time.sleep(2)
     with open(topology_fn, 'rb') as csvfile:
       #reading program path header in file
       program_path = csvfile.readline().replace("\n","")
@@ -32,7 +32,7 @@ def simulation_mode(topology_fns,ssh):
         
         #construct k3 program parameters
         peer_str = '-p {0}'.format(peer)
-        for index in range (2, len(header)):
+        for index in range (2, min(len(header), len(row))):
           peer_str = peer_str + ':{0}={1}'.format(header[index].replace("\n",""), row[index].replace("\n",""))
 
         for index in range(len(header), len(row)):

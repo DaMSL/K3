@@ -1,7 +1,7 @@
 /home/vagrant/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordsCountV2.k3
 Hostname,peer,role
 qp4-k3VM,127.0.0.1:40000,\"master\"
-qp4-k3VM,127.0.0.1:61000,\"go\"
-qp4-k3VM,127.0.0.1:62000,\"go\"
-qp4-k3VM,127.0.0.1:63000,\"go\"
-qp4-k3VM,127.0.0.1:70000,\"go\"
+qp4-k3VM,127.0.0.1:61000
+qp4-k3VM,127.0.0.1:62000
+qp4-k3VM,127.0.0.1:63000
+qp4-k3VM,127.0.0.1:70000
