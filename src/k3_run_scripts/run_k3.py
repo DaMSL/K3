@@ -22,7 +22,7 @@ def simulation_mode(topology_fns,ssh):
 
       full_cmd = "{1} -I {0} interpret -b".format(k3_lib_path, k3_path)
  
-      top_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+      top_reader = csv.reader(csvfile, delimiter=',', quotechar='~')
       count = 0
       hostname = "localhost"
       for row in top_reader:
@@ -71,7 +71,7 @@ def network_mode(topology_fns):
       #reading description header in file
       header = csvfile.readline().split(",")
 
-      top_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+      top_reader = csv.reader(csvfile, delimiter=',', quotechar='~')
       count = 0
       for row in top_reader:    
         count += 1
@@ -79,7 +79,7 @@ def network_mode(topology_fns):
         peer = row[1].replace("\n","");
         
         ssh_prefix = "ssh {0} -C '".format(hostname)
-        cmd = "k3 -I {0} interpret -b -n ".format(k3_lib_path)
+        cmd = "{1} -I {0} interpret -b -n ".format(k3_lib_path, k3_path)
         #construct k3 program parameters
         peer_str = '-p {0}'.format(peer)
         for index in range (2, len(header)):
