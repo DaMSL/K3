@@ -1,6 +1,0 @@
-/home/vagrant/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordsCountV2.k3
-Hostname,peer,reducer
-qp2-k3VM,192.168.0.191:61000,"192.168.0.139:70000"
-qp3-k3VM,192.168.0.141:62000,"192.168.0.139:70000"
-qp5-k3VM,192.168.0.138:63000,"192.168.0.139:70000"
-qp6-k3VM,192.168.0.139:70000,"192.168.0.139:70000"
