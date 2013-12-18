@@ -293,6 +293,9 @@ emptyStaticEnv = ([], AEnvironment [] [])
 emptyState :: IState
 emptyState = ([], [], AEnvironment [] [], emptyStaticEnv)
 
+annotationState :: AEnvironment Value -> IState
+annotationState aEnv = ([], [], aEnv, emptyStaticEnv)
+
 simpleEngine :: IO (Engine Value)
 simpleEngine = simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
 
@@ -1301,9 +1304,9 @@ initMessages = \case
     ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
   where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
-initBootstrap :: PeerBootstrap -> EngineM Value (IEnvironment Value)
-initBootstrap bootstrap = flip mapM bootstrap (\(n,l) ->
-    runInterpretation' emptyState (literal l) 
+initBootstrap :: PeerBootstrap -> AEnvironment Value -> EngineM Value (IEnvironment Value)
+initBootstrap bootstrap aEnv = flip mapM bootstrap (\(n,l) ->
+    runInterpretation' (annotationState aEnv) (literal l) 
       >>= liftError "(initializing bootstrap)"
       >>= either invalidErr (return . (n,)) . getResultVal)
   where invalidErr = const $ throwEngineError $ EngineError "Invalid result"
@@ -1312,7 +1315,7 @@ injectBootstrap :: PeerBootstrap -> IResult a -> EngineM Value (IResult a)
 injectBootstrap bootstrap r = case r of
   ((Left _, _), _) -> return r
   ((Right val, (globs, vEnv, annEnv, sEnv)), rLog) -> do
-      bootEnv <- initBootstrap bootstrap
+      bootEnv <- initBootstrap bootstrap annEnv
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
       return ((Right val, (globs, nvEnv, annEnv, sEnv)), rLog)
 
