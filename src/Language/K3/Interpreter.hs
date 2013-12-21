@@ -935,7 +935,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     mkCopyConstructor namedAnnDefs = \coll -> do
       newDataSpace <- copyDS (dataspace coll)
       let newcol = Collection (namespace coll) (newDataSpace) (extensionId coll)
-      newCMV <- liftIO (newMVar coll)
+      newCMV <- liftIO (newMVar newcol)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       return newCMV
    
@@ -1255,7 +1255,7 @@ builtinLiftedAttribute annId n _ _
               val <- curryFoldFn f' accInit v 
               --tmp_ds <- emptyDS ()
               tmp_ds <- newDS acc
-              insertKV tmp_ds k val
+              tmp_ds <- insertKV tmp_ds k val
               combineDS acc tmp_ds
             Just partialAcc -> do 
               new_val <- curryFoldFn f' partialAcc v
@@ -1272,7 +1272,7 @@ builtinLiftedAttribute annId n _ _
                                       -- with the right type (that of f(elem)), but I
                                       -- don't have a value to copy the type out of
                   Just sub_val -> do
-                    deleteDS sub_val val_ds
+                    val_ds <- deleteDS sub_val val_ds
                     result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
                     maybe combineError return result
 
