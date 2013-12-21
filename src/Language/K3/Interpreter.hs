@@ -10,7 +10,6 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The K3 Interpreter
 module Language.K3.Interpreter (
@@ -18,7 +17,7 @@ module Language.K3.Interpreter (
   Value(..),
 
   Interpretation,
-  InterpretationError,
+  InterpretationError(..),
 
   IEnvironment,
   ILog,
@@ -39,11 +38,11 @@ module Language.K3.Interpreter (
   unpackValueSyntax,
 
   valueWD,
-  syntaxValueWD,
+  syntaxValueWD
 
-#ifdef TEST
-  vunit
-#endif
+-- #ifdef TEST
+  , throwE
+-- #endif
 ) where
 
 import Control.Applicative
