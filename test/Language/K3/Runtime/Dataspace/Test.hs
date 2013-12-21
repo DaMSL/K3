@@ -126,6 +126,11 @@ testMap dataspace _ = do
   mapped_ds <- mapDS (return . (vintAdd 5)) test_ds
   compareDataspaceToList mapped_ds [VInt 6, VInt 7, VInt 8, VInt 9, VInt 9, VInt 105]
 
+testFilter :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testFilter dataspace _ = do
+  filtered_ds <- initialDS test_lst dataspace >>= filterDS (\(VInt v) -> return $ v > 50)
+  compareDataspaceToList filtered_ds [VInt 100]
+
 testCombine :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testCombine dataspace _ = do
   left' <- initialDS test_lst dataspace
@@ -209,6 +214,7 @@ makeTestGroup name ds =
         testCase "Update missing element Test" $ callTest $ testUpdateMissing ds,
         testCase "Fold Test" $ callTest $ testFold ds,
         testCase "Map Test" $ callTest $ testMap ds,
+        testCase "Filter Test" $ callTest $ testFilter ds,
         testCase "Combine Test" $ callTest $ testCombine ds,
         testCase "Split Test" $ callTest $ testSplit ds
     ]
