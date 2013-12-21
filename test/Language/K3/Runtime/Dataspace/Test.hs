@@ -42,13 +42,13 @@ compareDataspaceToList dataspace l = do
 
 emptyPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 emptyPeek dataspace _ = do
-  d <- newDS dataspace
+  d <- emptyDS (Just dataspace)
   result <- peekDS d
   return (isNothing result)
 
 testEmptyFold :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testEmptyFold dataspace _ = do
-  d <- newDS dataspace
+  d <- emptyDS (Just dataspace)
   counter <- foldDS innerFold 0 d
   return (counter == 0 )
   where
@@ -59,7 +59,7 @@ test_lst = [VInt 1, VInt 2, VInt 3, VInt 4, VInt 4, VInt 100]
 
 testPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testPeek dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   peekResult <- peekDS test_ds
   case peekResult of
     Nothing -> throwE $ RunTimeInterpretationError "Peek returned nothing!"
@@ -68,43 +68,43 @@ testPeek dataspace _ = do
 
 testInsert :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testInsert dataspace _ = do
-  test_ds <- newDS dataspace
+  test_ds <- emptyDS (Just dataspace)
   built_ds <- foldM (\ds val -> insertDS ds val) test_ds test_lst
   compareDataspaceToList built_ds test_lst
 
 testDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testDelete dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   test_ds <- deleteDS (VInt 3) test_ds
   test_ds <- deleteDS (VInt 4) test_ds
   compareDataspaceToList test_ds [VInt 1, VInt 2, VInt 4, VInt 100]
 
 testMissingDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testMissingDelete dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   deleted <- deleteDS (VInt 5) test_ds
   compareDataspaceToList deleted test_lst
 
 testUpdate :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testUpdate dataspace _ = do
-  updated <- initialDS test_lst dataspace >>= updateDS (VInt 1) (VInt 4)
+  updated <- initialDS test_lst (Just dataspace) >>= updateDS (VInt 1) (VInt 4)
   compareDataspaceToList updated [VInt 4, VInt 2, VInt 3, VInt 4, VInt 4, VInt 100]
 
 testUpdateMultiple :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testUpdateMultiple dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   updated <- updateDS (VInt 4) (VInt 5) test_ds
   compareDataspaceToList updated [VInt 1, VInt 2, VInt 3, VInt 5, VInt 4, VInt 100]
 
 testUpdateMissing :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testUpdateMissing dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   updated <- updateDS (VInt 40) (VInt 5) test_ds
   compareDataspaceToList updated ( test_lst ++ [VInt 5] )
 
 testFold :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testFold dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   test_sum <- foldDS innerFold 0 test_ds
   return $ test_sum == 114
   where
@@ -122,19 +122,19 @@ vintAdd c val =
 
 testMap :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testMap dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
+  test_ds <- initialDS test_lst (Just dataspace)
   mapped_ds <- mapDS (return . (vintAdd 5)) test_ds
   compareDataspaceToList mapped_ds [VInt 6, VInt 7, VInt 8, VInt 9, VInt 9, VInt 105]
 
 testFilter :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testFilter dataspace _ = do
-  filtered_ds <- initialDS test_lst dataspace >>= filterDS (\(VInt v) -> return $ v > 50)
+  filtered_ds <- initialDS test_lst (Just dataspace) >>= filterDS (\(VInt v) -> return $ v > 50)
   compareDataspaceToList filtered_ds [VInt 100]
 
 testCombine :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testCombine dataspace _ = do
-  left' <- initialDS test_lst dataspace
-  right' <- initialDS test_lst dataspace
+  left' <- initialDS test_lst (Just dataspace)
+  right' <- initialDS test_lst (Just dataspace)
   combined <- combineDS left' right'
   compareDataspaceToList combined (test_lst ++ test_lst)
 
@@ -149,7 +149,7 @@ testSplit :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation B
 testSplit dataspace _ = do
   -- split doesn't do anything if one of the collections contains less than 10 elements
   let long_lst = test_lst ++ test_lst
-  first_ds <- initialDS long_lst dataspace
+  first_ds <- initialDS long_lst (Just dataspace)
   (left', right') <- splitDS first_ds
   leftLen <- sizeDS left'
   rightLen <- sizeDS right'

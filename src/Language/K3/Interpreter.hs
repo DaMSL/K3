@@ -320,7 +320,6 @@ initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= re
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
   emptyDS _        = return []
-  newDS _          = return []
   initialDS vals _ = return vals
   copyDS ls        = return ls
   peekDS ls        = case ls of
@@ -343,7 +342,6 @@ instance (Monad m) => Dataspace m [Value] Value where
  -}
 instance Dataspace Interpretation (FileDataspace Value) Value where
   emptyDS _        = liftEngine $ emptyFile ()
-  newDS _          = liftEngine $ emptyFile ()
   initialDS vals _ = initialFile liftEngine vals
   copyDS old_id    = liftEngine $ copyFile old_id
   peekDS ext_id    = peekFile liftEngine ext_id
@@ -359,7 +357,23 @@ instance Dataspace Interpretation (FileDataspace Value) Value where
   combineDS        = combineFile liftEngine
   splitDS          = splitFile liftEngine
 
-instance Dataspace Interpretation (CollectionDataspace Value) Value 
+instance Dataspace Interpretation (CollectionDataspace Value) Value where
+  emptyDS maybeHint =
+    case maybeHint of
+      Nothing ->
+        (emptyDS Nothing) >>= return . InMemoryDS
+      Just (InMemoryDS ls) ->
+        (emptyDS (Just ls)) >>= return . InMemoryDS
+      Just (ExternalDS ext) ->
+        (emptyDS (Just ext)) >>= return . ExternalDS
+  initialDS vals maybeHint =
+    case maybeHint of
+      Nothing ->
+        (initialDS vals Nothing) >>= return . InMemoryDS
+      Just (InMemoryDS ls) ->
+        (initialDS vals (Just ls)) >>= return . InMemoryDS
+      Just (ExternalDS ext) ->
+        (initialDS vals (Just ext)) >>= return . ExternalDS
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
@@ -882,9 +896,9 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> Interpretation (CollectionDataspace Value)
 emptyDataspaceLookup namedAnnDefs = do
   case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-    Nothing -> (emptyDS () :: Interpretation [Value]) >>= return . InMemoryDS
+    Nothing -> emptyDS Nothing >>= return . InMemoryDS
     --otherwise -> generateCollectionFilename >>= return . ExternalDS
-    otherwise -> (emptyDS () :: Interpretation (FileDataspace Value)) >>= return . ExternalDS
+    otherwise -> emptyDS Nothing >>= return . ExternalDS
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
@@ -1240,7 +1254,7 @@ builtinLiftedAttribute annId n _ _
               flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
               flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
                 do
-                  new_space <- newDS ds
+                  new_space <- emptyDS (Just ds)
                   kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
                   -- TODO typecheck that collection
                   copy (Collection ns kvRecords ext)
@@ -1254,7 +1268,7 @@ builtinLiftedAttribute annId n _ _
             Nothing         -> do
               val <- curryFoldFn f' accInit v 
               --tmp_ds <- emptyDS ()
-              tmp_ds <- newDS acc
+              tmp_ds <- emptyDS (Just acc)
               tmp_ds <- insertKV tmp_ds k val
               combineDS acc tmp_ds
             Just partialAcc -> do 

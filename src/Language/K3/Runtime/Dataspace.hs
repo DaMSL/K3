@@ -4,7 +4,6 @@
 module Language.K3.Runtime.Dataspace (
   Dataspace,
   emptyDS,
-  newDS,
   initialDS,
   copyDS,
   peekDS,
@@ -31,9 +30,10 @@ module Language.K3.Runtime.Dataspace (
 
 -- (move the instances to Interpreter/IDataspace.hs)
 class (Monad m) => Dataspace m ds v | ds -> v where
-  emptyDS       :: () -> m ds
-  newDS         :: ds -> m ds
-  initialDS     :: [v] -> ds -> m ds
+  -- The Maybe ds arguemnt to constructors is a hint about which kind of
+  -- dataspace to construct
+  emptyDS       :: Maybe ds -> m ds
+  initialDS     :: [v] -> Maybe ds -> m ds
   copyDS        :: ds -> m ds
   peekDS        :: ds -> m (Maybe v)
   insertDS      :: ds -> v -> m ds
