@@ -4,7 +4,7 @@
 
 module Language.K3.Runtime.FileDataspace (
   FileDataspace(..),
-  openCollectionFile,
+  emptyFile,
   initialFile,
   copyFile,
   peekFile,
@@ -26,6 +26,13 @@ import Language.K3.Runtime.Engine
 newtype FileDataspace v = FileDataspace String
 getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
+
+emptyFile :: () -> EngineM a (FileDataspace a)
+emptyFile _ = do
+  file_id <- generateCollectionFilename
+  openCollectionFile file_id "w"
+  close file_id
+  return $ FileDataspace file_id
 
 openCollectionFile :: [Char] -> String -> EngineM a ()
 openCollectionFile name mode =

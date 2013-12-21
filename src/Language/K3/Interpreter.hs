@@ -343,8 +343,8 @@ instance (Monad m) => Dataspace m [Value] Value where
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
 instance Dataspace Interpretation (FileDataspace Value) Value where
-  emptyDS _        = liftEngine generateCollectionFilename >>= return . FileDataspace
-  newDS _          = liftEngine generateCollectionFilename >>= return . FileDataspace
+  emptyDS _        = liftEngine $ emptyFile ()
+  newDS _          = liftEngine $ emptyFile ()
   initialDS vals _ = initialFile liftEngine vals
   copyDS old_id    = liftEngine $ copyFile old_id
   peekDS ext_id    = peekFile liftEngine ext_id
