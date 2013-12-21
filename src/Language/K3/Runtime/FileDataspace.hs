@@ -34,13 +34,13 @@ emptyFile _ = do
   close file_id
   return $ FileDataspace file_id
 
-openCollectionFile :: [Char] -> String -> EngineM a ()
+openCollectionFile :: String -> String -> EngineM a String
 openCollectionFile name mode =
   do
     engine <- ask
     let wd = valueFormat engine
     openFile name name wd Nothing mode
-    return ()
+    return name
 
 copyFile :: FileDataspace v -> EngineM v (FileDataspace v)
 copyFile old_id = do
@@ -85,20 +85,29 @@ foldFile :: forall (m :: * -> *) a b.
             Monad m =>
             (forall c. EngineM b c -> m c)
             -> (a -> b -> m a) -> a -> FileDataspace b -> m a
-foldFile liftM accumulation initial_accumulator file_id =
+foldFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_id) = do
+  liftM $ openCollectionFile file_id "r"
+  result <- foldOpenFile liftM accumulation initial_accumulator file_ds
+  liftM $ close file_id
+  return result
+foldOpenFile :: forall (m :: * -> *) a b.
+            Monad m =>
+            (forall c. EngineM b c -> m c)
+            -> (a -> b -> m a) -> a -> FileDataspace b -> m a
+foldOpenFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_id) =
  do
-   file_over <- liftM $ hasRead $ getFile file_id
+   file_over <- liftM $ hasRead file_id
    case file_over of
      Nothing -> return initial_accumulator -- Hiding an error...
      Just False -> return initial_accumulator
      Just True ->
        do
-         cur_val <- liftM $ doRead $ getFile file_id
+         cur_val <- liftM $ doRead file_id
          case cur_val of
            Nothing -> return initial_accumulator
            Just val -> do
              new_acc <- accumulation initial_accumulator val
-             foldFile liftM accumulation new_acc file_id
+             foldOpenFile liftM accumulation new_acc file_ds
 
 mapFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m b) -> FileDataspace b -> m (FileDataspace b)
 mapFile liftM function file_ds@(FileDataspace file_id) = do
@@ -151,31 +160,36 @@ insertFile liftM file_ds@(FileDataspace file_id) v = do
 
 deleteFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> FileDataspace b -> m (FileDataspace b)
 deleteFile liftM v file_ds@(FileDataspace file_id) = do -- broken because reading / writing from the same file
-  liftM $ openCollectionFile file_id "w"
+  deleted_id <- liftM $ generateCollectionFilename
+  liftM $ openCollectionFile deleted_id "w"
   foldFile liftM (\truth val -> do
     if truth == False && val == v
       then return True
       else do
-        liftM $ doWrite file_id val --TODO error check
-        return False
+        liftM $ doWrite deleted_id val --TODO error check
+        return truth
     ) False file_ds
-  liftM $ close file_id
-  return $ file_ds
+  liftM $ close deleted_id
+  return $ FileDataspace deleted_id
 
 updateFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> b -> FileDataspace b -> m (FileDataspace b)
 updateFile liftM v v' file_ds@(FileDataspace file_id) = do
-  liftM $ openCollectionFile file_id "w"
-  foldFile liftM (\truth val -> do
-    if truth == False && val == v
-      then do
-        liftM $ doWrite file_id v'
-        return True
-      else do
-        liftM $ doWrite file_id val --TODO error check
-        return False
-    ) False file_ds
-  liftM $ close file_id
-  return $ file_ds
+  new_id <- liftM $ generateCollectionFilename >>= flip openCollectionFile "w"
+  did_update <-
+    foldFile liftM (\truth val -> do
+      if truth == False && val == v
+        then do
+          liftM $ doWrite new_id v'
+          return True
+        else do
+          liftM $ doWrite new_id val --TODO error check
+          return truth
+      ) False file_ds
+  if did_update
+    then return ()
+    else liftM $ doWrite new_id v'
+  liftM $ close new_id
+  return $ FileDataspace new_id
 
 combineFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (FileDataspace b) -> (FileDataspace b) ->  m (FileDataspace b)
 combineFile liftM self values = do
