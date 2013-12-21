@@ -1,7 +1,6 @@
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RankNTypes #-}
 
 module Language.K3.Runtime.Dataspace.Test (tests) where
 
@@ -19,19 +18,16 @@ import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
 
--- Duplicated from Interpreter.hs
-vunit = VTuple []
-
-compareDataspaceToList :: (Monad m, Dataspace m ds Value) => ds -> [Value] -> m Bool
-compareDataspaceToList ds l = do
-  result <- foldM findAndRemoveElement (Just ds) l
+compareDataspaceToList :: (Dataspace Interpretation ds Value) => ds -> [Value] -> Interpretation Bool
+compareDataspaceToList dataspace l = do
+  result <- foldM findAndRemoveElement (Just dataspace) l
   case result of
     Nothing -> return False
     Just ds -> do
       s <- sizeDS ds
-      return $ if s == 0 then True else False
+      if s == 0 then return True else throwE $ RunTimeInterpretationError $ "Dataspace had " ++ (show s) ++ " extra elements"
   where
-    findAndRemoveElement :: (Monad m, Dataspace m ds Value) => Maybe ds -> Value -> m (Maybe ds)
+    findAndRemoveElement :: (Dataspace Interpretation ds Value) => Maybe ds -> Value -> Interpretation (Maybe ds)
     findAndRemoveElement maybeTuple cur_val = do
       case maybeTuple of
         Nothing -> return Nothing
@@ -41,8 +37,8 @@ compareDataspaceToList ds l = do
             then do
               removed <- deleteDS cur_val ds
               return $ Just removed
-          else
-            return Nothing
+            else
+              throwE $ RunTimeInterpretationError $ "Could not find element " ++ (show cur_val)
 
 emptyPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 emptyPeek dataspace _ = do
@@ -66,22 +62,22 @@ testPeek dataspace _ = do
   test_ds <- initialDS test_lst dataspace
   peekResult <- peekDS test_ds
   case peekResult of
-    Nothing -> return False
+    Nothing -> throwE $ RunTimeInterpretationError "Peek returned nothing!"
     Just v -> containsDS test_ds v
   
 
 testInsert :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testInsert dataspace _ = do
-  test_ds <- newDS ([]::[Value])
-  test_ds <- foldM (\ds val -> insertDS ds val) test_ds test_lst
-  compareDataspaceToList test_ds test_lst
+  test_ds <- newDS dataspace
+  built_ds <- foldM (\ds val -> insertDS ds val) test_ds test_lst
+  compareDataspaceToList built_ds test_lst
 
 testDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testDelete dataspace _ = do
   test_ds <- initialDS test_lst dataspace
-  deleted <- deleteDS (VInt 3) test_ds
-  deleted <- deleteDS (VInt 4) deleted
-  compareDataspaceToList deleted [VInt 1, VInt 2, VInt 4, VInt 100]
+  test_ds <- deleteDS (VInt 3) test_ds
+  test_ds <- deleteDS (VInt 4) test_ds
+  compareDataspaceToList test_ds [VInt 1, VInt 2, VInt 4, VInt 100]
 
 testMissingDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testMissingDelete dataspace _ = do
@@ -91,8 +87,7 @@ testMissingDelete dataspace _ = do
 
 testUpdate :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testUpdate dataspace _ = do
-  test_ds <- initialDS test_lst dataspace
-  updated <- updateDS (VInt 1) (VInt 4) test_ds
+  updated <- initialDS test_lst dataspace >>= updateDS (VInt 1) (VInt 4)
   compareDataspaceToList updated [VInt 4, VInt 2, VInt 3, VInt 4, VInt 4, VInt 100]
 
 testUpdateMultiple :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
@@ -115,9 +110,9 @@ testFold dataspace _ = do
   where
     innerFold :: Int -> Value -> Interpretation Int
     innerFold acc value =
-      return $ case value of
-        VInt v -> acc + v
-        otherwise -> -1 -- TODO throw real error
+      case value of
+        VInt v -> return $ acc + v
+        otherwise -> throwE $ RunTimeTypeError "Exepected Int in folding test"
 
 vintAdd :: Int -> Value -> Value
 vintAdd c val =
@@ -174,7 +169,7 @@ testSplit dataspace _ = do
       case maybeTuple of
         Nothing -> return Nothing
         Just (left, right) -> do
-          leftContains <- foldDS (\fnd cur -> return $ fnd || cur == cur_val) False left
+          leftContains <- containsDS left cur_val
           if leftContains
             then do
               removed_left <- deleteDS cur_val left
@@ -190,13 +185,15 @@ testSplit dataspace _ = do
 
 containsDS :: (Monad m, Dataspace m ds Value) => ds -> Value -> m Bool
 containsDS ds val =
-  foldDS (\fnd cur -> if cur == val then return True else return fnd) False ds
+  foldDS (\fnd cur -> return $ fnd || cur == val) False ds
 
 callTest testFunc = do
   engine <- simulationEngine [] syntaxValueWD
   interpResult <- runInterpretation engine emptyState (testFunc ())
-  success <- either (const $ return False) (either (const $ return False) (return . id) . getResultVal) interpResult
-  unless success (assertFailure "Dataspace test failed")
+  success <- either (return . Just . show) (either (return . Just . show) (\good -> if good then return Nothing else return $ Just "Dataspace test failed") . getResultVal) interpResult
+  case success of
+    Nothing -> return ()
+    Just msg -> assertFailure msg
 
 makeTestGroup :: (Dataspace Interpretation dataspace Value) => String -> dataspace -> Test
 makeTestGroup name ds =
