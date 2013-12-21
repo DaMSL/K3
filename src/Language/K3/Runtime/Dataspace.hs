@@ -1,3 +1,4 @@
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Language.K3.Runtime.Dataspace (
@@ -29,12 +30,12 @@ module Language.K3.Runtime.Dataspace (
 ) where
 
 -- (move the instances to Interpreter/IDataspace.hs)
-class (Monad m) => Dataspace m ds v where
+class (Monad m) => Dataspace m ds v | ds -> v where
   emptyDS       :: () -> m ds
-  newDS         :: ds -> v -> m ds
-  initialDS     :: [v] -> m ds
-  copyDS        :: ds -> v -> m ds
-  peekDS        :: ds -> v -> m (Maybe v)
+  newDS         :: ds -> m ds
+  initialDS     :: [v] -> ds -> m ds
+  copyDS        :: ds -> m ds
+  peekDS        :: ds -> m (Maybe v)
   insertDS      :: ds -> v -> m ds
   deleteDS      :: v -> ds -> m ds
   updateDS      :: v -> v -> ds -> m ds
@@ -42,15 +43,14 @@ class (Monad m) => Dataspace m ds v where
   mapDS         :: ( v -> m v ) -> ds -> m ds
   mapDS_        :: ( v -> m v ) -> ds -> m ()
   filterDS      :: ( v -> m Bool ) -> ds -> m ds
-  combineDS     :: ds -> ds -> v -> m ds
-  splitDS       :: ds -> v -> m (ds, ds)
+  combineDS     :: ds -> ds -> m ds
+  splitDS       :: ds -> m (ds, ds)
 {- casting? -}
 
 class (Monad m) => EmbeddedKV m v k where
   extractKey :: v -> m k
   embedKey   :: k -> v -> m v
 
-{- move embed / extract into its own typeclass -}
 class (Monad m, Dataspace m ds v) => AssociativeDataspace m ds k v where
   lookupKV       :: ds -> k -> m (Maybe v)
   removeKV       :: ds -> k -> v -> m ds

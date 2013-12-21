@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -39,6 +40,10 @@ module Language.K3.Interpreter (
 
   valueWD,
   syntaxValueWD,
+
+#ifdef TEST
+  vunit
+#endif
 ) where
 
 import Control.Applicative
@@ -133,13 +138,13 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 {- Collections and annotations -}
 
 -- Add a parameter v instead of Value
-data CollectionDataspace = InMemoryDS [Value] | ExternalDS Identifier
+data CollectionDataspace v = InMemoryDS [v] | ExternalDS (FileDataspace v)
 
 -- | Collection implementation.
 --   The namespace contains lifted members, the dataspace contains final
 --   records, and the extension identifier is the instance's annotation signature.
 data Collection v = Collection { namespace   :: CollectionNamespace v
-                               , dataspace   :: CollectionDataspace
+                               , dataspace   :: CollectionDataspace v
                                , extensionId :: Identifier }
 
 -- | Two-level namespacing of collection constituents. Collections have two levels of named values:
@@ -184,7 +189,7 @@ type CInitialConstructor v = [v] -> Interpretation (MVar (Collection v))
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
-type CEmplaceConstructor v = CollectionDataspace -> Interpretation (MVar (Collection v))
+type CEmplaceConstructor v = CollectionDataspace v -> Interpretation (MVar (Collection v))
 
 
 {- Misc. helpers-}
@@ -316,10 +321,10 @@ initialCollection vals = liftIO (newMVar $ initialCollectionBody "" vals) >>= re
 {- generalize on value, move to Runtime/Dataspace.hs -}
 instance (Monad m) => Dataspace m [Value] Value where
   emptyDS _        = return []
-  newDS _ _        = return []
-  initialDS vals   = return vals
-  copyDS ls _      = return ls
-  peekDS ls _      = case ls of
+  newDS _          = return []
+  initialDS vals _ = return vals
+  copyDS ls        = return ls
+  peekDS ls        = case ls of
     []    -> return Nothing
     (h:_) -> return $ Just h
   insertDS ls v    = return $ ls ++ [v]
@@ -329,33 +334,33 @@ instance (Monad m) => Dataspace m [Value] Value where
   mapDS            = mapM
   mapDS_           = mapM_
   filterDS         = filterM
-  combineDS l r _  = return $ l ++ r
-  splitDS l _      = return $ if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
+  combineDS l r    = return $ l ++ r
+  splitDS l        = return $ if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
     where
       threshold = 10
 
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
  -}
-instance Dataspace Interpretation Identifier Value where
-  emptyDS _       = liftEngine generateCollectionFilename
-  newDS _ _       = liftEngine generateCollectionFilename
-  initialDS       = initialFile liftEngine
-  copyDS old_id _ = liftEngine $ copyFile old_id
-  peekDS ext_id _ = peekFile liftEngine ext_id
-  insertDS        = insertFile liftEngine
-  deleteDS        = deleteFile liftEngine
-  updateDS        = updateFile liftEngine
-  foldDS          = foldFile liftEngine
+instance Dataspace Interpretation (FileDataspace Value) Value where
+  emptyDS _        = liftEngine generateCollectionFilename >>= return . FileDataspace
+  newDS _          = liftEngine generateCollectionFilename >>= return . FileDataspace
+  initialDS vals _ = initialFile liftEngine vals
+  copyDS old_id    = liftEngine $ copyFile old_id
+  peekDS ext_id    = peekFile liftEngine ext_id
+  insertDS         = insertFile liftEngine
+  deleteDS         = deleteFile liftEngine
+  updateDS         = updateFile liftEngine
+  foldDS           = foldFile liftEngine
   -- Takes the file id of an external collection, then runs the second argument on
   -- each argument, then returns the identifier of the new collection
-  mapDS           = mapFile liftEngine
-  mapDS_          = mapFile_ liftEngine
-  filterDS        = filterFile liftEngine
-  combineDS       = combineFile liftEngine
-  splitDS         = splitFile liftEngine
+  mapDS            = mapFile liftEngine
+  mapDS_           = mapFile_ liftEngine
+  filterDS         = filterFile liftEngine
+  combineDS        = combineFile liftEngine
+  splitDS          = splitFile liftEngine
 
-instance Dataspace Interpretation CollectionDataspace Value 
+instance Dataspace Interpretation (CollectionDataspace Value) Value 
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
@@ -875,11 +880,12 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 
 {- Interpretation utility functions -}
 
-emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> EngineM b (CollectionDataspace)
+emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> Interpretation (CollectionDataspace Value)
 emptyDataspaceLookup namedAnnDefs = do
   case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-    Nothing -> return $ InMemoryDS []
-    otherwise -> generateCollectionFilename >>= return . ExternalDS
+    Nothing -> (emptyDS () :: Interpretation [Value]) >>= return . InMemoryDS
+    --otherwise -> generateCollectionFilename >>= return . ExternalDS
+    otherwise -> (emptyDS () :: Interpretation (FileDataspace Value)) >>= return . ExternalDS
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
@@ -911,7 +917,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
 
     mkEmptyConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
     mkEmptyConstructor comboId namedAnnDefs = const $ do
-      collection <- liftEngine $ emptyCollectionBody namedAnnDefs comboId -- extra parameter for the name
+      collection <- emptyCollectionBody namedAnnDefs comboId -- extra parameter for the name
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
@@ -919,7 +925,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     
     mkInitialConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitialConstructor Value
     mkInitialConstructor comboID namedAnnDefs = const $ do
-      collection <- liftEngine $ emptyCollectionBody namedAnnDefs comboID -- extra parameter for the name
+      collection <- emptyCollectionBody namedAnnDefs comboID -- extra parameter for the name
       -- insert values into collection
       newCMV <- liftIO $ newMVar collection
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
@@ -928,7 +934,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     
     mkCopyConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
     mkCopyConstructor namedAnnDefs = \coll -> do
-      newDataSpace <- copyDS (dataspace coll) vunit
+      newDataSpace <- copyDS (dataspace coll)
       let newcol = Collection (namespace coll) (newDataSpace) (extensionId coll)
       newCMV <- liftIO (newMVar coll)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
@@ -943,7 +949,7 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
       return newCMV
 
 
-    emptyCollectionBody :: [(Identifier, IEnvironment Value)] -> Identifier -> EngineM b (Collection Value)
+    emptyCollectionBody :: [(Identifier, IEnvironment Value)] -> Identifier -> Interpretation (Collection Value)
     emptyCollectionBody namedAnnDefs n = do
       ds <- emptyDataspaceLookup namedAnnDefs
       return $ Collection emptyCollectionNamespace ds n
@@ -1156,7 +1162,7 @@ builtinLiftedAttribute annId n _ _
 
         -- | Collection accessor implementation
         peekFn = valWithCollection $ \_ (Collection _ ds _) -> do 
-          inner_val <- peekDS ds vunit
+          inner_val <- peekDS ds
           return $ VOption inner_val
 
         -- | Collection modifier implementation
@@ -1199,11 +1205,11 @@ builtinLiftedAttribute annId n _ _
             \(Collection _ ds' extId') ->
               if extId /= extId' then combineError
               else do 
-                new_ds <- combineDS ds ds' vunit
+                new_ds <- combineDS ds ds'
                 copy $ Collection ns new_ds extId
 
         splitFn = valWithCollection $ \_ (Collection ns ds extId) -> do
-            (l, r) <- splitDS ds vunit
+            (l, r) <- splitDS ds
             lc <- copy (Collection ns l extId)
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
@@ -1235,7 +1241,7 @@ builtinLiftedAttribute annId n _ _
               flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
               flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
                 do
-                  new_space <- newDS ds vunit
+                  new_space <- newDS ds
                   kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
                   -- TODO typecheck that collection
                   copy (Collection ns kvRecords ext)
@@ -1249,9 +1255,9 @@ builtinLiftedAttribute annId n _ _
             Nothing         -> do
               val <- curryFoldFn f' accInit v 
               --tmp_ds <- emptyDS ()
-              tmp_ds <- newDS acc vunit
+              tmp_ds <- newDS acc
               insertKV tmp_ds k val
-              combineDS acc tmp_ds vunit
+              combineDS acc tmp_ds
             Just partialAcc -> do 
               new_val <- curryFoldFn f' partialAcc v
               replaceKV acc k new_val
@@ -1260,7 +1266,7 @@ builtinLiftedAttribute annId n _ _
           flip (matchFunction extError) f $ 
           \f' -> do
                 val_ds <- mapDS (withClosure f') ds
-                first_subcol <- peekDS val_ds vunit
+                first_subcol <- peekDS val_ds
                 case first_subcol of
                   Nothing -> extError -- Maybe not the right error here
                                       -- really, I should create an empty VCollection
@@ -1281,7 +1287,7 @@ builtinLiftedAttribute annId n _ _
           flip (matchCollection $ return Nothing) cv  $ \(Collection _ ds2 extId2) -> 
           if extId1 /= extId2 then return Nothing
           else do
-            new_ds <- combineDS ds1 ds2 vunit
+            new_ds <- combineDS ds1 ds2
             copy (Collection ns1 new_ds extId1) >>= return . Just
 
 
@@ -1900,7 +1906,7 @@ unpackValueSyntax = readSingleParse unpackValue
           ans' <- ans
           rt $ CollectionNamespace cns' ans'))
 
-    readCollectionDataspace :: ReadPrec (IO CollectionDataspace)
+    readCollectionDataspace :: ReadPrec (IO (CollectionDataspace Value))
     readCollectionDataspace = parens $
       (prec appPrec $ do
         void $ readExpectedName "DS"
