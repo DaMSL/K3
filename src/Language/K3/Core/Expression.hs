@@ -35,6 +35,11 @@ data Expression
     | EIfThenElse
     | EAddress
     | ESelf
+    | EImperative ImperativeExpression
+  deriving (Eq, Read, Show)
+
+data ImperativeExpression
+    = EWhile
   deriving (Eq, Read, Show)
 
 -- | Constant expression values.
@@ -95,6 +100,7 @@ data instance Annotation Expression
     | ESyntax SyntaxAnnotation
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
+    | EImplementationType Identifier
     | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
     | ERead Identifier UID
@@ -179,7 +185,7 @@ freeVariables = foldMapTree extractVariable []
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs bs)  = filter (`notElem` bindings bs) $ concat chAcc
     extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)   = let [s, n] = chAcc in filter (/= i) s ++ n
+    extractVariable chAcc (tag -> ECaseOf i)   = let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
     extractVariable chAcc _ = concat chAcc
 
     bindings (BIndirection i) = [i]

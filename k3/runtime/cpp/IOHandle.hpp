@@ -15,18 +15,17 @@ namespace K3
   using namespace boost::iostreams;
 
   using std::shared_ptr;
-  
-  using Asio::NEndpoint;
-  using Asio::NConnection;
 
   //--------------------------
   // IO handles
 
-  // TODO: IOHandle.close() method
   template<typename Value>
   class IOHandle : public virtual LogMT
   {
   public:
+    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NEndpoint> > SourceDetails;
+    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NConnection> > SinkDetails;
+
     IOHandle(shared_ptr<WireDesc<Value> > wd) : LogMT("IOHandle"), wireDesc(wd) {}
 
     virtual bool hasRead() = 0;
@@ -34,6 +33,14 @@ namespace K3
 
     virtual bool hasWrite() = 0;
     virtual void doWrite(Value& v) = 0;
+
+    virtual void close() = 0;
+
+    virtual bool builtin() = 0;
+    virtual bool file() = 0;
+
+    virtual SourceDetails networkSource() = 0;
+    virtual SinkDetails networkSink() = 0;
 
   protected:
     shared_ptr<WireDesc<Value> > wireDesc;
@@ -55,9 +62,10 @@ namespace K3
       input->push<Source>(src);
     }
 
-    bool hasRead() { return input->good(); }
+    bool hasRead() { return input? input->good() : false; }
     
     shared_ptr<string> doRead() {
+      if ( !input ) { return shared_ptr<string>(); }
       stringstream r;
       (*input) >> r.rdbuf();
       return shared_ptr<string>(new string(r.str()));
@@ -71,6 +79,10 @@ namespace K3
     void doWrite(string& data) {
       BOOST_LOG(*this) << "Invalid write operation on input handle";
     }
+
+    // Invoke the destructor on the filtering_istream, which in 
+    // turn closes all associated iostream filters and devices.
+    void close() { if ( input ) { input->reset(); } }
 
   protected:
     shared_ptr<filtering_istream> input;
@@ -96,9 +108,12 @@ namespace K3
       return shared_ptr<string>();
     }
 
-    bool hasWrite()            { return output->good(); }
-    void doWrite(string& data) { (*output) << data; }
+    bool hasWrite() { return output? output->good() : false; }
+    
+    void doWrite(string& data) { if ( output ) { (*output) << data; } }
   
+    void close() { if ( output ) { output->reset(); } }
+
   protected:
     shared_ptr<filtering_ostream> output;
   };
@@ -156,6 +171,11 @@ namespace K3
       else { BOOST_LOG(*this) << "Invalid doWrite on LineBasedHandle"; }
     }
 
+    void close() {
+      if ( inImpl ) { inImpl->close(); }
+      else if ( outImpl ) { outImpl->close(); }
+    }
+
   protected:
     shared_ptr<LineInputHandle> inImpl;
     shared_ptr<LineOutputHandle> outImpl;
@@ -184,6 +204,19 @@ namespace K3
     BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stderr s)
       : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
     {}
+
+    bool builtin () { return true; }
+    bool file() { return false; }
+
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
+    }
+
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
+    }
   };
 
   template<typename Value>
@@ -199,14 +232,27 @@ namespace K3
                typename LineBasedHandle<Value>::Output o)
       : LineBasedHandle<Value>(wd, o, file_sink(path))
     {}
+
+    bool builtin () { return false; }
+    bool file() { return true; }
+
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
+    }
+
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
+    }
   };
 
   template<typename Value>
   class NetworkHandle : public IOHandle<Value>
   {
   public:
-    NetworkHandle(shared_ptr<NConnection> c) : connection(c) {}
-    NetworkHandle(shared_ptr<NEndpoint> e) : endpoint(e) {}
+    NetworkHandle(shared_ptr<Net::NConnection> c) : connection(c) {}
+    NetworkHandle(shared_ptr<Net::NEndpoint> e) : endpoint(e) {}
 
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
@@ -233,9 +279,29 @@ namespace K3
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
     }
 
+    void close() {
+      if ( connection ) { connection->close(); }
+      else if ( endpoint ) { endpoint->close(); }
+    }
+
+    bool builtin () { return false; }
+    bool file() { return false; }
+
+    typename IOHandle<Value>::SourceDetails
+    networkSource() {
+      shared_ptr<WireDesc<Value> > wd = endpoint? this->wireDesc : shared_ptr<WireDesc<Value> >();
+      return make_tuple(wd, endpoint);
+    }
+
+    typename IOHandle<Value>::SinkDetails
+    networkSink() {
+      shared_ptr<WireDesc<Value> > wd = connection? this->wireDesc : shared_ptr<WireDesc<Value> >();
+      return make_tuple(wd, connection);
+    }
+
   protected:
-    shared_ptr<NConnection> connection;
-    shared_ptr<NEndpoint> endpoint;
+    shared_ptr<Net::NConnection> connection;
+    shared_ptr<Net::NEndpoint> endpoint;
   };
 }
 

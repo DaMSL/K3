@@ -1,5 +1,3 @@
-include "Annotation/Collection.k3"
-
 declare nodeCounter : mut int = 0
 declare rendezvous : immut address = 127.0.0.1:40000
 

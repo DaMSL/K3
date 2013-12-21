@@ -6,6 +6,10 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | A message processing runtime for the K3 interpreter
+-- TODO: 
+-- i. parallelism and non-interleaved I/O.
+-- ii. implement message framing as wrapping wire descriptors
+-- iii. remove bidirectional IOHandles for type-safe one-way handles (i.e. read-only or write-only)
 module Language.K3.Runtime.Engine (
     FrameDesc(..)
   , WireDesc(..)
@@ -279,6 +283,10 @@ data FrameDesc = Delimiter String | FixedSize Int | PrefixLength
 data WireDesc a = WireDesc { packWith     :: a -> IO String
                            , unpackWith   :: String -> IO (Maybe a)
                            , frame        :: FrameDesc }
+-- TODO: frames as wrapped wire descriptors, with the following implementations:
+-- i. byte-oriented framing (i.e. pack/unpack as bytestring)
+-- ii. prefix length framing
+-- iii. delimiter-based framing
 
 -- | Internal messaging between triggers includes a sender address and
 --   destination trigger identifier with each message.
@@ -1012,7 +1020,7 @@ openSocketHandle addr wd mode conns =
     SIO.ReadMode      -> incoming
     SIO.WriteMode     -> outgoing
     SIO.AppendMode    -> error "Unsupported network handle mode"
-    SIO.ReadWriteMode -> error "Unsupport network handle mode"
+    SIO.ReadWriteMode -> error "Unsupported network handle mode"
 
   where incoming = newEndpoint addr >>= return . (>>= return . SocketH wd . Left)
         outgoing = case conns of
