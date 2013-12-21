@@ -1,5 +1,7 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Language.K3.Runtime.Dataspace.Test (tests) where
 
@@ -15,89 +17,99 @@ import Test.Framework.Providers.HUnit
 import Language.K3.Interpreter
 import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.Engine
+import Language.K3.Runtime.FileDataspace
 
 -- Duplicated from Interpreter.hs
 vunit = VTuple []
-throwE :: InterpretationError -> Interpretation a
-throwE = Control.Monad.Trans.Either.left
 
-compareDataspaceToList :: (Monad m, Dataspace m ds v, Eq v) => ds -> [v] -> m Bool
+compareDataspaceToList :: (Monad m, Dataspace m ds Value) => ds -> [Value] -> m Bool
 compareDataspaceToList ds l = do
-  result <- foldDS innerFold (Just l) ds
-  return $ case result of
-    Nothing -> False
-    Just _ -> True
+  result <- foldM findAndRemoveElement (Just ds) l
+  case result of
+    Nothing -> return False
+    Just ds -> do
+      s <- sizeDS ds
+      return $ if s == 0 then True else False
   where
-    innerFold :: (Monad m, Eq v) => Maybe [v] -> v -> m (Maybe [v])
-    innerFold state cur_val = return $
-      case state of
-        Just lst ->
-          if cur_val == head lst
-            then
-              Just (tail lst)
-            else
-              Nothing
-        Nothing -> Nothing
+    findAndRemoveElement :: (Monad m, Dataspace m ds Value) => Maybe ds -> Value -> m (Maybe ds)
+    findAndRemoveElement maybeTuple cur_val = do
+      case maybeTuple of
+        Nothing -> return Nothing
+        Just ds -> do
+          contains <- containsDS ds cur_val
+          if contains
+            then do
+              removed <- deleteDS cur_val ds
+              return $ Just removed
+          else
+            return Nothing
 
-emptyPeek :: () -> Interpretation Bool
-emptyPeek _ = do
-  d <- newDS ([] :: [Value]) vunit
-  result <- peekDS d vunit
-  --unless (isNothing result) (throwE $ RunTimeInterpretationError "peek on empty dataspace did not return Nothing")
+emptyPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+emptyPeek dataspace _ = do
+  d <- newDS dataspace
+  result <- peekDS d
   return (isNothing result)
 
-testEmptyFold :: () -> Interpretation Bool
-testEmptyFold _ = do
-  d <- newDS ([]::[Value]) vunit
+testEmptyFold :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testEmptyFold dataspace _ = do
+  d <- newDS dataspace
   counter <- foldDS innerFold 0 d
-  return (counter == 0 ) -- (assertFailure "Fold on emtpy dataspace didn't work")
+  return (counter == 0 )
   where
     innerFold :: Int -> Value -> Interpretation Int
     innerFold cnt _ = return $ cnt + 1
 
 test_lst = [VInt 1, VInt 2, VInt 3, VInt 4, VInt 4, VInt 100]
 
-testInsert :: () -> Interpretation Bool
-testInsert _ = do
-  test_ds <- newDS ([]::[Value]) vunit
+testPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testPeek dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
+  peekResult <- peekDS test_ds
+  case peekResult of
+    Nothing -> return False
+    Just v -> containsDS test_ds v
+  
+
+testInsert :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testInsert dataspace _ = do
+  test_ds <- newDS ([]::[Value])
   test_ds <- foldM (\ds val -> insertDS ds val) test_ds test_lst
   compareDataspaceToList test_ds test_lst
-  --return $ unless (result) (assertFailure "InsertDS test failed")
-testDelete :: () -> Interpretation Bool
-testDelete _ = do
-  --test_ds <- newDS ([]::[Value]) vunit
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+
+testDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testDelete dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   deleted <- deleteDS (VInt 3) test_ds
   deleted <- deleteDS (VInt 4) deleted
   compareDataspaceToList deleted [VInt 1, VInt 2, VInt 4, VInt 100]
 
-testMissingDelete :: () -> Interpretation Bool
-testMissingDelete _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+testMissingDelete :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testMissingDelete dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   deleted <- deleteDS (VInt 5) test_ds
   compareDataspaceToList deleted test_lst
 
-testUpdate :: () -> Interpretation Bool
-testUpdate _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+testUpdate :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testUpdate dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   updated <- updateDS (VInt 1) (VInt 4) test_ds
   compareDataspaceToList updated [VInt 4, VInt 2, VInt 3, VInt 4, VInt 4, VInt 100]
 
-testUpdateMultiple :: () -> Interpretation Bool
-testUpdateMultiple _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+testUpdateMultiple :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testUpdateMultiple dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   updated <- updateDS (VInt 4) (VInt 5) test_ds
   compareDataspaceToList updated [VInt 1, VInt 2, VInt 3, VInt 5, VInt 4, VInt 100]
 
-testUpdateMissing :: () -> Interpretation Bool
-testUpdateMissing _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+testUpdateMissing :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testUpdateMissing dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   updated <- updateDS (VInt 40) (VInt 5) test_ds
   compareDataspaceToList updated ( test_lst ++ [VInt 5] )
 
-testFold :: () -> Interpretation Bool
-testFold _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
+testFold :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testFold dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
   test_sum <- foldDS innerFold 0 test_ds
   return $ test_sum == 114
   where
@@ -107,38 +119,38 @@ testFold _ = do
         VInt v -> acc + v
         otherwise -> -1 -- TODO throw real error
 
-vintAdd :: Int -> Value -> Interpretation Value
+vintAdd :: Int -> Value -> Value
 vintAdd c val =
   case val of
-    VInt v -> return $ VInt (v + c)
-    otherwise -> return $ VInt (-1) -- TODO throw real error
+    VInt v -> VInt (v + c)
+    otherwise -> VInt (-1) -- TODO throw real error
 
-testMap :: () -> Interpretation Bool
-testMap _ = do
-  test_ds <- (initialDS test_lst :: Interpretation [Value])
-  mapped_ds <- mapDS (vintAdd 5) test_ds
-  compareDataspaceToList mapped_ds [VInt 6, VInt 7, VInt 8, VInt 9, VInt 9, VInt 100]
+testMap :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testMap dataspace _ = do
+  test_ds <- initialDS test_lst dataspace
+  mapped_ds <- mapDS (return . (vintAdd 5)) test_ds
+  compareDataspaceToList mapped_ds [VInt 6, VInt 7, VInt 8, VInt 9, VInt 9, VInt 105]
 
-testCombine :: () -> Interpretation Bool
-testCombine _ = do
-  left' <- (initialDS test_lst :: Interpretation [Value])
-  right' <- (initialDS test_lst :: Interpretation [Value])
-  combined <- combineDS left' right' vunit
+testCombine :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testCombine dataspace _ = do
+  left' <- initialDS test_lst dataspace
+  right' <- initialDS test_lst dataspace
+  combined <- combineDS left' right'
   compareDataspaceToList combined (test_lst ++ test_lst)
 
-sizeDS :: [Value] -> Interpretation Int
+sizeDS :: (Monad m, Dataspace m ds Value) => ds -> m Int
 sizeDS ds = do
   foldDS innerFold 0 ds
   where
-    innerFold :: Int -> Value -> Interpretation Int
+    innerFold :: (Monad m) => Int -> Value -> m Int
     innerFold cnt _ = return $ cnt + 1
 -- depends on combine working
-testSplit :: () -> Interpretation Bool
-testSplit _ = do
+testSplit :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testSplit dataspace _ = do
   -- split doesn't do anything if one of the collections contains less than 10 elements
   let long_lst = test_lst ++ test_lst
-  first_ds <- (initialDS long_lst :: Interpretation [Value])
-  (left', right') <- splitDS first_ds vunit
+  first_ds <- initialDS long_lst dataspace
+  (left', right') <- splitDS first_ds
   leftLen <- sizeDS left'
   rightLen <- sizeDS right'
   if leftLen >= length long_lst || rightLen >= length long_lst || leftLen + rightLen > length long_lst
@@ -157,12 +169,12 @@ testSplit _ = do
             else
               return False
   where
-    findAndRemoveElement :: Maybe ([Value], [Value]) -> Value -> Interpretation (Maybe ([Value], [Value]))
+    findAndRemoveElement :: (Dataspace Interpretation ds Value) => Maybe (ds, ds) -> Value -> Interpretation (Maybe (ds, ds))
     findAndRemoveElement maybeTuple cur_val =
       case maybeTuple of
         Nothing -> return Nothing
         Just (left, right) -> do
-          leftContains <- containsDS left cur_val
+          leftContains <- foldDS (\fnd cur -> return $ fnd || cur == cur_val) False left
           if leftContains
             then do
               removed_left <- deleteDS cur_val left
@@ -175,19 +187,37 @@ testSplit _ = do
                 return $ Just (left, removed_right)
               else
                 return Nothing
-    containsDS :: [Value] -> Value -> Interpretation Bool
-    containsDS ds val =
-      foldDS (\fnd cur -> if cur == val then return True else return fnd) False ds
-      
+
+containsDS :: (Monad m, Dataspace m ds Value) => ds -> Value -> m Bool
+containsDS ds val =
+  foldDS (\fnd cur -> if cur == val then return True else return fnd) False ds
+
 callTest testFunc = do
   engine <- simulationEngine [] syntaxValueWD
   interpResult <- runInterpretation engine emptyState (testFunc ())
   success <- either (const $ return False) (either (const $ return False) (return . id) . getResultVal) interpResult
   unless success (assertFailure "Dataspace test failed")
-    
+
+makeTestGroup :: (Dataspace Interpretation dataspace Value) => String -> dataspace -> Test
+makeTestGroup name ds =
+  testGroup name [
+        testCase "EmptyPeek" $ callTest $ emptyPeek ds,
+        testCase "Fold on Empty List Test" $ callTest $ testEmptyFold ds,
+        testCase "Peek Test" $ callTest $ testPeek ds,
+        testCase "Insert Test" $ callTest $ testInsert ds,
+        testCase "Delete Test" $ callTest $ testDelete ds,
+        testCase "Delete of missing element Test" $ callTest $ testMissingDelete ds,
+        testCase "Update Test" $ callTest $ testUpdate ds,
+        testCase "Update Multiple Test" $ callTest $ testUpdateMultiple ds,
+        testCase "Update missing element Test" $ callTest $ testUpdateMissing ds,
+        testCase "Fold Test" $ callTest $ testFold ds,
+        testCase "Map Test" $ callTest $ testMap ds,
+        testCase "Combine Test" $ callTest $ testCombine ds,
+        testCase "Split Test" $ callTest $ testSplit ds
+    ]
+
 tests :: [Test]
 tests = [
-  testGroup "List Dataspace" [
-        testCase "EmptyPeek" $ callTest emptyPeek
-    ]
+    makeTestGroup "List Dataspace" ([] :: (Dataspace Interpretation [Value] Value) => [Value]),
+    makeTestGroup "File Dataspace" (FileDataspace "tmp" :: FileDataspace Value)
   ]
