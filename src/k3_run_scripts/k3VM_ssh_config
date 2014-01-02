@@ -1,0 +1,151 @@
+
+Host qp1-k3VM
+   HostName 192.168.0.174
+   IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+   User vagrant
+   StrictHostKeyChecking no
+
+Host qp2-k3VM
+   HostName 192.168.0.191
+   IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+   User vagrant
+   StrictHostKeyChecking no
+
+Host qp3-k3VM
+  HostName 192.168.0.141
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp4-k3VM
+  HostName 192.168.0.136
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp5-k3VM
+  HostName 192.168.0.138
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp6-k3VM
+  HostName 192.168.0.139
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm1-k3VM
+  HostName 192.168.0.131
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm2-k3VM
+  HostName 192.168.0.126
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm3-k3VM
+  HostName 192.168.0.102
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm4-k3VM
+  HostName 192.168.0.101
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm5-k3VM
+  HostName 192.168.0.106
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm6-k3VM
+  HostName 192.168.0.109
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm7-k3VM
+  HostName 192.168.0.124
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hm8-k3VM
+  HostName 192.168.0.108
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd1-k3VM
+  HostName 192.168.0.140
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd4-k3VM
+  HostName 192.168.0.144
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd5-k3VM
+  HostName 192.168.0.149
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd6-k3VM
+  HostName 192.168.0.148
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd7-k3VM
+  HostName 192.168.0.153
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd8-k3VM
+  HostName 192.168.0.154
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd9-k3VM
+  HostName 192.168.0.127
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd10-k3VM
+  HostName 192.168.0.147
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd12-k3VM
+  HostName 192.168.0.107
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd14-k3VM
+  HostName 192.168.0.146
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+
+Host qp-hd16-k3VM
+  HostName 192.168.0.110
+  IdentityFile /damsl/projects/K3/vagrant_box/vagrant_key
+  User vagrant
+  StrictHostKeyChecking no
+

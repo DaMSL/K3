@@ -9,6 +9,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Transform.Alpha
 import Language.K3.Transform.Conflicts
 
 import Language.K3.Driver.Batch
@@ -16,7 +17,6 @@ import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 import qualified Language.K3.Compiler.Haskell as HaskellC
-
 
 -- | Mode Dispatch.
 dispatch :: Options -> IO ()
@@ -43,15 +43,15 @@ dispatch op = do
 
         printer PrintAST    = k3Program >>= either parseError (putStrLn . pretty)
         printer PrintSyntax = k3Program >>= either parseError printProgram
-        k3Program           = parseK3Input (includes $ paths op) (input op)
         printProgram        = either syntaxError putStrLn . programS
 
-        analyzer Conflicts  = k3Program 
-           >>= either parseError (putStrLn . pretty . startConflicts . startAnnotate)
-        
+        analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
+        analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)   
+        analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)   
+ 
+        k3Program      = parseK3Input (includes $ paths op) (input op)
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
-
 
 -- | Top-Level.
 main :: IO ()

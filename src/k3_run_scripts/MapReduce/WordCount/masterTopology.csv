@@ -1,0 +1,3 @@
+/home/vagrant/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordsCountV2.k3
+Hostname,peer,role,shufflersTable
+qp4-k3VM,192.168.0.136:40000,\"master\",~"{| shuffler : address, word : string | {shuffler : 192.168.0.191:61000, word : \"foo\" }, {shuffler : 192.168.0.191:62000, word : \"bar\" }, {shuffler : 192.168.0.138:63000, word : \"baz\"} |} @ { Collection }"~
