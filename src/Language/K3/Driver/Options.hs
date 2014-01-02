@@ -57,9 +57,9 @@ data PrintOptions
 -- | Analyze Options.
 data AnalyzeOptions
     = Conflicts
-    | Frontier
+    | Tasks
+    | ProgramTasks
   deriving (Eq, Read, Show) 
-
 
 -- | Logging and information output options.
 data InfoSpec = InfoSpec { logging   :: LoggerOptions
@@ -86,7 +86,6 @@ data Peer = Peer { peerHost :: String
                  , peerPort :: Int
                  , peerVals :: [(String, String)] }
               deriving (Eq, Read, Show)
-
 
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
@@ -199,15 +198,19 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (conflictsOpt <|> frontierOpt)
+analyzeOptions = Analyze <$> (conflictsOpt <|> tasksOpt <|> programTasksOpt)
 
 conflictsOpt :: Parser AnalyzeOptions
 conflictsOpt = flag' Conflicts (   long "conflicts"
                               <> help "Print Conflicting Data Accesses for a K3 Program" )
 
-frontierOpt :: Parser AnalyzeOptions
-frontierOpt = flag' Frontier (   long "frontier"
-                              <> help "Print the 'Conflict Frontier' for a K3 Program" )
+tasksOpt :: Parser AnalyzeOptions
+tasksOpt = flag' Tasks (   long "tasks"
+                              <> help "Split Triggers into smaller tasks for parallelization" )
+
+programTasksOpt :: Parser AnalyzeOptions
+programTasksOpt = flag' ProgramTasks (   long "programtasks"
+                              <> help "Find program-level tasks to be run in parallel " )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
