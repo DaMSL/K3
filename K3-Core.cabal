@@ -25,6 +25,7 @@ library
         errors,
         filemanip,
         filepath,
+        graph-wrapper,
         hashable,
         haskell-src-exts == 1.13.5,
         haskell-src-exts-qq,
