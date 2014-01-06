@@ -5,20 +5,20 @@ declare c : mut int = 0
 declare d : mut int = 0
 
 
-trigger r : () = \x -> (
-  a = 10;
+trigger r : (int) = \x -> (
+  a = x;
   b = 10;
   c = 10;
   d = 10
 
 )
 
-trigger s : () = \x -> (
+trigger s : (string) = \x -> (
   a = 10;
   b = 10
 )
 
-trigger t : () = \x -> (
+trigger t : () = \y -> (
   c = 20;
   d = 21
 )
