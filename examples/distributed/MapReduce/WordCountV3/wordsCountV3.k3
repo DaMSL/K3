@@ -1,0 +1,94 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+declare master :              immut address = 127.0.0.1:40000
+declare mappersTable :        immut collection { mapper : address, Id : int } @ { Collection } = { | mapper : address, Id : int  | { mapper : 127.0.0.1:51000, Id : 1 }, { mapper : 127.0.0.1:52000, Id : 2 }, { mapper : 127.0.0.1:53000, Id : 3 } | } @ { Collection }
+declare mapperLocalLst :      mut collection {word : string} @ { Collection }
+declare shufflersTable :      immut collection { shuffler : address, Id : int } @ { Collection } = { | shuffler : address, Id : int | {shuffler : 127.0.0.1:61000, Id : 1 }, {shuffler : 127.0.0.1:62000, Id : 2 }, {shuffler : 127.0.0.1:63000, Id : 3} | } @ { Collection }
+declare numOfWords :          mut int = 0
+declare currNumWords :        mut int = 0
+declare wordsMap :            mut collection { word : string, count : int } @ { Collection }
+declare finalWordsMap :       mut collection { word : string, count : int } @ { Collection } 
+
+trigger initWordLst : (collection{ word : string } @ { Collection }) = \wordsColl -> (
+    numOfWords = wordsColl.fold(\acc -> (\r -> acc + 1)) 0 ;
+    let count = 0 in
+        if numOfWords > 6
+	    then (wordsColl.iterate (\wordRecord -> (
+                  count = count + 1;      
+                  if count < numOfWords/3
+	              then let (mapperColl_1 = mappersTable.filter(\record -> (record.Id == 1));
+				            mapperSize_1 = numOfWords/3 - 1) in 
+	                       (genWordLst, mapperColl_1) <- (mapperSize_1, wordRecord.word)	       
+	              else if count < (numOfWords/3)*2
+	                   then let (mapperColl_2 = mappersTable.filter(\record -> (record.Id == 2));
+				                 mapperSize_2 = numofWords/3) in
+	                            (genWordLst, mapperColl_2) <- (mapperSize_2, wordRecord.word) 
+					   else let (mapperColl_3 = mappersTable.filter(\record -> (record.Id == 3));
+								 mapperSize_3 = numOfWords/3 + 1) in
+				                (genWordLst, mapperColl_3) <- (mapperSize_3, wordRecord.word)
+                     )         
+                 )        
+		     )
+ 		     
+	    else let singleMapperColl = mappersTable.filter(\record -> (record.Id == 1)) in
+		         wordsColl.iterate (\wordRecord -> (	 
+		             (genWordLst, singleMapperColl.mapper) <- (numOfWords, wordRecord.word))
+				 )
+)
+
+trigger genWordLst : (immut int, immut string) = \x -> 
+    bind x as (length, recWord) in (
+        mapperLocalLst.insert {word : recWord};
+        lstLength = lstLength + 1;
+	    (if lstLength == length
+	     then (mapWords, me) <- ()
+	     else ())
+    )
+
+/*Assume hash function has been implemented*/
+trigger mapWords : () = \_ -> (
+    mapperLocalLst.iterate (\wordRecord ->
+        let hashCode = wordRecord.word.hash in	        
+            shufflersTable.iterate (\shufflerRerd ->
+            if hashCode == shufflerRerd.Id
+	        then (shuffle, shufflerRerd.shuffler) <- wordRecord.word
+	        else (shuffle, shufflerRerd.shuffler) <- "none"
+        )
+    )
+)
+
+trigger shuffle : string = \msg -> (
+    (if msg == "none"
+     then currNumWords = currNumWords + 1
+     else ( currNumWords = currNumWords + 1;
+            (if countWord == 0
+             then ( countWord = countWord + 1;
+		            wordsMap.insert {word : msg, count : countWord})
+		     else ( wordsMap.delete {word : msg, count : countWord};
+		            countWord = countWord + 1;		  
+		            wordsMap.insert {word : msg, count : countWord} )
+		    ) 
+          )
+    );		  
+    if currNumWords == numOfWords
+    then (reduce, reducer) <- wordsMap
+    else()
+)
+
+trigger reduce : (collection { word : string, count : int } @ { Collection }) = \wordMap -> (
+
+    finalWordsMap = finalWordsMap.combine wordMap;
+
+    /* test the final wordsMap  */ 
+    finalWordsMap.iterate (\wordRecord -> (
+        if wordRecord.word == "baz"   
+        then (wordTest = wordRecord.word;   
+              countTest = wordRecord.count)
+	    else ()
+      ) 
+    )	
+)
+
+source master : (collection { word : string } @ { Collection }) = file "/home/chao/work/K3/K3-Core/examples/distributed/MapReduce/WordCountV3/wordsCollection.txt" k3
+
