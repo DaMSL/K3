@@ -21,31 +21,6 @@ import Language.K3.Core.Constructor.Type as T
 -- 3) break up within-trigger conflicts into more fine grained tasks
 -- 4) fix addUID function to actually assign a unique ID, instead of 999
 
-getTrigByName :: [K3 Declaration] -> String -> K3 Declaration
-getTrigByName [] _ = error "Trigger not found"
-getTrigByName (x@(Node (DTrigger n _ _ :@: as) _):xs) s 
-  | s == n = x
-  | otherwise = getTrigByName xs s 
-getTrigByName _ _ = error "Not a valid Trigger"
-
-getGroupType :: [K3 Declaration] -> [String] -> K3 Type
-getGroupType trigs group = let
-  tnames = getTriggersForGroup group
-  thetrigs = map (getTrigByName trigs) tnames
-  types = map getTrigType thetrigs
-  r = T.tuple types
-  in T.tuple $ [T.string] ++ [r]
-
-getMessage :: K3 Declaration -> [String] -> K3 Expression
-getMessage (Node (DTrigger n t _ :@: _) _) group = let
-  tnames = getTriggersForGroup group
-  elist = map (\x -> if x == n then (variable "x") else E.unit) tnames 
-  in E.tuple $ [E.constant (CString n)] ++ [E.tuple elist]
-
-getTrigType :: K3 Declaration -> K3 Type
-getTrigType (Node (DTrigger _ t _ :@: _) _) = t
-getTrigType _ = error "not a valid trigger"
-
 wordsWhen     :: (Char -> Bool) -> String -> [String]
 wordsWhen p s =  case dropWhile p s of
                       "" -> []
@@ -67,7 +42,7 @@ getAllTasks d = let
 getProgramTasks :: K3 Declaration -> [(String, [String])]
 getProgramTasks d = (groupTasks . getAllTasks) d
  
-
+-- transform original program into parallel version
 getNewProgram :: K3 Declaration -> K3 Declaration
 getNewProgram d@(Node (DRole r :@: as) cs) = let
   (trigs,nontrigs) = triggersNonTriggers cs
@@ -75,7 +50,6 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
   groups = getProgramTasks d
   gnames = map fst groups
   tnames = map getTriggerName trigs
-  l = map (getGroupsForTrigger groups) tnames
   ts = map getTriggersForGroup (map snd groups)
   types = map (getGroupType trigs) (map snd groups)
   newtrigs = map (replaceTrigger groups) trigs
@@ -84,8 +58,73 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
   where 
     z :: a -> b -> (a,b)
     z x y = (x,y)
+    
+    -- Filter list of groups: keep those that contain pieces of the given trigger
+    getGroupsForTrigger :: [(String,[String])] -> String -> [(String,[String])]
+    getGroupsForTrigger gs tname = filter (\(gname,group) ->
+      if True `elem` (map (isPrefixOf tname) group)
+      then True
+      else False
+      ) gs  
+
+    -- Get the trigger names for a list of tasks
+    getTriggersForGroup :: [String] -> [String]
+    getTriggersForGroup lst = nub $ map (\x -> head (wordsWhen (=='_') x)) lst
+
+    -- Create a Type for a group. Needs list of all original triggers.
+    getGroupType :: [K3 Declaration] -> [String] -> K3 Type
+    getGroupType alltrigs group = let
+      tnames = getTriggersForGroup group
+      thetrigs = map (getTrigByName alltrigs) tnames
+      types = map getTrigType thetrigs
+      r = T.tuple types
+      in T.tuple $ [T.string] ++ [r]
+    
+    -- filter tasks that match the provided trigger name
+    getTasksForTrigger :: String -> [String] -> [String]
+    getTasksForTrigger n ns = filter (\x -> n `isPrefixOf` x) ns
+    
+    -- replace a trigger with a trigger that simply forwards messages to 'group' triggers
+    replaceTrigger :: [(String,[String])] -> K3 Declaration -> K3 Declaration
+    replaceTrigger groups tr@(Node (DTrigger n t e :@: as) cs) = let
+      mGroups = getGroupsForTrigger groups n
+      gnames = map fst mGroups
+      gs = map snd mGroups
+      rs = map (getMessage tr) gs
+      es = zipWith newSend gnames rs
+      seq = E.block es
+      l = E.lambda "x" seq
+      in (Node (DTrigger n t l :@: as) cs) 
+      
+    -- create a send expression for given destination trigger, expression
+    newSend :: String -> K3 Expression -> K3 Expression
+    newSend gname e = E.send (E.variable gname) (E.variable "me") e 
+
+    -- search for the given trigger name in the list of triggers
+    getTrigByName :: [K3 Declaration] -> String -> K3 Declaration
+    getTrigByName [] _ = error "Trigger not found"
+    getTrigByName (x@(Node (DTrigger n _ _ :@: as) _):xs) s 
+      | s == n = x
+      | otherwise = getTrigByName xs s 
+    getTrigByName _ _ = error "Not a valid Trigger"
+
+    -- build the proper tuple to send for the given trigger and list of tasks
+    getMessage :: K3 Declaration -> [String] -> K3 Expression
+    getMessage (Node (DTrigger n t _ :@: _) _) group = let
+      tnames = getTriggersForGroup group
+      elist = map (\x -> if x == n then (variable "x") else E.unit) tnames 
+      in E.tuple $ [E.constant (CString n)] ++ [E.tuple elist]
+    
+    -- return the type of the provided trigger
+    getTrigType :: K3 Declaration -> K3 Type
+    getTrigType (Node (DTrigger _ t _ :@: _) _) = t
+    getTrigType _ = error "not a valid trigger"
+
+    -- create a new dispatcher for the provided group and type
     newDispatcher :: (String,[String]) -> K3 Type -> K3 Declaration
     newDispatcher (gname,ns) t = D.trigger (gname) t (dispatchTable ns)  
+    
+    -- build the dispatch Table for the provided group
     dispatchTable :: [String] -> K3 Expression
     dispatchTable gs = let
       ts = getTriggersForGroup gs
@@ -96,35 +135,13 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
         let
           tasks = getTasksForTrigger t gs
           pred = E.binop OEqu (E.variable "tname") (E.constant $ CString t) 
-          in E.block $ map (\task -> E.ifThenElse pred (E.send (E.variable task) (E.variable "me") (E.variable (t++"_args"))) (E.unit))tasks 
+          in E.block $ map (\task -> 
+            E.ifThenElse pred 
+              (E.send (E.variable task) (E.variable "me") (E.variable (t++"_args"))) 
+              (E.unit)
+          ) tasks 
         ) ts
       in E.lambda "x" b1
-getTasksForTrigger :: String -> [String] -> [String]
-getTasksForTrigger n ns = filter (\x -> n `isPrefixOf` x) ns
-
-replaceTrigger :: [(String,[String])] -> K3 Declaration -> K3 Declaration
-replaceTrigger groups tr@(Node (DTrigger n t e :@: as) cs) = let
-  mGroups = getGroupsForTrigger groups n
-  gnames = map fst mGroups
-  gs = map snd mGroups
-  rs = map (getMessage tr) gs
-  es = zipWith z gnames rs
-  seq = E.block es
-  l = E.lambda "x" seq
-  in (Node (DTrigger n t l :@: as) cs) 
-  where 
-    z :: String -> K3 Expression -> K3 Expression
-    z gname e = E.send (E.variable gname) (E.variable "me") e 
-
-getTriggersForGroup :: [String] -> [String]
-getTriggersForGroup lst = nub $ map (\x -> head (wordsWhen (=='_') x)) lst
-
-getGroupsForTrigger :: [(String,[String])] -> String -> [(String,[String])]
-getGroupsForTrigger gs tname = filter (\(gname,group) ->
-  if True `elem` (map (isPrefixOf tname) group)
-  then True
-  else False
-  ) gs  
 
 -- Build Conflict Graph for tasks, then return its connected components.
 groupTasks :: K3 Declaration -> [(String,[String])]
