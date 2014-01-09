@@ -1,0 +1,34 @@
+declare a : mut int = 0
+declare b : mut int = 0
+declare c : mut int = 0
+declare d : mut int = 0
+
+
+trigger r : (int) = \x -> (
+  a = x;
+  b = x;
+  c = x;
+  d = x
+
+)
+
+trigger s : (int) = \x -> (
+  a = x;
+  b = x
+)
+
+trigger t : (String) = \y -> (
+  (if y == "yes" then c=10 else c=5);
+  (if y == "yes" then d=10 else d=5)
+)
+
+trigger main : (int) = \x -> (
+  (r,me) <- x;
+  (t,me) <- "yes";
+  (s,me) <- 3
+)
+
+source s1 : int = value 6
+
+feed s1 |> main
+
