@@ -485,14 +485,6 @@ namespace K3 {
       }
     }
 
-    // TODO: needed? Aren't these pushed down into the IOHandle?
-    // TODO: these methods need to couple the handle with the endpoint buffer and its bindings.
-    void genericHasRead() {}
-    void genericDoRead() {}
-
-    void genericHasWrite() {}
-    void genericDoWrite() {}
-
     // TODO
     void startListener() {
       // Create a listener object, which in turn will start the thread for receiving messages.
