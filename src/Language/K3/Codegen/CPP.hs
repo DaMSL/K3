@@ -244,7 +244,7 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    return (ae <> semi PL.<//> be, bv)
+    return (ae PL.<//> be, bv)
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -261,7 +261,9 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 inline (tag &&& children -> (EProject v, [e])) = do
     (ee, ev) <- inline e
     return (ee, ev <> dot <> text v)
+
 inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
+
 inline e = do
     k <- genSym
     ct <- canonicalType e
@@ -269,22 +271,27 @@ inline e = do
     effects <- reify (RName k) e
     return (decl PL.<//> effects, text k)
 
+-- | The generic function to generate code for an expression whose result is to be reified. The
+-- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
     (ee, ev) <- inline e
-    return $ ee PL.<//> ev
+    return $ ee PL.<//> ev <> semi
+
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae <> semi PL.<//> be
+    return $ ae PL.<//> be
+
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     ct <- canonicalType e
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
     return $ braces $ vsep [d, ee, be]
+
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- canonicalType e
     d <- cDecl (head $ children ct) x
@@ -295,6 +302,7 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
         text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
         braces (d PL.<//> text x <+> equals <+> text "*" <> ev <> semi PL.<//> se) <+> text "else" <+>
         braces ne
+
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
         (tag -> EVariable v) -> return (empty, text v)
@@ -309,18 +317,20 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
         BRecord iis -> vsep
             [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
     ee <- reify r e
     return $ pe PL.<//> hang 4 (text "if" <+> parens pv <+> braces te <+> text "else" <+> braces ee)
+
 reify r e = do
     (effects, value) <- inline e
     return $ effects PL.<//> case r of
         RForget -> empty
         RName k -> text k <+> equals <+> value <> semi
         RReturn -> text "return" <+> value <> semi
-        RSplice f -> f [value]
+        RSplice f -> f [value] <> semi
 
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration d | isJust (d @~ isGeneratedSpan) = return empty
