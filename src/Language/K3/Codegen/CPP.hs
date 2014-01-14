@@ -6,13 +6,14 @@ module Language.K3.Codegen.CPP where
 
 import Control.Arrow ((&&&))
 
-import Control.Monad.State
+import Control.Monad.State hiding (forM)
 import Control.Monad.Trans.Either
 
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
 import Data.Maybe
+import Data.Traversable (forM)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -52,6 +53,9 @@ data CPPGenS = CPPGenS {
 
         -- | Set of annotation combinations actually encountered during the program.
         composites :: S.Set (S.Set Identifier),
+
+        -- | The set of triggers declared in a program, used to populate the dispatch table.
+        triggers :: S.Set Identifier,
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
@@ -99,7 +103,7 @@ runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
 
 genSym :: CPPGenM Identifier
 genSym = do
@@ -115,6 +119,9 @@ addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (compo
 
 addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
 addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
+
+addTrigger :: Identifier -> CPPGenM ()
+addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
 
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
@@ -357,6 +364,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
 -- return-type. Additionally however, we must generate a trigger-wrapper function to perform
 -- deserialization.
 declaration (tag -> DTrigger i t e) = do
+    addTrigger i
     d <- declaration (D.global i (T.function t T.unit) (Just e))
     w <- triggerWrapper i t
     return $ d PL.<$$> w
@@ -370,12 +378,24 @@ declaration (tag &&& children -> (DRole n, cs)) = do
     compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ \(k, idts) -> record k idts
+    tablePop <- generateDispatchPopulation
+    tableDecl <- return $ text "map" <> angles (
+            text "string" <> comma <+> text "function" <> angles (
+                    text "void" <> parens (text "string")
+                )
+        ) <+> text "dispatch_table" <> semi
+
     put defaultCPPGenS
     return $ text "namespace" <+> text n <+> hangBrace (
-        vsep $ [forwards currentS] ++ compositeDecls ++ recordDecls ++ [subDecls, i])
+        vsep $ [forwards currentS]
+            ++ compositeDecls
+            ++ recordDecls
+            ++ [subDecls, i, tableDecl, tablePop])
+
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
+-- | Dispatch to the appropriate trigger-wrapper generator by serialization method.
 triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
 triggerWrapper i t = do
     sMethod <- serializationMethod <$> get
@@ -400,6 +420,21 @@ boostTriggerWrapper i t = do
                 triggerDispatch,
                 text "return;"
             ])
+
+-- | Generates a function which populates the trigger dispatch table.
+generateDispatchPopulation :: CPPGenM CPPGenR
+generateDispatchPopulation = do
+    triggerS <- triggers <$> get
+    dispatchStatements <- mapM genDispatch (S.toList triggerS)
+    return $ text "void" <+> text "populate_dispatch" <> parens empty <+> hangBrace (
+            vsep dispatchStatements
+        )
+  where
+    genDispatch tName = return $
+        text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
+
+genDispatchName :: Identifier -> Identifier
+genDispatchName i = i ++ "_dispatch"
 
 reserved :: [Identifier]
 reserved = ["openBuiltin"]
@@ -465,13 +500,16 @@ definition i t Nothing = cDecl t i
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     p <- declaration d
-    return $ vsep genIncludes PL.<$$> vsep genNamespaces PL.<$$> text "typedef struct {} unit_t;" PL.<$$> p
+    return $ vsep genIncludes
+        PL.<$$> vsep genNamespaces
+        PL.<$$> text "typedef struct {} unit_t;"
+        PL.<$$> p
   where
     genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
-    genNamespaces = [text "using namespace" <+> (text n) <+> semi | n <- namespaces]
+    genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
 
 includes :: [Identifier]
-includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream"]
+includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream", "map"]
 
 namespaces :: [Identifier]
 namespaces = ["std"]
