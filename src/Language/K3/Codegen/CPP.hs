@@ -406,16 +406,20 @@ definition i t (Just e) = do
     return $ d PL.<//> newI
 definition i t Nothing = cDecl t i
 
+-- Top-level program generation.
+--  - Process the __main role.
+--  - Generate include directives.
+--  - Generate namespace use directives.
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     p <- declaration d
     return $ vsep genIncludes PL.<$$> vsep genNamespaces PL.<$$> text "typedef struct {} unit_t;" PL.<$$> p
   where
     genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
-    genNamespaces = [text "using namespace " <+> (text n) <+> semi | n <- namespaces]
+    genNamespaces = [text "using namespace" <+> (text n) <+> semi | n <- namespaces]
 
 includes :: [Identifier]
-includes = ["boost/smart_ptr/shared_ptr.hpp"]
+includes = ["memory"]
 
 namespaces :: [Identifier]
-namespaces = ["boost"]
+namespaces = ["std"]
