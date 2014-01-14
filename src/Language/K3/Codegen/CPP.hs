@@ -330,11 +330,20 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
     cta <- cType ta
     ctr <- cType tr
     return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
+
 declaration (tag -> DGlobal i t (Just e)) = do
     newI <- reify (RName i) e
     modify (\s -> s { initializations = initializations s PL.<//> newI })
     cDecl t i
-declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
+
+-- The generated code for a trigger is the same as that of a function with corresponding ()
+-- return-type. Additionally however, we must generate a trigger-wrapper function to perform
+-- deserialization.
+declaration (tag -> DTrigger i t e) = do
+    d <- declaration (D.global i (T.function t T.unit) (Just e))
+    w <- triggerWrapper i t
+    return $ d PL.<$$> w
+
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep <$> mapM declaration cs
     currentS <- get
@@ -349,6 +358,26 @@ declaration (tag &&& children -> (DRole n, cs)) = do
         vsep $ [forwards currentS] ++ compositeDecls ++ recordDecls ++ [subDecls, i])
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
+
+-- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
+-- (using Boost serialization) and call the appropriate trigger.
+-- TODO: Parameterize by serialization method.
+triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
+triggerWrapper i t = do
+    tmpDecl <- cDecl t "arg"
+    let streamCreation = text "istringstream istr" <> parens (text "msg") <> semi
+    let archiveCreation = text "boost::archive::text_iarchive msg_archive(istr);"
+    let archiveRead = text "msg_archive >> arg;"
+    let triggerDispatch = text i <> parens (text "arg") <> semi
+    return $ text "void" <+> text i <> text "_dispatch" <> parens (text "string msg")
+        <+> hangBrace (vsep [
+                tmpDecl,
+                streamCreation,
+                archiveCreation,
+                archiveRead,
+                triggerDispatch,
+                text "return;"
+            ])
 
 reserved :: [Identifier]
 reserved = ["openBuiltin"]
@@ -389,13 +418,14 @@ annMemDecl (Lifted _ i t me _)  = do
 annMemDecl (Attribute _ i _ _ _) = return $ text i
 annMemDecl (MAnnotation _ i _) = return $ text i
 
+-- Generate a struct definition for an anonymous record type.
 record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
     return $ text "struct" <+> text rName <+> hangBrace members <> semi
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
-definition i t@(tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
+definition i (tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
     body <- reify RReturn b
     cta <- cType ta
     ctr <- cType tr
@@ -419,7 +449,7 @@ program d = do
     genNamespaces = [text "using namespace" <+> (text n) <+> semi | n <- namespaces]
 
 includes :: [Identifier]
-includes = ["memory"]
+includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream"]
 
 namespaces :: [Identifier]
 namespaces = ["std"]
