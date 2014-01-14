@@ -51,7 +51,10 @@ data CPPGenS = CPPGenS {
         annotationMap :: M.Map Identifier [AnnMemDecl],
 
         -- | Set of annotation combinations actually encountered during the program.
-        composites :: S.Set (S.Set Identifier)
+        composites :: S.Set (S.Set Identifier),
+
+        -- | The serialization method to use.
+        serializationMethod :: SerializationMethod
     } deriving Show
 
 -- | Error messages thrown by C++ code generation.
@@ -59,6 +62,10 @@ data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
 
 -- | The C++ code generation monad.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
+
+data SerializationMethod
+    = BoostSerialization
+  deriving (Eq, Read, Show)
 
 -- | Reification context, used to determine how an expression should reify its result.
 data RContext
@@ -92,7 +99,7 @@ runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runEitherT
 
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty BoostSerialization
 
 genSym :: CPPGenM Identifier
 genSym = do
@@ -359,11 +366,16 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
--- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
--- (using Boost serialization) and call the appropriate trigger.
--- TODO: Parameterize by serialization method.
 triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
 triggerWrapper i t = do
+    sMethod <- serializationMethod <$> get
+    case sMethod of
+        BoostSerialization -> boostTriggerWrapper i t
+
+-- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
+-- (using Boost serialization) and call the appropriate trigger.
+boostTriggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
+boostTriggerWrapper i t = do
     tmpDecl <- cDecl t "arg"
     let streamCreation = text "istringstream istr" <> parens (text "msg") <> semi
     let archiveCreation = text "boost::archive::text_iarchive msg_archive(istr);"
