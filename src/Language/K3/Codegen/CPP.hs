@@ -379,11 +379,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ \(k, idts) -> record k idts
     tablePop <- generateDispatchPopulation
-    tableDecl <- return $ text "map" <> angles (
-            text "string" <> comma <+> text "function" <> angles (
-                    text "void" <> parens (text "string")
-                )
-        ) <+> text "dispatch_table" <> semi
+    tableDecl <- return $ text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     put defaultCPPGenS
     return $ text "namespace" <+> text n <+> hangBrace (
@@ -449,8 +445,15 @@ templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typen
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
 composite cName ans = do
     members <- vsep <$> mapM annMemDecl positives
+    serializationDefn <- do
+        -- Filter all data members from positives.
+        -- Generate serialize function.
+        -- Add all members to archive.
+        return empty
     return $ templateLine [text "CONTENT"]
-        PL.<$$> text "class" <+> text cName <+> hangBrace (text "public:" PL.<$$> indent 4 members) <> semi
+        PL.<$$> text "class" <+> text cName <+> hangBrace (
+                text "public:" PL.<$$> indent 4 (members PL.<//> serializationDefn)
+            ) <> semi
   where
     onlyPositives :: AnnMemDecl -> Bool
     onlyPositives (Lifted Provides _ _ _ _) = True
@@ -509,7 +512,7 @@ program d = do
     genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
 
 includes :: [Identifier]
-includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream", "map"]
+includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream", "k3/runtime/Dispatch.hpp"]
 
 namespaces :: [Identifier]
-namespaces = ["std"]
+namespaces = ["std", "K3"]
