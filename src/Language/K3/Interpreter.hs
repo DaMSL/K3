@@ -518,7 +518,7 @@ emptyAnnotatedCollection comboId = initialAnnotatedCollection comboId []
 
 -- This gets used as the default collection, so it's an InMemory store
 emptyCollection :: Interpretation Value
-emptyCollection = emptyAnnotatedCollection "" -- TODO before, this specified InMemory
+emptyCollection = initialCollection []
 
 {- Interpretation -}
 
