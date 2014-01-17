@@ -138,6 +138,12 @@ testCombine dataspace _ = do
   combined <- combineDS left' right'
   compareDataspaceToList combined (test_lst ++ test_lst)
 
+testCombineSelf :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+testCombineSelf dataspace _ = do
+  self <- initialDS test_lst (Just dataspace)
+  combined <- combineDS self self
+  compareDataspaceToList combined (test_lst ++ test_lst)
+
 sizeDS :: (Monad m, Dataspace m ds Value) => ds -> m Int
 sizeDS ds = do
   foldDS innerFold 0 ds
@@ -193,7 +199,7 @@ containsDS ds val =
   foldDS (\fnd cur -> return $ fnd || cur == val) False ds
 
 callTest testFunc = do
-  engine <- simulationEngine [] syntaxValueWD
+  engine <- simulationEngine [] (syntaxValueWD emptyStaticEnv)
   interpResult <- runInterpretation engine emptyState (testFunc ())
   success <- either (return . Just . show) (either (return . Just . show) (\good -> if good then return Nothing else return $ Just "Dataspace test failed") . getResultVal) interpResult
   case success of
@@ -216,6 +222,7 @@ makeTestGroup name ds =
         testCase "Map Test" $ callTest $ testMap ds,
         testCase "Filter Test" $ callTest $ testFilter ds,
         testCase "Combine Test" $ callTest $ testCombine ds,
+        testCase "Combine with Self Test" $ callTest $ testCombineSelf ds,
         testCase "Split Test" $ callTest $ testSplit ds
     ]
 

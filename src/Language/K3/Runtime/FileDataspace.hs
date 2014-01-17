@@ -195,6 +195,7 @@ updateFile liftM v v' file_ds@(FileDataspace file_id) = do
 combineFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (FileDataspace b) -> (FileDataspace b) ->  m (FileDataspace b)
 combineFile liftM self values = do
   (FileDataspace new_id) <- liftM $ copyFile self
+  liftM $ openCollectionFile new_id "a"
   foldFile liftM (\_ v -> do
       liftM $ doWrite new_id v
       return ()
