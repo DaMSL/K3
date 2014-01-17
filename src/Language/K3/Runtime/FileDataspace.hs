@@ -4,6 +4,7 @@
 
 module Language.K3.Runtime.FileDataspace (
   FileDataspace(..),
+  getFile, -- Should this really be exported?  Used to pack dataspace
   emptyFile,
   initialFile,
   copyFile,
@@ -193,13 +194,13 @@ updateFile liftM v v' file_ds@(FileDataspace file_id) = do
 
 combineFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (FileDataspace b) -> (FileDataspace b) ->  m (FileDataspace b)
 combineFile liftM self values = do
-  liftM $ openCollectionFile (getFile self) "a"
+  (FileDataspace new_id) <- liftM $ copyFile self
   foldFile liftM (\_ v -> do
-      liftM $ doWrite (getFile self) v
+      liftM $ doWrite new_id v
       return ()
     ) () values
-  liftM $ close (getFile self)
-  return self
+  liftM $ close new_id
+  return $ FileDataspace new_id
 
 splitFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> m (FileDataspace b, FileDataspace b)
 splitFile liftM self = do
