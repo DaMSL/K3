@@ -2186,7 +2186,8 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
     rebuildCollection comboId c = 
       case lookup comboId $ realizations $ snd sEnv of
         Nothing -> newMVar c
-        Just (_, copyCstr) -> do
+        Just rec -> do
+          let copyCstr = copyCtor rec
           cCopyResult <- simpleEngine >>= \e -> runInterpretation e emptyState (copyCstr c)
           either (const $ newMVar c) (either (const $ newMVar c) return . getResultVal) cCopyResult
     
