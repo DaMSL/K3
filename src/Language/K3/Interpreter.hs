@@ -381,6 +381,43 @@ instance Dataspace Interpretation (CollectionDataspace Value) Value where
         (initialDS vals (Just ls)) >>= return . InMemoryDS
       Just (ExternalDS ext) ->
         (initialDS vals (Just ext)) >>= return . ExternalDS
+  copyDS ds        = case ds of
+    InMemoryDS lst -> copyDS lst >>= return . InMemoryDS
+    ExternalDS f   -> copyDS f >>= return . ExternalDS
+  peekDS ds        = case ds of
+    InMemoryDS lst -> peekDS lst
+    ExternalDS f   -> peekDS f
+  insertDS ds val  = case ds of
+    InMemoryDS lst -> insertDS lst val >>= return . InMemoryDS
+    ExternalDS f   -> insertDS f   val >>= return . ExternalDS
+  deleteDS val ds  = case ds of
+    InMemoryDS lst -> deleteDS val lst >>= return . InMemoryDS
+    ExternalDS f   -> deleteDS val f   >>= return . ExternalDS
+  updateDS v v' ds  = case ds of
+    InMemoryDS lst -> updateDS v v' lst >>= return . InMemoryDS
+    ExternalDS f   -> updateDS v v' f   >>= return . ExternalDS
+  foldDS acc acc_init ds = case ds of
+    InMemoryDS lst -> foldDS acc acc_init lst
+    ExternalDS f   -> foldDS acc acc_init f
+  mapDS func ds     = case ds of
+    InMemoryDS lst -> mapDS func lst >>= return . InMemoryDS
+    ExternalDS f   -> mapDS func f   >>= return . ExternalDS
+  mapDS_ func ds    = case ds of
+    InMemoryDS lst -> mapDS_ func lst
+    ExternalDS f   -> mapDS_ func f
+  filterDS func ds     = case ds of
+    InMemoryDS lst -> filterDS func lst >>= return . InMemoryDS
+    ExternalDS f   -> filterDS func f   >>= return . ExternalDS
+  combineDS l r     = case (l,r) of
+    (InMemoryDS l_lst, InMemoryDS r_lst) ->
+      combineDS l_lst r_lst >>= return . InMemoryDS
+    (ExternalDS l_f, ExternalDS r_f) ->
+      combineDS l_f r_f >>= return . ExternalDS
+    otherwise -> throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
+        -- TODO Could combine an in memory store and an external store into an external store
+  splitDS ds       = case ds of
+    InMemoryDS lst -> splitDS lst >>= \(l, r) -> return (InMemoryDS l, InMemoryDS r)
+    ExternalDS f   -> splitDS f   >>= \(l, r) -> return (ExternalDS l, ExternalDS r)
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
@@ -920,8 +957,7 @@ emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> Interpretation (Co
 emptyDataspaceLookup namedAnnDefs = do
   case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
     Nothing -> emptyDS Nothing >>= return . InMemoryDS
-    --otherwise -> generateCollectionFilename >>= return . ExternalDS
-    otherwise -> emptyDS Nothing >>= return . ExternalDS
+    Just _ -> emptyDS Nothing >>= return . ExternalDS
 
 -- | Annotation composition retrieval and registration.
 getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
