@@ -196,15 +196,36 @@ namespace K3 {
   // The semantics of repeated invocations are dependent on the actual implementation
   // of the wire description (including factors such as message loss). 
   // This includes the conditions under which an exception is thrown.
-  template<typename Value>
   class WireDesc : public virtual LogMT {
   public:
     WireDesc() {}
+
+    template <typename Value>
     virtual string pack(const Value& v) = 0;
-    virtual string pack(Value&& v) = 0;
+
+    template <typename Value>
     virtual shared_ptr<Value> unpack(const string& s) = 0;
-    virtual shared_ptr<Value> unpack(string&& s) = 0;
   };
+
+  class BoostWireDesc : public WireDesc {
+      template <typename Value>
+      string pack(const Value& v) {
+          ostringstream out_sstream;
+          boost::archive::text_oarchive out_archive(out_sstream);
+          out_archive << v;
+          return out_sstream.str();
+      }
+
+      template <typename Value>
+      shared_ptr<Value> unpack(const string& s) {
+          istringstream in_sstream(s);
+          boost::archive::text_iarchive in_archive(in_sstream);
+
+          shared_ptr<Value> p;
+          in_archive >> *p;
+          return p;
+      }
+  }
 
   // TODO: protobuf, msgpack, json WireDesc implementations.  
 

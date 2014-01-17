@@ -283,16 +283,37 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);      
     }
 
-    bool  hasRead() {}
-    bool  hasWrite() {}
-    Value doRead() {}
-    void  doWrite(Value v) {}
+    bool hasRead(Identifier eid) {
+        if (externalEndpointId(eid)) {
+            return endpoints->getExternalEndpoint(eid)->hasRead();
+        } else {
+            return endpoints->getInternalEndpoint(eid)->hasRead();
+        }
+    }
 
+    Value doReadExternal(Identifier eid) {
+        return endpoints->getExternalEndpoint(eid)->doRead();
+    }
 
-    bool  hasReadInternal() {}
-    bool  hasWriteInternal() {}
-    Value doReadInternal() {}
-    void  doWriteInternal(Value v) {}
+    Message<Value> doReadInternal() {
+        return endpoints->getInternalEndpoint(eid)->doRead();
+    }
+
+    bool hasWrite(Identifier eid) {
+        if (externalEndpointId(eid)) {
+            return endpoints->getExternalEndpoint(eid)->hasWrite();
+        } else {
+            return endpoints->getInternalEndpoint(eid)->hasWrite();
+        }
+    }
+
+    void doWriteExternal(Identifier eid, Value v) {
+        return endpoints->getExternalEndpoint(eid)->doWrite(v);
+    }
+
+    void doWriteInternal(Identifier eid, Message<Value> v) {
+        return endpoints->getInternalEndpoint(eid)->doWrite(v);
+    }
 
     //-----------------------
     // Engine execution loop
