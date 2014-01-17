@@ -503,9 +503,10 @@ annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 initialAnnotatedCollectionBody :: Identifier -> [Value] -> Interpretation (MVar (Collection Value))
 initialAnnotatedCollectionBody comboId vals = do
     binders <- lookupACombo comboId
-    let initF = emptyCtor binders
-    cmv        <- initF ()
-    void $ liftIO (modifyMVar_ cmv (\(Collection ns _ cid) -> return $ Collection ns (InMemoryDS vals) cid))
+    let initF = initialCtor binders
+    cmv        <- initF vals
+    -- TODO does this line even do anything?
+    void $ liftIO (modifyMVar_ cmv (\(Collection ns ds cid) -> return $ Collection ns ds cid))
     return cmv
 
 initialAnnotatedCollection :: Identifier -> [Value] -> Interpretation Value
