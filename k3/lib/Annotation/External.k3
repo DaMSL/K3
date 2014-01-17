@@ -1,0 +1,24 @@
+annotation External given type a, b {
+  provides lifted peek    : () -> option content
+
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  provides lifted combine : self -> self
+  provides lifted split   : () -> (self, self)
+
+  provides lifted iterate : (content -> ()) -> ()
+
+  provides lifted map     : (content -> a) -> collection { elem : a } @ {External}
+
+  provides lifted filter  : (content -> bool) -> self
+
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {External}
+
+  provides lifted ext     : (content -> collection { elem : a } @ {External})
+                             -> collection { elem : a } @ {External}
+}

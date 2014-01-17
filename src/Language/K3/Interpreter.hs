@@ -1240,6 +1240,19 @@ builtinLiftedAttribute annId n _ _
   | annId == "Collection" && n == "fold"    = return $ Just (n, foldFn)
   | annId == "Collection" && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == "Collection" && n == "ext"     = return $ Just (n, extFn)
+
+  | annId == "External" && n == "peek"    = return $ Just (n, peekFn)
+  | annId == "External" && n == "insert"  = return $ Just (n, insertFn)
+  | annId == "External" && n == "delete"  = return $ Just (n, deleteFn)
+  | annId == "External" && n == "update"  = return $ Just (n, updateFn)
+  | annId == "External" && n == "combine" = return $ Just (n, combineFn)
+  | annId == "External" && n == "split"   = return $ Just (n, splitFn)
+  | annId == "External" && n == "iterate" = return $ Just (n, iterateFn)
+  | annId == "External" && n == "map"     = return $ Just (n, mapFn)
+  | annId == "External" && n == "filter"  = return $ Just (n, filterFn)
+  | annId == "External" && n == "fold"    = return $ Just (n, foldFn)
+  | annId == "External" && n == "groupBy" = return $ Just (n, groupByFn)
+  | annId == "External" && n == "ext"     = return $ Just (n, extFn)
   | otherwise = providesError "lifted attribute" n
 
   where 
