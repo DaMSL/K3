@@ -296,8 +296,9 @@ emptyState = ([], [], AEnvironment [] [], emptyStaticEnv)
 annotationState :: AEnvironment Value -> IState
 annotationState aEnv = ([], [], aEnv, emptyStaticEnv)
 
+--TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
-simpleEngine = simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
+simpleEngine = simulationEngine [] defaultSystem (syntaxValueWD emptyStaticEnv)
 
 
 {- Identifiers -}
@@ -1360,11 +1361,13 @@ runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
 runProgram systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
-      engine <- simulationEngine systemEnv $ syntaxValueWD sEnv
+      trigs  <- return $ getTriggerIds prog
+      engine <- parSimulationEngine trigs systemEnv $ syntaxValueWD sEnv
       flip runEngineM engine $ runEngine virtualizedProcessor prog
 
   where buildStaticEnv = do
-          preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+          trigs <- return $ getTriggerIds prog
+          preEngine <- parSimulationEngine trigs systemEnv $ syntaxValueWD emptyStaticEnv
           flip runEngineM preEngine $ staticEnvironment prog
 
 -- | Single-machine network deployment.
@@ -1373,17 +1376,18 @@ runNetwork :: SystemEnvironment -> K3 Declaration
            -> IO [Either EngineError (Address, Engine Value, ThreadId)]
 runNetwork systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
-    buildStaticEnv >>= \case
+    buildStaticEnv (getTriggerIds prog) >>= \case
       Left err   -> return $ [Left err]
       Right sEnv -> do
-        engines       <- mapM (flip networkEngine $ syntaxValueWD sEnv) nodeBootstraps
+        trigs         <- return $ getTriggerIds prog
+        engines       <- mapM (flip (networkEngine trigs) $ syntaxValueWD sEnv) nodeBootstraps
         namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
         engineThreads <- mapM fork namedEngines
         return engineThreads
 
   where
-    buildStaticEnv = do
-      preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+    buildStaticEnv trigs = do
+      preEngine <- simulationEngine trigs systemEnv $ syntaxValueWD emptyStaticEnv
       flip runEngineM preEngine $ staticEnvironment prog
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)

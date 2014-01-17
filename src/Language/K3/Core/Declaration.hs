@@ -11,6 +11,8 @@ module Language.K3.Core.Declaration (
     AnnMemDecl(..),
     UnorderedConflict(..),    
 
+    getTriggerIds,    
+
     isDSpan,
     isDUID,
     isDSyntax
@@ -136,3 +138,17 @@ isDUID _        = False
 isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True
 isDSyntax _           = False
+
+{- Utils -}
+-- Given top level role declaration, return list of all trigger ids in the AST
+getTriggerIds :: K3 Declaration -> [Identifier]
+getTriggerIds (Node (DRole _ :@: _) cs) = map getTriggerName $ filter isTrigger cs
+getTriggerIds _ = error "getTriggerIds expects role declaration"
+
+isTrigger :: K3 Declaration -> Bool
+isTrigger (Node (DTrigger _ _ _:@: _) _) = True
+isTrigger _ = False
+
+getTriggerName :: K3 Declaration -> Identifier
+getTriggerName (Node (DTrigger n _ _ :@: _) _) = n
+getTriggerName _ = error "getTriggerName expects trigger declaration"
