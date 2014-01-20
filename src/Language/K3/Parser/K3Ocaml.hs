@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | K3 Parser.
-module Language.K3.Parser (
+module Language.K3.Parser.K3Ocaml (
   K3Parser,
   identifier,
   declaration,
@@ -22,8 +22,8 @@ module Language.K3.Parser (
   parseLiteral,
   parseExpression,
   parseDeclaration,
-  parseSimpleK3,
-  parseK3,
+  {- parseSimpleK3, -}
+  parseK3Ocaml,
   runK3Parser,
   ensureUIDs
 ) where
@@ -330,12 +330,14 @@ parseDeclaration :: String -> Maybe (K3 Declaration)
 parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
   where mkRole l = Just $ DC.role defaultRoleName l
 
+{-
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
+-}
 
 -- This is the main entry point to the module
-parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includePaths s = do
+parseK3Ocaml :: [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3Ocaml includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath 
                    else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
@@ -349,7 +351,7 @@ parseK3 includePaths s = do
           | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser program
     programError = Left "Invalid program, expected top-level role."
 
 
@@ -365,7 +367,7 @@ program = DSpan <-> (rule >>= selfContainedProgram)
         mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
-roleBody n = rule >>= postProcessRole n
+roleBody n = rule {- >>= postProcessRole n -}
   where rule = some declaration >>= return . concat
 
 {- Declarations -}
@@ -373,7 +375,7 @@ declaration :: K3Parser [K3 Declaration]
 declaration = (//) attachComment <$> comment <*> 
               singleDecls
 
-  where singleDecls  = (:[]) <$> (DUID # choice [dForeign, dGlobal, dTrigger])
+  where singleDecls  = (:[]) <$> (DUID # choice [{- dForeign, -}dGlobal, dTrigger]) -- TODO
 
         attachComment [] _      = []
         attachComment (h:t) cmt = (h @+ DSyntax cmt):t
@@ -381,7 +383,7 @@ declaration = (//) attachComment <$> comment <*>
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
-        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
+        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt) -- unsure
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -476,8 +478,7 @@ typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
-typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*>
-                  option Nothing (Just <$ symbol "<=" <*> typeExpr) 
+typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*> pure Nothing
     
 
 {- Parenthesized version of qualified types.
@@ -520,7 +521,7 @@ tQNested :: (K3 Type -> K3 Type) -> String -> TypeParser
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
 
 tOption :: TypeParser
-tOption = typeExprError "option" $ tQNested TC.option "option"
+tOption = typeExprError "option" $ tQNested TC.option "maybe"
 
 tIndirection :: TypeParser
 tIndirection = typeExprError "indirection" $ tQNested TC.indirection "ind"
@@ -1112,8 +1113,9 @@ trackDefault n = modifyEnvironment_ $ updateState
 
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
-postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
-postProcessRole n (dl, frame) = 
+{-
+postProcessRole :: Identifier -> [K3 Declaration] -> K3Parser [K3 Declaration]
+postProcessRole n dl  = 
   modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints frame
   
   where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
@@ -1146,6 +1148,7 @@ postProcessRole n (dl, frame) =
         qualifyError frame' failed = "Frame: " ++ show frame' ++ "\nFailed: " ++ show failed
         
         prefix' sep x z = if x == "" then z else x ++ sep ++ z
+-}
         
 
 -- | Adds UIDs to nodes that do not already have one. 
