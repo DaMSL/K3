@@ -4,14 +4,18 @@ import System.IO
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-import Language.K3.Parser
+import Language.K3.Parser ( parseK3 )
+import Language.K3.Parser.K3Ocaml ( parseK3Ocaml )
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
 {- Defaults -}
-defaultLanguage :: String
-defaultLanguage = "haskell"
+defaultOutLanguage :: String
+defaultOutLanguage = "haskell"
+
+defaultInLanguage :: String
+defaultInLanguage = "k3"
 
 defaultProgramName :: String
 defaultProgramName = "A"
@@ -31,6 +35,11 @@ parseK3Input :: [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
 parseK3Input searchPaths path = do
     h <- openFileOrStdIn path
     parseK3 searchPaths =<< hGetContents h
+
+parseK3OcamlInput :: [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
+parseK3OcamlInput searchPaths path = do
+    h <- openFileOrStdIn path
+    parseK3Ocaml searchPaths =<< hGetContents h
 
 prettySysEnv :: SystemEnvironment -> [String]
 prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
