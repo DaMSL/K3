@@ -496,7 +496,7 @@ typeQualifier = typeError "qualifier" $ keyword "ref" >> return TMutable
 tTerm :: TypeParser
 tTerm = TSpan <-> (//) attachComment <$> comment 
               <*> choice [ tPrimitive, tOption, tIndirection,
-                           tTupleOrNested, tRecord, tCollection,
+                           tTupleOrNested, tCollection, -- no records
                            tBuiltIn, tDeclared ]
   where attachComment t cmt = t @+ (TSyntax cmt)
 
@@ -537,16 +537,36 @@ tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), 
         nestErr          = typeExprError "nested"
         tupErr           = typeExprError "tuple"
 
-tRecord :: TypeParser
-tRecord = typeExprError "record" $ ( TUID # ) $
-            TC.record <$> (braces . commaSep) idQType
+-- Records don't exist in k3o. We make them out of tuples
+tCollectionRecord :: TypeParser
+tCollectionRecord = typeExprError "record" $ ( TUID # ) $
+            TC.record <$> addIds <$> commaSep1 qualifiedTypeExpr
+            -- We add ids to to types to create valid records for the collections
+
+-- Add ids to types or any other list
+addIds :: [a] -> [(Identifier, a)]
+addIds ts = snd $ foldr (\t (last, acc) -> 
+              (last - 1, (to_str last, t):acc) 
+            )
+            (length ts, [])
+            ts
+  where to_str i = "__" ++ show i 
 
 tCollection :: TypeParser
-tCollection = cErr $ TUID #
-                 mkCollectionType <$> (keyword "collection" *> tRecord)
-                                  <*> (option [] (symbol "@" *> tAnnotations))
-  where mkCollectionType t a = foldl (@+) (TC.collection t) a
-        cErr = typeExprError "collection"
+tCollection = typeExprError "collection" $ ( TUID # ) $
+                mkCollectionType <$> tCollectionElement
+  where mkCollectionType (t, a) = (TC.collection t) @+ a
+
+tCollectionElement :: K3Parser(K3 Type, Annotation Type)
+tCollectionElement = typeExprError "collection-element" $ 
+                  (try bag <|> try set <|> list)
+                  
+  where set = braces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "Set")
+        bag = pipeBraces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "MultiSet")
+        list = brackets $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "List")
+
+-- Like braces, but for bags in k3o
+pipeBraces p = between (symbol "{|") (symbol "|}") p
 
 tBuiltIn :: TypeParser
 tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
@@ -672,7 +692,7 @@ eRecord = exprError "record" $ EC.record <$> braces idQExprList
 eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
-        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
+        typedEmpty = EC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
 
 eLambda :: ExpressionParser
 eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
@@ -907,7 +927,7 @@ lRecord = litError "record" $ LC.record <$> braces idQLitList
 lEmpty :: LiteralParser
 lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
   where mkEmpty l a = foldl (@+) l a 
-        typedEmpty = LC.empty <$> (keyword "empty" *> tRecord) 
+        typedEmpty = LC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
