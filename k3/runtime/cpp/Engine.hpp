@@ -283,22 +283,91 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);      
     }
 
-    bool  hasRead() {}
-    bool  hasWrite() {}
-    Value doRead() {}
-    void  doWrite(Value v) {}
+    bool hasRead(Identifier eid) {
+        if (externalEndpointId(eid)) {
+            return endpoints->getExternalEndpoint(eid)->hasRead();
+        } else {
+            return endpoints->getInternalEndpoint(eid)->hasRead();
+        }
+    }
 
+    Value doReadExternal(Identifier eid) {
+        return endpoints->getExternalEndpoint(eid)->doRead();
+    }
 
-    bool  hasReadInternal() {}
-    bool  hasWriteInternal() {}
-    Value doReadInternal() {}
-    void  doWriteInternal(Value v) {}
+    Message<Value> doReadInternal() {
+        return endpoints->getInternalEndpoint(eid)->doRead();
+    }
+
+    bool hasWrite(Identifier eid) {
+        if (externalEndpointId(eid)) {
+            return endpoints->getExternalEndpoint(eid)->hasWrite();
+        } else {
+            return endpoints->getInternalEndpoint(eid)->hasWrite();
+        }
+    }
+
+    void doWriteExternal(Identifier eid, Value v) {
+        return endpoints->getExternalEndpoint(eid)->doWrite(v);
+    }
+
+    void doWriteInternal(Identifier eid, Message<Value> v) {
+        return endpoints->getInternalEndpoint(eid)->doWrite(v);
+    }
 
     //-----------------------
     // Engine execution loop
 
-    void processMessage() {}
-    void runMessages() {}
+    MPStatus processMessage(MessageProcessor<Message<Value>> mp) {
+
+        // Get a message from the engine queues.
+        shared_ptr<Message<Value>> next_message = queues->dequeue();
+
+        if (next_message) {
+
+            // If there was a message, return the result of processing that message.
+            return mp.process(*next_message);
+        } else {
+
+            // Otherwise return a Done, indicating no messages in the queues.
+            return LoopStatus::Done;
+        }
+    }
+    }
+
+    // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
+    // refactored a bit.
+    void runMessages(MessageProcessor<Message<Value>> mp, MPStatus st) {
+        MPStatus next_status;
+        switch (st) {
+
+            // If we are not in error, process the next message.
+            case LoopStatus::Continue:
+                next_status = processMessage(mp);
+                break;
+
+            // If we were in error, exit out with error.
+            case LoopStatus::Error:
+                return;
+
+            // If there are no messages on the queues,
+            //  - If the terminate flag has been set, exit out normally.
+            //  - Otherwise, wait for a message and continue.
+            case LoopStatus::Done:
+
+                if (ctrl->terminate()) {
+                    return;
+                }
+
+                // FIXME: Timeout for waiting on messages?
+                ctrl->waitForMessage([] () { return true; });
+                next_status = LoopStatus::Continue;
+                break;
+        }
+
+        // Recurse on the next message.
+        runMessages(mp, next_status);
+    }
 
     void runEngine() {}
     void forkEngine() {}
@@ -484,14 +553,6 @@ namespace K3 {
         ep->subscribers()->notifyEvent(nt);
       }
     }
-
-    // TODO: needed? Aren't these pushed down into the IOHandle?
-    // TODO: these methods need to couple the handle with the endpoint buffer and its bindings.
-    void genericHasRead() {}
-    void genericDoRead() {}
-
-    void genericHasWrite() {}
-    void genericDoWrite() {}
 
     // TODO
     void startListener() {
