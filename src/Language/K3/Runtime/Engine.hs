@@ -69,7 +69,6 @@ module Language.K3.Runtime.Engine (
   , showMessageQueues
   , showEngine
 
-  , generateCollectionFilename
 #ifdef TEST
   , LoopStatus(..)
 
@@ -1417,14 +1416,3 @@ modifyMVE v f = do
     case result of
         Left e -> left e
         Right (_, x) -> return x
-
--- Persistent collection helpers
--- Put these into __DATA/peerID/collection_name
-generateCollectionFilename :: EngineM b Identifier
-generateCollectionFilename = do
-    engine <- ask
-    let counter = collectionCount engine
-    number <- liftIO $ readMVar counter
-    let filename = "collection_" ++ (show number)
-    liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
-    return filename

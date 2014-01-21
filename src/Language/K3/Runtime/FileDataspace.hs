@@ -5,6 +5,8 @@
 module Language.K3.Runtime.FileDataspace (
   FileDataspace(..),
   getFile, -- Should this really be exported?  Used to pack dataspace
+  initDataDir,
+  generateCollectionFilename,
   emptyFile,
   initialFile,
   copyFile,
@@ -20,13 +22,59 @@ module Language.K3.Runtime.FileDataspace (
   splitFile
 ) where
 
+import Control.Concurrent.MVar
 import Control.Monad.Reader
 
+import qualified System.IO as IO
+import qualified System.Directory as DIR
+import qualified System.FilePath as FP
+
+import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
+
+import Debug.Trace
 
 newtype FileDataspace v = FileDataspace String
 getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
+
+rootDataPath :: IO.FilePath
+rootDataPath = "__DATA"
+
+engineDataPath :: Engine a -> IO.FilePath
+engineDataPath engine =
+  FP.joinPath [ rootDataPath, validAddr ]
+  where
+    rawAddr = show $ address $ config engine
+    noColonAddr = map ( \ch -> if ch == ':' then '_' else ch ) rawAddr
+    validAddr = FP.makeValid noColonAddr
+
+createDataDir :: IO.FilePath -> EngineM b ()
+createDataDir path = do
+  pathExists <- liftIO $ DIR.doesDirectoryExist path
+  if pathExists then do
+    isDir <- liftIO $ DIR.doesDirectoryExist path
+    unless isDir $ throwEngineError $ EngineError $ path ++ " exists but is not a directory, so it cannot be used to store external collections."
+  else
+    trace ("Creating directory " ++ path) $ liftIO $ DIR.createDirectory path
+
+initDataDir :: EngineM b ()
+initDataDir = do
+  createDataDir rootDataPath
+  engine <- ask
+  createDataDir $ engineDataPath engine
+
+-- Put these into __DATA/peerID/collection_name
+generateCollectionFilename :: EngineM b Identifier
+generateCollectionFilename = do
+    engine <- ask
+    -- TODO move creating the data dir into atInit
+    initDataDir
+    let counter = collectionCount engine
+    number <- liftIO $ readMVar counter
+    let filename = "collection_" ++ (show number)
+    liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
+    return $ FP.joinPath [engineDataPath engine, filename]
 
 emptyFile :: () -> EngineM a (FileDataspace a)
 emptyFile _ = do
@@ -73,9 +121,8 @@ peekFile liftM (FileDataspace file_id) = do
     case can_read of
       Nothing     -> return Nothing
       Just False  -> return Nothing
-      Just True   -> do
-        opt_read <- liftM $ doRead file_id
-        return opt_read
+      Just True   ->
+        liftM $ doRead file_id
   liftM $ close file_id
   return result
 
@@ -120,7 +167,7 @@ mapFile liftM function file_ds@(FileDataspace file_id) = do
   where
     --The typechecker didn't think the b here and the b in mapFile
     --were the same b, so it didn't typecheck.  Letting it infer
-    --everything lets it figure it out
+    --everything lets the typechecker figure it out
     --inner_func :: [Char] -> () -> b -> EngineM b ()
     inner_func new_id _ v = do
       new_val <- function v
@@ -134,7 +181,7 @@ mapFile_ liftM function file_id =
     inner_func _ v = do
       function v
       return ()
---filterFile :: (b -> EngineM b Bool) -> [Char] -> EngineM b [Char]
+
 filterFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m Bool) -> FileDataspace b -> m (FileDataspace b)
 filterFile liftM predicate old_id = do
   new_id <- liftM generateCollectionFilename
@@ -157,11 +204,11 @@ insertFile liftM file_ds@(FileDataspace file_id) v = do
   -- can_write <- hasWrite ext_id -- TODO handle errors here
   liftM $ doWrite file_id v
   liftM $ close file_id
-  return $ file_ds
+  return file_ds
 
 deleteFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> FileDataspace b -> m (FileDataspace b)
-deleteFile liftM v file_ds@(FileDataspace file_id) = do -- broken because reading / writing from the same file
-  deleted_id <- liftM $ generateCollectionFilename
+deleteFile liftM v file_ds@(FileDataspace file_id) = do
+  deleted_id <- liftM generateCollectionFilename
   liftM $ openCollectionFile deleted_id "w"
   foldFile liftM (\truth val -> do
     if truth == False && val == v
@@ -171,7 +218,8 @@ deleteFile liftM v file_ds@(FileDataspace file_id) = do -- broken because readin
         return truth
     ) False file_ds
   liftM $ close deleted_id
-  return $ FileDataspace deleted_id
+  liftM $ liftIO $ DIR.renameFile deleted_id file_id -- What's with the double lift?
+  return file_ds
 
 updateFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> b -> FileDataspace b -> m (FileDataspace b)
 updateFile liftM v v' file_ds@(FileDataspace file_id) = do
@@ -186,15 +234,14 @@ updateFile liftM v v' file_ds@(FileDataspace file_id) = do
           liftM $ doWrite new_id val --TODO error check
           return truth
       ) False file_ds
-  if did_update
-    then return ()
-    else liftM $ doWrite new_id v'
+  unless did_update $ liftM $ doWrite new_id v'
   liftM $ close new_id
-  return $ FileDataspace new_id
+  liftM $ liftIO $ DIR.renameFile new_id file_id -- Double lift?
+  return file_ds
 
 combineFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (FileDataspace b) -> (FileDataspace b) ->  m (FileDataspace b)
 combineFile liftM self values = do
-  (FileDataspace new_id) <- liftM $ copyFile self
+  (FileDataspace new_id) <- liftM $ Language.K3.Runtime.FileDataspace.copyFile self
   liftM $ openCollectionFile new_id "a"
   foldFile liftM (\_ v -> do
       liftM $ doWrite new_id v

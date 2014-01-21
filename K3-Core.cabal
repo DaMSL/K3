@@ -21,6 +21,7 @@ library
         bytestring,
         containers,
         deepseq,
+        directory,
         either,
         errors,
         filemanip,
