@@ -32,8 +32,6 @@ import qualified System.FilePath as FP
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 
-import Debug.Trace
-
 newtype FileDataspace v = FileDataspace String
 getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
@@ -51,12 +49,13 @@ engineDataPath engine =
 
 createDataDir :: IO.FilePath -> EngineM b ()
 createDataDir path = do
-  pathExists <- liftIO $ DIR.doesDirectoryExist path
-  if pathExists then do
-    isDir <- liftIO $ DIR.doesDirectoryExist path
-    unless isDir $ throwEngineError $ EngineError $ path ++ " exists but is not a directory, so it cannot be used to store external collections."
-  else
-    trace ("Creating directory " ++ path) $ liftIO $ DIR.createDirectory path
+  dirExists <- liftIO $ DIR.doesDirectoryExist path
+  unless dirExists $ do
+    isFile <- liftIO $ DIR.doesFileExist path
+    if isFile then
+      throwEngineError $ EngineError $ path ++ " exists but is not a directory, so it cannot be used to store external collections."
+    else
+      liftIO $ DIR.createDirectory path
 
 initDataDir :: EngineM b ()
 initDataDir = do

@@ -44,7 +44,6 @@ module Language.K3.Interpreter (
 
 -- #ifdef TEST
   , throwE
-  , emptyStaticEnv
 -- #endif
 ) where
 
