@@ -526,7 +526,38 @@ namespace K3
     shared_ptr<EndpointBuffer<Value> > buffer() { return buffer_; }
     shared_ptr<EndpointBindings<EventValue> > subscribers() { return subscribers_; }
 
-    // TODO: hasRead, doRead, hasWrite, doWrite API wrappers for the handle.
+    // An endpoint can be read if the handle can be read and the buffer isn't empty.
+    bool hasRead() {
+        return handle_->hasRead() && !buffer_->empty();
+    }
+
+    // An endpoint can be written to if the handle can be written to and the buffer isn't full.
+    bool hasWrite() {
+        return handle_->hasWrite() && !buffer_->full();
+    }
+
+    shared_ptr<Value> doRead() {
+        // Refresh the buffer, getting back a read value, and an endpoint notification.
+        tuple<shared_ptr<Value>, EndpointNotification> readResult = buffer_->refresh();
+
+        // Notify those subscribers who need to be notified of the event.
+        subscribers_->notifyEvent(get<1>(readResult));
+
+        // Return the read result.
+        return get<0>(readResult);
+    }
+
+    void doWrite(Value& v) {
+        shared_ptr<Value> result = buffer_->append(v);
+
+        if (result) {
+            // TODO: Append failed, flush?
+        } else {
+            // TODO: Success, now what?
+        }
+
+        return;
+    }
 
   protected:
     shared_ptr<IOHandle<Value> > handle_;
