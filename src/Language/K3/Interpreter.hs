@@ -139,7 +139,6 @@ type EnvOnError = (InterpretationError, IEnvironment Value)
 
 {- Collections and annotations -}
 
--- Add a parameter v instead of Value
 data CollectionDataspace v = InMemoryDS [v] | ExternalDS (FileDataspace v)
 
 -- | Collection implementation.
@@ -2014,7 +2013,9 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     
     -- TODO Need to pattern match on kind of dataspace
     packCollectionDataspace d (InMemoryDS v) =
-      (\a b -> a . b) <$> (rt $ showString "DS=") <*> brackets (packValue d) v
+      (\a b -> a . b) <$> (rt $ showString "InMemoryDS=") <*> brackets (packValue d) v
+    packCollectionDataspace d (ExternalDS filename) =
+      (\a b -> a . b) <$> (rt $ showString "ExternalDS=") <*> (rt $ showString $ getFile filename)
     -- for now, external ds are shared file path
     -- Need to preserve copy semantics for external dataspaces
     
@@ -2115,12 +2116,19 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
           rt $ CollectionNamespace cns' ans'))
 
     readCollectionDataspace :: ReadPrec (IO (CollectionDataspace Value))
-    readCollectionDataspace = parens $ do
-        void $ readExpectedName "DS"
+    readCollectionDataspace =
+      (parens $ do
+        void $ readExpectedName "InMemoryDS"
         v <- readBrackets unpackValue
-        lst <- sequence v
-        return $ InMemoryDS lst
+        return $ InMemoryDS <$> sequence v
       )
+      +++
+      (parens $ do
+        void $ readExpectedName "ExternalDS"
+        String filename <- lexP
+        return $ rt $ ExternalDS $ FileDataspace filename
+      )
+      
 
     readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
     readDoublyNamedValues = parens $ do
