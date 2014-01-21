@@ -13,6 +13,7 @@ import Test.HUnit hiding (Test)
 import Test.Framework.Providers.API
 import Test.Framework.Providers.HUnit
 
+import Language.K3.Runtime.Common
 import Language.K3.Interpreter
 import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.Engine
@@ -199,7 +200,7 @@ containsDS ds val =
   foldDS (\fnd cur -> return $ fnd || cur == val) False ds
 
 callTest testFunc = do
-  engine <- simulationEngine [] (syntaxValueWD emptyStaticEnv)
+  engine <- simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
   interpResult <- runInterpretation engine emptyState (testFunc ())
   success <- either (return . Just . show) (either (return . Just . show) (\good -> if good then return Nothing else return $ Just "Dataspace test failed") . getResultVal) interpResult
   case success of
