@@ -1380,14 +1380,14 @@ runNetwork systemEnv prog =
       Left err   -> return $ [Left err]
       Right sEnv -> do
         trigs         <- return $ getTriggerIds prog
-        engines       <- mapM (flip (networkEngine trigs) $ syntaxValueWD sEnv) nodeBootstraps
+        engines       <- mapM (flip (parNetworkEngine trigs) $ syntaxValueWD sEnv) nodeBootstraps
         namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
         engineThreads <- mapM fork namedEngines
         return engineThreads
 
   where
     buildStaticEnv trigs = do
-      preEngine <- simulationEngine trigs systemEnv $ syntaxValueWD emptyStaticEnv
+      preEngine <- parSimulationEngine trigs systemEnv $ syntaxValueWD emptyStaticEnv
       flip runEngineM preEngine $ staticEnvironment prog
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
