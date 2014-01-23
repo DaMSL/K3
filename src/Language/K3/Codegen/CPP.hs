@@ -442,18 +442,35 @@ templateLine :: [Doc] -> Doc
 templateLine [] = empty
 templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typename" <+> td | td <- ts])
 
+-- | An Annotation Combination Composite should contain the following:
+--  - Inlined implementations for all provided methods.
+--  - Declarations for all provided data members.
+--  - Declaration for the dataspace of the collection.
+--  - Implementations for at least the following constructors:
+--      - Default constructor, which creates an empty collection.
+--      - Dataspace constructor, which creates a collection from an empty dataspace (e.g. vector).
+--          - Additionally a move dataspace constructor which uses a temporary dataspace?
+--      - Copy constructor.
+--  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
 composite cName ans = do
-    members <- vsep <$> mapM annMemDecl positives
+    members <-  mapM annMemDecl positives
     serializationDefn <- do
         -- Filter all data members from positives.
         -- Generate serialize function.
         -- Add all members to archive.
         return empty
+
+    constructors' <- sequence constructors
+
+    dataspaceDecl' <- dataspaceDecl
+
+    let compositeDecls = constructors' ++ members ++ [dataspaceDecl', serializationDefn]
+
     return $ templateLine [text "CONTENT"]
         PL.<$$> text "class" <+> text cName <+> hangBrace (
-                text "public:" PL.<$$> indent 4 (members PL.<//> serializationDefn)
-            ) <> semi
+            text "public:" PL.<$$> indent 4 (vsep compositeDecls)
+        ) <> semi
   where
     onlyPositives :: AnnMemDecl -> Bool
     onlyPositives (Lifted Provides _ _ _ _) = True
@@ -462,6 +479,23 @@ composite cName ans = do
     onlyPositives _ = False
 
     positives = filter onlyPositives (concat . snd $ unzip ans)
+
+    dataspaceDecl = do
+        dsType <- dataspaceType (text "CONTENT")
+        return $ dsType <+> text "__data" <> semi
+
+    defaultConstructor = return $ text cName <> parens empty <+> braces empty
+    dataspaceConstructor = do
+        dsType <- dataspaceType (text "CONTENT")
+        return $ text cName <> parens ( dsType <+> text "v")
+            <> colon <+> text "__data" <> parens (text "v") <+> braces empty
+    copyConstructor = return $ text cName <> parens (text $ "const " ++ cName ++ "& c") <> colon
+        <+> text "__data" <> parens (text "c.__data") <+> braces empty
+
+    constructors = [defaultConstructor, dataspaceConstructor, copyConstructor]
+
+dataspaceType :: CPPGenR -> CPPGenM CPPGenR
+dataspaceType eType = return $ text "vector" <> angles eType
 
 annMemDecl :: AnnMemDecl -> CPPGenM CPPGenR
 annMemDecl (Lifted _ i t me _)  = do
