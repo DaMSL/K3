@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | K3 Parser.
-module Language.K3.Parser (
+module Language.K3.Parser.K3Ocaml (
   K3Parser,
   identifier,
   declaration,
@@ -22,8 +22,8 @@ module Language.K3.Parser (
   parseLiteral,
   parseExpression,
   parseDeclaration,
-  parseSimpleK3,
-  parseK3,
+  {- parseSimpleK3, -}
+  parseK3Ocaml,
   runK3Parser,
   ensureUIDs
 ) where
@@ -234,7 +234,7 @@ nextUID = withUID UID
 k3Operators :: [[Char]]
 k3Operators = [
     "+", "-", "*", "/",
-    "==", "!=", "<>", "<", ">", ">=", "<=", ";"
+    "==", "!=", "<", ">", ">=", "<=", ";"
   ]
 
 k3Keywords :: [[Char]]
@@ -310,6 +310,7 @@ stringifyError = either (Left . show) Right
 emptyParserState :: ParserState
 emptyParserState = (0,[])
 
+-- Begin a run of the parser using the K3Parser monad
 runK3Parser :: K3Parser a -> String -> Either P.ParseError a
 runK3Parser p s = P.runParser p emptyParserState "" s
 
@@ -329,12 +330,16 @@ parseDeclaration :: String -> Maybe (K3 Declaration)
 parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
   where mkRole l = Just $ DC.role defaultRoleName l
 
+{-
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
+-}
 
-parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includePaths s = do
-  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+-- This is the main entry point to the module
+parseK3Ocaml :: [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3Ocaml includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath 
+                   else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   fileContents  <- mapM readFile subFiles >>= return . (++ [s])
   return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
@@ -346,46 +351,39 @@ parseK3 includePaths s = do
           | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser program
     programError = Left "Invalid program, expected top-level role."
 
 
 {- K3 grammar parsers -}
 
--- TODO: inline testing
-program :: Bool -> DeclParser
-program asInclude = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram <$> endBy1 (roleBody "") eof
+program :: DeclParser
+program = DSpan <-> (rule >>= selfContainedProgram)
+  where rule = mkProgram <$> endBy (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
         
-        selfContainedProgram d = if asInclude then return d else (mkEntryPoints d >>= mkBuiltins)
+        selfContainedProgram d = mkEntryPoints d >>= mkBuiltins
         mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Identifier -> K3Parser [K3 Declaration]
-roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
+roleBody n = rule {- >>= postProcessRole n -}
   where rule = some declaration >>= return . concat
-        pushBindings = modifyEnvironment_ addFrame
-        popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
-        
 
 {- Declarations -}
 declaration :: K3Parser [K3 Declaration]
 declaration = (//) attachComment <$> comment <*> 
-              choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
+              singleDecls
 
-  where singleDecls  = (:[]) <$> (DUID # choice [dGlobal, dTrigger, dRole, dAnnotation])
-        multiDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
-        sugaredDecls = choice [dSelector, dFeed]
-        ignores      = pInclude >> return ()
+  where singleDecls  = (:[]) <$> (DUID # choice [{- dForeign, -}dGlobal, dTrigger]) -- TODO
 
         attachComment [] _      = []
         attachComment (h:t) cmt = (h @+ DSyntax cmt):t
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
-  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateExpr)
-        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
+  where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
+        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt) -- unsure
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -476,19 +474,11 @@ typeExpr = typeError "expression" $ TUID # tTermOrFun
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
 
-polymorphicTypeExpr :: TypeParser
-polymorphicTypeExpr =
-  typeExprError "polymorphic" $
-        (TUID # TC.forAll <$ keyword "forall" <*> typeVarDecls <*
-            symbol "." <*> qualifiedTypeExpr)
-    <|> qualifiedTypeExpr
-
 typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
-typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*>
-                  option Nothing (Just <$ symbol "<=" <*> typeExpr) 
+typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*> pure Nothing
     
 
 {- Parenthesized version of qualified types.
@@ -498,15 +488,15 @@ qualifiedTypeExpr = typeExprError "qualified" $
          , flip (@+) <$> typeQualifier <*> typeExpr]
 -}
 
+-- Look for ref to indicate mutability
 typeQualifier :: K3Parser (Annotation Type)
-typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmutable,
-                                                keyword "mut"   >> return TMutable]
+typeQualifier = typeError "qualifier" $ keyword "ref" >> return TMutable 
 
 {- Type terms -}
 tTerm :: TypeParser
 tTerm = TSpan <-> (//) attachComment <$> comment 
               <*> choice [ tPrimitive, tOption, tIndirection,
-                           tTupleOrNested, tRecord, tCollection,
+                           tTupleOrNested, tCollection, -- no records
                            tBuiltIn, tDeclared ]
   where attachComment t cmt = t @+ (TSyntax cmt)
 
@@ -520,17 +510,18 @@ tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" 
 tPrimitive :: TypeParser
 tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
                                               , ("int",     TC.int)
-                                              , ("real",    TC.real)
+                                              , ("float",   TC.real)
                                               , ("string",  TC.string)
                                               , ("address", TC.address) ]
   where tConst (x, f) = keyword x >> return f
         tPrimError    = typeExprError "primitive"
 
+
 tQNested :: (K3 Type -> K3 Type) -> String -> TypeParser
 tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
 
 tOption :: TypeParser
-tOption = typeExprError "option" $ tQNested TC.option "option"
+tOption = typeExprError "option" $ tQNested TC.option "maybe"
 
 tIndirection :: TypeParser
 tIndirection = typeExprError "indirection" $ tQNested TC.indirection "ind"
@@ -546,16 +537,36 @@ tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), 
         nestErr          = typeExprError "nested"
         tupErr           = typeExprError "tuple"
 
-tRecord :: TypeParser
-tRecord = typeExprError "record" $ ( TUID # ) $
-            TC.record <$> (braces . commaSep) idQType
+-- Records don't exist in k3o. We make them out of tuples
+tCollectionRecord :: TypeParser
+tCollectionRecord = typeExprError "record" $ ( TUID # ) $
+            TC.record <$> addIds <$> commaSep1 qualifiedTypeExpr
+            -- We add ids to to types to create valid records for the collections
+
+-- Add ids to types or any other list
+addIds :: [a] -> [(Identifier, a)]
+addIds ts = snd $ foldr (\t (last, acc) -> 
+              (last - 1, (to_str last, t):acc) 
+            )
+            (length ts, [])
+            ts
+  where to_str i = "__" ++ show i 
 
 tCollection :: TypeParser
-tCollection = cErr $ TUID #
-                 mkCollectionType <$> (keyword "collection" *> tRecord)
-                                  <*> (option [] (symbol "@" *> tAnnotations))
-  where mkCollectionType t a = foldl (@+) (TC.collection t) a
-        cErr = typeExprError "collection"
+tCollection = typeExprError "collection" $ ( TUID # ) $
+                mkCollectionType <$> tCollectionElement
+  where mkCollectionType (t, a) = (TC.collection t) @+ a
+
+tCollectionElement :: K3Parser(K3 Type, Annotation Type)
+tCollectionElement = typeExprError "collection-element" $ 
+                  (try bag <|> try set <|> list)
+                  
+  where set = braces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "Set")
+        bag = pipeBraces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "MultiSet")
+        list = brackets $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "List")
+
+-- Like braces, but for bags in k3o
+pipeBraces p = between (symbol "{|") (symbol "|}") p
 
 tBuiltIn :: TypeParser
 tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
@@ -681,7 +692,7 @@ eRecord = exprError "record" $ EC.record <$> braces idQExprList
 eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
   where mkEmpty e a = foldl (@+) e a 
-        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
+        typedEmpty = EC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
 
 eLambda :: ExpressionParser
 eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
@@ -916,7 +927,7 @@ lRecord = litError "record" $ LC.record <$> braces idQLitList
 lEmpty :: LiteralParser
 lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
   where mkEmpty l a = foldl (@+) l a 
-        typedEmpty = LC.empty <$> (keyword "empty" *> tRecord) 
+        typedEmpty = LC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
@@ -1122,8 +1133,9 @@ trackDefault n = modifyEnvironment_ $ updateState
 
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
-postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
-postProcessRole n (dl, frame) = 
+{-
+postProcessRole :: Identifier -> [K3 Declaration] -> K3Parser [K3 Declaration]
+postProcessRole n dl  = 
   modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints frame
   
   where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
@@ -1156,6 +1168,7 @@ postProcessRole n (dl, frame) =
         qualifyError frame' failed = "Frame: " ++ show frame' ++ "\nFailed: " ++ show failed
         
         prefix' sep x z = if x == "" then z else x ++ sep ++ z
+-}
         
 
 -- | Adds UIDs to nodes that do not already have one. 
