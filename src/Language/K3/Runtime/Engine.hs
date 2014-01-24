@@ -221,8 +221,20 @@ data EngineControl = EngineControl {
     --  worker is enqueued, the worker's SV will be populated, waking the worker.
     messageReadyMap :: MVar (H.HashMap ThreadId (MSampleVar ())),
 
-    -- TODO: gracefully terminate after all workers have completed
-    workersDoneV :: MVar Bool
+    -- | Counter for the number of active (alive but not sleeping) workers. 
+    -- Workers increment this value when spawned and woken from sleep 
+    -- Workers decrement this value just before sleep.
+    awakeWorkersV :: MVar Int,
+
+    -- | Counter for the number of alive workers.
+    -- Workers increment this value only when spawned
+    -- Workers decrement this value just before they complete
+    liveWorkersV :: MVar Int,   
+ 
+    -- | When all message queues are empty and all workers are waiting for a message
+    -- the local engine is out of work. Workers will die once engine termination conditions
+    -- are met AND this value is True.
+    outOfWorkV :: MVar Bool
 }
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
@@ -478,8 +490,8 @@ peerQPeerW addrL idL = do
   where qName addr = show addr
 
 -- Per Trigger Queues and Workers
-triggerQtriggerW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
-triggerQtriggerW addrL idL = do
+triggerQTriggerW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
+triggerQTriggerW addrL idL = do
   -- setup queue-per-trigger hashmap
   allQs   <- return $ map qName [(a,n) | a <- addrL, n <- idL]
   qMap    <- newMVar $ H.fromList $ map (\q -> (q, []) ) allQs
@@ -494,7 +506,7 @@ triggerQtriggerW addrL idL = do
 
 {- EngineControl Constructors -}
 defaultControl :: IO EngineControl 
-defaultControl = EngineControl <$> newMVar False <*> newMVar 0 <*> newEmptyMVar <*> newEmptyMVar <*> newMVar False
+defaultControl = EngineControl <$> newMVar False <*> newMVar 0 <*> newEmptyMVar <*> newEmptyMVar <*> newMVar 0 <*> newMVar 0 <*> newMVar False
 
 {- Engine constructors -}
 
@@ -624,19 +636,25 @@ deregisterNetworkListener n = do
     liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . pred
     liftIO $ modifyMVar_ (listeners engine) $ return . filter ((n /=) . fst)
 
--- TODO: properly terminate workers after all queues are empty
-terminate :: EngineM a Bool
-terminate = do
+-- Check external termination conditions (network, console termination)
+eTerminate :: EngineM a Bool
+eTerminate = do
     engine     <- ask
     terminate' <- liftIO $ readMVar (terminateV $ control engine)
     netdone    <- networkDone
-    workdone   <- workersDone
-    return $ workdone && netdone || not (waitForNetwork $ config engine) && terminate'
+    return $ netdone || not (waitForNetwork $ config engine) && terminate'
+
+-- Check workers are done AND external conditions are met
+terminate :: EngineM a Bool
+terminate = do
+  workDone <- workersDone
+  e        <- eTerminate
+  return (workDone && e)
 
 workersDone :: EngineM a Bool
 workersDone = do
   engine <- ask
-  done   <- liftIO . readMVar . workersDoneV $ control engine
+  done   <- liftIO . readMVar . outOfWorkV $ control engine
   return done
 
 networkDone :: EngineM a Bool
@@ -644,6 +662,48 @@ networkDone = do
     engine <- ask
     done   <- liftIO . readMVar . networkDoneV $ control engine
     return $ done == 0
+
+-- Return the live worker count
+numLiveWorkers :: EngineM a Int
+numLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ readMVar mv
+
+-- Decrement the live worker count
+decLiveWorkers :: EngineM a ()
+decLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . pred
+
+-- Increment the live worker count
+incLiveWorkers :: EngineM a ()
+incLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . succ
+
+-- Return the awake worker count
+numAwakeWorkers :: EngineM a Int
+numAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ readMVar mv
+
+-- Decrement the awake worker count 
+decAwakeWorkers :: EngineM a ()
+decAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . pred
+
+-- Increment the awake worker count
+incAwakeWorkers :: EngineM a ()
+incAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . succ
 
 -- Wait on the MSampleVar associated with the given worker
 waitForMessage :: ThreadId -> EngineM a ()
@@ -684,9 +744,26 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
     Error e        -> die "Error:" e (control engine)
     MessagesDone r -> terminate >>= \case
         True -> do
-            fr <- finalize mp r
-            die "Terminated:" fr (control engine)
-        _    -> liftIO myThreadId >>= waitForMessage >> runMessages mp (processMessage mp r)
+            decLiveWorkers
+            -- The last worker to terminate does engine cleanup
+            n <- numLiveWorkers
+            if n == 0 
+            then shutdownEngine r
+            else liftIO $ putStrLn "Worker Terminated"
+
+        _    -> do
+            decAwakeWorkers
+            -- Signal all workers to shutdown, if applicable:
+            s <- isShutdownTime
+            if s
+            then shutdownWorkers
+            else return ()        
+            -- Wait for incoming message signal
+            myId <- liftIO myThreadId
+            waitForMessage myId
+            -- Record wakeup and recurse:
+            incAwakeWorkers
+            runMessages mp (processMessage mp r)
   where
     debugStep = do
       q <- prettyQueues
@@ -694,12 +771,37 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
 
     die msg r cntrl = do
         logStep $ boxToString $ ["", msg] ++ prettyLines r
-        cleanupEngine
-        void $ liftIO $ tryPutMVar (waitV cntrl) ()
         logStep $ "Finished."
 
     logStep s = void $ _notice_EngineSteps $ s
-
+    
+    -- TODO: verify/fix race conditions
+    isShutdownTime :: EngineM a Bool
+    isShutdownTime = do
+      engine <- ask
+      eTerm  <- eTerminate
+      numQd  <- numQueuedMessages $ queueConfig engine
+      numAw  <- numAwakeWorkers   
+      return $ eTerm && (numAw == 0) && (numQd == 0)
+    
+    shutdownWorkers :: EngineM a ()
+    shutdownWorkers = do
+      engine <- ask
+      -- Set outOfWorkV to True
+      oow_mv <- return $ outOfWorkV $ control engine
+      liftIO $ modifyMVar_ oow_mv $ const $ return True
+      -- Wake sleeping workers (for suicide)
+      notifyWorkers
+ 
+    shutdownEngine r = do
+      engine <- ask
+      -- Finalize MP and output result
+      fr     <- finalize mp r
+      die "Last Worker Terminated:" fr (control engine)
+      -- Cleanup and signal the engine's waitV
+      cleanupEngine
+      void $ liftIO $ tryPutMVar (waitV $ control engine) ()
+     
 runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
 runEngine mp p = do
     engine <- ask
@@ -726,7 +828,9 @@ forkWorker :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> r -> E
 forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
   where 
    runWorker engine = do
-      runEngineM (runMessages mp (return . either Error Result $ status mp result)) engine
+     runEngineM incLiveWorkers engine
+     runEngineM incAwakeWorkers engine
+     runEngineM (runMessages mp (return . either Error Result $ status mp result)) engine
 
 configWorkers :: [ThreadId] -> [[QueueId]] -> EngineM a ()
 configWorkers threads qgroups = do
@@ -751,14 +855,18 @@ forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEng
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
 
+notifyWorkers :: EngineM a ()
+notifyWorkers = do
+  engine <- ask
+  mv     <- return $ messageReadyMap $ control engine
+  liftIO $ withMVar mv (\h -> (mapM_ (\sv -> writeSV sv ()) (map snd $ H.toList h)))
+
 terminateEngine :: EngineM a ()
 terminateEngine = do
     engine <- ask
     liftIO $ modifyMVar_ (terminateV $ control engine) (const $ return True)
     -- send the message ready signal to all workers
-    mv <- return $ messageReadyMap $ control engine
-    h <- liftIO $ readMVar mv
-    liftIO $ mapM_ (\sv -> writeSV sv ()) (map snd $ H.toList h)
+    notifyWorkers
 
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
