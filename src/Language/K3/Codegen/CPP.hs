@@ -204,40 +204,27 @@ cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 -- TODO: Are these all the cases that need to be handled?
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
--- TODO: This really needs to go somewhere else.
--- The correct procedure:
---  - Take the lower bound for everything except functions.
---  - For functions, take the upper bound for the argument type and lower bound for the return type,
---  put them together in a TFunction for the correct type.
+-- TODO: This isn't really C++ specific.
 canonicalType :: K3 Expression -> CPPGenM (K3 Type)
 canonicalType (tag -> EConstant (CEmpty t)) = return $ T.collection t
-canonicalType e@(tag -> ELambda _) = do
-    ETypeLB elb <- case (e @~ (\case (ETypeLB _) -> True; _ -> False)) of
-        Just x -> return x
-        Nothing -> throwE $ CPPGenE $ "Invalid Lower Bound for " ++ show e
-    ETypeUB eub <- case (e @~ (\case (ETypeUB _) -> True; _ -> False)) of
-        Just x -> return x
-        Nothing -> throwE $ CPPGenE $ "Invalid Upper Bound for " ++ show e
+canonicalType e = case lowerBoundType e of
+    Just x -> return x
+    Nothing -> throwE $ CPPGenE $ "Invalid Lower Bound for " ++ show e
 
-    aub <- case eub of
-        (tag &&& children -> (TFunction, [a, _])) -> return a
-        _ -> throwE $ CPPGenE $ "Invalid Function Type " ++ show eub
+-- | Get the lower bound type of an expression.
+lowerBoundType :: K3 Expression -> Maybe (K3 Type)
+lowerBoundType e = case e @~ (\case (ETypeLB _) -> True; _ -> False) of
+    Just (ETypeLB t) -> Just t
+    _ -> Nothing
 
-    rlb <- case elb of
-        (tag &&& children -> (TFunction, [_, r])) -> return r
-        _ -> throwE $ CPPGenE $ "Invalid Function Type " ++ show elb
-
-    return $ T.function aub rlb
-
-canonicalType e = case (e @~ (\case (ETypeLB _) -> True; _ -> False)) of
-    Just (ETypeLB t) -> return t
-    _ -> throwE $ CPPGenE $ "Unknown Lower Bound for type of " ++ show e
-
+-- | Generate a C++ declaration for a value of a given type.
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- cType tr
     cta <- cType ta
     return $ ctr <+> text i <> parens cta <> semi
+
+-- TODO: As with cType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Declaration " ++ i
     Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
