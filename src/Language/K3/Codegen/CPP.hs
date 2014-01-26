@@ -2,6 +2,11 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 
+-- | K3 -> C++ Code Generation.
+--
+-- This module provides the machinery necessary to generate C++ code from K3 programs. The resulting
+-- code can be compiled using a C++ compiler and linked against the K3 runtime library to produce a
+-- binary.
 module Language.K3.Codegen.CPP where
 
 import Control.Arrow ((&&&))
@@ -32,6 +37,24 @@ import Language.K3.Codegen.Common
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
+-- | The C++ code generation monad. Provides access to various configuration values and error
+-- reporting.
+type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
+
+-- | Run C++ code generation action using a given initial state.
+runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
+runCPPGenM s = flip runState s . runEitherT
+
+-- | Error messages thrown by C++ code generation.
+data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
+
+-- | Throw a code generation error.
+throwE :: CPPGenE -> CPPGenM a
+throwE = left
+
+-- | All generated code is produced in the form of pretty-printed blocks.
+type CPPGenR = Doc
+
 -- | State carried around during C++ code generation.
 data CPPGenS = CPPGenS {
         -- | UUID counter for generating identifiers.
@@ -61,17 +84,39 @@ data CPPGenS = CPPGenS {
         serializationMethod :: SerializationMethod
     } deriving Show
 
--- | Error messages thrown by C++ code generation.
-data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
+-- | The default code generation state.
+defaultCPPGenS :: CPPGenS
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
 
--- | The C++ code generation monad.
-type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
+-- | Generate a new unique symbol, required for temporary reification.
+genSym :: CPPGenM Identifier
+genSym = do
+    current <- uuid <$> get
+    modify (\s -> s { uuid = succ (uuid s) })
+    return $ '_':  show current
+
+-- | Add an annotation to the code generation state.
+addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
+addAnnotation i amds = modify (\s -> s { annotationMap = M.insert i amds (annotationMap s) })
+
+-- | Add a new composite specification to the code generation state.
+addComposite :: [Identifier] -> CPPGenM ()
+addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (composites s) })
+
+-- | Add a new record specification to the code generation state.
+addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
+addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
+
+-- | Add a new trigger specification to the code generation state.
+addTrigger :: Identifier -> CPPGenM ()
+addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
 
 data SerializationMethod
     = BoostSerialization
   deriving (Eq, Read, Show)
 
--- | Reification context, used to determine how an expression should reify its result.
+-- | The reification context passed to an expression determines how the result of that expression
+-- will be stored in the generated code.
 data RContext
 
     -- | Indicates that the calling context will ignore the callee's result.
@@ -94,40 +139,13 @@ instance Show RContext where
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
-type CPPGenR = Doc
-
-throwE :: CPPGenE -> CPPGenM a
-throwE = left
-
-runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
-runCPPGenM s = flip runState s . runEitherT
-
-defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
-
-genSym :: CPPGenM Identifier
-genSym = do
-    current <- uuid <$> get
-    modify (\s -> s { uuid = succ (uuid s) })
-    return $ '_':  show current
-
-addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
-addAnnotation i amds = modify (\s -> s { annotationMap = M.insert i amds (annotationMap s) })
-
-addComposite :: [Identifier] -> CPPGenM ()
-addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (composites s) })
-
-addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
-addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
-
-addTrigger :: Identifier -> CPPGenM ()
-addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
-
+-- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM CPPGenR
 unarySymbol ONot = return $ text "!"
 unarySymbol ONeg = return $ text "-"
 unarySymbol u = throwE $ CPPGenE $ "Invalid Unary Operator " ++ show u
 
+-- | Realization of binary operators.
 binarySymbol :: Operator -> CPPGenM CPPGenR
 binarySymbol OAdd = return $ text "+"
 binarySymbol OSub = return $ text "-"
@@ -143,6 +161,7 @@ binarySymbol OAnd = return $ text "&&"
 binarySymbol OOr = return $ text "||"
 binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
+-- | Realization of constants.
 constant :: Constant -> CPPGenM CPPGenR
 constant (CBool True) = return $ text "true"
 constant (CBool False) = return $ text "false"
@@ -152,6 +171,10 @@ constant (CString s) = return $ text "string" <> (parens . text $ show s)
 constant (CNone _) = return $ text "null"
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
+-- | Reaization of types.
+-- This utility is used in a number of places where the generated code makes use of an expression's
+-- type. The most prominent place is where a temporary variable must be declared to store the result
+-- of an expression, and must be of the appropriate type.
 cType :: K3 Type -> CPPGenM CPPGenR
 cType (tag -> TBool) = return $ text "bool"
 cType (tag -> TByte) = return $ text "unsigned char"
@@ -163,6 +186,8 @@ cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angle
 cType (tag &&& children -> (TTuple, [])) = return $ text "unit_t"
 cType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
+
+-- TODO: Is a call to addRecord really needed here?
 cType t@(tag -> TRecord ids) = signature t >>= \sig -> addRecord sig (zip ids (children t)) >> return (text sig)
 cType (tag -> TDeclaredVar t) = return $ text t
 
