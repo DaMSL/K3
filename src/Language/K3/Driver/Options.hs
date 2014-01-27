@@ -44,7 +44,8 @@ data CompileOptions = CompileOptions { outLanguage :: String
 data InterpretOptions
     = Batch { network :: Bool
             , sysEnv :: SystemEnvironment
-            , asExpr :: Bool }
+            , asExpr :: Bool
+            , isPar  :: Bool }
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -164,7 +165,7 @@ batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions
+        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions <*> parOptions
 
 -- | Expression-Level flag.
 elvlOptions :: Parser Bool
@@ -189,6 +190,14 @@ networkOptions = switch (
      <> long "network"
      <> value False
      <> help "Run in Network Mode"
+    )
+
+-- | Parallel mode flag.
+parOptions :: Parser Bool
+parOptions = switch (
+        long "parallel"
+     <> value False
+     <> help "Run the Parallel Engine"
     )
 
 -- | Printing options
@@ -288,8 +297,8 @@ instance Pretty Mode where
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr) =
-    ["Batch"] ++ (indent 2 $ ["Network: " ++ show net] ++ prettySysEnv env ++ ["Expression: " ++ show expr])
+  prettyLines (Batch net env expr isPar) =
+    ["Batch"] ++ (indent 3 $ ["Network: " ++ show net] ++ prettySysEnv env ++ ["Expression: " ++ show expr] ++ ["Parallel: " ++ show isPar])
   
   prettyLines v = [show v]
 

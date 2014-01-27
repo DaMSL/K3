@@ -9,7 +9,6 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
-import Language.K3.Transform.Alpha
 import Language.K3.Transform.Conflicts
 
 import Language.K3.Driver.Batch
@@ -46,7 +45,7 @@ dispatch op = do
           _         -> error $ lang ++ " compilation not supported."
 
         interpret im@(Batch {}) = runBatch op im
-        interpret Interactive    = error "Interactive Mode is not yet implemented."
+        interpret Interactive   = error "Interactive Mode is not yet implemented."
 
         printer parse PrintAST    = parse >>= either parseError (putStrLn . pretty)
         printer parse PrintSyntax = parse >>= either parseError printProgram

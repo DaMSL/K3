@@ -32,15 +32,15 @@ setDefaultRole d _ _ = d
 
 
 runBatch :: Options -> InterpretOptions -> IO ()
-runBatch progOpts interpOpts@(Batch asNetwork _ _) = do
+runBatch progOpts interpOpts@(Batch asNetwork _ _ isPar) = do
     p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
         Right q -> if not asNetwork then do
-                      status <- runProgram (sysEnv interpOpts) q
+                      status <- runProgram isPar (sysEnv interpOpts) q
                       void $ printError return status
                    else do
-                      nodeStatuses <- runNetwork (sysEnv interpOpts) q
+                      nodeStatuses <- runNetwork isPar (sysEnv interpOpts) q
                       void $ mapM_ (printError printNode) nodeStatuses
 
   where printNode (addr, engine, threadid) = do
