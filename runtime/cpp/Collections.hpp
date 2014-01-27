@@ -25,6 +25,11 @@ namespace K3 {
             template <typename T>
             Collection<T> map(std::function<T(E)>);
 
+            Collection<E> filter(std::function<bool(E)>);
+
+            template <typename Z>
+            Z fold(std::function<Z(Z, E)>, Z);
+
             template <typename K, typename Z>
             Collection<std::tuple<K, Z>> group_by(std::function<K(E)>, std::function<Z(Z, E)>, Z);
 
@@ -42,6 +47,29 @@ namespace K3 {
         }
 
         return Collection<T>(v);
+    }
+
+    template <typename E>
+    Collection<E> Collection<E>::filter(std::function<bool(E)> p) {
+        chunk<E> v;
+
+        for (auto i: __data) {
+            if (p(i)) {
+                v.push_back(i);
+            }
+        }
+
+        return Collection(v);
+    }
+
+    template <typename E>
+    template <typename Z>
+    Z Collection<E>::fold(std::function<Z(Z, E)> f, Z z) {
+        for (auto i: __data) {
+            z = f(z, i);
+        }
+
+        return z;
     }
 
     template <typename E>
