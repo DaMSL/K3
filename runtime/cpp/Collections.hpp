@@ -12,38 +12,36 @@
 #include <vector>
 
 namespace K3 {
+    template <typename E> using chunk = std::vector<E>;
+
     template <typename E>
     class Collection {
         public:
             Collection() {}
-            Collection(std::vector<E> v): __data(v) {}
+            Collection(const chunk<E>& v): __data(v) {}
             Collection(const Collection& c): __data(c.__data) {}
             Collection(Collection&& c): __data(c.__data) {}
-
-            // Virtual sub-class constructor.
-            template <typename T>
-            virtual Collection<T> create(Collection<T>) = 0;
 
             template <typename T>
             Collection<T> map(std::function<T(E)>);
 
             template <typename K, typename Z>
             Collection<std::tuple<K, Z>> group_by(std::function<K(E)>, std::function<Z(Z, E)>, Z);
-        private:
-            std::vector<E> __data;
+
+            chunk<E> __data;
     };
 
     template <typename E>
     template <typename T>
     Collection<T> Collection<E>::map(std::function<T(E)> f) {
-        std::vector<T> v;
+        chunk<T> v;
         v.reserve(__data.size());
 
         for (auto i : __data) {
             v.push_back(f(i));
         }
 
-        return create(Collection(v));
+        return Collection<T>(v);
     }
 
     template <typename E>
@@ -60,14 +58,14 @@ namespace K3 {
             }
         }
 
-        std::vector<std::tuple<K, Z>> v;
+        chunk<std::tuple<K, Z>> v;
         v.reserve(m.count());
 
         for (auto i: m) {
             v.push_back(std::make_tuple(i.first, i.second));
         }
 
-        return create(Collection(v));
+        return Collection<std::tuple<K, Z>>(v);
     }
 }
 
