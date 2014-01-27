@@ -3,6 +3,13 @@
 // This file contains definitions for the various operations performed on K3 collections, used by
 // the generated C++ code. The C++ realizations of K3 Collections will inherit from the
 // K3::Collection class, providing a suitable content type.
+//
+// TODO:
+//  - Use <algorithm> routines to perform collection transformations? In particular, investigate
+//    order-of-operations semantics.
+//  - Use container agnostic mutation operations?
+//  - Use bulk mutation operations (iterator-based insertion, for example)?
+//  - Optimize all the unnecessary copies, using std::move?
 #ifndef K3_RUNTIME_COLLECTIONS_H
 #define K3_RUNTIME_COLLECTIONS_H
 
