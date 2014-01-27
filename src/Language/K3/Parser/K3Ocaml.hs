@@ -28,6 +28,8 @@ module Language.K3.Parser.K3Ocaml (
   ensureUIDs
 ) where
 
+import qualified Debug.Trace as Trace
+
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
@@ -381,7 +383,8 @@ declaration = (//) attachComment <$> comment <*>
         attachComment (h:t) cmt = (h @+ DSyntax cmt):t
 
 dGlobal :: DeclParser
-dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
+dGlobal = (namedDecl "global" "declare" $ rule . (mkGlobal <$>)) <|>
+          (namedDecl "foreign" "foreign" $ rule . (mkGlobal <$>))
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
         mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt) -- unsure
 
@@ -561,9 +564,9 @@ tCollectionElement :: K3Parser(K3 Type, Annotation Type)
 tCollectionElement = typeExprError "collection-element" $ 
                   (try bag <|> try set <|> list)
                   
-  where set = braces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "Set")
-        bag = pipeBraces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "MultiSet")
-        list = brackets $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "List")
+  where set = braces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "Set") -- Set
+        bag = pipeBraces $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "Bag") -- Bag
+        list = brackets $ (,) <$> (TUID # tCollectionRecord) <*> (pure $ TAnnotation "List") -- List
 
 -- Like braces, but for bags in k3o
 pipeBraces p = between (symbol "{|") (symbol "|}") p
@@ -585,7 +588,7 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 {- Expressions -}
 
 expr :: ExpressionParser
-expr = parseError "expression" "k3" $ buildExpressionParser fullOpTable eApp
+expr = parseError "expression" "k3" $ buildExpressionParser nonSeqOpTable eApp
 
 nonSeqExpr :: ExpressionParser
 nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
@@ -759,29 +762,48 @@ eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
 eSelf :: ExpressionParser
 eSelf = exprError "self" $ keyword "self" >> return EC.self
 
+            -- TC.record <$> addIds <$> commaSep1 qualifiedTypeExpr
 -- TODO: treating collection literals as immutable will fail when initializing mutable collections.
 eCollection :: ExpressionParser
-eCollection = exprError "collection" $
-              mkCollection <$> braces (choice [try singleField, multiField])
-                           <*> (option [] (symbol "@" *> eAnnotations))
+eCollection = exprError "collection" $ singleField
   where 
-        singleField =     (symbol "|" *> idQType <* symbol "|")
-                      >>= mkSingletonRecord (commaSep1 expr <* symbol "|")
-        
-        multiField  = (\a b c -> ((a:b), c))
-                          <$> (symbol "|" *> idQType <* comma)
-                          <*> commaSep1 idQType
-                          <*> (symbol "|" *> commaSep1 expr <* symbol "|")
-        
-        mkCollection (tyl, el) a = EC.letIn cId (emptyC tyl a) $ EC.binop OSeq (mkInserts el) cVar
+        singleField =     choice [
+                            try $ pipeBraces $ colWithType "Bag"
+                          , braces $ colWithType "Set"
+                          , brackets $ colWithType "List"
+                          ]
 
-        mkInserts el = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) (tail el)
-        mkInsert     = EC.binop OApp (EC.project "insert" cVar)
-        emptyC tyl a = foldl (@+) ((EC.empty $ TC.record tyl) @+ EImmutable) a
-        (cId, cVar)  = ("__collection", EC.variable "__collection")
+        colWithType :: String -> K3Parser (K3 Expression)
+        colWithType annoStr = 
+          do es <- readElems
+             let es' = Trace.trace ("elements are " ++ show es ++ "\n") $ es
+                 idsTypes = idTypeOfE $ head es'
+                 recs = mkRecords idsTypes es'
+                 col = mkCollection idsTypes recs $ [EAnnotation annoStr]
+             return col
 
-        mkSingletonRecord p (n,t) =
-          p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,) . (@+ EImmutable))
+        readElems :: K3Parser ([[K3 Expression]])
+        readElems  = semiSep1 $ commaSep1 $ expr
+                            
+        idTypeOfE :: [a] -> [(Identifier, K3 Type)]
+        idTypeOfE e = addIds $ map (const (TC.top @+ TImmutable)) e
+                      -- we make all the types Top for simplicity
+        
+        mkRecords :: [(Identifier, K3 Type)] -> [[K3 Expression]] -> [K3 Expression]
+        mkRecords idsTypes es = let ids = fst . unzip $ idsTypes
+                                -- Create records out of the ids and elements
+                                in map (EC.record . zip ids . (map (@+ EImmutable))) es
+        
+        -- Make a collection given ids-types, elements, and an annotation
+        mkCollection idtyl el anno = 
+          EC.letIn cId (emptyC idtyl anno) $ EC.binop OSeq (mkInserts el) cVar
+
+        -- Create empty and add annotations
+        emptyC idtyl anno = foldl (@+) ((EC.empty $ TC.record idtyl) @+ EImmutable) anno
+        mkInserts el      = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) $ tail el
+        mkInsert          = EC.binop OApp $ EC.project "insert" cVar
+        cId               = "__collection"
+        cVar              = EC.variable cId
 
 eAnnotations :: K3Parser [Annotation Expression]
 eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
@@ -839,16 +861,16 @@ nonSeqOpTable =
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
-      map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
+      map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
       map mkUnOpK  [("not", ONot)],
-      map mkBinOpK [("and", OAnd)],
-      map mkBinOpK [("or",  OOr)]
+      map mkBinOpK [("&",   OAnd)],
+      map mkBinOpK [("|",   OOr)]
   ]
 
-fullOpTable :: OperatorTable K3Parser (K3 Expression)
-fullOpTable = nonSeqOpTable ++
-  [   map mkBinOp  [(";",   OSeq)]
-  ]
+{-fullOpTable :: OperatorTable K3Parser (K3 Expression)-}
+{-fullOpTable = nonSeqOpTable ++-}
+  {-[   map mkBinOp  [(";",   OSeq)]-}
+  {-]-}
 
 {- Terms -}
 nsPrefix :: String -> ExpressionParser
