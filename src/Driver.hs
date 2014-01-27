@@ -9,7 +9,6 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
-import Language.K3.Transform.Alpha
 import Language.K3.Transform.Conflicts
 
 import Language.K3.Driver.Batch
@@ -38,7 +37,7 @@ dispatch op = do
           "haskell" -> HaskellC.compile op cOpts
           _         -> error $ lang ++ " compilation not supported."
 
-        interpret im@(Batch _ _ _) = runBatch op im
+        interpret im@(Batch _ _ _ _) = runBatch op im
         interpret Interactive    = error "Interactive Mode is not yet implemented."
 
         printer PrintAST    = k3Program >>= either parseError (putStrLn . pretty)
