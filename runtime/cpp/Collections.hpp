@@ -17,10 +17,10 @@
 #include <map>
 #include <memory>
 #include <tuple>
-#include <vector>
+#include <list>
 
 namespace K3 {
-    template <typename E> using chunk = std::vector<E>;
+    template <typename E> using chunk = std::list<E>;
 
     template <typename E>
     class Collection {
