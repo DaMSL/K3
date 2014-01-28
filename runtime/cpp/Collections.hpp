@@ -39,6 +39,8 @@ namespace K3 {
             std::tuple<Collection<E>, Collection<E>> split();
             Collection<E> combine(Collection<E>);
 
+            void iterate(std::function<void(E)>);
+
             template <typename T>
             Collection<T> map(std::function<T(E)>);
 
@@ -116,6 +118,15 @@ namespace K3 {
         result.insert(end(result), begin(other.__data), end(other.__data));
 
         return result;
+    }
+
+    template <typename E>
+    void Collection<E>::iterate(std::function<void(E)> f) {
+        for (auto i: __data) {
+            f(i);
+        }
+
+        return;
     }
 
     template <typename E>
