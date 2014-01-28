@@ -15,6 +15,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <tuple>
 #include <vector>
 
@@ -29,6 +30,12 @@ namespace K3 {
             Collection(const Collection& c): __data(c.__data) {}
             Collection(Collection&& c): __data(c.__data) {}
 
+            std::shared_ptr<E> peek();
+
+            void insert_basic(const E&);
+            void delete_first(const E&);
+            void update_first(const E&, const E&);
+
             template <typename T>
             Collection<T> map(std::function<T(E)>);
 
@@ -42,6 +49,43 @@ namespace K3 {
 
             chunk<E> __data;
     };
+
+    template <typename E>
+    std::shared_ptr<E> Collection<E>::peek() {
+        if (!__data.empty()) {
+            return std::shared_ptr<E>(__data.front());
+        } else {
+            return nullptr;
+        }
+
+    }
+
+    template <typename E>
+    void Collection<E>::insert_basic(const E& e) {
+        __data.push_back(e);
+    }
+
+    template <typename E>
+    void Collection<E>::delete_first(const E& e) {
+        auto location = find(begin(__data), end(__data), e);
+
+        if (location != end(__data)) {
+            __data.erase(location);
+        }
+
+        return;
+    }
+
+    template <typename E>
+    void Collection<E>::update_first(const E& prev, const E& next) {
+        auto location = find(begin(__data), end(__data), prev);
+
+        if (location != end(__data)) {
+            *location = next;
+        }
+
+        return;
+    }
 
     template <typename E>
     template <typename T>
