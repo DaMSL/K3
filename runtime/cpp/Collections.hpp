@@ -36,6 +36,9 @@ namespace K3 {
             void delete_first(const E&);
             void update_first(const E&, const E&);
 
+            std::tuple<Collection<E>, Collection<E>> split();
+            Collection<E> combine(Collection<E>);
+
             template <typename T>
             Collection<T> map(std::function<T(E)>);
 
@@ -87,6 +90,32 @@ namespace K3 {
         }
 
         return;
+    }
+
+    template <typename E>
+    std::tuple<Collection<E>, Collection<E>> Collection<E>::split() {
+        if (__data.size() < 2) {
+            // First of the pair is a copy of the original collection, the second is empty.
+            return make_tuple(Collection<E>(*this), Collection<E>());
+        } else {
+            typename chunk<E>::iterator s = begin(__data);
+            for (int i = 0; i < __data.size()/2; ++i, ++s);
+
+            chunk<E> left(begin(__data), s);
+            chunk<E> right(s, end(__data));
+
+            return make_tuple(Collection(left), Collection(right));
+        }
+    }
+
+    template <typename E>
+    Collection<E> Collection<E>::combine(Collection<E> other) {
+        chunk<E> result;
+
+        result.insert(end(result), begin(__data), end(__data));
+        result.insert(end(result), begin(other.__data), end(other.__data));
+
+        return result;
     }
 
     template <typename E>
