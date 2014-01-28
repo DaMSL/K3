@@ -47,6 +47,9 @@ namespace K3 {
             template <typename K, typename Z>
             Collection<std::tuple<K, Z>> group_by(std::function<K(E)>, std::function<Z(Z, E)>, Z);
 
+            template <typename T>
+            Collection<T> ext(std::function<Collection<T>(E)>);
+
             chunk<E> __data;
     };
 
@@ -57,7 +60,6 @@ namespace K3 {
         } else {
             return nullptr;
         }
-
     }
 
     template <typename E>
@@ -145,6 +147,18 @@ namespace K3 {
         }
 
         return Collection<std::tuple<K, Z>>(v);
+    }
+
+    template <typename E>
+    template <typename T>
+    Collection<T> Collection<E>::ext(std::function<Collection<T>(E)> f) {
+        chunk<T> result;
+
+        for (auto i: __data) {
+            result.splice(end(result), f(i));
+        }
+
+        return Collection<T>(result);
     }
 }
 
