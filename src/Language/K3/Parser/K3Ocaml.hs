@@ -41,6 +41,7 @@ import Data.HashSet (HashSet)
 import Data.List
 import Data.String
 import Data.Traversable hiding ( mapM )
+import qualified Data.Foldable as Fold
 
 import System.FilePath
 
@@ -697,8 +698,68 @@ eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *
   where mkEmpty e a = foldl (@+) e a 
         typedEmpty = EC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
 
+-- Data type to parse the destructed tuples
+data A a = Arg Identifier | Tup [A a] a
+
+-- Add numbers to the mini-ast
+add_numbers :: A Int -> A Int
+add_numbers x = snd $ loop x 1
+  where
+    loop x@(Arg _)  i = (i, x)
+    loop (Tup xs _) i = 
+        let (i_max, xs') = foldr (\x (i, acc) ->
+              let (i', res) = loop x (i+1)
+              in (i', res:acc))
+              (i, []) xs
+        in (i_max, Tup xs' i)
+
+ -- no tuple, so just bind to the id
+make_binds :: A Int -> K3 Expression -> K3 Expression
+make_binds (Arg id)    = EC.lambda id
+ -- make the arg the first number, and then bind at each level
+make_binds a@(Tup _ i) = EC.lambda (toId i) . binder a
+  where
+    binder :: A Int -> K3 Expression -> K3 Expression
+    binder (Arg _)    = error "bad code path"
+    binder (Tup xs i) = 
+      let ids = map getIds xs
+          cur_bind = bind (toId i) ids
+      in foldl' (\acc x -> if checkTup x then acc . binder x else acc) cur_bind xs
+
+    checkTup (Tup _ _) = True
+    checkTup (Arg _)   = False
+
+    -- Curried binding functions to create our bind expression
+    bind parentId ids = EC.bindAs (EC.variable parentId) $ BTuple ids
+
+    getIds (Tup _ i) = toId i
+    getIds (Arg id)  = id
+
+    toId i = "_"++show i
+
 eLambda :: ExpressionParser
-eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
+eLambda = exprError "lambda" $ destruct
+  where
+    -- We need to convert tuple destruction to binds
+    -- Use a mini AST to do the parsing with, then convert that
+    destruct = do 
+                  symbol "\\"
+                  as <- destLoop
+                  let as_num = add_numbers as
+                      lambdaFn = make_binds as_num
+                  symbol "->"
+                  exp <- nonSeqExpr
+                  return $ lambdaFn exp
+
+    destLoop :: K3Parser(A Int)
+    destLoop = tupleDest <|> labelDest
+
+    tupleDest :: K3Parser (A Int)
+    tupleDest = Tup <$> (parens $ commaSep1 $ destLoop) <*> pure 0
+                     
+    labelDest :: K3Parser(A Int)
+    labelDest = Arg <$> identifier <* colon <* qualifiedTypeExpr
+
 
 eApp :: ExpressionParser
 eApp = do
