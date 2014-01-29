@@ -702,10 +702,10 @@ eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *
 data A a = Arg Identifier | Tup [A a] a
 
 -- Add numbers to the mini-ast
-add_numbers :: A Int -> A Int
+add_numbers :: A a -> A Int
 add_numbers x = snd $ loop x 1
   where
-    loop x@(Arg _)  i = (i, x)
+    loop (Arg a)  i = (i, Arg a)
     loop (Tup xs _) i = 
         let (i_max, xs') = foldr (\x (i, acc) ->
               let (i', res) = loop x (i+1)
@@ -751,13 +751,13 @@ eLambda = exprError "lambda" $ destruct
                   exp <- nonSeqExpr
                   return $ lambdaFn exp
 
-    destLoop :: K3Parser(A Int)
+    destLoop :: K3Parser(A ())
     destLoop = tupleDest <|> labelDest
 
-    tupleDest :: K3Parser (A Int)
-    tupleDest = Tup <$> (parens $ commaSep1 $ destLoop) <*> pure 0
+    tupleDest :: K3Parser (A ())
+    tupleDest = Tup <$> (parens $ commaSep1 $ destLoop) <*> pure ()
                      
-    labelDest :: K3Parser(A Int)
+    labelDest :: K3Parser(A ())
     labelDest = Arg <$> identifier <* colon <* qualifiedTypeExpr
 
 
