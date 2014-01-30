@@ -237,7 +237,7 @@ nextUID = withUID UID
 k3Operators :: [[Char]]
 k3Operators = [
     "+", "-", "*", "/",
-    "==", "!=", "<", ">", ">=", "<=", ";"
+    "==", "!=", "<", ">", ">=", "<=", ";", "!"
   ]
 
 k3Keywords :: [[Char]]
@@ -530,15 +530,17 @@ tOption = typeExprError "option" $ tQNested TC.option "maybe"
 tIndirection :: TypeParser
 tIndirection = typeExprError "indirection" $ tQNested TC.indirection "ind"
 
+-- We'll convert every tuple in k3o to a record in k3, mainly because
+-- collections can no longer contain tuples
 tTupleOrNested :: TypeParser
-tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), parens $ tupErr tTuple]
+tTupleOrNested = choice [try unit, {- try (parens $ nestErr $ clean <$> typeExpr), -} parens $ tupErr tTuple]
   where unit             = typeExprError "unit" $ symbol "(" *> symbol ")" >> return (TC.unit)
         tTuple           = mkTypeTuple <$> qualifiedTypeExpr <* comma <*> commaSep1 qualifiedTypeExpr
-        mkTypeTuple t tl = TC.tuple $ t:tl     
+        mkTypeTuple t tl = TC.record $ addIds $ t:tl -- covert to record
         
         clean t          = stripAnnot isTSpan $ stripAnnot isTUID t
         stripAnnot f t   = maybe t (t @-) $ t @~ f
-        nestErr          = typeExprError "nested"
+        {-nestErr          = typeExprError "nested"-}
         tupErr           = typeExprError "tuple"
 
 -- Records don't exist in k3o. We make them out of tuples
@@ -554,7 +556,7 @@ addIds ts = snd $ foldr (\t (last, acc) ->
             )
             (length ts, [])
             ts
-  where to_str i = "__" ++ show i 
+  where to_str i = "_" ++ show i 
 
 tCollection :: TypeParser
 tCollection = typeExprError "collection" $ ( TUID # ) $
@@ -679,14 +681,10 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
         eNested       = stripSpan  <$> parens expr
         eTupleOrSend  = do
                           elements <- parens $ commaSep1 qualifiedExpr
-                          msuffix <- optional sendSuffix
-                          mkTupOrSend elements msuffix        
-        sendSuffix    = symbol "<-" *> nonSeqExpr
+                          mkTupOrSend elements
 
-        mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
-        mkTupOrSend [e] (Just arg) = return $ EC.binop OSnd e arg
-        mkTupOrSend l Nothing      = return $ EC.tuple l
-        mkTupOrSend l (Just arg)   = EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg
+        mkTupOrSend [e] = return $ stripSpan <$> e
+        mkTupOrSend l   = return $ EC.record $ addIds l    -- change to record
 
         stripSpan e               = maybe e (e @-) $ e @~ isESpan
 
@@ -730,7 +728,7 @@ make_binds a@(Tup _ i) = EC.lambda (toId i) . binder a
     checkTup (Arg _)   = False
 
     -- Curried binding functions to create our bind expression
-    bind parentId ids = EC.bindAs (EC.variable parentId) $ BTuple ids
+    bind parentId ids = EC.bindAs (EC.variable parentId) $ BRecord $ addIds ids
 
     getIds (Tup _ i) = toId i
     getIds (Arg id)  = id
@@ -924,6 +922,7 @@ nonSeqOpTable =
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
       map mkUnOpK  [("not", ONot)],
+      map mkUnOpK  [("!",   ONot)],
       map mkBinOpK [("&",   OAnd)],
       map mkBinOpK [("|",   OOr)]
   ]
