@@ -237,30 +237,30 @@ nextUID = withUID UID
 k3Operators :: [[Char]]
 k3Operators = [
     "+", "-", "*", "/",
-    "==", "!=", "<", ">", ">=", "<=", ";", "!"
+    "==", "!=", "<", ">", ">=", "<=", ";", "!",
+    "&", "|", "++"
   ]
 
 k3Keywords :: [[Char]]
 k3Keywords = [
     {- Types -}
-    "int", "bool", "real", "string",
-    "immut", "mut", "witness", "option", "ind" , "collection",
+    "unit", "int", "bool", "float", "string", "address",
+    "immut", "mut", "maybe", "ref" , "set", "bag", "list",
 
     {- Declarations -}
-    "declare", "fun", "trigger", "source", "sink", "feed",
+    "declare", "fun", "trigger", "source", "sink",
 
     {- Expressions -}
-    "let", "in", "if", "then", "else", "case", "of", "bind", "as",
-    "and", "or", "not",
+    "let", "in", "if", "then", "else", "do",
+    "map", "filtermap", "flatten", "fold", "groupby", "sort",
+    "peek", "insert", "delete", "update", "send",
 
     {- Values -}
     "true", "false", "ind", "Some", "None", "empty",
 
     {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires",
+    "annotation", "lifted", "provides", "requires"
 
-    {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall"
   ]
 
 {- Style definitions for parsers library -}
@@ -514,6 +514,7 @@ tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" 
 tPrimitive :: TypeParser
 tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
                                               , ("int",     TC.int)
+                                              , ("unit",    TC.unit)
                                               , ("float",   TC.real)
                                               , ("string",  TC.string)
                                               , ("address", TC.address) ]
@@ -611,14 +612,19 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 
 eTerm :: ExpressionParser
 eTerm = do
-  e <- EUID # (ESpan <-> rawTerm)
+  e  <- EUID # (ESpan <-> rawTerm)
   mi <- optional (spanned eProject)
   case mi of
     Nothing -> return e
     Just (i, sp) -> EUID # (return $ (EC.project i e) @+ ESpan sp)
   where
     rawTerm = (//) attachComment <$> comment <*> 
-      choice [ (try eAssign),
+      choice [ 
+               eDo,
+               eFilterMap,
+               eFold,
+               eMap,
+               (try eAssign),
                (try eAddress),
                eLiterals,
                eLambda,
@@ -626,9 +632,41 @@ eTerm = do
                eLet,
                eCase,
                eBind,
-               eSelf  ]
+               eSelf
+             ]
     eProject = dot *> identifier
     attachComment e cmt = e @+ (ESyntax cmt)
+
+doHere a = seq (Trace.trace "here\n") a
+
+-- Parse do sequences
+eDo :: ExpressionParser
+eDo = exprError "do" $ keyword "do" *> braces (EC.block <$> (semiSep1 $ expr))
+
+eFilterMap :: ExpressionParser
+eFilterMap = exprError "filtermap" $ keyword "filtermap" *> parens
+               (makeFilterMap <$> (eLambda <* comma) <*> (eLambda <* comma) <*> expr)
+    where
+      -- We don't have a filtermap, so we need to do map(filter(col))
+      makeFilterMap lam1 lam2 eCol =
+        let filterCol = applyMethod eCol "filter" [lam1]
+        in applyMethod filterCol "map" [lam2]
+
+eFold :: ExpressionParser
+eFold = exprError "fold" $ keyword "fold" *> parens
+               (makeFold <$> (eLambda <* comma) <*> (expr <* comma) <*> expr)
+    where
+      makeFold lam1 acc eCol = applyMethod eCol "fold" [lam1, acc]
+
+eMap :: ExpressionParser
+eMap = exprError "map" $ keyword "map" *> parens
+               (makemap <$> (eLambda <* comma) <*> expr)
+    where
+      makemap lam1 eCol =
+        applyMethod eCol "map" [lam1]
+
+applyMethod :: K3 Expression -> Identifier -> [K3 Expression] -> K3 Expression
+applyMethod col method args = EC.applyMany (EC.project method $ col) args
 
 
 {- Expression literals -}
@@ -639,7 +677,7 @@ eLiterals = choice [
     eOption,
     eIndirection,
     eTuplePrefix,
-    eRecord,
+    {-eRecord,-} -- we don't support records
     eEmpty ]
 
 {- Terminals -}
@@ -654,11 +692,13 @@ eCBool :: ExpressionParser
 eCBool = (EC.constant . CBool) <$>
   choice [keyword "true" >> return True, keyword "false" >> return False]
 
+-- We need to handle numbers like 0.
 eCNumber :: ExpressionParser
-eCNumber = mkNumber <$> integerOrDouble
-  where mkNumber x = case x of
-                      Left i  -> EC.constant . CInt . fromIntegral $ i
-                      Right d -> EC.constant . CReal $ d
+eCNumber = choice [
+                   try ((EC.constant . CReal) <$> double),
+                   try ((EC.constant . CReal. fromIntegral) <$> integer <* symbol "."),
+                   (EC.constant . CInt . fromIntegral) <$> integer
+                  ]
 
 eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
@@ -669,11 +709,11 @@ eVariable = exprError "variable" $ EC.variable <$> identifier
 {- Complex literals -}
 eOption :: ExpressionParser
 eOption = exprError "option" $
-  choice [EC.some <$> (keyword "Some" *> qualifiedExpr),
-          keyword "None" *> (EC.constant . CNone <$> exprNoneQualifier)]
+  choice [EC.some <$> (keyword "just" *> qualifiedExpr),
+          keyword "nothing" *> (EC.constant . CNone <$> exprNoneQualifier)]
 
 eIndirection :: ExpressionParser
-eIndirection = exprError "indirection" $ EC.indirect <$> (keyword "ind" *> qualifiedExpr)
+eIndirection = exprError "indirection" $ EC.indirect <$> (keyword "ref" *> qualifiedExpr)
 
 eTuplePrefix :: ExpressionParser
 eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
@@ -692,9 +732,12 @@ eRecord :: ExpressionParser
 eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
-eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
-  where mkEmpty e a = foldl (@+) e a 
-        typedEmpty = EC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
+eEmpty = exprError "empty" $ EC.empty <$> col
+  where mkEmpty l a = foldl (@+) l a 
+        col = do
+                  choice [try $ keyword "{}", keyword "{||}", keyword "[]"]
+                  colon
+                  fst <$> tCollectionElement
 
 -- Data type to parse the destructed tuples
 data A a = Arg Identifier | Tup [A a] a
@@ -711,11 +754,10 @@ add_numbers x = snd $ loop x 1
               (i, []) xs
         in (i_max, Tup xs' i)
 
- -- no tuple, so just bind to the id
-make_binds :: A Int -> K3 Expression -> K3 Expression
-make_binds (Arg id)    = EC.lambda id
+ -- We take the mini-ast and a function for binding at the top level (just an id)
+make_binds (Arg id) f     = f id
  -- make the arg the first number, and then bind at each level
-make_binds a@(Tup _ i) = EC.lambda (toId i) . binder a
+make_binds a@(Tup _ i) f  = f (toId i) . binder a
   where
     binder :: A Int -> K3 Expression -> K3 Expression
     binder (Arg _)    = error "bad code path"
@@ -742,21 +784,23 @@ eLambda = exprError "lambda" $ destruct
     -- Use a mini AST to do the parsing with, then convert that
     destruct = do 
                   symbol "\\"
-                  as <- destLoop
-                  let as_num = add_numbers as
-                      lambdaFn = make_binds as_num
+                  as <- destLoop -- read the destructing into AST
+                  let as_num = add_numbers as -- add nums to AST
+                      lambdaFn = make_binds as_num EC.lambda -- convert to binds
                   symbol "->"
                   exp <- nonSeqExpr
                   return $ lambdaFn exp
 
-    destLoop :: K3Parser(A ())
-    destLoop = tupleDest <|> labelDest
+-- Common functions used by lambda and let to parse mini-AST
+destLoop :: K3Parser(A ())
+destLoop = tupleDest <|> labelDest
 
-    tupleDest :: K3Parser (A ())
-    tupleDest = Tup <$> (parens $ commaSep1 $ destLoop) <*> pure ()
-                     
-    labelDest :: K3Parser(A ())
-    labelDest = Arg <$> identifier <* colon <* qualifiedTypeExpr
+tupleDest :: K3Parser (A ())
+tupleDest = Tup <$> (parens $ commaSep1 $ destLoop) <*> pure ()
+                  
+labelDest :: K3Parser(A ())
+-- Must only call tTerm here since we can't have functions
+labelDest = Arg <$> identifier <* colon <* tTerm
 
 
 eApp :: ExpressionParser
@@ -788,7 +832,13 @@ eAssign = exprError "assign" $ mkAssign <$> sepBy1 identifier dot <*> equateNSEx
         pairSym (cnt,acc) n = (cnt+1,acc++[("__"++n++"_asn"++(show cnt), n)])
 
 eLet :: ExpressionParser
-eLet = exprError "let" $ EC.letIn <$> iPrefix "let" <*> equateQExpr <*> (keyword "in" *> expr)
+eLet = exprError "let" $ keyword "let" *> binding <*> equateQExpr <*> (keyword "in" *> expr)
+  where binding = do
+                    as <- destLoop              -- make mini-ast of binding pattern
+                    let as_num = add_numbers as -- add nums to mini-ast
+                        letFn = make_binds as_num EC.letIn -- convert to binds
+                    return letFn
+
 
 eCase :: ExpressionParser
 eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
@@ -921,7 +971,6 @@ nonSeqOpTable =
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
-      map mkUnOpK  [("not", ONot)],
       map mkUnOpK  [("!",   ONot)],
       map mkBinOpK [("&",   OAnd)],
       map mkBinOpK [("|",   OOr)]
@@ -1007,9 +1056,12 @@ lRecord :: LiteralParser
 lRecord = litError "record" $ LC.record <$> braces idQLitList
 
 lEmpty :: LiteralParser
-lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
+lEmpty = litError "empty" $ LC.empty <$> col
   where mkEmpty l a = foldl (@+) l a 
-        typedEmpty = LC.empty <$> (keyword "empty" *> (fst <$> tCollectionElement))
+        col = do
+                  choice [try $ keyword "{}", keyword "{||}", keyword "[]"]
+                  colon
+                  fst <$> tCollectionElement
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
