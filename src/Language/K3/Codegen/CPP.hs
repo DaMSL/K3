@@ -403,28 +403,19 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
 
--- | Dispatch to the appropriate trigger-wrapper generator by serialization method.
-triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
-triggerWrapper i t = do
-    sMethod <- serializationMethod <$> get
-    case sMethod of
-        BoostSerialization -> boostTriggerWrapper i t
-
 -- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
 -- (using Boost serialization) and call the appropriate trigger.
-boostTriggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
-boostTriggerWrapper i t = do
+triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
+triggerWrapper i t = do
     tmpDecl <- cDecl t "arg"
-    let streamCreation = text "istringstream istr" <> parens (text "msg") <> semi
-    let archiveCreation = text "boost::archive::text_iarchive msg_archive(istr);"
-    let archiveRead = text "msg_archive >> arg;"
+    tmpType <- cType t
     let triggerDispatch = text i <> parens (text "arg") <> semi
+    let unpackCall = text "arg" <+> equals <+> text "engine.valueFormat->unpack"
+            <> angles tmpType <> parens (text "msg")
     return $ text "void" <+> text i <> text "_dispatch" <> parens (text "string msg")
         <+> hangBrace (vsep [
                 tmpDecl,
-                streamCreation,
-                archiveCreation,
-                archiveRead,
+                unpackCall,
                 triggerDispatch,
                 text "return;"
             ])
