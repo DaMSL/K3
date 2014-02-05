@@ -549,16 +549,36 @@ definition i t Nothing = cDecl t i
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     p <- declaration d
-    return $ vsep genIncludes
-        PL.<$$> vsep genNamespaces
-        PL.<$$> text "typedef struct {} unit_t;"
-        PL.<$$> p
+    return $ vsep $ punctuate line [
+            vsep genIncludes,
+            vsep genNamespaces,
+            vsep genAliases,
+            p
+        ]
   where
     genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
     genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
+    genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
 includes :: [Identifier]
-includes = ["memory", "string", "boost/archive/text_iarchive.hpp", "sstream", "k3/runtime/Dispatch.hpp"]
+includes = [
+        -- Standard Library
+        "memory",
+        "sstream",
+        "string",
+
+        -- Boost
+        "boost/archive/text_iarchive.hpp",
+
+        -- K3 Runtime
+        "runtime/cpp/Collections.hpp"
+        "runtime/cpp/Dispatch.hpp",
+    ]
 
 namespaces :: [Identifier]
 namespaces = ["std", "K3"]
+
+aliases :: [(Identifier, Identifier)]
+aliases = [
+        ("unit_t", "struct {}")
+    ]
