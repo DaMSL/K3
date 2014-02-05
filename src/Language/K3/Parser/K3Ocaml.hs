@@ -607,14 +607,17 @@ eTerm = do
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ 
-               eDo,
-               eFilterMap,
-               eFold,
-               eMap,
-               ePeek,
-               eGroupBy,
-               (try eAssign),
-               (try eAddress),
+               try eDo,
+               try eFilterMap,
+               try eFold,
+               try eMap,
+               try ePeek,
+               try eGroupBy,
+               try eInsert,
+               try eUpdate,
+               try eSend,
+               try eAssign,
+               try eAddress,
                eLiterals,
                eLambda,
                eCondition,
@@ -651,46 +654,42 @@ eMap :: ExpressionParser
 eMap = exprError "map" $ keyword "map" *> parens
                (make <$> (eLambda <* comma) <*> expr)
     where
-      make lam1 eCol =
-        applyMethod eCol "map" [lam1]
+      make lam1 eCol = applyMethod eCol "map" [lam1]
 
 ePeek :: ExpressionParser
 ePeek = exprError "peek" $ keyword "peek" *> parens
                (make <$> expr)
     where
-      make eCol =
-        applyMethod eCol "peek" []
+      make eCol = applyMethod eCol "peek" []
 
 eGroupBy :: ExpressionParser
 eGroupBy = exprError "groupBy" $ keyword "groupby" *> parens
                (make <$> (eLambda <* comma) <*> (eLambda <* comma) <*> (expr <* comma) <*> expr)
     where
-      make lam1 lam2 acc eCol =
-        applyMethod eCol "groupby" [lam1, lam2, acc]
+      make lam1 lam2 acc col = applyMethod col "groupby" [lam1, lam2, acc]
 
--- insert needs to create a record
+-- insert creates a record
 eInsert :: ExpressionParser
 eInsert = exprError "insert" $ keyword "insert" *> parens
-               (make <$> (eLambda <* comma) <*> (eLambda <* comma) <*> (expr <* comma) <*> expr)
+               (make <$> (expr <* comma) <*> (makeRecord <$> commaSep1 expr))
     where
-      make lam1 lam2 acc eCol =
-        applyMethod eCol "insert" [lam1, lam2, acc, eCol]
+      makeRecord es = EC.record $ addIds es
+      make col record = applyMethod col "insert" [record]
 
--- update needs to translate tuples to records
+-- update translates tuples to records
 eUpdate :: ExpressionParser
 eUpdate = exprError "update" $ keyword "update" *> parens
-               (make <$> (eLambda <* comma) <*> (eLambda <* comma) <*> (expr <* comma) <*> expr)
+               (make <$> (expr <* comma) <*> (expr <* comma) <*> expr)
     where
-      make lam1 lam2 acc eCol =
-        applyMethod eCol "update" [lam1, lam2, acc, eCol]
+      make col oldrec newrec = applyMethod col "update" [oldrec, newrec]
 
 -- send needs to translate arguments to records
 eSend :: ExpressionParser
 eSend = exprError "send" $ keyword "send" *> parens
-               (make <$> (eLambda <* comma) <*> (eLambda <* comma) <*> (expr <* comma) <*> expr)
+               (make <$> (expr <* comma) <*> (expr <* comma) <*> (makeRecord <$> commaSep1 expr))
     where
-      make lam1 lam2 acc eCol =
-        applyMethod eCol "send" [lam1, lam2, acc, eCol]
+      makeRecord es = EC.record $ addIds es
+      make target address argRecord = EC.send target address argRecord
 
 applyMethod :: K3 Expression -> Identifier -> [K3 Expression] -> K3 Expression
 applyMethod col method args = EC.applyMany (EC.project method $ col) args
@@ -704,7 +703,6 @@ eLiterals = choice [
     eOption,
     eIndirection,
     eTuplePrefix,
-    {-eRecord,-} -- we don't support records
     eEmpty ]
 
 {- Terminals -}
@@ -754,9 +752,6 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
         mkTupOrSend l   = return $ EC.record $ addIds l    -- change to record
 
         stripSpan e               = maybe e (e @-) $ e @~ isESpan
-
-eRecord :: ExpressionParser
-eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ EC.empty <$> col
