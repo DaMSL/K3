@@ -20,6 +20,7 @@ import Data.List (nub, sortBy)
 import Data.Maybe
 import Data.Traversable (forM)
 
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -456,8 +457,15 @@ templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typen
 --      - Copy constructor.
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
-composite cName ans = do
-    members <-  mapM annMemDecl positives
+composite className ans = do
+
+    -- Inlining is only done for provided (positive) declarations.
+    let positives = filter isPositiveDecl (concat . snd $ unzip ans)
+
+    -- Split data and method declarations, for access specifiers.
+    let (dataDecls, methDecls) = L.partition isDataDecl positives
+
+    -- Generate a serialization method based on engine preferences.
     serializationDefn <- do
         -- Filter all data members from positives.
         -- Generate serialize function.
@@ -466,34 +474,50 @@ composite cName ans = do
 
     constructors' <- sequence constructors
 
-    dataspaceDecl' <- dataspaceDecl
+    let parentList = text "Collection"
 
-    let compositeDecls = constructors' ++ members ++ [dataspaceDecl', serializationDefn]
+    publicDecls <- mapM annMemDecl methDecls
+    privateDecls <- mapM annMemDecl dataDecls
 
-    return $ templateLine [text "CONTENT"]
-        PL.<$$> text "class" <+> text cName <+> hangBrace (
-            text "public:" PL.<$$> indent 4 (vsep compositeDecls)
-        ) <> semi
+    let classBody = text "class" <+> text className <> colon <+> parentList
+            <+> hangBrace (vsep $
+                    if not (null publicDecls)
+                        then [text "public:" PL.<$$> (indent 4 $ vsep $ punctuate line $
+                            constructors' ++ [serializationDefn] ++ publicDecls)]
+                        else []
+                    ++ if not (null privateDecls)
+                        then [text "private:" PL.<$$> (indent 4 $ vsep $ punctuate line privateDecls)]
+                        else []
+                )
+            <> semi
+
+    let classDefn = templateLine [text "CONTENT"] PL.<$$> classBody
+
+    return classDefn
   where
-    onlyPositives :: AnnMemDecl -> Bool
-    onlyPositives (Lifted Provides _ _ _ _) = True
-    onlyPositives (Attribute Provides _ _ _ _) = True
-    onlyPositives (MAnnotation Provides _ _) = True
-    onlyPositives _ = False
 
-    positives = filter onlyPositives (concat . snd $ unzip ans)
+    isPositiveDecl :: AnnMemDecl -> Bool
+    isPositiveDecl (Lifted Provides _ _ _ _) = True
+    isPositiveDecl (Attribute Provides _ _ _ _) = True
+    isPositiveDecl (MAnnotation Provides _ _) = True
+    isPositiveDecl _ = False
 
-    dataspaceDecl = do
-        dsType <- dataspaceType (text "CONTENT")
-        return $ dsType <+> text "__data" <> semi
+    isDataDecl :: AnnMemDecl -> Bool
+    isDataDecl (Lifted _ _ (tag -> TFunction) _ _) = False
+    isDataDecl (Attribute _ _ (tag -> TFunction) _ _) = False
+    isDataDecl _ = True
 
-    defaultConstructor = return $ text cName <> parens empty <+> braces empty
+    defaultConstructor = return $ text className <> parens empty <> colon
+        <+> text "Collection" <> parens empty <+> braces empty
+
     dataspaceConstructor = do
-        dsType <- dataspaceType (text "CONTENT")
-        return $ text cName <> parens ( dsType <+> text "v")
-            <> colon <+> text "__data" <> parens (text "v") <+> braces empty
-    copyConstructor = return $ text cName <> parens (text $ "const " ++ cName ++ "& c") <> colon
-        <+> text "__data" <> parens (text "c.__data") <+> braces empty
+        let dsType = text "chunk" <> angles (text "CONTENT")
+        return $ text className <> parens ( dsType <+> text "v")
+            <> colon <+> text "Collection" <> parens (text "v") <+> braces empty
+
+    -- TODO: Generate copy statements for remaining data members.
+    copyConstructor = return $ text className <> parens (text $ "const " ++ className ++ "& c") <> colon
+        <+> text "Collection" <> parens (text "c") <+> braces empty
 
     constructors = [defaultConstructor, dataspaceConstructor, copyConstructor]
 
