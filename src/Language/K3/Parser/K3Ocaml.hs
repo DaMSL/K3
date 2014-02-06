@@ -250,11 +250,7 @@ k3Keywords = [
     "peek", "insert", "delete", "update", "send",
 
     {- Values -}
-    "true", "false", "ind", "Some", "None", "empty",
-
-    {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires"
-
+    "true", "false", "just", "nothing"
   ]
 
 {- Style definitions for parsers library -}
@@ -720,7 +716,7 @@ eLiterals = choice [
     try eCollection,
     eTerminal,
     eOption,
-    eIndirection,
+    {-eIndirection,-}
     eTuplePrefix,
     eEmpty ]
 
@@ -751,10 +747,13 @@ eVariable :: ExpressionParser
 eVariable = exprError "variable" $ EC.variable <$> identifier
 
 {- Complex literals -}
+
+-- NOTE: we hardwired none to be immutable for now
 eOption :: ExpressionParser
 eOption = exprError "option" $
   choice [EC.some <$> (keyword "just" *> qualifiedExpr),
-          keyword "nothing" *> (EC.constant . CNone <$> exprNoneQualifier)]
+          {-(keyword "nothing" *> colon *> qualifiedTypeTerm) *> (EC.constant . CNone <$> exprNoneQualifier)]-}
+          (keyword "nothing" *> colon *> qualifiedTypeTerm) *> (EC.constant . CNone <$> pure NoneImmut)]
 
 eIndirection :: ExpressionParser
 eIndirection = exprError "indirection" $ EC.indirect <$> (keyword "ref" *> qualifiedExpr)
