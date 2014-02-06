@@ -46,6 +46,7 @@ import System.FilePath
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
+{-import qualified Text.ParserCombinators.ReadP as RP-}
 
 import Text.Parser.Char
 import Text.Parser.Combinators
@@ -622,10 +623,7 @@ eTerm = do
                eLiterals,
                eLambda,
                eCondition,
-               eLet,
-               eCase,
-               eBind,
-               eSelf
+               eLet
              ]
     eSlice = brackets (commaSep1 underscoreOrExpr)
     attachComment e cmt = e @+ (ESyntax cmt)
@@ -825,9 +823,14 @@ labelDest :: K3Parser(A ())
 -- Must only call tTerm here since we can't have functions
 labelDest = Arg <$> anyOrLabel
   where 
-     anyOrLabel = try(identifier <* colon <* tTerm) <|>
-                  symbol "_"
+     anyOrLabel = try(identifier <* colon <* tTerm) <|> underscore
 
+underscore :: K3Parser(Identifier)
+underscore = do 
+                id <- identifier
+                case id of
+                  "_" -> return "_"
+                  _   -> fail "not underscore"
 
 eApp :: ExpressionParser
 eApp = do
@@ -865,30 +868,6 @@ eLet = exprError "let" $ keyword "let" *> binding <*> equateQExpr <*> (keyword "
                         letFn = make_binds as_num EC.letIn -- convert to binds
                     return letFn
 
-
-eCase :: ExpressionParser
-eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
-                                  <*> (braces eCaseSome) <*> (braces eCaseNone)
-  where eCaseSome = (,) <$> (iArrow "Some") <*> expr
-        eCaseNone = (keyword "None" >> symbol "->") *> expr
-        mkCase e (x, s) n = EC.caseOf e x s n
-
-eBind :: ExpressionParser
-eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind") 
-                                     <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
-
-eBinder :: BinderParser
-eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
-
-bindInd :: K3Parser Binder
-bindInd = BIndirection <$> iPrefix "ind"
-
-bindTup :: K3Parser Binder
-bindTup = BTuple <$> parens idList
-
-bindRec :: K3Parser Binder
-bindRec = BRecord <$> braces idPairList
-
 eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
   where ipAddress = EUID # EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
@@ -896,7 +875,7 @@ eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
 
 -- We unify underscores and expressions (so we can tell them apart)
 underscoreOrExpr :: K3Parser (Maybe (K3 Expression))
-underscoreOrExpr = (symbol "_" *> pure Nothing) <|> (Just <$> expr)
+underscoreOrExpr = (try underscore *> pure Nothing) <|> (Just <$> expr)
 
 -- Handle a slice by creating a filter function
 handleSlice :: K3 Expression -> [(Maybe (K3 Expression))] -> K3 Expression
@@ -922,9 +901,6 @@ handleSlice e l = mkFilter e l
 
         unwrapM (Just x) = x
         unwrapM Nothing  = error "nothing"
-
-eSelf :: ExpressionParser
-eSelf = exprError "self" $ keyword "self" >> return EC.self
 
             -- TC.record <$> addIds <$> commaSep1 qualifiedTypeExpr
 -- TODO: treating collection literals as immutable will fail when initializing mutable collections.
