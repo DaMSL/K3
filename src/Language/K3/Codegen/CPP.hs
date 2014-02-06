@@ -274,6 +274,11 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
             (pe, pv) <- inline f
             return (ae PL.<//> pe, pv <> parens av)
         _ -> throwE $ CPPGenE $ "Invalid Function Form " ++ show f
+inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a])), v])) = do
+    (te, tv) <- inline t
+    (ae, av) <- inline a
+    (ve, vv) <- inline v
+    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, tv, vv])
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
