@@ -359,16 +359,13 @@ reify r e = do
         RSplice f -> f [value] <> semi
 
 declaration :: K3 Declaration -> CPPGenM CPPGenR
-declaration d | isJust (d @~ isGeneratedSpan) = return empty
-  where
-    isGeneratedSpan (DSpan (GeneratedSpan _)) = True
-    isGeneratedSpan _ = False
+declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return empty
 declaration (tag -> DGlobal i t Nothing) = cDecl t i
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
             (Just (tag &&& children -> (ELambda x, [b])))) = do
     newF <- cDecl t i
-    modify (\s -> s { forwards = forwards s PL.<//> newF })
+    modify (\s -> s { forwards = forwards s PL.<$$> newF })
     body <- reify RReturn b
     cta <- cType ta
     ctr <- cType tr
@@ -569,12 +566,14 @@ definition i t Nothing = cDecl t i
 --  - Generate namespace use directives.
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
-    p <- declaration d
+    globals' <- globals
+    program' <- declaration d
     return $ vsep $ punctuate line [
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
-            p
+            globals',
+            program'
         ]
   where
     genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
@@ -603,3 +602,7 @@ aliases :: [(Identifier, Identifier)]
 aliases = [
         ("unit_t", "struct {}")
     ]
+
+globals :: CPPGenM CPPGenR
+globals = do
+    return $ text "Engine engine" <> semi
