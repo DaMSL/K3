@@ -5,6 +5,8 @@ import System.FilePath (joinPath, replaceExtension, takeBaseName)
 
 import qualified Data.Sequence as S
 
+import Text.PrettyPrint.ANSI.Leijen
+
 import Language.K3.TypeSystem (typecheckProgram)
 
 import qualified Language.K3.Codegen.CPP as CPP
@@ -32,4 +34,4 @@ compile opts copts = do
                             Just b -> do
                                 createDirectoryIfMissing True b
                                 let outFile = joinPath [b, replaceExtension (takeBaseName $ input opts) "cpp"]
-                                writeFile outFile (show s)
+                                writeFile outFile (displayS (renderPretty 1.0 100 s) "")
