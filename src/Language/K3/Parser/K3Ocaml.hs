@@ -599,11 +599,12 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 
 eTerm :: ExpressionParser
 eTerm = do
+  -- Handle slicing, which is left recursive, by adding it optionally
   e  <- EUID # (ESpan <-> rawTerm)
-  mi <- optional (spanned eProject)
+  mi <- optional (spanned eSlice)
   case mi of
-    Nothing -> return e
-    Just (i, sp) -> EUID # (return $ (EC.project i e) @+ ESpan sp)
+    Nothing      -> return e -- Just an expression
+    Just (x, sp) -> EUID # (return $ (handleSlice e x) @+ ESpan sp)
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ 
@@ -626,7 +627,7 @@ eTerm = do
                eBind,
                eSelf
              ]
-    eProject = dot *> identifier
+    eSlice = brackets (commaSep1 underscoreOrExpr)
     attachComment e cmt = e @+ (ESyntax cmt)
 
 doHere a = seq (Trace.trace "here\n") a
@@ -892,6 +893,35 @@ eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
   where ipAddress = EUID # EC.constant . CString <$> (some $ choice [alphaNum, oneOf "."])
         port = EUID # EC.constant . CInt . fromIntegral <$> natural
+
+-- We unify underscores and expressions (so we can tell them apart)
+underscoreOrExpr :: K3Parser (Maybe (K3 Expression))
+underscoreOrExpr = (symbol "_" *> pure Nothing) <|> (Just <$> expr)
+
+-- Handle a slice by creating a filter function
+handleSlice :: K3 Expression -> [(Maybe (K3 Expression))] -> K3 Expression
+handleSlice e l = mkFilter e l
+  where
+        -- We need to convert to a filter function
+        mkFilter :: K3 Expression -> [Maybe (K3 Expression)] -> K3 Expression
+        mkFilter col m_list = let id_terms :: [(Identifier, K3 Expression)] =
+                                    map (\(id, m) -> (id, unwrapM m)) $ filter (isJust . snd) $ addIds m_list
+                                  -- Create a lambda to filter by the things we care about
+                                  lambda   = EC.lambda "rec" $ mkAndChain id_terms
+                              in applyMethod col "filter" [lambda]
+
+        -- Create a chain of 'and's, comparing all the elements we need
+        mkAndChain id_terms = foldr (\x acc -> EC.binop OAnd (mkCompare x) acc)
+                                (mkCompare $ head id_terms) $
+                                tail id_terms
+        -- Create a comparison with a projection of the "rec" object
+        mkCompare (id, x) = EC.binop OEqu (EC.project id $ EC.variable "rec") x
+
+        isJust Nothing = False
+        isJust _       = True
+
+        unwrapM (Just x) = x
+        unwrapM Nothing  = error "nothing"
 
 eSelf :: ExpressionParser
 eSelf = exprError "self" $ keyword "self" >> return EC.self
