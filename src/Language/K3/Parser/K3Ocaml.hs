@@ -466,20 +466,15 @@ typeExpr = typeError "expression" $ TUID # tTermOrFun
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
 
+qualifiedTypeTerm :: TypeParser
+qualifiedTypeTerm = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> tTerm
+
 typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
 typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*> pure Nothing
     
-
-{- Parenthesized version of qualified types.
-qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = typeExprError "qualified" $ 
-  choice [parens $ qualifiedTypeExpr
-         , flip (@+) <$> typeQualifier <*> typeExpr]
--}
-
 -- Look for ref to indicate mutability
 typeQualifier :: K3Parser (Annotation Type)
 typeQualifier = typeError "qualifier" $ keyword "ref" >> return TMutable 
@@ -487,7 +482,7 @@ typeQualifier = typeError "qualifier" $ keyword "ref" >> return TMutable
 {- Type terms -}
 tTerm :: TypeParser
 tTerm = TSpan <-> (//) attachComment <$> comment 
-              <*> choice [ tPrimitive, tOption, tIndirection,
+              <*> choice [ tPrimitive, tOption, {-tIndirection,-}
                            tTupleOrNested, tCollection, -- no records
                            tBuiltIn, tDeclared ]
   where attachComment t cmt = t @+ (TSyntax cmt)
@@ -617,9 +612,12 @@ eTerm = do
                try eGroupBy,
                try eInsert,
                try eUpdate,
+               try eDelete,
                try eSend,
+               try eSort,
                try eAssign,
                try eAddress,
+               try eRange,
                eLiterals,
                eLambda,
                eCondition,
@@ -682,6 +680,12 @@ eUpdate = exprError "update" $ keyword "update" *> parens
     where
       make col oldrec newrec = applyMethod col "update" [oldrec, newrec]
 
+eDelete :: ExpressionParser
+eDelete = exprError "delete" $ keyword "delete" *> parens
+               (make <$> (expr <* comma) <*> expr)
+    where
+      make col elem = applyMethod col "delete" [elem]
+
 -- send needs to translate arguments to records
 eSend :: ExpressionParser
 eSend = exprError "send" $ keyword "send" *> parens
@@ -689,6 +693,22 @@ eSend = exprError "send" $ keyword "send" *> parens
     where
       makeRecord es = EC.record $ addIds es
       make target address argRecord = EC.send target address argRecord
+
+eSort :: ExpressionParser
+eSort = exprError "sort" $ keyword "sort" *> parens
+               (make <$> (expr <* comma) <*> eLambda)
+    where
+      make col lambda = applyMethod col "sort" [lambda]
+
+eRange :: ExpressionParser
+eRange = exprError "range" $ brackets (
+        do
+           e1 <- expr
+           symbol "::"
+           e2 <- expr
+           symbol "::"
+           e3 <- expr
+           return $ EC.range e1 e2 e3)
 
 applyMethod :: K3 Expression -> Identifier -> [K3 Expression] -> K3 Expression
 applyMethod col method args = EC.applyMany (EC.project method $ col) args
@@ -758,7 +778,7 @@ eEmpty = exprError "empty" $ EC.empty <$> col
         col = do
                   choice [try $ keyword "{}", keyword "{||}", keyword "[]"]
                   colon
-                  fst <$> tCollectionElement
+                  qualifiedTypeTerm
 
 -- Data type to parse the destructed tuples
 data A a = Arg Identifier | Tup [A a] a
@@ -823,7 +843,7 @@ labelDest :: K3Parser(A ())
 -- Must only call tTerm here since we can't have functions
 labelDest = Arg <$> anyOrLabel
   where 
-     anyOrLabel = try(identifier <* colon <* tTerm) <|> underscore
+     anyOrLabel = try(identifier <* colon <* qualifiedTypeTerm) <|> underscore
 
 underscore :: K3Parser(Identifier)
 underscore = do 
