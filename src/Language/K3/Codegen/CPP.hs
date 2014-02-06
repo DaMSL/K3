@@ -195,11 +195,13 @@ cType (tag -> TDeclaredVar t) = return $ text t
 --  1. The list of named annotations on the collections.
 --  2. The types provided to each annotation to fulfill their type variable requirements.
 --  3. The content type.
-cType t@(tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- cType et
     case annotationComboIdT as of
-        Nothing -> throwE $ CPPGenE $ "Invalid Annotation Combination for " ++ show t
+        Nothing -> return $ text "Collection" <> angles ct
         Just i' -> return $ text i' <> angles ct
+
+cType (tag -> TAddress) = return $ text "Address"
 
 -- TODO: Are these all the cases that need to be handled?
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
@@ -226,7 +228,7 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
 
 -- TODO: As with cType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
-    Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Declaration " ++ i
+    Nothing -> return $ text "Collection" <+> text i
     Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
