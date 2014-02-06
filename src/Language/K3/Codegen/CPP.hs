@@ -309,7 +309,7 @@ reify RForget e@(tag -> EOperate OApp) = do
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae PL.<//> be
+    return $ ae PL.<$$> be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     ct <- canonicalType e
@@ -348,7 +348,7 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
     ee <- reify r e
-    return $ pe PL.<//> hang 4 (text "if" <+> parens pv <+> braces te <+> text "else" <+> braces ee)
+    return $ pe PL.<//> text "if" <+> parens pv <+> hangBrace te PL.</> text "else" <+> hangBrace ee
 
 reify r e = do
     (effects, value) <- inline e
@@ -389,7 +389,7 @@ declaration (tag -> DTrigger i t e) = do
     return $ d PL.<$$> w
 
 declaration (tag &&& children -> (DRole n, cs)) = do
-    subDecls <- vsep <$> mapM declaration cs
+    subDecls <- vsep . punctuate line <$> mapM declaration cs
     currentS <- get
     i <- cType T.unit >>= \ctu ->
         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
@@ -402,7 +402,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 
     put defaultCPPGenS
     return $ text "namespace" <+> text n <+> hangBrace (
-        vsep $ [forwards currentS]
+        vsep $ punctuate line $ [forwards currentS]
             ++ compositeDecls
             ++ recordDecls
             ++ [subDecls, i, tableDecl, tablePop])
