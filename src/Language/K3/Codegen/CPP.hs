@@ -17,7 +17,6 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
-import Data.Maybe
 import Data.Traversable (forM)
 
 import qualified Data.List as L
