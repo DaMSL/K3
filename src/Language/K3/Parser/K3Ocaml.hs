@@ -7,7 +7,10 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- TODO: slice, send, update, insert
+-- TODO: 
+--       convert application and lambdas to use apply's
+--       trigger
+--       produce default values for nothing in case ... of
 
 -- | K3 Parser.
 module Language.K3.Parser.K3Ocaml (
@@ -239,7 +242,7 @@ k3Keywords :: [[Char]]
 k3Keywords = [
     {- Types -}
     "unit", "int", "bool", "float", "string", "address",
-    "immut", "mut", "maybe", "ref" , "set", "bag", "list",
+    "maybe", "ref" , "set", "bag", "list",
 
     {- Declarations -}
     "declare", "fun", "trigger", "source", "sink",
@@ -502,7 +505,7 @@ tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
 
 
 tQNested :: (K3 Type -> K3 Type) -> String -> TypeParser
-tQNested f k = f <$> (keyword k *> qualifiedTypeExpr)
+tQNested f k = f <$> (keyword k *> qualifiedTypeTerm)
 
 tOption :: TypeParser
 tOption = typeExprError "option" $ tQNested TC.option "maybe"
@@ -604,6 +607,7 @@ eTerm = do
                try eFilterMap,
                try eFold,
                try eMap,
+               try eFlatten,
                try ePeek,
                try eGroupBy,
                try eInsert,
@@ -612,8 +616,8 @@ eTerm = do
                try eSend,
                try eSort,
                try eAssign,
-               try eAddress,
                try eRange,
+               try eAddress, -- this uses : and confuses eRange
                eLiterals,
                eLambda,
                eCondition,
@@ -648,6 +652,11 @@ eMap = exprError "map" $ keyword "map" *> parens
                (make <$> (eLambda <* comma) <*> expr)
     where
       make lam1 eCol = applyMethod eCol "map" [lam1]
+
+eFlatten :: ExpressionParser
+eFlatten = exprError "flatten" $ keyword "flatten" *> parens (make <$> expr)
+    where
+      make eCol = applyMethod eCol "flatten" []
 
 ePeek :: ExpressionParser
 ePeek = exprError "peek" $ keyword "peek" *> parens
@@ -851,6 +860,7 @@ underscore = do
                   "_" -> return "_"
                   _   -> fail "not underscore"
 
+-- Application works for us because we just see application as passing a tuple (record) to a function
 eApp :: ExpressionParser
 eApp = do
   eTerms <- some (try eTerm) -- Have m [a], need [m a], ambivalent to effects
@@ -880,12 +890,22 @@ eAssign = exprError "assign" $ mkAssign <$> sepBy1 identifier dot <*> equateNSEx
         pairSym (cnt,acc) n = (cnt+1,acc++[("__"++n++"_asn"++(show cnt), n)])
 
 eLet :: ExpressionParser
-eLet = exprError "let" $ keyword "let" *> binding <*> equateQExpr <*> (keyword "in" *> expr)
+eLet = exprError "let" $ keyword "let" *> (try justBind <|> binding) <*> equateQExpr <*> (keyword "in" *> expr)
   where binding = do
                     as <- deepBinds              -- make mini-ast of binding pattern
                     let as_num = add_numbers as -- add nums to mini-ast
                         letFn = make_binds as_num EC.letIn -- convert to binds
                     return letFn
+        -- We also did option pattern matching with let, so we need to translate it to
+        -- case ... of
+        justBind = do
+                     keyword "just"
+                     id <- identifier
+                     colon
+                     t <- qualifiedTypeTerm
+                     -- Because of the way we handled maybes in k3ocaml, we need to 
+                     -- create a default, unused value for the None -> branch
+                     return $ \bindE e -> EC.caseOf bindE id e $ defaultValue t
 
 eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
@@ -1287,6 +1307,24 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 
         unlessAnnotated test n@(_ :@: as) n' = if test as then n else n'
 
+-- | Default values for some simple types
+defaultValue :: K3 Type -> K3 Expression
+defaultValue (tag -> TBool)       = boolOf False
+defaultValue (tag -> TInt)        = intOf 0
+defaultValue (tag -> TReal)       = realOf 0.0
+defaultValue (tag -> TString)     = stringOf ""
+defaultValue (tag -> TAddress)    = let defaultIp = stringOf $ "127.0.0.1"
+                                        defaultPort = stringOf $ "40000"
+                                    in addressOf defaultIp defaultPort
+defaultValue (tag -> _)           = error "unhandled default value for type"
+
+-- Functions to create constants easily
+addressOf ip port = EC.address ip port
+stringOf s        = constOf CString s
+realOf r          = constOf CReal r
+intOf i           = constOf CInt i
+boolOf b          = constOf CBool b
+constOf typ c     = EC.constant $ typ c
 
 -- | Propagates a mutability qualifier from a type to an expression.
 --   This is used in desugaring non-function initializers and annotation members.
