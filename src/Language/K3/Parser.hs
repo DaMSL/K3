@@ -355,7 +355,7 @@ parseK3 includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program asInclude = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram <$> endBy (roleBody "") eof
+  where rule = mkProgram <$> endBy1 (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
         
         selfContainedProgram d = if asInclude then return d else (mkEntryPoints d >>= mkBuiltins)

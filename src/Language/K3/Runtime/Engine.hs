@@ -30,10 +30,6 @@ module Language.K3.Runtime.Engine (
 
   , defaultConfig
 
-  , simpleQueues
-  , perPeerQueues
-  , perTriggerQueues
-
   , simulationEngine
   , networkEngine
 
@@ -46,6 +42,7 @@ module Language.K3.Runtime.Engine (
   , forkEngine
   , waitForEngine
   , terminateEngine
+  , killEngine
 
   , enqueue
   , dequeue
@@ -72,7 +69,6 @@ module Language.K3.Runtime.Engine (
 #ifdef TEST
   , LoopStatus(..)
 
-  , MessageQueues(..)
   , Workers(..)
   , Listeners
 
@@ -167,7 +163,7 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
-                       , queues          :: MessageQueues a
+                       , queueConfig     :: QueueConfiguration a
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
@@ -205,15 +201,7 @@ data EngineControl = EngineControl {
     -- they should terminate.
     -- No blocking required, only safe access to a termination boolean
     -- for both workers (readers) and a console (i.e., a single writer)
-    terminateV :: MVar Bool,
-
-    -- | Blocking required for m workers (i.e., for empty queues during
-    -- message processing), with signalling from n producers.
-    -- We could use a semaphore, but a MSampleVar should be more lightweight.
-    -- That is, we need not track how many messages are available, rather
-    -- we need a single wake-up when any producer makes a message available.
-    -- TODO: this functionality should be merged with MessageQueues.
-    messageReadyV :: MSampleVar (),
+    terminateV :: MVar Terminate,
 
     -- | A concurrent counter that will reach 0 once all network listeners have finished.
     -- This is incremented and decremented as listeners are added to the engine, or as
@@ -225,8 +213,33 @@ data EngineControl = EngineControl {
     -- | Mutex for external threads to wait on this engine to complete.
     -- External threads should use readMVar on this variable, and this will
     -- be signalled by the last worker thread to finish.
-    waitV :: MVar ()
+    waitV :: MVar (),
+
+    -- | When a worker empties all of its queues, it waits to read from its 
+    -- corresponding SV in this map. When a message destined for the
+    --  worker is enqueued, the worker's SV will be populated, unblocking the worker.
+    messageReadyMap :: MVar (H.HashMap ThreadId (MSampleVar ())),
+
+    -- | Counter for the number of active (alive but not blocked) workers. 
+    -- Workers increment this value when spawned and when unblocked
+    -- Workers decrement this value just before blocking
+    awakeWorkersV :: MVar Int,
+
+    -- | Counter for the number of alive workers.
+    -- Workers increment this value only when spawned
+    -- Workers decrement this value just before they die
+    liveWorkersV :: MVar Int,   
+ 
+    -- | When all message queues are empty and all workers are waiting for a message
+    -- the local engine is out of work.
+    outOfWorkV :: MVar Bool
 }
+
+-- | The terminateV of the engine can be set to:
+-- Off       -> Continue Processing Messages
+-- FinishOne -> Finish One Message, then die 
+-- FinishAll -> Drain all queues, then die
+data Terminate = Off | FinishOne | FinishAll
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
 
@@ -250,11 +263,25 @@ data MessageProcessor prog msg res err = MessageProcessor {
 }
 
 {- Engine components -}
+type QueueId = String
 
-data MessageQueues a
-  = Peer          (MVar (Address, [(Identifier, a)]))
-  | ManyByPeer    (MVar (H.HashMap Address [(Identifier, a)]))
-  | ManyByTrigger (MVar (H.HashMap (Address, Identifier) [a]))
+defaultQueueId :: QueueId
+defaultQueueId = "Queue"
+
+-- Configuration of the Message Queues and their mapping onto workers
+data QueueConfiguration a = PerGroup { 
+    -- Map a queueId to a queue of messages
+    queueIdToQueue  :: (MVar (H.HashMap QueueId [(InternalMessage a)])),
+    
+    -- Group queues that should share a worker.
+    queueGroups     :: (MVar [[QueueId]]), 
+
+    -- Map a workers threadId to a list of queueIds that the worker should manage
+    workerIdToQueueIds :: (MVar (H.HashMap ThreadId [QueueId])),
+
+    -- Map an incoming messages to the proper QueueId
+    messageToQueueId  :: (MVar (H.HashMap (Address,Identifier) QueueId)) 
+}
 
 data Workers
   = Uniprocess    (MVar ThreadId)
@@ -364,7 +391,7 @@ type ListenerProcessor a b =
   ListenerState a b -> EndpointBuffer a -> Endpoint a b -> EngineM b (EndpointBuffer a)
 
 data ListenerState a b = ListenerState { name       :: Identifier
-                                       , engineSync :: (MSampleVar (), MVar Int)
+                                       , engineSync :: (MVar Int)
                                        , processor  :: ListenerProcessor a b }
 
 data ListenerError a
@@ -421,52 +448,112 @@ internalizeWD (WireDesc packF unpackF _) =
           [addr, n, aStr] -> unpackF aStr >>= return . maybe Nothing (Just . ((read addr) :: Address, n,))
           _               -> return Nothing
 
-{- Queue constructors -}
-simpleQueues :: Address -> IO (MessageQueues a)
-simpleQueues addr = newMVar (addr, []) >>= return . Peer
+{- QueueConfiguration constructors -}
 
-perPeerQueues :: [Address] -> IO (MessageQueues a)
-perPeerQueues peers = newMVar (H.fromList $ map (,[]) peers) >>= return . ManyByPeer
+-- Single Queue, Single Worker
+singleQSingleW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
+singleQSingleW addrL idL = do
+  -- setup a single queue hashmap
+  qMap    <- newMVar (H.insert defaultQueueId [] H.empty)
+  -- create a single group containing the default queue
+  qGroups <- newMVar $ [[defaultQueueId]] 
+  wMap    <- newEmptyMVar
+  -- route messages to the default queue
+  cross   <- return $ [(addr,id) | addr <- addrL, id <- idL]
+  kvs     <- return $ map (,defaultQueueId) cross
+  mMap    <- newMVar $ H.fromList kvs
+  return $ PerGroup qMap qGroups wMap mMap
 
-perTriggerQueues :: [Address] -> [Identifier] -> IO (MessageQueues a)
-perTriggerQueues peers triggerIds =
-  newMVar (H.fromList $ map (, []) $ cartesian peers triggerIds) >>= return . ManyByTrigger
-  where cartesian l r = concatMap (flip zip r . repeat) l
+-- Per Peer Queues. Single Worker
+peerQSingleW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
+peerQSingleW addrL idL = do
+  -- setup queue-per-peer hashmap
+  allQs   <- return $ map qName addrL
+  qMap    <- newMVar $ H.fromList $ map (\q -> (q, []) ) allQs
+  -- place all queues in one group (for single worker)
+  qGroups <- newMVar $ [allQs]
+  wMap    <- newEmptyMVar
+  -- route each message based on the address provided
+  kvs     <- return $ [((addr,id), qName addr) | addr <- addrL, id <- idL]
+  mMap    <- newMVar $ H.fromList kvs
+  return  $ PerGroup qMap qGroups wMap mMap
+  where qName addr = show addr
+
+-- Per Peer Queues and Workers
+peerQPeerW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
+peerQPeerW addrL idL = do
+  -- setup queue-per-peer hashmap
+  allQs   <- return $ map qName addrL
+  qMap    <- newMVar $ H.fromList $ map (\q -> (q, []) ) allQs
+  -- place each queue in its own group (for its own worker)
+  qGroups <- newMVar $ map (\q -> [q]) allQs
+  wMap    <- newEmptyMVar
+  -- route each message based on the address provided
+  kvs     <- return $ [((addr,id), qName addr) | addr <- addrL, id <- idL]
+  mMap    <- newMVar $ H.fromList kvs
+  return  $ PerGroup qMap qGroups wMap mMap
+  where qName addr = show addr
+
+-- Per Trigger Queues and Workers
+triggerQTriggerW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
+triggerQTriggerW addrL idL = do
+  -- setup queue-per-trigger hashmap
+  allQs   <- return $ map qName [(a,n) | a <- addrL, n <- idL]
+  qMap    <- newMVar $ H.fromList $ map (\q -> (q, []) ) allQs
+  -- place each queue in its own group (for its own worker)
+  qGroups <- newMVar $ map (\q -> [q]) allQs
+  wMap    <- newEmptyMVar
+  -- route each message based on the address,id provided
+  kvs     <- return $ [((addr,id), qName (addr,id)) | addr <- addrL, id <- idL]
+  mMap    <- newMVar $ H.fromList kvs
+  return  $ PerGroup qMap qGroups wMap mMap
+  where qName (addr,id) = (show addr) ++ "," ++ id
+
+{- EngineControl Constructors -}
+defaultControl :: IO EngineControl 
+defaultControl = EngineControl <$> newMVar Off <*> newMVar 0 <*> newEmptyMVar <*> newEmptyMVar <*> newMVar 0 <*> newMVar 0 <*> newMVar False
 
 {- Engine constructors -}
 
 -- | Simulation engine constructor.
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
-simulationEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-simulationEngine systemEnv (internalizeWD -> internalWD) = do
+simulationEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
+simulationEngine trigs isPar systemEnv (internalizeWD -> internalWD)  = do
   config'         <- return $ configureWithAddress $ head $ deployedNodes systemEnv
-  ctrl            <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
-  workers'        <- newEmptyMVar >>= return . Uniprocess
+  ctrl            <- defaultControl
+  workers'        <- if isPar
+                     then newEmptyMVar >>= return . Multithreaded
+                     else newEmptyMVar >>= return . Uniprocess
   listeners'      <- newMVar []
-  q               <- case deployedNodes systemEnv of
-                      [addr] -> simpleQueues addr
-                      _      -> perPeerQueues $ deployedNodes systemEnv
   endpoints'      <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ config'
   connState       <- return $ EConnectionState (Nothing, externalConns)
-  return $ Engine config' internalWD ctrl systemEnv q workers' listeners' endpoints' connState
+  qconfig         <- case (deployedNodes systemEnv, isPar) of
+                       ([x],_) -> singleQSingleW (deployedNodes systemEnv) trigs
+                       (_, False)  -> peerQSingleW (deployedNodes systemEnv) trigs
+                       _  -> peerQPeerW (deployedNodes systemEnv) trigs
+  return $ Engine config' internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
-networkEngine :: SystemEnvironment -> WireDesc a -> IO (Engine a)
-networkEngine systemEnv (internalizeWD -> internalWD) = do
+networkEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
+networkEngine trigs isPar systemEnv (internalizeWD -> internalWD) = do
   config'       <- return $ configureWithAddress $ head peers
-  ctrl          <- EngineControl <$> newMVar False <*> newEmptySV <*> newMVar 0 <*> newEmptyMVar
-  workers'      <- newEmptyMVar >>= return . Uniprocess
+  ctrl          <- defaultControl
+  workers'        <- if isPar
+                     then newEmptyMVar >>= return . Multithreaded
+                     else newEmptyMVar >>= return . Uniprocess
   listnrs       <- newMVar []
-  q             <- perPeerQueues peers
   endpoints'    <- EEndpointState <$> emptyEndpoints <*> emptyEndpoints
   internalConns <- emptyConns internalSendAddress config' >>= return . Just
   externalConns <- emptyConns externalSendAddress config'
   connState     <- return $ EConnectionState (internalConns, externalConns)
-  engine        <- return $ Engine config' internalWD ctrl systemEnv q workers' listnrs endpoints' connState
+  qconfig       <- if isPar
+                   then peerQPeerW (deployedNodes systemEnv) trigs
+                   else peerQSingleW (deployedNodes systemEnv) trigs
+  engine        <- return $ Engine config' internalWD ctrl systemEnv qconfig workers' listnrs endpoints' connState
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -492,14 +579,9 @@ deployedNodes = map fst
 nodes :: Engine a -> [Address]
 nodes e = deployedNodes $ deployment e
 
-numQueuedMessages :: MessageQueues b -> EngineM a Int
-numQueuedMessages = liftIO . \case
-    Peer qmv           -> withMVar qmv $ return . count
-    ManyByPeer qsmv    -> withMVar qsmv $ return . sumListSizes
-    ManyByTrigger qsmv -> withMVar qsmv $ return . sumListSizes
-  where
-    count        = length . snd
-    sumListSizes = H.foldl' (\acc msgs -> acc + length msgs) 0
+numQueuedMessages :: QueueConfiguration b -> EngineM a Int
+numQueuedMessages qconfig = liftIO $ withMVar (queueIdToQueue qconfig) (return . sumListSizes)
+  where sumListSizes = H.foldl' (\acc msgs -> acc + length msgs) 0
 
 numEndpoints :: EEndpointState b -> EngineM a Int
 numEndpoints es = (+) <$> (count $ externalEndpoints es) <*> (count $ internalEndpoints es)
@@ -508,8 +590,8 @@ numEndpoints es = (+) <$> (count $ externalEndpoints es) <*> (count $ internalEn
 statistics :: EngineM a (Int, Int)
 statistics = do
     engine <- ask
-    nqm <- numQueuedMessages $ queues engine
-    nep <- numEndpoints $ endpoints engine
+    nqm    <- numQueuedMessages $ queueConfig engine
+    nep    <- numEndpoints $ endpoints engine
     return (nqm, nep)
 
 simulation :: EngineM a Bool
@@ -530,30 +612,114 @@ deregisterNetworkListener n = do
     liftIO $ modifyMVar_ (networkDoneV $ control engine) $ return . pred
     liftIO $ modifyMVar_ (listeners engine) $ return . filter ((n /=) . fst)
 
-terminate :: EngineM a Bool
-terminate = do
+-- Return true if the given terminate val is not Off
+isAnyTerminate :: Terminate -> Bool
+isAnyTerminate Off = False
+isAnyTerminate _   = True
+
+-- Return true only if the given terminate val is FinishOne
+isFinishOne :: Terminate -> Bool
+isFinishOne FinishOne = True
+isFinishOne _ = False
+
+-- check if external factors for termination are satisfied.
+-- This is used to determine when to begin shutting down workers.
+eTerminate :: EngineM a Bool
+eTerminate = do
     engine     <- ask
-    terminate' <- liftIO $ readMVar (terminateV $ control engine)
-    done       <- networkDone
-    return $ done || not (waitForNetwork $ config engine) && terminate'
+    tval       <- liftIO $ readMVar (terminateV $ control engine) 
+    terminate' <- return $ isAnyTerminate tval
+    netdone    <- networkDone
+    return $ netdone || not (waitForNetwork $ config engine) && terminate'
+
+terminate :: Bool -> EngineM a Bool
+terminate finishOne = do
+    engine     <- ask
+    tval       <- liftIO $ readMVar (terminateV $ control engine) 
+    terminate' <- return $ if finishOne then (isFinishOne tval) else (isAnyTerminate tval)
+    netdone    <- networkDone
+    workdone   <- workersDone
+    return $ workdone && netdone || not (waitForNetwork $ config engine) && terminate'
+
+workersDone :: EngineM a Bool
+workersDone = do
+  engine <- ask
+  done   <- liftIO . readMVar . outOfWorkV $ control engine
+  return done
 
 networkDone :: EngineM a Bool
 networkDone = do
     engine <- ask
-    done <- liftIO . readMVar . networkDoneV $ control engine
+    done   <- liftIO . readMVar . networkDoneV $ control engine
     return $ done == 0
 
-waitForMessage :: EngineM a ()
-waitForMessage = do
-    engine <- ask
-    liftIO $ readSV (messageReadyV $ control engine)
+-- Return the live worker count
+numLiveWorkers :: EngineM a Int
+numLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ readMVar mv
+
+-- Decrement the live worker count
+decLiveWorkers :: EngineM a ()
+decLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . pred
+
+-- Increment the live worker count
+incLiveWorkers :: EngineM a ()
+incLiveWorkers = do
+  engine <- ask
+  mv     <- return $ liveWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . succ
+
+-- Return the awake worker count
+numAwakeWorkers :: EngineM a Int
+numAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ readMVar mv
+
+-- Decrement the awake worker count 
+decAwakeWorkers :: EngineM a ()
+decAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . pred
+
+-- Increment the awake worker count
+incAwakeWorkers :: EngineM a ()
+incAwakeWorkers = do
+  engine <- ask
+  mv     <- return $ awakeWorkersV $ control engine
+  liftIO $ modifyMVar_ mv $ return . succ
+
+-- Wait on the MSampleVar associated with the given worker
+waitForMessage :: ThreadId -> EngineM a ()
+waitForMessage tid = do
+  engine <- ask 
+  mv     <- return $ messageReadyMap $ control engine
+  h      <- liftIO $ readMVar mv
+  sv     <- return $ maybe wDie id (H.lookup tid h)
+  liftIO $ readSV sv
+
+-- Write to the MSampleVar associated with the given worker
+notifyMessage :: ThreadId -> EngineM a ()
+notifyMessage tid = do
+  engine <- ask
+  mv     <- return $ messageReadyMap $ control engine
+  liftIO $ withMVar mv (\h -> do
+    sv <- return $ maybe wDie id $ H.lookup tid h
+    writeSV sv ()
+    )
 
 -- | Process a single message within the engine, given the message processor to use, and the
 -- previous message result. Return the status of the loop.
 processMessage :: MessageProcessor p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
-    message <- dequeue $ queues engine
+    message <- dequeue $ queueConfig engine
     maybe terminate' process' message
   where
     terminate' = return $ MessagesDone pr
@@ -564,13 +730,47 @@ processMessage mp pr = do
 runMessages :: (Pretty r, Pretty e, Show a)
             => MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
 runMessages mp status' = ask >>= \engine -> status' >>= \case
-    Result r       -> debugStep >> runMessages mp (processMessage mp r)
-    Error e        -> die "Error:" e (control engine)
-    MessagesDone r -> terminate >>= \case
+    Result r       -> do
+        -- check if the engine is flagged to terminate after finishing one message
+        t <- terminate True
+        if t 
+        then do
+          -- Terminate
+          s <- return $ "Worker Terminated Forcefully After Message" 
+          decLiveWorkers
+          n <- numLiveWorkers
+          -- The last worker to terminate does engine cleanup
+          if n == 0
+          then shutdownEngine r
+          else die s r (control engine)
+        else do
+          -- Continue with Loop
+          debugStep
+          runMessages mp (processMessage mp r)
+    Error e        -> decLiveWorkers >> die "Error:" e (control engine)
+    MessagesDone r -> terminate False >>= \case
         True -> do
-            fr <- finalize mp r
-            die "Terminated:" fr (control engine)
-        _ -> waitForMessage >> runMessages mp (processMessage mp r)
+            s <- return $ "Worker Terminated After Empty Queue"
+            decLiveWorkers
+            n <- numLiveWorkers
+            -- The last worker to terminate does engine cleanup
+            if n == 0 
+            then shutdownEngine r
+            else die s r (control engine)
+
+        _    -> do
+            decAwakeWorkers
+            -- Signal all workers to shutdown, if applicable:
+            s <- isShutdownTime
+            if s
+            then shutdownWorkers
+            else return ()        
+            -- Wait for incoming message signal
+            myId <- liftIO myThreadId
+            waitForMessage myId
+            -- Record wakeup and recurse:
+            incAwakeWorkers
+            runMessages mp (processMessage mp r)
   where
     debugStep = do
       q <- prettyQueues
@@ -578,22 +778,87 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
 
     die msg r cntrl = do
         logStep $ boxToString $ ["", msg] ++ prettyLines r
-        cleanupEngine
-        void $ liftIO $ tryPutMVar (waitV cntrl) ()
         logStep $ "Finished."
 
     logStep s = void $ _notice_EngineSteps $ s
-
+    
+    -- TODO: verify thread safety 
+    isShutdownTime :: EngineM a Bool
+    isShutdownTime = do
+      engine <- ask
+      eTerm  <- eTerminate
+      numQd  <- numQueuedMessages $ queueConfig engine
+      numAw  <- numAwakeWorkers   
+      return $ eTerm && (numAw == 0) && (numQd == 0)
+    
+    shutdownWorkers :: EngineM a ()
+    shutdownWorkers = do
+      engine <- ask
+      -- Set outOfWorkV to True
+      oow_mv <- return $ outOfWorkV $ control engine
+      liftIO $ modifyMVar_ oow_mv $ const $ return True
+      -- Wake sleeping workers (for suicide)
+      notifyWorkers
+ 
+    shutdownEngine r = do
+      engine <- ask
+      -- Finalize MP and output result
+      fr     <- finalize mp r
+      die "Last Worker Terminated:" fr (control engine)
+      -- Cleanup and signal the engine's waitV
+      cleanupEngine
+      void $ liftIO $ tryPutMVar (waitV $ control engine) ()
+     
 runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
 runEngine mp p = do
     engine <- ask
     result <- initialize mp p
-    liftIO $ case workers engine of
-        Uniprocess workerMV -> tryTakeMVar workerMV >> myThreadId >>= putMVar workerMV
-        Multithreaded _     -> error "Unsupported engine mode: Multithreaded"
-        _                   -> error "Unsupported engine mode: Multiprocess"
+    case workers engine of 
+      Uniprocess worker_mv -> do
+        engine  <- ask
+        myId    <- liftIO myThreadId
+        qGroups <- liftIO $ readMVar (queueGroups $ queueConfig engine)
+        configWorkers [myId] qGroups
+        incLiveWorkers
+        incAwakeWorkers
+        runMessages mp (return . either Error Result $ status mp result)
+      
+      Multithreaded workers_mv -> do 
+        engine  <- ask
+        qGroups <- liftIO $ readMVar $ queueGroups $ queueConfig engine
+        threads <- mapM (const $ forkWorker mp result) qGroups
+        configWorkers threads qGroups
+        waitForEngine
+      
+      Multiprocess _ -> error "Unsupported engine mode: Multiprocess" 
 
-    runMessages mp (return . either Error Result $ status mp result)
+forkWorker :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> r -> EngineM a ThreadId
+forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
+  where 
+   runWorker engine = do
+     runEngineM doWork engine
+
+   doWork = do
+     incLiveWorkers
+     incAwakeWorkers
+     (runMessages mp (return . either Error Result $ status mp result)) 
+
+configWorkers :: [ThreadId] -> [[QueueId]] -> EngineM a ()
+configWorkers threads qgroups = do
+  engine  <- ask
+  -- log threadIds of workers
+  liftIO $ case workers engine of
+    Uniprocess mv    -> tryTakeMVar mv >> putMVar mv (head threads)
+    Multithreaded mv -> tryTakeMVar mv >> putMVar mv threads
+    Multiprocess _   -> error "Multiprocess mode unsupported"
+  -- map threadIds to queue groups
+  wm_mv    <- return $ workerIdToQueueIds $ queueConfig engine
+  wm_kvs  <- return $ zip threads qgroups
+  liftIO $ putMVar wm_mv (H.fromList wm_kvs)
+  -- map threadIds to emptySVs
+  mrmv    <- return $ messageReadyMap $ control engine
+  mr_kvs  <- liftIO $ mapM (\tid -> newEmptySV >>= return . ((,) tid) ) threads
+  liftIO $ putMVar mrmv (H.fromList mr_kvs)
 
 forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ThreadId
 forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp p) engine
@@ -601,11 +866,37 @@ forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEng
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
 
-terminateEngine :: EngineM a ()
-terminateEngine = do
+-- Write to all the mesageReady SampleVars to unblock workers
+notifyWorkers :: EngineM a ()
+notifyWorkers = do
+  engine <- ask
+  mv     <- return $ messageReadyMap $ control engine
+  liftIO $ withMVar mv (\h -> (mapM_ (\sv -> writeSV sv ()) (map snd $ H.toList h)))
+
+-- Begin engine termination:
+-- Two Modes: 
+--  - Allow each worker to finish only one message, then die
+--  - Allow each worker to empty is queues, then die
+terminateEngine :: Bool -> EngineM a ()
+terminateEngine afterOne = do
     engine <- ask
-    liftIO $ modifyMVar_ (terminateV $ control engine) (const $ return True)
-    liftIO $ writeSV (messageReadyV $ control engine) ()
+    term   <- return $ if afterOne then FinishOne else FinishAll
+    liftIO $ modifyMVar_ (terminateV $ control engine) (const $ return term)
+    -- send the message ready signal to all workers
+    notifyWorkers
+
+-- Forcefully kill the engine's threads
+killEngine :: EngineM a ()
+killEngine = ask >>= \engine -> liftIO $ case workers engine of 
+  Uniprocess tmv -> do
+    withMVar tmv killThread
+    void $ tryPutMVar (waitV $ control engine) ()
+  
+  Multithreaded tsmv -> do
+    withMVar tsmv (mapM_ killThread)
+    void $ tryPutMVar (waitV $ control engine) ()
+   
+  Multiprocess _ -> error "unsupported engine mode: multiprocess"
 
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
@@ -623,16 +914,14 @@ cleanupEngine = do
 -- TODO: handle ReceivedMulticast events
 -- TODO: log errors on ErrorEvent
 internalListenerProcessor :: ListenerProcessor (InternalMessage a) a
-internalListenerProcessor (engineSync -> (msgAvail, _)) buf _ = do
+internalListenerProcessor (engineSync -> _) buf _ = do
     engine  <- ask
-    buffer' <- enqueueEBuffer (queues engine) buf
-    liftIO $ writeSV msgAvail ()
+    buffer' <- enqueueEBuffer (queueConfig engine) buf
     return buffer'
 
 externalListenerProcessor :: ListenerProcessor a a
-externalListenerProcessor (engineSync -> (msgAvail, _)) buf ep = do
+externalListenerProcessor (engineSync -> _) buf ep = do
     notifySubscribers SocketData (subscribers ep)
-    liftIO $ writeSV msgAvail ()
     return buf
 
 runNEndpoint :: ListenerState a b -> Endpoint a b -> EngineM b ()
@@ -671,43 +960,60 @@ runNEndpoint ls _ = error $ "Invalid endpoint for network source " ++ (name ls)
 
 {- Message passing -}
 
--- | Queue accessors
-enqueue :: MessageQueues a -> Address -> Identifier -> a -> EngineM a ()
-enqueue (Peer qmv) addr n arg = liftIO $ modifyMVar_ qmv enqueueIfValid
-  where enqueueIfValid (addr', q)
-          | addr == addr' = return (addr, q++[(n,arg)])
-          | otherwise = return (addr', q)  -- TODO: should this be more noisy, i.e. logged?
+-- | Queue accessor
 
-enqueue (ManyByPeer qsmv) addr n arg = liftIO $ modifyMVar_ qsmv enqueueToNode
-  where enqueueToNode qs = return $ H.adjust (++ [(n, arg)]) addr qs
+mDie = error "Could not find the queueId for given message"
+qDie = error "Could not find the queue for given queueId"
+wDie = error "Could not find the queueGroup for given worker"
 
-enqueue (ManyByTrigger qsmv) addr n arg = liftIO $ modifyMVar_ qsmv enqueueToTrigger
-  where enqueueToTrigger qs = return $ H.adjust (++ [arg]) (addr, n) qs
+enqueue :: QueueConfiguration a -> Address -> Identifier -> a -> EngineM a ()
+enqueue qconfig addr n arg = do
+  engine <- ask
+  -- lookup the queue for the given (addr,n)
+  mMap   <- liftIO $ readMVar (messageToQueueId qconfig)
+  qId    <- return $ maybe mDie id (H.lookup (addr,n) mMap)
+  qMapMv <- return $ queueIdToQueue qconfig
+  -- enqueue the message
+  liftIO  $ modifyMVar_  qMapMv (enqueueTo qId)
+  -- record fact that work has arrived
+  liftIO $ modifyMVar_ (outOfWorkV $ control engine) (const $ return False)
+  -- notify the proper worker that a message has arrived
+  tid    <-  liftIO $ lookupWorker qconfig qId
+  maybe (return ()) notifyMessage tid 
+  where 
+    enqueueTo qid qs = return $ H.adjust (++ [(addr,n, arg)]) qid qs
+    lookupWorker qconfig qid = do
+      wm_mv   <- return (workerIdToQueueIds qconfig)
+      -- enqueue is called once before workers are initialized.
+      -- If worker map mvar is still empty, there is no
+      -- need to wake any worker.
+      is_init <- isEmptyMVar wm_mv
+      if is_init 
+      then return Nothing
+      else withMVar (workerIdToQueueIds qconfig) (\h -> return $ getWorker qid (H.toList h))
+    getWorker queueId [] = error "failed to find the worker responsible for the given queue"
+    getWorker queueId ((k,v):kvs) = if queueId `elem` v  then Just k else (getWorker queueId kvs)
 
--- TODO: fair peer traversal
--- TODO: efficient queue modification rather than toList / fromList
-dequeue :: MessageQueues a -> EngineM a (Maybe (Address, Identifier, a))
-dequeue = liftIO . \case
-    Peer qmv           -> modifyMVar qmv $ return . someMessage
-    ManyByPeer qsmv    -> modifyMVar qsmv $ return . messageFromMap mpDequeue
-    ManyByTrigger qsmv -> modifyMVar qsmv $ return . messageFromMap mtDequeue
-
-  where someMessage (addr,l) = case trySplit l of
-          (nl, Nothing)      -> ((addr, nl), Nothing)
-          (nl, Just (n,val)) -> ((addr, nl), Just (addr,n,val))
-
-        messageFromMap f m = 
-          let chosenKVOpt = snd . trySplit . H.toList . H.filter (not . null) $ m
-          in maybe (m, Nothing) (\kv -> rebuild m (fst kv) $ f kv) chosenKVOpt
-
-        rebuild m k (nv, r) = (H.adjust (const nv) k m, r)
-
-        mpDequeue (_, [])          = ([], Nothing)
-        mpDequeue (addr, (n,v):t)  = (t, Just (addr, n, v))
-        mtDequeue (_, [])          = ([], Nothing)
-        mtDequeue ((addr, n), v:t) = (t, Just (addr, n, v))
-
-        trySplit l = if null l then (l, Nothing) else (tail l, Just $ head l)
+dequeue :: QueueConfiguration a -> EngineM a (Maybe (Address, Identifier, a))
+dequeue qconfig = do
+  -- find the list of queues this worker must manage
+  wMap <- liftIO $ readMVar (workerIdToQueueIds qconfig)
+  myId <- liftIO $ myThreadId
+  myQs <- return $ maybe wDie id (H.lookup myId wMap)
+  -- dequeue from one of those queues
+  liftIO $ modifyMVar (queueIdToQueue qconfig) $ return . mkDequeue myQs
+  where 
+    dequeueFromMap group qMap = let
+      myList = maybe qDie id (H.lookup group qMap)
+      in case myList of 
+        []     -> (qMap, Nothing)
+        (x:xs) -> ((H.insert group xs qMap), Just x) 
+    -- multi key dequeue
+    mkDequeue []     qMap = (qMap, Nothing)
+    mkDequeue (k:ks) qMap = 
+      case dequeueFromMap k qMap of
+        (q, Nothing) -> mkDequeue ks q
+        (q, Just x)  -> (q, Just x)
 
 -- | Message passing
 send :: Address -> Identifier -> a -> EngineM a ()
@@ -717,7 +1023,7 @@ send addr n arg = do
     shortCircuit <- (elem addr (nodes engine) ||) <$> simulation
 
     if shortCircuit
-        then enqueue (queues engine) addr n arg
+        then enqueue (queueConfig engine) addr n arg
         else trySend (connectionRetries $ config engine)
   where
     trySend 0 = send' (connectionId addr) $ error $ "Failed to connect to " ++ show addr
@@ -919,7 +1225,7 @@ openSocket eid addr wd tOpt mode = do
     engine <- ask
     let eep = externalEndpoints $ endpoints engine
     let ctl = control engine
-    let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) externalListenerProcessor
+    let lst = ListenerState eid (networkDoneV ctl) externalListenerProcessor
     genericOpenSocket eid addr wd tOpt mode lst eep
 
 close :: String -> EngineM a ()
@@ -960,7 +1266,7 @@ openSocketInternal eid addr mode = do
     let ife = internalFormat engine
     let iep = internalEndpoints $ endpoints engine
     let ctl = control engine
-    let lst = ListenerState eid (messageReadyV ctl, networkDoneV ctl) internalListenerProcessor
+    let lst = ListenerState eid (networkDoneV ctl) internalListenerProcessor
     genericOpenSocket eid addr ife Nothing mode lst iep
 
 closeInternal :: String -> EngineM a ()
@@ -1343,16 +1649,16 @@ refreshEBContents (SocketH _ (Right _)) _ = error "Invalid buffer refresh for ne
 refreshEBuffer :: IOHandle v -> EndpointBuffer v -> IO (EndpointBuffer v, (Maybe v, Maybe EndpointNotification))
 refreshEBuffer h = modifyEBuffer $ refreshEBContents h
 
-enqueueEBContents :: MessageQueues a -> BufferContents (InternalMessage a)
+enqueueEBContents :: QueueConfiguration a -> BufferContents (InternalMessage a)
                   -> EngineM a (BufferContents (InternalMessage a))
-enqueueEBContents q = \case
+enqueueEBContents qconfig = \case
   Single Nothing             -> return emptySingletonBuffer
-  Single (Just (addr, n, v)) -> enqueue q addr n v >> return emptySingletonBuffer
-  Multiple x spec            -> mapM_ (\(addr, n, v) -> enqueue q addr n v) x >> return (emptyBoundedBuffer spec)
+  Single (Just (addr, n, v)) -> enqueue qconfig addr n v >> return emptySingletonBuffer
+  Multiple x spec            -> mapM_ (\(addr, n, v) -> enqueue qconfig addr n v) x >> return (emptyBoundedBuffer spec)
 
-enqueueEBuffer :: MessageQueues a -> EndpointBuffer (InternalMessage a)
+enqueueEBuffer :: QueueConfiguration a -> EndpointBuffer (InternalMessage a)
                -> EngineM a (EndpointBuffer (InternalMessage a))
-enqueueEBuffer q = modifyEBuffer'_ $ enqueueEBContents q
+enqueueEBuffer qconfig = modifyEBuffer'_ $ enqueueEBContents qconfig
 
 modifyEBuffer' :: (BufferContents b -> EngineM c (BufferContents b, a)) -> EndpointBuffer b
                -> EngineM c (EndpointBuffer b, a)
@@ -1366,16 +1672,14 @@ modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return
 
 {- Pretty printing helpers -}
 
-showMessageQueues :: Show a => MessageQueues a -> EngineM a String
-showMessageQueues (Peer q)           = liftIO (readMVar q)  >>= return . show
-showMessageQueues (ManyByPeer qs)    = liftIO (readMVar qs) >>= return . show
-showMessageQueues (ManyByTrigger qs) = liftIO (readMVar qs) >>= return . show
+showMessageQueues :: Show a => QueueConfiguration a -> EngineM a String
+showMessageQueues qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . show
 
 showEngine :: Show a => EngineM a String
 showEngine = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues)
 
 prettyQueues :: Show a => EngineM a [String]
-prettyQueues = ask >>= showMessageQueues . queues >>= return . (["Queues: "]++) . (:[])
+prettyQueues = ask >>= showMessageQueues . queueConfig >>= return . (["Queues: "]++) . (:[])
 
 
 {- Instance definitions -}

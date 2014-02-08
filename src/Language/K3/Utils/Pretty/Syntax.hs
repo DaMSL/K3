@@ -332,6 +332,7 @@ typ' (tag -> TInt)        = return $ text "int"
 typ' (tag -> TReal)       = return $ text "real"
 typ' (tag -> TString)     = return $ text "string"
 typ' (tag -> TAddress)    = return $ text "address"
+typ' (tag -> TTop)        = return $ text "top"
 
 typ' (details -> (TOption, [x], _)) = qualifierAndType x >>= return . uncurry optionType
 typ' (tag -> TOption)               = throwSP "Invalid option type"
