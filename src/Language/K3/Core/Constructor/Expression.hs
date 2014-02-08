@@ -21,6 +21,7 @@ module Language.K3.Core.Constructor.Expression (
     bindAs,
     ifThenElse,
     address,
+    range,
     self,
 
     Constant(..),
@@ -116,6 +117,10 @@ bindAs e x b = Node (EBindAs x :@: []) [e, b]
 ifThenElse :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
 ifThenElse p t e = Node (EIfThenElse :@: []) [p, t, e]
 
+-- | Create a range expression
+range :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
+range start stride steps = Node (ERange :@: []) [start, stride, steps]
+
 -- | Create an address expression
 address :: K3 Expression -> K3 Expression -> K3 Expression
 address ip port = Node (EAddress :@: []) [ip, port]
@@ -123,3 +128,4 @@ address ip port = Node (EAddress :@: []) [ip, port]
 -- | A self expression.
 self :: K3 Expression
 self = Node (ESelf :@: []) []
+
