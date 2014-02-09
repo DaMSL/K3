@@ -991,9 +991,8 @@ eCollection = exprError "collection" $ singleField
         colWithType :: String -> K3Parser (K3 Expression)
         colWithType annoStr = 
           do es <- readElems
-             let es' = Trace.trace ("elements are " ++ show es ++ "\n") $ es
-                 idsTypes = idTypeOfE $ head es'
-                 recs = mkRecords idsTypes es'
+                 idsTypes = idTypeOfE $ head es
+                 recs = mkRecords idsTypes es
                  col = mkCollection idsTypes recs $ [EAnnotation annoStr]
              return col
 
@@ -1068,17 +1067,17 @@ mkUnOp x = unaryParseOp x operator
 -}
 
 mkUnOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkUnOpK x = unaryParseOp x keyword
+mkUnOpK x = unaryParseOp x operator
 
 -- We don't include "|" because it confuses the parser with {|...|}
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
-  [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+  [   map mkUnOpK  [("!",   ONot), ("-", ONeg)], 
+      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
-      map mkUnOpK  [("!",   ONot)],
       map mkBinOpK [("&",   OAnd)]
   ]
 
