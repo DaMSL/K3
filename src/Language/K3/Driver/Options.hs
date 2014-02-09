@@ -34,7 +34,7 @@ data Mode
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
-data CompileOptions = CompileOptions { language    :: String
+data CompileOptions = CompileOptions { outLanguage :: String
                                      , programName :: String
                                      , outputFile  :: Maybe FilePath
                                      , buildDir    :: Maybe FilePath }
@@ -44,15 +44,22 @@ data CompileOptions = CompileOptions { language    :: String
 data InterpretOptions
     = Batch { network :: Bool
             , sysEnv :: SystemEnvironment
-            , asExpr :: Bool }
+            , asExpr :: Bool
+            , isPar  :: Bool }
     | Interactive
   deriving (Eq, Read, Show)
 
 -- | Pretty-printing options.
-data PrintOptions
+data PrintOutput
     = PrintAST
     | PrintSyntax
   deriving (Eq, Read, Show)
+
+data PrintOptions
+    = PrintOptions { inLanguage :: String
+                   , printOutput :: PrintOutput }
+  deriving (Eq, Read, Show)
+
 
 -- | Analyze Options.
 data AnalyzeOptions
@@ -106,13 +113,13 @@ modeOptions = subparser (
 
 -- | Compiler options
 compileOptions :: Parser Mode
-compileOptions = mkCompile <$> languageOpt <*> progNameOpt <*> outputFileOpt <*> buildDirOpt
+compileOptions = mkCompile <$> outLanguageOpt <*> progNameOpt <*> outputFileOpt <*> buildDirOpt
   where mkCompile l n o b = Compile $ CompileOptions l n o b 
 
-languageOpt :: Parser String
-languageOpt = option (   short   'l'
+outLanguageOpt :: Parser String
+outLanguageOpt = option ( short   'l'
                       <> long    "language"
-                      <> value   defaultLanguage
+                      <> value   defaultOutLanguage
                       <> reader  str
                       <> help    "Specify compiler target language"
                       <> metavar "LANG" )
@@ -158,7 +165,7 @@ batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions
+        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions <*> parOptions
 
 -- | Expression-Level flag.
 elvlOptions :: Parser Bool
@@ -185,15 +192,32 @@ networkOptions = switch (
      <> help "Run in Network Mode"
     )
 
+-- | Parallel mode flag.
+parOptions :: Parser Bool
+parOptions = switch (
+        long "parallel"
+     <> value False
+     <> help "Run the Parallel Engine"
+    )
+
 -- | Printing options
 printOptions :: Parser Mode
-printOptions = Print <$> (astPrintOpt <|> syntaxPrintOpt)
+printOptions = mkPrint <$> inLanguageOpt <*> (astPrintOpt <|> syntaxPrintOpt)
+  where mkPrint l o = Print $ PrintOptions l o
 
-astPrintOpt :: Parser PrintOptions
+inLanguageOpt :: Parser String
+inLanguageOpt = option ( short   'l'
+                      <> long    "language"
+                      <> value   defaultInLanguage
+                      <> reader  str
+                      <> help    "Specify source language"
+                      <> metavar "LANG" )
+
+astPrintOpt :: Parser PrintOutput
 astPrintOpt = flag' PrintAST (   long "ast"
                               <> help "Print AST output" )
 
-syntaxPrintOpt :: Parser PrintOptions
+syntaxPrintOpt :: Parser PrintOutput
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 -- | Analyze options
@@ -273,8 +297,8 @@ instance Pretty Mode where
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr) =
-    ["Batch"] ++ (indent 2 $ ["Network: " ++ show net] ++ prettySysEnv env ++ ["Expression: " ++ show expr])
+  prettyLines (Batch net env expr isPar) =
+    ["Batch"] ++ (indent 3 $ ["Network: " ++ show net] ++ prettySysEnv env ++ ["Expression: " ++ show expr] ++ ["Parallel: " ++ show isPar])
   
   prettyLines v = [show v]
 

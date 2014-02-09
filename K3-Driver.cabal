@@ -19,10 +19,13 @@ executable k3
         containers,
         directory,
         filepath,
+        haskeline,
         hslogger,
         mtl,
         optparse-applicative >= 0.7.0.2,
         readline,
         split,
+        transformers,
+        ansi-wl-pprint,
 
         K3-Core
