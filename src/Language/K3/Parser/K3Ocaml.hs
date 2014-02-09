@@ -379,9 +379,23 @@ dGlobal = (namedDecl "global" "declare" $ rule . (mkGlobal <$>)) <|>
   where rule x = x <* colon <*> qualifiedTypeExpr <*> (optional equateExpr)
         mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt) -- unsure
 
-dTrigger :: DeclParser
-dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
-  where rule x = x <* colon <*> typeExpr <*> equateExpr
+{-dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)-}
+  {-where rule x = x <* colon <*> typeExpr <*> equateExpr-}
+
+dTrigger = namedDecl "trigger" "trigger" $ rule
+  where rule :: K3Parser Identifier -> DeclParser
+        rule idParser = do
+            trigName :: Identifier <- idParser
+            -- create a binding mini-ast
+            ast <- parens $ triggerDeepBind
+            symbol "{}" -- empty local variables
+            symbol "="
+            let ast_num     = add_numbers ast -- add nums to AST
+                trigType    = bindAstToType ast_num
+                trigBuilder id e = DC.trigger trigName trigType $ EC.lambda id e
+                trigFn :: (K3 Expression -> K3 Declaration) = make_binds ast_num trigBuilder
+            e <- expr
+            return $ trigFn e
 
 dEndpoint :: String -> String -> Bool -> K3Parser [K3 Declaration]
 dEndpoint kind name isSource = 
@@ -535,11 +549,10 @@ tCollectionRecord = typeExprError "record" $ ( TUID # ) $
 -- Add ids to types or any other list
 addIds :: [a] -> [(Identifier, a)]
 addIds ts = snd $ foldr (\t (last, acc) -> 
-              (last - 1, (to_str last, t):acc) 
+              (last - 1, (toId last, t):acc) 
             )
             (length ts, [])
             ts
-  where to_str i = "_" ++ show i 
 
 tCollection :: TypeParser
 tCollection = typeExprError "collection" $ ( TUID # ) $
@@ -596,10 +609,14 @@ eTerm :: ExpressionParser
 eTerm = do
   -- Handle slicing, which is left recursive, by adding it optionally
   e  <- EUID # (ESpan <-> rawTerm)
-  mi <- optional (spanned eSlice)
-  case mi of
-    Nothing      -> return e -- Just an expression
-    Just (x, sp) -> EUID # (return $ (handleSlice e x) @+ ESpan sp)
+  mi <- optional $ spanned eSlice
+  or <- optional $ try(spanned eOr)
+  let checkSlice Nothing          = e
+      checkSlice (Just (x, sp))   = (handleSlice e x) @+ ESpan sp
+
+      checkOr Nothing             = checkSlice mi
+      checkOr (Just (e2, sp))     = (EC.binop OOr (checkSlice mi) e2) @+ ESpan sp
+  EUID # (return $ checkOr or)
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ 
@@ -624,6 +641,9 @@ eTerm = do
                eLet
              ]
     eSlice = brackets (commaSep1 underscoreOrExpr)
+    eOr    = symbol "|" *> expr  -- confused with {|...|}
+
+
     attachComment e cmt = e @+ (ESyntax cmt)
 
 doHere a = seq (Trace.trace "here\n") a
@@ -789,13 +809,13 @@ eEmpty = exprError "empty" $ EC.empty <$> col
                   qualifiedTypeTerm
 
 -- Data type to parse the destructed tuples
-data A a = Arg Identifier | Tup [A a] a
+data A a = Arg Identifier (K3 Type) | Tup [A a] a
 
 -- Add numbers to the mini-ast
 add_numbers :: A a -> A Int
 add_numbers x = snd $ loop x 1
   where
-    loop (Arg a)  i = (i, Arg a)
+    loop (Arg a t)  i = (i, Arg a t)
     loop (Tup xs _) i = 
         let (i_max, xs') = foldr (\x (i, acc) ->
               let (i', res) = loop x (i+1)
@@ -804,27 +824,29 @@ add_numbers x = snd $ loop x 1
         in (i_max, Tup xs' i)
 
  -- We take the mini-ast and a function for binding at the top level (just an id)
-make_binds (Arg id) f     = f id
+make_binds :: A Int -> (Identifier -> K3 Expression -> a) -> (K3 Expression -> a)
+make_binds (Arg id t) f     = f id
  -- make the arg the first number, and then bind at each level
 make_binds a@(Tup _ i) f  = f (toId i) . binder a
   where
     binder :: A Int -> K3 Expression -> K3 Expression
-    binder (Arg _)    = error "bad code path"
+    binder (Arg _ _)    = error "bad code path"
     binder (Tup xs i) = 
       let ids = map getIds xs
           cur_bind = bind (toId i) ids
       in foldl' (\acc x -> if checkTup x then acc . binder x else acc) cur_bind xs
 
     checkTup (Tup _ _) = True
-    checkTup (Arg _)   = False
+    checkTup (Arg _ _) = False
 
     -- Curried binding functions to create our bind expression
     bind parentId ids = EC.bindAs (EC.variable parentId) $ BRecord $ addIds ids
 
     getIds (Tup _ i) = toId i
-    getIds (Arg id)  = id
+    getIds (Arg id _)  = id
 
-    toId i = "_"++show i
+-- Convert a number to a consistent id
+toId i = "__"++show i
 
 eLambda :: ExpressionParser
 eLambda = exprError "lambda" $ destruct
@@ -841,6 +863,13 @@ eLambda = exprError "lambda" $ destruct
                   return $ lambdaFn exp
 
 -- Common functions used by lambda and let to parse mini-AST
+-- First layer of binding used by trigger since there's no parens
+triggerDeepBind :: K3Parser(A ())
+triggerDeepBind = wrap <$> commaSep1 deepBinds
+  where wrap [x] = x
+        wrap xs  = Tup xs ()
+
+-- Deep binding used by let and lambda
 deepBinds :: K3Parser(A ())
 deepBinds = tupleDest <|> labelDest
 
@@ -849,9 +878,10 @@ tupleDest = Tup <$> (parens $ commaSep1 $ deepBinds) <*> pure ()
                   
 labelDest :: K3Parser(A ())
 -- Must only call tTerm here since we can't have functions
-labelDest = Arg <$> anyOrLabel
+labelDest = anyOrLabel
   where 
-     anyOrLabel = try(identifier <* colon <* qualifiedTypeTerm) <|> underscore
+     anyOrLabel = try(Arg <$> identifier <* colon <*> qualifiedTypeTerm) 
+                 <|>  Arg <$> underscore <*> pure TC.unit
 
 underscore :: K3Parser(Identifier)
 underscore = do 
@@ -859,6 +889,12 @@ underscore = do
                 case id of
                   "_" -> return "_"
                   _   -> fail "not underscore"
+
+-- Parse the binding ast and produce a record type (needed for triggers)
+bindAstToType :: A Int -> K3 Type
+bindAstToType  = snd . bindAstToType'
+bindAstToType' (Arg id t) = (id,t)
+bindAstToType' (Tup as i) = (toId i, TC.record $ map bindAstToType' as)
 
 -- Application works for us because we just see application as passing a tuple (record) to a function
 eApp :: ExpressionParser
@@ -947,17 +983,16 @@ eCollection :: ExpressionParser
 eCollection = exprError "collection" $ singleField
   where 
         singleField =     choice [
-                            try $ pipeBraces $ colWithType "Bag"
-                          , braces $ colWithType "Set"
+                            try (braces $ colWithType "Set")
+                          , try (pipeBraces $ colWithType "Bag")
                           , brackets $ colWithType "List"
                           ]
 
         colWithType :: String -> K3Parser (K3 Expression)
         colWithType annoStr = 
           do es <- readElems
-             let es' = Trace.trace ("elements are " ++ show es ++ "\n") $ es
-                 idsTypes = idTypeOfE $ head es'
-                 recs = mkRecords idsTypes es'
+                 idsTypes = idTypeOfE $ head es
+                 recs = mkRecords idsTypes es
                  col = mkCollection idsTypes recs $ [EAnnotation annoStr]
              return col
 
@@ -1032,18 +1067,18 @@ mkUnOp x = unaryParseOp x operator
 -}
 
 mkUnOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkUnOpK x = unaryParseOp x keyword
+mkUnOpK x = unaryParseOp x operator
 
+-- We don't include "|" because it confuses the parser with {|...|}
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
-  [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+  [   map mkUnOpK  [("!",   ONot), ("-", ONeg)], 
+      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
-      map mkUnOpK  [("!",   ONot)],
-      map mkBinOpK [("&",   OAnd)],
-      map mkBinOpK [("|",   OOr)]
+      map mkBinOpK [("&",   OAnd)]
   ]
 
 {-fullOpTable :: OperatorTable K3Parser (K3 Expression)-}
