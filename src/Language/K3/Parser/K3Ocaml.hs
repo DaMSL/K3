@@ -609,10 +609,14 @@ eTerm :: ExpressionParser
 eTerm = do
   -- Handle slicing, which is left recursive, by adding it optionally
   e  <- EUID # (ESpan <-> rawTerm)
-  mi <- optional (spanned eSlice)
-  case mi of
-    Nothing      -> return e -- Just an expression
-    Just (x, sp) -> EUID # (return $ (handleSlice e x) @+ ESpan sp)
+  mi <- optional $ spanned eSlice
+  or <- optional $ try(spanned eOr)
+  let checkSlice Nothing          = e
+      checkSlice (Just (x, sp))   = (handleSlice e x) @+ ESpan sp
+
+      checkOr Nothing             = checkSlice mi
+      checkOr (Just (e2, sp))     = (EC.binop OOr (checkSlice mi) e2) @+ ESpan sp
+  EUID # (return $ checkOr or)
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ 
@@ -637,6 +641,9 @@ eTerm = do
                eLet
              ]
     eSlice = brackets (commaSep1 underscoreOrExpr)
+    eOr    = symbol "|" *> expr  -- confused with {|...|}
+
+
     attachComment e cmt = e @+ (ESyntax cmt)
 
 doHere a = seq (Trace.trace "here\n") a
@@ -976,8 +983,8 @@ eCollection :: ExpressionParser
 eCollection = exprError "collection" $ singleField
   where 
         singleField =     choice [
-                            try $ pipeBraces $ colWithType "Bag"
-                          , braces $ colWithType "Set"
+                            try (braces $ colWithType "Set")
+                          , try (pipeBraces $ colWithType "Bag")
                           , brackets $ colWithType "List"
                           ]
 
@@ -1063,6 +1070,7 @@ mkUnOp x = unaryParseOp x operator
 mkUnOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
 mkUnOpK x = unaryParseOp x keyword
 
+-- We don't include "|" because it confuses the parser with {|...|}
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
   [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
@@ -1071,8 +1079,7 @@ nonSeqOpTable =
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
       map mkBinOp  [("==",  OEqu), ("!=", ONeq)],
       map mkUnOpK  [("!",   ONot)],
-      map mkBinOpK [("&",   OAnd)],
-      map mkBinOpK [("|",   OOr)]
+      map mkBinOpK [("&",   OAnd)]
   ]
 
 {-fullOpTable :: OperatorTable K3Parser (K3 Expression)-}
