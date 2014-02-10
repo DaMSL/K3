@@ -21,7 +21,6 @@ module Language.K3.Core.Constructor.Expression (
     bindAs,
     ifThenElse,
     address,
-    range,
     self,
 
     Constant(..),
@@ -116,10 +115,6 @@ bindAs e x b = Node (EBindAs x :@: []) [e, b]
 -- | Create an if/then/else conditional expression.
 ifThenElse :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
 ifThenElse p t e = Node (EIfThenElse :@: []) [p, t, e]
-
--- | Create a range expression
-range :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
-range start stride steps = Node (ERange :@: []) [start, stride, steps]
 
 -- | Create an address expression
 address :: K3 Expression -> K3 Expression -> K3 Expression

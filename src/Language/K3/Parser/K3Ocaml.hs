@@ -726,14 +726,15 @@ eSort = exprError "sort" $ keyword "sort" *> parens
       make col lambda = applyMethod col "sort" [lambda]
 
 eRange :: ExpressionParser
-eRange = exprError "range" $ brackets (
+eRange = exprError "range" $ brackets $
         do
            e1 <- expr
            symbol "::"
            e2 <- expr
            symbol "::"
            e3 <- expr
-           return $ EC.range e1 e2 e3)
+           return $ applyMethod emptyCol "range" [e1, e2, e3]
+   where emptyCol = EC.empty $ (TC.collection $ TC.int) @+ TAnnotation "List"
 
 applyMethod :: K3 Expression -> Identifier -> [K3 Expression] -> K3 Expression
 applyMethod col method args = EC.applyMany (EC.project method $ col) args

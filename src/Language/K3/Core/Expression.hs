@@ -34,7 +34,6 @@ data Expression
     | ECaseOf     Identifier
     | EBindAs     Binder
     | EIfThenElse
-    | ERange
     | EAddress
     | ESelf
     | EImperative ImperativeExpression
