@@ -685,7 +685,11 @@ expression (tag &&& children -> (ESome, [x])) = expression x >>= return . VOptio
 expression (tag -> ESome) = throwE $ RunTimeTypeError "Invalid Construction of Option"
 
 -- | Interpretation of indirection type construction expressions.
-expression (tag &&& children -> (EIndirect, [x])) = expression x >>= liftIO . newIORef >>= return . VIndirection
+expression (tag &&& children -> (EIndirect, [x])) = do
+  expression_result <- expression x
+  new_val <- copyValue expression_result
+  new_ref <- liftIO $ newIORef new_val
+  return $ VIndirection new_ref
 expression (tag -> EIndirect) = throwE $ RunTimeTypeError "Invalid Construction of Indirection"
 
 -- | Interpretation of tuple construction expressions.
@@ -741,10 +745,18 @@ expression (tag &&& children -> (ELetIn i, [e, b])) =
 expression (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
 
 -- | Interpretation of Assignment.
-expression (tag &&& children -> (EAssign i, [e])) =
-  lookupE i >>= (\_ -> expression e)
-            >>= modifyE . (\new -> map (\(n,v) -> if i == n then (i,new) else (n,v)))
-            >> return vunit
+expression (tag &&& children -> (EAssign i, [e])) = do
+  lookup_result <- lookupE i
+  expression_result <- expression e
+  new_val <- copyValue expression_result
+  let mapFun = (map (\(n,v) ->
+                  if i == n then
+                    (i,new_val)
+                  else
+                    (n,v)
+                ) )
+  modifyE mapFun
+  return vunit
 expression (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
 
 -- | Interpretation of Case-Matches.
@@ -816,6 +828,11 @@ expression (tag -> ESelf) = lookupE annotationSelfId
 
 expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
+copyValue :: Value -> Interpretation Value
+copyValue (VCollection cmv) = do
+  old_col <- liftIO $ readMVar cmv
+  copyCollection old_col
+copyValue val = return val
 
 {- Literal interpretation -}
 
@@ -1216,8 +1233,15 @@ registerNotifier n =
 
 {- Builtin annotation members -}
 providesError :: String -> Identifier -> a
-providesError kind n = error $ 
+providesError kind n = error $
   "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
+
+copyCollection :: Collection Value -> Interpretation (Value)
+copyCollection newC = do
+  binders <- lookupACombo $ extensionId newC
+  let copyCstr = copyCtor binders
+  c'            <- copyCstr newC
+  return $ VCollection c'
 
 {-
  - Collection API : head, map, fold, append/concat, delete
@@ -1254,12 +1278,8 @@ builtinLiftedAttribute annId n _ _
   | annId == "External" && n == "ext"     = return $ Just (n, extFn)
   | otherwise = providesError "lifted attribute" n
 
-  where 
-        copy newC = do
-          binders <- lookupACombo $ extensionId newC
-          let copyCstr = copyCtor binders
-          c'            <- copyCstr newC
-          return $ VCollection c'
+  where
+        copy = copyCollection
 
         -- | Collection accessor implementation
         peekFn = valWithCollection $ \_ (Collection _ ds _) -> do 
