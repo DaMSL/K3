@@ -991,9 +991,9 @@ eCollection = exprError "collection" $ singleField
         colWithType :: String -> K3Parser (K3 Expression)
         colWithType annoStr = 
           do es <- readElems
-                 idsTypes = idTypeOfE $ head es
-                 recs = mkRecords idsTypes es
-                 col = mkCollection idsTypes recs $ [EAnnotation annoStr]
+             let idsTypes = idTypeOfE $ head es
+                 recs     = mkRecords idsTypes es
+                 col      = mkCollection idsTypes recs $ [EAnnotation annoStr]
              return col
 
         readElems :: K3Parser ([[K3 Expression]])
