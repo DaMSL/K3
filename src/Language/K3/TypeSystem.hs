@@ -116,9 +116,12 @@ typecheck aEnv env rEnv decl =
       let sa' = substitutionLookupAny sa subst in
       [n ++ " → "] %+ prettyLines sa' %+ ["\\"] %+ prettyLines (simplify cs)
       where
-        simplify = fst . runSimplifyM
-            SimplificationConfig{ preserveVars = Set.singleton sa } .
-            simplifyByGarbageCollection
+        -- Type simplification takes far too long, and doesn't affect correctness. Until the size of
+        -- the constraint-set outweighs the cost of simplification, it's getting turned off.
+        simplify = id
+        {- simplify = fst . runSimplifyM -}
+            {- SimplificationConfig{ preserveVars = Set.singleton sa } . -}
+            {- simplifyByGarbageCollection -}
     prettyExprBounds :: (UID,(K3 Type, K3 Type)) -> [String]
     prettyExprBounds (u,(lb,ub)) =
       let n = take 10 $ show u ++ repeat ' ' in
