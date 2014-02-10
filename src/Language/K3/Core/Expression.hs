@@ -10,8 +10,9 @@ import Data.Tree
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Annotation.Syntax
+import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Annotation.Codegen
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
@@ -98,11 +99,14 @@ data instance Annotation Expression
     | EMutable
     | EImmutable
     | EAnnotation Identifier
-    | ESyntax SyntaxAnnotation
+    | ESyntax     SyntaxAnnotation
+    | EAnalysis   AnalysisAnnotation
+
+    -- TODO: the remainder of these should be pushed into 
+    -- an annotation category (e.g., EType, EAnalysis, etc)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
     | EImplementationType Identifier
-    | ELexicalName Identifier
     | EEmbedding EmbeddingAnnotation
     | ERead Identifier UID
     | EWrite Identifier UID
@@ -110,6 +114,7 @@ data instance Annotation Expression
   deriving (Eq, Read, Show)
 
 -- | Data Conflicts
+--   TODO: move to Language.K3.Core.Annotation.Analysis
 data Conflict
     = RW [(Annotation Expression)] (Annotation Expression)
     | WR (Annotation Expression) [(Annotation Expression)]
@@ -184,11 +189,13 @@ freeVariables = foldMapTree extractVariable []
   where 
     extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs bs)  = filter (`notElem` bindings bs) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = filter (`notElem` bindingVariables b) $ concat chAcc
     extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
     extractVariable chAcc (tag -> ECaseOf i)   = let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
     extractVariable chAcc _ = concat chAcc
 
-    bindings (BIndirection i) = [i]
-    bindings (BTuple is)      = is
-    bindings (BRecord ivs)    = snd (unzip ivs)
+-- | Retrieves all variables introduced by a binder
+bindingVariables :: Binder -> [Identifier]
+bindingVariables (BIndirection i) = [i]
+bindingVariables (BTuple is)      = is
+bindingVariables (BRecord ivs)    = snd (unzip ivs)
