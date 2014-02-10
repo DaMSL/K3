@@ -265,7 +265,7 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    return (ae PL.<//> be, bv)
+    return (ae PL.<$> be, bv)
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -309,14 +309,14 @@ reify RForget e@(tag -> EOperate OApp) = do
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae PL.<$$> be
+    return $ ae PL.<$> be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     ct <- canonicalType e
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
-    return $ braces $ vsep [d, ee, be]
+    return $ hangBrace $ vsep [d, ee, be]
 
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- canonicalType e
@@ -326,8 +326,8 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ne <- reify r n
     return $ ee PL.<//>
         text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
-        braces (d PL.<//> text x <+> equals <+> text "*" <> ev <> semi PL.<//> se) <+> text "else" <+>
-        braces ne
+        hangBrace (d PL.<$> text x <+> equals <+> text "*" <> ev <> semi PL.<//> se) <+> text "else" <+>
+        hangBrace ne
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
@@ -337,7 +337,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             ae' <- reify (RName g') a
             return (ae', text g')
     ee <- reify r e
-    return $ (ae PL.<//>) . braces . (PL.<//> ee) $ case b of
+    return $ (ae PL.<$>) . hangBrace . (PL.<$> ee) $ case b of
         BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
         BTuple is -> vsep
             [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
