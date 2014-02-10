@@ -624,6 +624,7 @@ eTerm = do
                try eFilterMap,
                try eFold,
                try eMap,
+               try eIterate,
                try eFlatten,
                try ePeek,
                try eGroupBy,
@@ -672,6 +673,12 @@ eMap = exprError "map" $ keyword "map" *> parens
                (make <$> (eLambda <* comma) <*> expr)
     where
       make lam1 eCol = applyMethod eCol "map" [lam1]
+
+eIterate :: ExpressionParser
+eIterate = exprError "iterate" $ keyword "iterate" *> parens
+               (make <$> (eLambda <* comma) <*> expr)
+    where
+      make lam1 eCol = applyMethod eCol "iterate" [lam1]
 
 eFlatten :: ExpressionParser
 eFlatten = exprError "flatten" $ keyword "flatten" *> parens (make <$> expr)
