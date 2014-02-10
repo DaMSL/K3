@@ -879,7 +879,7 @@ literal _ = throwE $ RunTimeTypeError "Invalid literal"
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
 replaceTrigger n (VFunction (f,[])) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
-replaceTrigger _ _                  = throwE $ RunTimeTypeError "Invalid trigger body"
+replaceTrigger n _                  = throwE $ RunTimeTypeError ("Invalid body for trigger " ++ n)
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
