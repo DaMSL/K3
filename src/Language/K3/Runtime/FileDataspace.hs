@@ -158,9 +158,14 @@ foldOpenFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_
 
 mapFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m b) -> FileDataspace b -> m (FileDataspace b)
 mapFile liftM function file_ds@(FileDataspace file_id) = do
+  -- Map over a copy of the dataspace, instead of the original
+  -- This way, any modifications to the dataspace that occur inside the
+  -- body of the map do not affect the length of iteration, but
+  -- are in effect upon exiting the map
+  tmp_ds <- liftM $ copyFile file_ds
   new_id <- liftM generateCollectionFilename
   liftM $ openCollectionFile new_id "w"
-  foldFile liftM (inner_func new_id) () file_ds
+  foldFile liftM (inner_func new_id) () tmp_ds
   liftM $ close new_id
   return $ FileDataspace new_id
   where

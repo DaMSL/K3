@@ -195,6 +195,15 @@ testSplit dataspace _ = do
               else
                 return Nothing
 
+insertInsideMap :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+insertInsideMap dataspace _ = do
+  outer_ds <- initialDS test_lst (Just dataspace)
+  result_ds <- mapDS (\cur_val -> do
+    insertDS outer_ds (VInt 256);
+    return $ VInt 4
+    ) outer_ds
+  return True
+
 containsDS :: (Monad m, Dataspace m ds Value) => ds -> Value -> m Bool
 containsDS ds val =
   foldDS (\fnd cur -> return $ fnd || cur == val) False ds
@@ -206,6 +215,7 @@ callTest testFunc = do
   case success of
     Nothing -> return ()
     Just msg -> assertFailure msg
+
 
 makeTestGroup :: (Dataspace Interpretation dataspace Value) => String -> dataspace -> Test
 makeTestGroup name ds =
@@ -224,7 +234,8 @@ makeTestGroup name ds =
         testCase "Filter Test" $ callTest $ testFilter ds,
         testCase "Combine Test" $ callTest $ testCombine ds,
         testCase "Combine with Self Test" $ callTest $ testCombineSelf ds,
-        testCase "Split Test" $ callTest $ testSplit ds
+        testCase "Split Test" $ callTest $ testSplit ds,
+        testCase "Insert inside map" $ callTest $ insertInsideMap ds
     ]
 
 tests :: [Test]
