@@ -638,7 +638,7 @@ eCBool = (EC.constant . CBool) <$>
   choice [keyword "true" >> return True, keyword "false" >> return False]
 
 eCNumber :: ExpressionParser
-eCNumber = mkNumber <$> integerOrDouble
+eCNumber = mkNumber <$> naturalOrDouble
   where mkNumber x = case x of
                       Left i  -> EC.constant . CInt . fromIntegral $ i
                       Right d -> EC.constant . CReal $ d
@@ -814,17 +814,16 @@ mkBinOp x = binaryParseOp x operator
 mkBinOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
 mkBinOpK x = binaryParseOp x keyword
 
-{- Note: unused
 mkUnOp :: (String, K3Operator) -> ParserOperator (K3 Expression)
 mkUnOp x = unaryParseOp x operator
--}
 
 mkUnOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
 mkUnOpK x = unaryParseOp x keyword
 
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
-  [   map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+  [   map mkUnOp   [("-",   ONeg)],
+      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
@@ -1179,6 +1178,8 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
             DAnnotation n tis mems -> rebuildDecl d uid $ DAnnotation n tis mems
               --  TODO: recur through members (e.g., attributes w/ initializers)
               --  and ensure they have a uid
+
+            DTypeDef _ _ -> fail "Invalid type alias in AST"
 
         rebuildDecl (_ :@: as) uid tg =
           let d' = tg :@: as in
