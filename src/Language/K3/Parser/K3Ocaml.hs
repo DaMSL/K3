@@ -959,13 +959,15 @@ handleSlice e l = mkFilter e l
   where
         -- We need to convert to a filter function
         mkFilter :: K3 Expression -> [Maybe (K3 Expression)] -> K3 Expression
-        mkFilter col m_list = let id_terms :: [(Identifier, K3 Expression)] =
+        mkFilter col m_list = if all ((==) Nothing) m_list then col else -- no slice
+                              let id_terms :: [(Identifier, K3 Expression)] =
                                     map (\(id, m) -> (id, unwrapM m)) $ filter (isJust . snd) $ addIds m_list
                                   -- Create a lambda to filter by the things we care about
                                   lambda   = EC.lambda "rec" $ mkAndChain id_terms
                               in applyMethod col "filter" [lambda]
 
         -- Create a chain of 'and's, comparing all the elements we need
+        mkAndChain []       = error "Empty list at mkAndChain"
         mkAndChain id_terms = foldr (\x acc -> EC.binop OAnd (mkCompare x) acc)
                                 (mkCompare $ head id_terms) $
                                 tail id_terms
@@ -1015,6 +1017,7 @@ eCollection = exprError "collection" $ singleField
 
         -- Create empty and add annotations
         emptyC idtyl anno = foldl (@+) ((EC.empty $ TC.record idtyl) @+ EImmutable) anno
+        mkInserts []      = error "empty list at mkInserts"
         mkInserts el      = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) $ tail el
         mkInsert          = EC.binop OApp $ EC.project "insert" cVar
         cId               = "__collection"
