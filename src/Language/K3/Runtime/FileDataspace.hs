@@ -23,7 +23,7 @@ module Language.K3.Runtime.FileDataspace (
 ) where
 
 import Control.Concurrent.MVar
-import Control.Monad.Reader
+import qualified Control.Monad.Reader as M
 
 import qualified System.IO as IO
 import qualified System.Directory as DIR
@@ -49,43 +49,43 @@ engineDataPath engine =
 
 createDataDir :: IO.FilePath -> EngineM b ()
 createDataDir path = do
-  dirExists <- liftIO $ DIR.doesDirectoryExist path
-  unless dirExists $ do
-    isFile <- liftIO $ DIR.doesFileExist path
+  dirExists <- M.liftIO $ DIR.doesDirectoryExist path
+  M.unless dirExists $ do
+    isFile <- M.liftIO $ DIR.doesFileExist path
     if isFile then
       throwEngineError $ EngineError $ path ++ " exists but is not a directory, so it cannot be used to store external collections."
     else
-      liftIO $ DIR.createDirectory path
+      M.liftIO $ DIR.createDirectory path
 
 initDataDir :: EngineM b ()
 initDataDir = do
   createDataDir rootDataPath
-  engine <- ask
+  engine <- M.ask
   createDataDir $ engineDataPath engine
 
 -- Put these into __DATA/peerID/collection_name
 generateCollectionFilename :: EngineM b Identifier
 generateCollectionFilename = do
-    engine <- ask
+    engine <- M.ask
     -- TODO move creating the data dir into atInit
     initDataDir
     let counter = collectionCount engine
-    number <- liftIO $ readMVar counter
+    number <- M.liftIO $ readMVar counter
     let filename = "collection_" ++ (show number)
-    liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
+    M.liftIO $ modifyMVar_ counter $ \c -> return (c + 1)
     return $ FP.joinPath [engineDataPath engine, filename]
 
 emptyFile :: () -> EngineM a (FileDataspace a)
 emptyFile _ = do
   file_id <- generateCollectionFilename
-  openCollectionFile file_id "w"
+  _ <- openCollectionFile file_id "w"
   close file_id
   return $ FileDataspace file_id
 
 openCollectionFile :: String -> String -> EngineM a String
 openCollectionFile name mode =
   do
-    engine <- ask
+    engine <- M.ask
     let wd = valueFormat engine
     openFile name name wd Nothing mode
     return name
@@ -93,7 +93,7 @@ openCollectionFile name mode =
 copyFile :: FileDataspace v -> EngineM v (FileDataspace v)
 copyFile old_id = do
   new_id <- generateCollectionFilename
-  openCollectionFile new_id "w"
+  _ <- openCollectionFile new_id "w"
   foldFile id (\_ val -> do
     doWrite new_id val -- TODO hasWrite
     return ()
@@ -104,8 +104,8 @@ copyFile old_id = do
 initialFile :: (Monad m) => (forall c. EngineM b c -> m c) -> [b] -> m (FileDataspace b)
 initialFile liftM vals = do
   new_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile new_id "w"
-  foldM (\_ val -> do
+  _ <- liftM $ openCollectionFile new_id "w"
+  M.foldM (\_ val -> do
     liftM $ doWrite new_id val -- TODO hasWrite
     return ()
     ) () vals
@@ -114,7 +114,7 @@ initialFile liftM vals = do
 
 peekFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> m (Maybe b)
 peekFile liftM (FileDataspace file_id) = do
-  liftM $ openCollectionFile file_id "r"
+  _ <- liftM $ openCollectionFile file_id "r"
   can_read <- liftM $ hasRead file_id
   result <-
     case can_read of
@@ -133,7 +133,7 @@ foldFile :: forall (m :: * -> *) a b.
             (forall c. EngineM b c -> m c)
             -> (a -> b -> m a) -> a -> FileDataspace b -> m a
 foldFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_id) = do
-  liftM $ openCollectionFile file_id "r"
+  _ <- liftM $ openCollectionFile file_id "r"
   result <- foldOpenFile liftM accumulation initial_accumulator file_ds
   liftM $ close file_id
   return result
@@ -157,14 +157,14 @@ foldOpenFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_
              foldOpenFile liftM accumulation new_acc file_ds
 
 mapFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m b) -> FileDataspace b -> m (FileDataspace b)
-mapFile liftM function file_ds@(FileDataspace file_id) = do
+mapFile liftM function file_ds = do
   -- Map over a copy of the dataspace, instead of the original
   -- This way, any modifications to the dataspace that occur inside the
   -- body of the map do not affect the length of iteration, but
   -- are in effect upon exiting the map
   tmp_ds <- liftM $ copyFile file_ds
   new_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile new_id "w"
+  _ <- liftM $ openCollectionFile new_id "w"
   foldFile liftM (inner_func new_id) () tmp_ds
   liftM $ close new_id
   return $ FileDataspace new_id
@@ -183,13 +183,13 @@ mapFile_ liftM function file_id =
   where
     --inner_func :: () -> b -> EngineM b ()
     inner_func _ v = do
-      function v
+      _ <- function v
       return ()
 
 filterFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m Bool) -> FileDataspace b -> m (FileDataspace b)
 filterFile liftM predicate old_id = do
   new_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile new_id "w"
+  _ <- liftM $ openCollectionFile new_id "w"
   foldFile liftM (inner_func new_id) () old_id
   liftM $ close new_id
   return $ FileDataspace new_id
@@ -204,7 +204,7 @@ filterFile liftM predicate old_id = do
 
 insertFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> b -> m (FileDataspace b) 
 insertFile liftM file_ds@(FileDataspace file_id) v = do
-  liftM $ openCollectionFile file_id "a"
+  _ <- liftM $ openCollectionFile file_id "a"
   -- can_write <- hasWrite ext_id -- TODO handle errors here
   liftM $ doWrite file_id v
   liftM $ close file_id
@@ -213,8 +213,8 @@ insertFile liftM file_ds@(FileDataspace file_id) v = do
 deleteFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> FileDataspace b -> m (FileDataspace b)
 deleteFile liftM v file_ds@(FileDataspace file_id) = do
   deleted_id <- liftM generateCollectionFilename
-  liftM $ openCollectionFile deleted_id "w"
-  foldFile liftM (\truth val -> do
+  _ <- liftM $ openCollectionFile deleted_id "w"
+  _ <- foldFile liftM (\truth val -> do
     if truth == False && val == v
       then return True
       else do
@@ -222,7 +222,7 @@ deleteFile liftM v file_ds@(FileDataspace file_id) = do
         return truth
     ) False file_ds
   liftM $ close deleted_id
-  liftM $ liftIO $ DIR.renameFile deleted_id file_id -- What's with the double lift?
+  liftM $ M.liftIO $ DIR.renameFile deleted_id file_id -- What's with the double lift?
   return file_ds
 
 updateFile :: (Monad m, Eq b) => (forall c. EngineM b c -> m c) -> b -> b -> FileDataspace b -> m (FileDataspace b)
@@ -238,15 +238,15 @@ updateFile liftM v v' file_ds@(FileDataspace file_id) = do
           liftM $ doWrite new_id val --TODO error check
           return truth
       ) False file_ds
-  unless did_update $ liftM $ doWrite new_id v'
+  M.unless did_update $ liftM $ doWrite new_id v'
   liftM $ close new_id
-  liftM $ liftIO $ DIR.renameFile new_id file_id -- Double lift?
+  liftM $ M.liftIO $ DIR.renameFile new_id file_id -- Double lift?
   return file_ds
 
 combineFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (FileDataspace b) -> (FileDataspace b) ->  m (FileDataspace b)
 combineFile liftM self values = do
   (FileDataspace new_id) <- liftM $ Language.K3.Runtime.FileDataspace.copyFile self
-  liftM $ openCollectionFile new_id "a"
+  _ <- liftM $ openCollectionFile new_id "a"
   foldFile liftM (\_ v -> do
       liftM $ doWrite new_id v
       return ()
@@ -258,9 +258,9 @@ splitFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> m
 splitFile liftM self = do
   left  <- liftM $ generateCollectionFilename
   right <- liftM $ generateCollectionFilename
-  liftM $ openCollectionFile left "w"
-  liftM $ openCollectionFile right "w"
-  foldFile liftM (\file cur_val -> do
+  _ <- liftM $ openCollectionFile left "w"
+  _ <- liftM $ openCollectionFile right "w"
+  _ <- foldFile liftM (\file cur_val -> do
     liftM $ doWrite file cur_val
     return ( if file == left then right else left )
     ) left self

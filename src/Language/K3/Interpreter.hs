@@ -452,7 +452,7 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
           return $ if cur_val == key then False else True
   insertKV ds key value = embedKey key value >>= insertDS ds
   replaceKV ds k v = do
-    val_removed <- removeKV ds k vunit
+    _ <- removeKV ds k vunit
     insertKV ds k v
 
 emptyStaticEnv :: SEnvironment Value
