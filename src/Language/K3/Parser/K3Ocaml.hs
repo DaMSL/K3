@@ -702,7 +702,7 @@ eInsert :: ExpressionParser
 eInsert = exprError "insert" $ keyword "insert" *> parens
                (make <$> (expr <* comma) <*> (makeRecord <$> commaSep1 expr))
     where
-      makeRecord es = EC.record $ addIds es
+      makeRecord es = (EC.record $ addIds es) @+ (ESpan $ GeneratedSpan "insert")
       make col record = applyMethod col "insert" [record]
 
 -- update translates tuples to records
