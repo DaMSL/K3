@@ -85,7 +85,8 @@ library
         Language.K3.Runtime.Literal,
         Language.K3.Runtime.Options,
         Language.K3.Transform.Alpha,
-        Language.K3.Transform.Conflicts
+        Language.K3.Transform.Conflicts,
+        Language.K3.Transform.Interpreter.BindAlias,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -121,6 +122,7 @@ library
         Language.K3.TypeSystem.TypeDecision.StubReplacement,
         Language.K3.TypeSystem.Annotations.Error,
         Language.K3.Core.Annotation.Codegen,
+        Language.K3.Core.Annotation.Analysis,
         Language.K3.Codegen.Common,
         Language.K3.Codegen.CPP,
         Language.K3.Codegen.Haskell,

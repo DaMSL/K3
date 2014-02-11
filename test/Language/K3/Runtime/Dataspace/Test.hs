@@ -209,7 +209,7 @@ containsDS ds val =
   foldDS (\fnd cur -> return $ fnd || cur == val) False ds
 
 callTest testFunc = do
-  engine <- simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
+  engine <- simulationEngine [] False defaultSystem (syntaxValueWD emptyStaticEnv)
   interpResult <- runInterpretation engine emptyState (testFunc ())
   success <- either (return . Just . show) (either (return . Just . show) (\good -> if good then return Nothing else return $ Just "Dataspace test failed") . getResultVal) interpResult
   case success of

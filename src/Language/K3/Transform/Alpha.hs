@@ -11,6 +11,7 @@ import Control.Applicative
 import Control.Monad.Reader
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 
@@ -104,7 +105,7 @@ instance Alpha Expression where
 
     -- | Usage-Point.
     alpha e@(tag -> EVariable i) =
-        nameOf i >>= \i' -> return $ e { rootLabel = (EVariable i' :@: annotations e) } @+ ELexicalName i
+        nameOf i >>= \i' -> return $ e { rootLabel = (EVariable i' :@: annotations e) } @+ (ESyntax $ LexicalName i)
 
     -- | Every other expression.
     alpha e = do

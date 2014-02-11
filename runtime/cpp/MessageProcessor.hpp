@@ -10,10 +10,26 @@ namespace K3
 
   enum class MPStatus = { Continue, Error, Done };
 
-  template<typename Value>
+  template <typename Error, typename Result>
+  class MPStatus {
+      public:
+          MPStatus tag;
+          Error error;
+          Result result;
+  }
+
+  template<typename Environment, typename Value>
   class MessageProcessor {
-    public:
-    MPStatus process(Message<Value> msg) {}
+  public:
+    MessageProcessor(Environment e): env(e), _status(MPStatus::Continue) {}
+    virtual void initialize() {}
+    virtual void finalize() {}
+    virtual void MPStatus process(Message<Value> msg) = 0;
+    MPStatus status() { return _status };
+
+    Environment env;
+    MPStatus _status;
+
   };
 
   // Message Processor used by generated code. Processing is done by dispatch messages using a

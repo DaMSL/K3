@@ -464,8 +464,9 @@ emptyState = ([], [], AEnvironment [] [], emptyStaticEnv)
 annotationState :: AEnvironment Value -> IState
 annotationState aEnv = ([], [], aEnv, emptyStaticEnv)
 
+--TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
-simpleEngine = simulationEngine defaultSystem (syntaxValueWD emptyStaticEnv)
+simpleEngine = simulationEngine [] False defaultSystem (syntaxValueWD emptyStaticEnv)
 
 {- Identifiers -}
 collectionAnnotationId :: Identifier
@@ -1631,34 +1632,37 @@ runExpression_ e = runExpression e >>= putStrLn . show
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
-runProgram :: SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
-runProgram systemEnv prog = buildStaticEnv >>= \case
+runProgram :: Bool -> SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
+runProgram isPar systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
-      engine <- simulationEngine systemEnv $ syntaxValueWD sEnv
+      trigs  <- return $ getTriggerIds prog
+      engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
       flip runEngineM engine $ runEngine virtualizedProcessor prog
 
   where buildStaticEnv = do
-          preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+          trigs <- return $ getTriggerIds prog
+          preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD emptyStaticEnv
           flip runEngineM preEngine $ staticEnvironment prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: SystemEnvironment -> K3 Declaration
+runNetwork :: Bool -> SystemEnvironment -> K3 Declaration
            -> IO [Either EngineError (Address, Engine Value, ThreadId)]
-runNetwork systemEnv prog =
+runNetwork isPar systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
-    buildStaticEnv >>= \case
+    buildStaticEnv (getTriggerIds prog) >>= \case
       Left err   -> return $ [Left err]
       Right sEnv -> do
-        engines       <- mapM (flip networkEngine $ syntaxValueWD sEnv) nodeBootstraps
+        trigs         <- return $ getTriggerIds prog
+        engines       <- mapM (flip (networkEngine trigs isPar) $ syntaxValueWD sEnv) nodeBootstraps
         namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
         engineThreads <- mapM fork namedEngines
         return engineThreads
 
   where
-    buildStaticEnv = do
-      preEngine <- simulationEngine systemEnv $ syntaxValueWD emptyStaticEnv
+    buildStaticEnv trigs = do
+      preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD emptyStaticEnv
       flip runEngineM preEngine $ staticEnvironment prog
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
