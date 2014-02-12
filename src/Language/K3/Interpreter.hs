@@ -124,7 +124,10 @@ data InterpretationError
 type IEngine = Engine Value
 
 -- | Type declaration for an Interpretation's state.
-type IState = (Globals, IEnvironment Value, AEnvironment Value, SEnvironment Value)
+data IState = IState { getGlobals    :: Globals
+                     , getEnv        :: IEnvironment Value
+                     , getAnnotEnv   :: AEnvironment Value
+                     , getStaticEnv  :: SEnvironment Value }
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
@@ -205,23 +208,11 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 
 {- State and result accessors -}
 
-getGlobals :: IState -> Globals
-getGlobals (x,_,_,_) = x
-
-getEnv :: IState -> IEnvironment Value
-getEnv (_,x,_,_) = x
-
-getAnnotEnv :: IState -> AEnvironment Value
-getAnnotEnv (_,_,x,_) = x
-
-getStaticEnv :: IState -> SEnvironment Value
-getStaticEnv (_,_,_,x) = x
-
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
-modifyStateEnv f (w, x, y, z) = (w, f x, y, z)
+modifyStateEnv f (IState w x y z) = IState w (f x) y z
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (w, x, y, z) = (w, x, f y, z)
+modifyStateAEnv f (IState w x y z) = IState w x (f y) z
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -459,10 +450,10 @@ emptyStaticEnv :: SEnvironment Value
 emptyStaticEnv = ([], AEnvironment [] [])
 
 emptyState :: IState
-emptyState = ([], [], AEnvironment [] [], emptyStaticEnv)
+emptyState = IState [] [] (AEnvironment [] []) emptyStaticEnv
 
 annotationState :: AEnvironment Value -> IState
-annotationState aEnv = ([], [], aEnv, emptyStaticEnv)
+annotationState aEnv = IState [] [] aEnv emptyStaticEnv
 
 --TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
@@ -1561,7 +1552,7 @@ initEnvironment decl st =
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
-    registerGlobal n (w,x,y,z) = (n:w, x, y, z)
+    registerGlobal n (IState w x y z) = IState (n:w) x y z
 
     registerDecl :: IState -> K3 Declaration -> IState
     registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
@@ -1590,10 +1581,10 @@ initBootstrap bootstrap aEnv = flip mapM bootstrap (\(n,l) ->
 injectBootstrap :: PeerBootstrap -> IResult a -> EngineM Value (IResult a)
 injectBootstrap bootstrap r = case r of
   ((Left _, _), _) -> return r
-  ((Right val, (globs, vEnv, annEnv, sEnv)), rLog) -> do
+  ((Right val, (IState globs vEnv annEnv sEnv)), rLog) -> do
       bootEnv <- initBootstrap bootstrap annEnv
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
-      return ((Right val, (globs, nvEnv, annEnv, sEnv)), rLog)
+      return ((Right val, (IState globs nvEnv annEnv sEnv)), rLog)
 
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
@@ -1604,7 +1595,7 @@ initProgram bootstrap prog = do
     bootR    <- injectBootstrap bootstrap declR
     initMessages bootR
   where 
-    buildStaticEnv (gl, iEnv, aEnv, _) = staticEnvironment prog >>= return . (gl, iEnv, aEnv,)
+    buildStaticEnv (IState gl iEnv aEnv _) = staticEnvironment prog >>= return . (IState gl iEnv aEnv)
 
 
 finalProgram :: IState -> EngineM Value (IResult Value)
@@ -1675,7 +1666,10 @@ runNetwork isPar systemEnv prog =
 
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
-    (VTrigger (_, Just f)) -> runInterpretation' (getResultState r) (f a)
+    (VTrigger (_, Just f)) -> do
+        result <- runInterpretation' (getResultState r) (f a)
+        logTrigger defaultAddress n a result
+        return result
     (VTrigger _)           -> return . iError $ "Uninitialized trigger " ++ n
     _                      -> return . tError $ "Invalid trigger or sink value for " ++ n
 
@@ -1705,6 +1699,7 @@ uniProcessor = MessageProcessor {
         lookup n $ getEnv $ getResultState r
 
     run r n args trig = logTrigger defaultAddress n args r >> runTrigger r n args trig
+        >>= \result -> do logTrigger defaultAddress n args result; return result
 
     unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
 
@@ -1841,7 +1836,7 @@ logTrigger addr n args r = do
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (_, vEnv, aEnv, sEnv) =
+  prettyLines (IState _ vEnv aEnv sEnv) =
          ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) vEnv)
       ++ ["Annotations:"] ++ (indent 2 $ lines $ show aEnv)
       ++ ["Static:"]      ++ (indent 2 $ lines $ show sEnv)
