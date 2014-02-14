@@ -10,6 +10,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
 import Language.K3.Transform.Conflicts
+import Language.K3.Transform.Interpreter.BindAlias
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -39,6 +40,7 @@ dispatch op = do
 
     Typecheck   -> k3Program >>= either parseError typecheck
     Analyze   a -> analyzer a
+  
   where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
           "cpp" -> CPPC.compile op cOpts
@@ -54,6 +56,7 @@ dispatch op = do
         analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
         analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)   
         analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)   
+        analyzer BindPaths    = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
  
         k3Program      = parseK3Input (includes $ paths op) (input op)
         k3OcamlProgram = parseK3OcamlInput (includes $ paths op) (input op)

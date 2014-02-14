@@ -66,6 +66,7 @@ data AnalyzeOptions
     = Conflicts
     | Tasks
     | ProgramTasks
+    | BindPaths
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -222,19 +223,23 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (conflictsOpt <|> tasksOpt <|> programTasksOpt)
+analyzeOptions = Analyze <$> (conflictsOpt <|> tasksOpt <|> programTasksOpt <|> bindPathsOpt)
 
 conflictsOpt :: Parser AnalyzeOptions
 conflictsOpt = flag' Conflicts (   long "conflicts"
-                              <> help "Print Conflicting Data Accesses for a K3 Program" )
+                                <> help "Print Conflicting Data Accesses for a K3 Program" )
 
 tasksOpt :: Parser AnalyzeOptions
 tasksOpt = flag' Tasks (   long "tasks"
-                              <> help "Split Triggers into smaller tasks for parallelization" )
+                        <> help "Split Triggers into smaller tasks for parallelization" )
 
 programTasksOpt :: Parser AnalyzeOptions
 programTasksOpt = flag' ProgramTasks (   long "programtasks"
-                              <> help "Find program-level tasks to be run in parallel " )
+                                      <> help "Find program-level tasks to be run in parallel " )
+
+bindPathsOpt :: Parser AnalyzeOptions
+bindPathsOpt = flag' BindPaths (   long "bindpaths"
+                                <> help "Print bind paths for bind expressions" )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
