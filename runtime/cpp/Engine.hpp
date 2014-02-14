@@ -387,6 +387,7 @@ namespace K3 {
     // with the provided MessageProcessor
     thread forkEngine(MessageProcessor<Message<Value>> mp) {
       thread engineThread(runEngine, mp);
+      return engineThread;
     }
 
     // Delegate wait to EngineControl
