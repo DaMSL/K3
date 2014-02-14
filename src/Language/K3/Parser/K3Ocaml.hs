@@ -624,6 +624,7 @@ eTerm = do
                try eFilterMap,
                try eFold,
                try eMap,
+               try eIterate,
                try eFlatten,
                try ePeek,
                try eGroupBy,
@@ -673,6 +674,12 @@ eMap = exprError "map" $ keyword "map" *> parens
     where
       make lam1 eCol = applyMethod eCol "map" [lam1]
 
+eIterate :: ExpressionParser
+eIterate = exprError "iterate" $ keyword "iterate" *> parens
+               (make <$> (eLambda <* comma) <*> expr)
+    where
+      make lam1 eCol = applyMethod eCol "iterate" [lam1]
+
 eFlatten :: ExpressionParser
 eFlatten = exprError "flatten" $ keyword "flatten" *> parens (make <$> expr)
     where
@@ -695,7 +702,7 @@ eInsert :: ExpressionParser
 eInsert = exprError "insert" $ keyword "insert" *> parens
                (make <$> (expr <* comma) <*> (makeRecord <$> commaSep1 expr))
     where
-      makeRecord es = EC.record $ addIds es
+      makeRecord es = (EC.record $ addIds es) @+ (ESpan $ GeneratedSpan "insert")
       make col record = applyMethod col "insert" [record]
 
 -- update translates tuples to records
