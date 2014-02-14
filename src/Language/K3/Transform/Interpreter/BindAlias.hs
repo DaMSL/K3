@@ -59,8 +59,9 @@ labelBindAliases prog = snd $ labelDecl 0 prog
 
     labelExpr :: Int -> K3 Expression -> (Int, K3 Expression)
     labelExpr cnt e@(tag &&& children -> (EBindAs b, [s, t])) =
-      (ncnt, Node (EBindAs b :@: annotations e) [ns, t])
+      (ncnt2, Node (EBindAs b :@: annotations e) [ns, nt])
       where (ncnt, ns)     = (\(i, ne) -> annotateAliases i (exprUIDs $ extractReturns ne) ne) $ labelExpr cnt s
+            (ncnt2, nt)    = labelExpr ncnt t
             exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
             asUID (EUID x) = [x]
             asUID _        = []
