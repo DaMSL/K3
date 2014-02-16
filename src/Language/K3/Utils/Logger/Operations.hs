@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 {-|
   This module contains the logging operations supported by K3's logging system.
   These operations are very simple and are not intended to be used directly.
@@ -34,11 +36,16 @@ k3logI :: String -- ^The name of the module doing the logging.
        -> String -- ^The message to log.
        -> a -- ^The value to use as the result of the logging expression.
        -> a
+
+#ifdef DEBUG
 k3logI moduleName logLevel message =
   deepseq message $
   unsafePerformIO $! do
     logM moduleName logLevel message
     return id
+#else
+k3logI _ _ _ = id
+#endif
   
 -- |A function to log a pretty-printable value along with a prefix message.
 k3logIPretty :: (Pretty a)
