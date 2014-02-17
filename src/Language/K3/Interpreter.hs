@@ -702,7 +702,7 @@ expression e_ =
           -- has a value, while also allowing us to bind a subset of the values.
           if idls `intersect` ivls == idls
             then do
-              let envBindings = catMaybes $ join (,) idls ids ivs
+              let envBindings = catMaybes $ joinByKeys (,) idls ids ivs
               modifyE ((++) envBindings) >>
                 expression f >>= (\fV -> refreshBindings b bp bv >> removeAllE envBindings fV)
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
@@ -713,7 +713,7 @@ expression e_ =
         withBindFrame bindEval = pushBindFrame >> bindEval >>= \r -> popBindFrame >> return r
         removeAllE = flip (foldM (flip removeE))
 
-        join joinF keys l r = map (\k -> lookup k l >>= (\matchL -> lookup k r >>= return . joinF matchL)) keys
+        joinByKeys joinF keys l r = map (\k -> lookup k l >>= (\matchL -> lookup k r >>= return . joinF matchL)) keys
 
         -- | Performs a write-back for a bind expression.
         --   This retrieves the current binding values from the environment
