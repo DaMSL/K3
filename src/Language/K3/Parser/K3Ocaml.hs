@@ -624,6 +624,7 @@ eTerm = do
                try eFilterMap,
                try eFold,
                try eMap,
+               try eIterate,
                try eFlatten,
                try ePeek,
                try eGroupBy,
@@ -673,6 +674,12 @@ eMap = exprError "map" $ keyword "map" *> parens
     where
       make lam1 eCol = applyMethod eCol "map" [lam1]
 
+eIterate :: ExpressionParser
+eIterate = exprError "iterate" $ keyword "iterate" *> parens
+               (make <$> (eLambda <* comma) <*> expr)
+    where
+      make lam1 eCol = applyMethod eCol "iterate" [lam1]
+
 eFlatten :: ExpressionParser
 eFlatten = exprError "flatten" $ keyword "flatten" *> parens (make <$> expr)
     where
@@ -695,7 +702,7 @@ eInsert :: ExpressionParser
 eInsert = exprError "insert" $ keyword "insert" *> parens
                (make <$> (expr <* comma) <*> (makeRecord <$> commaSep1 expr))
     where
-      makeRecord es = EC.record $ addIds es
+      makeRecord es = (EC.record $ addIds es) @+ (ESpan $ GeneratedSpan "insert")
       make col record = applyMethod col "insert" [record]
 
 -- update translates tuples to records
@@ -726,14 +733,15 @@ eSort = exprError "sort" $ keyword "sort" *> parens
       make col lambda = applyMethod col "sort" [lambda]
 
 eRange :: ExpressionParser
-eRange = exprError "range" $ brackets (
+eRange = exprError "range" $ brackets $
         do
            e1 <- expr
            symbol "::"
            e2 <- expr
            symbol "::"
            e3 <- expr
-           return $ EC.range e1 e2 e3)
+           return $ applyMethod emptyCol "range" [e1, e2, e3]
+   where emptyCol = EC.empty $ (TC.collection $ TC.int) @+ TAnnotation "List"
 
 applyMethod :: K3 Expression -> Identifier -> [K3 Expression] -> K3 Expression
 applyMethod col method args = EC.applyMany (EC.project method $ col) args
@@ -958,13 +966,15 @@ handleSlice e l = mkFilter e l
   where
         -- We need to convert to a filter function
         mkFilter :: K3 Expression -> [Maybe (K3 Expression)] -> K3 Expression
-        mkFilter col m_list = let id_terms :: [(Identifier, K3 Expression)] =
+        mkFilter col m_list = if all ((==) Nothing) m_list then col else -- no slice
+                              let id_terms :: [(Identifier, K3 Expression)] =
                                     map (\(id, m) -> (id, unwrapM m)) $ filter (isJust . snd) $ addIds m_list
                                   -- Create a lambda to filter by the things we care about
                                   lambda   = EC.lambda "rec" $ mkAndChain id_terms
                               in applyMethod col "filter" [lambda]
 
         -- Create a chain of 'and's, comparing all the elements we need
+        mkAndChain []       = error "Empty list at mkAndChain"
         mkAndChain id_terms = foldr (\x acc -> EC.binop OAnd (mkCompare x) acc)
                                 (mkCompare $ head id_terms) $
                                 tail id_terms
@@ -1014,6 +1024,7 @@ eCollection = exprError "collection" $ singleField
 
         -- Create empty and add annotations
         emptyC idtyl anno = foldl (@+) ((EC.empty $ TC.record idtyl) @+ EImmutable) anno
+        mkInserts []      = error "empty list at mkInserts"
         mkInserts el      = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) $ tail el
         mkInsert          = EC.binop OApp $ EC.project "insert" cVar
         cId               = "__collection"

@@ -8,8 +8,10 @@ import Language.K3.Core.Common
 
 -- TODO: move ERead, EWrite, EConflict here.
 data AnalysisAnnotation
-  = BindAlias
-    -- ^ Annotation to mark variables that are the target of a bind expression.
+  = BindAlias Identifier
+  | BindFreshAlias Identifier
+    -- ^ Annotations to mark expressions that are the target of a bind expression.
+
   | BindAliasExtension Identifier
     -- ^ Annotation to extend record bind targets for record projection.
   deriving (Eq, Read, Show)

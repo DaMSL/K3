@@ -169,7 +169,14 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , endpoints       :: EEndpointState a
                        , connections     :: EConnectionState }
 
-data EngineError = EngineError String deriving (Eq, Read, Show)
+-- | Engine Error Type. 
+-- TODO: We may want to log more information than a message string
+data EngineError = EndpointError     {message :: String} 
+                 | ConnectionError   {message :: String} 
+                 | HandleError       {message :: String}
+                 | MessagesError     {message :: String}
+                 | EngineError       {message :: String}  
+                 deriving (Eq, Read, Show)
 
 instance Pretty EngineError where
     prettyLines e = [show e]
@@ -747,7 +754,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
           -- Continue with Loop
           debugStep
           runMessages mp (processMessage mp r)
-    Error e        -> decLiveWorkers >> die "Error:" e (control engine)
+    Error e        -> decLiveWorkers >> err "Error:" e (control engine)
     MessagesDone r -> terminate False >>= \case
         True -> do
             s <- return $ "Worker Terminated After Empty Queue"
@@ -775,6 +782,10 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
     debugStep = do
       q <- prettyQueues
       logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
+    
+    err msg r cntrl = do
+      die msg r cntrl
+      throwEngineError $ MessagesError $ msg ++ (pretty r) 
 
     die msg r cntrl = do
         logStep $ boxToString $ ["", msg] ++ prettyLines r
@@ -830,7 +841,7 @@ runEngine mp p = do
         configWorkers threads qGroups
         waitForEngine
       
-      Multiprocess _ -> error "Unsupported engine mode: Multiprocess" 
+      Multiprocess _ -> throwEngineError $ EngineError "Unsupported engine mode: Multiprocess" 
 
 forkWorker :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> r -> EngineM a ThreadId
 forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
@@ -887,16 +898,16 @@ terminateEngine afterOne = do
 
 -- Forcefully kill the engine's threads
 killEngine :: EngineM a ()
-killEngine = ask >>= \engine -> liftIO $ case workers engine of 
+killEngine = ask >>= \engine -> case workers engine of 
   Uniprocess tmv -> do
-    withMVar tmv killThread
-    void $ tryPutMVar (waitV $ control engine) ()
+    liftIO $ withMVar tmv killThread
+    void $ liftIO $ tryPutMVar (waitV $ control engine) ()
   
   Multithreaded tsmv -> do
-    withMVar tsmv (mapM_ killThread)
-    void $ tryPutMVar (waitV $ control engine) ()
+    liftIO $ withMVar tsmv (mapM_ killThread)
+    void $ liftIO $ tryPutMVar (waitV $ control engine) ()
    
-  Multiprocess _ -> error "unsupported engine mode: multiprocess"
+  Multiprocess _ -> throwEngineError $ EngineError "unsupported engine mode: multiprocess"
 
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
@@ -954,9 +965,9 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
                     l  -> return (b, l ++ [PropagatedError mg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
-    endpointError s = close (name ls) >> (liftIO $ putStrLn s) -- TODO: close vs closeInternal
+    endpointError s = close (name ls) >> (throwEngineError $ EndpointError s) -- TODO: close vs closeInternal
 
-runNEndpoint ls _ = error $ "Invalid endpoint for network source " ++ (name ls)
+runNEndpoint ls _ = throwEngineError $ EndpointError $ "Invalid endpoint for network source " ++ (name ls)
 
 {- Message passing -}
 
@@ -1026,7 +1037,7 @@ send addr n arg = do
         then enqueue (queueConfig engine) addr n arg
         else trySend (connectionRetries $ config engine)
   where
-    trySend 0 = send' (connectionId addr) $ error $ "Failed to connect to " ++ show addr
+    trySend 0 = send' (connectionId addr) $ throwEngineError $ ConnectionError $ "Failed to connect to " ++ show addr
     trySend i = send' (connectionId addr) $ trySend $ i - 1
 
     send' eid retryF = do
@@ -1036,7 +1047,7 @@ send addr n arg = do
             Nothing -> openSocketInternal eid addr "w" >> retryF
 
     write eid (Just True) = doWriteInternal eid (addr, n, arg)
-    write _ _             = error $ "No write available to " ++ show addr
+    write _ _             = throwEngineError $ ConnectionError  $ "No write available to " ++ show addr
 
 {- Module API implementation -}
 
@@ -1207,7 +1218,7 @@ genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ())
 
     overflowError =
       genericClose n endpoints'
-        >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
+        >> (throwEngineError $ EndpointError "Endpoint buffer overflow (doWrite)")
 
 
 {- External endpoint methods -}
@@ -1312,13 +1323,13 @@ openSocketHandle addr wd mode conns =
   case mode of
     SIO.ReadMode      -> incoming
     SIO.WriteMode     -> outgoing
-    SIO.AppendMode    -> error "Unsupported network handle mode"
-    SIO.ReadWriteMode -> error "Unsupported network handle mode"
+    SIO.AppendMode    -> throwEngineError $ HandleError  "Unsupported network handle mode"
+    SIO.ReadWriteMode -> throwEngineError $ HandleError  "Unsupported network handle mode"
 
   where incoming = newEndpoint addr >>= return . (>>= return . SocketH wd . Left)
         outgoing = case conns of
           Just c  -> getEstablishedConnection addr c >>= return . (>>= return . SocketH wd . Right)
-          Nothing -> error "Invalid outgoing network connection map"
+          Nothing -> throwEngineError $ ConnectionError "Invalid outgoing network connection map"
 
 -- | Close an external.
 closeHandle :: IOHandle a -> EngineM b ()
@@ -1328,7 +1339,7 @@ closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
 closeHandle (networkSink   -> Just (_,_))  = return ()
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
 
-closeHandle _ = error "Invalid IOHandle argument for closeHandle"
+closeHandle _ = throwEngineError $ HandleError "Invalid IOHandle argument for closeHandle"
 
 -- | Read a single payload from an external.
 readHandle :: IOHandle a -> IO (Maybe a)

@@ -70,7 +70,7 @@ namespace K3 {
       bool done = networkDone() || !config->waitForNetwork();
       return done && (terminateV? terminateV->load() : false);
     }
-
+    
     bool networkDone() { return listenerCounter? (*listenerCounter)() : false; }
     
     // Wait for a notification that the engine associated
@@ -321,7 +321,7 @@ namespace K3 {
     MPStatus processMessage(MessageProcessor<Message<Value>> mp) {
 
         // Get a message from the engine queues.
-        shared_ptr<Message<Value>> next_message = queues->dequeue();
+  shared_ptr<Message<Value>> next_message = queues->dequeue();
 
         if (next_message) {
 
@@ -369,11 +369,49 @@ namespace K3 {
         runMessages(mp, next_status);
     }
 
-    void runEngine() {}
-    void forkEngine() {}
-    void waitForEngine() {}
-    void terminateEngine() {}
-    void cleanupEngine() {}
+    void runEngine(MessageProcessor<Message<Value>> mp) {
+      // TODO MessageProcessor initialize() is empty. 
+      // In the Haskell code base, this is where the K3 AST
+      // is passed to the MessageProcessor
+      mp.initialize()
+
+      // TODO Check PoolType for Uniprocess, Multithreaded..etc
+      // Following code is for Uniprocess mode only:
+      // TODO Dummy ID. Need to log actual ThreadID
+      workers->setId(1);
+       
+      runMessages(mp, mp.status()); 
+    }
+
+    // Return a new thread running runEngine() 
+    // with the provided MessageProcessor
+    thread forkEngine(MessageProcessor<Message<Value>> mp) {
+      thread engineThread(runEngine, mp);
+      return engineThread;
+    }
+
+    // Delegate wait to EngineControl
+    void waitForEngine() {
+      ctrl->waitForEngine(); 
+    }
+
+    // Set the EngineControl's terminateV to true
+    void terminateEngine() {
+      ctrl->terminateV->store(true);
+    }
+
+    // Clear the Engine's connections and endpointis
+    void cleanupEngine() {
+      if (connections) {
+        connections->clearConnections();
+      }
+      if (endpoints) {
+        // TODO: clearEndpoints() does not exists.
+        // It should call removeEndpoint() on all endpoints
+        // in the internal and external endpoint maps
+        endpoints->clearEndpoints();
+      }
+    }
 
     //-------------------
     // Engine statistics.
