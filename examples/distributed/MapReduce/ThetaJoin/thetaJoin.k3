@@ -1,0 +1,188 @@
+/*
+ * theta-join.k3
+ *
+ * Created by Kartik Thapar on 02/19/2014 at 12:21:03
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+/* DATASETS */
+
+declare sTable : collection {firstName : string, age : int, lastName : string} @ {Collection}
+declare tTable : collection {name : string, age : int, lastName : string} @ {Collection}
+declare sNumRows : mut int = 0
+declare tNumRows : mut int = 0
+declare totalRows : int = 2
+declare rowCounter : mut int = 0
+
+/* MAPPER */
+
+declare sMappers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:4001, Id : 1}, {address : 127.0.0.1:4002, Id : 2}, {address : 127.0.0.1:4003, Id : 3}, {address : 127.0.0.1:4004, Id : 4} |} @ {Collection}
+declare tMappers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:5001, Id : 1}, {address : 127.0.0.1:5002, Id : 2}, {address : 127.0.0.1:5003, Id : 3}, {address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
+declare sNumMappers : int = 4
+declare tNumMappers : int = 4
+declare currentMapperSize : mut int = 0
+declare sMapperOutput : collection {regionId : int, output : collection {firstName : string, age : int, lastName : string} @ {Collection}} @ {Collection}
+declare tMapperOutput : collection {regionId : int, output : collection {name : string, age : int, lastName : string} @ {Collection}} @ {Collection}
+
+/* REGIONS */
+
+declare regionMaxRow : int = 10
+declare regionMaxColumn : int = 10
+declare rowLookupTable : collection {row : int, regions : collection {regionId : int} @ {Collection}} @ {Collection}
+declare columnLookupTable : collection {column : int, regions : collection {regionId : int} @ {Collection}} @ {Collection}
+
+/* REDUCER */
+
+declare reducers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:6001, Id : 1}, {address : 127.0.0.1:6002, Id : 2}, {address : 127.0.0.1:6003, Id : 3}, {address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
+declare sTuples : option mut collection {firstName : string, age : int, lastName : string} @ {Collection} = None
+declare tTuples : option mut collection {name : string, age : int, lastName : string} @ {Collection} = None
+
+/* PHASE 1: PRE-PROCESS 1 */
+
+trigger preProcessCreateCollections : ({fromS : bool, sRow : option {firstName : string, age : int, lastName : string}, tRow : option {name : string, age : int, lastName : string}}) = \tableElement -> (
+    rowCounter = rowCounter + 1;
+    if tableElement.fromS then
+        sNumRows = sNumRows + 1;
+        sTable.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}
+    else
+        tNumRows = tNumRows + 1;
+        tTable.insert {name : tRow.firstName, age : tRow.age, lastName : tRow.lastName}
+    
+    if rowCounter == totalRows then (arrangeMap, me) <- ()
+    else ()
+)
+
+/* PHASE 2: MAP */
+
+declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun tableName -> (
+    /*
+     * If r == 0 => equal division
+     * If mapperId <= r => some r mappers will get the extra 1 row
+     * If mapperId > r => will not get extra 1 row
+     */
+    if tableName == "S" then
+        let r = sNumRows % sNumMappers;
+            q = sNumRows / sNumMappers in
+            if r == 0 then q else if mapperId <= r then q + 1 else q
+    else
+        let r = tNumRows % tNumMappers;
+            q = tNumRows / tNumMappers in
+            if r == 0 then q else if mapperId <= r then q + 1 else q
+)
+
+declare getRandom : immut (() -> int) = fun () -> 10
+
+declare getLookupQuotient : immut (int -> string -> int) = fun random -> fun tableName -> (
+    if tableName == "S" then
+        if random % regionMaxRow == 0 then random/regionMaxRow
+        else random/regionMaxRow + 1
+    else
+        if random % regionMaxColumn == 0 then random/regionMaxColumn
+        else random/regionMaxColumn + 1
+)
+
+/* Send rows from both the tables to the mappers using the sendRowToMapper_s/sendRowToMapper_t triggers */
+trigger arrangeMap : () = \_ -> (
+    sTable.fold (\mapperCounter -> \row -> (
+        (sendRowToMapper_s, me) <- (row, (mapperCounter % sNumMappers) + 1);
+        mapperCounter = mapperCounter + 1
+    )) 0;
+
+    tTable.fold (\mapperCounter -> \row -> (
+        (sendRowToMapper_t, me) <- (row, (mapperCounter % tNumMappers) + 1);
+        mapperCounter = mapperCounter + 1
+    )) 0
+)
+
+/* Send row to mapper */
+trigger sendRowToMapper_s : ({firstName : string, age : int, lastName : string}, int) = \x -> (
+    bind x as (sRow, mapperId) in (
+        let mapperInstance = sMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
+            mapperSize = (getMapperSize mapperId "S") in
+            (map_s, mapperInstance.address) <- (sRow, mapperSize)
+    )
+)
+
+trigger sendRowToMapper_t : ({name : string, age : int, lastName : string}, int) = \x -> (
+    bind x as (tRow, mapperId) in (
+        let mapperInstance = tMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
+            mapperSize = (getMapperSize mapperId "T") in
+            (map_t, mapperInstance.address) <- (tRow, mapperSize)
+    )
+)
+
+trigger map_s : ({firstName : string, age : int, lastName : string}, int) = \x -> (
+    bind x as (sRow, mapperSize) in (
+        currentMapperSize = currentMapperSize + 1;
+        randomRow = (getRandom "S");
+
+        /* Lookup in the row lookup table for the random row and find all regions. */
+        let lookupRowInstance = rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S")).peak in
+            lookupRowInstance.regions.iterate (\region -> (
+                let outputInstance = sMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
+                    sMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId : region.regionId, output : outputInstance.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}}
+            ))
+
+        /* If mapper is full, then send everything to the reducer */
+        if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
+        else ()
+    )
+)
+
+trigger map_t : ({name : string, age : int, lastName : string}, int) = \x -> (
+    bind x as (tRow, mapperSize) in (
+        currentMapperSize = currentMapperSize + 1;
+        randomColumn = (getRandom "T");
+
+        /* Lookup in the column lookup table for the random column and find all regions. */
+        let lookupColumnInstance = columnLookupTable.filter (\lookupColumn -> lookupColumn.row == (getLookupQuotient randomColumn "T")).peak in
+            lookupColumnInstance.regions.iterate (\region -> (
+                let outputInstance = tMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
+                    tMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId: region.regionId} {output: outputInstance.insert {name : tRow.name, age : tRow.age, lastName : tRow.lastName}}
+            ));
+        
+        /* If mapper is full, then send everything to the reducer */
+        if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
+        else ()
+    )
+)
+
+/* Send output collected at all mappers to the reducers */
+trigger sendAllToReducer : () = \_ -> (
+    /* Find reducer with the same regionId as that of the mapper output. */
+    sMapperOutput.iterate (\mapperOutput -> (
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
+            (reduce_s, reducerInstance.address) <- (mapperOutput.output)
+    ));
+    tMapperOutput.iterate (\mapperOutput -> (
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
+            (reduce_t, reducerInstance.address) <- (mapperOutput.output)
+    ))
+)
+
+/* PHASE 3: REDUCER */
+
+trigger reduce_s : (immut collection {firstName : string, age : int, lastName : string} @ {Collection}) = \coll -> (
+    sTuples = coll;
+    if tTuples == None then () else (reduceDoJoin, me) <- ()
+)
+
+trigger reduce_t : (immut collection {name : string, age : int, lastName : string} @ {Collection}) = \coll -> (
+    tTuples = coll;
+    if sTuples == None then () else (reduceDoJoin, me) <- ()
+)
+
+trigger reduceDoJoin : () = \_ -> (
+    sTuples.iterate (\sRow -> (
+        tTuples.iterate (\tRow -> (
+            if sRow.attribute == tRow.attribute then output (sRow, tRow) else ()
+        ))
+    ))
+)
+
+source master : () = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
+feed master |> preProcessCreateCollections
