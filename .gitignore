@@ -10,3 +10,5 @@ tmp
 data/out.txt
 cabal.sandbox.config
 *.swp
+
+__DATA
