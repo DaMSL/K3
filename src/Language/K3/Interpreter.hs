@@ -42,9 +42,10 @@ module Language.K3.Interpreter (
 
   emptyStaticEnv
 
-#ifdef TEST
+-- #ifdef TEST
+-- TODO When the ifdef is uncommented, the dataspace tests don't compile
   , throwE
-#endif
+-- #endif
 ) where
 
 import Control.Applicative
