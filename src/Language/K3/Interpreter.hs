@@ -1157,13 +1157,6 @@ getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
     emptyCollectionBody namedAnnDefs n = do
       ds <- emptyDataspaceLookup namedAnnDefs
       return $ Collection emptyCollectionNamespace ds n
-       {-case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-            Nothing -> return $ Collection emptyCollectionNamespace (InMemoryDS []) n
-            otherwise ->
-              do
-                filename <- generateCollectionFilename
-                let ds = ExternalDS filename
-                return $ Collection emptyCollectionNamespace ds n -}
 
     bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
     bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
