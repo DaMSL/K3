@@ -63,16 +63,21 @@ import Data.Maybe
 import Data.Tree
 import Data.Word (Word8)
 
+import Debug.Trace
+
 import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+
+import Language.K3.Transform.Interpreter.BindAlias ( labelBindAliases )
 
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment, defaultSystem )
 import Language.K3.Runtime.Dispatch
@@ -84,7 +89,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
 
 $(loggingFunctions)
-$(customLoggingFunctions ["Dispatch", "RegisterGlobal"])
+$(customLoggingFunctions ["Dispatch", "RegisterGlobal", "BindPath"])
 
 -- | K3 Values
 data Value
@@ -127,7 +132,8 @@ type IEngine = Engine Value
 data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
                      , getAnnotEnv   :: AEnvironment Value
-                     , getStaticEnv  :: SEnvironment Value }
+                     , getStaticEnv  :: SEnvironment Value
+                     , getBindStack  :: BindPathStack }
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
 type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog (EngineM Value)))
@@ -137,6 +143,19 @@ type IResult a = ((Either InterpretationError a, IState), ILog)
 
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment Value)
+
+{- Bind writeback support -}
+type BindPath = [BindStep]
+
+data BindStep
+    = Named Identifier
+    | Temporary Identifier
+    | Indirection
+    | TupleField Int
+    | RecordField Identifier
+  deriving (Eq, Show, Read)
+
+type BindPathStack = [Maybe BindPath]
 
 
 {- Collections and annotations -}
@@ -209,10 +228,13 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 {- State and result accessors -}
 
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
-modifyStateEnv f (IState w x y z) = IState w (f x) y z
+modifyStateEnv f (IState w x y z bindStack) = IState w (f x) y z bindStack
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (IState w x y z) = IState w x (f y) z
+modifyStateAEnv f (IState w x y z bindStack) = IState w x (f y) z bindStack
+
+modifyStateBinds :: (BindPathStack -> BindPathStack) -> IState -> IState
+modifyStateBinds f (IState v w x y bindStack) = (IState v w x y (f bindStack))
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -270,7 +292,7 @@ removeE (n,v) r = modifyE (deleteBy ((==) `on` fst) (n,v)) >> return r
 replaceE :: Identifier -> Value -> Interpretation ()
 replaceE n v = modifyE $ map (\(n',v') -> if n == n' then (n,v) else (n',v'))
 
-
+-- | Annotation environment helpers.
 lookupADef :: Identifier -> Interpretation (IEnvironment Value)
 lookupADef n = get >>= maybe err return . lookup n . definitions . getAnnotEnv
   where err = throwE $ RunTimeTypeError $ "Unknown annotation definition: '" ++ n ++ "'"
@@ -282,15 +304,47 @@ lookupACombo n = tryLookupACombo n >>= maybe err return
 tryLookupACombo :: Identifier -> Interpretation (Maybe (CollectionBinders Value))
 tryLookupACombo n = get >>= return . lookup n . realizations . getAnnotEnv
 
--- | Annotation environment modification
-modifyA :: (AEnvironment Value -> AEnvironment Value) -> Interpretation ()
-modifyA f = modify $ modifyStateAEnv f
+modifyAnnEnv :: (AEnvironment Value -> AEnvironment Value) -> Interpretation ()
+modifyAnnEnv f = modify $ modifyStateAEnv f
 
 modifyADefs :: (AnnotationDefinitions Value -> AnnotationDefinitions Value) -> Interpretation ()
-modifyADefs f = modifyA (\aEnv -> AEnvironment (f $ definitions aEnv) (realizations aEnv))
+modifyADefs f = modifyAnnEnv (\aEnv -> AEnvironment (f $ definitions aEnv) (realizations aEnv))
 
 modifyACombos :: (AnnotationCombinations Value -> AnnotationCombinations Value) -> Interpretation ()
-modifyACombos f = modifyA (\aEnv -> AEnvironment (definitions aEnv) (f $ realizations aEnv))
+modifyACombos f = modifyAnnEnv (\aEnv -> AEnvironment (definitions aEnv) (f $ realizations aEnv))
+
+-- | Bind stack helpers
+getBindPath :: Interpretation (Maybe BindPath)
+getBindPath = get >>= return . (\x -> if x == [] then Nothing else last x) . getBindStack
+
+modifyBindStack :: (BindPathStack -> BindPathStack) -> Interpretation ()
+modifyBindStack f = modify $ modifyStateBinds f
+
+modifyBindStack_ :: (BindPathStack -> Interpretation BindPathStack) -> Interpretation ()
+modifyBindStack_ f =
+  do { st <- get;
+      newBindStack <- f (getBindStack st);
+      put $ modifyStateBinds (\_ -> newBindStack) st }
+
+pushBindFrame :: Interpretation ()
+pushBindFrame = modifyBindStack (\bs -> bs++[Nothing])
+
+popBindFrame :: Interpretation ()
+popBindFrame = modifyBindStack (\bs -> init bs)
+
+appendAlias :: BindStep -> Interpretation ()
+appendAlias n = modifyBindStack_ pushBindAlias
+  where pushBindAlias [] = return []
+        pushBindAlias bs = case last bs of
+          Nothing -> return $ init bs ++ [Just [n]]
+          Just _  -> throwE $ RunTimeInterpretationError "Duplicate bind alias"
+
+appendAliasExtension :: Identifier -> Interpretation ()
+appendAliasExtension n = modifyBindStack_ pushBindAliasExtension
+  where pushBindAliasExtension [] = return []
+        pushBindAliasExtension bs = case last bs of
+          Just bindpath -> return $ init bs ++ [Just $ bindpath++[RecordField n]]
+          Nothing       -> throwE $ RunTimeInterpretationError "No bind alias found for extension"
 
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
@@ -449,11 +503,14 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
 emptyStaticEnv :: SEnvironment Value
 emptyStaticEnv = ([], AEnvironment [] [])
 
+emptyBindStack :: BindPathStack
+emptyBindStack = []
+
 emptyState :: IState
-emptyState = IState [] [] (AEnvironment [] []) emptyStaticEnv
+emptyState = IState [] [] (AEnvironment [] []) emptyStaticEnv emptyBindStack
 
 annotationState :: AEnvironment Value -> IState
-annotationState aEnv = IState [] [] aEnv emptyStaticEnv
+annotationState aEnv = IState [] [] aEnv emptyStaticEnv emptyBindStack
 
 --TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
@@ -665,35 +722,50 @@ binary _ = const . const $ throwE $ RunTimeInterpretationError "Unreachable"
 
 -- | Interpretation of Expressions
 expression :: K3 Expression -> Interpretation Value
+expression e_ = 
+  case e_ @~ isBindAliasAnnotation of
+    Just (EAnalysis (BindAlias i))          -> expr e_ >>= \r -> appendAlias (Named i) >> return r
+    Just (EAnalysis (BindFreshAlias i))     -> expr e_ >>= \r -> appendAlias (Temporary i) >> return r
+    Just (EAnalysis (BindAliasExtension i)) -> expr e_ >>= \r -> appendAliasExtension i >> return r
+    Nothing  -> expr e_
+    Just _   -> throwE $ RunTimeInterpretationError "Invalid bind alias annotation matching"
 
--- | Interpretation of constant expressions.
-expression (tag &&& annotations -> (EConstant c, as)) = constant c as
+  where
+    isBindAliasAnnotation (EAnalysis (BindAlias _))          = True
+    isBindAliasAnnotation (EAnalysis (BindFreshAlias _))     = True
+    isBindAliasAnnotation (EAnalysis (BindAliasExtension _)) = True
+    isBindAliasAnnotation _                                  = False
 
--- | Interpretation of variable lookups.
-expression (tag -> EVariable i) = lookupE i
+    expr :: K3 Expression -> Interpretation Value
+    -- | Interpretation of constant expressions.
+    expr (tag &&& annotations -> (EConstant c, as)) = constant c as
 
--- | Interpretation of option type construction expressions.
-expression (tag &&& children -> (ESome, [x])) = expression x >>= return . VOption . Just
-expression (tag -> ESome) = throwE $ RunTimeTypeError "Invalid Construction of Option"
+    -- | Interpretation of variable lookups.
+    expr (tag -> EVariable i) = lookupE i
 
--- | Interpretation of indirection type construction expressions.
-expression (tag &&& children -> (EIndirect, [x])) = do
-  expression_result <- expression x
-  new_val <- copyValue expression_result
-  new_ref <- liftIO $ newIORef new_val
-  return $ VIndirection new_ref
-expression (tag -> EIndirect) = throwE $ RunTimeTypeError "Invalid Construction of Indirection"
+    -- | Interpretation of option type construction expressions.
+    expr (tag &&& children -> (ESome, [x])) = expression x >>= return . VOption . Just
+    expr (tag -> ESome) = throwE $ RunTimeTypeError "Invalid Construction of Option"
 
--- | Interpretation of tuple construction expressions.
-expression (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . VTuple
+    -- | Interpretation of indirection type construction expressions.
+    expr (tag &&& children -> (EIndirect, [x])) = do
+      expression_result <- expression x
+      new_val <- copyValue expression_result
+      new_ref <- liftIO $ newIORef new_val
+      return $ VIndirection new_ref
+    expr (tag -> EIndirect) = throwE $ RunTimeTypeError "Invalid Construction of Indirection"
 
--- | Interpretation of record construction expressions.
-expression (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= return . VRecord . zip is
+    -- | Interpretation of tuple construction expressions.
+    expr (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . VTuple
 
--- | Interpretation of function construction.
-expression (tag &&& children -> (ELambda i, [b])) =
-  mkFunction $ \v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
-  where mkFunction f = closure >>= \cl -> return $ VFunction . (, cl) $ f
+    -- | Interpretation of record construction expressions.
+    expr (tag &&& children -> (ERecord is, cs)) = mapM expression cs >>= return . VRecord . zip is
+
+    -- | Interpretation of function construction.
+    expr (tag &&& children -> (ELambda i, [b])) =
+      mkFunction $ \v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
+      where
+        mkFunction f = closure >>= \cl -> return $ VFunction . (, cl) $ f
 
         -- TODO: currently, this definition of a closure captures 
         -- annotation member variables during annotation member initialization.
@@ -707,118 +779,163 @@ expression (tag &&& children -> (ELambda i, [b])) =
           vals    <- mapM lookupE vars
           return $ zip vars vals
 
--- | Interpretation of unary/binary operators.
-expression (tag &&& children -> (EOperate otag, cs))
-    | otag `elem` [ONeg, ONot], [a] <- cs = unary otag a
-    | otherwise, [a, b] <- cs = binary otag a b
-    | otherwise = undefined
+    -- | Interpretation of unary/binary operators.
+    expr (tag &&& children -> (EOperate otag, cs))
+        | otag `elem` [ONeg, ONot], [a] <- cs = unary otag a
+        | otherwise, [a, b] <- cs = binary otag a b
+        | otherwise = undefined
 
--- | Interpretation of Record Projection.
-expression (tag &&& children -> (EProject i, [r])) = expression r >>= \case
-    VRecord vr -> maybe (unknownField i) return $ lookup i vr
+    -- | Interpretation of Record Projection.
+    expr (tag &&& children -> (EProject i, [r])) = expression r >>= \case
+        VRecord vr -> maybe (unknownField i) return $ lookup i vr
 
-    VCollection cmv -> do
-      Collection ns _ extId <- liftIO $ readMVar cmv
-      if null extId then unannotatedCollection else case lookup i $ collectionNS ns of
-        Nothing -> unknownCollectionMember i (map fst $ collectionNS ns)
-        Just v' -> return v'
+        VCollection cmv -> do
+          Collection ns _ extId <- liftIO $ readMVar cmv
+          if null extId then unannotatedCollection else case lookup i $ collectionNS ns of
+            Nothing -> unknownCollectionMember i (map fst $ collectionNS ns)
+            Just v' -> return v'
 
-    _ -> throwE $ RunTimeTypeError "Invalid Record Projection"
-  
-  where unknownField i'              = throwE $ RunTimeTypeError $ "Unknown record field " ++ i'
-        unannotatedCollection        = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
-        unknownCollectionMember i' n = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i' ++ "(valid " ++ show n ++ ")"
+      where unknownField i' = throwE $ RunTimeTypeError $ "Unknown record field " ++ i'
+            unannotatedCollection = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
+            unknownCollectionMember i' n = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i' ++ "(valid " ++ show n ++ ")"
 
-expression (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
+    expr (tag -> EProject _) = throwE $ RunTimeTypeError "Invalid Record Projection"
 
--- | Interpretation of Let-In Constructions.
-expression (tag &&& children -> (ELetIn i, [e, b])) =
-    expression e >>= (\v -> modifyE ((i,v):) >> expression b >>= removeE (i,v))
-expression (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
+    -- | Interpretation of Let-In Constructions.
+    expr (tag &&& children -> (ELetIn i, [e, b])) =
+        expression e >>= (\v -> modifyE ((i,v):) >> expression b >>= removeE (i,v))
+    expr (tag -> ELetIn _) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
 
--- | Interpretation of Assignment.
-expression (tag &&& children -> (EAssign i, [e])) = do
-  lookup_result <- lookupE i
-  expression_result <- expression e
-  new_val <- copyValue expression_result
-  let mapFun = (map (\(n,v) ->
-                  if i == n then
-                    (i,new_val)
-                  else
-                    (n,v)
-                ) )
-  modifyE mapFun
-  return vunit
-expression (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
+    -- | Interpretation of Assignment.
+    expr (tag &&& children -> (EAssign i, [e])) = do
+      _    <- lookupE i
+      newV <- expression e
+      void $ modifyE (((i, newV):) . (deleteBy ((==) `on` fst) (i, newV)))
+      return vunit
 
--- | Interpretation of Case-Matches.
-expression (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
-    VOption (Just v) -> modifyE ((i, v):) >> expression s >>= removeE (i,v)
-    VOption (Nothing) -> expression n
-    _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
-expression (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
+    expr (tag -> EAssign _) = throwE $ RunTimeTypeError "Invalid Assignment"
 
--- | Interpretation of Binding.
-expression (tag &&& children -> (EBindAs b, [e, f])) = expression e >>= \b' -> case (b, b') of
-    (BIndirection i, VIndirection r) -> 
-      (modifyE . (:) $ (i, VIndirection r)) >> expression f >>= refreshBinding >>= removeE (i, VIndirection r)
-    
-    (BTuple ts, VTuple vs) ->
-      (modifyE . (++) $ zip ts vs) >> expression f >>= refreshBinding >>= removeAllE (zip ts vs)
-    
-    (BRecord ids, VRecord ivs) -> do
-        let (idls, ivls) = (map fst ids, map fst ivs)
-        let bindings = catMaybes $ map (\n -> lookup n ids >>= (\n' -> lookup n ivs >>= return . (n',))) idls
-        if idls `intersect` ivls == idls
-          then 
-            modifyE ((++) bindings) >> expression f
-              >>= refreshRecordBinding ids ivs >>= removeAllE bindings
-          else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
-    
-    _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
-  
-  -- TODO: support run-time determination of refresh targets, e.g., 
-  -- bind (if predicate then x else y) as ind x in ...
-  -- TODO: support aliased bindings, e.g, bind x as ind y in (bind x as ind z in y = y + z)
-  where bindId = case tag e of
-                  EVariable i -> Just i
-                  _           -> Nothing
+    -- | Interpretation of Case-Matches.
+    expr (tag &&& children -> (ECaseOf i, [e, s, n])) = expression e >>= \case
+        VOption (Just v) -> modifyE ((i, v):) >> expression s >>= removeE (i,v)
+        VOption (Nothing) -> expression n
+        _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
+    expr (tag -> ECaseOf _) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
+    -- | Interpretation of Binding.
+    expr (tag &&& children -> (EBindAs b, [e, f])) = withBindFrame $ do
+      bv <- expression e
+      bp <- getBindPath >>= \case
+        Just ((Named n):t)     -> return $ (Named n):t
+        Just ((Temporary n):t) -> return $ (Temporary n):t
+        _ -> throwE $ RunTimeTypeError "Invalid bind path in bind-as expression"
+
+      case (b, bv) of
+        (BIndirection i, VIndirection r) -> 
+          liftIO (readIORef r) >>= (\rV -> 
+            modifyE ((i,rV):) >> 
+            expression f >>= (\fV -> refreshBindings b bp bv >> removeE (i,rV) fV))
+
+        (BTuple ts, VTuple vs) -> do
+          let bindings = zip ts vs
+          modifyE ((++) bindings) >>
+            expression f >>= (\fV -> refreshBindings b bp bv >> removeAllE bindings fV)
+
+        (BRecord ids, VRecord ivs) -> do
+          let (idls, ivls) = (map fst ids, map fst ivs)
+
+          -- Testing the intersection with the bindings ensures every bound name
+          -- has a value, while also allowing us to bind a subset of the values.
+          if idls `intersect` ivls == idls
+            then do
+              let envBindings = catMaybes $ joinByKeys (,) idls ids ivs
+              modifyE ((++) envBindings) >>
+                expression f >>= (\fV -> refreshBindings b bp bv >> removeAllE envBindings fV)
+            else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
+
+        _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
+
+      where 
+        withBindFrame bindEval = pushBindFrame >> bindEval >>= \r -> popBindFrame >> return r
         removeAllE = flip (foldM (flip removeE))
 
-        refreshBinding r = const (return r) =<< case (bindId, b) of
-          (Just i, BIndirection j) -> modifyIndirection =<< (,) <$> lookupE i <*> lookupE j
-          (Just i, BTuple ts)      -> mapM lookupE ts >>= replaceE i . VTuple
-          (_,_)                    -> return ()
+        joinByKeys joinF keys l r = map (\k -> lookup k l >>= (\matchL -> lookup k r >>= return . joinF matchL)) keys
 
-        refreshRecordBinding ids ivs r = const (return r) =<< case bindId of
-          Just i -> mapM (rebuildRecordElem ids) ivs >>= replaceE i . VRecord
-          _      -> return ()
+        -- | Performs a write-back for a bind expression.
+        --   This retrieves the current binding values from the environment
+        --   and reconstructs a path value to replace the bind target.
+        refreshBindings :: Binder -> BindPath -> Value -> Interpretation ()
+        refreshBindings (BIndirection i) bindPath bindV = 
+          lookupE i >>= replaceBindPath bindPath bindV (\oldV newPathV ->
+            case oldV of 
+              VIndirection r -> liftIO (writeIORef r newPathV) >> return oldV
+              _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
+
+        refreshBindings (BTuple ts) bindPath bindV =
+          mapM lookupE ts
+            >>= replaceBindPath bindPath bindV (\_ newPathV -> return newPathV) . VTuple
+
+        refreshBindings (BRecord ids) bindPath bindV =
+          mapM lookupE (map snd ids) 
+            >>= return . VRecord . zip (map fst ids)
+            >>= replaceBindPath bindPath bindV (\oldV newPathV -> mergeRecords oldV newPathV)
+
+        replaceBindPath :: BindPath -> Value -> (Value -> Value -> Interpretation Value) -> Value -> Interpretation ()
+        replaceBindPath bindPath bindV refreshF newV =
+          case bindPath of 
+            (Named n):t     -> lookupE n >>= (\oldV -> reconstructPathValue t newV oldV >>= refreshF oldV >>= replaceE n)
+            (Temporary _):t -> reconstructPathValue t newV bindV >>= refreshF bindV >> return ()
+            _               -> throwE $ RunTimeInterpretationError "Invalid path in bind writeback"
+
+
+        reconstructPathValue :: BindPath -> Value -> Value -> Interpretation Value
+        reconstructPathValue [] newR@(VRecord _) oldR@(VRecord _) = mergeRecords oldR newR
+        reconstructPathValue [] v _ = return v
         
-        rebuildRecordElem ids (n,v) =
-          maybe (return (n,v)) (\n' -> lookupE n' >>= return . (n,)) $ lookup n ids
+        reconstructPathValue (Indirection:t) v (VIndirection iv) =
+          liftIO (readIORef iv)
+            >>= reconstructPathValue t v
+            >>= liftIO . writeIORef iv >> return (VIndirection iv)
 
-        modifyIndirection (VIndirection r, v) = liftIO $ writeIORef r v
-        modifyIndirection _ = throwE $ RunTimeTypeError "Invalid indirection value"
+        reconstructPathValue ((TupleField i):t) v (VTuple vs) =
+          let (x,y) = splitAt i vs in
+          reconstructPathValue t v (last x) >>= \nv -> return $ VTuple ((init x) ++ [nv] ++ y)
 
-expression (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
+        reconstructPathValue ((RecordField n):t) v (VRecord ivs) = do
+          fields <- flip mapM ivs (\(fn,fv) -> 
+                      if fn == n then (reconstructPathValue t v fv >>= return . (fn,))
+                                 else return (fn,fv))
+          return $ VRecord fields
 
--- | Interpretation of If-Then-Else constructs.
-expression (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \case
-    VBool True -> expression t
-    VBool False -> expression e
-    _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
+        reconstructPathValue _ _ _ =
+          throwE $ RunTimeInterpretationError "Invalid path in bind writeback reconstruction"
 
-expression (tag &&& children -> (EAddress, [h, p])) = do
-  hv <- expression h
-  pv <- expression p
-  case (hv, pv) of
-    (VString host, VInt port) -> return $ VAddress $ Address (host, port)
-    _ -> throwE $ RunTimeTypeError "Invalid address"
 
-expression (tag -> ESelf) = lookupE annotationSelfId
+        mergeRecords :: Value -> Value -> Interpretation Value
+        mergeRecords (VRecord r1) (VRecord r2) = 
+          return . VRecord $ map (\(n,v) -> maybe (n,v) (n,) $ lookup n r2) r1
 
-expression _ = throwE $ RunTimeInterpretationError "Invalid Expression"
+        mergeRecords _ _ =
+          throwE $ RunTimeTypeError "Invalid bind record target"
+
+    expr (tag -> EBindAs _) = throwE $ RunTimeTypeError "Invalid Bind Construction"
+
+    -- | Interpretation of If-Then-Else constructs.
+    expr (tag &&& children -> (EIfThenElse, [p, t, e])) = expression p >>= \case
+        VBool True -> expression t
+        VBool False -> expression e
+        _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
+
+    expr (tag &&& children -> (EAddress, [h, p])) = do
+      hv <- expression h
+      pv <- expression p
+      case (hv, pv) of
+        (VString host, VInt port) -> return $ VAddress $ Address (host, port)
+        _ -> throwE $ RunTimeTypeError "Invalid address"
+
+    expr (tag -> ESelf) = lookupE annotationSelfId
+
+    expr _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 copyValue :: Value -> Interpretation Value
 copyValue (VCollection cmv) = do
@@ -1458,8 +1575,8 @@ builtinAttribute _ n _ _ = providesError "attribute" n
 --   environment resulting immediately after declaration initialization.
 staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
 staticEnvironment prog = do
-  st      <- initState prog
-  staticR <- runInterpretation' st (declaration prog)
+  initSt  <- initState prog
+  staticR <- runInterpretation' initSt (declaration prog)
   logState "STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
   annotEnv <- staticAnnotations st
@@ -1552,7 +1669,7 @@ initEnvironment decl st =
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
-    registerGlobal n (IState w x y z) = IState (n:w) x y z
+    registerGlobal n (IState w x y z bindStack) = IState (n:w) x y z bindStack
 
     registerDecl :: IState -> K3 Declaration -> IState
     registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
@@ -1581,10 +1698,10 @@ initBootstrap bootstrap aEnv = flip mapM bootstrap (\(n,l) ->
 injectBootstrap :: PeerBootstrap -> IResult a -> EngineM Value (IResult a)
 injectBootstrap bootstrap r = case r of
   ((Left _, _), _) -> return r
-  ((Right val, (IState globs vEnv annEnv sEnv)), rLog) -> do
+  ((Right val, (IState globs vEnv annEnv sEnv bindStack)), rLog) -> do
       bootEnv <- initBootstrap bootstrap annEnv
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
-      return ((Right val, (IState globs nvEnv annEnv sEnv)), rLog)
+      return ((Right val, (IState globs nvEnv annEnv sEnv bindStack)), rLog)
 
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
@@ -1595,7 +1712,8 @@ initProgram bootstrap prog = do
     bootR    <- injectBootstrap bootstrap declR
     initMessages bootR
   where 
-    buildStaticEnv (IState gl iEnv aEnv _) = staticEnvironment prog >>= return . (IState gl iEnv aEnv)
+    buildStaticEnv (IState gl iEnv aEnv _ bindStack) =
+      staticEnvironment prog >>= \sEnv -> return (IState gl iEnv aEnv sEnv bindStack)
 
 
 finalProgram :: IState -> EngineM Value (IResult Value)
@@ -1627,14 +1745,16 @@ runProgram :: Bool -> SystemEnvironment -> K3 Declaration -> IO (Either EngineEr
 runProgram isPar systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
-      trigs  <- return $ getTriggerIds prog
+      trigs  <- return $ getTriggerIds tProg
       engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM engine $ runEngine virtualizedProcessor prog
+      flip runEngineM engine $ runEngine virtualizedProcessor tProg
 
   where buildStaticEnv = do
-          trigs <- return $ getTriggerIds prog
+          trigs <- return $ getTriggerIds tProg
           preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD emptyStaticEnv
-          flip runEngineM preEngine $ staticEnvironment prog
+          flip runEngineM preEngine $ staticEnvironment tProg
+
+        tProg = labelBindAliases prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
@@ -1642,10 +1762,10 @@ runNetwork :: Bool -> SystemEnvironment -> K3 Declaration
            -> IO [Either EngineError (Address, Engine Value, ThreadId)]
 runNetwork isPar systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
-    buildStaticEnv (getTriggerIds prog) >>= \case
+    buildStaticEnv (getTriggerIds tProg) >>= \case
       Left err   -> return $ [Left err]
       Right sEnv -> do
-        trigs         <- return $ getTriggerIds prog
+        trigs         <- return $ getTriggerIds tProg
         engines       <- mapM (flip (networkEngine trigs isPar) $ syntaxValueWD sEnv) nodeBootstraps
         namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
         engineThreads <- mapM fork namedEngines
@@ -1654,12 +1774,14 @@ runNetwork isPar systemEnv prog =
   where
     buildStaticEnv trigs = do
       preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD emptyStaticEnv
-      flip runEngineM preEngine $ staticEnvironment prog
+      flip runEngineM preEngine $ staticEnvironment tProg
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
     fork (addr, engine) = do
-      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor prog
+      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor tProg
       return $ either Left (Right . (addr, engine,)) threadId
+
+    tProg = labelBindAliases prog
 
 
 {- Message processing -}
@@ -1833,13 +1955,19 @@ logTrigger addr n args r = do
     msg <- showDispatch addr n args r
     void $ _notice_Dispatch $ boxToString msg
 
+logIState :: Interpretation ()
+logIState = get >>= liftIO . putStrLn . pretty
+
+logBindPath :: Interpretation ()
+logBindPath = getBindPath >>= void . _notice_BindPath . ("BIND PATH: "++) . show
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (IState _ vEnv aEnv sEnv) =
+  prettyLines (IState _ vEnv aEnv sEnv aliasSt) =
          ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) vEnv)
       ++ ["Annotations:"] ++ (indent 2 $ lines $ show aEnv)
       ++ ["Static:"]      ++ (indent 2 $ lines $ show sEnv)
+      ++ ["Aliases:"]     ++ (indent 2 $ lines $ show aliasSt)
     where
       prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
       maxNameLength        = maximum $ map (length . fst) vEnv
@@ -1893,6 +2021,7 @@ instance Show Value where
   showsPrec d (VFunction _)    = showsPrecTagF "VFunction"    d $ showString "<function>"
   showsPrec d (VTrigger (_, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
   showsPrec d (VTrigger (_, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
+
 
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)

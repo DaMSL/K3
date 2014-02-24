@@ -1,0 +1,2 @@
+{CNS={}, ANS={}, DS=[{fromS = True, sRow = Some {firstName = "Kartik1", age = 20, lastName = "Thapar1"}, tRow = None}], Collection}
+{CNS={}, ANS={}, DS=[{fromS = False, sRow = None, tRow = Some {name = "Kartik2", age = 21, lastName = "Thapar2"}}], Collection}
