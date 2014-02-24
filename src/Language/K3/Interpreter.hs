@@ -42,9 +42,9 @@ module Language.K3.Interpreter (
 
   emptyStaticEnv
 
--- #ifdef TEST
+#ifdef TEST
   , throwE
--- #endif
+#endif
 ) where
 
 import Control.Applicative
@@ -227,11 +227,17 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 
 {- State and result accessors -}
 
+modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
+modifyStateGlobals f (IState g x y z bind_stack) = IState (f g) x y z bind_stack
+
 modifyStateEnv :: (IEnvironment Value -> IEnvironment Value) -> IState -> IState
 modifyStateEnv f (IState w x y z bindStack) = IState w (f x) y z bindStack
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
 modifyStateAEnv f (IState w x y z bindStack) = IState w x (f y) z bindStack
+
+modifyStateSEnv :: (SEnvironment Value -> SEnvironment Value) -> IState -> IState
+modifyStateSEnv f (IState g e a s bindStack) = IState g e a (f s) bindStack
 
 modifyStateBinds :: (BindPathStack -> BindPathStack) -> IState -> IState
 modifyStateBinds f (IState v w x y bindStack) = (IState v w x y (f bindStack))
@@ -1669,7 +1675,7 @@ initEnvironment decl st =
 
     -- | Global identifier registration
     registerGlobal :: Identifier -> IState -> IState
-    registerGlobal n (IState w x y z bindStack) = IState (n:w) x y z bindStack
+    registerGlobal n istate = modifyStateGlobals ((:) n ) istate
 
     registerDecl :: IState -> K3 Declaration -> IState
     registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
@@ -1698,10 +1704,11 @@ initBootstrap bootstrap aEnv = flip mapM bootstrap (\(n,l) ->
 injectBootstrap :: PeerBootstrap -> IResult a -> EngineM Value (IResult a)
 injectBootstrap bootstrap r = case r of
   ((Left _, _), _) -> return r
-  ((Right val, (IState globs vEnv annEnv sEnv bindStack)), rLog) -> do
-      bootEnv <- initBootstrap bootstrap annEnv
+  ((Right val, istate), rLog) -> do
+      bootEnv <- initBootstrap bootstrap (getAnnotEnv istate)
+      let vEnv = getEnv istate
       let nvEnv = map (\(n,v) -> maybe (n,v) (n,) $ lookup n bootEnv) vEnv
-      return ((Right val, (IState globs nvEnv annEnv sEnv bindStack)), rLog)
+      return ((Right val, modifyStateEnv (const nvEnv) istate), rLog)
 
 
 initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
@@ -1712,9 +1719,8 @@ initProgram bootstrap prog = do
     bootR    <- injectBootstrap bootstrap declR
     initMessages bootR
   where 
-    buildStaticEnv (IState gl iEnv aEnv _ bindStack) =
-      staticEnvironment prog >>= \sEnv -> return (IState gl iEnv aEnv sEnv bindStack)
-
+    buildStaticEnv istate =
+      staticEnvironment prog >>= return . (\v -> modifyStateSEnv (const v) istate)
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
@@ -1963,14 +1969,14 @@ logBindPath = getBindPath >>= void . _notice_BindPath . ("BIND PATH: "++) . show
 
 {- Instances -}
 instance Pretty IState where
-  prettyLines (IState _ vEnv aEnv sEnv aliasSt) =
-         ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) vEnv)
-      ++ ["Annotations:"] ++ (indent 2 $ lines $ show aEnv)
-      ++ ["Static:"]      ++ (indent 2 $ lines $ show sEnv)
-      ++ ["Aliases:"]     ++ (indent 2 $ lines $ show aliasSt)
+  prettyLines istate =
+         ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) (getEnv istate))
+      ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv istate)
+      ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv istate)
+      ++ ["Aliases:"]     ++ (indent 2 $ lines $ show $ getBindStack istate)
     where
       prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
-      maxNameLength        = maximum $ map (length . fst) vEnv
+      maxNameLength        = maximum $ map (length . fst) (getEnv istate)
 
 instance (Pretty a) => Pretty (IResult a) where
     prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
