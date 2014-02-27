@@ -127,7 +127,7 @@ namespace K3
 
     template<typename Source>
     LineBasedHandle(shared_ptr<WireDesc<Value> > wd, Input i, const Source& src)
-      : IOHandle<Value>(wd)
+      : LogMT("LineBasedHandle"), IOHandle<Value>(wd)
     {
       inImpl = shared_ptr<LineInputHandle>(new LineInputHandle(src));
     }
@@ -225,7 +225,7 @@ namespace K3
   public:
     FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
                typename LineBasedHandle<Value>::Input i) 
-      : LineBasedHandle<Value>(wd, i, file_source(path))
+      : LogMT("FileHandle") , LineBasedHandle<Value>(wd, i, file_source(path))
     {}
 
     FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
