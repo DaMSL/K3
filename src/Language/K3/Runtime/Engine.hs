@@ -160,6 +160,7 @@ $(customLoggingFunctions ["EngineSteps"])
 
 -- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
+                       , valueFormat     :: WireDesc a
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
@@ -167,7 +168,8 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
-                       , connections     :: EConnectionState }
+                       , connections     :: EConnectionState
+                       , collectionCount :: MVar Int }
 
 -- | Engine Error Type. 
 -- TODO: We may want to log more information than a message string
@@ -341,7 +343,7 @@ data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
   = BuiltinH (WireDesc a) SIO.Handle Builtin
-  | FileH    (WireDesc a) SIO.Handle
+  | FileH    (WireDesc a) SIO.Handle -- TODO bool about temporaries
   | SocketH  (WireDesc a) (Either NEndpoint NConnection)
 
 data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
@@ -526,7 +528,7 @@ defaultControl = EngineControl <$> newMVar Off <*> newMVar 0 <*> newEmptyMVar <*
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
 simulationEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
-simulationEngine trigs isPar systemEnv (internalizeWD -> internalWD)  = do
+simulationEngine trigs isPar systemEnv wd@(internalizeWD -> internalWD)  = do
   config'         <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- defaultControl
   workers'        <- if isPar
@@ -540,13 +542,14 @@ simulationEngine trigs isPar systemEnv (internalizeWD -> internalWD)  = do
                        ([x],_) -> singleQSingleW (deployedNodes systemEnv) trigs
                        (_, False)  -> peerQSingleW (deployedNodes systemEnv) trigs
                        _  -> peerQPeerW (deployedNodes systemEnv) trigs
-  return $ Engine config' internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState
+  colCount        <- newMVar 0
+  return $ Engine config' wd internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState colCount
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
-networkEngine trigs isPar systemEnv (internalizeWD -> internalWD) = do
+networkEngine trigs isPar systemEnv wd@(internalizeWD -> internalWD) = do
   config'       <- return $ configureWithAddress $ head peers
   ctrl          <- defaultControl
   workers'        <- if isPar
@@ -560,7 +563,8 @@ networkEngine trigs isPar systemEnv (internalizeWD -> internalWD) = do
   qconfig       <- if isPar
                    then peerQPeerW (deployedNodes systemEnv) trigs
                    else peerQSingleW (deployedNodes systemEnv) trigs
-  engine        <- return $ Engine config' internalWD ctrl systemEnv qconfig workers' listnrs endpoints' connState
+  colCount     <- newMVar 0
+  engine        <- return $ Engine config' wd internalWD ctrl systemEnv qconfig workers' listnrs endpoints' connState colCount
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -1228,9 +1232,15 @@ genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ())
 openBuiltin :: Identifier -> Identifier -> WireDesc a -> EngineM a ()
 openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoints . endpoints
 
+-- | Open a file endpoint.
+-- Takes a name for the endpoint, the path to the file, a wire description, a thingy,
+-- an IO mode, and returns a monadic thingy?
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
+-- |Takes: a name for the socket, the target address, the wire description of data written to the socket,
+-- (Maybe (K3 Type)? what is this?), and the file mode (r,w,a, etc.).
+-- Returns something?
 openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openSocket eid addr wd tOpt mode = do
     engine <- ask
@@ -1239,9 +1249,11 @@ openSocket eid addr wd tOpt mode = do
     let lst = ListenerState eid (networkDoneV ctl) externalListenerProcessor
     genericOpenSocket eid addr wd tOpt mode lst eep
 
+-- |Closes the external endpoint identified by the first argument
 close :: String -> EngineM a ()
 close n = ask >>= genericClose n . externalEndpoints . endpoints
 
+-- TODO Nothing from Maybe Bool should get rolled into EngineError
 hasRead :: Identifier -> EngineM a (Maybe Bool)
 hasRead n = ask >>= genericHasRead n . externalEndpoints . endpoints
 
@@ -1264,8 +1276,8 @@ openBuiltinInternal eid bid = do
     let iep = internalEndpoints $ endpoints engine
     genericOpenBuiltin eid bid ife iep
 
-openFileInternal :: Identifier -> String -> String -> EngineM a ()
-openFileInternal eid path mode = do
+openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> EngineM a ()
+openFileInternal eid path mode f = do
     engine <- ask
     let ife = internalFormat engine
     let iep = internalEndpoints $ endpoints engine

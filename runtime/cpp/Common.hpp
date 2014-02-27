@@ -198,39 +198,38 @@ namespace K3 {
   // The semantics of repeated invocations are dependent on the actual implementation
   // of the wire description (including factors such as message loss). 
   // This includes the conditions under which an exception is thrown.
-  
-  template <typename Value>
+  template <template<class> class F>
   class WireDesc : public virtual LogMT {
-  public:
-    WireDesc() : LogMT("WireDesc") {}
+      public:
+          template <class T>
+          string pack(const T& payload) {
+              return F<T>::pack(payload);
+          }
 
-    virtual string pack(const Value& v) = 0;
-
-    virtual shared_ptr<Value> unpack(const string& s) = 0;
+          template <class T>
+          shared_ptr<T> unpack(const string& message) {
+              return F<T>::unpack(payload);
+          }
   };
 
+  template <class T>
+  class BoostWireDesc {
+      public:
+          static string pack(const T& payload) {
+              ostringstream out_sstream;
+              boost::archive::text_oarchive out_archive(out_sstream);
+              out_archive << payload;
+              return out_sstream.str();
+          }
 
-  template <typename Value>
-  class BoostWireDesc : public WireDesc<Value> {
+          static shared_ptr<T> unpack(const string& message) {
+              istringstream in_sstream(message);
+              boost::archive::text_iarchive in_archive(in_sstream);
 
-      string pack(const Value& v) {
-          ostringstream out_sstream;
-          boost::archive::text_oarchive out_archive(out_sstream);
-          out_archive << v;
-          return out_sstream.str();
-      }
-
-      shared_ptr<Value> unpack(const string& s) {
-          istringstream in_sstream(s);
-          boost::archive::text_iarchive in_archive(in_sstream);
-
-          shared_ptr<Value> p;
-          in_archive >> *p;
-          return p;
-      }
-
-    public:
-      BoostWireDesc() : LogMT("BoostWireDesc") {}  
+              shared_ptr<T> p;
+              in_archive >> *p;
+              return p;
+          }
   };
 
   // TODO: protobuf, msgpack, json WireDesc implementations.  
