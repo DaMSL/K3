@@ -5,7 +5,7 @@
 #include <list>
 #include <tuple>
 #include <boost/shared_ptr.hpp>
-#include <k3/runtime/Common.hpp>
+#include <runtime/Common.hpp>
 
 namespace K3 {
 

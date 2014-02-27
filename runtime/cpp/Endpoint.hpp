@@ -9,9 +9,9 @@
 #include <boost/thread/lockable_adapter.hpp>
 #include <boost/thread/shared_lock_guard.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include <k3/runtime/cpp/Common.hpp>
-#include <k3/runtime/cpp/Network.hpp>
-#include <k3/runtime/cpp/IOHandle.hpp>
+#include <runtime/cpp/Common.hpp>
+#include <runtime/cpp/Network.hpp>
+#include <runtime/cpp/IOHandle.hpp>
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.

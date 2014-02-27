@@ -5,8 +5,8 @@
 #include <boost/iostreams/device/file.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/line.hpp>
-#include <k3/runtime/cpp/Common.hpp>
-#include <k3/runtime/cpp/Network.hpp>
+#include <runtime/cpp/Common.hpp>
+#include <runtime/cpp/Network.hpp>
 
 namespace K3
 {
