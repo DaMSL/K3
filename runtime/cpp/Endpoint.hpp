@@ -12,6 +12,7 @@
 #include <runtime/cpp/Common.hpp>
 #include <runtime/cpp/Network.hpp>
 #include <runtime/cpp/IOHandle.hpp>
+#include <runtime/cpp/Queue.hpp>
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.
@@ -21,6 +22,12 @@ namespace K3
   using namespace std;
 
   using boost::mutex;
+  using boost::strict_lock;
+  using boost::shared_mutex;
+  using boost::shared_lockable_adapter;
+  using boost::shared_lock_guard;
+  using boost::externally_locked;
+  using boost::basic_lockable_adapter;
 
   typedef tuple<int, int> BufferSpec;
 

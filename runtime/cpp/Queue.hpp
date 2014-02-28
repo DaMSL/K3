@@ -16,7 +16,9 @@ namespace K3 {
 
   using namespace std;
   using namespace boost::lockfree;
-
+  using boost::strict_lock;
+  using boost::basic_lockable_adapter;
+  using boost::externally_locked;
   using boost::mutex;
 
   //-------------
@@ -38,7 +40,7 @@ namespace K3 {
     bool push(Value& v) { return queue.push(v); }
     bool pop(Value& v)  { return queue.pop(v); }
   protected:
-    lockfree::queue<Value> queue;
+    boost::lockfree::queue<Value> queue;
   };
 
   template<typename Value>

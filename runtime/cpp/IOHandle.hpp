@@ -191,15 +191,15 @@ namespace K3
     struct Stderr {};
 
     BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stdin s)
-      : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Input(), cin)
+      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Input(), cin)
     {}
     
     BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stdout s)
-      : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cout)
+      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cout)
     {}
     
     BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stderr s)
-      : LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
+      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
     {}
 
     bool builtin () { return true; }
