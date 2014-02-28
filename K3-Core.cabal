@@ -77,6 +77,8 @@ library
         Language.K3.Parser.Preprocessor,
         Language.K3.Parser.ProgramBuilder,
         Language.K3.Parser.K3Ocaml,
+        Language.K3.Interpreter.DataTypes,
+        Language.K3.Interpreter.Interpreter,
         Language.K3.Interpreter,
         Language.K3.Runtime.Common,
         Language.K3.Runtime.Dataspace,
