@@ -4,13 +4,11 @@
 #include <map>
 #include <list>
 #include <tuple>
-#include <boost/shared_ptr.hpp>
 #include <runtime/Common.hpp>
 
 namespace K3 {
 
   using namespace std;
-  using namespace boost;
 
   using Net = K3::Asio;
 

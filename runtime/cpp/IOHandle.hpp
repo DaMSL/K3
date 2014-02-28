@@ -11,10 +11,7 @@
 namespace K3
 {
   using namespace std;
-  using namespace boost;
   using namespace boost::iostreams;
-
-  using std::shared_ptr;
 
   //--------------------------
   // IO handles

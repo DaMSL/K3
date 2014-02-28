@@ -22,14 +22,12 @@
 namespace K3 {
 
   using namespace std;
-  using namespace boost;
+  using boost::any;
 
   using namespace boost::log;
   using namespace boost::log::sources;
   using namespace boost::log::trivial;
   using namespace boost::phoenix;
-
-  using std::shared_ptr;
 
   typedef string Identifier;
 

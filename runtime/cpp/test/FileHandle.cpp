@@ -2,16 +2,13 @@
 #include <runtime/cpp/IOHandle.hpp>
 #include <boost/algorithm/string.hpp>
 
-using namespace std;
 using namespace K3;
-
-using std::shared_ptr;
 
 int main() {
   // Define input path
   string path = "in.txt";
   // Setup a K3 WireDesc + FileHandle
-  shared_ptr<DefaultWireDesc> wd = shared_ptr<DefaultWireDesc>(new DefaultWireDesc()); 
+  shared_ptr<DefaultWireDesc> wd = shared_ptr<DefaultWireDesc>(new DefaultWireDesc());
   FileHandle<string> f = FileHandle<string>(wd, path, LineBasedHandle<string>::Input());
   // Read the file line-by-line
   while (f.hasRead()) {

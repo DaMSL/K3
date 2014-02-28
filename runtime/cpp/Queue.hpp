@@ -15,10 +15,8 @@
 namespace K3 {
 
   using namespace std;
-  using namespace boost;
   using namespace boost::lockfree;
 
-  using std::shared_ptr;
   using boost::mutex;
 
   //-------------
