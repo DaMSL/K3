@@ -68,6 +68,7 @@ data Operator
     | OSub
     | OMul
     | ODiv
+    | OMod
     | ONeg
     | OEqu
     | ONeq

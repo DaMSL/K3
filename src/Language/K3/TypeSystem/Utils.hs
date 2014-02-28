@@ -32,6 +32,7 @@ typeOfOp op = case op of
   OSub -> SomeBinaryOperator BinOpSubtract
   OMul -> SomeBinaryOperator BinOpMultiply
   ODiv -> SomeBinaryOperator BinOpDivide
+  OMod -> SomeBinaryOperator BinOpModulo -- TODO: modulo operator specification
   ONeg -> error "No unary operators in spec yet!" -- TODO: unary operators specification
   OEqu -> SomeBinaryOperator BinOpEquals
   ONeq -> error "No not-equals in spec yet!" -- TODO: unary operators specification

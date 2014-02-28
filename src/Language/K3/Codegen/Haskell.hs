@@ -820,18 +820,19 @@ binary op e e' = do
   eE  <- expression' e
   eE' <- expression' e'
   case op of 
-    OAdd -> doInfx "__arith" "+"  [eE, eE']
-    OSub -> doInfx "__arith" "-"  [eE, eE']
-    OMul -> doInfx "__arith" "*"  [eE, eE']
-    ODiv -> doInfx "__arith" "/"  [eE, eE']
-    OAnd -> doInfx "__bool"  "&&" [eE, eE']
-    OOr  -> doInfx "__bool"  "||" [eE, eE']
-    OEqu -> doInfx "__cmp"   "==" [eE, eE']
-    ONeq -> doInfx "__cmp"   "/=" [eE, eE']
-    OLth -> doInfx "__cmp"   "<"  [eE, eE']
-    OLeq -> doInfx "__cmp"   "<=" [eE, eE']
-    OGth -> doInfx "__cmp"   ">"  [eE, eE']
-    OGeq -> doInfx "__cmp"   ">=" [eE, eE']
+    OAdd -> doInfx "__arith" "+"      [eE, eE']
+    OSub -> doInfx "__arith" "-"      [eE, eE']
+    OMul -> doInfx "__arith" "*"      [eE, eE']
+    ODiv -> doInfx "__arith" "/"      [eE, eE'] -- TODO: type based selection of div vs /
+    OMod -> doInfx "__arith" "`mod`"  [eE, eE'] -- TODO: type based selection of mod vs mod'
+    OAnd -> doInfx "__bool"  "&&"     [eE, eE']
+    OOr  -> doInfx "__bool"  "||"     [eE, eE']
+    OEqu -> doInfx "__cmp"   "=="     [eE, eE']
+    ONeq -> doInfx "__cmp"   "/="     [eE, eE']
+    OLth -> doInfx "__cmp"   "<"      [eE, eE']
+    OLeq -> doInfx "__cmp"   "<="     [eE, eE']
+    OGth -> doInfx "__cmp"   ">"      [eE, eE']
+    OGeq -> doInfx "__cmp"   ">="     [eE, eE']
     OSeq -> sequenceActions =<< (,) <$> ensureActionE eE <*> ensureActionE eE' 
     OApp -> spliceManyE "__app" applyFn [eE, eE']
     OSnd -> spliceManyE "__snd" doSendE [eE, eE']
@@ -1245,7 +1246,6 @@ genNotifier n evt = mkTypedDecl n
           (liftIO $ ishow ()) >>= E.attachNotifier_ cid $(HB.strE evt) . (addr, handle trig,) |]
 
 builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
-builtin "parseArgs" _ = return HNoRepr -- TODO
 
 -- TODO: due to use of identityWD, generate ser/deser with ishow/iread at call sites for these builtins.
 builtin "openBuiltin" _ = mkTypedDecl "openBuiltin"
@@ -1307,6 +1307,12 @@ builtin (channelMethod -> ("Write", Just n)) t = do
     , simpleFun fnId argId $
         [hs| ishow $(HB.var $ HB.name argId)
               >>= $(HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "doWrite") $(HB.strE n) |] ]
+
+-- TODO: extra builtins
+builtin "random" _         = return HNoRepr
+builtin "randomFraction" _ = return HNoRepr
+builtin "hash" _           = return HNoRepr
+builtin "range" _          = return HNoRepr
 
 builtin n _ = throwCG . CodeGenerationError $ "Invalid builtin function " ++ n
 

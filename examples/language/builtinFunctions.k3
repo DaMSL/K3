@@ -1,0 +1,16 @@
+include "Core/Builtins.k3"
+
+declare randInt  : mut int = 0
+declare randReal : mut real = 0.0
+declare modInt   : mut int = 0
+declare modReal  : mut int = 0
+
+trigger t : () = \_ -> (
+    randInt  = random 5;
+    randReal = randomFraction ();
+    modInt   = 100 % 3;
+    modReal  = 101.0 % 5.0
+  )
+  
+source s1 : () = value ()
+feed s1 |> t

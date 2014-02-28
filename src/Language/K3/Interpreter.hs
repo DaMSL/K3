@@ -57,6 +57,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
+import Data.Fixed
 import Data.Function
 import Data.IORef
 import Data.List
@@ -65,6 +66,8 @@ import Data.Tree
 import Data.Word (Word8)
 
 import Debug.Trace
+
+import System.Random
 
 import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
@@ -464,7 +467,7 @@ instance Dataspace Interpretation (CollectionDataspace Value) Value where
       combineDS l_lst r_lst >>= return . InMemoryDS
     (ExternalDS l_f, ExternalDS r_f) ->
       combineDS l_f r_f >>= return . ExternalDS
-    otherwise -> throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
+    _ -> throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
         -- TODO Could combine an in memory store and an external store into an external store
   splitDS ds       = case ds of
     InMemoryDS lst -> splitDS lst >>= \(l, r) -> return (InMemoryDS l, InMemoryDS r)
@@ -477,8 +480,8 @@ matchPair v =
     VTuple (h:t) -> 
       case t of
         (p:[])    -> return (h, p)
-        otherwise ->throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
-    otherwise    -> throwE $ RunTimeTypeError "Non-tuple"
+        _         -> throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
+    _ -> throwE $ RunTimeTypeError "Non-tuple"
 
 -- TODO kill dependence on Interpretation for error handling
 instance EmbeddedKV Interpretation Value Value where
@@ -615,7 +618,8 @@ constant (CNone _)   _ = return $ VOption Nothing
 constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection emptyAnnotatedCollection
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
-numeric :: (forall a. Num a => a -> a -> a) -> K3 Expression -> K3 Expression -> Interpretation Value
+numeric :: (forall a. Num a => a -> a -> a)
+        -> K3 Expression -> K3 Expression -> Interpretation Value
 numeric op a b = do
   a' <- expression a
   b' <- expression b
@@ -625,6 +629,27 @@ numeric op a b = do
       (VReal x, VInt y)  -> return $ VReal $ op x (fromIntegral y)
       (VReal x, VReal y) -> return $ VReal $ op x y
       _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
+
+-- | Similar to numeric above, except disallow a zero value for the second argument.
+numericExceptZero :: (Int -> Int -> Int)
+                  -> (Double -> Double -> Double) 
+                  -> K3 Expression -> K3 Expression -> Interpretation Value
+numericExceptZero intOpF realOpF a b = do
+  a' <- expression a
+  b' <- expression b
+
+  void $ case b' of
+      VInt 0  -> throwE $ RunTimeInterpretationError "Zero denominator"
+      VReal 0 -> throwE $ RunTimeInterpretationError "Zero denominator"
+      _ -> return ()
+
+  case (a', b') of
+      (VInt x, VInt y)   -> return $ VInt $ intOpF x y
+      (VInt x, VReal y)  -> return $ VReal $ realOpF (fromIntegral x) y
+      (VReal x, VInt y)  -> return $ VReal $ realOpF x (fromIntegral y)
+      (VReal x, VReal y) -> return $ VReal $ realOpF x y
+      _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
+
 
 -- | Common boolean operation handling.
 logic :: (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
@@ -673,22 +698,9 @@ binary OAdd = numeric (+)
 binary OSub = numeric (-)
 binary OMul = numeric (*)
 
--- | Division handled similarly, but accounting zero-division errors.
-binary ODiv = \a b -> do
-  a' <- expression a
-  b' <- expression b
-
-  void $ case b' of
-      VInt 0  -> throwE $ RunTimeInterpretationError "Division by Zero"
-      VReal 0 -> throwE $ RunTimeInterpretationError "Division by Zero"
-      _ -> return ()
-
-  case (a', b') of
-      (VInt x, VInt y)   -> return $ VInt $ x `div` y
-      (VInt x, VReal y)  -> return $ VReal $ fromIntegral x / y
-      (VReal x, VInt y)  -> return $ VReal $ x / (fromIntegral y)
-      (VReal x, VReal y) -> return $ VReal $ x / y
-      _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
+-- | Division and modulo handled similarly, but accounting zero-division errors.
+binary ODiv = numericExceptZero div (/)
+binary OMod = numericExceptZero mod mod'
 
 -- | Logical Operators
 binary OAnd = logic (&&)
@@ -1241,10 +1253,6 @@ builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
 
 genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
--- parseArgs :: () -> ([String], [(String, String)])
-genBuiltin "parseArgs" _ =
-  emptyCollection >>= \x -> return $ ignoreFn $ VTuple [x,x]
-
 -- TODO: error handling on all open/close/read/write methods.
 -- TODO: argument for initial endpoint bindings for open method as a list of triggers
 -- TODO: correct element type (rather than function type sig) for openFile / openSocket
@@ -1319,6 +1327,22 @@ genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = ivfun $ \_ -> checkChanne
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
   ivfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
 
+-- random :: int -> int
+genBuiltin "random" _ =
+  ivfun $ \(VInt upper) -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+
+-- randomFraction :: () -> real
+genBuiltin "randomFraction" _ =
+  ivfun $ \_ -> liftIO randomIO >>= return . VReal
+
+-- hash :: forall a. a -> int
+genBuiltin "hash" _ =
+  ivfun $ \_ -> throwE $ RunTimeInterpretationError $ "Hash builtin not implemented"
+
+-- range :: int -> collection {i : int} @ { Collection }
+genBuiltin "range" _ =
+  ivfun $ \_ -> throwE $ RunTimeInterpretationError $ "Range builtin not implemented"
+
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
 channelMethod :: String -> (String, Maybe String)
@@ -1356,6 +1380,7 @@ copyCollection newC = do
  - Collection API : head, map, fold, append/concat, delete
  - these can handle in memory vs external
  - other functions here use this api
+ - TODO: sort transformer
  -}
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))

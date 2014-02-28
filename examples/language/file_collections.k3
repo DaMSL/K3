@@ -6,6 +6,6 @@ trigger test : collection {word : string} @{ Collection } = \words -> (
   size = size + words.fold (\acc -> (\_ -> acc + 1)) 0
 )
 
-source s1 : collection {word : string} @{ Collection } = file "/home/chao/work/K3/K3-Core/data/expr-cs.txt" k3
+source s1 : collection {word : string} @{ Collection } = file "data/expr-cs.txt" k3
 
 feed s1 |> test

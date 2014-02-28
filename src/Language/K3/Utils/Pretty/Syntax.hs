@@ -282,6 +282,7 @@ binary op e e' =
     OSub -> infixOp "-" 
     OMul -> infixOp "*" 
     ODiv -> infixOp "/" 
+    OMod -> infixOp "%"
     OAnd -> infixOp "&&"
     OOr  -> infixOp "||"
     OEqu -> infixOp "=="

@@ -151,6 +151,7 @@ binarySymbol OAdd = return $ text "+"
 binarySymbol OSub = return $ text "-"
 binarySymbol OMul = return $ text "*"
 binarySymbol ODiv = return $ text "/"
+binarySymbol OMod = return $ text "%" -- TODO: type based selection of % vs fmod
 binarySymbol OEqu = return $ text "=="
 binarySymbol ONeq = return $ text "!="
 binarySymbol OLth = return $ text "<"
