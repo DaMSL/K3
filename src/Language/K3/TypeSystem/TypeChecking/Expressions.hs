@@ -284,6 +284,7 @@ deriveExpression aEnv env expr = do
         BinOpSubtract -> return arithConstraints
         BinOpMultiply -> return arithConstraints
         BinOpDivide -> return arithConstraints
+        BinOpModulo -> return arithConstraints
         BinOpEquals -> return [ a1 <: a2, a2 <: a1, SBool <: a0 ]
         BinOpLess -> return arithCompConstraints
         BinOpLessEq -> return arithCompConstraints

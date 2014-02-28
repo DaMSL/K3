@@ -39,6 +39,7 @@ library
         parsec,
         parsers >= 0.10,
         process,
+        random,
         split,
         SafeSemaphore,
         template-haskell,

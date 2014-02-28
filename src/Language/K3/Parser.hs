@@ -233,7 +233,7 @@ nextUID = withUID UID
 {- Language definition constants -}
 k3Operators :: [[Char]]
 k3Operators = [
-    "+", "-", "*", "/",
+    "+", "-", "*", "/", "%",
     "==", "!=", "<>", "<", ">", ">=", "<=", ";"
   ]
 
@@ -442,7 +442,8 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
 annotationMember = 
-  memberError $ mkMember <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+  memberError $ mkMember <$> polarity <*> (
+    comment *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment)
   where 
         liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
                                   <*> qualifiedTypeExpr <*> optional equateExpr
@@ -823,7 +824,7 @@ mkUnOpK x = unaryParseOp x keyword
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
   [   map mkUnOp   [("-",   ONeg)],
-      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+      map mkBinOp  [("*",   OMul), ("/",  ODiv), ("%",  OMod)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],

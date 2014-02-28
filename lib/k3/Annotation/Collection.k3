@@ -21,4 +21,8 @@ annotation Collection given type a, b {
 
   provides lifted ext     : (content -> collection { elem : a } @ {Collection}) 
                              -> collection { elem : a } @ {Collection}
+
+  // TODO: uncomment when implemented.
+  // TODO: this should generate an ordered collection.
+  //provides lifted sort    : (content -> content -> int) -> self
 }

@@ -1083,8 +1083,8 @@ mkUnOpK x = unaryParseOp x operator
 -- We don't include "|" because it confuses the parser with {|...|}
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
-  [   map mkUnOpK  [("!",   ONot), ("-", ONeg)], 
-      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+  [   map mkUnOpK  [("!",   ONot), ("-",  ONeg)], 
+      map mkBinOp  [("*",   OMul), ("/",  ODiv), ("%",  OMod)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
