@@ -59,7 +59,7 @@ namespace K3
     LineInputHandle(const Source& src) : LogMT("LineInputHandle") {
       input = shared_ptr<filtering_istream>(new filtering_istream());
       input->push(split_line_filter());
-      input->push<Source>(src);
+      input->push(src);
     }
 
     bool hasRead() { return input? input->good() : false; }
@@ -95,7 +95,7 @@ namespace K3
     LineOutputHandle(const Sink& sink) : LogMT("LineOutputHandle") {
       output = shared_ptr<filtering_ostream>(new filtering_ostream());
       output->push(split_line_filter());
-      output->push<Sink>(sink);
+      output->push(sink);
     }
 
     bool hasRead() {
@@ -134,7 +134,7 @@ namespace K3
     
     template<typename Sink>
     LineBasedHandle(shared_ptr<WireDesc<Value> > wd, Output o, const Sink& sink)
-      : IOHandle<Value>(wd)
+      : LogMT("LineBasedHandle"), IOHandle<Value>(wd)
     {
       outImpl = shared_ptr<LineOutputHandle>(new LineOutputHandle(sink));
     }
@@ -225,12 +225,12 @@ namespace K3
   public:
     FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
                typename LineBasedHandle<Value>::Input i) 
-      : LogMT("FileHandle") , LineBasedHandle<Value>(wd, i, file_source(path))
+      : LogMT("FileHandle"), LineBasedHandle<Value>(wd, i, file_source(path)) 
     {}
 
     FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
                typename LineBasedHandle<Value>::Output o)
-      : LineBasedHandle<Value>(wd, o, file_sink(path))
+      : LogMT("FileHandle"), LineBasedHandle<Value>(wd, o, file_sink(path))
     {}
 
     bool builtin () { return false; }

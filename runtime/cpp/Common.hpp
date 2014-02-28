@@ -198,9 +198,49 @@ namespace K3 {
   // The semantics of repeated invocations are dependent on the actual implementation
   // of the wire description (including factors such as message loss). 
   // This includes the conditions under which an exception is thrown.
+  template<typename T> 
+  class WireDesc : public virtual LogMT {
+    public:
+      WireDesc() : LogMT("WireDesc") {}
+      virtual string pack(const T& payload) = 0;
+      virtual shared_ptr<T> unpack(const string& message) = 0;
+  };
+
+  class DefaultWireDesc : public WireDesc<string> {
+    public:
+      DefaultWireDesc() : LogMT("DefaultWireDesc") {}
+      string pack(const string& payload) { return payload; }
+      shared_ptr<string> unpack(const string& message) { return shared_ptr<string>(new string(message)); }
+  };
+
+  template <class T>
+  class BoostWireDesc : public virtual LogMT {
+    public:
+      BoostWireDesc() : LogMT("BoostWireDesc") {}
+
+      static string pack(const T& payload) {
+          ostringstream out_sstream;
+          boost::archive::text_oarchive out_archive(out_sstream);
+          out_archive << payload;
+          return out_sstream.str();
+      }
+
+      static shared_ptr<T> unpack(const string& message) {
+          istringstream in_sstream(message);
+          boost::archive::text_iarchive in_archive(in_sstream);
+
+          shared_ptr<T> p;
+          in_archive >> *p;
+          return p;
+      }
+  };
+
+  /*
   template <template<class> class F>
   class WireDesc : public virtual LogMT {
       public:
+          WireDesc() : LogMT("WireDesc") {}
+
           template <class T>
           string pack(const T& payload) {
               return F<T>::pack(payload);
@@ -208,13 +248,15 @@ namespace K3 {
 
           template <class T>
           shared_ptr<T> unpack(const string& message) {
-              return F<T>::unpack(payload);
+              return F<T>::unpack(message);
           }
   };
 
   template <class T>
-  class BoostWireDesc {
+  class BoostWireDesc : public WireDesc<BoostWireDesc> {
       public:
+          BoostWireDesc() : WireDesc(), LogMT("BoostWireDesc") {}
+
           static string pack(const T& payload) {
               ostringstream out_sstream;
               boost::archive::text_oarchive out_archive(out_sstream);
@@ -231,6 +273,7 @@ namespace K3 {
               return p;
           }
   };
+  */
 
   // TODO: protobuf, msgpack, json WireDesc implementations.  
 
