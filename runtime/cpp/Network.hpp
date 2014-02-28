@@ -18,8 +18,8 @@
 namespace K3
 {
   using namespace std;
-  using namespace boost;
 
+  using boost::thread_group;
   using namespace boost::iostreams;
   using namespace boost::asio;
 

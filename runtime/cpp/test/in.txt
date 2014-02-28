@@ -1,0 +1,17 @@
+This
+is
+a
+test
+of
+the
+K3
+FileHandle.
+If
+you
+can
+read
+this
+message,
+then
+it
+worked!

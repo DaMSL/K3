@@ -18,7 +18,6 @@
 namespace K3 {
   
   using namespace std;
-  using namespace boost;
 
   using std::atomic_uint;
 
