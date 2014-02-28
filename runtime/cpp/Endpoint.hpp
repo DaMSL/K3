@@ -100,7 +100,7 @@ namespace K3
     ScalarEPBufferST() {}
 
     bool empty() { return !contents; }
-    bool full() { return contents; }
+    bool full() { return static_cast<bool>(contents); }
     size_t size() { return contents? 1 : 0; }
     size_t capacity () { return 1; }
 
@@ -459,7 +459,7 @@ namespace K3
   {
   public:
     // TODO: value or value ref? Synchronize with Engine.hpp
-    typedef std::function<void(Address,Identifier,Value)> SendFunctionPtr;
+    typedef std::function<void(const Address&,const Identifier&,const Value&)> SendFunctionPtr;
 
     typedef list<Message<Value> > Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
@@ -501,7 +501,7 @@ namespace K3
         shared_ptr<Subscribers> s = it->second;
         if ( s ) {
           for (const Message<Value>& sub : *s) {
-            sendFn(sub.id(), sub.address(), sub.contents());
+            sendFn(sub.address(), sub.id(), sub.contents());
           }
         }
       }
@@ -543,7 +543,7 @@ namespace K3
 
     shared_ptr<Value> doRead() {
         // Refresh the buffer, getting back a read value, and an endpoint notification.
-        tuple<shared_ptr<Value>, EndpointNotification> readResult = buffer_->refresh();
+        tuple<shared_ptr<Value>, EndpointNotification> readResult = buffer_->refresh(handle_);
 
         // Notify those subscribers who need to be notified of the event.
         subscribers_->notifyEvent(get<1>(readResult));
