@@ -57,7 +57,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
-import Language.K3.Interpreter.DataTypes
+import Language.K3.Interpreter.Data.Types
+import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values
 import Language.K3.Interpreter.Dataspace()
 import Language.K3.Interpreter.Utils

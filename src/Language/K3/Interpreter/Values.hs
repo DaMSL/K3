@@ -14,7 +14,8 @@ import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
 
-import Language.K3.Interpreter.DataTypes
+import Language.K3.Interpreter.Data.Types
+import Language.K3.Interpreter.Data.Accessors
 
 import Language.K3.Runtime.Common ( defaultSystem )
 import Language.K3.Runtime.Engine

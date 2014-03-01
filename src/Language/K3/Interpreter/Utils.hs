@@ -7,8 +7,6 @@ module Language.K3.Interpreter.Utils where
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad.State
-import Control.Monad.Trans.Either
-import Control.Monad.Writer
 
 import Data.Function
 import Data.List
@@ -20,7 +18,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
-import Language.K3.Interpreter.DataTypes
+import Language.K3.Interpreter.Data.Types
+import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values
 
 import Language.K3.Runtime.Engine

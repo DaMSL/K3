@@ -7,7 +7,8 @@ module Language.K3.Interpreter.Dataspace where
 import Control.Monad
 import Data.List
 
-import Language.K3.Interpreter.DataTypes
+import Language.K3.Interpreter.Data.Types
+import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values
 
 import Language.K3.Runtime.Dataspace
