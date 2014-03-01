@@ -33,6 +33,7 @@ import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 
 newtype FileDataspace v = FileDataspace String
+
 getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
 
