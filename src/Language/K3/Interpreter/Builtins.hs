@@ -8,6 +8,7 @@ module Language.K3.Interpreter.Builtins where
 import Control.Concurrent.MVar
 import Control.Monad.State
 import Data.List
+import Debug.Trace
 import System.Random
 
 import Language.K3.Core.Annotation
@@ -22,6 +23,8 @@ import Language.K3.Interpreter.Utils
 
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.Dataspace
+
+import Language.K3.Utils.Logger
 
 {- Built-in functions -}
 
@@ -118,7 +121,8 @@ genBuiltin "hash" _ =
 
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
-  ivfun $ \_ -> throwE $ RunTimeInterpretationError $ "Range builtin not implemented"
+  ivfun $ \(VInt upper) ->
+    initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 

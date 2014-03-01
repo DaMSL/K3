@@ -92,6 +92,7 @@ type CInitialConstructor v = [v] -> Interpretation (MVar (Collection v))
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation (MVar (Collection v))
 
+-- | An emplacing constructor that takes a dataspace, and injects it into a new collection.
 type CEmplaceConstructor v = CollectionDataspace v -> Interpretation (MVar (Collection v))
 
 -- | Annotation environment, for lifted attributes. This contains two mappings:

@@ -64,7 +64,6 @@ import Language.K3.Interpreter.Builtins
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
-import Language.K3.Runtime.Dataspace
 
 import Language.K3.Transform.Interpreter.BindAlias ( labelBindAliases )
 
@@ -95,9 +94,11 @@ defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= liftIO . newIORef >>= return . VIndirection
 defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
 defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . zip ids
-defaultValue
- (tag &&& annotations -> (TCollection, anns)) = 
-  (getComposedAnnotationT anns) >>= maybe emptyCollection emptyAnnotatedCollection
+
+defaultValue (tag &&& annotations -> (TCollection, anns)) = 
+  (getComposedAnnotationT anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
+  where annIds = namedTAnnotations anns
+  
 
 {- TODO: 
   TSource
@@ -117,7 +118,9 @@ constant (CByte w)   _ = return $ VByte w
 constant (CReal r)   _ = return $ VReal r
 constant (CString s) _ = return $ VString s
 constant (CNone _)   _ = return $ VOption Nothing
-constant (CEmpty _) as = (getComposedAnnotationE as) >>= maybe emptyCollection emptyAnnotatedCollection
+constant (CEmpty _) anns = 
+  (getComposedAnnotationE anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
+  where annIds = namedEAnnotations anns
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
 numeric :: (forall a. Num a => a -> a -> a)
@@ -487,15 +490,17 @@ literal (tag &&& children -> (LRecord ids, ch)) = mapM literal ch >>= return . V
 literal (tag -> LRecord _) = throwE $ RunTimeTypeError "Invalid record literal"
 
 literal (details -> (LEmpty _, [], anns)) =
-  getComposedAnnotationL anns >>= maybe emptyCollection initEmptyCollection
-  where initEmptyCollection comboId = lookupACombo comboId >>= ($ ()) . emptyCtor >>= return . VCollection
+  getComposedAnnotationL anns >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
+  where annIds = namedLAnnotations anns
 
 literal (tag -> LEmpty _) = throwE $ RunTimeTypeError "Invalid empty literal"
 
 literal (details -> (LCollection _, elems, anns)) = do
   cElems <- mapM literal elems
-  getComposedAnnotationL anns
-    >>= maybe (initialCollection cElems) (flip initialAnnotatedCollection cElems)
+  realizationOpt <- getComposedAnnotationL anns
+  case realizationOpt of
+    Nothing       -> initialCollection (namedLAnnotations anns) cElems
+    Just comboId  -> initialAnnotatedCollection comboId cElems
 
 literal (details -> (LAddress, [h,p], _)) = mapM literal [h,p] >>= \case 
   [VString a, VInt b] -> return . VAddress $ Address (a,b)
@@ -523,11 +528,11 @@ global n t@(tag -> TCollection) eOpt = elemE n >>= \case
   False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection . maybe "" id
   where
     initializeCollection comboId = case eOpt of
-      Nothing | not (null comboId) -> lookupACombo comboId >>= ($ ()) . emptyCtor >>= modifyE . (:) . (n,) . VCollection
+      Nothing | not (null comboId) -> emptyAnnotatedCollection comboId >>= modifyE . (:) . (n,)
       Just e  | not (null comboId) -> expression e >>= verifyInitialCollection comboId
 
       -- TODO: error on these cases. All collections must have at least the builtin Collection annotation.
-      Nothing -> emptyCollection >>= modifyE . (:) . (n,)
+      Nothing -> emptyCollection (namedTAnnotations $ annotations t) >>= modifyE . (:) . (n,)
       Just e  -> expression e >>= modifyE . (:) . (n,)
 
     verifyInitialCollection comboId = \case
@@ -598,146 +603,6 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
   where interpretExpr n e = expression e >>= return . Just . (n,)
 
 
-{- Interpretation utility functions -}
-
-emptyDataspaceLookup :: [(Identifier, IEnvironment Value)] -> Interpretation (CollectionDataspace Value)
-emptyDataspaceLookup namedAnnDefs = do
-  case find (\(val, _) -> val == externalAnnotationId) namedAnnDefs of
-    Nothing -> emptyDS Nothing >>= return . InMemoryDS
-    Just _ -> emptyDS Nothing >>= return . ExternalDS
-
--- | Annotation composition retrieval and registration.
-getComposedAnnotationT :: [Annotation Type] -> Interpretation (Maybe Identifier)
-getComposedAnnotationT anns = getComposedAnnotation (annotationComboIdT anns, namedTAnnotations anns)
-
-getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
-getComposedAnnotationE anns = getComposedAnnotation (annotationComboIdE anns, namedEAnnotations anns) 
-
-getComposedAnnotationL :: [Annotation Literal] -> Interpretation (Maybe Identifier)
-getComposedAnnotationL anns = getComposedAnnotation (annotationComboIdL anns, namedLAnnotations anns) 
-
-getComposedAnnotation :: (Maybe Identifier, [Identifier]) -> Interpretation (Maybe Identifier)
-getComposedAnnotation (comboIdOpt, annNames) = case comboIdOpt of
-  Nothing      -> return Nothing
-  Just comboId -> tryLookupACombo comboId 
-                    >>= (\cOpt -> initializeComposition comboId cOpt >> return (Just comboId))
-  where
-    initializeComposition comboId = \case
-      Nothing -> mapM (\x -> lookupADef x >>= return . (x,)) annNames
-                   >>= addComposedAnnotation comboId
-      Just _  -> return ()
-
-    addComposedAnnotation comboId namedAnnDefs = 
-      modifyACombos . (:) . (comboId,) $ mkCBinder comboId namedAnnDefs
-
-    mkCBinder :: Identifier -> [(Identifier, IEnvironment Value)] -> CollectionConstructors Value
-    mkCBinder comboId namedAnnDefs =
-      CollectionConstructors (mkEmptyConstructor comboId namedAnnDefs) (mkInitialConstructor comboId namedAnnDefs) (mkCopyConstructor namedAnnDefs) (mkEmplaceConstructor comboId namedAnnDefs)
-
-    mkEmptyConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
-    mkEmptyConstructor comboId namedAnnDefs = const $ do
-      collection <- emptyCollectionBody namedAnnDefs comboId -- extra parameter for the name
-      newCMV <- liftIO $ newMVar collection
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return $ newCMV
-    
-    mkInitialConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CInitialConstructor Value
-    mkInitialConstructor comboID namedAnnDefs = const $ do
-      collection <- emptyCollectionBody namedAnnDefs comboID -- extra parameter for the name
-      -- insert values into collection
-      newCMV <- liftIO $ newMVar collection
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return $ newCMV
-    
-    mkCopyConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkCopyConstructor namedAnnDefs = \coll -> do
-      newDataSpace <- copyDS (dataspace coll)
-      let newcol = Collection (namespace coll) (newDataSpace) (extensionId coll)
-      newCMV <- liftIO (newMVar newcol)
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      return newCMV
-   
-    mkEmplaceConstructor :: Identifier -> [(Identifier, IEnvironment Value)] -> CEmplaceConstructor Value
-    mkEmplaceConstructor comboID namedAnnDefs = \dataspace -> do
-      let newcol = Collection emptyCollectionNamespace dataspace comboID
-      newCMV <- liftIO (newMVar newcol)
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return newCMV
-
-
-    emptyCollectionBody :: [(Identifier, IEnvironment Value)] -> Identifier -> Interpretation (Collection Value)
-    emptyCollectionBody namedAnnDefs n = do
-      ds <- emptyDataspaceLookup namedAnnDefs
-      return $ Collection emptyCollectionNamespace ds n
-
-    bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
-    bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
-
-    bindMember _ _ (_, VFunction _) = return ()
-    bindMember cmv annId (n, v) =
-      liftIO $ modifyMVar_ cmv (\(Collection (CollectionNamespace cns ans) ds extId) ->
-        let (cns', ans') = extendNamespace cns ans annId n v
-        in return $ Collection (CollectionNamespace cns' ans') ds extId)
-
-    rebindFunctionsInEnv :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
-    rebindFunctionsInEnv cmv (n, env) = mapM_ (rebindFunction cmv n) env
-    
-    rebindFunction cmv annId (n, VFunction f) =
-      liftIO $ modifyMVar_ cmv (\(Collection (CollectionNamespace cns ans) ds extId) ->
-        let newF         = contextualizeFunction cmv f
-            (cns', ans') = extendNamespace cns ans annId n newF
-        in return $ Collection (CollectionNamespace cns' ans') ds extId)
-    
-    rebindFunction _ _ _ = return ()
-
-    extendNamespace cns ans annId n v =
-      let cns'   = replaceAssoc cns n v
-          annEnv = maybe Nothing (\env -> Just $ replaceAssoc env n v) $ lookup annId ans
-          ans'   = maybe ans (replaceAssoc ans annId) annEnv
-      in (cns', ans')
-
--- | Creates a contextualized collection member function. That is, the member function
---   will add all collection members to the interpretation environment prior to its
---   evaluation. This way, the member function's body can directly refer to other members
---   by name, rather than using the 'self' keyword.
-contextualizeFunction :: MVar (Collection Value) -> (Value -> Interpretation Value, Closure Value) -> Value
-contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
-      bindings <- liftCollection
-      result   <- f x >>= return . contextualizeResult
-      lowerCollection bindings result
-
-  where
-    contextualizeResult (VFunction f') = contextualizeFunction cmv f'
-    contextualizeResult r = r
-
-    -- TODO:
-    -- i. lift/lower data segment.
-    -- ii. handle aliases, e.g., 'self.x' and 'x'. 
-    --     Also, this needs to be done more generally for bind as expressions.
-    -- iii. handle lowering of annotation-specific namespaces
-    liftCollection = do
-      Collection (CollectionNamespace cns _) _ _ <- liftIO $ readMVar cmv
-      bindings <- return $ cns ++ [(annotationSelfId, VCollection cmv)]
-      void $ modifyE (bindings ++)
-      return bindings
-
-    lowerCollection bindings result = do
-        newNsInfo <- lowerBindings bindings
-        void $ liftIO $ modifyMVar_ cmv $ \(Collection ns ds extId) -> 
-          return (Collection (rebuildNamespace ns newNsInfo) ds extId)
-        foldM (flip removeE) result bindings
-
-    lowerBindings env =
-      mapM (\(n,_) -> lookupE n >>= return . (n,)) env 
-        >>= return . partition ((annotationSelfId /= ) . fst)
-
-    -- TODO: rebind annotation-specific namespace
-    rebuildNamespace ns (newGlobalNS, _) =
-      CollectionNamespace newGlobalNS $ annotationNS ns
-
 
 {- Program initialization methods -}
 
@@ -769,7 +634,7 @@ staticEnvironment prog = do
         Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
     
     addRealization aEnv@(AEnvironment d r) annNames = do
-      comboIdOpt <- getComposedAnnotation $ (Just $ annotationComboId annNames, annNames)
+      comboIdOpt <- getComposedAnnotation annNames
       case comboIdOpt of
         Nothing  -> return aEnv
         Just cId -> lookupACombo cId >>= return . AEnvironment d . (:r) . (cId,)
