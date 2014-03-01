@@ -19,12 +19,11 @@ import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values
 import Language.K3.Interpreter.Dataspace()
-import Language.K3.Interpreter.Utils
+import Language.K3.Interpreter.Collection
 
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.Dataspace
 
-import Language.K3.Utils.Logger
 
 {- Built-in functions -}
 

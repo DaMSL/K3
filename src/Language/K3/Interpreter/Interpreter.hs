@@ -58,6 +58,7 @@ import Language.K3.Core.Type
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values
+import Language.K3.Interpreter.Collection
 import Language.K3.Interpreter.Utils
 import Language.K3.Interpreter.Builtins
 
