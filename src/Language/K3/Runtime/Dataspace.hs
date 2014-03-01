@@ -16,6 +16,7 @@ module Language.K3.Runtime.Dataspace (
   filterDS,
   combineDS,
   splitDS,
+  sortDS,
   
   EmbeddedKV,
   extractKey,
@@ -45,6 +46,7 @@ class (Monad m) => Dataspace m ds v | ds -> v where
   filterDS      :: ( v -> m Bool ) -> ds -> m ds
   combineDS     :: ds -> ds -> m ds
   splitDS       :: ds -> m (ds, ds)
+  sortDS        :: ( v -> v -> m Ordering ) -> ds -> m ds
 {- casting? -}
 
 class (Monad m) => EmbeddedKV m v k where

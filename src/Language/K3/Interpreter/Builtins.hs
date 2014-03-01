@@ -154,7 +154,6 @@ providesError kind n = error $
  - Collection API : head, map, fold, append/concat, delete
  - these can handle in memory vs external
  - other functions here use this api
- - TODO: sort transformer
  -}
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
@@ -171,6 +170,7 @@ builtinLiftedAttribute annId n _ _
   | annId == collectionAnnotationId && n == "fold"    = return $ Just (n, foldFn)
   | annId == collectionAnnotationId && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == collectionAnnotationId && n == "ext"     = return $ Just (n, extFn)
+  | annId == collectionAnnotationId && n == "sort"    = return $ Just (n, sortFn)
 
   | annId == externalAnnotationId && n == "peek"    = return $ Just (n, peekFn)
   | annId == externalAnnotationId && n == "insert"  = return $ Just (n, insertFn)
@@ -184,6 +184,7 @@ builtinLiftedAttribute annId n _ _
   | annId == externalAnnotationId && n == "fold"    = return $ Just (n, foldFn)
   | annId == externalAnnotationId && n == "groupBy" = return $ Just (n, groupByFn)
   | annId == externalAnnotationId && n == "ext"     = return $ Just (n, extFn)
+  | annId == externalAnnotationId && n == "sort"    = return $ Just (n, sortFn)
   | otherwise = providesError "lifted attribute" n
 
   where
@@ -242,6 +243,7 @@ builtinLiftedAttribute annId n _ _
             lc <- copy (Collection ns l extId)
             rc <- copy (Collection ns r extId)
             return $ VTuple [lc, rc]
+        
         -- Pass in the namespace
         mapFn = valWithCollection $ \f (Collection ns ds ext) ->
           flip (matchFunction mapFnError) f $ 
@@ -275,8 +277,10 @@ builtinLiftedAttribute annId n _ _
                   -- TODO typecheck that collection
                   copy (Collection ns kvRecords ext)
 
-        groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value) =>
-          (Value -> Interpretation Value, Closure Value) -> (Value -> Interpretation Value, Closure Value) -> Value -> ads -> Value -> Interpretation ads
+        groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value)
+                       => (Value -> Interpretation Value, Closure Value)
+                       -> (Value -> Interpretation Value, Closure Value)
+                       -> Value -> ads -> Value -> Interpretation ads
         groupByElement gb' f' accInit acc v = do
           k <- withClosure gb' v
           look_result <- lookupKV acc k
@@ -305,6 +309,20 @@ builtinLiftedAttribute annId n _ _
                     val_ds <- deleteDS sub_val val_ds
                     result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
                     maybe combineError return result
+
+        sortFn = valWithCollection $ \f (Collection ns ds ext) ->
+          flip (matchFunction sortFnError) f $ 
+            \f'  -> sortDS (sortResultAsOrdering f') ds >>= 
+            \ds' -> copy (Collection ns ds' ext)
+
+        sortResultAsOrdering (f, cl) = \v1 v2 -> do
+            f2V  <- withClosure (f, cl) v1
+            cmpV <- (matchFunction curryFnError) (flip withClosure v2) f2V
+            intAsOrdering cmpV
+          where intAsOrdering (VInt i) | i < 0     = return LT
+                                       | i == 0    = return EQ
+                                       | otherwise = return GT
+                intAsOrdering _        = throwE $ RunTimeTypeError "Invalid sort comparator result"
 
         combine' :: Maybe Value -> Maybe Value -> Interpretation (Maybe Value)
         combine' Nothing _ = return Nothing
@@ -358,6 +376,7 @@ builtinLiftedAttribute annId n _ _
         partitionFnError = throwE $ RunTimeTypeError "Invalid grouping function"
         curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"
         extError         = throwE $ RunTimeTypeError "Invalid function argument for ext"
+        sortFnError      = throwE $ RunTimeTypeError "Invalid sort function"
         
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
                  -> Interpretation (Maybe (Identifier, Value))

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Language.K3.Interpreter.Dataspace where
@@ -9,7 +10,7 @@ import Data.List
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
-import Language.K3.Interpreter.Values
+import Language.K3.Interpreter.Values()
 
 import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.FileDataspace
@@ -32,9 +33,24 @@ instance (Monad m) => Dataspace m [Value] Value where
   mapDS_           = mapM_
   filterDS         = filterM
   combineDS l r    = return $ l ++ r
-  splitDS l        = return $ if length l <= threshold then (l, []) else splitAt (length l `div` 2) l
-    where
-      threshold = 10
+  splitDS l        = return $ if length l <= threshold then (l, []) else splitAt (length l `quot` 2) l
+    where threshold = 10
+
+  -- | Sort a list dataspace.
+  --   Since the comparator can have side effects, we must write our own sorting algorithm.
+  --   TODO: improve performance.
+  sortDS _ []     = return []
+  sortDS _ [x]    = return [x]
+  sortDS cmpF ls  = do
+    let (a, b) = splitAt (length ls `quot` 2) ls
+    a' <- sortDS cmpF a
+    b' <- sortDS cmpF b
+    merge a' b'
+    where merge [] bs = return bs
+          merge as [] = return as
+          merge (a:as) (b:bs) = cmpF a b >>= \case
+              LT -> return . (a:) =<< merge as (b:bs)
+              _  -> return . (b:) =<< merge (a:as) bs
 
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
@@ -55,6 +71,7 @@ instance Dataspace Interpretation (FileDataspace Value) Value where
   filterDS         = filterFile liftEngine
   combineDS        = combineFile liftEngine
   splitDS          = splitFile liftEngine
+  sortDS           = sortFile liftEngine
 
 instance Dataspace Interpretation (CollectionDataspace Value) Value where
   emptyDS maybeHint =
@@ -110,6 +127,9 @@ instance Dataspace Interpretation (CollectionDataspace Value) Value where
   splitDS ds       = case ds of
     InMemoryDS lst -> splitDS lst >>= \(l, r) -> return (InMemoryDS l, InMemoryDS r)
     ExternalDS f   -> splitDS f   >>= \(l, r) -> return (ExternalDS l, ExternalDS r)
+  sortDS sortF ds  = case ds of
+    InMemoryDS lst -> sortDS sortF lst >>= return . InMemoryDS
+    ExternalDS f   -> sortDS sortF f   >>= return . ExternalDS
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)

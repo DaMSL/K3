@@ -1,4 +1,5 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE Rank2Types #-}
 
@@ -19,7 +20,8 @@ module Language.K3.Runtime.FileDataspace (
   deleteFile,
   updateFile,
   combineFile,
-  splitFile
+  splitFile,
+  sortFile
 ) where
 
 import Control.Concurrent.MVar
@@ -138,6 +140,7 @@ foldFile liftM accumulation initial_accumulator file_ds@(FileDataspace file_id) 
   result <- foldOpenFile liftM accumulation initial_accumulator file_ds
   liftM $ close file_id
   return result
+
 foldOpenFile :: forall (m :: * -> *) a b.
             Monad m =>
             (forall c. EngineM b c -> m c)
@@ -178,6 +181,7 @@ mapFile liftM function file_ds = do
       new_val <- function v
       liftM $ doWrite new_id new_val
       return ()
+
 mapFile_ :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m a) -> FileDataspace b -> m ()
 mapFile_ liftM function file_id =
   foldFile liftM inner_func () file_id
@@ -268,3 +272,73 @@ splitFile liftM self = do
   liftM $ close left
   liftM $ close right
   return (FileDataspace left, FileDataspace right)
+
+sortFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> b -> m Ordering) -> FileDataspace b -> m (FileDataspace b)
+sortFile liftM sortF old_id = do
+  -- First phase: partition into sorted runs
+  (_, remainder_v, some_runs) <- foldFile liftM partition_runs (0,[],[]) old_id
+  remainder_id <- sorted_run remainder_v
+  let runs = remainder_id:some_runs
+  case runs of
+    []  -> liftM $ throwEngineError $ EngineError $ "Invalid sortFile did not create any runs."
+    [x] -> return $ FileDataspace x
+    _   -> do
+            merged_opt <- merge_runs runs -- Second phase: merge runs.
+            case merged_opt of
+              Just merged_id -> return $ FileDataspace merged_id
+              Nothing        -> liftM $ throwEngineError $ EngineError $ "Invalid sortFile did not merge any runs."
+  
+  where
+    block_size = 1000000 :: Int
+    partition_runs (cnt, v_acc, id_acc) v 
+      | cnt < block_size = return (cnt+1, v:v_acc, id_acc)
+      | otherwise = do
+          -- Write out a sorted run.
+          new_id <- sorted_run v_acc
+          return (0, [v], new_id:id_acc)
+
+    sorted_run l = do
+      -- Write out a sorted run.
+      new_id <- liftM generateCollectionFilename
+      _ <- liftM $ openCollectionFile new_id "w"
+      sorted_l <- sort_in_mem sortF l
+      mapM_ (\v -> liftM $ doWrite new_id v) sorted_l
+      liftM $ close new_id
+      return new_id
+
+    -- Balanced binary tree of merge operations.
+    merge_runs []  = return Nothing
+    merge_runs [x] = return $ Just x
+    merge_runs ls  = do
+      let (a,b) = splitAt (length ls `quot` 2) ls
+      a_opt <- merge_runs a
+      b_opt <- merge_runs b
+      merge_pair a_opt b_opt
+
+    -- For now, just read in the two runs and sort in memory.
+    -- TODO: ideally we want to step through the two runs and merge.
+    merge_pair Nothing     Nothing     = return Nothing
+    merge_pair (Just a_id) Nothing     = return $ Just a_id
+    merge_pair Nothing     (Just b_id) = return $ Just b_id
+    merge_pair (Just a_id) (Just b_id) = 
+      do
+        a_vals <- foldFile liftM (\acc v -> return $ acc++[v]) [] $ FileDataspace a_id
+        b_vals <- foldFile liftM (\acc v -> return $ acc++[v]) [] $ FileDataspace b_id
+        sorted_vals <- sort_in_mem sortF $ a_vals ++ b_vals
+        return . Just =<< sorted_run sorted_vals
+
+    -- | Sort an in memory list of values. For now, we use the same implementation as the InMemory dataspace.
+    --   Since the comparator can have side effects, we must write our own sorting algorithm.
+    --   TODO: improve performance.
+    sort_in_mem _ []     = return []
+    sort_in_mem _ [x]    = return [x]
+    sort_in_mem cmpF ls  = do
+      let (a, b) = splitAt (length ls `quot` 2) ls
+      a' <- sort_in_mem cmpF a
+      b' <- sort_in_mem cmpF b
+      merge a' b'
+      where merge [] bs = return bs
+            merge as [] = return as
+            merge (a:as) (b:bs) = cmpF a b >>= \case
+                LT -> return . (a:) =<< merge as (b:bs)
+                _  -> return . (b:) =<< merge (a:as) bs
