@@ -111,6 +111,10 @@ namespace K3 {
     Identifier& id()       { return get<1>(*this); }
     Value&      contents() { return get<2>(*this); }
     string      target()   { return id() + "@" + addressAsString(address()); }
+    const Address&    address()  const { return get<0>(*this); }
+    const Identifier& id()       const { return get<1>(*this); }
+    const Value&      contents() const { return get<2>(*this); }
+    const string      target()   const { return id() + "@" + addressAsString(address()); }
   };
 
   //--------------------
