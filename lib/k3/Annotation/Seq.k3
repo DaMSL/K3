@@ -1,0 +1,6 @@
+include "Annotation/Collection.k3"
+
+annotation Seq {
+  provides annotation Collection
+  provides lifted sort : (content -> content -> int) -> self
+}

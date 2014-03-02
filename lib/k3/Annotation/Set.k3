@@ -1,0 +1,10 @@
+include "Annotation/Collection.k3"
+
+annotation Set {
+  provides annotation Collection
+  provides lifted member       : content -> bool
+  provides lifted isSubsetOf   : self -> bool
+  provides lifted union        : self -> self
+  provides lifted intersection : self -> self
+  provides lifted difference   : self -> self
+}

@@ -419,8 +419,12 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
         QuantAlias (QuantType sas qa cs) -> do
           unless (Set.null sas) badForm
           case csToList cs of
-            [QualifiedLowerConstraint (CRight a) qa'] | qa == qa' ->
-              return a
+            [QualifiedLowerConstraint (CRight a) qa']
+              | qa == qa' -> return a
+            
+            [QualifiedLowerConstraint (CRight a) qa', QualifiedUpperConstraint qa'' (CRight a') ]
+              | qa == qa' && qa == qa'' && a == a' -> return a
+            
             _ -> badForm
         AnnAlias _ -> badForm
       where
