@@ -31,7 +31,6 @@ import Language.K3.Runtime.FileDataspace
 import Language.K3.Utils.Pretty
 
 {- Value equality -}
--- | TODO: Equality based on stable names
 
 -- | Haskell Eq type class implementation.
 --   This does not support comparison for triggers. Also, collection comparison

@@ -553,7 +553,7 @@ tRecord = typeExprError "record" $ ( TUID # ) $
 
 tCollection :: TypeParser
 tCollection = cErr $ TUID #
-                 mkCollectionType <$> (keyword "collection" *> tRecord)
+                 mkCollectionType <$> (keyword "collection" *> choice [tRecord, tDeclared])
                                   <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
