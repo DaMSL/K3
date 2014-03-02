@@ -1,0 +1,12 @@
+annotation A given type a {
+  provides lifted f : a -> {elem: a} = \x -> {elem: x}
+}
+
+annotation B given type b {
+  requires annotation A
+  provides lifted g : b -> b = \x -> x
+}
+
+declare c : collection {} @{A, B} = empty {} @{A, B}
+
+declare x : {elem: int} = c.g (c.f 1)

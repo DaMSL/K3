@@ -127,15 +127,15 @@ instance Pretty (K3 Type) where
     prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
     
     prettyLines (Node (TForall tvdecls :@: as) ts) =
-        let ds = [show tvdecls] {- case tvdecls of 
+        let ds = case tvdecls of 
                   []     -> []
-                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs) -}
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
         in ["TForall " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
     
     prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
-        let ds = [show tvdecls] {- case tvdecls of 
+        let ds = case tvdecls of 
                   []     -> []
-                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs) -}
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
         in ["TExternallyBound " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
 
     prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts

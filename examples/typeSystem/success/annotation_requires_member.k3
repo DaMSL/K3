@@ -1,0 +1,12 @@
+annotation A {
+  provides lifted f : int -> int = \x -> x+1
+}
+
+annotation B {
+  requires annotation A
+  provides lifted g : int -> int = \x -> x+2
+}
+
+declare c : collection {} @{A, B} = empty {} @{A, B}
+
+declare x : int = c.g (c.f 1)
