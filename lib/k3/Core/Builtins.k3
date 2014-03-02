@@ -39,3 +39,8 @@ declare hash : forall a . a -> int
 // Collection enumeration [0,1,..n-1]
 declare range : int -> collection {i : int} @ { Collection }
 
+///////////////////////
+//
+// Value conversion
+declare int_of_real : int -> real
+declare real_of_int : real -> int

@@ -122,6 +122,12 @@ genBuiltin "range" _ =
   vfun $ \(VInt upper) ->
     initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
 
+-- int_of_real :: int -> real
+genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
+
+-- real_of_int :: real -> int
+genBuiltin "real_of_int" _ = vfun $ \(VInt i)  -> return $ VReal $ fromIntegral i
+
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
 channelMethod :: String -> (String, Maybe String)
