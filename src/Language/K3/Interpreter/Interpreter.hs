@@ -33,6 +33,7 @@ module Language.K3.Interpreter.Interpreter (
 -- #endif
 ) where
 
+import Control.Applicative
 import Control.Arrow hiding ( (+++) )
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar
@@ -44,8 +45,11 @@ import Data.Function
 import Data.IORef
 import Data.List
 import Data.Maybe
+import Data.Word (Word8)
 
 import Debug.Trace
+
+import System.Mem.StableName
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
@@ -114,8 +118,8 @@ defaultValue t = throwE . RunTimeTypeError $ "Cannot create default value for " 
 -- | Interpretation of Constants.
 constant :: Constant -> [Annotation Expression] -> Interpretation Value
 constant (CBool b)   _ = return $ VBool b
-constant (CInt i)    _ = return $ VInt i
 constant (CByte w)   _ = return $ VByte w
+constant (CInt i)    _ = return $ VInt i
 constant (CReal r)   _ = return $ VReal r
 constant (CString s) _ = return $ VString s
 constant (CNone _)   _ = return $ VOption Nothing
@@ -130,30 +134,42 @@ numeric op a b = do
   a' <- expression a
   b' <- expression b
   case (a', b') of
-      (VInt x, VInt y)   -> return $ VInt  $ op x y
-      (VInt x, VReal y)  -> return $ VReal $ op (fromIntegral x) y
-      (VReal x, VInt y)  -> return $ VReal $ op x (fromIntegral y)
-      (VReal x, VReal y) -> return $ VReal $ op x y
+      (VByte x, VByte y) -> return . VByte $ op x y
+      (VByte x, VInt y)  -> return . VInt  $ op (fromIntegral x) y
+      (VByte x, VReal y) -> return . VReal $ op (fromIntegral x) y
+      (VInt x,  VByte y) -> return . VInt  $ op x (fromIntegral y)
+      (VInt x,  VInt y)  -> return . VInt  $ op x y
+      (VInt x,  VReal y) -> return . VReal $ op (fromIntegral x) y
+      (VReal x, VByte y) -> return . VReal $ op x (fromIntegral y)
+      (VReal x, VInt y)  -> return . VReal $ op x (fromIntegral y)
+      (VReal x, VReal y) -> return . VReal $ op x y
       _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Similar to numeric above, except disallow a zero value for the second argument.
-numericExceptZero :: (Int -> Int -> Int)
+numericExceptZero :: (Word8 -> Word8 -> Word8)
+                  -> (Int -> Int -> Int)
                   -> (Double -> Double -> Double) 
                   -> K3 Expression -> K3 Expression -> Interpretation Value
-numericExceptZero intOpF realOpF a b = do
+numericExceptZero byteOpF intOpF realOpF a b = do
   a' <- expression a
   b' <- expression b
 
   void $ case b' of
+      VByte 0 -> throwE $ RunTimeInterpretationError "Zero denominator"
       VInt 0  -> throwE $ RunTimeInterpretationError "Zero denominator"
       VReal 0 -> throwE $ RunTimeInterpretationError "Zero denominator"
       _ -> return ()
 
   case (a', b') of
-      (VInt x, VInt y)   -> return $ VInt $ intOpF x y
-      (VInt x, VReal y)  -> return $ VReal $ realOpF (fromIntegral x) y
-      (VReal x, VInt y)  -> return $ VReal $ realOpF x (fromIntegral y)
-      (VReal x, VReal y) -> return $ VReal $ realOpF x y
+      (VByte x, VByte y) -> return . VByte $ byteOpF x y
+      (VByte x, VInt y)  -> return . VInt  $ intOpF (fromIntegral x) y
+      (VByte x, VReal y) -> return . VReal $ realOpF (fromIntegral x) y
+      (VInt x,  VByte y) -> return . VInt  $ intOpF x (fromIntegral y)
+      (VInt x,  VInt y)  -> return . VInt  $ intOpF x y
+      (VInt x,  VReal y) -> return . VReal $ realOpF (fromIntegral x) y
+      (VReal x, VByte y) -> return . VReal $ realOpF x (fromIntegral y)
+      (VReal x, VInt y)  -> return . VReal $ realOpF x (fromIntegral y)
+      (VReal x, VReal y) -> return . VReal $ realOpF x y
       _ -> throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 
@@ -168,17 +184,12 @@ logic op a b = do
       _ -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
 
 -- | Common comparison operation handling.
-comparison :: (forall a. Ord a => a -> a -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
+comparison :: (Value -> Value -> Interpretation Value)
+           -> K3 Expression -> K3 Expression -> Interpretation Value
 comparison op a b = do
   a' <- expression a
   b' <- expression b
-
-  case (a', b') of
-      (VBool x, VBool y)     -> return $ VBool $ op x y
-      (VInt x, VInt y)       -> return $ VBool $ op x y
-      (VReal x, VReal y)     -> return $ VBool $ op x y
-      (VString x, VString y) -> return $ VBool $ op x y
-      _ -> throwE $ RunTimeTypeError "Comparison Type Mis-Match"
+  op a' b'
 
 -- | Interpretation of unary operators.
 unary :: Operator -> K3 Expression -> Interpretation Value
@@ -205,20 +216,20 @@ binary OSub = numeric (-)
 binary OMul = numeric (*)
 
 -- | Division and modulo handled similarly, but accounting zero-division errors.
-binary ODiv = numericExceptZero div (/)
-binary OMod = numericExceptZero mod mod'
+binary ODiv = numericExceptZero div div (/)
+binary OMod = numericExceptZero mod mod mod'
 
 -- | Logical Operators
 binary OAnd = logic (&&)
 binary OOr  = logic (||)
 
 -- | Comparison Operators
-binary OEqu = comparison (==)
-binary ONeq = comparison (/=)
-binary OLth = comparison (<)
-binary OLeq = comparison (<=)
-binary OGth = comparison (>)
-binary OGeq = comparison (>=)
+binary OEqu = comparison valueEq
+binary ONeq = comparison valueNeq
+binary OLth = comparison valueLt
+binary OLeq = comparison valueLte
+binary OGth = comparison valueGt
+binary OGeq = comparison valueGte
 
 -- | Function Application
 binary OApp = \f x -> do
@@ -226,7 +237,7 @@ binary OApp = \f x -> do
   x' <- expression x
 
   case f' of
-      VFunction (b, cl) -> withClosure cl $ b x'
+      VFunction (b, cl, _) -> withClosure cl $ b x'
       _ -> throwE $ RunTimeTypeError $ "Invalid Function Application\n" ++ pretty f
 
   where withClosure cl doApp = modifyE (cl ++) >> doApp >>= flip (foldM $ flip removeE) cl
@@ -290,7 +301,7 @@ expression e_ =
     expr (tag &&& children -> (ELambda i, [b])) =
       mkFunction $ \v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
       where
-        mkFunction f = closure >>= \cl -> return $ VFunction . (, cl) $ f
+        mkFunction f = (\cl n -> VFunction (f, cl, n)) <$> closure <*> liftIO (makeStableName f)
 
         -- TODO: currently, this definition of a closure captures 
         -- annotation member variables during annotation member initialization.
@@ -514,14 +525,14 @@ literal _ = throwE $ RunTimeTypeError "Invalid literal"
 {- Declaration interpretation -}
 
 replaceTrigger :: Identifier -> Value -> Interpretation()
-replaceTrigger n (VFunction (f,[])) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
-replaceTrigger n _                  = throwE $ RunTimeTypeError ("Invalid body for trigger " ++ n)
+replaceTrigger n (VFunction (f,[], _)) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
+replaceTrigger n _                     = throwE $ RunTimeTypeError ("Invalid body for trigger " ++ n)
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (tag -> TSink) (Just e)      = expression e >>= replaceTrigger n
 global _ (tag -> TSink) Nothing       = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 global _ (tag -> TSource) _           = return ()
-global _ (tag -> TFunction) _         = return () -- Functions have already been initialized.
+global _ (isFunction -> True) _       = return () -- Functions have already been initialized.
 
 -- n is the name of the variable
 global n t@(tag -> TCollection) eOpt = elemE n >>= \case
@@ -586,11 +597,8 @@ annotation n vdecls memberDecls = do
           annotationMember n isLifted matchF mem 
             >>= maybe (return accEnv) (\nv -> modifyE (nv:) >> return (nv:accEnv))
 
-        (liftedAttrFuns, liftedAttrs) = ((True, matchFunction), (True, not . matchFunction))
-        (attrFuns, attrs)             = ((False, matchFunction), (False, not . matchFunction))
-
-        matchFunction (tag -> TFunction) = True
-        matchFunction _ = False
+        (liftedAttrFuns, liftedAttrs) = ((True, isFunction), (True, not . isFunction))
+        (attrFuns, attrs)             = ((False, isFunction), (False, not . isFunction))
 
 
 annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl 
@@ -689,9 +697,9 @@ initEnvironment decl st =
     -- | Global initialization for cyclic dependencies.
     --   This partially initializes sinks and functions (to their defining lambda expression).
     initGlobal :: IState -> Identifier -> K3 Type -> Maybe (K3 Expression) -> EngineM Value IState
-    initGlobal st' n (tag -> TSink) _          = initTrigger st' n
-    initGlobal st' n t@(tag -> TFunction) eOpt = initFunction st' n t eOpt
-    initGlobal st' _ _ _                       = return st'
+    initGlobal st' n (tag -> TSink) _            = initTrigger st' n
+    initGlobal st' n t@(isFunction -> True) eOpt = initFunction st' n t eOpt
+    initGlobal st' _ _ _                         = return st'
 
     initTrigger st' n = return $ modifyStateEnv ((:) $ (n, VTrigger (n, Nothing))) st'
         
@@ -723,10 +731,12 @@ initState prog = initEnvironment prog emptyState
 initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
     ((Right _, s), ilog)
-      | Just (VFunction (f, [])) <- lookup "atInit" $ getEnv s -> runInterpretation' s (f vunit)
-      | otherwise                                              -> return ((unknownTrigger, s), ilog)
-    ((Left err, s), ilog)                                      -> return ((Left err, s), ilog)
-  where unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
+      | Just (VFunction (f, [], _)) <- lookupInit s -> runInterpretation' s (f vunit)
+      | otherwise                                   -> return ((unknownTrigger, s), ilog)
+    ((Left err, s), ilog)                           -> return ((Left err, s), ilog)
+  where 
+    lookupInit st = lookup "atInit" $ getEnv st
+    unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger"
 
 initBootstrap :: PeerBootstrap -> AEnvironment Value -> EngineM Value (IEnvironment Value)
 initBootstrap bootstrap aEnv = flip mapM bootstrap (\(n,l) ->
@@ -745,22 +755,19 @@ injectBootstrap bootstrap r = case r of
       return ((Right val, modifyStateEnv (const nvEnv) istate), rLog)
 
 
-initProgram :: PeerBootstrap -> K3 Declaration -> EngineM Value (IResult Value)
-initProgram bootstrap prog = do
+initProgram :: PeerBootstrap -> SEnvironment Value -> K3 Declaration -> EngineM Value (IResult Value)
+initProgram bootstrap staticEnv prog = do
     initSt   <- initState prog
-    staticSt <- buildStaticEnv initSt
+    staticSt <- return $ modifyStateSEnv (const staticEnv) initSt
     declR    <- runInterpretation' staticSt (declaration prog)
     bootR    <- injectBootstrap bootstrap declR
     initMessages bootR
-  where 
-    buildStaticEnv istate =
-      staticEnvironment prog >>= return . (\v -> modifyStateSEnv (const v) istate)
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
-  where runFinal (VFunction (f,[])) = f vunit
-        runFinal _                  = throwE $ RunTimeTypeError "Invalid atExit trigger"
-        unknownTrigger              = throwE $ RunTimeTypeError "Could not find atExit trigger"
+  where runFinal (VFunction (f,[],_)) = f vunit
+        runFinal _                    = throwE $ RunTimeTypeError "Invalid atExit trigger"
+        unknownTrigger                = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
 
 {- Standalone (i.e., single peer) evaluation -}
@@ -787,7 +794,7 @@ runProgram isPar systemEnv prog = buildStaticEnv >>= \case
     Right sEnv -> do
       trigs  <- return $ getTriggerIds tProg
       engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM engine $ runEngine virtualizedProcessor tProg
+      flip runEngineM engine $ runEngine (virtualizedProcessor sEnv) tProg
 
   where buildStaticEnv = do
           trigs <- return $ getTriggerIds tProg
@@ -808,7 +815,7 @@ runNetwork isPar systemEnv prog =
         trigs         <- return $ getTriggerIds tProg
         engines       <- mapM (flip (networkEngine trigs isPar) $ syntaxValueWD sEnv) nodeBootstraps
         namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
-        engineThreads <- mapM fork namedEngines
+        engineThreads <- mapM (fork sEnv) namedEngines
         return engineThreads
 
   where
@@ -817,8 +824,8 @@ runNetwork isPar systemEnv prog =
       flip runEngineM preEngine $ staticEnvironment tProg
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
-    fork (addr, engine) = do
-      threadId <- flip runEngineM engine $ forkEngine virtualizedProcessor tProg
+    fork staticEnv (addr, engine) = do
+      threadId <- flip runEngineM engine $ forkEngine (virtualizedProcessor staticEnv) tProg
       return $ either Left (Right . (addr, engine,)) threadId
 
     tProg = labelBindAliases prog
@@ -839,39 +846,18 @@ runTrigger r n a = \case
         tError = mkError r . RunTimeTypeError
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
-uniProcessor :: MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
-uniProcessor = MessageProcessor {
-    initialize = initUP,
-    process = processUP,
-    status = statusUP,
-    finalize = finalizeUP,
-    report = reportUP
-} where
-    initUP prog = ask >>= flip initProgram prog . uniBootstrap . deployment
-    uniBootstrap [] = []
-    uniBootstrap ((_,is):_) = is
 
-    statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-    finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+-- | Message processing for multiple (virtualized) peers.
+type VirtualizedMessageProcessor = 
+  MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 
-    reportUP (Left err)  = showIResult err >>= liftIO . putStr
-    reportUP (Right res) = showIResult res >>= liftIO . putStr
-
-    processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
-        lookup n $ getEnv $ getResultState r
-
-    run r n args trig = logTrigger defaultAddress n args r >> runTrigger r n args trig
-        >>= \result -> do logTrigger defaultAddress n args result; return result
-
-    unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)
-
-virtualizedProcessor :: MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
-virtualizedProcessor = MessageProcessor {
+virtualizedProcessor :: SEnvironment Value -> VirtualizedMessageProcessor
+virtualizedProcessor staticEnv = MessageProcessor {
     initialize = initializeVP,
-    process = processVP,
-    status = statusVP,
-    finalize = finalizeVP,
-    report = reportVP
+    process    = processVP,
+    status     = statusVP,
+    finalize   = finalizeVP,
+    report     = reportVP
 } where
     initializeVP program = do
         engine <- ask
@@ -879,7 +865,7 @@ virtualizedProcessor = MessageProcessor {
 
     initNode node program systemEnv = do
         initEnv <- return $ maybe [] id $ lookup node systemEnv
-        iProgram <- initProgram initEnv program
+        iProgram <- initProgram initEnv staticEnv program
         logResult "INIT " (Just node) iProgram
         return (node, iProgram)
 
@@ -913,3 +899,33 @@ virtualizedProcessor = MessageProcessor {
       void $ liftIO (putStrLn ("[" ++ show addr ++ "]"))
       void $ prettyIResult r >>= liftIO . putStr . unlines . indent 2 
 
+
+-- | Message processing for a single peer.
+type SingletonMessageProcessor =
+  MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
+
+uniProcessor :: SEnvironment Value -> SingletonMessageProcessor
+uniProcessor staticEnv = MessageProcessor {
+    initialize = initUP,
+    process    = processUP,
+    status     = statusUP,
+    finalize   = finalizeUP,
+    report     = reportUP
+} where
+    initUP prog = ask >>= \x -> initProgram (uniBootstrap $ deployment x) staticEnv prog
+    uniBootstrap [] = []
+    uniBootstrap ((_,is):_) = is
+
+    statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
+    finalizeUP res = either (\_ -> return res) (\_ -> finalProgram $ getResultState res) $ getResultVal res
+
+    reportUP (Left err)  = showIResult err >>= liftIO . putStr
+    reportUP (Right res) = showIResult res >>= liftIO . putStr
+
+    processUP (_, n, args) r = maybe (return $ unknownTrigger r n) (run r n args) $
+        lookup n $ getEnv $ getResultState r
+
+    run r n args trig = logTrigger defaultAddress n args r >> runTrigger r n args trig
+        >>= \result -> do logTrigger defaultAddress n args result; return result
+
+    unknownTrigger ((_,st), ilog) n = ((Left . RunTimeTypeError $ "Unknown trigger " ++ n, st), ilog)

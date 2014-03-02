@@ -44,7 +44,7 @@ type Identifier = String
 
 
 -- | Address implementation
-data Address = Address (String, Int) deriving (Eq)
+data Address = Address (String, Int) deriving (Eq, Ord)
 
 defaultAddress :: Address
 defaultAddress = Address ("127.0.0.1", 40000)

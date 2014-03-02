@@ -10,6 +10,8 @@ import Control.Monad.Writer
 import Data.IORef
 import Data.Word (Word8)
 
+import System.Mem.StableName
+
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
@@ -28,9 +30,12 @@ data Value
     | VRecord      [(Identifier, Value)]
     | VCollection  (MVar (Collection Value))
     | VIndirection (IORef Value)
-    | VFunction    (Value -> Interpretation Value, Closure Value)
+    | VFunction    (IFunction, Closure Value, StableName IFunction)
     | VAddress     Address
-    | VTrigger     (Identifier, Maybe (Value -> Interpretation Value))
+    | VTrigger     (Identifier, Maybe IFunction)
+
+-- | Type synonym for interpreted lambdas.
+type IFunction = Value -> Interpretation Value
 
 -- | Identifiers for global declarations
 type Globals = [Identifier]

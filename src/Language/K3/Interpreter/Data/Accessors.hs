@@ -9,6 +9,8 @@ import Control.Monad.Writer
 import Data.Function
 import Data.List
 
+import System.Mem.StableName
+
 import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Core.Common
@@ -18,11 +20,8 @@ import Language.K3.Runtime.Engine
 vunit :: Value
 vunit = VTuple []
 
-vfun :: (Value -> Interpretation Value) -> Value
-vfun = VFunction . (,[])
-
-ivfun :: (Value -> Interpretation Value) -> Interpretation Value
-ivfun = return . vfun
+vfun :: IFunction -> Interpretation Value
+vfun f = liftIO (makeStableName f) >>= return . VFunction . (f,[],)
 
 
 {- State and result accessors -}

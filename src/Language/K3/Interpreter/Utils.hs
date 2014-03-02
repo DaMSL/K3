@@ -7,6 +7,7 @@
 module Language.K3.Interpreter.Utils where
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.State
 
 import Data.Function
@@ -15,6 +16,7 @@ import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
@@ -31,6 +33,12 @@ $(customLoggingFunctions ["Dispatch", "BindPath"])
 {- Misc. helpers-}
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details (Node (tg :@: anns) ch) = (tg, ch, anns)
+
+-- | Matches polymorphic and monomorphic functions.
+isFunction :: K3 Type -> Bool
+isFunction (tag -> TFunction) = True
+isFunction (tag &&& children -> (TForall _, [t])) = isFunction t
+isFunction _ = False
 
 {- Pretty printing -}
 prettyValue :: Value -> IO String

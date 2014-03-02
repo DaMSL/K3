@@ -4,9 +4,14 @@ declare randInt  : mut int = 0
 declare randReal : mut real = 0.0
 declare modInt   : mut int = 0
 declare modReal  : mut int = 0
+
 declare rangeC   : mut collection {i : int} @ {Collection} = empty {i:int} @ {Collection}
 declare sumC     : mut int = 0
 declare sortC    : mut collection {i : int} @ {Collection} = {|i:int| 4,3,2 |} @ {Collection} 
+
+declare hashC    : mut int = 0
+declare hashS    : mut int = 0
+declare hashO    : mut int = 0
 
 trigger t : () = \_ -> (
     randInt  = random 5;
@@ -15,7 +20,10 @@ trigger t : () = \_ -> (
     modReal  = 101.0 % 5.0;
     rangeC   = range 10;
     sumC     = rangeC.fold (\acc -> (\x -> acc + x.i)) 0;
-    sortC    = sortC.sort (\a -> (\b -> a.i - b.i))
+    sortC    = sortC.sort (\a -> (\b -> a.i - b.i));
+    hashC    = hash sortC;
+    hashS    = hash "K3 hashing works";
+    hashO    = hash {x : \y -> y + 1}
   )
   
 source s1 : () = value ()

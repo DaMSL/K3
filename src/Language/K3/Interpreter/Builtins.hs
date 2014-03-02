@@ -9,6 +9,7 @@ import Control.Concurrent.MVar
 import Control.Monad.State
 import Data.List
 import Debug.Trace
+import System.Mem.StableName
 import System.Random
 
 import Language.K3.Core.Annotation
@@ -40,9 +41,9 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
 -- openBuilting :: ChannelId -> String -> ()
 genBuiltin "openBuiltin" _ =
-  ivfun $ \(VString cid) -> 
-    ivfun $ \(VString builtinId) ->
-      ivfun $ \(VString format) -> 
+  vfun $ \(VString cid) -> 
+    vfun $ \(VString builtinId) ->
+      vfun $ \(VString format) -> 
         do   
           sEnv <- get >>= return . getStaticEnv
           let wd = wireDesc sEnv format
@@ -51,10 +52,10 @@ genBuiltin "openBuiltin" _ =
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
-  ivfun $ \(VString cid) ->
-    ivfun $ \(VString path) ->
-      ivfun $ \(VString format) ->
-        ivfun $ \(VString mode) ->
+  vfun $ \(VString cid) ->
+    vfun $ \(VString path) ->
+      vfun $ \(VString format) ->
+        vfun $ \(VString mode) ->
           do
             sEnv <- get >>= return . getStaticEnv
             let wd = wireDesc sEnv format
@@ -63,10 +64,10 @@ genBuiltin "openFile" t =
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
-  ivfun $ \(VString cid) ->
-    ivfun $ \(VAddress addr) ->
-      ivfun $ \(VString format) ->
-        ivfun $ \(VString mode) ->
+  vfun $ \(VString cid) ->
+    vfun $ \(VAddress addr) ->
+      vfun $ \(VString format) ->
+        vfun $ \(VString mode) ->
           do
             sEnv <- get >>= return . getStaticEnv
             let wd = wireDesc sEnv format
@@ -75,7 +76,7 @@ genBuiltin "openSocket" t =
 
 
 -- close :: ChannelId -> ()
-genBuiltin "close" _ = ivfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
+genBuiltin "close" _ = vfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
@@ -87,40 +88,38 @@ genBuiltin "registerSocketDataTrigger"   _ = registerNotifier "data"
 genBuiltin "registerSocketCloseTrigger"  _ = registerNotifier "close"
 
 -- <source>HasRead :: () -> Bool
-genBuiltin (channelMethod -> ("HasRead", Just n)) _ = ivfun $ \_ -> checkChannel
+genBuiltin (channelMethod -> ("HasRead", Just n)) _ = vfun $ \_ -> checkChannel
   where checkChannel = liftEngine (hasRead n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Read :: () -> t
-genBuiltin (channelMethod -> ("Read", Just n)) _ = ivfun $ \_ -> liftEngine (doRead n) >>= throwOnError
+genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> liftEngine (doRead n) >>= throwOnError
   where throwOnError (Just v) = return v
         throwOnError Nothing =
           throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 -- <sink>HasWrite :: () -> Bool
-genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = ivfun $ \_ -> checkChannel
+genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \_ -> checkChannel
   where checkChannel = liftEngine (hasWrite n) >>= maybe invalid (return . VBool)
         invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
-  ivfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
+  vfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
 
 -- random :: int -> int
 genBuiltin "random" _ =
-  ivfun $ \(VInt upper) -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+  vfun $ \(VInt upper) -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
 
 -- randomFraction :: () -> real
-genBuiltin "randomFraction" _ =
-  ivfun $ \_ -> liftIO randomIO >>= return . VReal
+genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
 
--- hash :: forall a. a -> int
-genBuiltin "hash" _ =
-  ivfun $ \_ -> throwE $ RunTimeInterpretationError $ "Hash builtin not implemented"
+-- hash :: forall a . a -> int
+genBuiltin "hash" _ = vfun $ \v -> valueHash v
 
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
-  ivfun $ \(VInt upper) ->
+  vfun $ \(VInt upper) ->
     initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
@@ -134,7 +133,7 @@ channelMethod x =
 
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
-  ivfun $ \cid -> ivfun $ \target -> attach cid n target >> return vunit
+  vfun $ \cid -> vfun $ \target -> attach cid n target >> return vunit
 
   where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = 
           liftEngine $ attachNotifier_ cid n (addr, tid, v)
@@ -158,33 +157,34 @@ providesError kind n = error $
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
 builtinLiftedAttribute annId n _ _ 
-  | annId == collectionAnnotationId && n == "peek"    = return $ Just (n, peekFn)
-  | annId == collectionAnnotationId && n == "insert"  = return $ Just (n, insertFn)
-  | annId == collectionAnnotationId && n == "delete"  = return $ Just (n, deleteFn)
-  | annId == collectionAnnotationId && n == "update"  = return $ Just (n, updateFn)
-  | annId == collectionAnnotationId && n == "combine" = return $ Just (n, combineFn)
-  | annId == collectionAnnotationId && n == "split"   = return $ Just (n, splitFn)
-  | annId == collectionAnnotationId && n == "iterate" = return $ Just (n, iterateFn)
-  | annId == collectionAnnotationId && n == "map"     = return $ Just (n, mapFn)
-  | annId == collectionAnnotationId && n == "filter"  = return $ Just (n, filterFn)
-  | annId == collectionAnnotationId && n == "fold"    = return $ Just (n, foldFn)
-  | annId == collectionAnnotationId && n == "groupBy" = return $ Just (n, groupByFn)
-  | annId == collectionAnnotationId && n == "ext"     = return $ Just (n, extFn)
-  | annId == collectionAnnotationId && n == "sort"    = return $ Just (n, sortFn)
+  | annId == collectionAnnotationId && n == "peek"    = return . Just . (n,) =<< peekFn
+  | annId == collectionAnnotationId && n == "insert"  = return . Just . (n,) =<< insertFn
+  | annId == collectionAnnotationId && n == "delete"  = return . Just . (n,) =<< deleteFn
+  | annId == collectionAnnotationId && n == "update"  = return . Just . (n,) =<< updateFn
+  | annId == collectionAnnotationId && n == "combine" = return . Just . (n,) =<< combineFn
+  | annId == collectionAnnotationId && n == "split"   = return . Just . (n,) =<< splitFn
+  | annId == collectionAnnotationId && n == "iterate" = return . Just . (n,) =<< iterateFn
+  | annId == collectionAnnotationId && n == "map"     = return . Just . (n,) =<< mapFn
+  | annId == collectionAnnotationId && n == "filter"  = return . Just . (n,) =<< filterFn
+  | annId == collectionAnnotationId && n == "fold"    = return . Just . (n,) =<< foldFn
+  | annId == collectionAnnotationId && n == "groupBy" = return . Just . (n,) =<< groupByFn
+  | annId == collectionAnnotationId && n == "ext"     = return . Just . (n,) =<< extFn
+  | annId == collectionAnnotationId && n == "sort"    = return . Just . (n,) =<< sortFn
 
-  | annId == externalAnnotationId && n == "peek"    = return $ Just (n, peekFn)
-  | annId == externalAnnotationId && n == "insert"  = return $ Just (n, insertFn)
-  | annId == externalAnnotationId && n == "delete"  = return $ Just (n, deleteFn)
-  | annId == externalAnnotationId && n == "update"  = return $ Just (n, updateFn)
-  | annId == externalAnnotationId && n == "combine" = return $ Just (n, combineFn)
-  | annId == externalAnnotationId && n == "split"   = return $ Just (n, splitFn)
-  | annId == externalAnnotationId && n == "iterate" = return $ Just (n, iterateFn)
-  | annId == externalAnnotationId && n == "map"     = return $ Just (n, mapFn)
-  | annId == externalAnnotationId && n == "filter"  = return $ Just (n, filterFn)
-  | annId == externalAnnotationId && n == "fold"    = return $ Just (n, foldFn)
-  | annId == externalAnnotationId && n == "groupBy" = return $ Just (n, groupByFn)
-  | annId == externalAnnotationId && n == "ext"     = return $ Just (n, extFn)
-  | annId == externalAnnotationId && n == "sort"    = return $ Just (n, sortFn)
+  | annId == externalAnnotationId && n == "peek"    = return . Just . (n,) =<< peekFn
+  | annId == externalAnnotationId && n == "insert"  = return . Just . (n,) =<< insertFn
+  | annId == externalAnnotationId && n == "delete"  = return . Just . (n,) =<< deleteFn
+  | annId == externalAnnotationId && n == "update"  = return . Just . (n,) =<< updateFn
+  | annId == externalAnnotationId && n == "combine" = return . Just . (n,) =<< combineFn
+  | annId == externalAnnotationId && n == "split"   = return . Just . (n,) =<< splitFn
+  | annId == externalAnnotationId && n == "iterate" = return . Just . (n,) =<< iterateFn
+  | annId == externalAnnotationId && n == "map"     = return . Just . (n,) =<< mapFn
+  | annId == externalAnnotationId && n == "filter"  = return . Just . (n,) =<< filterFn
+  | annId == externalAnnotationId && n == "fold"    = return . Just . (n,) =<< foldFn
+  | annId == externalAnnotationId && n == "groupBy" = return . Just . (n,) =<< groupByFn
+  | annId == externalAnnotationId && n == "ext"     = return . Just . (n,) =<< extFn
+  | annId == externalAnnotationId && n == "sort"    = return . Just . (n,) =<< sortFn
+  
   | otherwise = providesError "lifted attribute" n
 
   where
@@ -198,10 +198,12 @@ builtinLiftedAttribute annId n _ _
         -- | Collection modifier implementation
         insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
         deleteFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (deleteCollection el)
-        updateFn = valWithCollectionMV $ \old cmv -> ivfun $ \new -> modifyCollection cmv (updateCollection old new)
+        updateFn = valWithCollectionMV $ \old cmv -> vfun $ \new -> modifyCollection cmv (updateCollection old new)
 
         -- BREAKING EXCEPTION SAFETY
-        modifyCollection :: MVar (Collection Value) -> (Collection Value -> Interpretation (Collection Value)) -> Interpretation Value
+        modifyCollection :: MVar (Collection Value) 
+                         -> (Collection Value -> Interpretation (Collection Value))
+                         -> Interpretation Value
         --TODO modifyMVar_ function has to be over IO
         modifyCollection cmv f = do
             old_col <- liftIO $ readMVar cmv
@@ -257,9 +259,9 @@ builtinLiftedAttribute annId n _ _
 
         foldFn = valWithCollection $ \f (Collection _ ds _) ->
           flip (matchFunction foldFnError) f $
-            \f' -> ivfun $ \accInit -> foldDS (curryFoldFn f') accInit ds
+            \f' -> vfun $ \accInit -> foldDS (curryFoldFn f') accInit ds
 
-        curryFoldFn :: (Value -> Interpretation Value, Closure Value) -> Value -> Value -> Interpretation Value
+        curryFoldFn :: (IFunction, Closure Value, StableName IFunction) -> Value -> Value -> Interpretation Value
         curryFoldFn f' acc v = do
           result <- withClosure f' acc
           (matchFunction curryFnError) (flip withClosure v) result
@@ -269,8 +271,8 @@ builtinLiftedAttribute annId n _ _
           where
             heres_the_answer :: Value -> Collection Value -> Interpretation Value
             heres_the_answer gb (Collection ns ds ext) = -- Am I passing the right namespace & stuff to the later collections?
-              flip (matchFunction partitionFnError) gb $ \gb' -> ivfun $ \f -> 
-              flip (matchFunction foldFnError) f $ \f' -> ivfun $ \accInit ->
+              flip (matchFunction partitionFnError) gb $ \gb' -> vfun $ \f -> 
+              flip (matchFunction foldFnError) f $ \f' -> vfun $ \accInit ->
                 do
                   new_space <- emptyDS (Just ds)
                   kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
@@ -278,8 +280,8 @@ builtinLiftedAttribute annId n _ _
                   copy (Collection ns kvRecords ext)
 
         groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value)
-                       => (Value -> Interpretation Value, Closure Value)
-                       -> (Value -> Interpretation Value, Closure Value)
+                       => (IFunction, Closure Value, StableName IFunction)
+                       -> (IFunction, Closure Value, StableName IFunction)
                        -> Value -> ads -> Value -> Interpretation ads
         groupByElement gb' f' accInit acc v = do
           k <- withClosure gb' v
@@ -315,8 +317,8 @@ builtinLiftedAttribute annId n _ _
             \f'  -> sortDS (sortResultAsOrdering f') ds >>= 
             \ds' -> copy (Collection ns ds' ext)
 
-        sortResultAsOrdering (f, cl) = \v1 v2 -> do
-            f2V  <- withClosure (f, cl) v1
+        sortResultAsOrdering (f, cl, sn) = \v1 v2 -> do
+            f2V  <- withClosure (f, cl, sn) v1
             cmpV <- (matchFunction curryFnError) (flip withClosure v2) f2V
             intAsOrdering cmpV
           where intAsOrdering (VInt i) | i < 0     = return LT
@@ -339,14 +341,14 @@ builtinLiftedAttribute annId n _ _
 
 
         -- | Collection implementation helpers.
-        withClosure :: (Value -> Interpretation Value, Closure Value) -> Value -> Interpretation Value
-        withClosure (f, cl) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
+        withClosure :: (IFunction, Closure Value, StableName IFunction) -> Value -> Interpretation Value
+        withClosure (f, cl, _) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
 
-        valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Value
+        valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Interpretation Value
         valWithCollection f = vfun $ \arg -> 
           lookupE annotationSelfId >>= matchCollection collectionError (f arg)
 
-        valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Value
+        valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Interpretation Value
         valWithCollectionMV f = vfun $ \arg -> 
           lookupE annotationSelfId >>= matchCollectionMV collectionError (f arg)
 
@@ -358,7 +360,7 @@ builtinLiftedAttribute annId n _ _
         matchCollectionMV _ f (VCollection cmv) = f cmv
         matchCollectionMV err _ _ = err
 
-        matchFunction :: a -> ((Value -> Interpretation Value, Closure Value) -> a) -> Value -> a
+        matchFunction :: a -> ((IFunction, Closure Value, StableName IFunction) -> a) -> Value -> a
         matchFunction _ f (VFunction f') = f f'
         matchFunction err _ _ = err
 

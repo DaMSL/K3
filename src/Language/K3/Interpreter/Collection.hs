@@ -12,6 +12,8 @@ import Control.Monad.IO.Class
 
 import Data.List
 
+import System.Mem.StableName
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
@@ -208,8 +210,10 @@ getComposedAnnotation annIds = case annIds of
 --   will add all collection members to the interpretation environment prior to its
 --   evaluation. This way, the member function's body can directly refer to other members
 --   by name, rather than using the 'self' keyword.
-contextualizeFunction :: MVar (Collection Value) -> (Value -> Interpretation Value, Closure Value) -> Value
-contextualizeFunction cmv (f, cl) = VFunction . (, cl) $ \x -> do
+contextualizeFunction :: MVar (Collection Value)
+                      -> (IFunction, Closure Value, StableName IFunction)
+                      -> Value
+contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \x -> do
       bindings <- liftCollection
       result   <- f x >>= return . contextualizeResult
       lowerCollection bindings result

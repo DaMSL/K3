@@ -7,12 +7,20 @@ module Language.K3.Interpreter.Values where
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
+import Control.Monad.IO.Class
 
+import Data.Function
+import Data.Hashable
 import Data.IORef
+import Data.List
+
+import System.Mem.StableName
 
 import Text.Read hiding (get, lift)
 import qualified Text.Read          as TR (lift)
 import Text.ParserCombinators.ReadP as P (skipSpaces)
+
+import Language.K3.Core.Common
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
@@ -26,20 +34,168 @@ import Language.K3.Utils.Pretty
 -- | TODO: Equality based on stable names
 
 -- | Haskell Eq type class implementation.
---   This does not support comparison over indirections or collections.
+--   This does not support comparison for triggers. Also, collection comparison
+--   here is based on MVar comparison, and not K3 record comparison semantics.
 instance Eq Value where
-  VBool v        == VBool v'        = v == v'
-  VByte b        == VByte b'        = b == b'
-  VInt  v        == VInt  v'        = v == v'
-  VReal v        == VReal v'        = v == v'
-  VString v      == VString v'      = v == v'
-  VOption v      == VOption v'      = v == v'
-  VTuple v       == VTuple v'       = all (uncurry (==)) $ zip v v'
-  VRecord v      == VRecord v'      = all (uncurry (==)) $ zip v v'
-  VAddress v     == VAddress v'     = v == v'  
-  VCollection  v == VCollection v'  = v == v'
-  VIndirection v == VIndirection v' = v == v'  
-  _              == _               = False
+  VBool v           == VBool v'           = v == v'
+  VByte v           == VByte v'           = v == v'
+  VInt  v           == VInt  v'           = v == v'
+  VReal v           == VReal v'           = v == v'
+  VString v         == VString v'         = v == v'
+  VAddress v        == VAddress v'        = v == v'  
+  VOption v         == VOption v'         = v == v'
+  VIndirection v    == VIndirection v'    = v == v'  
+  VTuple v          == VTuple v'          = v == v'
+  VRecord v         == VRecord v'         = (sortBy (compare `on` fst) v) == (sortBy (compare `on` fst) v')
+  VCollection  v    == VCollection v'     = v == v'
+  VFunction (_,_,n) == VFunction (_,_,n') = n == n'
+  _                 == _                  = False
+
+-- | Haskell Ord type class implementation.
+--   This does not support comparisons for indirections, collections, functions or triggers.
+instance Ord Value where
+  compare (VBool a)    (VBool b)    = compare a b
+  compare (VByte a)    (VByte b)    = compare a b
+  compare (VInt a)     (VInt b)     = compare a b
+  compare (VReal a)    (VReal b)    = compare a b
+  compare (VString a)  (VString b)  = compare a b
+  compare (VAddress a) (VAddress b) = compare a b
+  compare (VOption a)  (VOption b)  = compare a b
+  compare (VTuple a)   (VTuple b)   = compare a b
+  compare (VRecord a)  (VRecord b)  = compare (sortBy (compare `on` fst) a) (sortBy (compare `on` fst) b)
+  compare _ _                       = error "Invalid value comparison"
+
+
+-- | Haskell Hashable type class implementation.
+--   This does not support hashing indirections, collections, or triggers.
+--   Functions can be hashed, based on the hash value of their stable names.
+instance Hashable Value where
+  hashWithSalt salt (VBool a)           = hashWithSalt salt a
+  hashWithSalt salt (VByte a)           = hashWithSalt salt a
+  hashWithSalt salt (VInt a)            = hashWithSalt salt a
+  hashWithSalt salt (VReal a)           = hashWithSalt salt a
+  hashWithSalt salt (VString a)         = hashWithSalt salt a
+  hashWithSalt salt (VAddress a)        = hashWithSalt salt a
+  hashWithSalt salt (VOption a)         = hashWithSalt salt a
+  hashWithSalt salt (VTuple a)          = hashWithSalt salt a
+  hashWithSalt salt (VRecord a)         = hashWithSalt salt a
+  hashWithSalt salt (VFunction (_,_,n)) = salt `hashWithSalt` (hashStableName n)
+  hashWithSalt _ _ = error "Invalid value hash operation"
+
+-- | Interpreter value equality operation
+valueEq :: Value -> Value -> Interpretation Value
+valueEq  (VOption (Just v)) (VOption (Just v')) = valueEq v v'
+valueEq  (VOption v)        (VOption v')        = return . VBool $ v == v'
+valueEq  (VTuple v)         (VTuple v')         = listEq v v' >>= return . VBool
+
+valueEq  (VCollection  v)   (VCollection v') =
+  uncurry collectionEq =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
+
+valueEq  (VRecord v) (VRecord v') = 
+  let (ids,  vals)  = unzip $ sortBy (compare `on` fst) v
+      (ids', vals') = unzip $ sortBy (compare `on` fst) v'
+  in
+  if ids == ids' then listEq vals vals' >>= return . VBool
+                 else return $ VBool False
+
+valueEq  x y = return . VBool $ x == y
+
+valueNeq :: Value -> Value -> Interpretation Value
+valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
+
+listEq :: [Value] -> [Value] -> Interpretation Bool
+listEq a b = listCompare a b >>= \sgn -> return $ sgn == 0
+
+collectionEq :: Collection Value -> Collection Value -> Interpretation Value
+collectionEq c1 c2 = collectionCompare c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
+
+dataspaceEq :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceEq ds1 ds2 = dataspaceCompare ds1 ds2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
+
+
+-- | Interpreter value ordering operation
+valueCompare :: Value -> Value -> Interpretation Value
+valueCompare (VOption (Just v)) (VOption (Just v')) = valueCompare v v'
+valueCompare (VOption v)        (VOption v')        = return . VInt . orderingAsInt $ compare v v'
+valueCompare (VTuple v)         (VTuple v')         = listCompare v v' >>= return . VInt
+valueCompare (VCollection  v)   (VCollection v')    = uncurry collectionCompare =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
+
+valueCompare (VRecord v) (VRecord v') = 
+  listCompare (map snd $ sortBy (compare `on` fst) v) (map snd $ sortBy (compare `on` fst) v') >>= return . VInt  
+
+valueCompare (VIndirection _) _ = throwE $ RunTimeTypeError "Invalid indirection comparison"
+valueCompare _ (VIndirection _) = throwE $ RunTimeTypeError "Invalid indirection comparison"
+
+valueCompare (VFunction _) _ = throwE $ RunTimeTypeError "Invalid function comparison"
+valueCompare _ (VFunction _) = throwE $ RunTimeTypeError "Invalid function comparison"
+
+valueCompare (VTrigger _) _ = throwE $ RunTimeTypeError "Invalid trigger comparison"
+valueCompare _ (VTrigger _) = throwE $ RunTimeTypeError "Invalid trigger comparison"
+
+valueCompare x y = return . VInt $ orderingAsInt $ compare x y
+
+orderingAsInt :: Ordering -> Int
+orderingAsInt LT = -1
+orderingAsInt EQ = 0
+orderingAsInt GT = 1
+
+listCompare :: [Value] -> [Value] -> Interpretation Int
+listCompare [] [] = return 0
+listCompare [] _  = return $ -1
+listCompare _ []  = return 1
+listCompare (a:as) (b:bs) = valueCompare a b >>= \(VInt sgn) -> if sgn == 0 then listCompare as bs else return sgn
+
+collectionCompare :: Collection Value -> Collection Value -> Interpretation Value
+collectionCompare (Collection _ ds cId) (Collection _ ds' cId') = 
+  let sgn = orderingAsInt $ compare cId cId' in
+  if sgn == 0 then dataspaceCompare ds ds'
+              else return $ VInt sgn
+
+dataspaceCompare :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceCompare (InMemoryDS l) (InMemoryDS l') = listCompare l l' >>= return . VInt
+dataspaceCompare (ExternalDS _) (ExternalDS _)  = throwE $ RunTimeInterpretationError "External DS comparison not implemented"
+dataspaceCompare _ _ = throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+
+valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
+valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
+
+valueLt :: Value -> Value -> Interpretation Value
+valueLt = valueSign $ \sgn -> sgn < 0
+
+valueLte :: Value -> Value -> Interpretation Value
+valueLte = valueSign $ \sgn -> sgn <= 0
+
+valueGt :: Value -> Value -> Interpretation Value
+valueGt = valueSign $ \sgn -> sgn > 0
+
+valueGte :: Value -> Value -> Interpretation Value
+valueGte = valueSign $ \sgn -> sgn >= 0
+
+-- | Interpreter hash function
+valueHash :: Value -> Interpretation Value
+valueHash (VOption Nothing)  = return . VInt $ hash (Nothing :: Maybe Value)
+valueHash (VOption (Just v)) = composeHash (VInt 0) v
+valueHash (VTuple v)         = foldM composeHash (VInt 1) v
+valueHash (VRecord v)        = foldM composeRecordHash (VInt 2) v
+valueHash (VIndirection v)   = liftIO (readIORef v) >>= composeHash (VInt 3)
+valueHash (VCollection v)    = liftIO (readMVar v) >>= collectionHash
+valueHash (VTrigger _)       = throwE $ RunTimeTypeError "Invalid hash operation on trigger value"
+valueHash x = return . VInt $ hash x
+
+composeHash :: Value -> Value -> Interpretation Value
+composeHash (VInt s) v = valueHash v >>= \(VInt vh) -> return $ VInt $ hashWithSalt s vh
+composeHash _ _ = throwE $ RunTimeInterpretationError "Invalid salt value in hash operation"
+
+composeRecordHash :: Value -> (Identifier, Value) -> Interpretation Value
+composeRecordHash (VInt s) (n,v) = valueHash v >>= \(VInt vh) -> return $ VInt (s `hashWithSalt` vh `hashWithSalt` n)
+composeRecordHash _ _ = throwE $ RunTimeInterpretationError "Invalid salt value in hash operation"
+
+collectionHash :: Collection Value -> Interpretation Value
+collectionHash (Collection _ ds cId) = dataspaceHash ds >>= flip composeHash (VString cId)
+
+dataspaceHash :: CollectionDataspace Value -> Interpretation Value
+dataspaceHash (InMemoryDS l) = foldM composeHash (VInt 4) l
+dataspaceHash _ = throwE $ RunTimeInterpretationError "External DS hash not implemented"
 
 
 {- Value show and display -}
@@ -67,7 +223,7 @@ instance Show Value where
   
   showsPrec d (VCollection _)  = showsPrecTagF "VCollection"  d $ showString "<opaque>"
   showsPrec d (VIndirection _) = showsPrecTagF "VIndirection" d $ showString "<opaque>"
-  showsPrec d (VFunction _)    = showsPrecTagF "VFunction"    d $ showString "<function>"
+  showsPrec d (VFunction (_,_,n))     = showsPrecTagF "VFunction" d $ showString $ "<function " ++ (show $ hashStableName n) ++ ">"
   showsPrec d (VTrigger (_, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
   showsPrec d (VTrigger (_, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
 
@@ -192,10 +348,10 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
       VIndirection r -> readIORef r >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValue (d+1) v')
       VAddress v'    -> rt $ showsPrec d v'
 
-      VFunction _    -> (forTransport ? error $ (rt . showString)) funSym
-      VTrigger (n,_) -> (forTransport ? error $ (rt . showString)) $ trigSym n
+      VFunction (_,_,n) -> (forTransport ? error $ (rt . showString)) $ funSym n
+      VTrigger (n,_)    -> (forTransport ? error $ (rt . showString)) $ trigSym n
 
-    funSym    = "<function>"
+    funSym n  = "<function " ++ (show $ hashStableName n) ++ ">"
     trigSym n = "<trigger " ++ n ++ " >"
 
     parens'  = packCustomList "(" ")" ","

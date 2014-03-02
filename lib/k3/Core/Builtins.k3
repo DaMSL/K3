@@ -29,15 +29,13 @@ declare random : int -> int
 declare randomFraction : () -> real
 
 // Polymorphic hash function
-// TODO: uncomment when foralls are supported during interpretation.
-// declare hash : forall a . a -> int
+declare hash : forall a . a -> int
 
 
 ////////////////////////
 //
 // Collection builtins
 
-// Collection enumeration
-// TODO: not implemented yet in the backends
+// Collection enumeration [0,1,..n-1]
 declare range : int -> collection {i : int} @ { Collection }
 
