@@ -128,6 +128,22 @@ genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
 -- real_of_int :: real -> int
 genBuiltin "real_of_int" _ = vfun $ \(VInt i)  -> return $ VReal $ fromIntegral i
 
+-- get_max_int :: () -> int
+genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
+
+-- Parse an SQL date string and convert to integer
+genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
+  return $ VInt $ toInt $ parseString s
+  where parseString s = foldl' readChar [0] s
+        readChar xs '-'    = 0:xs
+        readChar (x:xs) n = (x*10 + read [n]):xs
+        readChar _ _       = error "Bad sql date string"
+        toInt [y,m,d] = y*10000 + m*100 + d
+        toInt _       = error "Bad sql date format"
+
+genBuiltin "error" _ = vfun $ \_ -> throwE $
+  RunTimeTypeError "Error encountered in program"
+
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
 channelMethod :: String -> (String, Maybe String)
