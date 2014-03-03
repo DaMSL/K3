@@ -173,8 +173,8 @@ getComposedAnnotation annIds = case annIds of
       return newCMV
    
     mkEmplaceConstructor :: [(Identifier, IEnvironment Value)] -> CEmplaceConstructor Value
-    mkEmplaceConstructor namedAnnDefs = \dataspace -> do
-      let newcol = Collection emptyCollectionNamespace dataspace $ annotationComboId $ map fst namedAnnDefs
+    mkEmplaceConstructor namedAnnDefs = \ds -> do
+      let newcol = Collection emptyCollectionNamespace ds $ annotationComboId $ map fst namedAnnDefs
       newCMV <- liftIO (newMVar newcol)
       void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
       void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
@@ -240,7 +240,7 @@ contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \x -> do
         foldM (flip removeE) result bindings
 
     lowerBindings env =
-      mapM (\(n,_) -> lookupE n >>= return . (n,)) env 
+      mapM (\(n2,_) -> lookupE n2 >>= return . (n2,)) env 
         >>= return . partition ((annotationSelfId /= ) . fst)
 
     -- TODO: rebind annotation-specific namespace

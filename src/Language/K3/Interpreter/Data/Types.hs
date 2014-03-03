@@ -79,7 +79,6 @@ data CollectionNamespace v =
 
 data CollectionDataspace v = InMemoryDS [v] | ExternalDS (FileDataspace v)
 
-
 data CollectionConstructors v =
   CollectionConstructors { emptyCtor   :: CEmptyConstructor v
                          , initialCtor :: CInitialConstructor v

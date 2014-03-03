@@ -19,7 +19,6 @@ module Language.K3.Core.Type (
     namedTAnnotations
 ) where
 
-import Data.List
 import Data.Maybe
 import Data.Tree
 

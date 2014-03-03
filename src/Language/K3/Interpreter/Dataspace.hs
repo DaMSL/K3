@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Language.K3.Interpreter.Dataspace where
 
@@ -73,63 +74,61 @@ instance Dataspace Interpretation (FileDataspace Value) Value where
   splitDS          = splitFile liftEngine
   sortDS           = sortFile liftEngine
 
+-- | Splice in chained dataspace instance for the CollectionDataspace
+$(dsChainInstanceGenerator
+    [t|Interpretation|] [t|CollectionDataspace Value|] [t|Value|]
+    [| (throwE . RunTimeInterpretationError) |]
+    [("InMemoryDS", "lst"), ("ExternalDS", "f")] "InMemoryDS")
+
+{-
 instance Dataspace Interpretation (CollectionDataspace Value) Value where
-  emptyDS maybeHint =
-    case maybeHint of
-      Nothing ->
-        (emptyDS Nothing) >>= return . InMemoryDS
-      Just (InMemoryDS ls) ->
-        (emptyDS (Just ls)) >>= return . InMemoryDS
-      Just (ExternalDS ext) ->
-        (emptyDS (Just ext)) >>= return . ExternalDS
-  initialDS vals maybeHint =
-    case maybeHint of
-      Nothing ->
-        (initialDS vals Nothing) >>= return . InMemoryDS
-      Just (InMemoryDS ls) ->
-        (initialDS vals (Just ls)) >>= return . InMemoryDS
-      Just (ExternalDS ext) ->
-        (initialDS vals (Just ext)) >>= return . ExternalDS
-  copyDS ds        = case ds of
-    InMemoryDS lst -> copyDS lst >>= return . InMemoryDS
-    ExternalDS f   -> copyDS f >>= return . ExternalDS
-  peekDS ds        = case ds of
-    InMemoryDS lst -> peekDS lst
-    ExternalDS f   -> peekDS f
-  insertDS ds val  = case ds of
-    InMemoryDS lst -> insertDS lst val >>= return . InMemoryDS
-    ExternalDS f   -> insertDS f   val >>= return . ExternalDS
-  deleteDS val ds  = case ds of
-    InMemoryDS lst -> deleteDS val lst >>= return . InMemoryDS
-    ExternalDS f   -> deleteDS val f   >>= return . ExternalDS
-  updateDS v v' ds  = case ds of
-    InMemoryDS lst -> updateDS v v' lst >>= return . InMemoryDS
-    ExternalDS f   -> updateDS v v' f   >>= return . ExternalDS
-  foldDS acc acc_init ds = case ds of
-    InMemoryDS lst -> foldDS acc acc_init lst
-    ExternalDS f   -> foldDS acc acc_init f
-  mapDS func ds     = case ds of
-    InMemoryDS lst -> mapDS func lst >>= return . InMemoryDS
-    ExternalDS f   -> mapDS func f   >>= return . ExternalDS
-  mapDS_ func ds    = case ds of
-    InMemoryDS lst -> mapDS_ func lst
-    ExternalDS f   -> mapDS_ func f
-  filterDS func ds     = case ds of
-    InMemoryDS lst -> filterDS func lst >>= return . InMemoryDS
-    ExternalDS f   -> filterDS func f   >>= return . ExternalDS
-  combineDS l r     = case (l,r) of
-    (InMemoryDS l_lst, InMemoryDS r_lst) ->
-      combineDS l_lst r_lst >>= return . InMemoryDS
-    (ExternalDS l_f, ExternalDS r_f) ->
-      combineDS l_f r_f >>= return . ExternalDS
-    _ -> throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
-        -- TODO Could combine an in memory store and an external store into an external store
-  splitDS ds       = case ds of
-    InMemoryDS lst -> splitDS lst >>= \(l, r) -> return (InMemoryDS l, InMemoryDS r)
-    ExternalDS f   -> splitDS f   >>= \(l, r) -> return (ExternalDS l, ExternalDS r)
-  sortDS sortF ds  = case ds of
-    InMemoryDS lst -> sortDS sortF lst >>= return . InMemoryDS
-    ExternalDS f   -> sortDS sortF f   >>= return . ExternalDS
+  emptyDS Nothing                 = (emptyDS Nothing)    >>= return . InMemoryDS
+  emptyDS (Just (InMemoryDS lst)) = (emptyDS (Just lst)) >>= return . InMemoryDS
+  emptyDS (Just (ExternalDS f))   = (emptyDS (Just f))   >>= return . ExternalDS
+
+  initialDS vals Nothing                 = (initialDS vals Nothing)    >>= return . InMemoryDS
+  initialDS vals (Just (InMemoryDS lst)) = (initialDS vals (Just lst)) >>= return . InMemoryDS
+  initialDS vals (Just (ExternalDS f))   = (initialDS vals (Just f))   >>= return . ExternalDS
+
+  copyDS (InMemoryDS lst) = copyDS lst >>= return . InMemoryDS 
+  copyDS (ExternalDS f)   = copyDS f   >>= return . ExternalDS
+
+  peekDS (InMemoryDS lst) = peekDS lst
+  peekDS (ExternalDS f)   = peekDS f
+
+  insertDS (InMemoryDS lst) val = insertDS lst val >>= return . InMemoryDS 
+  insertDS (ExternalDS f)   val = insertDS f   val >>= return . ExternalDS
+
+  deleteDS val (InMemoryDS lst) = deleteDS val lst >>= return . InMemoryDS 
+  deleteDS val (ExternalDS f)   = deleteDS val f   >>= return . ExternalDS
+
+  updateDS v v' (InMemoryDS lst) = updateDS v v' lst >>= return . InMemoryDS 
+  updateDS v v' (ExternalDS f)   = updateDS v v' f   >>= return . ExternalDS
+
+  foldDS acc acc_init (InMemoryDS lst) = foldDS acc acc_init lst
+  foldDS acc acc_init (ExternalDS f)   = foldDS acc acc_init f
+
+  mapDS func (InMemoryDS lst) = mapDS func lst >>= return . InMemoryDS 
+  mapDS func (ExternalDS f)   = mapDS func f   >>= return . ExternalDS
+
+  mapDS_ func (InMemoryDS lst) = mapDS_ func lst
+  mapDS_ func (ExternalDS f)   = mapDS_ func f
+
+  filterDS func (InMemoryDS lst) = filterDS func lst >>= return . InMemoryDS 
+  filterDS func (ExternalDS f)   = filterDS func f   >>= return . ExternalDS
+
+  combineDS (InMemoryDS l_lst) (InMemoryDS r_lst) = combineDS l_lst r_lst >>= return . InMemoryDS 
+  combineDS (ExternalDS l_f)   (ExternalDS r_f)   = combineDS l_f   r_f   >>= return . ExternalDS
+  combineDS _ _ = throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
+    -- TODO Could combine an in memory store and an external store into an external store
+
+  splitDS (InMemoryDS lst) = splitDS lst >>= \(l,r) -> return (InMemoryDS l, InMemoryDS r)
+  splitDS (ExternalDS f)   = splitDS f   >>= \(l,r) -> return (ExternalDS l, ExternalDS r)
+
+  sortDS sortF (InMemoryDS lst) = sortDS sortF lst >>= return . InMemoryDS
+  sortDS sortF (ExternalDS f)   = sortDS sortF f   >>= return . ExternalDS
+-}
+
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
