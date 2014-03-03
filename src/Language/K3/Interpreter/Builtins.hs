@@ -178,40 +178,42 @@ providesError kind n = error $
  -}
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
                           -> Interpretation (Maybe (Identifier, Value))
-builtinLiftedAttribute annId n _ _ 
-  -- Collection methods
-  | annId `elem` dataspaceAnnotationIds && n == "peek"    = return . Just . (n,) =<< peekFn
-  | annId `elem` dataspaceAnnotationIds && n == "insert"  = return . Just . (n,) =<< insertFn
-  | annId `elem` dataspaceAnnotationIds && n == "delete"  = return . Just . (n,) =<< deleteFn
-  | annId `elem` dataspaceAnnotationIds && n == "update"  = return . Just . (n,) =<< updateFn
-  | annId `elem` dataspaceAnnotationIds && n == "combine" = return . Just . (n,) =<< combineFn
-  | annId `elem` dataspaceAnnotationIds && n == "split"   = return . Just . (n,) =<< splitFn
-  | annId `elem` dataspaceAnnotationIds && n == "iterate" = return . Just . (n,) =<< iterateFn
-  | annId `elem` dataspaceAnnotationIds && n == "map"     = return . Just . (n,) =<< mapFn
-  | annId `elem` dataspaceAnnotationIds && n == "filter"  = return . Just . (n,) =<< filterFn
-  | annId `elem` dataspaceAnnotationIds && n == "fold"    = return . Just . (n,) =<< foldFn
-  | annId `elem` dataspaceAnnotationIds && n == "groupBy" = return . Just . (n,) =<< groupByFn
-  | annId `elem` dataspaceAnnotationIds && n == "ext"     = return . Just . (n,) =<< extFn
+builtinLiftedAttribute annId n _ _ =
+  let wrap f = f >>= \x -> return $ Just (n, x) in
+  if annId `elem` dataspaceAnnotationIds then case n of
+    "peek"        -> wrap peekFn
+    "insert"      -> wrap insertFn
+    "delete"      -> wrap deleteFn
+    "update"      -> wrap updateFn
+    "combine"     -> wrap combineFn
+    "split"       -> wrap splitFn
+    "iterate"     -> wrap iterateFn
+    "map"         -> wrap mapFn
+    "filter"      -> wrap filterFn
+    "fold"        -> wrap foldFn
+    "groupBy"     -> wrap groupByFn
+    "ext"         -> wrap extFn
 
-  -- Sequential collection methods
-  | annId `elem` dataspaceAnnotationIds && n == "sort"       = return . Just . (n,) =<< sortFn
-  
-  -- Set collection methods
-  | annId `elem` dataspaceAnnotationIds && n == "member"     = return . Just . (n,) =<< memberFn
-  | annId `elem` dataspaceAnnotationIds && n == "isSubsetOf" = return . Just . (n,) =<< isSubsetOfFn
-  | annId `elem` dataspaceAnnotationIds && n == "union"      = return . Just . (n,) =<< unionFn
-  | annId `elem` dataspaceAnnotationIds && n == "intersect"  = return . Just . (n,) =<< intersectFn
-  | annId `elem` dataspaceAnnotationIds && n == "difference" = return . Just . (n,) =<< differenceFn
+    -- Sequential collection methods
+    "sort"        -> wrap sortFn
 
-  -- Sorted collection methods
-  | annId `elem` dataspaceAnnotationIds && n == "min"         = return . Just . (n,) =<< minFn
-  | annId `elem` dataspaceAnnotationIds && n == "max"         = return . Just . (n,) =<< maxFn
-  | annId `elem` dataspaceAnnotationIds && n == "lowerBound"  = return . Just . (n,) =<< lowerBoundFn
-  | annId `elem` dataspaceAnnotationIds && n == "upperBound"  = return . Just . (n,) =<< upperBoundFn
-  | annId `elem` dataspaceAnnotationIds && n == "slice"       = return . Just . (n,) =<< sliceFn
+    -- Set collection methods
+    "member"      -> wrap memberFn
+    "isSubsetOf"  -> wrap isSubsetOfFn
+    "union"       -> wrap unionFn
+    "intersect"   -> wrap intersectFn
+    "difference"  -> wrap differenceFn
 
-  | otherwise = providesError "lifted attribute" n
+    -- Sorted collection methods
+    "min"         -> wrap minFn
+    "max"         -> wrap maxFn
+    "lowerBound"  -> wrap lowerBoundFn
+    "upperBound"  -> wrap upperBoundFn
+    "slice"       -> wrap sliceFn
 
+    _             -> providesError "lifted attribute" n
+
+  else providesError "unknown lifted attribute" n
   where
     copy = copyCollection
 
