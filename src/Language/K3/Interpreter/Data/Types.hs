@@ -56,6 +56,23 @@ data BindStep
 type BindPath      = [BindStep]
 type BindPathStack = [Maybe BindPath]
 
+{- Interpreter dataspaces -}
+
+newtype ListMDS         v = ListMDS         [v]
+newtype SetAsOrdListMDS v = SetAsOrdListMDS [v]
+newtype BagAsOrdListMDS v = BagAsOrdListMDS [v]
+
+data PrimitiveMDS v 
+    = MemDS    (ListMDS v)
+    | SeqDS    (ListMDS v)
+    | SetDS    (SetAsOrdListMDS v)
+    | SortedDS (BagAsOrdListMDS v)
+
+data CollectionDataspace v 
+    = InMemoryDS [v]
+    | InMemDS    (PrimitiveMDS v)
+    | ExternalDS (FileDataspace v)
+
 
 {- Collections and annotations -}
 
@@ -76,8 +93,6 @@ data CollectionNamespace v =
         CollectionNamespace { collectionNS :: IEnvironment v
                             , annotationNS :: [(Identifier, IEnvironment v)] }
      deriving (Read, Show)
-
-data CollectionDataspace v = InMemoryDS [v] | ExternalDS (FileDataspace v)
 
 data CollectionConstructors v =
   CollectionConstructors { emptyCtor   :: CEmptyConstructor v

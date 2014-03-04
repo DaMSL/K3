@@ -20,6 +20,7 @@ library
         base,
         bytestring,
         containers,
+        data-ordlist,
         deepseq,
         directory,
         either,

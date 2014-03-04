@@ -152,8 +152,16 @@ collectionCompare (Collection _ ds cId) (Collection _ ds' cId') =
 
 dataspaceCompare :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
 dataspaceCompare (InMemoryDS l) (InMemoryDS l') = listCompare l l' >>= return . VInt
-dataspaceCompare (ExternalDS _) (ExternalDS _)  = throwE $ RunTimeInterpretationError "External DS comparison not implemented"
-dataspaceCompare _ _ = throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+dataspaceCompare (InMemDS l)    (InMemDS l')    = memDSCompare l l'
+dataspaceCompare (ExternalDS _) (ExternalDS _)  =
+  throwE $ RunTimeInterpretationError "External DS comparison not implemented"
+dataspaceCompare _ _ =
+  throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+
+memDSCompare :: PrimitiveMDS Value -> PrimitiveMDS Value -> Interpretation Value
+memDSCompare l r = case (listOfMemDS l, listOfMemDS r) of
+    (Just l', Just r') -> listCompare l' r' >>= return . VInt
+    (_, _) -> throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
 
 valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
 valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
@@ -194,6 +202,11 @@ collectionHash (Collection _ ds cId) = dataspaceHash ds >>= flip composeHash (VS
 
 dataspaceHash :: CollectionDataspace Value -> Interpretation Value
 dataspaceHash (InMemoryDS l) = foldM composeHash (VInt 4) l
+dataspaceHash (InMemDS ds) = 
+  case listOfMemDS ds of 
+    Just l -> foldM composeHash (VInt 4) l
+    _      -> throwE $ RunTimeInterpretationError "Memory non-list DS hash not implemented"
+
 dataspaceHash _ = throwE $ RunTimeInterpretationError "External DS hash not implemented"
 
 
@@ -380,7 +393,13 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     -- TODO Need to pattern match on kind of dataspace
     packCollectionDataspace d (InMemoryDS ds) =
       (\a b -> a . b) <$> (rt $ showString "InMemoryDS=") <*> brackets (packValue d) ds
-    
+
+    packCollectionDataspace d (InMemDS mds) =
+      case listOfMemDS mds of
+        Just l -> (\a b -> a . b) <$> (rt $ showString $ "InMemDS=" ++ typeTagOfMemDS mds)
+                                  <*> brackets (packValue d) l
+        _      -> error "Non-list in-memory dataspace packing not supported"
+
     packCollectionDataspace _ (ExternalDS filename) =
       (\a b -> a . b) <$> (rt $ showString "ExternalDS=") <*> (rt $ showString $ getFile filename)
     -- for now, external ds are shared file path
@@ -491,6 +510,18 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
       )
       +++
       (parens $ do
+        void $ readExpectedName "InMemDS"
+        n <- readMemDSTag
+        v <- readBrackets unpackValue
+        case n of 
+          "MemDS"    -> return $ InMemDS . MemDS . ListMDS            <$> sequence v
+          "SeqDS"    -> return $ InMemDS . SeqDS . ListMDS            <$> sequence v
+          "SetDS"    -> return $ InMemDS . SetDS . SetAsOrdListMDS    <$> sequence v
+          "SortedDS" -> return $ InMemDS . SortedDS . BagAsOrdListMDS <$> sequence v
+          _ -> pfail
+      )
+      +++
+      (parens $ do
         void $ readExpectedName "ExternalDS"
         String filename <- lexP
         return $ rt $ ExternalDS $ FileDataspace filename
@@ -524,6 +555,12 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
       Ident n  <- lexP
       Punc "=" <- lexP
       return n
+
+    readMemDSTag :: ReadPrec String
+    readMemDSTag = do
+        Ident n  <- lexP
+        if n `elem` ["MemDS","SeqDS","SetDS","SortedDS"]
+        then return n else pfail
 
     readParens   = readCustomList "(" ")" ","
     readBraces   = readCustomList "{" "}" ","

@@ -22,5 +22,4 @@ annotation Collection given type a, b {
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})
                              -> collection {elem : a} @ {Collection}
 
-  provides lifted sort : (content -> content -> int) -> self
 }

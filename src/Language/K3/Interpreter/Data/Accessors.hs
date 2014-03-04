@@ -163,3 +163,16 @@ appendAliasExtension n = modifyBindStack_ pushBindAliasExtension
         pushBindAliasExtension bs = case last bs of
           Just bindpath -> return $ init bs ++ [Just $ bindpath++[RecordField n]]
           Nothing       -> throwE $ RunTimeInterpretationError "No bind alias found for extension"
+
+{- Dataspace accessors -}
+listOfMemDS :: PrimitiveMDS v -> Maybe [v]
+listOfMemDS (MemDS    (ListMDS v))         = Just v
+listOfMemDS (SeqDS    (ListMDS v))         = Just v
+listOfMemDS (SetDS    (SetAsOrdListMDS v)) = Just v
+listOfMemDS (SortedDS (BagAsOrdListMDS v)) = Just v
+
+typeTagOfMemDS :: PrimitiveMDS v -> String
+typeTagOfMemDS (MemDS    _) = "MemDS"
+typeTagOfMemDS (SeqDS    _) = "SeqDS"
+typeTagOfMemDS (SetDS    _) = "SetDS"
+typeTagOfMemDS (SortedDS _) = "SortedDS"

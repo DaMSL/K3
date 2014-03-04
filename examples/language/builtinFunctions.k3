@@ -1,4 +1,5 @@
 include "Core/Builtins.k3"
+include "Annotation/Seq.k3"
 
 declare randInt  : mut int = 0
 declare randReal : mut real = 0.0
@@ -7,7 +8,7 @@ declare modReal  : mut int = 0
 
 declare rangeC   : mut collection {i : int} @ {Collection} = empty {i:int} @ {Collection}
 declare sumC     : mut int = 0
-declare sortC    : mut collection {i : int} @ {Collection} = {|i:int| 4,3,2 |} @ {Collection} 
+declare sortC    : mut collection {i : int} @ {Seq} = {|i:int| 4,3,2 |} @ {Seq} 
 
 declare hashC    : mut int = 0
 declare hashS    : mut int = 0

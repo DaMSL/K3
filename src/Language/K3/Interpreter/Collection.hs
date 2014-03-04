@@ -31,8 +31,22 @@ import Language.K3.Runtime.Dataspace
 collectionAnnotationId :: Identifier
 collectionAnnotationId = "Collection"
 
+sequentialAnnotationId :: Identifier
+sequentialAnnotationId = "Seq"
+
+setAnnotationId :: Identifier
+setAnnotationId = "Set"
+
+sortedAnnotationId :: Identifier
+sortedAnnotationId = "Sorted"
+
 externalAnnotationId :: Identifier
 externalAnnotationId = "External"
+
+dataspaceAnnotationIds :: [Identifier]
+dataspaceAnnotationIds =
+  [collectionAnnotationId, sequentialAnnotationId,
+   setAnnotationId, sortedAnnotationId, externalAnnotationId]
 
 annotationSelfId :: Identifier
 annotationSelfId = "self"
@@ -63,16 +77,24 @@ emptyCollectionNamespace :: CollectionNamespace Value
 emptyCollectionNamespace = CollectionNamespace [] []
 
 emptyDataspace :: [Identifier] -> Interpretation (CollectionDataspace Value)
-emptyDataspace annIds = 
-  if externalAnnotationId `elem` annIds
-    then emptyDS Nothing >>= return . ExternalDS
-    else emptyDS Nothing >>= return . InMemoryDS
+emptyDataspace annIds = case annIds `intersect` dataspaceAnnotationIds of
+  []                                -> emptyDS Nothing >>= return . InMemDS . MemDS
+  [x] | x == collectionAnnotationId -> emptyDS Nothing >>= return . InMemDS . MemDS
+  [x] | x == sequentialAnnotationId -> emptyDS Nothing >>= return . InMemDS . SeqDS
+  [x] | x == setAnnotationId        -> emptyDS Nothing >>= return . InMemDS . SetDS
+  [x] | x == sortedAnnotationId     -> emptyDS Nothing >>= return . InMemDS . SortedDS
+  [x] | x == externalAnnotationId   -> emptyDS Nothing >>= return . ExternalDS
+  _   -> throwE $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
 
 initialDataspace :: [Identifier] -> [Value] -> Interpretation (CollectionDataspace Value)
-initialDataspace annIds vals =
-  if externalAnnotationId `elem` annIds
-    then initialDS vals Nothing >>= return . ExternalDS
-    else initialDS vals Nothing >>= return . InMemoryDS
+initialDataspace annIds vals = case annIds `intersect` dataspaceAnnotationIds of
+  []                                -> initialDS vals Nothing >>= return . InMemDS . MemDS
+  [x] | x == collectionAnnotationId -> initialDS vals Nothing >>= return . InMemDS . MemDS
+  [x] | x == sequentialAnnotationId -> initialDS vals Nothing >>= return . InMemDS . SeqDS
+  [x] | x == setAnnotationId        -> initialDS vals Nothing >>= return . InMemDS . SetDS
+  [x] | x == sortedAnnotationId     -> initialDS vals Nothing >>= return . InMemDS . SortedDS
+  [x] | x == externalAnnotationId   -> initialDS vals Nothing >>= return . ExternalDS
+  _   -> throwE $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
 
 -- | Create collections with empty namespaces
 emptyCollectionBody :: [Identifier] -> Interpretation (Collection Value)

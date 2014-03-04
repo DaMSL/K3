@@ -331,6 +331,8 @@ expression e_ =
             Nothing -> unknownCollectionMember i (map fst $ collectionNS ns)
             Just v' -> return v'
 
+        v -> liftIO (packValueSyntax False v) >>= throwE . RunTimeTypeError . ("Invalid projection on value: "++)
+
       where unknownField i' = throwE $ RunTimeTypeError $ "Unknown record field " ++ i'
             unannotatedCollection = throwE $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
             unknownCollectionMember i' n = throwE $ RunTimeTypeError $ "Unknown collection member " ++ i' ++ "(valid " ++ show n ++ ")"

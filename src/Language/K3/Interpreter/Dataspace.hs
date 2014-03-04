@@ -7,11 +7,15 @@
 module Language.K3.Interpreter.Dataspace where
 
 import Control.Monad
+
+import Data.Function
 import Data.List
+import qualified Data.List.Ordered as OrdList ( unionBy )
+import Data.List.Ordered
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
-import Language.K3.Interpreter.Values()
+import Language.K3.Interpreter.Values
 
 import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.FileDataspace
@@ -37,6 +41,7 @@ instance (Monad m) => Dataspace m [Value] Value where
   splitDS l        = return $ if length l <= threshold then (l, []) else splitAt (length l `quot` 2) l
     where threshold = 10
 
+instance (Monad m) => SequentialDataspace m [Value] Value where
   -- | Sort a list dataspace.
   --   Since the comparator can have side effects, we must write our own sorting algorithm.
   --   TODO: improve performance.
@@ -46,12 +51,210 @@ instance (Monad m) => Dataspace m [Value] Value where
     let (a, b) = splitAt (length ls `quot` 2) ls
     a' <- sortDS cmpF a
     b' <- sortDS cmpF b
-    merge a' b'
-    where merge [] bs = return bs
-          merge as [] = return as
-          merge (a:as) (b:bs) = cmpF a b >>= \case
-              LT -> return . (a:) =<< merge as (b:bs)
-              _  -> return . (b:) =<< merge (a:as) bs
+    mergeLM a' b'
+    where mergeLM [] bs = return bs
+          mergeLM as [] = return as
+          mergeLM (a:as) (b:bs) = cmpF a b >>= \case
+              LT -> return . (a:) =<< mergeLM as (b:bs)
+              _  -> return . (b:) =<< mergeLM (a:as) bs
+
+
+{- In-memory dataspace instances -}
+
+instance (Monad m) => Dataspace m (ListMDS Value) Value where
+  emptyDS _                  = return $ ListMDS []
+  initialDS vals _           = return $ ListMDS vals
+  copyDS (ListMDS ls)        = return $ ListMDS ls
+  
+  peekDS (ListMDS [])        = return Nothing
+  peekDS (ListMDS (h:_))     = return $ Just h
+  
+  insertDS (ListMDS ls) v    = return $ ListMDS $ ls ++ [v]
+  deleteDS v (ListMDS ls)    = return $ ListMDS $ delete v ls
+  updateDS v v' (ListMDS ls) = return $ ListMDS $ (delete v ls) ++ [v']
+  
+  foldDS acc acc_init (ListMDS ls) = foldM acc acc_init ls
+  mapDS f (ListMDS ls)             = return . ListMDS =<< mapM f ls
+  mapDS_  f (ListMDS ls)           = mapM_ f ls
+  filterDS  f (ListMDS ls)         = return . ListMDS =<< filterM f ls
+  
+  combineDS (ListMDS l) (ListMDS r) = return $ ListMDS $ l ++ r
+  
+  splitDS (ListMDS l) = return $ uncurry ((,) `on` ListMDS) $
+      if length l <= threshold then (l, [])
+                               else splitAt (length l `quot` 2) l
+    where threshold = 10
+
+instance (Monad m) => SequentialDataspace m (ListMDS Value) Value where
+  -- | Sort a list dataspace.
+  --   Since the comparator can have side effects, we must write our own sorting algorithm.
+  --   TODO: improve performance.
+  sortDS _ (ListMDS [])     = return $ ListMDS []
+  sortDS _ (ListMDS [x])    = return $ ListMDS [x]
+  sortDS cmpF (ListMDS ls)  = do
+    let (a, b) = splitAt (length ls `quot` 2) ls
+    (ListMDS a') <- sortDS cmpF $ ListMDS a
+    (ListMDS b') <- sortDS cmpF $ ListMDS b
+    return . ListMDS =<< mergeLM a' b'
+    where mergeLM [] bs = return bs
+          mergeLM as [] = return as
+          mergeLM (a:as) (b:bs) = cmpF a b >>= \case
+              LT -> return . (a:) =<< mergeLM as (b:bs)
+              _  -> return . (b:) =<< mergeLM (a:as) bs
+
+
+-- | Set dataspace
+instance OrdM Interpretation Value where
+  compareV v1 v2 = valueCompare v1 v2 >>= \(VInt sgn) -> return $ 
+    if sgn < 0 then LT else if sgn == 0 then EQ else GT
+
+instance (Monad m) => Dataspace m (SetAsOrdListMDS Value) Value where
+  emptyDS _                      = return $ SetAsOrdListMDS []
+  initialDS vals _               = return $ SetAsOrdListMDS vals
+  copyDS (SetAsOrdListMDS ls)    = return $ SetAsOrdListMDS ls
+
+  peekDS (SetAsOrdListMDS [])    = return Nothing
+  peekDS (SetAsOrdListMDS (h:_)) = return $ Just h
+
+  -- TODO: implement compare for VCollections or use compareV
+  insertDS (SetAsOrdListMDS ls) v    = return $ SetAsOrdListMDS $ insertSetBy compare v ls
+  deleteDS v (SetAsOrdListMDS ls)    = return $ SetAsOrdListMDS $ deleteBy (\v1 v2 -> compare v1 v2 == EQ) v ls
+  updateDS v v' (SetAsOrdListMDS ls) = return $ SetAsOrdListMDS $ insertSetBy compare v' (deleteBy (\v1 v2 -> compare v1 v2 == EQ) v ls)
+
+  foldDS acc acc_init (SetAsOrdListMDS ls) = foldM acc acc_init ls
+  mapDS f (SetAsOrdListMDS ls)             = return . SetAsOrdListMDS =<< mapM f ls
+  mapDS_  f (SetAsOrdListMDS ls)           = mapM_ f ls
+  filterDS  f (SetAsOrdListMDS ls)         = return . SetAsOrdListMDS =<< filterM f ls
+
+  combineDS (SetAsOrdListMDS l) (SetAsOrdListMDS r) = return $ SetAsOrdListMDS $ OrdList.unionBy compare l r
+  
+  splitDS (SetAsOrdListMDS l) = return $ uncurry ((,) `on` SetAsOrdListMDS) $
+      if length l <= threshold then (l, [])
+                               else splitAt (length l `quot` 2) l
+    where threshold = 10
+
+
+instance SetDataspace Interpretation (SetAsOrdListMDS Value) Value where
+
+  memberDS v (SetAsOrdListMDS ls) = return $ memberBy compare v ls
+  isSubsetOfDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs) = return $ subsetBy compare ls rs
+  
+  unionDS = combineDS
+  
+  intersectDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs) = return . SetAsOrdListMDS $ isectBy compare ls rs 
+  differenceDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs)   = return . SetAsOrdListMDS $ minusBy compare ls rs
+
+
+instance SortedDataspace Interpretation (SetAsOrdListMDS Value) Value where
+
+  minDS (SetAsOrdListMDS []) = return Nothing
+  minDS (SetAsOrdListMDS ls) = return . Just $ head ls
+  
+  maxDS (SetAsOrdListMDS []) = return Nothing
+  maxDS (SetAsOrdListMDS ls) = return . Just $ last ls
+
+  -- TODO: implement Ord.compare for VCollections or use compareV
+  lowerBoundDS v (SetAsOrdListMDS ls) = 
+    case partition (\v2 -> compare v2 v == LT) ls of
+      ([],_) -> return Nothing
+      (x,_)  -> return . Just $ last x
+
+  upperBoundDS v (SetAsOrdListMDS ls) = 
+    case partition (\v2 -> compare v2 v == GT) ls of
+      ([],_) -> return Nothing
+      (x,_)  -> return . Just $ last x
+
+  sliceDS lowerV upperV (SetAsOrdListMDS ls) =
+    return . SetAsOrdListMDS . fst $
+      partition (\v -> all (`elem` [LT,EQ]) $ [compare lowerV v, compare v upperV]) ls
+
+
+-- | Bag dataspace
+instance (Monad m) => Dataspace m (BagAsOrdListMDS Value) Value where
+  emptyDS _                      = return $ BagAsOrdListMDS []
+  initialDS vals _               = return $ BagAsOrdListMDS vals
+  copyDS (BagAsOrdListMDS ls)    = return $ BagAsOrdListMDS ls
+
+  peekDS (BagAsOrdListMDS [])    = return Nothing
+  peekDS (BagAsOrdListMDS (h:_)) = return $ Just h
+
+  -- TODO: implement Ord.compare for VCollections or use compareV
+  insertDS (BagAsOrdListMDS ls) v    = return $ BagAsOrdListMDS $ insertBagBy compare v ls
+  deleteDS v (BagAsOrdListMDS ls)    = return $ BagAsOrdListMDS $ deleteBy (\v1 v2 -> compare v1 v2 == EQ) v ls
+  updateDS v v' (BagAsOrdListMDS ls) = return $ BagAsOrdListMDS $ insertBagBy compare v' (deleteBy (\v1 v2 -> compare v1 v2 == EQ) v ls)
+
+  foldDS acc acc_init (BagAsOrdListMDS ls) = foldM acc acc_init ls
+  mapDS f (BagAsOrdListMDS ls)             = return . BagAsOrdListMDS =<< mapM f ls
+  mapDS_  f (BagAsOrdListMDS ls)           = mapM_ f ls
+  filterDS  f (BagAsOrdListMDS ls)         = return . BagAsOrdListMDS =<< filterM f ls
+
+  combineDS (BagAsOrdListMDS l) (BagAsOrdListMDS r) = return $ BagAsOrdListMDS $ mergeBy compare l r
+  
+  splitDS (BagAsOrdListMDS l) = return $ uncurry ((,) `on` BagAsOrdListMDS) $
+      if length l <= threshold then (l, [])
+                               else splitAt (length l `quot` 2) l
+    where threshold = 10
+
+-- | Set-like interface with bag semantics
+instance SetDataspace Interpretation (BagAsOrdListMDS Value) Value where
+
+  memberDS v (BagAsOrdListMDS ls) = return $ memberBy compare v ls
+  isSubsetOfDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs) = return $ subsetBy compare ls rs
+  
+  unionDS = combineDS
+  
+  intersectDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs) = return . BagAsOrdListMDS $ isectBy compare ls rs 
+  differenceDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs)   = return . BagAsOrdListMDS $ minusBy compare ls rs
+
+
+instance SortedDataspace Interpretation (BagAsOrdListMDS Value) Value where
+
+  minDS (BagAsOrdListMDS []) = return Nothing
+  minDS (BagAsOrdListMDS ls) = return . Just $ head ls
+  
+  maxDS (BagAsOrdListMDS []) = return Nothing
+  maxDS (BagAsOrdListMDS ls) = return . Just $ last ls
+
+  -- TODO: implement compare for VCollections or use compareV
+  lowerBoundDS v (BagAsOrdListMDS ls) = 
+    case partition (\v2 -> compare v2 v == LT) ls of
+      ([],_) -> return Nothing
+      (x,_)  -> return . Just $ last x
+
+  upperBoundDS v (BagAsOrdListMDS ls) = 
+    case partition (\v2 -> compare v2 v == GT) ls of
+      ([],_) -> return Nothing
+      (x,_)  -> return . Just $ last x
+
+  sliceDS lowerV upperV (BagAsOrdListMDS ls) =
+    return . BagAsOrdListMDS . fst $
+      partition (\v -> all (`elem` [LT,EQ]) $ [compare lowerV v, compare v upperV]) ls
+
+
+-- | Splice in chained dataspace and sequential dataspace instances for the PrimitiveMDS
+$(dsChainInstanceGenerator 
+  [| (throwE . RunTimeInterpretationError) |]
+  [ ([t|Dataspace Interpretation (PrimitiveMDS Value) Value|]
+    , "Dataspace"
+    , [("MemDS", "lst"), ("SeqDS", "lst"), ("SetDS", "lst"), ("SortedDS", "lst")]
+    , "MemDS", False)
+  
+  , ([t|SequentialDataspace Interpretation (PrimitiveMDS Value) Value|]
+    , "SequentialDataspace"
+    , [("SeqDS", "lst")]
+    , "SeqDS", True) 
+  
+  , ([t|SetDataspace Interpretation (PrimitiveMDS Value) Value|]
+    , "SetDataspace"
+    , [("SetDS", "lst"), ("SortedDS", "lst")]
+    , "SetDS", True)
+
+  , ([t|SortedDataspace Interpretation (PrimitiveMDS Value) Value|]
+    , "SortedDataspace"
+    , [("SetDS", "lst"), ("SortedDS", "lst")]
+    , "SortedDS", True)
+  ])
+
 
 {- TODO have the engine delete all the collection files in it's cleanup
  - generalize Value -> b (in EngineM b), and monad -> engine
@@ -72,62 +275,33 @@ instance Dataspace Interpretation (FileDataspace Value) Value where
   filterDS         = filterFile liftEngine
   combineDS        = combineFile liftEngine
   splitDS          = splitFile liftEngine
-  sortDS           = sortFile liftEngine
 
--- | Splice in chained dataspace instance for the CollectionDataspace
-$(dsChainInstanceGenerator
-    [t|Interpretation|] [t|CollectionDataspace Value|] [t|Value|]
-    [| (throwE . RunTimeInterpretationError) |]
-    [("InMemoryDS", "lst"), ("ExternalDS", "f")] "InMemoryDS")
+instance SequentialDataspace Interpretation (FileDataspace Value) Value where
+  sortDS = sortFile liftEngine
 
-{-
-instance Dataspace Interpretation (CollectionDataspace Value) Value where
-  emptyDS Nothing                 = (emptyDS Nothing)    >>= return . InMemoryDS
-  emptyDS (Just (InMemoryDS lst)) = (emptyDS (Just lst)) >>= return . InMemoryDS
-  emptyDS (Just (ExternalDS f))   = (emptyDS (Just f))   >>= return . ExternalDS
+-- | Splice in chained dataspace and sequential dataspace instances for the PrimitiveMDS
+$(dsChainInstanceGenerator 
+  [| (throwE . RunTimeInterpretationError) |]
+  [ ([t|Dataspace Interpretation (CollectionDataspace Value) Value|]
+    , "Dataspace"
+    , [("InMemoryDS", "lst"), ("ExternalDS", "f"), ("InMemDS", "mds")]
+    , "InMemoryDS", False)
+  
+  , ([t|SequentialDataspace Interpretation (CollectionDataspace Value) Value|]
+    , "SequentialDataspace"
+    , [("InMemoryDS", "lst"), ("ExternalDS", "f"), ("InMemDS", "mds")]
+    , "InMemoryDS", False) 
 
-  initialDS vals Nothing                 = (initialDS vals Nothing)    >>= return . InMemoryDS
-  initialDS vals (Just (InMemoryDS lst)) = (initialDS vals (Just lst)) >>= return . InMemoryDS
-  initialDS vals (Just (ExternalDS f))   = (initialDS vals (Just f))   >>= return . ExternalDS
+  , ([t|SetDataspace Interpretation (CollectionDataspace Value) Value|]
+    , "SetDataspace"
+    , [("InMemDS", "mds")]
+    , "InMemDS", True)
 
-  copyDS (InMemoryDS lst) = copyDS lst >>= return . InMemoryDS 
-  copyDS (ExternalDS f)   = copyDS f   >>= return . ExternalDS
-
-  peekDS (InMemoryDS lst) = peekDS lst
-  peekDS (ExternalDS f)   = peekDS f
-
-  insertDS (InMemoryDS lst) val = insertDS lst val >>= return . InMemoryDS 
-  insertDS (ExternalDS f)   val = insertDS f   val >>= return . ExternalDS
-
-  deleteDS val (InMemoryDS lst) = deleteDS val lst >>= return . InMemoryDS 
-  deleteDS val (ExternalDS f)   = deleteDS val f   >>= return . ExternalDS
-
-  updateDS v v' (InMemoryDS lst) = updateDS v v' lst >>= return . InMemoryDS 
-  updateDS v v' (ExternalDS f)   = updateDS v v' f   >>= return . ExternalDS
-
-  foldDS acc acc_init (InMemoryDS lst) = foldDS acc acc_init lst
-  foldDS acc acc_init (ExternalDS f)   = foldDS acc acc_init f
-
-  mapDS func (InMemoryDS lst) = mapDS func lst >>= return . InMemoryDS 
-  mapDS func (ExternalDS f)   = mapDS func f   >>= return . ExternalDS
-
-  mapDS_ func (InMemoryDS lst) = mapDS_ func lst
-  mapDS_ func (ExternalDS f)   = mapDS_ func f
-
-  filterDS func (InMemoryDS lst) = filterDS func lst >>= return . InMemoryDS 
-  filterDS func (ExternalDS f)   = filterDS func f   >>= return . ExternalDS
-
-  combineDS (InMemoryDS l_lst) (InMemoryDS r_lst) = combineDS l_lst r_lst >>= return . InMemoryDS 
-  combineDS (ExternalDS l_f)   (ExternalDS r_f)   = combineDS l_f   r_f   >>= return . ExternalDS
-  combineDS _ _ = throwE $ RunTimeInterpretationError "Mismatched collection types in combine"
-    -- TODO Could combine an in memory store and an external store into an external store
-
-  splitDS (InMemoryDS lst) = splitDS lst >>= \(l,r) -> return (InMemoryDS l, InMemoryDS r)
-  splitDS (ExternalDS f)   = splitDS f   >>= \(l,r) -> return (ExternalDS l, ExternalDS r)
-
-  sortDS sortF (InMemoryDS lst) = sortDS sortF lst >>= return . InMemoryDS
-  sortDS sortF (ExternalDS f)   = sortDS sortF f   >>= return . ExternalDS
--}
+  , ([t|SortedDataspace Interpretation (CollectionDataspace Value) Value|]
+    , "SortedDataspace"
+    , [("InMemDS", "mds")]
+    , "InMemDS", True)
+  ])
 
 
 {- moves to Runtime/Dataspace.hs -}
@@ -150,9 +324,9 @@ instance EmbeddedKV Interpretation Value Value where
 instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
   lookupKV ds key = 
     foldDS (\result cur_val ->  do
-      (cur_key, cur_val) <- matchPair cur_val
+      (match_key, match_val) <- matchPair cur_val
       return $ case result of
-        Nothing -> if cur_key == key then Just cur_val else Nothing
+        Nothing -> if match_key == key then Just match_val else Nothing
         Just val -> Just val
      ) Nothing ds
   removeKV ds key _ =

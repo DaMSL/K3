@@ -3,6 +3,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Language.K3.Runtime.Dataspace (
+  OrdM,
+  compareV,
+
   Dataspace,
   emptyDS,
   initialDS,
@@ -17,8 +20,24 @@ module Language.K3.Runtime.Dataspace (
   filterDS,
   combineDS,
   splitDS,
-  sortDS,
   
+  SequentialDataspace,
+  sortDS,
+
+  SetDataspace,
+  memberDS,
+  isSubsetOfDS,
+  unionDS,
+  intersectDS,
+  differenceDS,
+
+  SortedDataspace,
+  minDS,
+  maxDS,
+  lowerBoundDS,
+  upperBoundDS,
+  sliceDS,
+
   EmbeddedKV,
   extractKey,
   embedKey,
@@ -32,10 +51,7 @@ module Language.K3.Runtime.Dataspace (
   dsChainInstanceGenerator
 ) where
 
-import Control.Applicative
-
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax ( returnQ )
 
 class (Monad m) => OrdM m v where
   compareV :: v -> v -> m Ordering
@@ -57,17 +73,16 @@ class (Monad m) => Dataspace m ds v | ds -> v where
   filterDS      :: ( v -> m Bool ) -> ds -> m ds
   combineDS     :: ds -> ds -> m ds
   splitDS       :: ds -> m (ds, ds)
-  sortDS        :: ( v -> v -> m Ordering ) -> ds -> m ds
 {- casting? -}
 
 class (Monad m, Dataspace m ds v) => SequentialDataspace m ds v where
-  sort2DS :: ( v -> v -> m Ordering ) -> ds -> m ds
+  sortDS :: ( v -> v -> m Ordering ) -> ds -> m ds
 
 class (Monad m, OrdM m v, Dataspace m ds v) => SetDataspace m ds v where
   memberDS       :: v  -> ds -> m Bool
   isSubsetOfDS   :: ds -> ds -> m Bool
   unionDS        :: ds -> ds -> m ds
-  intersectionDS :: ds -> ds -> m ds
+  intersectDS :: ds -> ds -> m ds
   differenceDS   :: ds -> ds -> m ds
 
 class (Monad m, OrdM m v, Dataspace m ds v) => SortedDataspace m ds v where
@@ -89,51 +104,79 @@ class (Monad m, Dataspace m ds v) => AssociativeDataspace m ds k v where
 
 
 -- | Dataspace instance generation via Template Haskell
-dsChainInstanceGenerator :: TypeQ -> TypeQ -> TypeQ -> ExpQ -> [(String, String)] -> String -> Q [Dec]
-dsChainInstanceGenerator mT dsT vT mErrorE dsInstances defaultInstance = do
-    let methodDecls = [ genMethod method | method <- methods ]
-    (:[]) <$> instanceD (cxt []) [t|Dataspace $(mT) $(dsT) $(vT)|] methodDecls
 
-  where 
-    methods = 
+dsChainInstanceGenerator :: ExpQ -> [(TypeQ, String, [(String, String)], String, Bool)] -> Q [Dec]
+dsChainInstanceGenerator mErrorE dsInstanceSpec =
+    mapM genInstance dsInstanceSpec
+  
+  where
+    genInstance (instT, instName, chainInstances, defaultChain, defaultPattern) = do
+      let instMethods  = maybe [] id $ lookup instName instanceMethods
+      let methodsToGen = filter (\(n,_,_,_,_) -> n `elem` instMethods) $ methods defaultChain defaultPattern
+      let methodDecls  = [ genMethod chainInstances method | method <- methodsToGen ]
+      instanceD (cxt []) instT methodDecls
+    
+    instanceMethods =
+      [ ("Dataspace",
+          ["emptyDS", "initialDS", "copyDS", "peekDS",
+           "insertDS", "deleteDS", "updateDS",
+           "foldDS", "mapDS", "mapDS_", "filterDS", "combineDS", "splitDS"])
+      
+      , ("SequentialDataspace", ["sortDS"])
+      
+      , ("SetDataspace", ["memberDS", "isSubsetOfDS", "unionDS", "intersectDS", "differenceDS"])
+      
+      , ("SortedDataspace", ["minDS", "maxDS", "lowerBoundDS", "upperBoundDS", "sliceDS"])
+      ]
+
+    methods defaultInstance defaultPattern = 
       [ chainConOM  "emptyDS" 
           [clause [[p|Nothing|]] (normalB [| (emptyDS Nothing) >>= return . $(conE $ mkName defaultInstance) |]) []]
-          []
+          $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
   
       , chainCon1OM "initialDS" "vals"
           [clause [(varP $ mkName "vals"),[p|Nothing|]]
             (normalB [| (initialDS $(varE $ mkName "vals") Nothing) >>= return . $(conE $ mkName defaultInstance) |]) []]
-          []
+          $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
 
-      , chainConM   "copyDS" [] []
-      , chainM      "peekDS" [] []
-      , chainCon1PM "insertDS" "val" [] []
-      , chainCon1M  "deleteDS" "val" [] []
-      , chainCon2M  "updateDS" "v" "v'" [] []
+      , chainConM   "copyDS"            [] $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
+      , chainM      "peekDS"            [] $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
+      , chainCon1PM "insertDS" "val"    [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainCon1M  "deleteDS" "val"    [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainCon2M  "updateDS" "v" "v'" [] $ if defaultPattern then [clause [[p|_|], [p|_|], [p|_|]] (normalB errorE) []] else []
       
-      , chain2M     "foldDS"   "acc" "acc_init" [] []
-      , chainCon1M  "mapDS"    "func" [] []
-      , chain1M     "mapDS_"   "func" [] []
-      , chainCon1M  "filterDS" "func" [] []
-      , chainCon1M  "sortDS"   "sortF" [] []
-
-      , ( "combineDS", (\(cn, vn) -> [ (iConPat cn ("l_"++vn))
-                                     , (iConPat cn ("r_"++vn)) ] )
-                     , (\(mn, cn, vn) ->
-                          [| $(varE $ mkName mn) $(varE (mkName $ "l_"++vn))
-                                                 $(varE (mkName $ "r_"++vn))
-                                >>= return . $(conE $ mkName cn) |])
-                     , []
-                     , [clause [[p|_|], [p|_|]] (normalB errorE) []] )
+      , chain2M     "foldDS"   "acc" "acc_init" [] $ if defaultPattern then [clause [[p|_|], [p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainCon1M  "mapDS"    "func"           [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chain1M     "mapDS_"   "func"           [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainCon1M  "filterDS" "func"           [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainBinConM "combineDS"                [] [clause [[p|_|], [p|_|]] (normalB errorE) []]
 
       , ( "splitDS"  , (\(cn, vn) -> [ (iConPat cn vn) ] )
                      , (\(mn, cn, vn) ->
                           [| $(varE $ mkName mn) $(varE $ mkName vn)
                                 >>= \(l,r) -> return ($(conE $ mkName cn) l, $(conE $ mkName cn) r) |])
-                     , [], [] )
+                     , [], if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else [] )
+
+      -- Sequential dataspace methods
+      , chainCon1M  "sortDS"   "sortF" [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+
+      -- Set dataspace methods
+      , chain1M      "memberDS" "val" [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainBinM    "isSubsetOfDS"   [] [clause [[p|_|], [p|_|]] (normalB errorE) []]
+      , chainBinConM "unionDS"        [] [clause [[p|_|], [p|_|]] (normalB errorE) []]
+      , chainBinConM "intersectDS" [] [clause [[p|_|], [p|_|]] (normalB errorE) []]
+      , chainBinConM "differenceDS"   [] [clause [[p|_|], [p|_|]] (normalB errorE) []]
+
+      -- Sorted dataspace methods
+      , chainM     "minDS"                     [] $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
+      , chainM     "maxDS"                     [] $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
+      , chain1M    "lowerBoundDS" "val"        [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chain1M    "upperBoundDS" "val"        [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
+      , chainCon2M "sliceDS" "lowerV" "upperV" [] $ if defaultPattern then [clause [[p|_|], [p|_|], [p|_|]] (normalB errorE) []] else []
+
       ]
 
-    genMethod (mn, argPatF, mExprF, preDecl, postDecl) = do
+    genMethod dsInstances (mn, argPatF, mExprF, preDecl, postDecl) = do
       let instClauses = concatMap (\(cn,vn) -> [clause (argPatF (cn, vn)) (normalB $ mExprF (mn, cn, vn)) []]) dsInstances
           clauses     = preDecl ++ instClauses ++ postDecl
       funD (mkName mn) clauses
@@ -141,9 +184,10 @@ dsChainInstanceGenerator mT dsT vT mErrorE dsInstances defaultInstance = do
     iConPat cn vn    = conP (mkName cn) [varP $ mkName vn]
     iConPatOpt cn vn = conP (mkName "Just") [conP (mkName cn) [varP $ mkName vn]]
 
-    app0E        = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) |])
+    app0E       = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) |])
     app1E an    = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName vn) |])
     app2E an bn = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName bn) $(varE $ mkName vn) |])
+    appBinE     = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName $ "l_"++vn) $(varE $ mkName $ "r_"++vn) |])
 
     appConE        = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) >>= return . $(conE $ mkName cn) |])
     appConOE       = (\(mn, cn, vn) -> [| $(varE $ mkName mn) (Just $(varE $ mkName vn)) >>= return . $(conE $ mkName cn) |])
@@ -151,13 +195,15 @@ dsChainInstanceGenerator mT dsT vT mErrorE dsInstances defaultInstance = do
     appCon1OE an   = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) (Just $(varE $ mkName vn)) >>= return . $(conE $ mkName cn) |])
     appCon1PE an   = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) $(varE $ mkName an) >>= return . $(conE $ mkName cn) |])
     appCon2E an bn = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName bn) $(varE $ mkName vn) >>= return . $(conE $ mkName cn) |])
+    appBinConE     = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName $ "l_"++vn) $(varE $ mkName $ "r_"++vn) >>= return . $(conE $ mkName cn) |])
 
-    errorE = [| $(mErrorE) "Mismatched collection types in combine" |]
+    errorE = [| $(mErrorE) "Unhandled dataspace operation" |]
 
     -- A method taking a dataspace (and 1-2 extra) argument, and chaining its function
     chainM n        pre post = ( n, (\(cn, vn) -> [ (iConPat cn vn) ] ), app0E , pre, post )
     chain1M n an    pre post = ( n, (\(cn, vn) -> [ (varP $ mkName an), (iConPat cn vn) ] ), app1E an, pre, post )
     chain2M n an bn pre post = ( n, (\(cn, vn) -> [ (varP $ mkName an), (varP $ mkName bn), (iConPat cn vn) ] ), app2E an bn, pre, post )
+    chainBinM n     pre post = ( n, (\(cn, vn) -> [ (iConPat cn $ "l_"++vn), (iConPat cn $ "r_"++vn) ]), appBinE, pre, post )
 
     -- A method taking a dataspace (and 1-2 extra) argument, chaining its function, and reconstructing its input type.
     chainConM n        pre post = ( n, (\(cn, vn) -> [ (iConPat cn vn) ] ), appConE, pre, post )
@@ -166,4 +212,4 @@ dsChainInstanceGenerator mT dsT vT mErrorE dsInstances defaultInstance = do
     chainCon1OM n an   pre post = ( n, (\(cn, vn) -> [ (varP $ mkName an), (iConPatOpt cn vn) ] ), appCon1OE an, pre, post )
     chainCon1PM n an   pre post = ( n, (\(cn, vn) -> [ (iConPat cn vn), (varP $ mkName an) ] ), appCon1PE an, pre, post )
     chainCon2M n an bn pre post = ( n, (\(cn, vn) -> [ (varP $ mkName an), (varP $ mkName bn), (iConPat cn vn) ] ), appCon2E an bn, pre, post )
-
+    chainBinConM n     pre post = ( n, (\(cn, vn) -> [ (iConPat cn $ "l_"++vn), (iConPat cn $ "r_"++vn) ]), appBinConE, pre, post )
