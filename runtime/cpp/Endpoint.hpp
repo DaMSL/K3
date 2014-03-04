@@ -136,13 +136,22 @@ namespace K3
       EndpointNotification nt = EndpointNotification::NullEvent;
       shared_ptr<Value> r;
 
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents ) { r = contents; }
-      if ( v ) {
+      // Read from the buffer (if possible)
+      if ( contents ) { r = contents;  }
+      
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if ( ioh->hasRead() ) {
+        shared_ptr<Value> v = ioh->doRead();
         contents = v;
         nt = (ioh->builtin() || ioh->file())?
                 EndpointNotification::FileData : EndpointNotification::SocketData;
+      }
+      else {
+        // Empty the buffer
+        contents = shared_ptr<BufferContents>();
       }      
+      // Return the value extracted from the buffer, along with EPNotification
       return make_tuple(r, nt);
     }
 
@@ -161,7 +170,7 @@ namespace K3
     ScalarEPBufferMT() : contents(*this) {}
 
     bool empty() { strict_lock<LockB> guard(*this); return !(contents.get(guard)); }
-    bool full() { strict_lock<LockB> guard(*this); return contents.get(guard); }
+    bool full() { strict_lock<LockB> guard(*this); return static_cast<bool>(contents.get(guard)); }
     size_t size() { strict_lock<LockB> guard(*this); return contents.get(guard)? 1 : 0; }
     size_t capacity () { return 1; }
 
@@ -179,8 +188,8 @@ namespace K3
     void enqueue(shared_ptr<MessageQueues<Value> > queues)
     {
       strict_lock<LockB> guard(*this);
-      if ( contents.get(guard) ) { 
-        queues->enqueue(*contents);
+      if ( shared_ptr<Value> r = contents.get(guard) ) { 
+        queues->enqueue(*r);
         contents.get(guard).reset();
       }
     }
@@ -203,15 +212,23 @@ namespace K3
     {
       strict_lock<LockB> guard(*this);
       EndpointNotification nt = EndpointNotification::NullEvent;
+      
+      // Read from the buffer (if possible)
       shared_ptr<Value> r;
-
-      shared_ptr<Value> v = ioh->doRead();
       if ( contents.get(guard) ) { r = contents.get(guard); }
-      if ( v ) {
+
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if ( ioh->hasRead() ) {
+        shared_ptr<Value> v = ioh->doRead();
         contents.get(guard) = v;
         nt = (ioh->builtin() || ioh->file())?
                 EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
+      } 
+      else {
+        // Empty the buffer
+        contents.get(guard) = shared_ptr<Value>();
+      } 
       return make_tuple(r, nt);
     }
 
@@ -251,7 +268,7 @@ namespace K3
       shared_ptr<Value> r;
       if ( contents ) {
         if ( this->full() ) { r = v; }
-        else { contents->push_back(v); }
+        else { contents->push_back(*v); }
       } else { r = v; }
       return r;
     }
@@ -273,7 +290,9 @@ namespace K3
       if ( contents && batchAvailable() ) {
         bool written = false;
         for (int i = batchSize(); i > 0; --i) {
-          ioh->doWrite(contents->pop_front());
+          auto v = contents->front();
+          contents->pop_front();
+          ioh->doWrite(v);
           written = true;
         }
         if ( written ) {
@@ -293,9 +312,14 @@ namespace K3
       EndpointNotification nt;
       shared_ptr<Value> r;
 
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents && !empty() ) { r = contents->pop_front(); }
-      if ( v ) {
+      if ( contents && !empty() ) { 
+        // Grab first element from list, then remove it.
+        // (pop_front has no return value)
+        r = make_shared<Value>(contents->front());
+        contents->pop_front();
+      }
+      if ( ioh->hasRead() ) {
+        shared_ptr<Value> v = ioh->doRead();
         append(v);
         nt = (ioh->builtin() || ioh->file())?
                 EndpointNotification::FileData : EndpointNotification::SocketData;
@@ -305,7 +329,7 @@ namespace K3
 
   protected:
     BufferSpec spec;
-    shared_ptr<list<Value> > contents;
+    shared_ptr<BufferContents > contents;
 
     int batchSize () { int r = bufferMaxSize(spec); return r <= 0? 1 : r; }
     bool batchAvailable() { return contents? contents->size() >= batchSize() : false; }
@@ -328,7 +352,7 @@ namespace K3
     
     ContainerEPBufferMT(BufferSpec s) : bclockable(), spec(s) {
       shared_ptr<BufferContents> cb = shared_ptr<BufferContents>(new BufferContents());
-      contents = shared_ptr<BufferContents>(new ConcurrentBufferContents(*this, cb));
+      contents = shared_ptr<ConcurrentBufferContents>(new ConcurrentBufferContents(*this, cb));
     }
 
     bool empty() { 
@@ -353,7 +377,7 @@ namespace K3
       bool r = false;
       if ( contents ) {
         int s = bufferMaxSize(spec);
-        r = s <= 0 ? contents->max_size() : s;
+        r = s <= 0 ? contents->get(guard)->max_size() : s;
       }
       return r;
     }
@@ -384,7 +408,10 @@ namespace K3
       if ( contents && batchAvailable(guard) ) {
         bool written = false;
         for (int i = batchSize(); i > 0; --i) {
-          ioh->doWrite(contents->get(guard)->pop_front());
+          auto v = contents->get(guard)->front();
+          contents->get(guard)->pop_front();
+          
+          ioh->doWrite(v);
           written = true;
         }
         if ( written ) {
@@ -405,9 +432,13 @@ namespace K3
       shared_ptr<Value> r;
       strict_lock<LockB> guard(*this);
 
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents && !empty(guard) ) { r = contents->get(guard)->pop_front(); }
-      if ( v ) {
+      if ( contents && !empty(guard) ) { 
+        r = make_shared<Value>(contents->get(guard)->front());
+        contents->get(guard)->pop_front();
+      }
+      
+      if ( ioh->hasRead() ) {
+        shared_ptr<Value> v = ioh->doRead();
         append(guard, v);
         nt = (ioh->builtin() || ioh->file())?
                 EndpointNotification::FileData : EndpointNotification::SocketData;
@@ -443,7 +474,7 @@ namespace K3
       shared_ptr<Value> r;
       if ( contents ) {
         if ( this->full(guard) ) { r = v; }
-        else { contents->push_back(v); }
+        else { contents->get(guard)->push_back(*v); }
       }
       return r;        
     }
@@ -525,7 +556,7 @@ namespace K3
              shared_ptr<EndpointBuffer<Value> > buf,
              shared_ptr<EndpointBindings<EventValue> > subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
-    {}
+    {buffer_->refresh(handle_);}
 
     shared_ptr<IOHandle<Value> > handle() { return handle_; }
     shared_ptr<EndpointBuffer<Value> > buffer() { return buffer_; }
@@ -533,7 +564,7 @@ namespace K3
 
     // An endpoint can be read if the handle can be read and the buffer isn't empty.
     bool hasRead() {
-        return handle_->hasRead() && !buffer_->empty();
+        return handle_->hasRead() || !buffer_->empty();
     }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
