@@ -302,8 +302,10 @@ instance Pretty Mode where
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr isPar) =
-    ["Batch"] ++ (indent 3 $ ["Network: " ++ show net] ++ prettySysEnv env ++ ["Expression: " ++ show expr] ++ ["Parallel: " ++ show isPar])
+  prettyLines (Batch net env expr par) =
+    ["Batch"] ++ (indent 3 $ ["Network: " ++ show net] ++ prettySysEnv env 
+                          ++ ["Expression: " ++ show expr]
+                          ++ ["Parallel: " ++ show par])
   
   prettyLines v = [show v]
 

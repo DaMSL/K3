@@ -32,15 +32,15 @@ setDefaultRole d _ _ = d
 
 
 runBatch :: Options -> InterpretOptions -> IO ()
-runBatch progOpts interpOpts@(Batch asNetwork _ _ isPar) = do
+runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) = do
     p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
         Right q -> if not asNetwork then do
-                      status <- runProgram isPar (sysEnv interpOpts) q
-                      void $ printError return status
+                      pStatus <- runProgram parallel (sysEnv interpOpts) q
+                      void $ printError return pStatus
                    else do
-                      nodeStatuses <- runNetwork isPar (sysEnv interpOpts) q
+                      nodeStatuses <- runNetwork parallel (sysEnv interpOpts) q
                       void $ mapM_ (printError printNode) nodeStatuses
 
   where printNode (addr, engine, threadid) = do
@@ -48,4 +48,6 @@ runBatch progOpts interpOpts@(Batch asNetwork _ _ isPar) = do
           readMVar (waitV $ control engine)
           void $ putStrLn $ "Node " ++ show addr ++ " finished."
 
-        printError validF status = either (\(EngineError s) -> putStrLn s) validF status
+        printError validF pStatus = either (\(EngineError s) -> putStrLn s) validF pStatus
+
+runBatch _ _ = error "Invalid batch processing mode"
