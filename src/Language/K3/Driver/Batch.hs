@@ -31,16 +31,17 @@ setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDe
 setDefaultRole d _ _ = d
 
 
-runBatch :: Options -> InterpretOptions -> IO ()
-runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) = do
+runBatch :: Options -> InterpretOptions -> (K3 Declaration -> K3 Declaration) -> IO ()
+runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) addPreloadVals = do
     p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
-        Right q -> if not asNetwork then do
-                      pStatus <- runProgram parallel (sysEnv interpOpts) q
+        Right q -> let q' = addPreloadVals q in
+                   if not asNetwork then do
+                      pStatus <- runProgram parallel (sysEnv interpOpts) q'
                       void $ printError return pStatus
                    else do
-                      nodeStatuses <- runNetwork parallel (sysEnv interpOpts) q
+                      nodeStatuses <- runNetwork parallel (sysEnv interpOpts) q'
                       void $ mapM_ (printError printNode) nodeStatuses
 
   where printNode (addr, engine, threadid) = do
@@ -48,6 +49,6 @@ runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) = do
           readMVar (waitV $ control engine)
           void $ putStrLn $ "Node " ++ show addr ++ " finished."
 
-        printError validF pStatus = either (\(EngineError s) -> putStrLn s) validF pStatus
+        printError validF pStatus = either (\error -> putStrLn $ show error) validF pStatus
 
 runBatch _ _ = error "Invalid batch processing mode"

@@ -20,7 +20,8 @@ data Options = Options {
         mode      :: Mode,
         inform    :: InfoSpec,
         paths     :: PathOptions,
-        input     :: FilePath
+        input     :: FilePath,
+        globals   :: [FilePath] -- global variables to load
     }
   deriving (Eq, Read, Show)
 
@@ -111,6 +112,16 @@ modeOptions = subparser (
         analyzeDesc   = "Analyze a K3 program"
 
         typeOptions = NilP $ Just Typecheck
+
+-- Used mostly for interpreting, but can be useful when printing as well
+globalOptions :: Parser [String]
+globalOptions = some $ option (
+        short 'g'
+     <> long "global"
+     <> reader str
+     <> help "Pre-initialize global variables"
+     <> metavar "GLOBAL" )
+
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -289,7 +300,7 @@ inputOptions = argument str (
 -- | Program Options Parsing.
 programOptions :: Parser Options
 programOptions = Options <$> modeOptions <*> informOptions
-                         <*> pathOptions <*> inputOptions
+                         <*> pathOptions <*> inputOptions <*> globalOptions
 
 
 {- Instance definitions -}
