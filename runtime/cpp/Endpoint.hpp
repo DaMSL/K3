@@ -33,9 +33,8 @@ namespace K3
 
   enum class EndpointNotification { NullEvent, FileData, FileClose, SocketAccept, SocketData, SocketClose };
 
-  template<typename Value, typename EventValue> class Endpoint;
-  template<typename Value, typename EventValue> using EndpointMap
-      = map<Identifier, shared_ptr<Endpoint<Value, EventValue> > >;
+  class Endpoint;
+  typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
@@ -62,7 +61,6 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  template<typename Value>
   class EndpointBuffer {
   public:
 
@@ -77,22 +75,21 @@ namespace K3
     virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
 
     // Transfers from this buffer into the given queues.
-    virtual void enqueue(shared_ptr<MessageQueues<Value> > queues) = 0;
+    virtual void enqueue(shared_ptr<MessageQueues> queues) = 0;
 
     // TODO
     // Writes the content of this buffer to the given IO handle. 
     // Returns a notification if the write is successfully performed.
-    virtual EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) = 0;
+    virtual EndpointNotification flush(shared_ptr<IOHandle> ioh) = 0;
     
     // Refresh this buffer by reading a value from the IO handle.
     // If the buffer is full, a value is returned. Also, a notification
     // is returned if the read is successfully performed.
     virtual tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh) = 0;
+    refresh(shared_ptr<IOHandle> ioh) = 0;
   };
 
-  template<typename Value>
-  class ScalarEPBufferST : public EndpointBuffer<Value>
+  class ScalarEPBufferST : public EndpointBuffer
   {
   public:
     typedef Value BufferContents;
@@ -111,15 +108,15 @@ namespace K3
       return r;
     }
 
-    // TODO: Value vs Message<Value> 
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
+    // TODO: Value vs Message
+    void enqueue(shared_ptr<MessageQueues> queues) {
       if ( contents ) { 
         queues->enqueue(*contents);
         contents.reset();
       }
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh)
+    EndpointNotification flush(shared_ptr<IOHandle> ioh)
     {
       EndpointNotification nt = EndpointNotification::NullEvent;
       if ( contents ) {
@@ -131,7 +128,7 @@ namespace K3
     }
 
     tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
+    refresh(shared_ptr<IOHandle> ioh)
     {
       EndpointNotification nt = EndpointNotification::NullEvent;
       shared_ptr<Value> r;
@@ -160,8 +157,7 @@ namespace K3
   };
 
 
-  template<typename Value>
-  class ScalarEPBufferMT : public EndpointBuffer<Value>, public basic_lockable_adapter<mutex>
+  class ScalarEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex>
   {
   public:
     typedef ScalarEPBufferMT LockB;
@@ -184,8 +180,8 @@ namespace K3
       return r;
     }
 
-    // TODO: Value vs Message<Value> 
-    void enqueue(shared_ptr<MessageQueues<Value> > queues)
+    // TODO: Value vs Message
+    void enqueue(shared_ptr<MessageQueues> queues)
     {
       strict_lock<LockB> guard(*this);
       if ( shared_ptr<Value> r = contents.get(guard) ) { 
@@ -194,7 +190,7 @@ namespace K3
       }
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh)
+    EndpointNotification flush(shared_ptr<IOHandle> ioh)
     {
       strict_lock<LockB> guard(*this);
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -208,7 +204,7 @@ namespace K3
     }
 
     tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
+    refresh(shared_ptr<IOHandle> ioh)
     {
       strict_lock<LockB> guard(*this);
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -237,8 +233,7 @@ namespace K3
   };
 
 
-  template<typename Value>
-  class ContainerEPBufferST : public EndpointBuffer<Value>
+  class ContainerEPBufferST : public EndpointBuffer
   {
   public:
     typedef list<Value> BufferContents;
@@ -273,9 +268,9 @@ namespace K3
       return r;
     }
 
-    // TODO: Value vs Message<Value>
+    // TODO: Value vs Message
     // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
+    void enqueue(shared_ptr<MessageQueues> queues) {
       if ( contents ) {
         for (auto v : *contents) { queues->enqueue(v); }
         contents->clear();
@@ -284,7 +279,7 @@ namespace K3
 
     // Writes the content of this buffer to the given IO handle. 
     // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) 
+    EndpointNotification flush(shared_ptr<IOHandle> ioh) 
     {
       EndpointNotification nt = EndpointNotification::NullEvent;
       if ( contents && batchAvailable() ) {
@@ -307,7 +302,7 @@ namespace K3
     // If the buffer is full, a value is returned. Also, a notification
     // is returned if the read is successfully performed.
     tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
+    refresh(shared_ptr<IOHandle> ioh)
     {
       EndpointNotification nt;
       shared_ptr<Value> r;
@@ -338,9 +333,7 @@ namespace K3
 
   // This is form of buffer used in the C++ listener since we must use thread-safe buffers.
   // This is because we may have multiple threads handling a connection (e.g., with Boost Asio's io_service).
-  template<typename Value>
-  class ContainerEPBufferMT : public EndpointBuffer<Value>,
-                              public basic_lockable_adapter<mutex>
+  class ContainerEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex>
   {
   public:
     typedef basic_lockable_adapter<mutex> bclockable;
@@ -388,9 +381,9 @@ namespace K3
       return append(guard, v);
     }
 
-    // TODO: Value vs Message<Value>
+    // TODO: Value vs Message
     // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
+    void enqueue(shared_ptr<MessageQueues> queues) {
       strict_lock<LockB> guard(*this);
       if ( contents ) {
         for (auto v : *(contents->get(guard))) { queues->enqueue(v); }
@@ -400,7 +393,7 @@ namespace K3
 
     // Writes the content of this buffer to the given IO handle. 
     // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) 
+    EndpointNotification flush(shared_ptr<IOHandle> ioh) 
     {
       EndpointNotification nt = EndpointNotification::NullEvent;
       strict_lock<LockB> guard(*this);
@@ -426,7 +419,7 @@ namespace K3
     // If the buffer is full, a value is returned. Also, a notification
     // is returned if the read is successfully performed.
     tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
+    refresh(shared_ptr<IOHandle> ioh)
     {
       EndpointNotification nt = EndpointNotification::NullEvent;
       shared_ptr<Value> r;
@@ -485,19 +478,18 @@ namespace K3
   //----------------------------
   // I/O event notifications.
 
-  template<typename Value>
   class EndpointBindings : public LogMT
   {
   public:
     // TODO: value or value ref? Synchronize with Engine.hpp
     typedef std::function<void(const Address&,const Identifier&,const Value&)> SendFunctionPtr;
 
-    typedef list<Message<Value> > Subscribers;
+    typedef list<Message> Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, shared_ptr<Message<Value> > subscriber)
+    void attachNotifier(EndpointNotification nt, shared_ptr<Message> subscriber)
     {
       if ( subscriber ) {
         shared_ptr<Subscribers> s = eventSubscriptions[nt];
@@ -518,7 +510,7 @@ namespace K3
         shared_ptr<Subscribers> s = it->second;
         if ( s ) { 
           s->remove_if(
-            [&subId, &subAddr](const Message<Value>& m){
+            [&subId, &subAddr](const Message& m){
               return m.id() == subId && m.address() == subAddr;
             });
         }
@@ -531,7 +523,7 @@ namespace K3
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
         if ( s ) {
-          for (const Message<Value>& sub : *s) {
+          for (const Message& sub : *s) {
             sendFn(sub.address(), sub.id(), sub.contents());
           }
         }
@@ -548,19 +540,20 @@ namespace K3
   //---------------------------------
   // Endpoints and their containers.
 
-  template<typename Value, typename EventValue>
   class Endpoint
   {
   public:
-    Endpoint(shared_ptr<IOHandle<Value> > ioh,
-             shared_ptr<EndpointBuffer<Value> > buf,
-             shared_ptr<EndpointBindings<EventValue> > subs)
+    Endpoint(shared_ptr<IOHandle> ioh,
+             shared_ptr<EndpointBuffer> buf,
+             shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
-    {buffer_->refresh(handle_);}
+    {
+      buffer_->refresh(handle_); 
+    }
 
-    shared_ptr<IOHandle<Value> > handle() { return handle_; }
-    shared_ptr<EndpointBuffer<Value> > buffer() { return buffer_; }
-    shared_ptr<EndpointBindings<EventValue> > subscribers() { return subscribers_; }
+    shared_ptr<IOHandle> handle() { return handle_; }
+    shared_ptr<EndpointBuffer> buffer() { return buffer_; }
+    shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
     // An endpoint can be read if the handle can be read and the buffer isn't empty.
     bool hasRead() {
@@ -596,32 +589,30 @@ namespace K3
     }
 
   protected:
-    shared_ptr<IOHandle<Value> > handle_;
-    shared_ptr<EndpointBuffer<Value> > buffer_;
-    shared_ptr<EndpointBindings<EventValue> > subscribers_;
+    shared_ptr<IOHandle> handle_;
+    shared_ptr<EndpointBuffer> buffer_;
+    shared_ptr<EndpointBindings> subscribers_;
   };
 
-  template<typename Value>
   class EndpointState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
   {
   public:
     typedef shared_lockable_adapter<shared_mutex> eplockable;
     
-    template<typename EndpointValue> using ConcurrentEndpointMap =
-      externally_locked<shared_ptr<EndpointMap<EndpointValue, Value> >, EndpointState>;
-    
-    template<typename EndpointValue>
-    using EndpointDetails = tuple<shared_ptr<IOHandle<EndpointValue> >, 
-                                  shared_ptr<EndpointBuffer<EndpointValue> >,
-                                  shared_ptr<EndpointBindings<Value> > >;
+    using ConcurrentEndpointMap =
+      externally_locked<shared_ptr<EndpointMap, EndpointState>;
+
+    using EndpointDetails = tuple<shared_ptr<IOHandle>, 
+                                  shared_ptr<EndpointBuffer>,
+                                  shared_ptr<EndpointBindings> >;
 
     EndpointState() 
       : eplockable(), LogMT("EndpointState"),
-        internalEndpoints(emptyEndpointMap<Message<Value> >()),
-        externalEndpoints(emptyEndpointMap<Value>())
+        internalEndpoints(emptyEndpointMap()),
+        externalEndpoints(emptyEndpointMap())
     {}
 
-    void addEndpoint(Identifier id, EndpointDetails<Message<Value> > details) {
+    void addEndpoint(Identifier id, EndpointDetails details) {
       if ( !externalEndpointId(id) ) { 
         addEndpoint(id, details, internalEndpoints); 
       } else { 
@@ -631,7 +622,7 @@ namespace K3
       }
     }
 
-    void addEndpoint(Identifier id, EndpointDetails<Value> details) {
+    void addEndpoint(Identifier id, EndpointDetails details) {
       if ( externalEndpointId(id) ) {
         addEndpoint(id, details, externalEndpoints);
       } else {
@@ -643,19 +634,19 @@ namespace K3
 
     void removeEndpoint(Identifier id) { 
       if ( !externalEndpointId(id) ) { 
-        removeEndpoint<Value>(id, externalEndpoints);
+        removeEndpoint(id, externalEndpoints);
       } else { 
-        removeEndpoint<Message<Value> >(id, internalEndpoints);
+        removeEndpoint(id, internalEndpoints);
       }
     }
 
     // TODO: endpoint id validation.
-    shared_ptr<Endpoint<Message<Value>, Value> > getInternalEndpoint(Identifier id) {
-      return getEndpoint<Message<Value> >(id, internalEndpoints);
+    shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
+      return getEndpoint(id, internalEndpoints);
     }
 
-    shared_ptr<Endpoint<Value, Value> > getExternalEndpoint(Identifier id) {
-      return getEndpoint<Value>(id, externalEndpoints);
+    shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
+      return getEndpoint(id, externalEndpoints);
     }
 
     size_t numEndpoints() {
@@ -664,33 +655,25 @@ namespace K3
     }
 
   protected:
-    shared_ptr<ConcurrentEndpointMap<Message<Value> > > internalEndpoints;
-    shared_ptr<ConcurrentEndpointMap<Value> >           externalEndpoints;
+    shared_ptr<ConcurrentEndpointMap> internalEndpoints;
+    shared_ptr<ConcurrentEndpointMap> externalEndpoints;
 
-    template<typename EndpointValue>
-    shared_ptr<ConcurrentEndpointMap<EndpointValue> > 
-    emptyEndpointMap()
+    shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
     {
-      shared_ptr<EndpointMap<EndpointValue, Value> > m =
-        shared_ptr<EndpointMap<EndpointValue, Value> >(
-          new EndpointMap<EndpointValue, Value>());
-
-      return shared_ptr<ConcurrentEndpointMap<EndpointValue> >(
-              new ConcurrentEndpointMap<EndpointValue>(*this, m));
+      shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
+      return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
     }
 
 
-    template<typename EndpointValue>
-    void addEndpoint(Identifier id, EndpointDetails<EndpointValue> details,
-                     shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    void addEndpoint(Identifier id, EndpointDetails details,
+                     shared_ptr<ConcurrentEndpointMap> epMap)
     {
       strict_lock<EndpointState> guard(*this);
       auto lb = epMap->get(guard)->lower_bound(id);
       if ( lb == epMap->get(guard)->end() || id != lb->first )
       {
-        shared_ptr<Endpoint<EndpointValue, Value> > ep =
-          shared_ptr<Endpoint<EndpointValue, Value> >(
-            new Endpoint<EndpointValue, Value>(get<0>(details), get<1>(details), get<2>(details)));
+        shared_ptr<Endpoint> ep =
+          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
 
         epMap->get(guard)->insert(lb, make_pair(id, ep));
       } else {
@@ -698,19 +681,17 @@ namespace K3
       }
     }
 
-    template<typename EndpointValue>
-    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       strict_lock<EndpointState> guard(*this);
       epMap->get(guard)->erase(id);
     }
 
-    template<typename EndpointValue>
-    shared_ptr<Endpoint<EndpointValue, Value> > 
-    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    shared_ptr<Endpoint> 
+    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       shared_lock_guard<EndpointState> guard(*this);
-      shared_ptr<Endpoint<EndpointValue, Value> > r;
+      shared_ptr<Endpoint> r;
       auto it = epMap->get(guard)->find(id);
       if ( it != epMap->get(guard)->end() ) { r = it->second; }
       return r;
