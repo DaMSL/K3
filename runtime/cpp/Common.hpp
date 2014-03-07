@@ -95,7 +95,6 @@ namespace K3 {
   //-------------
   // Messages.
 
-  template<typename Value>
   class Message : public tuple<Address, Identifier, Value> {
   public:
     Message(Address addr, Identifier id, const Value& v)
@@ -211,7 +210,7 @@ namespace K3 {
       Codec(): LogMT("Codec") {}
 
       virtual Value encode(Value) = 0;
-      virtual Value decode(Value) = 0;
+      virtual shared_ptr<Value> decode(Value) = 0;
   };
 }
 
