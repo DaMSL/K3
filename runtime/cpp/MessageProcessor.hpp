@@ -12,55 +12,55 @@ namespace K3
 
   template <typename Error, typename Result>
   class MPStatus {
-      public:
-          MPStatus tag;
-          Error error;
-          Result result;
-  }
+  public:
+    MPStatus tag;
+    Error error;
+    Result result;
+  };
 
-  template<typename Environment, typename Value>
-  class MessageProcessor {
+  template<typename Environment>
+  class MessageProcessor 
+  {
   public:
     MessageProcessor(Environment e): env(e), _status(MPStatus::Continue) {}
     virtual void initialize() {}
     virtual void finalize() {}
-    virtual void MPStatus process(Message<Value> msg) = 0;
+    virtual void MPStatus process(Message msg) = 0;
     MPStatus status() { return _status };
 
     Environment env;
     MPStatus _status;
-
   };
 
   // Message Processor used by generated code. Processing is done by dispatch messages using a
   // generated table of triggers. The trigger wrapper functions perform the deserialization of the
   // message payload themeselves.
-  template <typename Value>
   class DispatchMessageProcessor : public MessageProcessor {
   public:
     DispatchMessageProcessor(TriggerDispatch td): table(td) {}
 
-    MPStatus process(Message<Value> msg) {
+    MPStatus process(Message msg)
+    {
+      TriggerWrapper tw;
 
-        TriggerWrapper tw;
+      // Look the trigger up in the dispatch table, error out if not present.
+      try {
+          tw = table.at(msg.id());
+      } catch (std::out_of_range e) {
+          return LoopStatus::Error;
+      }
 
-        // Look the trigger up in the dispatch table, error out if not present.
-        try {
-            tw = table.at(msg.id());
-        } catch (std::out_of_range e) {
-            return LoopStatus::Error;
-        }
+      // Call the trigger.
+      tw(msg.contents());
 
-        // Call the trigger.
-        tw(msg.contents());
-
-        // Message was processed, signal the engine to continue.
-        // TODO: Propagate trigger errors to engine, K3 error semantics?
-        return LoopStatus::Continue;
+      // Message was processed, signal the engine to continue.
+      // TODO: Propagate trigger errors to engine, K3 error semantics?
+      return LoopStatus::Continue;
     }
+
   private:
     TriggerDispatch table;
-  }
+  };
 }
 
 #endif
