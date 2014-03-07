@@ -211,7 +211,7 @@ namespace K3 {
       Codec(): LogMT("Codec") {}
 
       virtual Value encode(Value) = 0;
-      virtual Value decode(Value) = 0;
+      virtual shared_ptr<Value> decode(Value) = 0;
   };
 }
 

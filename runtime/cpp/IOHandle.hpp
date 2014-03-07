@@ -128,7 +128,7 @@ namespace K3
     }
     
     template<typename Sink>
-    LineBasedHandle(shared_ptr<Codec >  cdec, const Sink& sink)
+    LineBasedHandle(shared_ptr<Codec >  cdec, Output o, const Sink& sink)
       : LogMT("LineBasedHandle"), IOHandle(cdec)
     {
       outImpl = shared_ptr<LineOutputHandle>(new LineOutputHandle(sink));
@@ -152,7 +152,7 @@ namespace K3
       shared_ptr<Value> r;
       if ( inImpl && this->codec ) { 
         shared_ptr<string> data = inImpl->doRead();
-        r = this->esc->unpack(*data);
+        r = this->codec->decode(*data);
       }
       else { BOOST_LOG(*this) << "Invalid doRead on LineBasedHandle"; }
       return r;      
@@ -160,7 +160,7 @@ namespace K3
 
     void doWrite(Value& v) {
       if ( outImpl && this->codec ) {
-        string data = this->codec->pack(v);
+        string data = this->codec->encode(v);
         outImpl->doWrite(data);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on LineBasedHandle"; }
@@ -243,8 +243,8 @@ namespace K3
   class NetworkHandle : public IOHandle
   {
   public:
-    NetworkHandle(shared_ptr<Net::NConnection> c) : connection(c) {}
-    NetworkHandle(shared_ptr<Net::NEndpoint> e) : endpoint(e) {}
+    NetworkHandle(shared_ptr<Codec > cdec, shared_ptr<Net::NConnection> c) : LogMT("NetworkHandle"), connection(c), IOHandle(cdec) {}
+    NetworkHandle(shared_ptr<Codec > cdec, shared_ptr<Net::NEndpoint> e) : LogMT("NetworkHandle"), endpoint(e), IOHandle(cdec) {}
 
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
@@ -265,7 +265,7 @@ namespace K3
 
     void doWrite(Value& v) {
       if ( connection && this->codec ) {
-        string data = this->codec->pack(v);
+        string data = this->codec->encode(v);
         (*connection) << data;
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
@@ -288,7 +288,7 @@ namespace K3
     typename IOHandle::SinkDetails
     networkSink() {
       shared_ptr<Codec > cdec = connection? this->codec : shared_ptr<Codec >();
-      return make_tuple(cdecd, connection);
+      return make_tuple(cdec, connection);
     }
 
   protected:
