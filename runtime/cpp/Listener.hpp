@@ -82,10 +82,9 @@ namespace K3 {
   //-------------------------------
   // Listener processor base class.
 
-  template<typename Value, typename EventValue>
   class ListenerProcessor : public virtual LogMT {
   public:
-    ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint<Value, EventValue> > e)
+    ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint> e)
       : LogMT("ListenerProcessor"), control(c), endpoint(e)
     {}
 
@@ -94,20 +93,19 @@ namespace K3 {
   
   protected:
     shared_ptr<ListenerControl> control;
-    shared_ptr<Endpoint<Value, EventValue> > endpoint;
+    shared_ptr<Endpoint> endpoint;
   };
 
   //------------------------------------
   // Listener processor implementations.
 
-  template<typename Value, typename EventValue>
-  class InternalListenerProcessor : public ListenerProcessor<Message<Value>, EventValue>
+  class InternalListenerProcessor : public ListenerProcessor
   {
   public:
-    InternalListenerProcessor(shared_ptr<MessageQueues<Value> > q,
+    InternalListenerProcessor(shared_ptr<MessageQueues> q,
                               shared_ptr<ListenerControl> c,
-                              shared_ptr<Endpoint<Value, EventValue> > e)
-      : ListenerProcessor<Message<Value>, EventValue>(c, e), engineQueues(q)
+                              shared_ptr<Endpoint> e)
+      : ListenerProcessor<Message, EventValue>(c, e), engineQueues(q)
     {}
 
     void operator()() {
@@ -124,16 +122,15 @@ namespace K3 {
     }
 
   protected:
-    shared_ptr<MessageQueues<Value> > engineQueues;
+    shared_ptr<MessageQueues> engineQueues;
   };
-  
-  template<typename Value, typename EventValue>
-  class ExternalListenerProcessor : public ListenerProcessor<Value, EventValue>
+
+  class ExternalListenerProcessor : public ListenerProcessor
   {
   public:
     ExternalListenerProcessor(shared_ptr<ListenerControl> c,
-                              shared_ptr<Endpoint<Value, EventValue> > e)
-      : ListenerProcessor<Value, EventValue>(c, e)
+                              shared_ptr<Endpoint> e)
+      : ListenerProcessor(c, e)
     {}
 
     void operator()() {
@@ -154,21 +151,21 @@ namespace K3 {
   // Listeners
 
   // Abstract base class for listeners.
-  template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
+  template<typename NContext, typename NEndpoint>
   class Listener : public virtual LogMT
   {
   public:
     Listener(Identifier n,
              shared_ptr<NContext> ctxt,
-             shared_ptr<Endpoint<Value, EventValue> > ep,
+             shared_ptr<Endpoint> ep,
              shared_ptr<ListenerControl> ctrl,
-             shared_ptr<ListenerProcessor<Value, EventValue> > p)
+             shared_ptr<ListenerProcessor> p)
       : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
     {
       if ( endpoint_ ) {
-        typename IOHandle<Value>::SourceDetails source = ep->handle()->networkSource();
+        typename IOHandle::SourceDetails source = ep->handle()->networkSource();
         nEndpoint_ = get<0>(source);
-        wireDesc_ = get<1>(source);
+        codec_ = get<1>(source);
       }
     }
 
@@ -176,14 +173,14 @@ namespace K3 {
     Identifier name;
     
     shared_ptr<NContext> ctxt_;
-    shared_ptr<Endpoint<Value, EventValue> > endpoint_;
+    shared_ptr<Endpoint> endpoint_;
     shared_ptr<NEndpoint> nEndpoint_;
-    shared_ptr<WireDesc<Value> > wireDesc_;
+    shared_ptr<Codec> codec_;
       // We assume this wire description performs the framing necessary
       // for partial network messages.
     
     shared_ptr<ListenerControl> control_;
-    shared_ptr<ListenerProcessor<Value, EventValue> > processor_;
+    shared_ptr<ListenerProcessor> processor_;
   };
 
   namespace Asio
@@ -194,12 +191,11 @@ namespace K3 {
 
     using boost::system::error_code;
 
-    template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
-    using BaseListener = ::K3::Listener<Value, EventValue, NContext, NEndpoint>;
+    template<typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
     // TODO: close method, terminating all incoming connections to this acceptor.
-    template<typename Value, typename EventValue>
-    class Listener : public BaseListener<Value, EventValue, NContext, NEndpoint>,
+    class Listener : public BaseListener<NContext, NEndpoint>,
                      public basic_lockable_adapter<mutex>
     {
     public:
@@ -209,13 +205,13 @@ namespace K3 {
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<Endpoint<Value, EventValue> > ep,
+               shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<ListenerProcessor<Value, EventValue> > p)
-        : BaseListener<Value, EventValue, NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
+               shared_ptr<ListenerProcessor> p)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
           llockable(), connections_(emptyConnections())
       {
-        if ( this->nEndpoint_ && this->wireDesc_
+        if ( this->nEndpoint_ && this->codec_
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
@@ -243,7 +239,7 @@ namespace K3 {
 
       void acceptConnection()
       {
-        if ( this->endpoint_ && this->wireDesc_ ) {
+        if ( this->endpoint_ && this->codec_ ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           
           this->nEndpoint_->acceptor()->async_accept(nextConnection,
@@ -300,7 +296,7 @@ namespace K3 {
               {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->wireDesc_->unpack(string(buffer_->c_array(), buffer_->size()));
+                shared_ptr<Value> v = this->codec_->unpack(string(buffer_->c_array(), buffer_->size()));
                 if ( v ) { 
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   this->endpoint_->buffer()->append(v);
@@ -326,21 +322,20 @@ namespace K3 {
   {
     using std::atomic_bool;
 
-    template<typename Value, typename EventValue, typename NContext, typename NEndpoint>
-    using BaseListener = ::K3::Listener<Value, EventValue, NContext, NEndpoint>;
+    template<typename NContext, typename NEndpoint>
+    using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
-    template<typename Value, typename EventValue>
-    class Listener : public BaseListener<Value, EventValue, NContext, NEndpoint>
+    class Listener : public BaseListener<NContext, NEndpoint>
     {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<Endpoint<Value, EventValue> > ep,
+               shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<ListenerProcessor<Value, EventValue> > p)
-        : BaseListener<Value, EventValue, NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
+               shared_ptr<ListenerProcessor> p)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
       {
-        if ( this->nEndpoint_ && this->wireDesc_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
+        if ( this->nEndpoint_ && this->codec_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg
           // socket, tracking it in the network context.
           terminated_ = false;
@@ -360,7 +355,7 @@ namespace K3 {
           int bytes = nn_recv(this->endpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
           if ( bytes >= 0 ) {
             // Unpack, process.
-            shared_ptr<Value> v = this->wireDesc_->unpack(string(buffer_.c_array(), buffer_.static_size));
+            shared_ptr<Value> v = this->codec_->unpack(string(buffer_.c_array(), buffer_.static_size));
             if ( v ) { 
               // Simulate accept events for nanomsg.
               refreshSenders(v);
