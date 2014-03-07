@@ -30,6 +30,7 @@ namespace K3 {
   using namespace boost::phoenix;
 
   typedef string Identifier;
+  typedef string Value;
 
   typedef string Value;
   typedef string EValue;

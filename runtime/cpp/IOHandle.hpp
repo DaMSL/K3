@@ -16,14 +16,13 @@ namespace K3
   //--------------------------
   // IO handles
 
-  template<typename Value>
   class IOHandle : public virtual LogMT
   {
   public:
-    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NEndpoint> > SourceDetails;
-    typedef tuple<shared_ptr<WireDesc<Value> >, shared_ptr<Net::NConnection> > SinkDetails;
+    typedef tuple<shared_ptr<Codec >, shared_ptr<Net::NEndpoint> > SourceDetails;
+    typedef tuple<shared_ptr<Codec >, shared_ptr<Net::NConnection> > SinkDetails;
 
-    IOHandle(shared_ptr<WireDesc<Value> > wd) : LogMT("IOHandle"), wireDesc(wd) {}
+    IOHandle(shared_ptr<Codec > cdec) : LogMT("IOHandle"), codec(cdec) {}
 
     virtual bool hasRead() = 0;
     virtual shared_ptr<Value> doRead() = 0;
@@ -40,7 +39,7 @@ namespace K3
     virtual SinkDetails networkSink() = 0;
 
   protected:
-    shared_ptr<WireDesc<Value> > wireDesc;
+    shared_ptr<Codec > codec;
   };
 
   class split_line_filter : public line_filter {
@@ -115,23 +114,22 @@ namespace K3
     shared_ptr<filtering_ostream> output;
   };
 
-  template<typename Value>
-  class LineBasedHandle : public IOHandle<Value>
+  class LineBasedHandle : public IOHandle
   {
   public:
     struct Input  {};
     struct Output {};
 
     template<typename Source>
-    LineBasedHandle(shared_ptr<WireDesc<Value> > wd, Input i, const Source& src)
-      : LogMT("LineBasedHandle"), IOHandle<Value>(wd)
+    LineBasedHandle(shared_ptr<Codec > cdec, Input i, const Source& src)
+      : LogMT("LineBasedHandle"), IOHandle(cdec)
     {
       inImpl = shared_ptr<LineInputHandle>(new LineInputHandle(src));
     }
     
     template<typename Sink>
-    LineBasedHandle(shared_ptr<WireDesc<Value> > wd, Output o, const Sink& sink)
-      : LogMT("LineBasedHandle"), IOHandle<Value>(wd)
+    LineBasedHandle(shared_ptr<Codec >  cdec, const Sink& sink)
+      : LogMT("LineBasedHandle"), IOHandle(cdec)
     {
       outImpl = shared_ptr<LineOutputHandle>(new LineOutputHandle(sink));
     }
@@ -152,17 +150,17 @@ namespace K3
 
     shared_ptr<Value> doRead() {
       shared_ptr<Value> r;
-      if ( inImpl && this->wireDesc ) { 
+      if ( inImpl && this->codec ) { 
         shared_ptr<string> data = inImpl->doRead();
-        r = this->wireDesc->unpack(*data);
+        r = this->esc->unpack(*data);
       }
       else { BOOST_LOG(*this) << "Invalid doRead on LineBasedHandle"; }
       return r;      
     }
 
     void doWrite(Value& v) {
-      if ( outImpl && this->wireDesc ) {
-        string data = this->wireDesc->pack(v);
+      if ( outImpl && this->codec ) {
+        string data = this->codec->pack(v);
         outImpl->doWrite(data);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on LineBasedHandle"; }
@@ -182,70 +180,67 @@ namespace K3
   //class MultiLineHandle;
   //class FrameBasedHandle;
 
-  template<typename Value>
-  class BuiltinHandle : public LineBasedHandle<Value>
+  class BuiltinHandle : public LineBasedHandle
   {
   public:
     struct Stdin  {};
     struct Stdout {};
     struct Stderr {};
 
-    BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stdin s)
-      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Input(), cin)
+    BuiltinHandle(shared_ptr<Codec > cdec, Stdin s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Input(), cin)
     {}
     
-    BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stdout s)
-      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cout)
+    BuiltinHandle(shared_ptr<Codec > cdec, Stdout s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Output(), cout)
     {}
     
-    BuiltinHandle(shared_ptr<WireDesc<Value> > wd, Stderr s)
-      : LogMT("BuiltinHandle"), LineBasedHandle<Value>(wd, typename LineBasedHandle<Value>::Output(), cerr)
+    BuiltinHandle(shared_ptr<Codec > cdec, Stderr s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Output(), cerr)
     {}
 
     bool builtin () { return true; }
     bool file() { return false; }
 
-    typename IOHandle<Value>::SourceDetails
+    typename IOHandle::SourceDetails
     networkSource() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
+      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NEndpoint>());
     }
 
-    typename IOHandle<Value>::SinkDetails
+    typename IOHandle::SinkDetails
     networkSink() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
+      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NConnection>());
     }
   };
 
-  template<typename Value>
-  class FileHandle : public LineBasedHandle<Value> 
+  class FileHandle : public LineBasedHandle 
   {
   public:
-    FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
-               typename LineBasedHandle<Value>::Input i) 
-      : LogMT("FileHandle"), LineBasedHandle<Value>(wd, i, file_source(path)) 
+    FileHandle(shared_ptr<Codec > cdec, const string& path,
+               typename LineBasedHandle::Input i) 
+      : LogMT("FileHandle"), LineBasedHandle(cdec, i, file_source(path)) 
     {}
 
-    FileHandle(shared_ptr<WireDesc<Value> > wd, const string& path,
-               typename LineBasedHandle<Value>::Output o)
-      : LogMT("FileHandle"), LineBasedHandle<Value>(wd, o, file_sink(path))
+    FileHandle(shared_ptr<Codec > cdec, const string& path,
+               typename LineBasedHandle::Output o)
+      : LogMT("FileHandle"), LineBasedHandle(cdec, o, file_sink(path))
     {}
 
     bool builtin () { return false; }
     bool file() { return true; }
 
-    typename IOHandle<Value>::SourceDetails
+    typename IOHandle::SourceDetails
     networkSource() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NEndpoint>());
+      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NEndpoint>());
     }
 
-    typename IOHandle<Value>::SinkDetails
+    typename IOHandle::SinkDetails
     networkSink() {
-      return make_tuple(shared_ptr<WireDesc<Value> >(), shared_ptr<Net::NConnection>());
+      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NConnection>());
     }
   };
 
-  template<typename Value>
-  class NetworkHandle : public IOHandle<Value>
+  class NetworkHandle : public IOHandle
   {
   public:
     NetworkHandle(shared_ptr<Net::NConnection> c) : connection(c) {}
@@ -269,8 +264,8 @@ namespace K3
     }
 
     void doWrite(Value& v) {
-      if ( connection && this->wireDesc ) {
-        string data = this->wireDesc->pack(v);
+      if ( connection && this->codec ) {
+        string data = this->codec->pack(v);
         (*connection) << data;
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
@@ -284,16 +279,16 @@ namespace K3
     bool builtin () { return false; }
     bool file() { return false; }
 
-    typename IOHandle<Value>::SourceDetails
+    typename IOHandle::SourceDetails
     networkSource() {
-      shared_ptr<WireDesc<Value> > wd = endpoint? this->wireDesc : shared_ptr<WireDesc<Value> >();
-      return make_tuple(wd, endpoint);
+      shared_ptr<Codec > cdec = endpoint? this->codec : shared_ptr<Codec >();
+      return make_tuple(cdec, endpoint);
     }
 
-    typename IOHandle<Value>::SinkDetails
+    typename IOHandle::SinkDetails
     networkSink() {
-      shared_ptr<WireDesc<Value> > wd = connection? this->wireDesc : shared_ptr<WireDesc<Value> >();
-      return make_tuple(wd, connection);
+      shared_ptr<Codec > cdec = connection? this->codec : shared_ptr<Codec >();
+      return make_tuple(cdecd, connection);
     }
 
   protected:
