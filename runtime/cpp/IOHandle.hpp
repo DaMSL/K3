@@ -19,10 +19,10 @@ namespace K3
   class IOHandle : public virtual LogMT
   {
   public:
-    typedef tuple<shared_ptr<Codec >, shared_ptr<Net::NEndpoint> > SourceDetails;
-    typedef tuple<shared_ptr<Codec >, shared_ptr<Net::NConnection> > SinkDetails;
+    typedef tuple<shared_ptr<Codec>, shared_ptr<Net::NEndpoint> > SourceDetails;
+    typedef tuple<shared_ptr<Codec>, shared_ptr<Net::NConnection> > SinkDetails;
 
-    IOHandle(shared_ptr<Codec > cdec) : LogMT("IOHandle"), codec(cdec) {}
+    IOHandle(shared_ptr<Codec> cdec) : LogMT("IOHandle"), codec(cdec) {}
 
     virtual bool hasRead() = 0;
     virtual shared_ptr<Value> doRead() = 0;
@@ -39,7 +39,7 @@ namespace K3
     virtual SinkDetails networkSink() = 0;
 
   protected:
-    shared_ptr<Codec > codec;
+    shared_ptr<Codec> codec;
   };
 
   class split_line_filter : public line_filter {
@@ -52,7 +52,8 @@ namespace K3
   {
   public:
     template<typename Source>
-    LineInputHandle(const Source& src) : LogMT("LineInputHandle") {
+    LineInputHandle(Source& src) : LogMT("LineInputHandle")
+    {
       input = shared_ptr<filtering_istream>(new filtering_istream());
       input->push(split_line_filter());
       input->push(src);
@@ -88,7 +89,8 @@ namespace K3
   {
   public:
     template<typename Sink>
-    LineOutputHandle(const Sink& sink) : LogMT("LineOutputHandle") {
+    LineOutputHandle(Sink& sink) : LogMT("LineOutputHandle")
+    {
       output = shared_ptr<filtering_ostream>(new filtering_ostream());
       output->push(split_line_filter());
       output->push(sink);
@@ -121,14 +123,14 @@ namespace K3
     struct Output {};
 
     template<typename Source>
-    LineBasedHandle(shared_ptr<Codec > cdec, Input i, const Source& src)
+    LineBasedHandle(shared_ptr<Codec> cdec, Input i, Source& src)
       : LogMT("LineBasedHandle"), IOHandle(cdec)
     {
       inImpl = shared_ptr<LineInputHandle>(new LineInputHandle(src));
     }
     
     template<typename Sink>
-    LineBasedHandle(shared_ptr<Codec >  cdec, Output o, const Sink& sink)
+    LineBasedHandle(shared_ptr<Codec>  cdec, Output o, Sink& sink)
       : LogMT("LineBasedHandle"), IOHandle(cdec)
     {
       outImpl = shared_ptr<LineOutputHandle>(new LineOutputHandle(sink));
@@ -187,64 +189,73 @@ namespace K3
     struct Stdout {};
     struct Stderr {};
 
-    BuiltinHandle(shared_ptr<Codec > cdec, Stdin s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Input(), cin)
+    BuiltinHandle(shared_ptr<Codec> cdec, Stdin s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Input(), cin)
     {}
     
-    BuiltinHandle(shared_ptr<Codec > cdec, Stdout s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Output(), cout)
+    BuiltinHandle(shared_ptr<Codec> cdec, Stdout s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cout)
     {}
     
-    BuiltinHandle(shared_ptr<Codec > cdec, Stderr s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, typename LineBasedHandle::Output(), cerr)
+    BuiltinHandle(shared_ptr<Codec> cdec, Stderr s)
+      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cerr)
     {}
 
     bool builtin () { return true; }
     bool file() { return false; }
 
-    typename IOHandle::SourceDetails
-    networkSource() {
-      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NEndpoint>());
+    IOHandle::SourceDetails networkSource()
+    {
+      return make_tuple(shared_ptr<Codec>(), shared_ptr<Net::NEndpoint>());
     }
 
-    typename IOHandle::SinkDetails
-    networkSink() {
-      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NConnection>());
+    IOHandle::SinkDetails networkSink()
+    {
+      return make_tuple(shared_ptr<Codec>(), shared_ptr<Net::NConnection>());
     }
   };
 
   class FileHandle : public LineBasedHandle 
   {
   public:
-    FileHandle(shared_ptr<Codec > cdec, const string& path,
-               typename LineBasedHandle::Input i) 
-      : LogMT("FileHandle"), LineBasedHandle(cdec, i, file_source(path)) 
+    FileHandle(shared_ptr<Codec> cdec, const string& path, LineBasedHandle::Input i) 
+      : fileSrc(shared_ptr<file_source>(new file_source(path))), 
+        LogMT("FileHandle"), LineBasedHandle(cdec, i, *fileSrc) 
     {}
 
-    FileHandle(shared_ptr<Codec > cdec, const string& path,
-               typename LineBasedHandle::Output o)
-      : LogMT("FileHandle"), LineBasedHandle(cdec, o, file_sink(path))
+    FileHandle(shared_ptr<Codec> cdec, const string& path, LineBasedHandle::Output o)
+      : fileSink(shared_ptr<file_sink>(new file_sink(path))), 
+        LogMT("FileHandle"), LineBasedHandle(cdec, o, *fileSink)
     {}
 
     bool builtin () { return false; }
     bool file() { return true; }
 
-    typename IOHandle::SourceDetails
-    networkSource() {
-      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NEndpoint>());
+    IOHandle::SourceDetails networkSource()
+    {
+      return make_tuple(shared_ptr<Codec>(), shared_ptr<Net::NEndpoint>());
     }
 
-    typename IOHandle::SinkDetails
-    networkSink() {
-      return make_tuple(shared_ptr<Codec >(), shared_ptr<Net::NConnection>());
+    IOHandle::SinkDetails networkSink()
+    {
+      return make_tuple(shared_ptr<Codec>(), shared_ptr<Net::NConnection>());
     }
+
+  private:
+    shared_ptr<file_source> fileSrc;
+    shared_ptr<file_sink>   fileSink;
   };
 
   class NetworkHandle : public IOHandle
   {
   public:
-    NetworkHandle(shared_ptr<Codec > cdec, shared_ptr<Net::NConnection> c) : LogMT("NetworkHandle"), connection(c), IOHandle(cdec) {}
-    NetworkHandle(shared_ptr<Codec > cdec, shared_ptr<Net::NEndpoint> e) : LogMT("NetworkHandle"), endpoint(e), IOHandle(cdec) {}
+    NetworkHandle(shared_ptr<Codec> cdec, shared_ptr<Net::NConnection> c) 
+      : LogMT("NetworkHandle"), connection(c), IOHandle(cdec)
+    {}
+    
+    NetworkHandle(shared_ptr<Codec> cdec, shared_ptr<Net::NEndpoint> e)
+      : LogMT("NetworkHandle"), endpoint(e), IOHandle(cdec)
+    {}
 
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
@@ -279,15 +290,15 @@ namespace K3
     bool builtin () { return false; }
     bool file() { return false; }
 
-    typename IOHandle::SourceDetails
-    networkSource() {
-      shared_ptr<Codec > cdec = endpoint? this->codec : shared_ptr<Codec >();
+    IOHandle::SourceDetails networkSource()
+    {
+      shared_ptr<Codec> cdec = endpoint? this->codec : shared_ptr<Codec>();
       return make_tuple(cdec, endpoint);
     }
 
-    typename IOHandle::SinkDetails
-    networkSink() {
-      shared_ptr<Codec > cdec = connection? this->codec : shared_ptr<Codec >();
+    IOHandle::SinkDetails networkSink()
+    {
+      shared_ptr<Codec> cdec = connection? this->codec : shared_ptr<Codec>();
       return make_tuple(cdec, connection);
     }
 
