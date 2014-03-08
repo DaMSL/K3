@@ -134,7 +134,7 @@ namespace K3 {
     virtual shared_ptr<Queue> queue(Message& m) = 0;
     virtual tuple<QueueIndex, shared_ptr<Queue> > nonEmptyQueue() = 0;
 
-    virtual void enqueue(Message& m, shared_ptr<Queue> q);
+    virtual void enqueue(Message& m, shared_ptr<Queue> q) = 0;
     virtual shared_ptr<Message> dequeue(const tuple<QueueIndex, shared_ptr<Queue> >& q) = 0;
   };
 
@@ -234,9 +234,9 @@ namespace K3 {
     {
       tuple<QueueKey, shared_ptr<BaseQueue> > r;
 
-      typename MultiPeerMessages::iterator it =
+      MultiPeerMessages::iterator it =
         find_if(multiPeerMsgs.begin(), multiPeerMsgs.end(),
-          [](typename MultiPeerMessages::value_type& x){ return x.second->empty(); });
+          [](MultiPeerMessages::value_type& x){ return x.second->empty(); });
 
       if ( it != multiPeerMsgs.end() ) { 
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));
@@ -244,7 +244,7 @@ namespace K3 {
       return r;
     }
     
-    void enqueue(Message m, shared_ptr<BaseQueue> q) 
+    void enqueue(Message& m, shared_ptr<BaseQueue> q) 
     {
       tuple<Identifier, Value> entry = make_tuple(m.id(), m.contents());
       if ( !(q && q->push(entry)) ) {
@@ -316,9 +316,9 @@ namespace K3 {
     {
       tuple<QueueKey, shared_ptr<BaseQueue> > r;
     
-      typename MultiTriggerMessages::iterator it =
+      MultiTriggerMessages::iterator it =
         find_if(multiTriggerMsgs.begin(), multiTriggerMsgs.end(), 
-          [](typename MultiTriggerMessages::value_type& x) { return x.second->empty(); });
+          [](MultiTriggerMessages::value_type& x) { return x.second->empty(); });
       
       if ( it != multiTriggerMsgs.end() ) {
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));
