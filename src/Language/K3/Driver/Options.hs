@@ -115,12 +115,11 @@ modeOptions = subparser (
 
 -- Used mostly for interpreting, but can be useful when printing as well
 globalOptions :: Parser [String]
-globalOptions = some $ option (
+globalOptions = many ( strOption (
         short 'g'
      <> long "global"
-     <> reader str
      <> help "Pre-initialize global variables"
-     <> metavar "GLOBAL" )
+     <> metavar "GLOBAL" ))
 
 
 -- | Compiler options
