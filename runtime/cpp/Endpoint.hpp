@@ -63,7 +63,6 @@ namespace K3
 
   class EndpointBuffer {
   public:
-
     EndpointBuffer() {}
 
     virtual bool empty() = 0;
@@ -71,407 +70,12 @@ namespace K3
     virtual size_t size() = 0;
     virtual size_t capacity() = 0;
 
-    // Appends to this buffer, returning the value if the append fails.
-    virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
+    // Iterator interface to the endpoint buffer.
+    virtual iterator<shared_ptr<Value> > begin() = 0;
+    virtual iterator<shared_ptr<Value> > end() = 0;
 
-    // Transfers from this buffer into the given queues.
-    virtual void enqueue(shared_ptr<MessageQueues> queues) = 0;
-
-    // TODO
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    virtual EndpointNotification flush(shared_ptr<IOHandle> ioh) = 0;
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    virtual tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle> ioh) = 0;
-  };
-
-  class ScalarEPBufferST : public EndpointBuffer
-  {
-  public:
-    typedef Value BufferContents;
-
-    ScalarEPBufferST() {}
-
-    bool empty() { return !contents; }
-    bool full() { return static_cast<bool>(contents); }
-    size_t size() { return contents? 1 : 0; }
-    size_t capacity () { return 1; }
-
-    shared_ptr<Value> append(shared_ptr<Value> v) {
-      shared_ptr<Value> r;
-      if ( !contents ) { contents = v; }
-      else { r = v; }
-      return r;
-    }
-
-    // TODO: Value vs Message
-    void enqueue(shared_ptr<MessageQueues> queues) {
-      if ( contents ) { 
-        queues->enqueue(*contents);
-        contents.reset();
-      }
-    }
-
-    EndpointNotification flush(shared_ptr<IOHandle> ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      if ( contents ) {
-        ioh->doWrite(*contents);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }
-      return nt;
-    }
-
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle> ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      shared_ptr<Value> r;
-
-      // Read from the buffer (if possible)
-      if ( contents ) { r = contents;  }
-      
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if ( ioh->hasRead() ) {
-        shared_ptr<Value> v = ioh->doRead();
-        contents = v;
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }
-      else {
-        // Empty the buffer
-        contents = shared_ptr<BufferContents>();
-      }      
-      // Return the value extracted from the buffer, along with EPNotification
-      return make_tuple(r, nt);
-    }
-
-  protected:
-    shared_ptr<BufferContents> contents;
-  };
-
-
-  class ScalarEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex>
-  {
-  public:
-    typedef ScalarEPBufferMT LockB;
-    typedef Value BufferContents;
-
-    ScalarEPBufferMT() : contents(*this) {}
-
-    bool empty() { strict_lock<LockB> guard(*this); return !(contents.get(guard)); }
-    bool full() { strict_lock<LockB> guard(*this); return static_cast<bool>(contents.get(guard)); }
-    size_t size() { strict_lock<LockB> guard(*this); return contents.get(guard)? 1 : 0; }
-    size_t capacity () { return 1; }
-
-
-    shared_ptr<Value> append(shared_ptr<Value> v)
-    {
-      strict_lock<LockB> guard(*this);
-      shared_ptr<Value> r;
-      if ( !contents.get(guard) ) { contents.get(guard) = v; }
-      else { r = v; }
-      return r;
-    }
-
-    // TODO: Value vs Message
-    void enqueue(shared_ptr<MessageQueues> queues)
-    {
-      strict_lock<LockB> guard(*this);
-      if ( shared_ptr<Value> r = contents.get(guard) ) { 
-        queues->enqueue(*r);
-        contents.get(guard).reset();
-      }
-    }
-
-    EndpointNotification flush(shared_ptr<IOHandle> ioh)
-    {
-      strict_lock<LockB> guard(*this);
-      EndpointNotification nt = EndpointNotification::NullEvent;
-
-      if ( contents.get(guard) ) {
-        ioh->doWrite(*(contents.get(guard)));
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }
-      return nt;
-    }
-
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle> ioh)
-    {
-      strict_lock<LockB> guard(*this);
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      
-      // Read from the buffer (if possible)
-      shared_ptr<Value> r;
-      if ( contents.get(guard) ) { r = contents.get(guard); }
-
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if ( ioh->hasRead() ) {
-        shared_ptr<Value> v = ioh->doRead();
-        contents.get(guard) = v;
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      } 
-      else {
-        // Empty the buffer
-        contents.get(guard) = shared_ptr<Value>();
-      } 
-      return make_tuple(r, nt);
-    }
-
-  protected:
-    externally_locked<shared_ptr<Value>, ScalarEPBufferMT> contents;
-  };
-
-
-  class ContainerEPBufferST : public EndpointBuffer
-  {
-  public:
-    typedef list<Value> BufferContents;
-
-    ContainerEPBufferST(BufferSpec s) : spec(s)
-    {
-      contents = shared_ptr<BufferContents>(new BufferContents());
-    }
-
-    bool empty() { return contents? contents->empty() : true; }
-    size_t size() { return contents? contents->size() : 0; }
-
-    bool full() { 
-      if ( !contents ) { return false; }
-      int s = bufferMaxSize(spec);
-      return s <= 0? false : contents->size() == s; 
-    }
-    
-    size_t capacity() { 
-      if ( !contents ) { return 0; }
-      int s = bufferMaxSize(spec);
-      return s <= 0 ? contents->max_size() : s;
-    }
-
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(shared_ptr<Value> v) {
-      shared_ptr<Value> r;
-      if ( contents ) {
-        if ( this->full() ) { r = v; }
-        else { contents->push_back(*v); }
-      } else { r = v; }
-      return r;
-    }
-
-    // TODO: Value vs Message
-    // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues> queues) {
-      if ( contents ) {
-        for (auto v : *contents) { queues->enqueue(v); }
-        contents->clear();
-      }
-    }
-
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle> ioh) 
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      if ( contents && batchAvailable() ) {
-        bool written = false;
-        for (int i = batchSize(); i > 0; --i) {
-          auto v = contents->front();
-          contents->pop_front();
-          ioh->doWrite(v);
-          written = true;
-        }
-        if ( written ) {
-          nt = (ioh->builtin() || ioh->file())?
-                  EndpointNotification::FileData : EndpointNotification::SocketData;
-        }
-      }
-      return nt;
-    }
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle> ioh)
-    {
-      EndpointNotification nt;
-      shared_ptr<Value> r;
-
-      if ( contents && !empty() ) { 
-        // Grab first element from list, then remove it.
-        // (pop_front has no return value)
-        r = make_shared<Value>(contents->front());
-        contents->pop_front();
-      }
-      if ( ioh->hasRead() ) {
-        shared_ptr<Value> v = ioh->doRead();
-        append(v);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);      
-    }
-
-  protected:
-    BufferSpec spec;
-    shared_ptr<BufferContents > contents;
-
-    int batchSize () { int r = bufferMaxSize(spec); return r <= 0? 1 : r; }
-    bool batchAvailable() { return contents? contents->size() >= batchSize() : false; }
-
-  };
-
-  // This is form of buffer used in the C++ listener since we must use thread-safe buffers.
-  // This is because we may have multiple threads handling a connection (e.g., with Boost Asio's io_service).
-  class ContainerEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex>
-  {
-  public:
-    typedef basic_lockable_adapter<mutex> bclockable;
-    typedef ContainerEPBufferMT LockB;
-
-    typedef list<Value> BufferContents;
-    typedef externally_locked<shared_ptr<BufferContents>, ContainerEPBufferMT>
-              ConcurrentBufferContents;
-    
-    ContainerEPBufferMT(BufferSpec s) : bclockable(), spec(s) {
-      shared_ptr<BufferContents> cb = shared_ptr<BufferContents>(new BufferContents());
-      contents = shared_ptr<ConcurrentBufferContents>(new ConcurrentBufferContents(*this, cb));
-    }
-
-    bool empty() { 
-      strict_lock<LockB> guard(*this);
-      return empty(guard);
-    }
-
-    bool full() {
-      strict_lock<LockB> guard(*this);
-      return full(guard);
-    }
-
-    size_t size() {
-      strict_lock<LockB> guard(*this);
-      size_t s = 0;
-      if ( contents ) { s = contents->get(guard)->size(); }
-      return s;
-    }
-    
-    size_t capacity() {
-      strict_lock<LockB> guard(*this);
-      bool r = false;
-      if ( contents ) {
-        int s = bufferMaxSize(spec);
-        r = s <= 0 ? contents->get(guard)->max_size() : s;
-      }
-      return r;
-    }
-
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(shared_ptr<Value> v) {      
-      strict_lock<LockB> guard(*this);
-      return append(guard, v);
-    }
-
-    // TODO: Value vs Message
-    // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues> queues) {
-      strict_lock<LockB> guard(*this);
-      if ( contents ) {
-        for (auto v : *(contents->get(guard))) { queues->enqueue(v); }
-        contents->get(guard)->clear();
-      }
-    }
-
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle> ioh) 
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      strict_lock<LockB> guard(*this);
-      
-      if ( contents && batchAvailable(guard) ) {
-        bool written = false;
-        for (int i = batchSize(); i > 0; --i) {
-          auto v = contents->get(guard)->front();
-          contents->get(guard)->pop_front();
-          
-          ioh->doWrite(v);
-          written = true;
-        }
-        if ( written ) {
-          nt = (ioh->builtin() || ioh->file())?
-                  EndpointNotification::FileData : EndpointNotification::SocketData;
-        }
-      }
-      return nt;
-    }
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle> ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      shared_ptr<Value> r;
-      strict_lock<LockB> guard(*this);
-
-      if ( contents && !empty(guard) ) { 
-        r = make_shared<Value>(contents->get(guard)->front());
-        contents->get(guard)->pop_front();
-      }
-      
-      if ( ioh->hasRead() ) {
-        shared_ptr<Value> v = ioh->doRead();
-        append(guard, v);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);      
-    }
-
-  protected:
-    BufferSpec spec;
-    shared_ptr<ConcurrentBufferContents> contents;
-
-    int batchSize () { int r = bufferMaxSize(spec); return r <= 0? 1 : r; }
-    bool batchAvailable(strict_lock<LockB>& guard) { return contents->get(guard)->size() >= batchSize(); }
-
-    bool empty(strict_lock<LockB>& guard) {
-      bool r = true;
-      if ( contents ) { r = contents->get(guard)->empty(); }
-      return r;
-    }
-
-    bool full(strict_lock<LockB>& guard) {
-      bool r = false;
-      if ( contents ) { 
-        int s = bufferMaxSize(spec);
-        r = s <= 0? false : contents->get(guard)->size() == batchSize(); 
-      }
-      return r;
-    }
-
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(strict_lock<LockB>& guard, shared_ptr<Value> v)
-    {
-      shared_ptr<Value> r;
-      if ( contents ) {
-        if ( this->full(guard) ) { r = v; }
-        else { contents->get(guard)->push_back(*v); }
-      }
-      return r;        
-    }
-
+    // Appends to this buffer, returning if the append succeeds.
+    virtual bool push_back(shared_ptr<Value> v) = 0;    
   };
 
 
@@ -545,17 +149,19 @@ namespace K3
   public:
     Endpoint(shared_ptr<IOHandle> ioh,
              shared_ptr<EndpointBuffer> buf,
-             shared_ptr<EndpointBindings> subs)
-      : handle_(ioh), buffer_(buf), subscribers_(subs)
+             shared_ptr<EndpointBindings> subs,
+             std::function<void(shared_ptr<Value>)> callbackFn)
+      : handle_(ioh), buffer_(buf), subscribers_(subs), callbackFn_(callbackFn)
     {
-      buffer_->refresh(handle_); 
+      // TODO: prime the buffer as needed.
+      //buffer_->refresh(handle_); 
     }
 
     shared_ptr<IOHandle> handle() { return handle_; }
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
-    // An endpoint can be read if the handle can be read and the buffer isn't empty.
+    // An endpoint can be read if the handle can be read or the buffer isn't empty.
     bool hasRead() {
         return handle_->hasRead() || !buffer_->empty();
     }
@@ -588,11 +194,16 @@ namespace K3
         return;
     }
 
+    // TDDO
+    void enqueueToEndpoint(shared_ptr<Value> val) {}
+
   protected:
     shared_ptr<IOHandle> handle_;
     shared_ptr<EndpointBuffer> buffer_;
     shared_ptr<EndpointBindings> subscribers_;
+    std::function<void(shared_ptr<Value>)> callbackFn_;
   };
+
 
   class EndpointState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
   {

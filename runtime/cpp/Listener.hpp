@@ -82,6 +82,7 @@ namespace K3 {
   //-------------------------------
   // Listener processor base class.
 
+  /*
   class ListenerProcessor : public virtual LogMT {
   public:
     ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint> e)
@@ -146,6 +147,7 @@ namespace K3 {
       }
     }
   };
+  */
 
   //------------
   // Listeners
@@ -299,8 +301,11 @@ namespace K3 {
                 shared_ptr<Value> v = this->codec_->unpack(string(buffer_->c_array(), buffer_->size()));
                 if ( v ) { 
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
-                  this->endpoint_->buffer()->append(v);
-                  (*(this->processor_))();
+                  //this->endpoint_->buffer()->append(v);
+                  this->endpoint_->enqueueToEndpoint(v);
+
+                  // TODO: deprecated with the revised endpoint design.
+                  //(*(this->processor_))();
                 }
                 
                 // Recursive invocation for the next message.
