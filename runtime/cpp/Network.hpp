@@ -13,7 +13,7 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 #include <nanomsg/tcp.h>
-#include <runtime/cpp/Common.hpp>
+#include "runtime/cpp/Common.hpp"
 
 namespace K3
 {
@@ -58,12 +58,12 @@ namespace K3
 
   namespace Asio
   {
-    class AsioDeviceException : public ios_base::failure {
+    class AsioDeviceException : public system_error {
     public:
-      AsioDeviceException(const string& msg) : ios_base::failure(msg) {}
+      AsioDeviceException(const error_code& ec) : system_error(ec) {}
       
-      AsioDeviceException(const string& msg, const error_code& ec)
-        : ios_base::failure(msg, ec)
+      AsioDeviceException(const error_code& ec, const string& msg)
+        : system_error(ec, msg)
       {}
     };
 
@@ -82,8 +82,7 @@ namespace K3
         if (!ec) { return rval; }
         else if (ec == boost::asio::error::eof) { return -1; }
         else { 
-          throw AsioDeviceException(ec.message(), 
-                  make_error_code(static_cast<errc>(ec.value())));
+          throw AsioDeviceException(make_error_code(static_cast<errc>(ec.value())), ec.message());
         }
       }
       
@@ -94,8 +93,7 @@ namespace K3
         if (!ec) { return rval; }
         else if (ec == boost::asio::error::eof) { return -1; }
         else {
-          throw AsioDeviceException(ec.message(),
-                  make_error_code(static_cast<errc>(ec.value())));
+          throw AsioDeviceException(make_error_code(static_cast<errc>(ec.value())), ec.message());
         }
       }
 
@@ -197,12 +195,12 @@ namespace K3
 
   namespace Nanomsg
   {
-    class NanomsgDeviceException : public ios_base::failure {
+    class NanomsgDeviceException : public system_error {
     public:
-      NanomsgDeviceException(const string& msg) : ios_base::failure(msg) {}
+      NanomsgDeviceException(const error_code& ec) : system_error(ec) {}
       
-      NanomsgDeviceException(const string& msg, const error_code& ec)
-        : ios_base::failure(msg, ec)
+      NanomsgDeviceException(const error_code& ec, const string& msg)
+        : system_error(ec, msg)
       {}
     };
 
@@ -220,7 +218,7 @@ namespace K3
         if ( rDone < 0 ) {
           int err = nn_errno();
           string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(errStr, make_error_code(static_cast<errc>(err)));
+          throw NanomsgDeviceException(make_error_code(static_cast<errc>(err)), errStr);
         }
         return rDone;
       }
@@ -231,7 +229,7 @@ namespace K3
         if ( wDone < 0 ) {
           int err = nn_errno();
           string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(errStr, make_error_code(static_cast<errc>(err)));
+          throw NanomsgDeviceException(make_error_code(static_cast<errc>(err)), errStr);
         }
         return wDone;
       }
