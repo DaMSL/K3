@@ -61,9 +61,9 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  class EndpointBuffer {
+  class EndpointBuffer : public LogMT {
   public:
-    EndpointBuffer() {}
+    EndpointBuffer() : LogMT("Endpoint Buffer") {}
 
     virtual bool empty() = 0;
     virtual bool full() = 0;
@@ -71,13 +71,50 @@ namespace K3
     virtual size_t capacity() = 0;
 
     // Iterator interface to the endpoint buffer.
-    virtual iterator<shared_ptr<Value> > begin() = 0;
-    virtual iterator<shared_ptr<Value> > end() = 0;
+    //virtual iterator<shared_ptr<Value> > begin() = 0;
+    //virtual iterator<shared_ptr<Value> > end() = 0;
 
     // Appends to this buffer, returning if the append succeeds.
-    virtual bool push_back(shared_ptr<Value> v) = 0;    
+    virtual bool push_back(shared_ptr<Value> v) = 0;
+    virtual shared_ptr<Value> pop() = 0;   
   };
 
+  class ScalarEPBufferST : public EndpointBuffer, public LogMT {
+  public:
+    ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
+    // Metadata
+    bool   empty()    { return !contents; }
+    bool   full()     { return static_cast<bool>(contents); }
+    size_t size()     { return contents ? 1 : 0; }
+    size_t capacity() { return 1; }  
+    // Iterator interface
+    // TODO
+    //iterator<shared_ptr<Value> > begin() {
+    //  return contents;
+    //}
+    //iterator<shared_ptr<Value> > end() {
+    //  return contents;
+    //}
+    // Buffer Operations
+    bool push_back(shared_ptr<Value> v) {
+      if (this->full()) {
+        return false;
+      } else {
+        contents = v;
+      }
+    }
+
+    shared_ptr<Value> pop() {
+      shared_ptr<Value> v;
+      if (!this->empty()) {
+        v = contents;
+      }
+      return v;
+    }
+
+  protected:
+    shared_ptr<Value> contents;
+  };
 
   //----------------------------
   // I/O event notifications.
@@ -172,8 +209,24 @@ namespace K3
     }
 
     shared_ptr<Value> doRead() {
-        // Refresh the buffer, getting back a read value, and an endpoint notification.
-        tuple<shared_ptr<Value>, EndpointNotification> readResult = buffer_->refresh(handle_);
+        // TODO concurrency?
+        tuple<shared_ptr<Value>, EndpointNotification> readResult;
+        EndpointNotification nt = EndpointNotification::NullEvent; 
+        shared_ptr<Value> r;
+        
+        // Read from the buffer if possible
+        if (!(buffer_->empty())) {
+          r = buffer_->pop();
+        }
+        // If there is more data in the underlying IOHandle
+        // use it to populate the buffer
+        if (handle_->hasRead()) {
+          shared_ptr<Value> v = handle_->doRead();
+          buffer_->push_back(v);
+          nt = (handle_->builtin() || handle_->file())? EndpointNotification::FileData : EndpointNotification::SocketData; 
+        } 
+         
+        readResult = make_tuple(r, nt); 
 
         // Notify those subscribers who need to be notified of the event.
         subscribers_->notifyEvent(get<1>(readResult));
@@ -183,7 +236,7 @@ namespace K3
     }
 
     void doWrite(Value& v) {
-        shared_ptr<Value> result = buffer_->append(v);
+        bool result = buffer_->push_back(make_shared<Value>(v));
 
         if (result) {
             // TODO: Append failed, flush?
@@ -211,7 +264,7 @@ namespace K3
     typedef shared_lockable_adapter<shared_mutex> eplockable;
     
     using ConcurrentEndpointMap =
-      externally_locked<shared_ptr<EndpointMap, EndpointState>;
+      externally_locked<shared_ptr<EndpointMap>,EndpointState> ;
 
     using EndpointDetails = tuple<shared_ptr<IOHandle>, 
                                   shared_ptr<EndpointBuffer>,
@@ -232,17 +285,6 @@ namespace K3
         throw runtime_error(errorMsg);
       }
     }
-
-    void addEndpoint(Identifier id, EndpointDetails details) {
-      if ( externalEndpointId(id) ) {
-        addEndpoint(id, details, externalEndpoints);
-      } else {
-        string errorMsg = "Invalid external endpoint identifier";
-        logAt(trivial::error, errorMsg);
-        throw runtime_error(errorMsg);
-      }
-    }
-
     void removeEndpoint(Identifier id) { 
       if ( !externalEndpointId(id) ) { 
         removeEndpoint(id, externalEndpoints);
@@ -284,7 +326,8 @@ namespace K3
       if ( lb == epMap->get(guard)->end() || id != lb->first )
       {
         shared_ptr<Endpoint> ep =
-          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
+          // TODO use a proper callback fn instead of nullptr
+          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details), nullptr));
 
         epMap->get(guard)->insert(lb, make_pair(id, ep));
       } else {
