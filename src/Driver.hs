@@ -34,19 +34,19 @@ dispatch op = do
     -- ^ Process logging directives
 
   -- Load files for any global variables
-  globalVals <- mapM parseGlobals $ globals op
-  let addGlobalVals role = CoreUtils.prependToRole role globalVals
+  preLoadVals <- mapM parsePreloads $ preLoad op
+  let addPreloadVals role = CoreUtils.prependToRole role preLoadVals
 
   case mode op of
     Compile   c -> compile c
-    Interpret i -> interpret i addGlobalVals
+    Interpret i -> interpret i addPreloadVals
     Print     p -> let parse = case map toLower $ inLanguage p of
                         "k3"      -> k3Program
                         "k3ocaml" -> k3OcamlProgram
                         lang      -> error $ lang ++ " parsing not supported."
-                   in printer parse (printOutput p) addGlobalVals
+                   in printer parse (printOutput p) addPreloadVals
 
-    Typecheck   -> k3Program >>= either parseError (typecheck . addGlobalVals)
+    Typecheck   -> k3Program >>= either parseError (typecheck . addPreloadVals)
     Analyze   a -> analyzer a
   
   where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
@@ -72,8 +72,8 @@ dispatch op = do
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
 
-        parseGlobals :: String -> IO (K3 Declaration)
-        parseGlobals file = do
+        parsePreloads :: String -> IO (K3 Declaration)
+        parsePreloads file = do
           p <- parseK3Input (includes $ paths op) file
           case p of
             Left e  -> error e

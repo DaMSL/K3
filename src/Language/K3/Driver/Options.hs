@@ -21,7 +21,7 @@ data Options = Options {
         inform    :: InfoSpec,
         paths     :: PathOptions,
         input     :: FilePath,
-        globals   :: [FilePath] -- global variables to load
+        preLoad   :: [FilePath] -- files to load before input
     }
   deriving (Eq, Read, Show)
 
@@ -112,15 +112,6 @@ modeOptions = subparser (
         analyzeDesc   = "Analyze a K3 program"
 
         typeOptions = NilP $ Just Typecheck
-
--- Used mostly for interpreting, but can be useful when printing as well
-globalOptions :: Parser [String]
-globalOptions = many ( strOption (
-        short 'g'
-     <> long "global"
-     <> help "Pre-initialize global variables"
-     <> metavar "GLOBAL" ))
-
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -289,18 +280,24 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
         | n > 2 = 2
         | otherwise = n
 
-inputOptions :: Parser FilePath
-inputOptions = argument str (
-        metavar "FILE"
+inputOptions :: Parser [FilePath]
+inputOptions = commaSep1 <$> argument str (
+        metavar "FILES"
      <> help "Initial source declarations to be loaded into the environment."
      <> value "-"
     )
+      -- Separate a word list by commas
+      where commaSep1 l  = fst $ foldr sep_fn ([[]], False) l
+            sep_fn c@',' (x, _)    = (x, True)
+            sep_fn c ([], False)   = ([[c]], False)
+            sep_fn c (x:xs, False) = ((c:x):xs, False)
+            sep_fn c (xs, True)    = ([c]:xs, False)
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = Options <$> modeOptions <*> informOptions
-                         <*> pathOptions <*> inputOptions <*> globalOptions
-
+programOptions = mkOptions <$> modeOptions <*> informOptions
+                         <*> pathOptions <*> inputOptions 
+    where mkOptions m i p is = Options m i p (last is) (take (length is - 1) is)
 
 {- Instance definitions -}
 
