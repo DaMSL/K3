@@ -49,6 +49,6 @@ runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) addPreloadVals = do
           readMVar (waitV $ control engine)
           void $ putStrLn $ "Node " ++ show addr ++ " finished."
 
-        printError validF pStatus = either (\err -> putStrLn $ show err) validF pStatus
+        printError validF pStatus = either (\err -> putStrLn $ message err) validF pStatus
 
 runBatch _ _ _ = error "Invalid batch processing mode"
