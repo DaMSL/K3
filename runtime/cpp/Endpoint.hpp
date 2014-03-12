@@ -196,8 +196,7 @@ namespace K3
              std::function<void(shared_ptr<Value>)> callbackFn)
       : handle_(ioh), buffer_(buf), subscribers_(subs), callbackFn_(callbackFn)
     {
-      // TODO: prime the buffer as needed.
-      //buffer_->refresh(handle_); 
+      refreshBuffer();
     }
 
     shared_ptr<IOHandle> handle() { return handle_; }
@@ -214,25 +213,30 @@ namespace K3
         return handle_->hasWrite() && !buffer_->full();
     }
 
-    shared_ptr<Value> doRead() {
-        // TODO concurrency?
-        tuple<shared_ptr<Value>, EndpointNotification> readResult;
-        EndpointNotification nt = EndpointNotification::NullEvent; 
+    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
         shared_ptr<Value> r;
+        EndpointNotification nt = EndpointNotification::NullEvent; 
         
         // Read from the buffer if possible
         if (!(buffer_->empty())) {
           r = buffer_->pop();
         }
+        
         // If there is more data in the underlying IOHandle
         // use it to populate the buffer
         if (handle_->hasRead()) {
           shared_ptr<Value> v = handle_->doRead();
           buffer_->push_back(v);
           nt = (handle_->builtin() || handle_->file())? EndpointNotification::FileData : EndpointNotification::SocketData; 
-        } 
+        }
+
+       return make_tuple(r, nt); 
+    }
+    shared_ptr<Value> doRead() {
+        // TODO concurrency?
+        tuple<shared_ptr<Value>, EndpointNotification> readResult;
          
-        readResult = make_tuple(r, nt); 
+        readResult = refreshBuffer(); 
 
         // Notify those subscribers who need to be notified of the event.
         subscribers_->notifyEvent(get<1>(readResult));

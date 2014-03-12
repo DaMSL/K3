@@ -218,11 +218,11 @@ namespace K3
   class FileHandle : public LineBasedHandle 
   {
   public:
-    FileHandle(shared_ptr<Codec> cdec, const string& path, LineBasedHandle::Input i) 
-      : fileSrc(shared_ptr<file_source>(new file_source(path))), 
-        LogMT("FileHandle"), LineBasedHandle(cdec, i, *fileSrc) 
+    FileHandle(shared_ptr<Codec> cdec, const file_source& fs, LineBasedHandle::Input i) 
+      :  LogMT("FileHandle"), LineBasedHandle(cdec, i, fs) 
     {}
 
+    // TODO refactor to match input case
     FileHandle(shared_ptr<Codec> cdec, const string& path, LineBasedHandle::Output o)
       : fileSink(shared_ptr<file_sink>(new file_sink(path))), 
         LogMT("FileHandle"), LineBasedHandle(cdec, o, *fileSink)

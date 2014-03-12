@@ -212,6 +212,13 @@ namespace K3 {
       virtual Value encode(Value) = 0;
       virtual shared_ptr<Value> decode(Value) = 0;
   };
+
+  class DefaultCodec : public Codec, public virtual LogMT {
+    public:
+      DefaultCodec() : Codec(), LogMT("DefaultCodec") {}
+      Value encode(Value v) { return v; }
+      shared_ptr<Value> decode(Value v) { return std::make_shared<Value>(v); } 
+  };
 }
 
 #endif
