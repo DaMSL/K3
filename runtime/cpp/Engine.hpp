@@ -127,7 +127,12 @@ namespace K3 {
 
     Engine() : LogMT("Engine") {}
 
-    Engine(bool simulation, SystemEnvironment& sys_env, Codec& _internal_codec, Codec& _external_codec):
+    Engine(
+      bool simulation,
+      SystemEnvironment& sys_env,
+      InternalCodec& _internal_codec,
+      ExternalCodec& _external_codec
+    ):
       LogMT("Engine"), internal_codec(_internal_codec), external_codec(_external_codec) {
 
       list<Address> processAddrs = deployedNodes(sysEnv);
@@ -422,8 +427,8 @@ namespace K3 {
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
-    shared_ptr<Codec>               internal_codec;
-    shared_ptr<Codec>               external_codec;
+    shared_ptr<InternalCodec>       internal_codec;
+    shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
     shared_ptr<WorkerPool>          workers;
     shared_ptr<NContext>            networkCtxt;
