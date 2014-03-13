@@ -42,7 +42,7 @@ namespace K3
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
   string internalEndpointPrefix() { return string("__");  }
-  
+
   Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
   }
@@ -79,10 +79,10 @@ namespace K3
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
     // Removes a value from the buffer and returns it (if possible)
-    virtual shared_ptr<Value> pop() = 0;  
-    // 
-    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0; 
-    // 
+    virtual shared_ptr<Value> pop() = 0;
+    //
+    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0;
+    //
     virtual EndpointNotification flush(shared_ptr<IOHandle>) = 0;
     //
     virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>)= 0;
@@ -95,18 +95,18 @@ namespace K3
     bool   empty()    { return !contents; }
     bool   full()     { return static_cast<bool>(contents); }
     size_t size()     { return contents ? 1 : 0; }
-    size_t capacity() { return 1; }  
-    
+    size_t capacity() { return 1; }
+
     // Buffer Operations
     bool push_back(shared_ptr<Value> v) {
       // Failure:
       if (this->full()) {
         return false;
       }
-      // Success: 
+      // Success:
       contents = v;
       return true;
-      
+
     }
 
     shared_ptr<Value> pop() {
@@ -120,27 +120,27 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh) { 
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh) {
       shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent; 
-      
+      EndpointNotification nt = EndpointNotification::NullEvent;
+
       // Read from the buffer if possible
       if (!(this->empty())) {
         r = this->pop();
       }
-      
+
       // If there is more data in the underlying IOHandle
       // use it to populate the buffer
       if (ioh->hasRead()) {
         shared_ptr<Value> v = ioh->doRead();
         this->push_back(v);
-        nt = (ioh->builtin() || ioh->file())? 
-               EndpointNotification::FileData : EndpointNotification::SocketData; 
+        nt = (ioh->builtin() || ioh->file())?
+               EndpointNotification::FileData : EndpointNotification::SocketData;
       }
 
-     return make_tuple(r, nt); 
+     return make_tuple(r, nt);
     }
-    
+
     EndpointNotification flush(shared_ptr<IOHandle> ioh) {
       // Default to a NullEvent
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -153,7 +153,7 @@ namespace K3
       }
       return nt;
     }
-   
+
     void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
       if(!this->empty()) {
         Message msg = cdec->read_message(*(this->pop()));
@@ -167,53 +167,47 @@ namespace K3
   //----------------------------
   // I/O event notifications.
 
-  class EndpointBindings : public LogMT
-  {
+  class EndpointBindings : public LogMT {
   public:
-    // TODO: value or value ref? Synchronize with Engine.hpp
-    typedef std::function<void(const Address&,const Identifier&,const Value&)> SendFunctionPtr;
 
-    typedef list<Message> Subscribers;
-    typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
+    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+    typedef list<tuple<Address, Identifier>> Subscribers;
+    typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, shared_ptr<Message> subscriber)
-    {
-      if ( subscriber ) {
-        shared_ptr<Subscribers> s = eventSubscriptions[nt];
-        if ( !s ) { 
+    void attachNotifier(EndpointNotification nt, Identifier sub_id, Address sub_addr) {
+      shared_ptr<Subscribers> s = eventSubscriptions[nt];
+        if (!s) {
           s = shared_ptr<Subscribers>(new Subscribers());
           eventSubscriptions[nt] = s;
         }
 
-        s->push_back(*subscriber);
+        s->push_back(make_tuple(sub_id, sub_addr));
       }
-      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); } 
+      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); }
     }
-    
-    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr)
-    {
+
+    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) { 
+        if (s) {
           s->remove_if(
-            [&subId, &subAddr](const Message& m){
-              return m.id() == subId && m.address() == subAddr;
+            [&subId, &subAddr](const tuple<Identifier, Address>& t){
+              return get<0>(t) == subId && get<1>(t) == subAddr;
             });
         }
       }
     }
 
-    void notifyEvent(EndpointNotification nt)
-    {
+    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload) {
       auto it = eventSubscriptions.find(nt);
-      if ( it != eventSubscriptions.end() ) {
+      if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) {
-          for (const Message& sub : *s) {
-            sendFn(sub.address(), sub.id(), sub.contents());
+        if (s) {
+          for (tuple<Identifier, Address> t : *s) {
+            sendFn(get<0>(t), get<1>(t), payload);
           }
         }
       }
@@ -253,14 +247,14 @@ namespace K3
         return handle_->hasWrite() && !buffer_->full();
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() { 
+    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
         return buffer_->refresh(handle_);
     }
     shared_ptr<Value> doRead() {
         // TODO concurrency?
         tuple<shared_ptr<Value>, EndpointNotification> readResult;
-         
-        readResult = refreshBuffer(); 
+
+        readResult = refreshBuffer();
 
         // Notify those subscribers who need to be notified of the event.
         subscribers_->notifyEvent(get<1>(readResult));
@@ -296,33 +290,33 @@ namespace K3
   //{
   //public:
   //  typedef shared_lockable_adapter<shared_mutex> eplockable;
-  //  
+  //
   //  using ConcurrentEndpointMap =
   //    externally_locked<shared_ptr<EndpointMap>,EndpointState> ;
 
-  //  using EndpointDetails = tuple<shared_ptr<IOHandle>, 
+  //  using EndpointDetails = tuple<shared_ptr<IOHandle>,
   //                                shared_ptr<EndpointBuffer>,
   //                                shared_ptr<EndpointBindings> >;
 
-  //  EndpointState() 
+  //  EndpointState()
   //    : eplockable(), LogMT("EndpointState"),
   //      internalEndpoints(emptyEndpointMap()),
   //      externalEndpoints(emptyEndpointMap())
   //  {}
 
   //  void addEndpoint(Identifier id, EndpointDetails details) {
-  //    if ( !externalEndpointId(id) ) { 
-  //      addEndpoint(id, details, internalEndpoints); 
-  //    } else { 
+  //    if ( !externalEndpointId(id) ) {
+  //      addEndpoint(id, details, internalEndpoints);
+  //    } else {
   //      string errorMsg = "Invalid internal endpoint identifier";
   //      logAt(trivial::error, errorMsg);
   //      throw runtime_error(errorMsg);
   //    }
   //  }
-  //  void removeEndpoint(Identifier id) { 
-  //    if ( !externalEndpointId(id) ) { 
+  //  void removeEndpoint(Identifier id) {
+  //    if ( !externalEndpointId(id) ) {
   //      removeEndpoint(id, externalEndpoints);
-  //    } else { 
+  //    } else {
   //      removeEndpoint(id, internalEndpoints);
   //    }
   //  }
@@ -375,7 +369,7 @@ namespace K3
   //    epMap->get(guard)->erase(id);
   //  }
 
-  //  shared_ptr<Endpoint> 
+  //  shared_ptr<Endpoint>
   //  getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
   //  {
   //    shared_lock_guard<EndpointState> guard(*this);
@@ -400,7 +394,7 @@ namespace K3
   //  class ConnectionMap : public virtual LogMT {
   //  public:
   //    ConnectionMap() : LogMT("ConnectionMap") {}
-  //    
+  //
   //    ConnectionMap(shared_ptr<Net::NContext> ctxt)
   //      : LogMT("ConnectionMap"), context_(ctxt)
   //    {}
@@ -441,7 +435,7 @@ namespace K3
 
   //public:
   //  typedef shared_lockable_adapter<shared_mutex> shlockable;
-  //  
+  //
   //  typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
   //            ConcurrentConnectionMap;
 
@@ -480,7 +474,7 @@ namespace K3
 
   //    shared_ptr<Net::NConnection> conn =
   //      shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
-  //    
+  //
   //    return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
   //  }
 
@@ -494,7 +488,7 @@ namespace K3
   //      BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
   //    }
   //  }
-  //  
+  //
   //  void removeConnection(Address addr, bool internal)
   //  {
   //    strict_lock<ConnectionState> guard(*this);
@@ -503,7 +497,7 @@ namespace K3
   //      cMap->get(guard)->removeConnection(addr);
   //    } else {
   //      BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-  //    }      
+  //    }
   //  }
 
   //  // TODO: Ideally, this should be a shared lock.
@@ -516,7 +510,7 @@ namespace K3
   //  }
 
   //  // TODO: Ideally, this should be a shared lock.
-  //  shared_ptr<Net::NConnection> getConnection(Address addr, bool internal) 
+  //  shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
   //  {
   //    strict_lock<ConnectionState> guard(*this);
   //    shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
@@ -524,7 +518,7 @@ namespace K3
   //  }
 
   //  // TODO
-  //  virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;    
+  //  virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;
   //  virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
 
   //  void clearConnections() {
@@ -532,10 +526,10 @@ namespace K3
   //    if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
   //    if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
   //  }
-  //  
+  //
   //  void clearConnections(bool internal) {
   //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap = 
+  //    shared_ptr<ConcurrentConnectionMap> cMap =
   //      internal ? internalConnections : externalConnections;
   //    if ( cMap ) { cMap->get(guard)->clearConnections(); }
   //  };
@@ -557,8 +551,8 @@ namespace K3
   //    return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this));
   //  }
 
-  //  shared_ptr<ConcurrentConnectionMap> 
-  //  emptyConnectionMap(shared_ptr<Net::NContext> ctxt) 
+  //  shared_ptr<ConcurrentConnectionMap>
+  //  emptyConnectionMap(shared_ptr<Net::NContext> ctxt)
   //  {
   //    shared_ptr<ConnectionMap> mp(new ConnectionMap(ctxt));
   //    return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));

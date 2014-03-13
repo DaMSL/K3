@@ -216,8 +216,8 @@ namespace K3 {
   class DefaultCodec : public Codec, public virtual LogMT {
     public:
       DefaultCodec() : Codec(), LogMT("DefaultCodec") {}
-      Value encode(Value v) { return v; }
-      shared_ptr<Value> decode(Value v) { return std::make_shared<Value>(v); } 
+      Value encode(const Value& v) { return v; }
+      shared_ptr<Value> decode(const Value& v) { return std::make_shared<Value>(v); } 
   };
 
   class InternalCodec: public Codec {
