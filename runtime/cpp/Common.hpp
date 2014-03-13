@@ -209,8 +209,8 @@ namespace K3 {
     public:
       Codec(): LogMT("Codec") {}
 
-      virtual Value encode(Value) = 0;
-      virtual shared_ptr<Value> decode(Value) = 0;
+      virtual Value encode(const Value&) = 0;
+      virtual shared_ptr<Value> decode(const Value&) = 0;
   };
 
   class DefaultCodec : public Codec, public virtual LogMT {
@@ -222,12 +222,12 @@ namespace K3 {
 
   class InternalCodec: public Codec {
     public:
-      virtual Message read_message(Value) = 0;
-      virtual Value show_message(Message) = 0;
+      virtual Message read_message(const Value&) = 0;
+      virtual Value show_message(const Message&) = 0;
   };
 
-  class ExternalCodec: public Codec {
-  };
+  using ExternalCodec = Codec;
+
 }
 
 #endif
