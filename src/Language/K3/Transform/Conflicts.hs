@@ -337,10 +337,10 @@ labelDataAccess (Node (DRole rol :@: anns) chs) = (Node (DRole rol :@: anns) (ma
     
     labelExpression :: K3 Expression -> K3 Expression
     labelExpression (Node (EVariable i :@: as) cs) = let
-       uid = getUID as 
+       uid = uidOfAnnos as 
          in Node (EVariable i :@: ((ERead  i uid):as)) (map labelExpression cs)
     labelExpression (Node (EAssign i :@: as) cs) = let
-       uid = getUID as 
+       uid = uidOfAnnos as 
          in Node (EAssign   i :@: ((EWrite i uid):as)) (map labelExpression cs)
     labelExpression e = e {subForest = (map labelExpression (subForest e))}
 labelDataAccess _ = error "Expecting Role Declaration in Label Data Access"
@@ -367,7 +367,7 @@ trigChildUID _ _ = error "Expecting Trigger Declaration in trigChildUID"
 -- Returns True if the given UID is a child of the given Expression
 hasChildUID :: UID -> K3 Expression -> Bool
 hasChildUID u (Node (_ :@: as) cs) = let
-  eID = getUID as 
+  eID = uidOfAnnos as 
   in (eID == u) || True `elem` (map (hasChildUID u) cs)
 
 -- Returns True if the given Expression has a sequence operation as a descendant
@@ -434,10 +434,10 @@ hasUConflict [] = False
 hasUConflict ((DConflict _):_) = True
 hasUConflict (_:t) = hasUConflict t
 
-getUID :: [Annotation Expression] -> UID
-getUID []            = error "no UID found!"
-getUID ((EUID x):_) = x 
-getUID (_:as)        = getUID as
+uidOfAnnos :: [Annotation Expression] -> UID
+uidOfAnnos []            = error "no UID found!"
+uidOfAnnos ((EUID x):_) = x 
+uidOfAnnos (_:as)        = uidOfAnnos as
 
 globalVars :: K3 Declaration -> [String]
 globalVars (tag &&& children -> (DRole _, ch)) = foldl appendIfGlobal [] ch

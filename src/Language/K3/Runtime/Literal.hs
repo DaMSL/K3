@@ -80,6 +80,3 @@ address :: K3 Literal -> EngineM a Address
 address (details -> (LAddress, [h,p], _)) = Address <$> ((,) <$> string h <*> int p)
 address _ = throwEngineError $ EngineError "Invalid address literal"
 
-details :: K3 Literal -> (Literal, [K3 Literal], [Annotation Literal])
-details (Node (tg :@: anns) ch) = (tg, ch, anns)
-

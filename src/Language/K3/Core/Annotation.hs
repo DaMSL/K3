@@ -17,7 +17,8 @@ module Language.K3.Core.Annotation (
     children,
     mapTree,
     foldMapTree,
-    foldTree
+    foldTree,
+    details
 ) where
 
 import Data.List (delete, find)
@@ -156,3 +157,8 @@ foldMapTree f x n@(Node _ ch) = flip f n $ map (foldMapTree f x) ch
 foldTree :: (b -> Tree a -> b) -> b -> Tree a -> b
 foldTree f x n@(Node _ []) = f x n
 foldTree f x n@(Node _ ch) = flip f n $ foldl (foldTree f) x ch
+
+-- | Get all elements: tag, children, annotations
+details :: K3 a -> (a, [K3 a], [Annotation a])
+details (Node (tg :@: anns) ch) = (tg, ch, anns)
+

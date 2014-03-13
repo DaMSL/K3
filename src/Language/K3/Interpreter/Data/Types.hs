@@ -135,12 +135,15 @@ type SEnvironment v = (IEnvironment v, AEnvironment v)
 
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IEngineM))
+type Interpretation = 
+  EitherT 
+    InterpretationError 
+    (StateT IState (WriterT ILog IEngineM))
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = RunTimeInterpretationError String
-    | RunTimeTypeError String
+    = RunTimeInterpretationError String (Maybe (UID, Span))
+    | RunTimeTypeError String (Maybe (UID, Span))
   deriving (Eq, Read, Show)
 
 -- | Type synonym for interpreter engine and engine monad
@@ -158,7 +161,7 @@ data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
                      , getAnnotEnv   :: AEnvironment Value
                      , getStaticEnv  :: SEnvironment Value
-                     , getBindStack  :: BindPathStack }
+                     , getBindStack  :: BindPathStack}
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)

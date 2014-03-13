@@ -593,9 +593,6 @@ keyword s = text s
 commaBrace :: [Doc] -> Doc
 commaBrace = encloseSep lbrace rbrace comma
 
-details :: K3 a -> (a, [K3 a], [Annotation a])
-details n = (tag n, children n, annotations n)
-
 matchAnnotation :: (Eq (Annotation a))
                 => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]
                 -> Printer b

@@ -24,7 +24,10 @@ module Language.K3.Core.Common (
     addAssoc,
     removeAssoc,
     replaceAssoc,
-    modifyAssoc
+    modifyAssoc,
+
+    HasUID(..),
+    HasSpan(..)
 ) where
 
 import Control.Concurrent.MVar
@@ -169,3 +172,10 @@ instance (IRead a) => IRead (MVar a) where
         "MVar" -> ireadPrec >>= return . (>>= newMVar)
         _ -> TRP.pfail
     )
+
+class HasUID a where
+  getUID :: a -> Maybe UID
+
+class HasSpan a where
+  getSpan :: a -> Maybe Span
+

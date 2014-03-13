@@ -31,9 +31,6 @@ $(loggingFunctions)
 $(customLoggingFunctions ["Dispatch", "BindPath"])
 
 {- Misc. helpers-}
-details :: K3 a -> (a, [K3 a], [Annotation a])
-details (Node (tg :@: anns) ch) = (tg, ch, anns)
-
 -- | Matches polymorphic and monomorphic functions.
 isFunction :: K3 Type -> Bool
 isFunction (tag -> TFunction) = True

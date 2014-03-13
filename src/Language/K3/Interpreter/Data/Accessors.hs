@@ -5,14 +5,17 @@ module Language.K3.Interpreter.Data.Accessors where
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
+import Control.Applicative
 
 import Data.Function
 import Data.List
+import Data.Maybe
 
 import System.Mem.StableName
 
 import Language.K3.Interpreter.Data.Types
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 
@@ -75,8 +78,17 @@ valueOfInterpretation s i = runInterpretation' s i >>= return . either (const $ 
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
-throwE :: InterpretationError -> Interpretation a
-throwE = Control.Monad.Trans.Either.left
+throwE :: (Maybe (UID, Span) -> InterpretationError) -> Interpretation a
+throwE f = Control.Monad.Trans.Either.left (f Nothing)
+
+-- | Raise an error with a UID and span
+throwAE :: (HasUID b, HasSpan b) => [b] -> (Maybe (UID, Span) -> InterpretationError) -> Interpretation a
+throwAE annos f = do
+  let uid     = fromMaybe Nothing $ find isJust $ map getUID annos
+      span    = fromMaybe Nothing $ find isJust $ map getSpan annos
+      uidSpan (Just u) (Just s) = Just (u,s)
+      uidSpan _        _        = Nothing
+  Control.Monad.Trans.Either.left (f $ uidSpan uid span)
 
 -- | Lift an engine computation to an interpretation.
 liftEngine :: EngineM Value b -> Interpretation b
