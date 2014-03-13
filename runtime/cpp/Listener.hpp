@@ -6,8 +6,8 @@
 #include <unordered_set>
 #include <boost/array.hpp>
 #include <boost/thread/condition_variable.hpp>
-#include <boost/thread/locks.hpp> 
-#include <boost/thread/lock_types.hpp> 
+#include <boost/thread/locks.hpp>
+#include <boost/thread/lock_types.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 #include <runtime/cpp/Common.hpp>
@@ -16,7 +16,7 @@
 #include <runtime/cpp/Endpoint.hpp>
 
 namespace K3 {
-  
+
   using namespace std;
 
   using std::atomic_uint;
@@ -79,110 +79,87 @@ namespace K3 {
     shared_ptr<condition_variable> msgAvailCondition;
   };
 
-  //-------------------------------
-  // Listener processor base class.
+  // Listener Processors
+  // -------------------
+  //
+  // These are callbacks which listeners register with their endpoints, to handle asynchronous
+  // notification.
 
-  /*
-  class ListenerProcessor : public virtual LogMT {
-  public:
-    ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint> e)
-      : LogMT("ListenerProcessor"), control(c), endpoint(e)
-    {}
+  class ListenerProcessor: public virtual LogMT {
+    public:
+      ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint> e): control(c), endpoint(e) {}
+      virtual void operator()() = 0;
 
-    // A callable processing function that must be implemented by subclasses.
-    virtual void operator()() = 0;
-  
-  protected:
-    shared_ptr<ListenerControl> control;
-    shared_ptr<Endpoint> endpoint;
+    private:
+      shared_ptr<ListenerControl> control;
+      shared_ptr<Endpoint> endpoint;
   };
 
-  //------------------------------------
-  // Listener processor implementations.
+  // Internal Listener Processors are intended for internal endpoints, namely those whose messages
+  // themselves contain dispatch information.
+  class InternalListenerProcessor: public ListenerProcessor {
+    public:
+      InternalListenerProcessor(
+        shared_ptr<ListenerControl> c,
+        shared_ptr<Endpoint> e,
+        shared_ptr<MessageQueues> q,
+        shared_ptr<InternalCodec> d
+      ): ListenerProcessor(c, e), engine_queues(q), codec(d) {}
 
-  class InternalListenerProcessor : public ListenerProcessor
-  {
-  public:
-    InternalListenerProcessor(shared_ptr<MessageQueues> q,
-                              shared_ptr<ListenerControl> c,
-                              shared_ptr<Endpoint> e)
-      : ListenerProcessor<Message, EventValue>(c, e), engineQueues(q)
-    {}
-
-    void operator()() {
-      if ( this->control && this->endpoint && engineQueues )
-      {
-        // Enqueue from the endpoint's buffer into the engine queues,
-        // and signal message availability.
-        this->endpoint->buffer()->enqueue(engineQueues);
-        this->control->messageAvailable();
+      void operator()(shared_ptr<Value> payload) {
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
+        engine_queues->enqueue(codec->read_message(*payload));
       }
-      else { 
-        this->logAt(boost::log::trivial::error, "Invalid listener processor members");
-      }
-    }
 
-  protected:
-    shared_ptr<MessageQueues> engineQueues;
+    private:
+      shared_ptr<MessageQueues> engine_queues;
+      shared_ptr<InternalCodec> codec;
   };
 
-  class ExternalListenerProcessor : public ListenerProcessor
-  {
-  public:
-    ExternalListenerProcessor(shared_ptr<ListenerControl> c,
-                              shared_ptr<Endpoint> e)
-      : ListenerProcessor(c, e)
-    {}
-
-    void operator()() {
-      if ( this->control && this->endpoint )
-      {
-        // Notify the endpoint's subscribers of a socket data event,
-        // and signal message availability.
-        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData);
-        this->control->messageAvailable();
+  // ExternalListenerPrc
+  class ExternalListenerProcessor: public ListenerProcessor {
+    public:
+      void operator()(shared_ptr<Value> payload) {
+        if (this->control && this->endpoint) {
+          this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
+          this->control->messageAvailable();
+        }
       }
-      else { 
-        this->logAt(boost::log::trivial::error, "Invalid listener processor members");
-      }
-    }
   };
-  */
 
   //------------
   // Listeners
 
   // Abstract base class for listeners.
   template<typename NContext, typename NEndpoint>
-  class Listener : public virtual LogMT
-  {
-  public:
-    Listener(Identifier n,
-             shared_ptr<NContext> ctxt,
-             shared_ptr<Endpoint> ep,
-             shared_ptr<ListenerControl> ctrl,
-             shared_ptr<ListenerProcessor> p)
-      : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
-    {
-      if ( endpoint_ ) {
-        typename IOHandle::SourceDetails source = ep->handle()->networkSource();
-        nEndpoint_ = get<0>(source);
-        codec_ = get<1>(source);
+  class Listener : public virtual LogMT {
+    public:
+      Listener(Identifier n,
+               shared_ptr<NContext> ctxt,
+               shared_ptr<Endpoint> ep,
+               shared_ptr<ListenerControl> ctrl,
+               shared_ptr<ListenerProcessor> p)
+        : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
+      {
+        if ( endpoint_ ) {
+          typename IOHandle::SourceDetails source = ep->handle()->networkSource();
+          nEndpoint_ = get<0>(source);
+          codec_ = get<1>(source);
+        }
       }
-    }
 
-  protected:
-    Identifier name;
-    
-    shared_ptr<NContext> ctxt_;
-    shared_ptr<Endpoint> endpoint_;
-    shared_ptr<NEndpoint> nEndpoint_;
-    shared_ptr<Codec> codec_;
-      // We assume this wire description performs the framing necessary
-      // for partial network messages.
-    
-    shared_ptr<ListenerControl> control_;
-    shared_ptr<ListenerProcessor> processor_;
+    protected:
+      Identifier name;
+
+      shared_ptr<NContext> ctxt_;
+      shared_ptr<Endpoint> endpoint_;
+      shared_ptr<NEndpoint> nEndpoint_;
+      shared_ptr<Codec> codec_;
+        // We assume this wire description performs the framing necessary
+        // for partial network messages.
+
+      shared_ptr<ListenerControl> control_;
+      shared_ptr<ListenerProcessor> processor_;
   };
 
   namespace Asio
@@ -192,14 +169,13 @@ namespace K3 {
     using namespace boost::system;
 
     using boost::system::error_code;
+    using boost::thread;
 
     template<typename NContext, typename NEndpoint>
     using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
     // TODO: close method, terminating all incoming connections to this acceptor.
-    class Listener : public BaseListener<NContext, NEndpoint>,
-                     public basic_lockable_adapter<mutex>
-    {
+    class Listener : public BaseListener<NContext, NEndpoint>, public basic_lockable_adapter<mutex> {
     public:
       typedef basic_lockable_adapter<mutex> llockable;
       typedef list<shared_ptr<NConnection> > ConnectionList;
@@ -243,7 +219,7 @@ namespace K3 {
       {
         if ( this->endpoint_ && this->codec_ ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
-          
+
           this->nEndpoint_->acceptor()->async_accept(nextConnection,
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
@@ -262,12 +238,12 @@ namespace K3 {
             strict_lock<Listener> guard(*this);
             connections_->get(guard)->push_back(c);
           }
-          
+
           // Notify subscribers of socket accept event.
-          if ( this->endpoint_ ) { 
+          if ( this->endpoint_ ) {
             this->endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
           }
-          
+
           // Start connection.
           receiveMessages(c);
         }
@@ -298,8 +274,8 @@ namespace K3 {
               {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->codec_->unpack(string(buffer_->c_array(), buffer_->size()));
-                if ( v ) { 
+                shared_ptr<Value> v = this->codec_->encode(string(buffer_->c_array(), buffer_->size()));
+                if ( v ) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   //this->endpoint_->buffer()->append(v);
                   this->endpoint_->enqueueToEndpoint(v);
@@ -307,11 +283,11 @@ namespace K3 {
                   // TODO: deprecated with the revised endpoint design.
                   //(*(this->processor_))();
                 }
-                
+
                 // Recursive invocation for the next message.
                 receiveMessages(c);
               }
-              else 
+              else
               {
                 deregisterConnection(c);
                 this->logAt(trivial::error, string("Connection error: ")+ec.message());
@@ -323,7 +299,7 @@ namespace K3 {
     };
   }
 
-  namespace Nanomsg 
+  namespace Nanomsg
   {
     using std::atomic_bool;
 
@@ -356,12 +332,12 @@ namespace K3 {
         SocketBuffer buffer_;
 
         while ( !terminated_ ) {
-          // Receive a message.          
+          // Receive a message.
           int bytes = nn_recv(this->endpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
           if ( bytes >= 0 ) {
             // Unpack, process.
             shared_ptr<Value> v = this->codec_->unpack(string(buffer_.c_array(), buffer_.static_size));
-            if ( v ) { 
+            if ( v ) {
               // Simulate accept events for nanomsg.
               refreshSenders(v);
 
@@ -400,6 +376,7 @@ namespace K3 {
       }
     };
   }
-} 
+}
 
 #endif
+// vim:set sw=2 ts=2 sts=2:
