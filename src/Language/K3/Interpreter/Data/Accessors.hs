@@ -78,17 +78,24 @@ valueOfInterpretation s i = runInterpretation' s i >>= return . either (const $ 
 
 -- | Raise an error inside an interpretation. The error will be captured alongside the event log
 -- till date, and the current state.
-throwE :: (Maybe (UID, Span) -> InterpretationError) -> Interpretation a
-throwE f = Control.Monad.Trans.Either.left (f Nothing)
+throwSE :: Maybe (Span, UID) -> (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
+throwSE su f = Control.Monad.Trans.Either.left $ f su
+
+throwE :: (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
+throwE f = throwSE Nothing f
 
 -- | Raise an error with a UID and span
-throwAE :: (HasUID b, HasSpan b) => [b] -> (Maybe (UID, Span) -> InterpretationError) -> Interpretation a
-throwAE annos f = do
-  let uid     = fromMaybe Nothing $ find isJust $ map getUID annos
-      span    = fromMaybe Nothing $ find isJust $ map getSpan annos
-      uidSpan (Just u) (Just s) = Just (u,s)
-      uidSpan _        _        = Nothing
-  Control.Monad.Trans.Either.left (f $ uidSpan uid span)
+throwAE :: (HasSpan b, HasUID b) => [b] -> (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
+throwAE annos f = throwSE (spanUid annos) f
+
+-- | Get the UID and span out of annotations
+spanUid :: (HasUID a, HasSpan a) => [a] -> Maybe (Span, UID)
+spanUid anns = convert span uid
+  where uid     = fromMaybe Nothing $ find isJust $ map getUID anns
+        span    = fromMaybe Nothing $ find isJust $ map getSpan anns
+        convert (Just x) (Just y) = Just (x,y)
+        convert _        _        = Nothing
+
 
 -- | Lift an engine computation to an interpretation.
 liftEngine :: EngineM Value b -> Interpretation b
@@ -106,9 +113,9 @@ elemE :: Identifier -> Interpretation Bool
 elemE n = get >>= return . maybe False (const True) . find ((n == ) . fst) . getEnv
 
 -- | Environment lookup, with a thrown error if unsuccessful.
-lookupE :: Identifier -> Interpretation Value
-lookupE n = get >>= maybe err return . lookup n . getEnv
-  where err = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
+lookupE :: Maybe (Span, UID) -> Identifier -> Interpretation Value
+lookupE su n = get >>= maybe err return . lookup n . getEnv
+  where err = throwSE su $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
 -- | Environment modification
 modifyE :: (IEnvironment Value -> IEnvironment Value) -> Interpretation ()

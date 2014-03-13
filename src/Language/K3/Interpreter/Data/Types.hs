@@ -142,8 +142,8 @@ type Interpretation =
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = RunTimeInterpretationError String (Maybe (UID, Span))
-    | RunTimeTypeError String (Maybe (UID, Span))
+    = RunTimeInterpretationError String (Maybe (Span, UID))
+    | RunTimeTypeError String (Maybe (Span, UID))
   deriving (Eq, Read, Show)
 
 -- | Type synonym for interpreter engine and engine monad
