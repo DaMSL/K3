@@ -85,8 +85,7 @@ extractReturns e@(tag &&& children -> (ELetIn i, [_, b])) =
 extractReturns e@(tag &&& children -> (ECaseOf i, [_, s, n])) = 
   let r    = extractReturns s
       depR = filter (notElem i . freeVariables) r
-      ret  = 
-  in (if r <> depR then [e] else r ++ extractReturns n)
+  in (if r /= depR then [e] else r ++ extractReturns n)
 
 extractReturns e@(tag &&& children -> (EBindAs b, [_, f])) =
   let r = filter (and . map (`notElem` (bindingVariables b)) . freeVariables) $ extractReturns f
