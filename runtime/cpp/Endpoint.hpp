@@ -31,7 +31,9 @@ namespace K3
 
   typedef tuple<int, int> BufferSpec;
 
-  enum class EndpointNotification { NullEvent, FileData, FileClose, SocketAccept, SocketData, SocketClose };
+  enum class EndpointNotification {
+    NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose
+  };
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
@@ -213,8 +215,6 @@ namespace K3
     SendFunctionPtr sendFn;
     Subscriptions eventSubscriptions;
   };
-  
-
 
   //---------------------------------
   // Endpoints and their containers.
