@@ -84,6 +84,8 @@ namespace K3
     virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0; 
     // 
     virtual EndpointNotification flush(shared_ptr<IOHandle>) = 0;
+    //
+    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>)= 0;
   };
 
   class ScalarEPBufferST : public EndpointBuffer, public LogMT {
@@ -151,7 +153,13 @@ namespace K3
       }
       return nt;
     }
-
+   
+    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
+      if(!this->empty()) {
+        Message msg = cdec->read_message(*(this->pop()));
+        queues->enqueue(msg);
+      }
+    }
    protected:
     shared_ptr<Value> contents;
   };
