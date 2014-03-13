@@ -76,7 +76,12 @@ namespace K3
 
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
-    virtual shared_ptr<Value> pop() = 0;   
+    // Removes a value from the buffer and returns it (if possible)
+    virtual shared_ptr<Value> pop() = 0;  
+    // 
+    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0; 
+    // 
+    virtual EndpointNotification flush(shared_ptr<IOHandle>) = 0;
   };
 
   class ScalarEPBufferST : public EndpointBuffer, public LogMT {
@@ -87,14 +92,7 @@ namespace K3
     bool   full()     { return static_cast<bool>(contents); }
     size_t size()     { return contents ? 1 : 0; }
     size_t capacity() { return 1; }  
-    // Iterator interface
-    // TODO
-    //iterator<shared_ptr<Value> > begin() {
-    //  return contents;
-    //}
-    //iterator<shared_ptr<Value> > end() {
-    //  return contents;
-    //}
+    
     // Buffer Operations
     bool push_back(shared_ptr<Value> v) {
       // Failure:
@@ -118,7 +116,41 @@ namespace K3
       return v;
     }
 
-  protected:
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh) { 
+      shared_ptr<Value> r;
+      EndpointNotification nt = EndpointNotification::NullEvent; 
+      
+      // Read from the buffer if possible
+      if (!(this->empty())) {
+        r = this->pop();
+      }
+      
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if (ioh->hasRead()) {
+        shared_ptr<Value> v = ioh->doRead();
+        this->push_back(v);
+        nt = (ioh->builtin() || ioh->file())? 
+               EndpointNotification::FileData : EndpointNotification::SocketData; 
+      }
+
+     return make_tuple(r, nt); 
+    }
+    
+    EndpointNotification flush(shared_ptr<IOHandle> ioh) {
+      // Default to a NullEvent
+      EndpointNotification nt = EndpointNotification::NullEvent;
+      // pop() a value and write to the handle if possible,
+      // registering the proper notification type
+      if (!this->empty()) {
+        ioh->doWrite(*(this->pop()));
+        nt = (ioh->builtin() || ioh->file())?
+               EndpointNotification::FileData : EndpointNotification::SocketData;
+      }
+      return nt;
+    }
+
+   protected:
     shared_ptr<Value> contents;
   };
 
@@ -213,24 +245,8 @@ namespace K3
         return handle_->hasWrite() && !buffer_->full();
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
-        shared_ptr<Value> r;
-        EndpointNotification nt = EndpointNotification::NullEvent; 
-        
-        // Read from the buffer if possible
-        if (!(buffer_->empty())) {
-          r = buffer_->pop();
-        }
-        
-        // If there is more data in the underlying IOHandle
-        // use it to populate the buffer
-        if (handle_->hasRead()) {
-          shared_ptr<Value> v = handle_->doRead();
-          buffer_->push_back(v);
-          nt = (handle_->builtin() || handle_->file())? EndpointNotification::FileData : EndpointNotification::SocketData; 
-        }
-
-       return make_tuple(r, nt); 
+    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() { 
+        return buffer_->refresh(handle_);
     }
     shared_ptr<Value> doRead() {
         // TODO concurrency?
@@ -257,7 +273,7 @@ namespace K3
         return;
     }
 
-    // TDDO
+    // TODO
     void enqueueToEndpoint(shared_ptr<Value> val) {}
 
   protected:
