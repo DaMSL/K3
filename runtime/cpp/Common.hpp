@@ -219,6 +219,16 @@ namespace K3 {
       Value encode(Value v) { return v; }
       shared_ptr<Value> decode(Value v) { return std::make_shared<Value>(v); } 
   };
+
+  class InternalCodec: public Codec {
+    public:
+      virtual Message read_message(Value) = 0;
+      virtual Value show_message(Message) = 0;
+  };
+
+  class ExternalCodec: public Codec {
+  };
 }
 
 #endif
+// vim: set sw=2 ts=2 sts=2:
