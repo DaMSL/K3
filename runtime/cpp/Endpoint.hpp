@@ -35,6 +35,18 @@ namespace K3
     NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose
   };
 
+  class BufferException : public runtime_error {
+  public:
+    BufferException( const string& msg ) : runtime_error(msg) {}
+    BufferException( const char* msg ) : runtime_error(msg) {}
+  };
+
+  class EndpointException : public runtime_error {
+  public:
+    EndpointException( const string& msg ) : runtime_error(msg) {}
+    EndpointException( const char* msg ) : runtime_error(msg) {}
+  };
+
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
 
@@ -71,10 +83,6 @@ namespace K3
     virtual bool full() = 0;
     virtual size_t size() = 0;
     virtual size_t capacity() = 0;
-
-    // Iterator interface to the endpoint buffer.
-    //virtual iterator<shared_ptr<Value> > begin() = 0;
-    //virtual iterator<shared_ptr<Value> > end() = 0;
 
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
@@ -126,7 +134,8 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh) {
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh)
+    {
       shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
 
@@ -147,7 +156,8 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle> ioh) {
+    EndpointNotification flush(shared_ptr<IOHandle> ioh)
+    {
       // Default to a NullEvent
       EndpointNotification nt = EndpointNotification::NullEvent;
       // pop() a value and write to the handle if possible,
@@ -166,6 +176,7 @@ namespace K3
         queues->enqueue(msg);
       }
     }
+
    protected:
     shared_ptr<Value> contents;
   };
@@ -207,7 +218,8 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh) {
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh)
+    {
       shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
 
@@ -228,7 +240,10 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle> ioh) {
+    // TODO: this should flush out multiple values, and return an endpoint
+    // notification for each flushed value.
+    EndpointNotification flush(shared_ptr<IOHandle> ioh)
+    {
       // Default to a NullEvent
       EndpointNotification nt = EndpointNotification::NullEvent;
       // pop() a value and write to the handle if possible,
@@ -334,36 +349,45 @@ namespace K3
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
     bool hasWrite() {
-        return handle_->hasWrite() && !buffer_->full();
+      return handle_->hasWrite() && !buffer_->full();
     }
 
     tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
-        return buffer_->refresh(handle_);
+      return buffer_->refresh(handle_);
     }
+
+    EndpointNotification flushBuffer() {
+      return buffer_->flush(handle_);
+    }
+
     shared_ptr<Value> doRead() {
-        // TODO concurrency?
-        tuple<shared_ptr<Value>, EndpointNotification> readResult;
+      // TODO concurrency?
+      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
+      shared_ptr<Value> payload = get<0>(readResult);
+      
+      // Notify those subscribers who need to be notified of the event.
+      subscribers_->notifyEvent(get<1>(readResult), payload);
 
-        readResult = refreshBuffer();
-
-        shared_ptr<Value> payload = get<0>(readResult);
-        // Notify those subscribers who need to be notified of the event.
-        subscribers_->notifyEvent(get<1>(readResult), payload);
-
-        // Return the read result.
-        return payload;
+      // Return the read result.
+      return payload;
     }
 
     void doWrite(Value& v) {
-        bool result = buffer_->push_back(make_shared<Value>(v));
+      shared_ptr<Value> v_ptr = make_shared<Value>(v);
+      bool success = buffer_->push_back(v_ptr);
+      if ( !success ) {
+        // Flush buffer, and then try to append again.    
+        EndpointNotification evt = flushBuffer();
+        
+        // Notify subscribers any data events generated while flushing.
+        // TOOD: this should be a loop when returning an event per value flushed.
+        subscribers_->notifyEvent(evt, v_ptr);
 
-        if (result) {
-            // TODO: Append failed, flush?
-        } else {
-            // TODO: Success, now what?
-        }
+        // Try to append again, and if this still fails, throw a buffering exception.
+        success = buffer_->push_back(v_ptr);
+      }
 
-        return;
+      if ( ! success ) { throw BufferException("Failed to buffer value during endpoint write."); }
     }
 
     // TODO
