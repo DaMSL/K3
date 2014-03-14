@@ -13,6 +13,7 @@ using namespace K3;
 void do_nothing(const Address&, const Identifier& , shared_ptr<Value>)
 {
 }
+
 // Test Utils
 template <class R>
 tuple<int,string> readFile(shared_ptr<R> r) {
@@ -41,6 +42,7 @@ shared_ptr<FileHandle> createReadFileHandle(string path) {
   shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
   return f;
 }
+
 shared_ptr<FileHandle> createWriteFileHandle(string path) {
   // Setup a K3 Codec 
   shared_ptr<DefaultCodec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
