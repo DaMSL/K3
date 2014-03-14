@@ -371,8 +371,8 @@ namespace K3
       return buffer_->flush(handle_);
     }
 
-    shared_ptr<Value> doRead() {
-      // TODO concurrency?
+    shared_ptr<Value> doRead() 
+    {
       tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
       shared_ptr<Value> payload = get<0>(readResult);
       
@@ -383,7 +383,8 @@ namespace K3
       return payload;
     }
 
-    void doWrite(Value& v) {
+    void doWrite(Value& v)
+    {
       shared_ptr<Value> v_ptr = make_shared<Value>(v);
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
@@ -401,8 +402,7 @@ namespace K3
       if ( ! success ) { throw BufferException("Failed to buffer value during endpoint write."); }
     }
 
-    // TODO
-    void enqueueToEndpoint(shared_ptr<Value> val) {}
+    void enqueueToEndpoint(shared_ptr<Value> val) { buffer_->push_back(val); }
 
   protected:
     shared_ptr<IOHandle> handle_;

@@ -95,7 +95,7 @@ namespace K3 {
       virtual void process_transfer() = 0;
       
       virtual void process_notification(shared_ptr<Value> payload) {
-        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, nullptr);
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketTick, nullptr);
         this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
       }
 
@@ -119,7 +119,7 @@ namespace K3 {
         this->endpoint->buffer()->transfer(
           engine_queues,
           codec,
-          bind(&ListenerProcessor::process_notification, this, placeholders::_1)
+          bind(&InternalListenerProcessor::process_notification, this, placeholders::_1)
         );
       }
 
@@ -137,7 +137,7 @@ namespace K3 {
   class ExternalListenerProcessor: public ListenerProcessor {
     public:
       void process_transfer() {
-        this->endpoint->buffer()->transfer(nullptr, nullptr, bind(&ListenerProcessor, this, placeholders::_1);
+        this->endpoint->buffer()->transfer(nullptr, nullptr, bind(&ListenerProcessor, this, placeholders::_1));
       }
   };
 
@@ -284,11 +284,9 @@ namespace K3 {
               if (!ec) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                //shared_ptr<Value> s = make_shared<Value>();
                 shared_ptr<Value> v = this->codec_->decode(string(buffer_->c_array(), buffer_->size()));
                 if (v) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
-                  //this->endpoint_->buffer()->append(v);
                   this->endpoint_->enqueueToEndpoint(v);
 
                   // Call the ListenerProcessor to handle a potential transfer.
