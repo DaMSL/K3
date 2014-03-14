@@ -87,24 +87,27 @@ namespace K3 {
 
   class ListenerProcessor: public virtual LogMT {
     public:
-      ListenerProcessor(shared_ptr<ListenerControl> c, shared_ptr<Endpoint> e): control(c), endpoint(e) {}
+      ListenerProcessor(shared_ptr<ListenerControl> c, 
+        shared_ptr<Endpoint> e
+      ): control(c), endpoint(e), LogMT("ListenerProcessor") {}
+      
       virtual void operator()() = 0;
 
-    private:
+    protected:
       shared_ptr<ListenerControl> control;
       shared_ptr<Endpoint> endpoint;
   };
 
   // Internal Listener Processors are intended for internal endpoints, namely those whose messages
   // themselves contain dispatch information.
-  class InternalListenerProcessor: public ListenerProcessor {
+  class InternalListenerProcessor: ListenerProcessor {
     public:
       InternalListenerProcessor(
         shared_ptr<ListenerControl> c,
         shared_ptr<Endpoint> e,
         shared_ptr<MessageQueues> q,
         shared_ptr<InternalCodec> d
-      ): ListenerProcessor(c, e), engine_queues(q), codec(d) {}
+      ): ListenerProcessor(c, e), engine_queues(q), codec(d), LogMT("InternalListenerProcessor") {}
 
       void operator()(shared_ptr<Value> payload) {
         this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
@@ -143,8 +146,8 @@ namespace K3 {
       {
         if ( endpoint_ ) {
           typename IOHandle::SourceDetails source = ep->handle()->networkSource();
-          nEndpoint_ = get<0>(source);
-          codec_ = get<1>(source);
+          nEndpoint_ = get<1>(source);
+          codec_ = get<0>(source);
         }
       }
 
@@ -187,7 +190,7 @@ namespace K3 {
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<ListenerProcessor> p)
         : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
-          llockable(), connections_(emptyConnections())
+          llockable(), connections_(emptyConnections()), LogMT("AsioListener")
       {
         if ( this->nEndpoint_ && this->codec_
                 && this->ctxt_ && this->ctxt_->service_threads )
@@ -241,7 +244,7 @@ namespace K3 {
 
           // Notify subscribers of socket accept event.
           if ( this->endpoint_ ) {
-            this->endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept);
+            this->endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept, nullptr);
           }
 
           // Start connection.
@@ -274,7 +277,8 @@ namespace K3 {
               {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->codec_->encode(string(buffer_->c_array(), buffer_->size()));
+                //shared_ptr<Value> s = make_shared<Value>();
+                shared_ptr<Value> v = this->codec_->decode(string(buffer_->c_array(), buffer_->size()));
                 if ( v ) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   //this->endpoint_->buffer()->append(v);
@@ -314,7 +318,7 @@ namespace K3 {
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<ListenerProcessor> p)
-        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p), LogMT("NanomsgListener")
       {
         if ( this->nEndpoint_ && this->codec_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg
@@ -333,16 +337,16 @@ namespace K3 {
 
         while ( !terminated_ ) {
           // Receive a message.
-          int bytes = nn_recv(this->endpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
+          int bytes = nn_recv(this->nEndpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
           if ( bytes >= 0 ) {
-            // Unpack, process.
-            shared_ptr<Value> v = this->codec_->unpack(string(buffer_.c_array(), buffer_.static_size));
+            // Decode, process.
+            shared_ptr<Value> v = this->codec_->decode(string(buffer_.c_array(), buffer_.static_size));
             if ( v ) {
               // Simulate accept events for nanomsg.
               refreshSenders(v);
 
               // Add the value to the endpoint's buffer, and invoke the listener processor.
-              this->endpoint_->buffer()->append(v);
+              this->endpoint_->buffer()->push_back(v);
               (*(this->processor_))();
             }
           }

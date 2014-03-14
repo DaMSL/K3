@@ -3,6 +3,7 @@
 #include <string>
 #include <runtime/cpp/IOHandle.hpp>
 #include <runtime/cpp/Endpoint.hpp>
+#include <runtime/cpp/Listener.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/device/file.hpp>
 #include <xUnit++/xUnit++.h>
