@@ -78,7 +78,7 @@ namespace K3
 
   class EndpointBuffer : public LogMT {
   public:
-    typedef std::function<void(shared_ptr<Value>)> NotifyFunctionPtr;
+    typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
     EndpointBuffer() : LogMT("Endpoint Buffer") {}
 
@@ -95,14 +95,14 @@ namespace K3
 
     // Attempt to pull a value from the provided IOHandle
     // into the buffer. Returns a Maybe Value
-    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0;
+    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>, NotifyFn) = 0;
 
     // Flush the contents of the buffer out to the provided IOHandle
-    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>, NotifyFunctionPtr) = 0;
+    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>, NotifyFn) = 0;
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
-    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFunctionPtr)= 0;
+    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
   class ScalarEPBufferST : public EndpointBuffer, public LogMT {
@@ -383,14 +383,16 @@ namespace K3
 
     shared_ptr<Value> doRead() 
     {
-      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
-      shared_ptr<Value> payload = get<0>(readResult);
-      
-      // Notify those subscribers who need to be notified of the event.
-      subscribers_->notifyEvent(get<1>(readResult), payload);
+      EndpointNotification nt =
+        (handle_->builtin() || handle_->file())?
+          EndpointNotification::FileData : EndpointNotification::SocketData;
 
+      // Refresh the endpoint's buffer, passing a lambda to notify our subscribers.
+      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer(
+        [subscribers_, nt](shared_ptr<Value> v){ subscribers_->notifyEvent(nt, v); });
+      
       // Return the read result.
-      return payload;
+      return get<0>(readResult);
     }
 
     void doWrite(Value& v)
@@ -405,8 +407,6 @@ namespace K3
         for (evt : *events) {
           subscribers_->notifyEvent(evt, v_ptr);
         }
-        
-        
 
         // Try to append again, and if this still fails, throw a buffering exception.
         success = buffer_->push_back(v_ptr);
