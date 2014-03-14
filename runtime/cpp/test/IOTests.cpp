@@ -72,3 +72,21 @@ FACT("Endpoint read file by line. ScalarST Buffer")
   Assert.Equal(expected, actual);
 }
 
+FACT("Endpoint read file by line. ContainerST Buffer")
+{
+  // Define input path
+  string path = "in.txt";
+  // Create FileHandle
+  shared_ptr<FileHandle> f = createFileHandle(path);
+
+  // Setup a K3 Endpoint
+
+  auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
+  EndpointBindings::SendFunctionPtr func = do_nothing;
+  auto bindings = make_shared<EndpointBindings>(func);
+  
+  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings, nullptr));
+  string actual = readFile<Endpoint>(ep);
+  string expected = "Testing 1 2 3 ";
+  Assert.Equal(expected, actual);
+}
