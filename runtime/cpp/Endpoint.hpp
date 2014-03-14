@@ -95,10 +95,10 @@ namespace K3
 
     // Attempt to pull a value from the provided IOHandle
     // into the buffer. Returns a Maybe Value
-    virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>, NotifyFn) = 0;
+    virtual shared_ptr<Value> refresh(shared_ptr<IOHandle>, NotifyFn) = 0;
 
     // Flush the contents of the buffer out to the provided IOHandle
-    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>, NotifyFn) = 0;
+    virtual void flush(shared_ptr<IOHandle>, NotifyFn) = 0;
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
@@ -137,7 +137,7 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -153,31 +153,18 @@ namespace K3
       if (ioh->hasRead()) {
         shared_ptr<Value> v = ioh->doRead();
         this->push_back(v);
-        nt = (ioh->builtin() || ioh->file())?
-               EndpointNotification::FileData : EndpointNotification::SocketData;
       }
 
-     return make_tuple(r, nt);
+     return r;
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      // Default to an empty list
-      auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
-
-      // pop() a value and write to the handle if possible,
-      // registering the proper notification type
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      // pop() a value and write to the handle if possible
       if (!this->empty()) {
         shared_ptr<Value> v = this->pop();
         ioh->doWrite(*v);
         notify(v);
-        EndpointNotification nt;
-        nt = (ioh->builtin() || ioh->file())?
-               EndpointNotification::FileData : EndpointNotification::SocketData;
-        l->push_back(nt);
       }
-      
-      return l;
     }
 
     void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
@@ -232,10 +219,8 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify) {
       shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent;
 
       // Read from the buffer if possible
       if (!(this->empty())) {
@@ -248,18 +233,12 @@ namespace K3
       if (ioh->hasRead()) {
         shared_ptr<Value> v = ioh->doRead();
         this->push_back(v);
-        nt = (ioh->builtin() || ioh->file())?
-               EndpointNotification::FileData : EndpointNotification::SocketData;
       }
 
-     return make_tuple(r, nt);
+      return r;
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      // Initialize Result List
-      auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
-      
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {      
       // Flush one batch at a time, building the list of results
       while (batchAvailable()) {
         int n = batchSize();
@@ -267,13 +246,8 @@ namespace K3
           shared_ptr<Value> v = this->pop();
           ioh->doWrite(*v);
           notify(v);
-          EndpointNotification nt;
-          nt = (ioh->builtin() || ioh->file())?
-                 EndpointNotification::FileData : EndpointNotification::SocketData;
-          l->push_back(nt);
         }
       }
-      return l;
     }
 
     void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
@@ -384,34 +358,26 @@ namespace K3
       return handle_->hasWrite() && !buffer_->full();
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
+    shared_ptr<Value> refreshBuffer() {
       return buffer_->refresh(handle_,
        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
-    shared_ptr<list<EndpointNotification>> flushBuffer() {
+    void flushBuffer() {
       return buffer_->flush(handle_,
         bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
-    shared_ptr<Value> doRead() 
-    {
-    
-
-      // Refresh the endpoint's buffer, passing a lambda to notify our subscribers.
-      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
-      
-      // Return the read result.
-      return get<0>(readResult);
+    shared_ptr<Value> doRead() {
+      return refreshBuffer();
     }
 
-    void doWrite(Value& v)
-    {
+    void doWrite(Value& v) {
       shared_ptr<Value> v_ptr = make_shared<Value>(v);
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.    
-        shared_ptr<list<EndpointNotification>> events = flushBuffer();
+        flushBuffer();
 
         // Try to append again, and if this still fails, throw a buffering exception.
         success = buffer_->push_back(v_ptr);
