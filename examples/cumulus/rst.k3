@@ -225,8 +225,8 @@ declare add_delta_to_ATIMESD : {
                           {_r1_:empty {elem:int} @ { Set },
                            _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1,
                                                               _r2_:__2} in 
-            __1).peek ) of { Some x -> x } { None -> error () } + __prod_ret__1 in
-          ( ATIMESD.insert {_r1_:vid, _r2_:update_value} ));
+            __1).peek ()) of { Some x -> x } { None -> error () } +
+            __prod_ret__1 in ( ATIMESD.insert {_r1_:vid, _r2_:update_value} ));
       delta_tuples.iterate
         (\_b1_ -> 
           bind _b1_ as {_r1_:vid_arg, _r2_:__arg_val} in 
@@ -282,7 +282,7 @@ declare add_delta_to_ATIMESD_mT1 : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __map_ret__7 in (
             ATIMESD_mT1.insert {_r1_:vid, _r2_:S_C, _r3_:update_value} ));
@@ -346,7 +346,7 @@ declare add_delta_to_ATIMESD_mT1_mR1 : {
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
               } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
               projected_field) + __val_ret__10 in (
             ATIMESD_mT1_mR1.insert
@@ -414,7 +414,7 @@ declare add_delta_to_ATIMESD_mS1 : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             ATIMESD_mS1.insert {_r1_:vid, _r2_:R_B, _r3_:update_value} ));
@@ -477,7 +477,7 @@ declare add_delta_to_ATIMESD_mS2 : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             ATIMESD_mS2.insert {_r1_:vid, _r2_:T_C, _r3_:update_value} ));
@@ -540,7 +540,7 @@ declare add_delta_to_ATIMESD_mR1 : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __prod_ret__2 in (
             ATIMESD_mR1.insert
@@ -581,8 +581,9 @@ declare cond_add_delta_to_ATIMESD : {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int } @ { Set }
           then
             ATIMESD.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1} in 
               {_r1_:lhs0, _r2_:lhs1 + __prod_ret__1})
           else
@@ -608,7 +609,7 @@ declare cond_add_delta_to_ATIMESD : {
                             {_r1_:empty {elem:int} @ { Set },
                              _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1,
                                                                 _r2_:__2} in 
-              __1).peek ) of { Some x -> x } { None -> error () } +
+              __1).peek ()) of { Some x -> x } { None -> error () } +
               __prod_ret__1 in ( ATIMESD.insert {_r1_:vid, _r2_:update_value} ));
       delta_tuples.iterate
         (\_b1_ -> 
@@ -644,8 +645,9 @@ declare cond_add_delta_to_ATIMESD_mT1 : {
             } @ { Set }
           then
             ATIMESD_mT1.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2} in 
               {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2 + __map_ret__7})
           else
@@ -679,7 +681,7 @@ declare cond_add_delta_to_ATIMESD_mT1 : {
                  __1 in
               if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
               then 0
-              else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+              else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
                 { None -> error () } as {_r1_:_, _r2_:projected_field} in 
                 projected_field) + __map_ret__7 in (
               ATIMESD_mT1.insert {_r1_:vid, _r2_:S_C, _r3_:update_value} ));
@@ -721,8 +723,9 @@ declare cond_add_delta_to_ATIMESD_mT1_mR1 : {
             } @ { Set }
           then
             ATIMESD_mT1_mR1.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2,
                                        _r4_:lhs3} in 
               {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2, _r4_:lhs3 + __val_ret__10})
@@ -758,7 +761,7 @@ declare cond_add_delta_to_ATIMESD_mT1_mR1 : {
               if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
                 } @ { Set }
               then 0
-              else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+              else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
                 { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
                 projected_field) + __val_ret__10 in (
               ATIMESD_mT1_mR1.insert
@@ -805,8 +808,9 @@ declare cond_add_delta_to_ATIMESD_mS1 : {
             } @ { Set }
           then
             ATIMESD_mS1.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2} in 
               {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2 + __val_ret__17})
           else
@@ -840,7 +844,7 @@ declare cond_add_delta_to_ATIMESD_mS1 : {
                  __1 in
               if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
               then 0
-              else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+              else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
                 { None -> error () } as {_r1_:_, _r2_:projected_field} in 
                 projected_field) + __val_ret__17 in (
               ATIMESD_mS1.insert {_r1_:vid, _r2_:R_B, _r3_:update_value} ));
@@ -882,8 +886,9 @@ declare cond_add_delta_to_ATIMESD_mS2 : {
             } @ { Set }
           then
             ATIMESD_mS2.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2} in 
               {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2 + __val_ret__2})
           else
@@ -917,7 +922,7 @@ declare cond_add_delta_to_ATIMESD_mS2 : {
                  __1 in
               if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
               then 0
-              else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+              else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
                 { None -> error () } as {_r1_:_, _r2_:projected_field} in 
                 projected_field) + __val_ret__2 in (
               ATIMESD_mS2.insert {_r1_:vid, _r2_:T_C, _r3_:update_value} ));
@@ -959,8 +964,9 @@ declare cond_add_delta_to_ATIMESD_mR1 : {
             } @ { Set }
           then
             ATIMESD_mR1.update
-              (case (lhs_slice.peek ) of { Some x -> x } { None -> error () })
-              (bind case (lhs_slice.peek ) of { Some x -> x }
+              (case (lhs_slice.peek ()) of { Some x -> x }
+              { None -> error () }) (bind case (lhs_slice.peek ()) of
+              { Some x -> x }
               { None -> error () } as {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2} in 
               {_r1_:lhs0, _r2_:lhs1, _r3_:lhs2 + __prod_ret__2})
           else
@@ -994,7 +1000,7 @@ declare cond_add_delta_to_ATIMESD_mR1 : {
                  __1 in
               if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
               then 0
-              else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+              else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
                 { None -> error () } as {_r1_:_, _r2_:projected_field} in 
                 projected_field) + __prod_ret__2 in (
               ATIMESD_mR1.insert
@@ -1059,7 +1065,7 @@ declare add_delta_to_map_ATIMESD_mT1_s0_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __map_ret__7 in (
             map_ATIMESD_mT1_s0_buf.insert
@@ -1125,7 +1131,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s2_buf : {
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
               } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
               projected_field) + __val_ret__10 in (
             map_ATIMESD_mT1_mR1_s2_buf.insert
@@ -1193,7 +1199,7 @@ declare add_delta_to_map_ATIMESD_mT1_s3_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __map_ret__7 in (
             map_ATIMESD_mT1_s3_buf.insert
@@ -1259,7 +1265,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s5_buf : {
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
               } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
               projected_field) + __val_ret__10 in (
             map_ATIMESD_mT1_mR1_s5_buf.insert
@@ -1327,7 +1333,7 @@ declare add_delta_to_map_ATIMESD_mS1_s6_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s6_buf.insert
@@ -1392,7 +1398,7 @@ declare add_delta_to_map_ATIMESD_mS2_s6_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s6_buf.insert
@@ -1457,7 +1463,7 @@ declare add_delta_to_map_ATIMESD_mS1_s7_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s7_buf.insert
@@ -1522,7 +1528,7 @@ declare add_delta_to_map_ATIMESD_mS2_s9_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s9_buf.insert
@@ -1587,7 +1593,7 @@ declare add_delta_to_map_ATIMESD_mS1_s10_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s10_buf.insert
@@ -1652,7 +1658,7 @@ declare add_delta_to_map_ATIMESD_mS2_s10_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s10_buf.insert
@@ -1717,7 +1723,7 @@ declare add_delta_to_map_ATIMESD_mS1_s11_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s11_buf.insert
@@ -1782,7 +1788,7 @@ declare add_delta_to_map_ATIMESD_mS2_s13_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s13_buf.insert
@@ -1847,7 +1853,7 @@ declare add_delta_to_map_ATIMESD_mR1_s14_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __prod_ret__2 in (
             map_ATIMESD_mR1_s14_buf.insert
@@ -1913,7 +1919,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s15_buf : {
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
               } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
               projected_field) + __val_ret__10 in (
             map_ATIMESD_mT1_mR1_s15_buf.insert
@@ -1981,7 +1987,7 @@ declare add_delta_to_map_ATIMESD_mR1_s17_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __prod_ret__2 in (
             map_ATIMESD_mR1_s17_buf.insert
@@ -2047,7 +2053,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s18_buf : {
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int, _r3_:int
               } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:_, _r3_:projected_field} in 
               projected_field) + __val_ret__10 in (
             map_ATIMESD_mT1_mR1_s18_buf.insert
@@ -2115,7 +2121,7 @@ declare add_delta_to_map_ATIMESD_mS2_s24_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s24_buf.insert
@@ -2180,7 +2186,7 @@ declare add_delta_to_map_ATIMESD_mS2_s26_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s26_buf.insert
@@ -2245,7 +2251,7 @@ declare add_delta_to_map_ATIMESD_mS1_s28_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s28_buf.insert
@@ -2310,7 +2316,7 @@ declare add_delta_to_map_ATIMESD_mS1_s30_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s30_buf.insert
@@ -2375,7 +2381,7 @@ declare add_delta_to_map_ATIMESD_mS2_s32_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s32_buf.insert
@@ -2440,7 +2446,7 @@ declare add_delta_to_map_ATIMESD_mS2_s34_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__2 in (
             map_ATIMESD_mS2_s34_buf.insert
@@ -2505,7 +2511,7 @@ declare add_delta_to_map_ATIMESD_mS1_s36_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s36_buf.insert
@@ -2570,7 +2576,7 @@ declare add_delta_to_map_ATIMESD_mS1_s38_buf : {
                __1 in
             if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
             then 0
-            else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+            else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
               { None -> error () } as {_r1_:_, _r2_:projected_field} in 
               projected_field) + __val_ret__17 in (
             map_ATIMESD_mS1_s38_buf.insert
@@ -2635,37 +2641,37 @@ declare log_get_bound_insert_T : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_insert_T.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare log_get_bound_delete_T : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_delete_T.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare log_get_bound_insert_S : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_insert_S.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare log_get_bound_delete_S : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_delete_S.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare log_get_bound_insert_R : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_insert_R.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare log_get_bound_delete_R : { _r1_:int, _r2_:int, _r3_:int } -> {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } = \vid -> 
     case ((log_delete_R.filter
     (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid)).peek
-    ) of { Some x -> x } { None -> error () }
+    ()) of { Some x -> x } { None -> error () }
 
 declare node_ring : mut collection {
   _r1_:address, _r2_:string, _r3_:string, _r4_:int } @ { Seq }
@@ -2675,12 +2681,12 @@ declare replicas : mut collection {elem:int} @ { Set } = {|elem:int|
 
 declare set_replicas : int -> () = \n -> 
     replicas.update
-      (case (replicas.peek ) of { Some x -> x } { None -> error () }) n
+      (case (replicas.peek ()) of { Some x -> x } { None -> error () }) n
 
 declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = \_b1_ -> 
     bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name} in 
     let rng =
-      range 1 1 (case (().peek ) of { Some x -> x } { None -> error () }) in
+      range 1 1 (case (().peek ()) of { Some x -> x } { None -> error () }) in
     let new_elems =
       rng.map
         (\i ->  {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)}) in
@@ -2723,8 +2729,8 @@ declare get_ring_node : { _r1_:int, _r2_:int } -> address = \_b1_ ->
           {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2, _r4_:__id_3}) in
     bind if results == empty { _r1_:address, _r2_:string, _r3_:string, _r4_:int
            } @ { Seq }
-         then case (node_ring.peek ) of { Some x -> x } { None -> error () }
-         else case (results.peek ) of { Some x -> x } { None -> error () } as {
+         then case (node_ring.peek ()) of { Some x -> x } { None -> error () }
+         else case (results.peek ()) of { Some x -> x } { None -> error () } as {
     _r1_:addr, _r2_:_, _r3_:_, _r4_:_} in addr
 
 declare get_all_uniq_nodes : () -> collection {elem:address} @ { Seq } = \_ -> 
@@ -2742,7 +2748,7 @@ declare pmap_data : collection {
       {_r1_:bind case ((__map_ids__.filter
        (\_b1_ -> 
          bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == map_name)).peek
-       ) of { Some x -> x }
+       ()) of { Some x -> x }
        { None -> error () } as {_r1_:__1, _r2_:__2, _r3_:__3} in __1,
        _r2_:map_types})
 
@@ -2763,7 +2769,8 @@ declare route_to_ATIMESD_mT1 :
   option int -> collection {elem:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 2)).peek 
-      ) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in
+      ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
+      __2 in
     if pmap == empty { _r1_:int, _r2_:int } @ { Seq }
     then get_all_uniq_nodes ()
     else bind calc_dim_bounds pmap as {_r1_:dim_bounds, _r2_:max_val} in 
@@ -2778,12 +2785,12 @@ declare route_to_ATIMESD_mT1 :
            then 0
            else let key_id_0_unwrap = case key_id_0 of { Some x -> x }
              { None -> error () } in
-             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek 
-               ) of { Some x -> x }
+             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek
+               ()) of { Some x -> x }
                { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
              bind case ((dim_bounds.filter
              (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 0)).peek
-             ) of { Some x -> x }
+             ()) of { Some x -> x }
              { None -> error () } as {_r1_:__1, _r2_:__2} in __2) + 0 in
       let free_dims =
         (if key_id_0 != None immut
@@ -2823,7 +2830,7 @@ declare route_to_ATIMESD_mT1 :
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
                            bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == i)).peek
-                         ) of { Some x -> x }
+                         ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
           (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
@@ -2837,7 +2844,8 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
   } -> collection {elem:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 3)).peek 
-      ) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in
+      ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
+      __2 in
     if pmap == empty { _r1_:int, _r2_:int } @ { Seq }
     then get_all_uniq_nodes ()
     else bind calc_dim_bounds pmap as {_r1_:dim_bounds, _r2_:max_val} in 
@@ -2852,12 +2860,12 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
            then 0
            else let key_id_1_unwrap = case key_id_1 of { Some x -> x }
              { None -> error () } in
-             let value = hash key_id_1_unwrap % bind case (pmap_slice.peek 
-               ) of { Some x -> x }
+             let value = hash key_id_1_unwrap % bind case (pmap_slice.peek
+               ()) of { Some x -> x }
                { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
              bind case ((dim_bounds.filter
              (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 1)).peek
-             ) of { Some x -> x }
+             ()) of { Some x -> x }
              { None -> error () } as {_r1_:__1, _r2_:__2} in __2) +
         ((if key_id_0 == None immut
           then 0
@@ -2869,11 +2877,11 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
             else let key_id_0_unwrap = case key_id_0 of { Some x -> x }
               { None -> error () } in
               let value = hash key_id_0_unwrap % bind case (pmap_slice.peek
-                ) of { Some x -> x }
+                ()) of { Some x -> x }
                 { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
               bind case ((dim_bounds.filter
               (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 0)).peek
-              ) of { Some x -> x }
+              ()) of { Some x -> x }
               { None -> error () } as {_r1_:__1, _r2_:__2} in __2) + 0) in
       let free_dims =
         (if key_id_1 != None immut
@@ -2917,7 +2925,7 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
                            bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == i)).peek
-                         ) of { Some x -> x }
+                         ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
           (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
@@ -2931,7 +2939,8 @@ declare route_to_ATIMESD_mS1 :
   option int -> collection {elem:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 4)).peek 
-      ) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in
+      ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
+      __2 in
     if pmap == empty { _r1_:int, _r2_:int } @ { Seq }
     then get_all_uniq_nodes ()
     else bind calc_dim_bounds pmap as {_r1_:dim_bounds, _r2_:max_val} in 
@@ -2946,12 +2955,12 @@ declare route_to_ATIMESD_mS1 :
            then 0
            else let key_id_0_unwrap = case key_id_0 of { Some x -> x }
              { None -> error () } in
-             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek 
-               ) of { Some x -> x }
+             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek
+               ()) of { Some x -> x }
                { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
              bind case ((dim_bounds.filter
              (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 0)).peek
-             ) of { Some x -> x }
+             ()) of { Some x -> x }
              { None -> error () } as {_r1_:__1, _r2_:__2} in __2) + 0 in
       let free_dims =
         (if key_id_0 != None immut
@@ -2991,7 +3000,7 @@ declare route_to_ATIMESD_mS1 :
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
                            bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == i)).peek
-                         ) of { Some x -> x }
+                         ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
           (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
@@ -3005,7 +3014,8 @@ declare route_to_ATIMESD_mS2 :
   option int -> collection {elem:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 5)).peek 
-      ) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in
+      ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
+      __2 in
     if pmap == empty { _r1_:int, _r2_:int } @ { Seq }
     then get_all_uniq_nodes ()
     else bind calc_dim_bounds pmap as {_r1_:dim_bounds, _r2_:max_val} in 
@@ -3020,12 +3030,12 @@ declare route_to_ATIMESD_mS2 :
            then 0
            else let key_id_0_unwrap = case key_id_0 of { Some x -> x }
              { None -> error () } in
-             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek 
-               ) of { Some x -> x }
+             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek
+               ()) of { Some x -> x }
                { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
              bind case ((dim_bounds.filter
              (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 0)).peek
-             ) of { Some x -> x }
+             ()) of { Some x -> x }
              { None -> error () } as {_r1_:__1, _r2_:__2} in __2) + 0 in
       let free_dims =
         (if key_id_0 != None immut
@@ -3065,7 +3075,7 @@ declare route_to_ATIMESD_mS2 :
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
                            bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == i)).peek
-                         ) of { Some x -> x }
+                         ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
           (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
@@ -3079,7 +3089,8 @@ declare route_to_ATIMESD_mR1 :
   option int -> collection {elem:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 6)).peek 
-      ) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in
+      ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
+      __2 in
     if pmap == empty { _r1_:int, _r2_:int } @ { Seq }
     then get_all_uniq_nodes ()
     else bind calc_dim_bounds pmap as {_r1_:dim_bounds, _r2_:max_val} in 
@@ -3094,12 +3105,12 @@ declare route_to_ATIMESD_mR1 :
            then 0
            else let key_id_0_unwrap = case key_id_0 of { Some x -> x }
              { None -> error () } in
-             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek 
-               ) of { Some x -> x }
+             let value = hash key_id_0_unwrap % bind case (pmap_slice.peek
+               ()) of { Some x -> x }
                { None -> error () } as {_r1_:__1, _r2_:__2} in __2 in value *
              bind case ((dim_bounds.filter
              (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 0)).peek
-             ) of { Some x -> x }
+             ()) of { Some x -> x }
              { None -> error () } as {_r1_:__1, _r2_:__2} in __2) + 0 in
       let free_dims =
         (if key_id_0 != None immut
@@ -3139,7 +3150,7 @@ declare route_to_ATIMESD_mR1 :
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
                            bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == i)).peek
-                         ) of { Some x -> x }
+                         ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
           (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
@@ -3467,15 +3478,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:T_C, _r2_:T_D} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_T_send_fetch, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -3563,7 +3574,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -3736,7 +3747,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_s0_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -3749,17 +3760,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 0)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 0)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 0)).peek ) of { Some x -> x }
+            _r2_ == 0)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:0, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 0)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 0)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:0, _r3_:0}
         then (insert_T_do_complete_s0, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
         else ()
@@ -3793,8 +3804,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek 
-            ) of { Some x -> x } { None -> error () }) tuple
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
+            ()) of { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s2_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
@@ -3806,17 +3817,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 2)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 2)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 2)).peek ) of { Some x -> x }
+            _r2_ == 2)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:2, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 2)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 2)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:2, _r3_:0}
         then (insert_T_do_complete_s2, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
         else ()
@@ -3857,7 +3868,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * T_D in (
       add_delta_to_ATIMESD
@@ -3950,7 +3961,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 0)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 0)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:0, _r3_:0}
         then
           bind log_get_bound_insert_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -3975,7 +3986,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 2)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 2)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:2, _r3_:0}
         then
           bind log_get_bound_insert_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4039,15 +4050,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:T_C, _r2_:T_D} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_T_send_fetch, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -4135,7 +4146,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -4308,7 +4319,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_s3_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -4321,17 +4332,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 3)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 3)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 3)).peek ) of { Some x -> x }
+            _r2_ == 3)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:3, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 3)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 3)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:3, _r3_:0}
         then (delete_T_do_complete_s3, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
         else ()
@@ -4365,8 +4376,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek 
-            ) of { Some x -> x } { None -> error () }) tuple
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
+            ()) of { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s5_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
@@ -4378,17 +4389,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 5)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 5)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 5)).peek ) of { Some x -> x }
+            _r2_ == 5)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:5, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 5)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 5)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:5, _r3_:0}
         then (delete_T_do_complete_s5, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
         else ()
@@ -4429,7 +4440,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * -T_D in (
       add_delta_to_ATIMESD
@@ -4522,7 +4533,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 3)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 3)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:3, _r3_:0}
         then
           bind log_get_bound_delete_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4547,7 +4558,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 5)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 5)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:5, _r3_:0}
         then
           bind log_get_bound_delete_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4611,15 +4622,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:S_B, _r2_:S_C} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_S_send_fetch, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -4731,7 +4742,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -5006,7 +5017,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s6_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -5019,17 +5030,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x }
+            _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:6, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:6, _r3_:0}
         then (insert_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -5059,7 +5070,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s6_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -5072,17 +5083,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x }
+            _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:6, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 6)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:6, _r3_:0}
         then (insert_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -5112,7 +5123,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s7_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -5125,17 +5136,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 7)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 7)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 7)).peek ) of { Some x -> x }
+            _r2_ == 7)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:7, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 7)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 7)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:7, _r3_:0}
         then (insert_S_do_complete_s7, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -5165,7 +5176,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s9_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -5178,17 +5189,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 9)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 9)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 9)).peek ) of { Some x -> x }
+            _r2_ == 9)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:9, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 9)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 9)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:9, _r3_:0}
         then (insert_S_do_complete_s9, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -5229,7 +5240,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) *
       let wrapped_lookup_value =
@@ -5257,7 +5268,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                 _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field in (
       add_delta_to_ATIMESD
@@ -5298,7 +5309,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                 _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field in (
       add_delta_to_ATIMESD_mT1
@@ -5364,7 +5375,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                 _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field in (
       add_delta_to_ATIMESD_mR1
@@ -5392,7 +5403,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 6)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5417,7 +5428,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 6)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5442,7 +5453,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 7)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 7)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:7, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5467,7 +5478,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 9)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 9)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:9, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5518,7 +5529,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
             __1 in
           if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
           then 0
-          else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+          else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
             { None -> error () } as {_r1_:_, _r2_:projected_field} in 
             projected_field) * delta_ATIMESD_mS1 in (
           cond_add_delta_to_ATIMESD
@@ -5566,7 +5577,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
             __1 in
           if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
           then 0
-          else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+          else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
             { None -> error () } as {_r1_:_, _r2_:projected_field} in 
             projected_field) * delta_ATIMESD_mS2 in (
           cond_add_delta_to_ATIMESD
@@ -5631,15 +5642,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:S_B, _r2_:S_C} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_S_send_fetch, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -5751,7 +5762,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -6028,7 +6039,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s10_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -6041,17 +6052,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x }
+            _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:10, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:10, _r3_:0}
         then (delete_S_do_complete_s10, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -6081,7 +6092,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s10_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -6094,17 +6105,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x }
+            _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:10, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 10)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:10, _r3_:0}
         then (delete_S_do_complete_s10, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -6134,7 +6145,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s11_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -6147,17 +6158,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 11)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 11)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 11)).peek ) of { Some x -> x }
+            _r2_ == 11)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:11, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 11)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 11)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:11, _r3_:0}
         then (delete_S_do_complete_s11, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -6187,7 +6198,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s13_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -6200,17 +6211,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 13)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 13)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 13)).peek ) of { Some x -> x }
+            _r2_ == 13)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:13, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 13)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 13)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:13, _r3_:0}
         then (delete_S_do_complete_s13, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
         else ()
@@ -6252,7 +6263,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                   _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) *
       let wrapped_lookup_value =
@@ -6280,7 +6291,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                 _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * -1 in (
       add_delta_to_ATIMESD
@@ -6321,7 +6332,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * -1 in (
       add_delta_to_ATIMESD_mT1
@@ -6387,7 +6398,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * -1 in (
       add_delta_to_ATIMESD_mR1
@@ -6415,7 +6426,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 10)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6440,7 +6451,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 10)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6465,7 +6476,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 11)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 11)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:11, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6490,7 +6501,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 13)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 13)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:13, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6541,7 +6552,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
             __1 in
           if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
           then 0
-          else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+          else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
             { None -> error () } as {_r1_:_, _r2_:projected_field} in 
             projected_field) * -delta_ATIMESD_mS1 in (
           cond_add_delta_to_ATIMESD
@@ -6589,7 +6600,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
             __1 in
           if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
           then 0
-          else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+          else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
             { None -> error () } as {_r1_:_, _r2_:projected_field} in 
             projected_field) * -delta_ATIMESD_mS2 in (
           cond_add_delta_to_ATIMESD
@@ -6654,15 +6665,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:R_A, _r2_:R_B} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_R_send_fetch, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -6750,7 +6761,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -6924,7 +6935,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mR1_s14_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -6937,17 +6948,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 14)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 14)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 14)).peek ) of { Some x -> x }
+            _r2_ == 14)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:14, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 14)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 14)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:14, _r3_:0}
         then (insert_R_do_complete_s14, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
         else ()
@@ -6981,8 +6992,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek 
-            ) of { Some x -> x } { None -> error () }) tuple
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
+            ()) of { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s15_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
@@ -6994,17 +7005,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 15)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 15)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 15)).peek ) of { Some x -> x }
+            _r2_ == 15)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:15, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 15)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 15)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:15, _r3_:0}
         then (insert_R_do_complete_s15, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
         else ()
@@ -7045,7 +7056,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * R_A in (
       add_delta_to_ATIMESD
@@ -7138,7 +7149,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 14)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 14)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:14, _r3_:0}
         then
           bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7163,7 +7174,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 15)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 15)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:15, _r3_:0}
         then
           bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7227,15 +7238,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:R_A, _r2_:R_B} in (
     let vid =
-      {_r1_:case (__epoch__.peek ) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_R_send_fetch, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B};
       __vid_counter__.update
-        (case (__vid_counter__.peek ) of { Some x -> x } { None -> error () })
-        (1 + case (__vid_counter__.peek ) of { Some x -> x }
-        { None -> error () })
+        (case (__vid_counter__.peek ()) of { Some x -> x }
+        { None -> error () }) (1 + case (__vid_counter__.peek ()) of
+        { Some x -> x } { None -> error () })
       )
     )
 
@@ -7323,7 +7334,7 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == stmt_id)).peek ) of { Some x -> x }
+            _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
             __stmt_cntrs__.update
@@ -7497,7 +7508,7 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             (\_r1_ -> 
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ) of
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mR1_s17_buf.insert tuple);
     if __stmt_cntrs__.filter
@@ -7510,17 +7521,17 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 17)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 17)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 17)).peek ) of { Some x -> x }
+            _r2_ == 17)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:17, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 17)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 17)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:17, _r3_:0}
         then (delete_R_do_complete_s17, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
         else ()
@@ -7554,8 +7565,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
               _r1_ ==
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek 
-            ) of { Some x -> x } { None -> error () }) tuple
+              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
+            ()) of { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s18_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
@@ -7567,17 +7578,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 18)).peek ) of { Some x -> x } { None -> error () })
+            _r2_ == 18)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 18)).peek ) of { Some x -> x }
+            _r2_ == 18)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:18, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
-            _r2_ == 18)).peek ) of { Some x -> x } { None -> error () } ==
+            _r2_ == 18)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:18, _r3_:0}
         then (delete_R_do_complete_s18, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
         else ()
@@ -7618,7 +7629,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                  _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1, _r2_:__2} in __1 in
       if wrapped_lookup_value == empty { _r1_:int, _r2_:int } @ { Set }
       then 0
-      else bind case (wrapped_lookup_value.peek ) of { Some x -> x }
+      else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
         { None -> error () } as {_r1_:_, _r2_:projected_field} in 
         projected_field) * -R_A in (
       add_delta_to_ATIMESD
@@ -7711,7 +7722,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 17)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 17)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:17, _r3_:0}
         then
           bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7736,7 +7747,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 18)).peek ) of { Some x -> x }
+            compute_vid * _r2_ == 18)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:18, _r3_:0}
         then
           bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
