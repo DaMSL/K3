@@ -72,10 +72,6 @@ namespace K3
     virtual size_t size() = 0;
     virtual size_t capacity() = 0;
 
-    // Iterator interface to the endpoint buffer.
-    //virtual iterator<shared_ptr<Value> > begin() = 0;
-    //virtual iterator<shared_ptr<Value> > end() = 0;
-
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
 
