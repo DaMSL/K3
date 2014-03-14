@@ -77,6 +77,8 @@ namespace K3
 
   class EndpointBuffer : public LogMT {
   public:
+    typedef std::function<void(shared_ptr<Value>)> NotifyFunctionPtr;
+
     EndpointBuffer() : LogMT("Endpoint Buffer") {}
 
     virtual bool empty() = 0;
@@ -95,11 +97,11 @@ namespace K3
     virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0;
 
     // Flush the contents of the buffer out to the provided IOHandle
-    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>) = 0;
+    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>, NotifyFunctionPtr) = 0;
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
-    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>)= 0;
+    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFunctionPtr)= 0;
   };
 
   class ScalarEPBufferST : public EndpointBuffer, public LogMT {
@@ -156,7 +158,7 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFunctionPtr notify)
     {
       // Default to an empty list
       auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
@@ -174,10 +176,14 @@ namespace K3
       return l;
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
+    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFunctionPtr notify) {
       if(!this->empty()) {
-        Message msg = cdec->read_message(*(this->pop()));
-        queues->enqueue(msg);
+        shared_ptr<Value> v = this->pop();
+        if (queues && cdec) {
+          Message msg = cdec->read_message(*v);
+          queues->enqueue(msg);
+        }
+        notify(v);      
       }
     }
 
@@ -244,7 +250,7 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFunctionPtr notify)
     {
       // Initialize Result List
       auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
@@ -252,7 +258,7 @@ namespace K3
       // Flush one batch at a time, building the list of results
       while (batchAvailable()) {
         int n = batchSize();
-        for (i=0; i < n; i++) {
+        for (int i=0; i < n; i++) {
           shared_ptr<Value> v = this->pop();
           ioh->doWrite(*v);
           EndpointNotification nt;
@@ -264,12 +270,16 @@ namespace K3
       return l;
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
+    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFunctionPtr notify) {
       while (batchAvailable()) {
         int n = batchSize();
-        for (i=0; i < n; i++) {
-          Message msg = cdec->read_message(*(this->pop()));
-          queues->enqueue(msg);
+        for (int i=0; i < n; i++) {
+          shared_ptr<Value> v = this->pop();
+          if (queues && cdec) {
+            Message msg = cdec->read_message(*v);
+            queues->enqueue(msg);            
+          }
+          notify(v);
         }
       }
     }
@@ -367,7 +377,7 @@ namespace K3
       return buffer_->refresh(handle_);
     }
 
-    EndpointNotification flushBuffer() {
+    shared_ptr<list<EndpointNotification>> flushBuffer() {
       return buffer_->flush(handle_);
     }
 
@@ -389,11 +399,14 @@ namespace K3
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.    
-        EndpointNotification evt = flushBuffer();
+        shared_ptr<list<EndpointNotification>> events = flushBuffer();
         
         // Notify subscribers any data events generated while flushing.
-        // TOOD: this should be a loop when returning an event per value flushed.
-        subscribers_->notifyEvent(evt, v_ptr);
+        for (evt : *events) {
+          subscribers_->notifyEvent(evt, v_ptr);
+        }
+        
+        
 
         // Try to append again, and if this still fails, throw a buffering exception.
         success = buffer_->push_back(v_ptr);
