@@ -95,7 +95,7 @@ namespace K3 {
       virtual void process_transfer() = 0;
       
       virtual void process_notification(shared_ptr<Value> payload) {
-        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, nullptr);
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketTick, nullptr);
         this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
       }
 
@@ -119,7 +119,7 @@ namespace K3 {
         this->endpoint->buffer()->transfer(
           engine_queues,
           codec,
-          bind(&ListenerProcessor::process_notification, this, placeholders::_1)
+          bind(&InternalListenerProcessor::process_notification, this, placeholders::_1)
         );
       }
 

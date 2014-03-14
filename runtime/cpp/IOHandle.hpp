@@ -222,10 +222,8 @@ namespace K3
       :  LogMT("FileHandle"), LineBasedHandle(cdec, i, fs) 
     {}
 
-    // TODO refactor to match input case
-    FileHandle(shared_ptr<Codec> cdec, const string& path, LineBasedHandle::Output o)
-      : fileSink(shared_ptr<file_sink>(new file_sink(path))), 
-        LogMT("FileHandle"), LineBasedHandle(cdec, o, *fileSink)
+    FileHandle(shared_ptr<Codec> cdec, const file_sink& fs, LineBasedHandle::Output o)
+      :  LogMT("FileHandle"), LineBasedHandle(cdec, o, fs)
     {}
 
     bool builtin () { return false; }
