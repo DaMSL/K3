@@ -312,13 +312,13 @@ namespace K3
 
     void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
       shared_ptr<Subscribers> s = eventSubscriptions[nt];
-        if (!s) {
-          s = shared_ptr<Subscribers>(new Subscribers());
-          eventSubscriptions[nt] = s;
-        }
-
-        s->push_back(make_tuple(sub_addr, sub_id));
+      if (!s) {
+        s = shared_ptr<Subscribers>(new Subscribers());
+        eventSubscriptions[nt] = s;
       }
+
+      s->push_back(make_tuple(sub_addr, sub_id));
+    }
 
     void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
       auto it = eventSubscriptions.find(nt);
@@ -367,6 +367,7 @@ namespace K3
     shared_ptr<IOHandle> handle() { return handle_; }
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
+
     void notify_subscribers(shared_ptr<Value> v) {
       EndpointNotification nt =
         (handle_->builtin() || handle_->file())?
@@ -396,8 +397,6 @@ namespace K3
 
     shared_ptr<Value> doRead() 
     {
-    
-
       // Refresh the endpoint's buffer, passing a lambda to notify our subscribers.
       tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
       
