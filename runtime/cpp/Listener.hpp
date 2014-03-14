@@ -2,6 +2,7 @@
 #define K3_RUNTIME_LISTENER_H
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <unordered_set>
 #include <boost/array.hpp>
@@ -90,8 +91,13 @@ namespace K3 {
       ListenerProcessor(shared_ptr<ListenerControl> c, 
         shared_ptr<Endpoint> e
       ): control(c), endpoint(e), LogMT("ListenerProcessor") {}
+
+      virtual void process_transfer() = 0;
       
-      virtual void operator()() = 0;
+      virtual void process_notification(shared_ptr<Value> payload) {
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, nullptr);
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
+      }
 
     protected:
       shared_ptr<ListenerControl> control;
@@ -109,9 +115,17 @@ namespace K3 {
         shared_ptr<InternalCodec> d
       ): ListenerProcessor(c, e), engine_queues(q), codec(d), LogMT("InternalListenerProcessor") {}
 
-      void operator()(shared_ptr<Value> payload) {
-        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
-        engine_queues->enqueue(codec->read_message(*payload));
+      void process_transfer() {
+        this->endpoint->buffer()->transfer(
+          engine_queues,
+          codec,
+          bind(&ListenerProcessor::process_notification, this, placeholders::_1)
+        );
+      }
+
+      void process_notification(shared_ptr<Value> payload) {
+        ListenerProcessor::process_notification(payload);
+        this->control->messageAvailable();
       }
 
     private:
@@ -122,11 +136,8 @@ namespace K3 {
   // ExternalListenerPrc
   class ExternalListenerProcessor: public ListenerProcessor {
     public:
-      void operator()(shared_ptr<Value> payload) {
-        if (this->control && this->endpoint) {
-          this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
-          this->control->messageAvailable();
-        }
+      void process_transfer() {
+        this->endpoint->buffer()->transfer(nullptr, nullptr, bind(&ListenerProcessor, this, placeholders::_1);
       }
   };
 
