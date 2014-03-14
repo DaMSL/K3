@@ -5,10 +5,8 @@
 #include <map>
 #include <memory>
 #include <tuple>
-//#include <boost/thread/externally_locked.hpp>
+#include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
-#include <boost/thread/shared_lock_guard.hpp>
-#include <boost/thread/shared_mutex.hpp>
 #include <runtime/cpp/Common.hpp>
 #include <runtime/cpp/Network.hpp>
 #include <runtime/cpp/IOHandle.hpp>
@@ -20,14 +18,17 @@
 namespace K3
 {
   using namespace std;
+  using namespace boost;
 
-  using boost::mutex;
-  using boost::strict_lock;
-  using boost::shared_mutex;
-  using boost::shared_lockable_adapter;
-  using boost::shared_lock_guard;
-  using boost::externally_locked;
-  using boost::basic_lockable_adapter;
+  template<typename T> using shared_ptr = std::shared_ptr<T>;
+  using mutex = boost::mutex;
+
+  // using boost::mutex;
+  // using boost::strict_lock;
+  // using boost::shared_mutex;
+  // using boost::shared_lockable_adapter;
+  // using boost::externally_locked;
+  // using boost::basic_lockable_adapter;
 
   typedef tuple<int, int> BufferSpec;
 
@@ -331,9 +332,8 @@ namespace K3
   public:
     Endpoint(shared_ptr<IOHandle> ioh,
              shared_ptr<EndpointBuffer> buf,
-             shared_ptr<EndpointBindings> subs,
-             std::function<void(shared_ptr<Value>)> callbackFn)
-      : handle_(ioh), buffer_(buf), subscribers_(subs), callbackFn_(callbackFn)
+             shared_ptr<EndpointBindings> subs)
+      : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
       refreshBuffer();
     }
@@ -397,104 +397,104 @@ namespace K3
     shared_ptr<IOHandle> handle_;
     shared_ptr<EndpointBuffer> buffer_;
     shared_ptr<EndpointBindings> subscribers_;
-    std::function<void(shared_ptr<Value>)> callbackFn_;
   };
 
 
-  //class EndpointState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
-  //{
-  //public:
-  //  typedef shared_lockable_adapter<shared_mutex> eplockable;
-  //
-  //  using ConcurrentEndpointMap =
-  //    externally_locked<shared_ptr<EndpointMap>,EndpointState> ;
+  class EndpointState : public basic_lockable_adapter<mutex>
+  {
+  public:
+   typedef basic_lockable_adapter<mutex> eplockable;
+  
+   using ConcurrentEndpointMap =
+     externally_locked<shared_ptr<EndpointMap>,EndpointState>;
 
-  //  using EndpointDetails = tuple<shared_ptr<IOHandle>,
-  //                                shared_ptr<EndpointBuffer>,
-  //                                shared_ptr<EndpointBindings> >;
+   using EndpointDetails = tuple<shared_ptr<IOHandle>,
+                                 shared_ptr<EndpointBuffer>,
+                                 shared_ptr<EndpointBindings> >;
 
-  //  EndpointState()
-  //    : eplockable(), LogMT("EndpointState"),
-  //      internalEndpoints(emptyEndpointMap()),
-  //      externalEndpoints(emptyEndpointMap())
-  //  {}
+   EndpointState()
+     : eplockable(), epsLogger(new LogMT("EndpointState")),
+       internalEndpoints(emptyEndpointMap()),
+       externalEndpoints(emptyEndpointMap())
+   {}
 
-  //  void addEndpoint(Identifier id, EndpointDetails details) {
-  //    if ( !externalEndpointId(id) ) {
-  //      addEndpoint(id, details, internalEndpoints);
-  //    } else {
-  //      string errorMsg = "Invalid internal endpoint identifier";
-  //      logAt(trivial::error, errorMsg);
-  //      throw runtime_error(errorMsg);
-  //    }
-  //  }
-  //  void removeEndpoint(Identifier id) {
-  //    if ( !externalEndpointId(id) ) {
-  //      removeEndpoint(id, externalEndpoints);
-  //    } else {
-  //      removeEndpoint(id, internalEndpoints);
-  //    }
-  //  }
+   void addEndpoint(Identifier id, EndpointDetails details) {
+     if ( !externalEndpointId(id) ) {
+       addEndpoint(id, details, internalEndpoints);
+     } else {
+       string errorMsg = "Invalid internal endpoint identifier";
+       if ( epsLogger ) { epsLogger->logAt(trivial::error, errorMsg); }
+       throw EndpointException(errorMsg);
+     }
+   }
 
-  //  // TODO: endpoint id validation.
-  //  shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
-  //    return getEndpoint(id, internalEndpoints);
-  //  }
+   void removeEndpoint(Identifier id) {
+     if ( !externalEndpointId(id) ) {
+       removeEndpoint(id, externalEndpoints);
+     } else {
+       removeEndpoint(id, internalEndpoints);
+     }
+   }
 
-  //  shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
-  //    return getEndpoint(id, externalEndpoints);
-  //  }
+   // TODO: endpoint id validation.
+   shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
+     return getEndpoint(id, internalEndpoints);
+   }
 
-  //  size_t numEndpoints() {
-  //    shared_lock_guard<EndpointState> guard(*this);
-  //    return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
-  //  }
+   shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
+     return getEndpoint(id, externalEndpoints);
+   }
 
-  //protected:
-  //  shared_ptr<ConcurrentEndpointMap> internalEndpoints;
-  //  shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+   size_t numEndpoints() {
+     strict_lock<EndpointState> guard(*this);
+     return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
+   }
 
-  //  shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
-  //  {
-  //    shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
-  //    return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
-  //  }
+  protected:
+   shared_ptr<LogMT> epsLogger;
+   shared_ptr<ConcurrentEndpointMap> internalEndpoints;
+   shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+
+   shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
+   {
+     shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
+     return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
+   }
 
 
-  //  void addEndpoint(Identifier id, EndpointDetails details,
-  //                   shared_ptr<ConcurrentEndpointMap> epMap)
-  //  {
-  //    strict_lock<EndpointState> guard(*this);
-  //    auto lb = epMap->get(guard)->lower_bound(id);
-  //    if ( lb == epMap->get(guard)->end() || id != lb->first )
-  //    {
-  //      shared_ptr<Endpoint> ep =
-  //        // TODO use a proper callback fn instead of nullptr
-  //        shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details), nullptr));
+   void addEndpoint(Identifier id, EndpointDetails details,
+                    shared_ptr<ConcurrentEndpointMap> epMap)
+   {
+     strict_lock<EndpointState> guard(*this);
+     auto lb = epMap->get(guard)->lower_bound(id);
+     if ( lb == epMap->get(guard)->end() || id != lb->first )
+     {
+       shared_ptr<Endpoint> ep =
+         shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
 
-  //      epMap->get(guard)->insert(lb, make_pair(id, ep));
-  //    } else {
-  //      BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << id;
-  //    }
-  //  }
+       epMap->get(guard)->insert(lb, make_pair(id, ep));
+     } else if ( epsLogger ) {
+        BOOST_LOG(*epsLogger) << "Invalid attempt to add a duplicate endpoint for " << id;
+     }
+   }
 
-  //  void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
-  //  {
-  //    strict_lock<EndpointState> guard(*this);
-  //    epMap->get(guard)->erase(id);
-  //  }
+   void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
+   {
+     strict_lock<EndpointState> guard(*this);
+     epMap->get(guard)->erase(id);
+   }
 
-  //  shared_ptr<Endpoint>
-  //  getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
-  //  {
-  //    shared_lock_guard<EndpointState> guard(*this);
-  //    shared_ptr<Endpoint> r;
-  //    auto it = epMap->get(guard)->find(id);
-  //    if ( it != epMap->get(guard)->end() ) { r = it->second; }
-  //    return r;
-  //  }
+   shared_ptr<Endpoint>
+   getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
+   {
+     strict_lock<EndpointState> guard(*this);
+     shared_ptr<Endpoint> r;
+     auto it = epMap->get(guard)->find(id);
+     if ( it != epMap->get(guard)->end() ) { r = it->second; }
+     return r;
+   }
 
-  //};
+  };
 
 
   ////-------------------------------------

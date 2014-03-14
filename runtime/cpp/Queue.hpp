@@ -16,11 +16,10 @@
 namespace K3 {
 
   using namespace std;
-  
-  using boost::strict_lock;
-  using boost::basic_lockable_adapter;
-  using boost::externally_locked;
-  using boost::mutex;
+  using namespace boost;
+
+  template<typename T> using shared_ptr = std::shared_ptr<T>;
+  using mutex = boost::mutex;
 
   //-------------
   // Queue types.
