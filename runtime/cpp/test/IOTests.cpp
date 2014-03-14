@@ -10,7 +10,7 @@
 using namespace K3;
 // Utils
 
-void do_nothing(const Address&, const Identifier& , const string&)
+void do_nothing(const Address&, const Identifier& , shared_ptr<Value>)
 {
 }
 // Test Utils

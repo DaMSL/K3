@@ -268,24 +268,24 @@ namespace K3
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, Identifier sub_id, Address sub_addr) {
+    void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
       shared_ptr<Subscribers> s = eventSubscriptions[nt];
         if (!s) {
           s = shared_ptr<Subscribers>(new Subscribers());
           eventSubscriptions[nt] = s;
         }
 
-        s->push_back(make_tuple(sub_id, sub_addr));
+        s->push_back(make_tuple(sub_addr, sub_id));
       }
 
-    void detachNotifier(EndpointNotification nt, Identifier sub_id, Address sub_addr) {
+    void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
           s->remove_if(
-            [&sub_id, &sub_addr](const tuple<Identifier, Address>& t){
-              return get<0>(t) == sub_id && get<1>(t) == sub_addr;
+            [&sub_id, &sub_addr](const tuple<Address, Identifier>& t){
+              return get<0>(t) == sub_addr && get<1>(t) == sub_id;
             });
         }
       }
@@ -296,7 +296,7 @@ namespace K3
       if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
-          for (tuple<Identifier, Address> t : *s) {
+          for (tuple<Address, Identifier> t : *s) {
             sendFn(get<0>(t), get<1>(t), payload);
           }
         }
@@ -346,11 +346,12 @@ namespace K3
 
         readResult = refreshBuffer();
 
+        shared_ptr<Value> payload = get<0>(readResult);
         // Notify those subscribers who need to be notified of the event.
-        subscribers_->notifyEvent(get<1>(readResult));
+        subscribers_->notifyEvent(get<1>(readResult), payload);
 
         // Return the read result.
-        return get<0>(readResult);
+        return payload;
     }
 
     void doWrite(Value& v) {
