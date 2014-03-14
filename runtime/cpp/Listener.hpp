@@ -2,6 +2,7 @@
 #define K3_RUNTIME_LISTENER_H
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <unordered_set>
 #include <boost/array.hpp>
@@ -90,8 +91,13 @@ namespace K3 {
       ListenerProcessor(shared_ptr<ListenerControl> c, 
         shared_ptr<Endpoint> e
       ): control(c), endpoint(e), LogMT("ListenerProcessor") {}
+
+      virtual void process_transfer() = 0;
       
-      virtual void operator()() = 0;
+      virtual void process_notification(shared_ptr<Value> payload) {
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, nullptr);
+        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
+      }
 
     protected:
       shared_ptr<ListenerControl> control;
@@ -109,9 +115,17 @@ namespace K3 {
         shared_ptr<InternalCodec> d
       ): ListenerProcessor(c, e), engine_queues(q), codec(d), LogMT("InternalListenerProcessor") {}
 
-      void operator()(shared_ptr<Value> payload) {
-        this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
-        engine_queues->enqueue(codec->read_message(*payload));
+      void process_transfer() {
+        this->endpoint->buffer()->transfer(
+          engine_queues,
+          codec,
+          bind(&ListenerProcessor::process_notification, this, placeholders::_1)
+        );
+      }
+
+      void process_notification(shared_ptr<Value> payload) {
+        ListenerProcessor::process_notification(payload);
+        this->control->messageAvailable();
       }
 
     private:
@@ -122,11 +136,8 @@ namespace K3 {
   // ExternalListenerPrc
   class ExternalListenerProcessor: public ListenerProcessor {
     public:
-      void operator()(shared_ptr<Value> payload) {
-        if (this->control && this->endpoint) {
-          this->endpoint->subscribers()->notifyEvent(EndpointNotification::SocketData, payload);
-          this->control->messageAvailable();
-        }
+      void process_transfer() {
+        this->endpoint->buffer()->transfer(nullptr, nullptr, bind(&ListenerProcessor, this, placeholders::_1);
       }
   };
 
@@ -260,10 +271,8 @@ namespace K3 {
         }
       }
 
-      void receiveMessages(shared_ptr<NConnection> c)
-      {
-        if ( c && c->socket() && this->processor_ )
-        {
+      void receiveMessages(shared_ptr<NConnection> c) {
+        if ( c && c->socket() && this->processor_ ) {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
           // may invoke this handler simultaneously (i.e. for different connections).
@@ -271,34 +280,29 @@ namespace K3 {
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
 
           async_read(c->socket(), buffer(buffer_->c_array(), buffer_->size()),
-            [=](const error_code& ec, std::size_t bytes_transferred)
-            {
-              if ( !ec )
-              {
+            [=](const error_code& ec, std::size_t bytes_transferred) {
+              if (!ec) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
                 //shared_ptr<Value> s = make_shared<Value>();
                 shared_ptr<Value> v = this->codec_->decode(string(buffer_->c_array(), buffer_->size()));
-                if ( v ) {
+                if (v) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   //this->endpoint_->buffer()->append(v);
                   this->endpoint_->enqueueToEndpoint(v);
 
-                  // TODO: deprecated with the revised endpoint design.
-                  //(*(this->processor_))();
+                  // Call the ListenerProcessor to handle a potential transfer.
+                  this->processor_->process_transfer();
                 }
 
                 // Recursive invocation for the next message.
                 receiveMessages(c);
-              }
-              else
-              {
+              } else {
                 deregisterConnection(c);
                 this->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
-        }
-        else { this->logAt(trivial::error, "Invalid listener connection"); }
+        } else { this->logAt(trivial::error, "Invalid listener connection"); }
       }
     };
   }
