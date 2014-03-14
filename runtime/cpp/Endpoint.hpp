@@ -387,7 +387,10 @@ namespace K3
       if ( ! success ) { throw BufferException("Failed to buffer value during endpoint write."); }
     }
 
-    void enqueueToEndpoint(shared_ptr<Value> val) { buffer_->push_back(val); }
+    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec) {
+      buffer_->push_back(val);
+      return transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+    }
 
   protected:
     shared_ptr<IOHandle> handle_;
@@ -701,3 +704,4 @@ namespace K3
 }
 
 #endif
+// vim: set sw=2 ts=2 sts=2:

@@ -152,13 +152,15 @@ namespace K3 {
                shared_ptr<NContext> ctxt,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<ListenerProcessor> p)
-        : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p)
+               shared_ptr<ListenerProcessor> p
+               shared_ptr<InternalCodec> c)
+        : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), processor_(p),
+          transfer_codec(c)
       {
         if ( endpoint_ ) {
           typename IOHandle::SourceDetails source = ep->handle()->networkSource();
           nEndpoint_ = get<1>(source);
-          codec_ = get<0>(source);
+          handle_codec = get<0>(source);
         }
       }
 
@@ -168,7 +170,8 @@ namespace K3 {
       shared_ptr<NContext> ctxt_;
       shared_ptr<Endpoint> endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
-      shared_ptr<Codec> codec_;
+      shared_ptr<Codec> handle_codec;
+      shared_ptr<InternalCodec> transfer_codec;
         // We assume this wire description performs the framing necessary
         // for partial network messages.
 
@@ -203,7 +206,7 @@ namespace K3 {
         : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
           llockable(), connections_(emptyConnections()), LogMT("AsioListener")
       {
-        if ( this->nEndpoint_ && this->codec_
+        if ( this->nEndpoint_ && this->handle_codec
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
@@ -231,7 +234,7 @@ namespace K3 {
 
       void acceptConnection()
       {
-        if ( this->endpoint_ && this->codec_ ) {
+        if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
 
           this->nEndpoint_->acceptor()->async_accept(nextConnection,
@@ -284,13 +287,14 @@ namespace K3 {
               if (!ec) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->codec_->decode(string(buffer_->c_array(), buffer_->size()));
+                shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
                 if (v) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
-                  this->endpoint_->enqueueToEndpoint(v);
+                  bool t = this->endpoint_->do_push(v, shared_ptr<MessageQueues>, this->transfer_codec);
 
-                  // Call the ListenerProcessor to handle a potential transfer.
-                  this->processor_->process_transfer();
+                  if (t) {
+                    this->control_->messageAvailable();
+                  }
                 }
 
                 // Recursive invocation for the next message.
@@ -322,7 +326,7 @@ namespace K3 {
                shared_ptr<ListenerProcessor> p)
         : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p), LogMT("NanomsgListener")
       {
-        if ( this->nEndpoint_ && this->codec_ && this->ctxt_ && this->ctxt_->listenerThreads ) {
+        if ( this->nEndpoint_ && this->handle_codec && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg
           // socket, tracking it in the network context.
           terminated_ = false;
@@ -342,7 +346,7 @@ namespace K3 {
           int bytes = nn_recv(this->nEndpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
           if ( bytes >= 0 ) {
             // Decode, process.
-            shared_ptr<Value> v = this->codec_->decode(string(buffer_.c_array(), buffer_.static_size));
+            shared_ptr<Value> v = this->handle_codec->decode(string(buffer_.c_array(), buffer_.static_size));
             if ( v ) {
               // Simulate accept events for nanomsg.
               refreshSenders(v);
