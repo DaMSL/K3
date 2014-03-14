@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <memory>
 #include <runtime/cpp/IOHandle.hpp>
 #include <runtime/cpp/Endpoint.hpp>
 #include <boost/algorithm/string.hpp>

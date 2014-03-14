@@ -137,7 +137,7 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh)
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -145,6 +145,7 @@ namespace K3
       // Read from the buffer if possible
       if (!(this->empty())) {
         r = this->pop();
+        notify(r);
       }
 
       // If there is more data in the underlying IOHandle
@@ -159,7 +160,7 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFunctionPtr notify)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       // Default to an empty list
       auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
@@ -167,7 +168,9 @@ namespace K3
       // pop() a value and write to the handle if possible,
       // registering the proper notification type
       if (!this->empty()) {
-        ioh->doWrite(*(this->pop()));
+        shared_ptr<Value> v = this->pop();
+        ioh->doWrite(*v);
+        notify(v);
         EndpointNotification nt;
         nt = (ioh->builtin() || ioh->file())?
                EndpointNotification::FileData : EndpointNotification::SocketData;
@@ -177,7 +180,7 @@ namespace K3
       return l;
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFunctionPtr notify) {
+    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
       if(!this->empty()) {
         shared_ptr<Value> v = this->pop();
         if (queues && cdec) {
@@ -229,7 +232,7 @@ namespace K3
       return v;
     }
 
-    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh)
+    tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
@@ -237,6 +240,7 @@ namespace K3
       // Read from the buffer if possible
       if (!(this->empty())) {
         r = this->pop();
+        notify(r);
       }
 
       // If there is more data in the underlying IOHandle
@@ -251,7 +255,7 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFunctionPtr notify)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       // Initialize Result List
       auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
@@ -262,6 +266,7 @@ namespace K3
         for (int i=0; i < n; i++) {
           shared_ptr<Value> v = this->pop();
           ioh->doWrite(*v);
+          notify(v);
           EndpointNotification nt;
           nt = (ioh->builtin() || ioh->file())?
                  EndpointNotification::FileData : EndpointNotification::SocketData;
@@ -271,7 +276,7 @@ namespace K3
       return l;
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFunctionPtr notify) {
+    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
       while (batchAvailable()) {
         int n = batchSize();
         for (int i=0; i < n; i++) {
@@ -362,6 +367,12 @@ namespace K3
     shared_ptr<IOHandle> handle() { return handle_; }
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
+    void notify_subscribers(shared_ptr<Value> v) {
+      EndpointNotification nt =
+        (handle_->builtin() || handle_->file())?
+          EndpointNotification::FileData : EndpointNotification::SocketData;
+      subscribers_->notifyEvent(nt, v);
+    }
 
     // An endpoint can be read if the handle can be read or the buffer isn't empty.
     bool hasRead() {
@@ -374,22 +385,21 @@ namespace K3
     }
 
     tuple<shared_ptr<Value>, EndpointNotification> refreshBuffer() {
-      return buffer_->refresh(handle_);
+      return buffer_->refresh(handle_,
+       bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     shared_ptr<list<EndpointNotification>> flushBuffer() {
-      return buffer_->flush(handle_);
+      return buffer_->flush(handle_,
+        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     shared_ptr<Value> doRead() 
     {
-      EndpointNotification nt =
-        (handle_->builtin() || handle_->file())?
-          EndpointNotification::FileData : EndpointNotification::SocketData;
+    
 
       // Refresh the endpoint's buffer, passing a lambda to notify our subscribers.
-      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer(
-        [subscribers_, nt](shared_ptr<Value> v){ subscribers_->notifyEvent(nt, v); });
+      tuple<shared_ptr<Value>, EndpointNotification> readResult = refreshBuffer();
       
       // Return the read result.
       return get<0>(readResult);
@@ -402,11 +412,6 @@ namespace K3
       if ( !success ) {
         // Flush buffer, and then try to append again.    
         shared_ptr<list<EndpointNotification>> events = flushBuffer();
-        
-        // Notify subscribers any data events generated while flushing.
-        for (evt : *events) {
-          subscribers_->notifyEvent(evt, v_ptr);
-        }
 
         // Try to append again, and if this still fails, throw a buffering exception.
         success = buffer_->push_back(v_ptr);
