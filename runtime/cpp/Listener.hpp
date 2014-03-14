@@ -271,10 +271,8 @@ namespace K3 {
         }
       }
 
-      void receiveMessages(shared_ptr<NConnection> c)
-      {
-        if ( c && c->socket() && this->processor_ )
-        {
+      void receiveMessages(shared_ptr<NConnection> c) {
+        if ( c && c->socket() && this->processor_ ) {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
           // may invoke this handler simultaneously (i.e. for different connections).
@@ -282,34 +280,29 @@ namespace K3 {
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
 
           async_read(c->socket(), buffer(buffer_->c_array(), buffer_->size()),
-            [=](const error_code& ec, std::size_t bytes_transferred)
-            {
-              if ( !ec )
-              {
+            [=](const error_code& ec, std::size_t bytes_transferred) {
+              if (!ec) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
                 //shared_ptr<Value> s = make_shared<Value>();
                 shared_ptr<Value> v = this->codec_->decode(string(buffer_->c_array(), buffer_->size()));
-                if ( v ) {
+                if (v) {
                   // Add the value to the endpoint's buffer, and invoke the listener processor.
                   //this->endpoint_->buffer()->append(v);
                   this->endpoint_->enqueueToEndpoint(v);
 
-                  // TODO: deprecated with the revised endpoint design.
-                  //(*(this->processor_))();
+                  // Call the ListenerProcessor to handle a potential transfer.
+                  this->processor_->process_transfer();
                 }
 
                 // Recursive invocation for the next message.
                 receiveMessages(c);
-              }
-              else
-              {
+              } else {
                 deregisterConnection(c);
                 this->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
-        }
-        else { this->logAt(trivial::error, "Invalid listener connection"); }
+        } else { this->logAt(trivial::error, "Invalid listener connection"); }
       }
     };
   }
