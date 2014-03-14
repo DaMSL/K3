@@ -102,7 +102,7 @@ namespace K3
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
-    virtual void transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
+    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
   class ScalarEPBufferST : public EndpointBuffer, public LogMT {
@@ -167,15 +167,18 @@ namespace K3
       }
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      bool transferred = false;
       if(!this->empty()) {
         shared_ptr<Value> v = this->pop();
         if (queues && cdec) {
           Message msg = cdec->read_message(*v);
           queues->enqueue(msg);
+          transferred = true;
         }
         notify(v);      
       }
+      return transferred;
     }
 
    protected:
@@ -250,18 +253,21 @@ namespace K3
       }
     }
 
-    void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      bool transferred = false;
       while (batchAvailable()) {
         int n = batchSize();
         for (int i=0; i < n; i++) {
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
             Message msg = cdec->read_message(*v);
-            queues->enqueue(msg);            
+            queues->enqueue(msg);   
+            transferred = true;         
           }
           notify(v);
         }
       }
+      return transferred;
     }
 
    protected:
@@ -389,7 +395,7 @@ namespace K3
 
     bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec) {
       buffer_->push_back(val);
-      return transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+      return buffer_->transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
   protected:
