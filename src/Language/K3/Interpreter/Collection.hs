@@ -262,7 +262,7 @@ contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \x -> do
         foldM (flip removeE) result bindings
 
     lowerBindings env =
-      mapM (\(n2,_) -> lookupE n2 >>= return . (n2,)) env 
+      mapM (\(n2,_) -> lookupE Nothing n2 >>= return . (n2,)) env 
         >>= return . partition ((annotationSelfId /= ) . fst)
 
     -- TODO: rebind annotation-specific namespace

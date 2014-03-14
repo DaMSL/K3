@@ -79,12 +79,11 @@ namespace K3
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
 
-    // Removes a value from the buffer and returns it (if possible)
+    // Maybe Removes a value from the buffer and returns it 
     virtual shared_ptr<Value> pop() = 0;
 
     // Attempt to pull a value from the provided IOHandle
-    // into the buffer. Returns a Value if the buffer was already
-    // populated, Null otherwise.
+    // into the buffer. Returns a Maybe Value
     virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0;
 
     // Flush the contents of the buffer out to the provided IOHandle
@@ -260,53 +259,45 @@ namespace K3
   //----------------------------
   // I/O event notifications.
 
-  class EndpointBindings : public LogMT
-  {
+  class EndpointBindings : public LogMT {
   public:
-    // TODO: value or value ref? Synchronize with Engine.hpp
-    typedef std::function<void(const Address&,const Identifier&,const Value&)> SendFunctionPtr;
 
-    typedef list<Message> Subscribers;
-    typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
+    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+    typedef list<tuple<Address, Identifier>> Subscribers;
+    typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, shared_ptr<Message> subscriber)
-    {
-      if ( subscriber ) {
-        shared_ptr<Subscribers> s = eventSubscriptions[nt];
-        if ( !s ) {
+    void attachNotifier(EndpointNotification nt, Identifier sub_id, Address sub_addr) {
+      shared_ptr<Subscribers> s = eventSubscriptions[nt];
+        if (!s) {
           s = shared_ptr<Subscribers>(new Subscribers());
           eventSubscriptions[nt] = s;
         }
 
-        s->push_back(*subscriber);
+        s->push_back(make_tuple(sub_id, sub_addr));
       }
-      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); }
-    }
 
-    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr)
-    {
+    void detachNotifier(EndpointNotification nt, Identifier sub_id, Address sub_addr) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) {
+        if (s) {
           s->remove_if(
-            [&subId, &subAddr](const Message& m){
-              return m.id() == subId && m.address() == subAddr;
+            [&sub_id, &sub_addr](const tuple<Identifier, Address>& t){
+              return get<0>(t) == sub_id && get<1>(t) == sub_addr;
             });
         }
       }
     }
 
-    void notifyEvent(EndpointNotification nt)
-    {
+    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload) {
       auto it = eventSubscriptions.find(nt);
-      if ( it != eventSubscriptions.end() ) {
+      if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) {
-          for (const Message& sub : *s) {
-            sendFn(sub.address(), sub.id(), sub.contents());
+        if (s) {
+          for (tuple<Identifier, Address> t : *s) {
+            sendFn(get<0>(t), get<1>(t), payload);
           }
         }
       }

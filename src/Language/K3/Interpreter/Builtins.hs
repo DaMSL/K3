@@ -402,11 +402,11 @@ builtinLiftedAttribute annId n _ _ =
 
     valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Interpretation Value
     valWithCollection f = vfun $ \arg -> 
-      lookupE annotationSelfId >>= matchCollection collectionError (f arg)
+      lookupE Nothing annotationSelfId >>= matchCollection collectionError (f arg)
 
     valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Interpretation Value
     valWithCollectionMV f = vfun $ \arg -> 
-      lookupE annotationSelfId >>= matchCollectionMV collectionError (f arg)
+      lookupE Nothing annotationSelfId >>= matchCollectionMV collectionError (f arg)
 
     matchCollection :: Interpretation a -> (Collection Value -> Interpretation a) -> Value -> Interpretation a
     matchCollection _ f (VCollection cmv) = liftIO (readMVar cmv) >>= f
