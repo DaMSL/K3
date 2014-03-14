@@ -95,7 +95,7 @@ namespace K3
     virtual tuple<shared_ptr<Value>, EndpointNotification> refresh(shared_ptr<IOHandle>) = 0;
 
     // Flush the contents of the buffer out to the provided IOHandle
-    virtual EndpointNotification flush(shared_ptr<IOHandle>) = 0;
+    virtual shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle>) = 0;
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
@@ -156,18 +156,22 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle> ioh)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh)
     {
-      // Default to a NullEvent
-      EndpointNotification nt = EndpointNotification::NullEvent;
+      // Default to an empty list
+      auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
+
       // pop() a value and write to the handle if possible,
       // registering the proper notification type
       if (!this->empty()) {
         ioh->doWrite(*(this->pop()));
+        EndpointNotification nt;
         nt = (ioh->builtin() || ioh->file())?
                EndpointNotification::FileData : EndpointNotification::SocketData;
+        l->push_back(nt);
       }
-      return nt;
+      
+      return l;
     }
 
     void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
@@ -240,26 +244,33 @@ namespace K3
      return make_tuple(r, nt);
     }
 
-    // TODO: this should flush out multiple values, and return an endpoint
-    // notification for each flushed value.
-    EndpointNotification flush(shared_ptr<IOHandle> ioh)
+    shared_ptr<list<EndpointNotification>> flush(shared_ptr<IOHandle> ioh)
     {
-      // Default to a NullEvent
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      // pop() a value and write to the handle if possible,
-      // registering the proper notification type
-      if (!this->empty()) {
-        ioh->doWrite(*(this->pop()));
-        nt = (ioh->builtin() || ioh->file())?
-               EndpointNotification::FileData : EndpointNotification::SocketData;
+      // Initialize Result List
+      auto l = shared_ptr<list<EndpointNotification>>(new list<EndpointNotification>());
+      
+      // Flush one batch at a time, building the list of results
+      while (batchAvailable()) {
+        int n = batchSize();
+        for (i=0; i < n; i++) {
+          shared_ptr<Value> v = this->pop();
+          ioh->doWrite(*v);
+          EndpointNotification nt;
+          nt = (ioh->builtin() || ioh->file())?
+                 EndpointNotification::FileData : EndpointNotification::SocketData;
+          l->push_back(nt);
+        }
       }
-      return nt;
+      return l;
     }
 
     void transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec) {
-      if(!this->empty()) {
-        Message msg = cdec->read_message(*(this->pop()));
-        queues->enqueue(msg);
+      while (batchAvailable()) {
+        int n = batchSize();
+        for (i=0; i < n; i++) {
+          Message msg = cdec->read_message(*(this->pop()));
+          queues->enqueue(msg);
+        }
       }
     }
 
