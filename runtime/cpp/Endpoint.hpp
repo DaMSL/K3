@@ -111,13 +111,12 @@ namespace K3
     // Buffer Operations
     bool push_back(shared_ptr<Value> v) {
       // Failure:
-      if (this->full()) {
+      if (!v || this->full()) {
         return false;
       }
       // Success:
       contents = v;
       return true;
-
     }
 
     shared_ptr<Value> pop() {
@@ -199,9 +198,10 @@ namespace K3
 
     bool push_back(shared_ptr<Value> v) {
       // Failure if contents is null or full
-      if (!contents || full()) {
+      if (!v || !contents || full()) {
         return false;
       }
+     
       // Success
       contents->push_back(*v);
       return true;

@@ -20,12 +20,11 @@ tuple<int,string> readFile(K3::shared_ptr<R> r) {
   int count = 0;
   ostringstream os;
   while (r->hasRead()) {
-    count += 1;
-    shared_ptr<string> sP = r->doRead();
-    // Replace the trailing newline with a space
-    string s = *sP;
-    boost::algorithm::replace_all(s,"\n"," ");
-    os << s;
+    shared_ptr<string> val = r->doRead();
+    if ( val ) {
+      count += 1;
+      os << *val;
+    }
   }
   string actual = os.str();
   return make_tuple(count,actual);
@@ -58,27 +57,31 @@ FACT("File handle reads file by line")
 {
   // Define input path
   string path = "in.txt";
+  
   // Create a File Handle
   shared_ptr<FileHandle> f = createReadFileHandle(path);
+  
   // read from file
   tuple<int,string> res = readFile<FileHandle>(f);  
   string actual = get<1>(res);
   int c = get<0>(res);
+  
   // compare results
-  string expected = "Testing 1 2 3 ";
+  string expected = "Testing123";
   Assert.Equal(expected, actual);
-  Assert.Equal(c, 4);
+  Assert.Equal(4, c);
 }
 
 FACT("File handle writes file by line")
 {
   // Define input path
   string path = "out.txt";
+
   // Create a File Handle
   shared_ptr<FileHandle> f = createWriteFileHandle(path);
-  // read from file
+
   string s0 = "Testing";
-  string s1= "1";
+  string s1 = "1";
   string s2 = "2";
   string s3 = "3";
 
@@ -92,10 +95,11 @@ FACT("File handle writes file by line")
   tuple<int,string> res = readFile<FileHandle>(f2);  
   string actual = get<1>(res);
   int c = get<0>(res);
+  
   // compare results
-  string expected = "Testing 1 2 3 ";
+  string expected = "Testing123";
   Assert.Equal(expected, actual);
-  Assert.Equal(c, 4);
+  Assert.Equal(4, c);
 }
 
 FACT("Endpoint read file by line. ScalarST Buffer")
@@ -115,21 +119,22 @@ FACT("Endpoint read file by line. ScalarST Buffer")
   tuple<int,string> res = readFile<Endpoint>(ep);  
   string actual = get<1>(res);
   int c = get<0>(res);
+  
   // compare results
-  string expected = "Testing 1 2 3 ";
+  string expected = "Testing123";
   Assert.Equal(expected, actual);
-  Assert.Equal(c, 4);
+  Assert.Equal(4, c);
 }
 
 FACT("Endpoint read file by line. ContainerST Buffer")
 {
   // Define input path
   string path = "in.txt";
+  
   // Create FileHandle
   shared_ptr<FileHandle> f = createReadFileHandle(path);
 
   // Setup a K3 Endpoint
-
   auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
   EndpointBindings::SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
@@ -139,10 +144,11 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   tuple<int,string> res = readFile<Endpoint>(ep);  
   string actual = get<1>(res);
   int c = get<0>(res);
+  
   // compare results
-  string expected = "Testing 1 2 3 ";
+  string expected = "Testing123";
   Assert.Equal(expected, actual);
-  Assert.Equal(c, 4);
+  Assert.Equal(4, c);
 }
 
 };

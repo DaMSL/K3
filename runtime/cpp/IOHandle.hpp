@@ -42,20 +42,13 @@ namespace K3
     shared_ptr<Codec> codec;
   };
 
-  class split_line_filter : public line_filter {
-  public:
-    split_line_filter() {}
-    string do_filter(const string& line) { return line; }
-  };
-
   class LineInputHandle : public virtual LogMT
   {
   public:
     template<typename Source>
-    LineInputHandle(Source& src) : LogMT("LineInputHandle")
+    LineInputHandle(Source& src) : LogMT("LineInputHandle"), pending(shared_ptr<string>())
     {
       input = shared_ptr<filtering_istream>(new filtering_istream());
-      input->push(split_line_filter());
       input->push(src);
     }
 
@@ -63,9 +56,21 @@ namespace K3
     
     shared_ptr<string> doRead() {
       if ( !input ) { return shared_ptr<string>(); }
-      stringstream r;
-      (*input) >> r.rdbuf();
-      return shared_ptr<string>(new string(r.str()));
+
+      bool success = true;
+      shared_ptr<string> v = shared_ptr<string>(new string());
+      
+      std::getline(*input, *v);
+      
+      if ( !input && v && v->size() == v->max_size() ) {
+        if ( !pending ) { pending = make_shared<string>(""); }
+        *pending = *pending + *v;
+        v.reset();
+      }
+      else if ( pending ) { *v = *pending + *v; pending.reset(); }
+      else if ( v->empty() ) { v.reset(); }
+
+      return v;
     }
 
     bool hasWrite() {
@@ -83,6 +88,7 @@ namespace K3
 
   protected:
     shared_ptr<filtering_istream> input;
+    shared_ptr<string> pending;
   };
 
   class LineOutputHandle : public virtual LogMT
@@ -92,7 +98,6 @@ namespace K3
     LineOutputHandle(Sink& sink) : LogMT("LineOutputHandle")
     {
       output = shared_ptr<filtering_ostream>(new filtering_ostream());
-      output->push(split_line_filter());
       output->push(sink);
     }
 
@@ -108,7 +113,7 @@ namespace K3
 
     bool hasWrite() { return output? output->good() : false; }
     
-    void doWrite(string& data) { if ( output ) { (*output) << data; } }
+    void doWrite(string& data) { if ( output ) { (*output) << data << std::endl; } }
   
     void close() { if ( output ) { output->reset(); } }
 
@@ -154,7 +159,7 @@ namespace K3
       shared_ptr<Value> r;
       if ( inImpl && this->codec ) { 
         shared_ptr<string> data = inImpl->doRead();
-        r = this->codec->decode(*data);
+        if ( data ) { r = this->codec->decode(*data); }
       }
       else { BOOST_LOG(*this) << "Invalid doRead on LineBasedHandle"; }
       return r;      
