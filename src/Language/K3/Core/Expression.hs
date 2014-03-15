@@ -113,6 +113,14 @@ data instance Annotation Expression
     | EConflict Conflict
   deriving (Eq, Read, Show)
 
+instance HasUID (Annotation Expression) where
+  getUID (EUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Expression) where
+  getSpan (ESpan s) = Just s
+  getSpan _         = Nothing
+
 -- | Data Conflicts
 --   TODO: move to Language.K3.Core.Annotation.Analysis
 data Conflict

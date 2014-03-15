@@ -82,9 +82,10 @@ extractReturns e@(tag &&& children -> (ELetIn i, [_, b])) =
   let r = filter (notElem i . freeVariables) $ extractReturns b
   in if r == [] then [e] else r
 
-extractReturns (tag &&& children -> (ECaseOf i, [_, s, n])) = 
-  let r = filter (notElem i . freeVariables) $ extractReturns s
-  in (if r == [] then [s] else r) ++ extractReturns n
+extractReturns e@(tag &&& children -> (ECaseOf i, [_, s, n])) = 
+  let r    = extractReturns s
+      depR = filter (notElem i . freeVariables) r
+  in (if r /= depR then [e] else r ++ extractReturns n)
 
 extractReturns e@(tag &&& children -> (EBindAs b, [_, f])) =
   let r = filter (and . map (`notElem` (bindingVariables b)) . freeVariables) $ extractReturns f

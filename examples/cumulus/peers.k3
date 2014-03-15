@@ -1,0 +1,6 @@
+declare peers : collection { ip : address, role : string, name : string} @ {Set} 
+
+ = {|ip:address,role:string,name:string| 
+    {ip:127.0.0.1:40000, role: "switch", name:""},
+    {ip:127.0.0.1:50000, role: "node",   name:""}
+  |} @ {Set}
