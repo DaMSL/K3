@@ -8,16 +8,14 @@
 #include <boost/iostreams/device/file.hpp>
 #include <xUnit++/xUnit++.h>
 
-using namespace K3;
-// Utils
+namespace K3 {
 
-void do_nothing(const Address&, const Identifier& , shared_ptr<Value>)
-{
-}
+// Utils
+void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 
 // Test Utils
 template <class R>
-tuple<int,string> readFile(shared_ptr<R> r) {
+tuple<int,string> readFile(K3::shared_ptr<R> r) {
   // Read the file line-by-line
   int count = 0;
   ostringstream os;
@@ -112,7 +110,7 @@ FACT("Endpoint read file by line. ScalarST Buffer")
   EndpointBindings::SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
   
-  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings, nullptr));
+  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
   tuple<int,string> res = readFile<Endpoint>(ep);  
   string actual = get<1>(res);
@@ -136,7 +134,7 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   EndpointBindings::SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
   
-  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings, nullptr));
+  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
   tuple<int,string> res = readFile<Endpoint>(ep);  
   string actual = get<1>(res);
@@ -146,3 +144,5 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   Assert.Equal(expected, actual);
   Assert.Equal(c, 4);
 }
+
+};
