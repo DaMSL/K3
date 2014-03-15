@@ -85,18 +85,21 @@ namespace K3 {
 
   // Abstract base class for listeners.
   template<typename NContext, typename NEndpoint>
-  class Listener : public virtual LogMT {
+  class Listener {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
+               shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<InternalCodec> c)
-        : LogMT("Listener_"+n), name(n), ctxt_(ctxt), endpoint_(ep), control_(ctrl), transfer_codec(c)
+        : name(n), ctxt_(ctxt), queues(q), 
+          endpoint_(ep), control_(ctrl), transfer_codec(c),
+          listenerLog(new LogMT("Listener_"+n))
       {
         if ( endpoint_ ) {
-          typename IOHandle::SourceDetails source = ep->handle()->networkSource();
-          nEndpoint_ = get<1>(source);
+          IOHandle::SourceDetails source = ep->handle()->networkSource();
+          nEndpoint_ = dynamic_pointer_cast<NEndpoint>(get<1>(source));
           handle_codec = get<0>(source);
         }
       }
@@ -105,14 +108,17 @@ namespace K3 {
       Identifier name;
 
       shared_ptr<NContext> ctxt_;
+      shared_ptr<MessageQueues> queues;
       shared_ptr<Endpoint> endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
+
       shared_ptr<Codec> handle_codec;
       shared_ptr<InternalCodec> transfer_codec;
         // We assume this wire description performs the framing necessary
         // for partial network messages.
 
       shared_ptr<ListenerControl> control_;
+      shared_ptr<LogMT> listenerLog;
   };
 
   namespace Asio
@@ -136,10 +142,12 @@ namespace K3 {
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
+               shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
-               shared_ptr<ListenerControl> ctrl)
-        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p),
-          llockable(), connections_(emptyConnections()), LogMT("AsioListener")
+               shared_ptr<ListenerControl> ctrl,
+               shared_ptr<InternalCodec> c)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, c),
+          llockable(), connections_(emptyConnections())
       {
         if ( this->nEndpoint_ && this->handle_codec
                 && this->ctxt_ && this->ctxt_->service_threads )
@@ -147,7 +155,7 @@ namespace K3 {
           acceptConnection();
           thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
         } else {
-          this->logAt(trivial::error, "Invalid listener arguments.");
+          listenerLog->logAt(trivial::error, "Invalid listener arguments.");
         }
       }
 
@@ -172,15 +180,15 @@ namespace K3 {
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
 
-          this->nEndpoint_->acceptor()->async_accept(nextConnection,
+          this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
-              else { this->logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
+              else { listenerLog->logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
             });
 
           acceptConnection();
         }
-        else { this->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
+        else { listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
       }
 
       void registerConnection(shared_ptr<NConnection> c)
@@ -217,15 +225,14 @@ namespace K3 {
           typedef boost::array<char, 8192> SocketBuffer;
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
 
-          async_read(c->socket(), buffer(buffer_->c_array(), buffer_->size()),
+          async_read(*(c->socket()), buffer(buffer_->c_array(), buffer_->size()),
             [=](const error_code& ec, std::size_t bytes_transferred) {
               if (!ec) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
                 if (v) {
-                  bool t = this->endpoint_->do_push(v, shared_ptr<MessageQueues>, this->transfer_codec);
-
+                  bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
                     this->control_->messageAvailable();
                   }
@@ -235,10 +242,10 @@ namespace K3 {
                 receiveMessages(c);
               } else {
                 deregisterConnection(c);
-                this->logAt(trivial::error, string("Connection error: ")+ec.message());
+                listenerLog->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
-        } else { this->logAt(trivial::error, "Invalid listener connection"); }
+        } else { listenerLog->logAt(trivial::error, "Invalid listener connection"); }
       }
     };
   }
@@ -255,9 +262,11 @@ namespace K3 {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
+               shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
-               shared_ptr<ListenerControl> ctrl)
-        : BaseListener<NContext, NEndpoint>(n, ctxt, ep, ctrl, p), LogMT("NanomsgListener")
+               shared_ptr<ListenerControl> ctrl,
+               shared_ptr<InternalCodec> c)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, c)
       {
         if ( this->nEndpoint_ && this->handle_codec && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg
@@ -265,8 +274,17 @@ namespace K3 {
           terminated_ = false;
           thread_ = shared_ptr<thread>(this->ctxt_->listenerThreads->create_thread(*this));
         } else {
-          this->logAt(trivial::error, "Invalid listener arguments.");
+          listenerLog->logAt(trivial::error, "Invalid listener arguments.");
         }
+      }
+
+      Listener(const Listener& other)
+        : BaseListener<NContext, NEndpoint>(other.name, other.ctxt_, other.queues,
+                                            other.endpoint_, other.control_, other.transfer_codec)
+      {
+        this->thread_ = other.thread_;
+        this->senders = other.senders;
+        this->terminated_.store(other.terminated_.load());
       }
 
       void operator()() {
@@ -282,14 +300,14 @@ namespace K3 {
             if ( v ) {
               // Simulate accept events for nanomsg.
               refreshSenders(v);
-              bool t = this->endpoint_->do_push(v, shared_ptr<MessageQueues>, this->transfer_codec);
+              bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
 
               if (t) {
                 this->control_->messageAvailable();
               }
             }
           } else {
-            this->logAt(trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));
+            listenerLog->logAt(trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));
             terminate();
           }
         }

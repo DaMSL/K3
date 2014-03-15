@@ -21,14 +21,8 @@ namespace K3
   using namespace boost;
 
   template<typename T> using shared_ptr = std::shared_ptr<T>;
+  using std::bind;
   using mutex = boost::mutex;
-
-  // using boost::mutex;
-  // using boost::strict_lock;
-  // using boost::shared_mutex;
-  // using boost::shared_lockable_adapter;
-  // using boost::externally_locked;
-  // using boost::basic_lockable_adapter;
 
   typedef tuple<int, int> BufferSpec;
 
@@ -367,7 +361,7 @@ namespace K3
 
     shared_ptr<Value> refreshBuffer() {
       return buffer_->refresh(handle_,
-       bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     void flushBuffer() {
