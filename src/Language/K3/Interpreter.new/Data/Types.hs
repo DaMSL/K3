@@ -7,14 +7,15 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
-import Data.Map ( Map )
-import Data.Trie ( Trie )
-import Data.Word (Word8)
+import Data.Map  ( Map   )
+import Data.Trie ( Trie  )
+import Data.Word ( Word8 )
 import qualified Data.Map          as Map
 import qualified Data.Hashtable.IO as HT 
 import qualified Data.Trie         as Trie
 
 import System.Mem.StableName
+import System.Mem.Weak
 
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
@@ -48,19 +49,8 @@ type IFunction = Value -> Interpretation Value
 type IIndirection = MVar Value
 
 -- | Function closures that capture free variable bindings.
-type Closure v = IEnvironment v
+type Closure v = IEnvBindings v
 
-{- Bind writeback support -}
-data BindStep
-    = Named       Identifier
-    | Temporary   Identifier
-    | Indirection
-    | TupleField  Int
-    | RecordField Identifier
-  deriving (Eq, Show, Read)
-
-type BindPath      = [BindStep]
-type BindPathStack = [Maybe BindPath]
 
 {- Interpreter dataspaces -}
 
@@ -170,37 +160,74 @@ type Globals = [Identifier]
 
 -- | Environment entries
 data IEnvEntry v
-  = IVal v
-  | MVal (MVar v)
-  | PVal { proxyValue    :: MVar v
-         , proxyRefCount :: MVar Int
-         , proxyParent   :: ProxyTarget }
+  = IVal (        v, StableName v)
+  | MVal (MVar    v, StableName v)
+  | PVal (ProxyId v)
 
-data ProxyTarget
-  = PBinding BindPath
-  | PMember  BindPath
-  | PElement (BindPath, Int)
+type IProxyEntry  v = Weak (ProxyId v, MVar v)
+type ProxyId      v = MVar (ProxyLocation v)
+
+{- Bind writeback support -}
+data ProxyStep
+    = Named       Identifier
+    | Temporary   Identifier
+    | Indirection
+    | TupleField  Int
+    | RecordField Identifier
+  deriving (Eq, Show, Read)
+
+type ProxyPath       = [ProxyStep]
+type ProxyPathStack  = [Maybe ProxyPath]
+type ProxyLocation v = (StableName v, ProxyPath)
 
 -- | Interpretation Environment.
---   This is a hashtable of names to environment entries, as well as a secondary
---   index on the bind paths of proxy values. The latter uses a trie datastructure
---   based on a binary representation of bind paths to support efficient prefix matching. 
+--   This is a hashtable of names to environment entries, as well as a proxy value environment.
+--
+--   Proxy values are bindings captured in closures, and indexed by a proxy identifier.
+--   Our proxy environment maps proxy identifiers to weak values, so that they are
+--   garbage-collected whenever the last closure that points to the value is destroyed.
+--   To achieve this, the proxy identifier acts as the key for Haskell's weak pointers.
+--
+--   The proxy value environment is a two-level nested map data structure, with the outer tier
+--   indexed by the stable name of the proxy's root value, and the inner tier indexed by a
+--   binary representation of bind paths. The outer tier data structure is a hashtable, and the
+--   inner tier a trie, to support efficient prefix matching from a proxy's root value.
 --
 type IEnvBindings v = HT.CuckooHashTable Identifier (IEnvEntry v)
-type IEnvPaths      = Trie Identifier
+type IEnvProxies  v = HT.CuckooHashTable (StableName v) (Trie (IProxyEntry v))
 
-data IEnvironment v = IEnvironment { envBindings  :: IEnvBindings v
-                                   , envPathIndex :: IEnvPaths }
+data IEnvironment v = IEnvironment { envBindings :: IEnvBindings v
+                                   , envProxies  :: IEnvProxies v }
 
 -- | Type declaration for an Interpretation's state.
 data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
                      , getAnnotEnv   :: AEnvironment Value
                      , getStaticEnv  :: SEnvironment Value
-                     , getBindStack  :: BindPathStack }
+                     , getBindStack  :: ProxyPathStack }
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)
 
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment Value)
+
+
+-- | Proxy trees, for efficient signalling of aliased values.
+class ProxyTree vk v t where
+  lookup       :: vk -> t -> v
+  pre          :: vk -> t -> [vk]
+  succ         :: vk -> t -> [vk]
+  ancestors    :: vk -> t -> [vk]
+  descendants  :: vk -> t -> [vk]
+  rebuild      :: vk -> v -> t -> t
+
+instance ProxyTree (ProxyLocation Value) (IProxyEntry Value) (IEnvProxies Value) where
+  pre (s,p) t  = undefined
+  succ (s,p) t = undefined
+
+  ancestors k t   = undefined
+  descendants k t = undefined
+  
+  rebuild k v t = undefined
+
