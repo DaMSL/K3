@@ -35,9 +35,16 @@ data Value
     | VTuple       [Value]
     | VRecord      (NamedBindings Value)
     | VCollection  (IIndirection, Collection Value)
-    | VIndirection (IIndirection, StableName IIndirection)
-    | VFunction    (IFunction, Closure Value, StableName IFunction)
-    | VTrigger     (Identifier, Maybe IFunction)
+    | VIndirection (IIndirection, EntityTag)
+    | VFunction    (IFunction, Closure Value, EntityTag)
+    | VTrigger     (Identifier, Maybe IFunction, EntityTag)
+
+-- | Entity tags for values. 
+--   In-memory values use stable names, while external values use an integer
+--   corresponding to their file offset.
+data EntityTag 
+  = forall a . MemEntTag (StableName a)
+  | ExtEntTag Int
 
 -- | A datastructure for named bindings
 type NamedBindings v = Map Identifier v
@@ -158,7 +165,9 @@ type ILog = [String]
 -- | Identifiers for global declarations
 type Globals = [Identifier]
 
--- | Environment entries
+-- | Environment entries.
+--   These encapsulate sharing and proxying of mutable values (MVals) and aliases (PVals)
+--   at the environment level, rather than at the value level.
 data IEnvEntry v
   = IVal (        v, StableName v)
   | MVal (MVar    v, StableName v)
@@ -167,13 +176,15 @@ data IEnvEntry v
 type IProxyEntry  v = Weak (ProxyId v, MVar v)
 type ProxyId      v = MVar (ProxyLocation v)
 
-{- Bind writeback support -}
+{- Proxy value synchronization -}
 data ProxyStep
-    = Named       Identifier
-    | Temporary   Identifier
-    | Indirection
-    | TupleField  Int
-    | RecordField Identifier
+    = Named             Identifier
+    | Temporary         Identifier
+    | Dataspace         (Identifier, EntityTag)
+    | Dereference           
+    | TupleField        Int
+    | RecordField       Identifier
+    | CollectionMember  Identifier
   deriving (Eq, Show, Read)
 
 type ProxyPath       = [ProxyStep]
