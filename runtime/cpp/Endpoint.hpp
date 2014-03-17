@@ -335,7 +335,10 @@ namespace K3
              shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
-      refreshBuffer();
+      // TODO verify correctness: dont refresh network handle?
+      if (handle_->builtin() || handle_->file()) {
+        refreshBuffer();
+      }
     }
 
     shared_ptr<IOHandle> handle() { return handle_; }

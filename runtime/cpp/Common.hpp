@@ -4,6 +4,8 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -222,8 +224,33 @@ namespace K3 {
 
   class InternalCodec: public Codec {
     public:
+      InternalCodec() : LogMT("InternalCodec") {}
+
       virtual Message read_message(const Value&) = 0;
       virtual Value show_message(const Message&) = 0;
+  };
+
+  class DefaultInternalCodec : public InternalCodec, public virtual LogMT {
+    public:
+      DefaultInternalCodec() : InternalCodec(), LogMT("DefaultInternalCodec"), dc(DefaultCodec()) {}
+      Value encode(const Value& v) { return dc.encode(v); }
+      shared_ptr<Value> decode(const Value &v) { return dc.decode(v); }
+
+      // TODO Properly read message. this is a hack
+      Message read_message(const Value& v) { 
+        Address a = defaultAddress;
+        Identifier m = "test";
+        return Message(a,m,v);
+      };
+
+     // TODO this is a hack too
+      Value show_message(const Message& m) {
+        ostringstream os;
+        os << m.target() << "," << m.contents();
+        return os.str();
+      }
+    protected:
+      DefaultCodec dc;
   };
 
   using ExternalCodec = Codec;

@@ -342,7 +342,7 @@ namespace K3
   //-----------------------------------------
   // Low-level networking library selection.
 
-  namespace Net = K3::Nanomsg;
+  namespace Net = K3::Asio;
 }
 
 #endif

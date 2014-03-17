@@ -95,7 +95,7 @@ namespace K3 {
                shared_ptr<InternalCodec> c)
         : name(n), ctxt_(ctxt), queues(q), 
           endpoint_(ep), control_(ctrl), transfer_codec(c),
-          listenerLog(new LogMT("Listener_"+n))
+          listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
       {
         if ( endpoint_ ) {
           IOHandle::SourceDetails source = ep->handle()->networkSource();
@@ -152,8 +152,9 @@ namespace K3 {
         if ( this->nEndpoint_ && this->handle_codec
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
-          acceptConnection();
-          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
+          acceptConnection(); 
+          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));     
+
         } else {
           listenerLog->logAt(trivial::error, "Invalid listener arguments.");
         }
@@ -176,14 +177,15 @@ namespace K3 {
       // Endpoint execution.
 
       void acceptConnection()
-      {
+      { 
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
 
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
-              else { listenerLog->logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
+              else { 
+                listenerLog->logAt(trivial::error, "Failed"); }
             });
 
           acceptConnection();
