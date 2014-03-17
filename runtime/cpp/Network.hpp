@@ -36,22 +36,24 @@ namespace K3
     virtual void close() = 0;
   };
 
-  template<typename NContext, typename Device, typename Socket>
-  class NConnection : public stream<Device>, public virtual LogMT
+  template<typename NContext, typename Socket>
+  class NConnection : public virtual LogMT
   {
   public:
     NConnection(const string& logId, shared_ptr<NContext> ctxt, Socket s)
-      : stream<Device>(s), LogMT(logId)
+      : LogMT(logId)
     {}
     
     NConnection(const char* logId, shared_ptr<NContext> ctxt, Socket s)
-      : stream<Device>(s), LogMT(logId)
+      : LogMT(logId)
     {}
 
     virtual Socket socket() = 0;
     virtual void close() = 0;
-    virtual size_t write(const string&) = 0;
-    virtual bool has_write() = 0;
+    virtual void write(const string&) = 0;
+
+    // TODO
+    //virtual bool has_write() = 0;
   };
 
 
@@ -59,50 +61,7 @@ namespace K3
   // Boost ASIO low-level networking implementation.
 
   namespace Asio
-  {
-    class AsioDeviceException : public system_error {
-    public:
-      AsioDeviceException(const error_code& ec) : system_error(ec) {}
-      
-      AsioDeviceException(const error_code& ec, const string& msg)
-        : system_error(ec, msg)
-      {}
-    };
-
-    class AsioDevice
-    {
-    public:
-      typedef char char_type;
-      typedef bidirectional_device_tag category;
-
-      AsioDevice(shared_ptr<ip::tcp::socket> s) : socket(s) {}
-
-      streamsize read(char* s, streamsize n) 
-      {
-        boost::system::error_code ec;
-        std::size_t rval = socket->read_some(boost::asio::buffer(s, n), ec);
-        if (!ec) { return rval; }
-        else if (ec == boost::asio::error::eof) { return -1; }
-        else { 
-          throw AsioDeviceException(make_error_code(static_cast<errc>(ec.value())), ec.message());
-        }
-      }
-      
-      streamsize write(const char* s, streamsize n)
-      {
-        boost::system::error_code ec;
-        std::size_t rval = socket->write_some(boost::asio::buffer(s, n), ec);
-        if (!ec) { return rval; }
-        else if (ec == boost::asio::error::eof) { return -1; }
-        else {
-          throw AsioDeviceException(make_error_code(static_cast<errc>(ec.value())), ec.message());
-        }
-      }
-
-    protected:
-      shared_ptr<ip::tcp::socket> socket;
-    };
-
+  { 
     // Boost implementation of a network context.
     class NContext
     {
@@ -151,7 +110,7 @@ namespace K3
     };
 
     // Low-level connection class. This is a wrapper around a Boost tcp socket.
-    class NConnection : public ::K3::NConnection<NContext, AsioDevice, shared_ptr<ip::tcp::socket> >
+    class NConnection : public ::K3::NConnection<NContext, shared_ptr<ip::tcp::socket> >
     {
     public:
       typedef shared_ptr<ip::tcp::socket> Socket;
@@ -186,9 +145,25 @@ namespace K3
 
       void close() { if ( socket_ ) { socket_->close(); } }
 
+      void write(const string& val) { 
+        size_t desired = val.length();
+        async_write(*socket_, boost::asio::buffer(val,
+          desired),
+        [=](boost::system::error_code ec, size_t s)
+        {
+          if (!ec && (s == desired)) {
+            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Successfully sent: " <<  val;
+          }
+          else {
+            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
+              << " sent : " << s << " bytes" << endl;
+          }
+        });
+      }
+
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
-        : ::K3::NConnection<NContext, AsioDevice, Socket>("NConnection", ctxt, s),
+        : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
           LogMT("NConnection"), socket_(s)
       {}
       
@@ -205,49 +180,6 @@ namespace K3
 
   namespace Nanomsg
   {
-    class NanomsgDeviceException : public system_error {
-    public:
-      NanomsgDeviceException(const error_code& ec) : system_error(ec) {}
-      
-      NanomsgDeviceException(const error_code& ec, const string& msg)
-        : system_error(ec, msg)
-      {}
-    };
-
-    class NanomsgDevice
-    {
-    public:
-      typedef char char_type;
-      typedef bidirectional_device_tag category;
-
-      NanomsgDevice(int s) : socket(s) {}
-
-      streamsize read(char* s, streamsize n) 
-      {
-        int rDone = nn_recv(socket, s, n, 0);
-        if ( rDone < 0 ) {
-          int err = nn_errno();
-          string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(make_error_code(static_cast<errc>(err)), errStr);
-        }
-        return rDone;
-      }
-      
-      streamsize write(const char* s, streamsize n)
-      {
-        int wDone = nn_send(socket, s, n, 0);
-        if ( wDone < 0 ) {
-          int err = nn_errno();
-          string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(make_error_code(static_cast<errc>(err)), errStr);
-        }
-        return wDone;
-      }
-
-    protected:
-      int socket;
-    };
-
     class NContext {
     public:
       NContext() {
@@ -298,7 +230,7 @@ namespace K3
       int socket_;
     };
 
-    class NConnection : public ::K3::NConnection<NContext, NanomsgDevice, int>
+    class NConnection : public ::K3::NConnection<NContext, int>
     {
     public:
       typedef int Socket;
@@ -333,9 +265,20 @@ namespace K3
         } 
       }
 
+      void write(const string& val) {
+        size_t n = val.length();
+        int wDone = nn_send(socket_, &val, n, 0);
+        if ( wDone < 0 ) {
+          int err = nn_errno();
+          string errStr(nn_strerror(err));
+          logAt(trivial::error, string("Failed to write to socket: " + errStr));
+        }
+        return;
+      }
+
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
-        : ::K3::NConnection<NContext, NanomsgDevice, Socket>("NConnection", ctxt, s),
+        : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
           LogMT("NConnection"), socket_(s)
       {
         if ( socket_ < 0 ) {
