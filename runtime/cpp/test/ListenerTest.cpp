@@ -16,9 +16,9 @@ void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 void setup() {
   // Setup context and Queues
   Identifier id = "id";
-  Address me = make_address("127.0.0.1",3000);
+  Address me = defaultAddress;
   shared_ptr<NContext> context = shared_ptr<NContext>(new NContext());
-  shared_ptr<SinglePeerQueue> qs = shared_ptr<SinglePeerQueue>(new SinglePeerQueue());
+  shared_ptr<SinglePeerQueue> qs = shared_ptr<SinglePeerQueue>(new SinglePeerQueue(me));
   // Setup network IOHandle
   K3::Asio::NEndpoint n_ep = K3::Asio::NEndpoint(context, me);
   DefaultCodec cdec = DefaultCodec();

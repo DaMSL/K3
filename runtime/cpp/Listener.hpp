@@ -232,7 +232,6 @@ namespace K3 {
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
                 if (v) {
-                  cout << *v << endl;
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
                     this->control_->messageAvailable();

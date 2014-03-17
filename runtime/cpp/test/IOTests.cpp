@@ -150,5 +150,4 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   Assert.Equal(expected, actual);
   Assert.Equal(4, c);
 }
-
 };

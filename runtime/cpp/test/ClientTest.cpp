@@ -16,7 +16,7 @@ void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 void setup() {
   // Setup context
   Identifier id = "id";
-  Address server = make_address("127.0.0.1",3000);
+  Address server = defaultAddress;
   shared_ptr<NContext> context = shared_ptr<NContext>(new NContext());
   
   
