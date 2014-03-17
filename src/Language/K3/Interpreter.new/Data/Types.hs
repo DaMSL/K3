@@ -146,25 +146,6 @@ type AnnotationCombinations v = [(Identifier, CollectionConstructors v)]
 type SEnvironment v = (IEnvironment v, AEnvironment v)
 
 
--- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
-type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IEngineM))
-
--- | Errors encountered during interpretation.
-data InterpretationError
-    = RunTimeInterpretationError String
-    | RunTimeTypeError String
-  deriving (Eq, Read, Show)
-
--- | Type synonym for interpreter engine and engine monad
-type IEngine  = Engine  Value
-type IEngineM = EngineM Value
-
--- | Interpretation event log.
-type ILog = [String]
-
--- | Identifiers for global declarations
-type Globals = [Identifier]
-
 -- | Environment entries.
 --   These encapsulate sharing and proxying of mutable values (MVals) and aliases (PVals)
 --   at the environment level, rather than at the value level.
@@ -191,6 +172,7 @@ type ProxyPath       = [ProxyStep]
 type ProxyPathStack  = [Maybe ProxyPath]
 type ProxyLocation v = (StableName v, ProxyPath)
 
+
 -- | Interpretation Environment.
 --   This is a hashtable of names to environment entries, as well as a proxy value environment.
 --
@@ -210,6 +192,26 @@ type IEnvProxies  v = HT.CuckooHashTable (StableName v) (Trie (IProxyEntry v))
 data IEnvironment v = IEnvironment { envBindings :: IEnvBindings v
                                    , envProxies  :: IEnvProxies v }
 
+
+-- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
+type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog IEngineM))
+
+-- | Errors encountered during interpretation.
+data InterpretationError
+    = RunTimeInterpretationError String
+    | RunTimeTypeError String
+  deriving (Eq, Read, Show)
+
+-- | Type synonym for interpreter engine and engine monad
+type IEngine  = Engine  Value
+type IEngineM = EngineM Value
+
+-- | Interpretation event log.
+type ILog = [String]
+
+-- | Identifiers for global declarations
+type Globals = [Identifier]
+
 -- | Type declaration for an Interpretation's state.
 data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
@@ -222,23 +224,4 @@ type IResult a = ((Either InterpretationError a, IState), ILog)
 
 -- | Pairing of errors and environments for debugging output.
 type EnvOnError = (InterpretationError, IEnvironment Value)
-
-
--- | Proxy trees, for efficient signalling of aliased values.
-class ProxyTree vk v t where
-  lookup       :: vk -> t -> v
-  pre          :: vk -> t -> [vk]
-  succ         :: vk -> t -> [vk]
-  ancestors    :: vk -> t -> [vk]
-  descendants  :: vk -> t -> [vk]
-  rebuild      :: vk -> v -> t -> t
-
-instance ProxyTree (ProxyLocation Value) (IProxyEntry Value) (IEnvProxies Value) where
-  pre (s,p) t  = undefined
-  succ (s,p) t = undefined
-
-  ancestors k t   = undefined
-  descendants k t = undefined
-  
-  rebuild k v t = undefined
 
