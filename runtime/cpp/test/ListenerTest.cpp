@@ -17,7 +17,7 @@ void setup() {
   // Setup context and Queues
   Identifier id = "id";
   Address me = make_address("127.0.0.1",3000);
-  shared_ptr<NContext> context = shared_ptr<NContext>(new NContext(me));
+  shared_ptr<NContext> context = shared_ptr<NContext>(new NContext());
   shared_ptr<SinglePeerQueue> qs = shared_ptr<SinglePeerQueue>(new SinglePeerQueue());
   // Setup network IOHandle
   K3::Asio::NEndpoint n_ep = K3::Asio::NEndpoint(context, me);
@@ -44,7 +44,11 @@ void setup() {
   	ctrl,
   	i_cdec
   	));
+  
 
+  cout << "Waiting for threads to finish" << endl;
+  context->service_threads->join_all();
+  cout << "Done" << endl;
 }
 
 

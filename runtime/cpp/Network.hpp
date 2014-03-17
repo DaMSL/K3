@@ -50,6 +50,8 @@ namespace K3
 
     virtual Socket socket() = 0;
     virtual void close() = 0;
+    virtual size_t write(const string&) = 0;
+    virtual bool has_write() = 0;
   };
 
 
@@ -105,12 +107,12 @@ namespace K3
     class NContext
     {
     public:
-      NContext(Address addr) {
+      NContext() {
         service = shared_ptr<io_service>(new io_service());
         service_threads = shared_ptr<thread_group>(new thread_group());
       }
 
-      NContext(Address addr, size_t concurrency) {
+      NContext(size_t concurrency) {
         service = shared_ptr<io_service>(new io_service(concurrency));
         service_threads = shared_ptr<thread_group>(new thread_group());
       }
@@ -164,16 +166,23 @@ namespace K3
         if ( ctxt ) {
           if ( socket_ ) {
             ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
-            shared_ptr<LogMT> logger(static_cast<LogMT*>(this));
             socket_->async_connect(ep,
-              [=,&addr] (const boost::system::error_code& error) { 
-                BOOST_LOG(*logger) << "connected to " << ::K3::addressAsString(addr);
+              [=] (const boost::system::error_code& error) {
+                if (!error) {
+                  connected_ = true;
+                  BOOST_LOG(*(static_cast<LogMT*>(this))) << "connected to " << ::K3::addressAsString(addr);
+
+                } else {
+                  BOOST_LOG(*(static_cast<LogMT*>(this))) << "Connect error: " << error.message();
+                }
               } );
           } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
         } else { logAt(warning, "Invalid network context in constructing an NConnection"); }
       }
 
       Socket socket() { return socket_; }
+
+      bool connected() { return connected_; }
 
       void close() { if ( socket_ ) { socket_->close(); } }
 
@@ -184,6 +193,7 @@ namespace K3
       {}
       
       Socket socket_;
+      bool connected_;
     };
   }
 
