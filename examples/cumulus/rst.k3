@@ -5,11 +5,10 @@ declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
   {_r1_:4, _r2_:"ATIMESD_mS1", _r3_:2}, {_r1_:5, _r2_:"ATIMESD_mS2", _r3_:2},
   {_r1_:6, _r2_:"ATIMESD_mR1", _r3_:2}|} @ { Set }
 
-declare __vid_counter__ : collection {elem:mut int} @ { Set } = {|elem:int|
+declare __vid_counter__ : collection {i:mut int} @ { Set } = {|i:int|
   1|} @ { Set }
 
-declare __epoch__ : collection {elem:mut int} @ { Set } = {|elem:int|
-  0|} @ { Set }
+declare __epoch__ : collection {i:mut int} @ { Set } = {|i:int| 0|} @ { Set }
 
 declare __init_vid__ : { _r1_:int, _r2_:int, _r3_:int } =
   {_r1_:0, _r2_:0, _r3_:hash me}
@@ -212,25 +211,24 @@ declare add_delta_to_ATIMESD : {
                             then
                               if vid_eq {_r1_:map_vid, _r2_:max_vid}
                               then
-                                {_r1_:({|elem:int|
-                                 __map_val|} @ { Set }).combine acc,
-                                 _r2_:max_vid}
+                                {_r1_:({|i:int| __map_val|} @ { Set }).combine
+                                 acc, _r2_:max_vid}
                               else
                                 if vid_gt {_r1_:map_vid, _r2_:max_vid}
                                 then
-                                  {_r1_:{|elem:int| __map_val|} @ { Set },
+                                  {_r1_:{|i:int| __map_val|} @ { Set },
                                    _r2_:map_vid}
                                 else {_r1_:acc, _r2_:max_vid}
                             else {_r1_:acc, _r2_:max_vid})))
-                          {_r1_:empty {elem:int} @ { Set },
+                          {_r1_:empty {i:int} @ { Set },
                            _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1,
                                                               _r2_:__2} in 
-            __1).peek ()) of { Some x -> x } { None -> error () } +
+            __1).peek ()) of { Some x -> x.i } { None -> error () } +
             __prod_ret__1 in ( ATIMESD.insert {_r1_:vid, _r2_:update_value} ));
       delta_tuples.iterate
         (\_b1_ -> 
           bind _b1_ as {_r1_:vid_arg, _r2_:__arg_val} in 
-          ((().filter
+          (((ATIMESD).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_val} in vid > min_vid)).map
              (\_b1_ -> 
@@ -596,25 +594,25 @@ declare cond_add_delta_to_ATIMESD : {
                               then
                                 if vid_eq {_r1_:map_vid, _r2_:max_vid}
                                 then
-                                  {_r1_:({|elem:int|
+                                  {_r1_:({|i:int|
                                    __map_val|} @ { Set }).combine acc,
                                    _r2_:max_vid}
                                 else
                                   if vid_gt {_r1_:map_vid, _r2_:max_vid}
                                   then
-                                    {_r1_:{|elem:int| __map_val|} @ { Set },
+                                    {_r1_:{|i:int| __map_val|} @ { Set },
                                      _r2_:map_vid}
                                   else {_r1_:acc, _r2_:max_vid}
                               else {_r1_:acc, _r2_:max_vid})))
-                            {_r1_:empty {elem:int} @ { Set },
+                            {_r1_:empty {i:int} @ { Set },
                              _r2_:{_r1_:0, _r2_:0, _r3_:0}} as {_r1_:__1,
                                                                 _r2_:__2} in 
-              __1).peek ()) of { Some x -> x } { None -> error () } +
+              __1).peek ()) of { Some x -> x.i } { None -> error () } +
               __prod_ret__1 in ( ATIMESD.insert {_r1_:vid, _r2_:update_value} ));
       delta_tuples.iterate
         (\_b1_ -> 
           bind _b1_ as {_r1_:vid_arg, _r2_:__arg_val} in 
-          ((().filter
+          (((ATIMESD).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_val} in vid > min_vid)).map
              (\_b1_ -> 
@@ -2677,17 +2675,17 @@ declare log_get_bound_delete_R : { _r1_:int, _r2_:int, _r3_:int } -> {
 declare node_ring : mut collection {
   _r1_:address, _r2_:string, _r3_:string, _r4_:int } @ { Seq }
 
-declare replicas : mut collection {elem:int} @ { Set } = {|elem:int|
-  8|} @ { Set }
+declare replicas : mut collection {i:int} @ { Set } = {|i:int| 8|} @ { Set }
 
 declare set_replicas : int -> () = \n -> 
     replicas.update
-      (case (replicas.peek ()) of { Some x -> x } { None -> error () }) n
+      (case (replicas.peek ()) of { Some x -> x.i } { None -> error () }) n
 
 declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = \_b1_ -> 
     bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name} in 
     let rng =
-      range 1 1 (case (().peek ()) of { Some x -> x } { None -> error () }) in
+      range
+        (case ((replicas).peek ()) of { Some x -> x.i } { None -> error () }) in
     let new_elems =
       rng.map
         (\i ->  {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)}) in
@@ -2734,11 +2732,11 @@ declare get_ring_node : { _r1_:int, _r2_:int } -> address = \_b1_ ->
          else case (results.peek ()) of { Some x -> x } { None -> error () } as {
     _r1_:addr, _r2_:_, _r3_:_, _r4_:_} in addr
 
-declare get_all_uniq_nodes : () -> collection {elem:address} @ { Seq } = \_ -> 
+declare get_all_uniq_nodes : () -> collection {i:address} @ { Seq } = \_ -> 
     (node_ring.groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in addr)
-       ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq }).map
+       ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq }).map
       (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
 
 declare pmap_data : collection {
@@ -2763,11 +2761,11 @@ declare calc_dim_bounds : collection { _r1_:int, _r2_:int } @ { Seq } -> {
          _r2_:bin_size * acc_size})))
       {_r1_:empty { _r1_:int, _r2_:int } @ { Seq }, _r2_:1}
 
-declare route_to_ATIMESD : () -> collection {elem:address} @ { Collection } =
-  \_ ->  {|elem:address| get_ring_node {_r1_:1, _r2_:1}|} @ { Collection }
+declare route_to_ATIMESD : () -> collection {i:address} @ { Collection } =
+  \_ ->  {|i:address| get_ring_node {_r1_:1, _r2_:1}|} @ { Collection }
 
 declare route_to_ATIMESD_mT1 :
-  option int -> collection {elem:address} @ { Collection } = \key -> 
+  option int -> collection {i:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 2)).peek 
       ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
@@ -2802,16 +2800,16 @@ declare route_to_ATIMESD_mT1 :
       let free_domains =
         free_dims.map
           (\_b1_ -> 
-            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range 0 1 b_i}) in
+            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
               (\domain_element -> 
-                if prev_cart_prod == empty {elem:collection {
-                  _r1_:int, _r2_:int } @ { Seq }} @ { Seq }
-                then {|elem:collection { _r1_:int, _r2_:int } @ { Seq }| {|
+                if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
+                  } @ { Seq }} @ { Seq }
+                then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
                   _r1_:int, _r2_:int |
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
@@ -2820,7 +2818,7 @@ declare route_to_ATIMESD_mT1 :
                       rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
-          empty {elem:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
+          empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
            (\free_bucket -> 
@@ -2834,15 +2832,15 @@ declare route_to_ATIMESD_mT1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
+          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
-      then {|elem:address|
+      then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
       else
         sorted_ip_list.map (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
 
 declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
-  } -> collection {elem:address} @ { Collection } = \key -> 
+  } -> collection {i:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 3)).peek 
       ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
@@ -2897,16 +2895,16 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
       let free_domains =
         free_dims.map
           (\_b1_ -> 
-            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range 0 1 b_i}) in
+            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
               (\domain_element -> 
-                if prev_cart_prod == empty {elem:collection {
-                  _r1_:int, _r2_:int } @ { Seq }} @ { Seq }
-                then {|elem:collection { _r1_:int, _r2_:int } @ { Seq }| {|
+                if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
+                  } @ { Seq }} @ { Seq }
+                then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
                   _r1_:int, _r2_:int |
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
@@ -2915,7 +2913,7 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
                       rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
-          empty {elem:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
+          empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
            (\free_bucket -> 
@@ -2929,15 +2927,15 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
+          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
-      then {|elem:address|
+      then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
       else
         sorted_ip_list.map (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
 
 declare route_to_ATIMESD_mS1 :
-  option int -> collection {elem:address} @ { Collection } = \key -> 
+  option int -> collection {i:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 4)).peek 
       ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
@@ -2972,16 +2970,16 @@ declare route_to_ATIMESD_mS1 :
       let free_domains =
         free_dims.map
           (\_b1_ -> 
-            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range 0 1 b_i}) in
+            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
               (\domain_element -> 
-                if prev_cart_prod == empty {elem:collection {
-                  _r1_:int, _r2_:int } @ { Seq }} @ { Seq }
-                then {|elem:collection { _r1_:int, _r2_:int } @ { Seq }| {|
+                if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
+                  } @ { Seq }} @ { Seq }
+                then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
                   _r1_:int, _r2_:int |
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
@@ -2990,7 +2988,7 @@ declare route_to_ATIMESD_mS1 :
                       rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
-          empty {elem:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
+          empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
            (\free_bucket -> 
@@ -3004,15 +3002,15 @@ declare route_to_ATIMESD_mS1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
+          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
-      then {|elem:address|
+      then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
       else
         sorted_ip_list.map (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
 
 declare route_to_ATIMESD_mS2 :
-  option int -> collection {elem:address} @ { Collection } = \key -> 
+  option int -> collection {i:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 5)).peek 
       ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
@@ -3047,16 +3045,16 @@ declare route_to_ATIMESD_mS2 :
       let free_domains =
         free_dims.map
           (\_b1_ -> 
-            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range 0 1 b_i}) in
+            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
               (\domain_element -> 
-                if prev_cart_prod == empty {elem:collection {
-                  _r1_:int, _r2_:int } @ { Seq }} @ { Seq }
-                then {|elem:collection { _r1_:int, _r2_:int } @ { Seq }| {|
+                if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
+                  } @ { Seq }} @ { Seq }
+                then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
                   _r1_:int, _r2_:int |
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
@@ -3065,7 +3063,7 @@ declare route_to_ATIMESD_mS2 :
                       rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
-          empty {elem:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
+          empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
            (\free_bucket -> 
@@ -3079,15 +3077,15 @@ declare route_to_ATIMESD_mS2 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
+          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
-      then {|elem:address|
+      then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
       else
         sorted_ip_list.map (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
 
 declare route_to_ATIMESD_mR1 :
-  option int -> collection {elem:address} @ { Collection } = \key -> 
+  option int -> collection {i:address} @ { Collection } = \key -> 
     let pmap = bind case ((pmap_data.filter
       (\_b1_ ->  bind _b1_ as {_r1_:_r1_, _r2_:_r2_} in _r1_ == 6)).peek 
       ()) of { Some x -> x } { None -> error () } as {_r1_:__1, _r2_:__2} in 
@@ -3122,16 +3120,16 @@ declare route_to_ATIMESD_mR1 :
       let free_domains =
         free_dims.map
           (\_b1_ -> 
-            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range 0 1 b_i}) in
+            bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
               (\domain_element -> 
-                if prev_cart_prod == empty {elem:collection {
-                  _r1_:int, _r2_:int } @ { Seq }} @ { Seq }
-                then {|elem:collection { _r1_:int, _r2_:int } @ { Seq }| {|
+                if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
+                  } @ { Seq }} @ { Seq }
+                then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
                   _r1_:int, _r2_:int |
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
@@ -3140,7 +3138,7 @@ declare route_to_ATIMESD_mR1 :
                       rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
-          empty {elem:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
+          empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
            (\free_bucket -> 
@@ -3154,9 +3152,9 @@ declare route_to_ATIMESD_mR1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {elem:address} @ { Seq } in
+          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
-      then {|elem:address|
+      then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
       else
         sorted_ip_list.map (\_b1_ ->  bind _b1_ as {_r1_:__1, _r2_:__2} in __1)
@@ -3479,15 +3477,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:T_C, _r2_:T_D} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_T_send_fetch, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
@@ -4051,15 +4049,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:T_C, _r2_:T_D} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_T_send_fetch, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
@@ -4623,15 +4621,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:S_B, _r2_:S_C} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_S_send_fetch, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
@@ -5643,15 +5641,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:S_B, _r2_:S_C} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_S_send_fetch, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
@@ -6666,15 +6664,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:R_A, _r2_:R_B} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (insert_R_send_fetch, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
@@ -7239,15 +7237,15 @@ _r1_:int, _r2_:int
 
   bind _b1_ as {_r1_:R_A, _r2_:R_B} in (
     let vid =
-      {_r1_:case (__epoch__.peek ()) of { Some x -> x } { None -> error () },
-       _r2_:case (__vid_counter__.peek ()) of { Some x -> x }
+      {_r1_:case (__epoch__.peek ()) of { Some x -> x.i } { None -> error () },
+       _r2_:case (__vid_counter__.peek ()) of { Some x -> x.i }
        { None -> error () }, _r3_:hash me} in
     (
       (delete_R_send_fetch, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
+        (case (__vid_counter__.peek ()) of { Some x -> x.i }
         { None -> error () }) (1 + case (__vid_counter__.peek ()) of
-        { Some x -> x } { None -> error () })
+        { Some x -> x.i } { None -> error () })
       )
     )
 
