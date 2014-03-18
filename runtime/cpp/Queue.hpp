@@ -15,10 +15,10 @@
 
 namespace K3 {
 
-  using namespace std;
+  // using namespace std;
   using namespace boost;
+  using std::shared_ptr;
 
-  template<typename T> using shared_ptr = std::shared_ptr<T>;
   using mutex = boost::mutex;
 
   //-------------
@@ -82,7 +82,7 @@ namespace K3 {
     size_t size() { return qSize; }
 
   protected:
-    externally_locked<queue<Value>, LockingMsgQueue> queue;
+    externally_locked<std::queue<Value>, LockingMsgQueue> queue;
     size_t qSize; // TODO: synchronize
   };
 
