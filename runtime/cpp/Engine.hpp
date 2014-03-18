@@ -40,10 +40,10 @@ namespace K3 {
       waitForNetwork_    = false;
     }
 
-    Address address;
-    BufferSpec defaultBufferSpec;
-    int connectionRetries;
-    bool waitForNetwork;
+    Address address_;
+    BufferSpec defaultBufferSpec_;
+    int connectionRetries_;
+    bool waitForNetwork_;
   };
 
 
