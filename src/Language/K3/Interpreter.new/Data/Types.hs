@@ -1,6 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -- | Data types for the K3 Interpreter
 
-module Language.K3.Interpreter.Data.Types where
+module Language.K3.Interpreter_new.Data.Types where
 
 import Control.Concurrent.MVar
 import Control.Monad.State
@@ -8,12 +10,11 @@ import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
 import Data.Map  ( Map   )
-import Data.Trie ( Trie  )
 import Data.Word ( Word8 )
 import qualified Data.Map          as Map
 import qualified Data.Hashtable.IO as HT 
-import qualified Data.Trie         as Trie
 
+import GHC.Generics
 import System.Mem.StableName
 import System.Mem.Weak
 
@@ -22,8 +23,24 @@ import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
 
 -- | K3 Values
+--   Values are pure, allowing their definition as Eq and Ord instances.
+--
+--   Certain K3 values use the concept of an entity tag, which introduces instantiation
+--   and lifetimes for values. We define physical equality as equivalent entities, and
+--   logical equality as structurally equal values. 
+--   K3 indirections, functions and triggers support phyiscal equality only, since we cannot
+--   inspect their structures in pure fashion, while all other kind of values employ structural
+--   equality. 
+--
+--   Collections include a self pointer, as well as a pure representation of their fields.
+--   This ensures collection values are referentially transparent, while also allowing
+--   aliased access to fields through the self keyword.
+--   The contents of the self pointer and explicit fields must be kept synchronized by
+--   method contextualization primitives for mixed self and non-self accesses.
+--
 --   Note, due to the dependency on the Interpretation monad, values
 --   cannot be separated from the monad definition.
+--
 data Value
     = VBool        Bool
     | VByte        Word8
@@ -49,14 +66,14 @@ data EntityTag
 -- | A datastructure for named bindings
 type NamedBindings v = Map Identifier v
 
--- | Type synonym for interpreted lambdas.
-type IFunction = Value -> Interpretation Value
-
 -- | Type synonym for interepreter indirections
 type IIndirection = MVar Value
 
+-- | Type synonym for interpreted lambdas.
+type IFunction = Value -> Interpretation Value
+
 -- | Function closures that capture free variable bindings.
-type Closure v = IEnvBindings v
+type Closure v = IEnvironment v
 
 
 {- Interpreter dataspaces -}
@@ -79,7 +96,9 @@ data CollectionDataspace v
 
 {- Collections and annotations -}
 
-data MemberQualifier = MemImmut | MemMut deriving (Eq, Read, Show)
+-- | Collection members, which must be pure values to support Eq and Ord
+--   instances for collection values (e.g., for comparison on mutable members).
+data MemberQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
 type NamedMembers v  = NamedBindings (v, MemberQualifier)
 
 -- | Collection implementation.
@@ -93,6 +112,9 @@ data Collection v = Collection { namespace     :: CollectionNamespace v
 --   i. global names, comprised of unambiguous annotation member names.
 --   ii. annotation-specific names, comprised of overlapping named annotation members.
 --   
+-- The annotation namespace is kept as an association list, where the list order
+-- indicates the resolution order of member names.
+--
 -- For now, we assume names are unambiguous and keep everything as a global name.
 -- TODO: extend type system to use two-level namespaces.
 --
@@ -104,7 +126,6 @@ data Collection v = Collection { namespace     :: CollectionNamespace v
 data CollectionNamespace v = 
         CollectionNamespace { collectionNS :: NamedMembers v
                             , annotationNS :: [(Identifier, NamedMembers v)] }
-     deriving (Read, Show)
 
 data CollectionConstructors v =
   CollectionConstructors { emptyCtor   :: CEmptyConstructor v
@@ -128,11 +149,12 @@ type CEmplaceConstructor v = CollectionDataspace v -> Interpretation Value
 
 -- | Annotation environment, for lifted attributes. This contains two mappings:
 --  i. annotation ids => lifted attribute ids, lifted attribute value
---  ii. combined annotation ids => combination namespace
--- 
---  The second mapping is used to store concrete annotation combinations used at
---  collection instances (once for all instances), and defines namespaces containing
---  bindings that are introduced to the interpretation environment when invoking members.
+--  ii. combined annotation ids => combination constructors
+--
+-- There are four types of annotation combination constructors (see above), each of
+-- which returns a collection value (with the self pointer initialized), for varying
+-- arguments that define the collection's contents.
+--  
 data AEnvironment v = 
   AEnvironment { definitions  :: AnnotationDefinitions v
                , realizations :: AnnotationCombinations v }
@@ -147,50 +169,31 @@ type SEnvironment v = (IEnvironment v, AEnvironment v)
 
 
 -- | Environment entries.
---   These encapsulate sharing and proxying of mutable values (MVals) and aliases (PVals)
+--   These distinguish immutable and mutable values, enabling sharing of the latter kind
 --   at the environment level, rather than at the value level.
 data IEnvEntry v
-  = IVal (        v, StableName v)
-  | MVal (MVar    v, StableName v)
-  | PVal (ProxyId v)
+  = IVal v
+  | MVal (MVar v)
 
-type IProxyEntry  v = Weak (ProxyId v, MVar v)
-type ProxyId      v = MVar (ProxyLocation v)
+-- | Interpretation Environment.
+--   This is a hashtable of names to environment entries.
+type IEnvironment v = HT.CuckooHashTable Identifier [IEnvEntry v]
 
-{- Proxy value synchronization -}
+-- | Proxy values and paths, for alias synchronization.
 data ProxyStep
     = Named             Identifier
     | Temporary         Identifier
     | Dataspace         (Identifier, EntityTag)
-    | Dereference           
+    | ProxySelf
+    | Dereference
+    | MatchOption
     | TupleField        Int
     | RecordField       Identifier
     | CollectionMember  Identifier
-  deriving (Eq, Show, Read)
+  deriving (Eq, Ord, Show, Read)
 
 type ProxyPath       = [ProxyStep]
 type ProxyPathStack  = [Maybe ProxyPath]
-type ProxyLocation v = (StableName v, ProxyPath)
-
-
--- | Interpretation Environment.
---   This is a hashtable of names to environment entries, as well as a proxy value environment.
---
---   Proxy values are bindings captured in closures, and indexed by a proxy identifier.
---   Our proxy environment maps proxy identifiers to weak values, so that they are
---   garbage-collected whenever the last closure that points to the value is destroyed.
---   To achieve this, the proxy identifier acts as the key for Haskell's weak pointers.
---
---   The proxy value environment is a two-level nested map data structure, with the outer tier
---   indexed by the stable name of the proxy's root value, and the inner tier indexed by a
---   binary representation of bind paths. The outer tier data structure is a hashtable, and the
---   inner tier a trie, to support efficient prefix matching from a proxy's root value.
---
-type IEnvBindings v = HT.CuckooHashTable Identifier (IEnvEntry v)
-type IEnvProxies  v = HT.CuckooHashTable (StableName v) (Trie (IProxyEntry v))
-
-data IEnvironment v = IEnvironment { envBindings :: IEnvBindings v
-                                   , envProxies  :: IEnvProxies v }
 
 
 -- | The Interpretation Monad. Computes a result (valid/error), with the final state and an event log.
@@ -200,7 +203,7 @@ type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog I
 data InterpretationError
     = RunTimeInterpretationError String
     | RunTimeTypeError String
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Type synonym for interpreter engine and engine monad
 type IEngine  = Engine  Value
@@ -217,7 +220,8 @@ data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
                      , getAnnotEnv   :: AEnvironment Value
                      , getStaticEnv  :: SEnvironment Value
-                     , getBindStack  :: ProxyPathStack }
+                     , getProxyStack :: ProxyPathStack }
+                deriving (Eq, Ord, Read, Show)
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)
