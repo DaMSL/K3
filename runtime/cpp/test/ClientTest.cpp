@@ -30,7 +30,7 @@ void setup() {
   // auto bindings = make_shared<EndpointBindings>(func); 
   // shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
   context->service_threads->create_thread(*(context));
-  Value v = "Test Message";
+  Value v = "(127.0.0.1:40000, trig1, Test Message)";
   
   cout << "sleep" << endl;
  
