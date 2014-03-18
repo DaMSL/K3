@@ -267,7 +267,7 @@ namespace K3
     
     bool hasWrite() {
       bool r = false;
-      if ( connection ) { r = connection->good(); }
+      if ( connection ) { r = connection->connected(); }
       else { BOOST_LOG(*this) << "Invalid hasWrite on NetworkHandle"; }
       return r;
     }
@@ -280,7 +280,7 @@ namespace K3
     void doWrite(Value& v) {
       if ( connection && this->codec ) {
         string data = this->codec->encode(v);
-        (*connection) << data;
+        connection->write(data);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
     }

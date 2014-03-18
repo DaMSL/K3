@@ -152,7 +152,7 @@ namespace K3 {
         if ( this->nEndpoint_ && this->handle_codec
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
-          acceptConnection(); 
+          acceptConnection();
           thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));     
 
         } else {
@@ -180,15 +180,13 @@ namespace K3 {
       { 
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
-
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
-              else { 
-                listenerLog->logAt(trivial::error, "Failed"); }
+              else { listenerLog->logAt(trivial::error, "Failed"); }
+              // recursive call:
+              acceptConnection();
             });
-
-          acceptConnection();
         }
         else { listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
       }
@@ -229,10 +227,11 @@ namespace K3 {
 
           async_read(*(c->socket()), buffer(buffer_->c_array(), buffer_->size()),
             [=](const error_code& ec, std::size_t bytes_transferred) {
-              if (!ec) {
+              if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
+                listenerLog->logAt(trivial::trace, string("Received data: ")+*v);
                 if (v) {
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {

@@ -16,16 +16,16 @@ void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 void setup() {
   // Setup context and Queues
   Identifier id = "id";
-  Address me = make_address("127.0.0.1",3000);
-  shared_ptr<NContext> context = shared_ptr<NContext>(new NContext(me));
-  shared_ptr<SinglePeerQueue> qs = shared_ptr<SinglePeerQueue>(new SinglePeerQueue());
+  Address me = defaultAddress;
+  shared_ptr<NContext> context = shared_ptr<NContext>(new NContext());
+  shared_ptr<SinglePeerQueue> qs = shared_ptr<SinglePeerQueue>(new SinglePeerQueue(me));
   // Setup network IOHandle
   K3::Asio::NEndpoint n_ep = K3::Asio::NEndpoint(context, me);
   DefaultCodec cdec = DefaultCodec();
   NetworkHandle net_handle = NetworkHandle(make_shared<DefaultCodec>(cdec), make_shared<K3::Asio::NEndpoint>(n_ep));
   // Setup Endpoint
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
-  EndpointBindings::SendFunctionPtr func = do_nothing;
+  Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func); 
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
   // Setup Listener Control
@@ -44,7 +44,11 @@ void setup() {
   	ctrl,
   	i_cdec
   	));
+  
 
+  cout << "Waiting for threads to finish" << endl;
+  context->service_threads->join_all();
+  cout << "Done" << endl;
 }
 
 

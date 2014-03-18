@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <utility>
+#include <boost/algorithm/string.hpp>
 #include <boost/any.hpp>
 #include <boost/asio.hpp>
 #include <boost/archive/text_iarchive.hpp>
@@ -236,17 +237,34 @@ namespace K3 {
       Value encode(const Value& v) { return dc.encode(v); }
       shared_ptr<Value> decode(const Value &v) { return dc.decode(v); }
 
-      // TODO Properly read message. this is a hack
-      Message read_message(const Value& v) { 
-        Address a = defaultAddress;
-        Identifier m = "test";
-        return Message(a,m,v);
-      };
+      Message read_message(const Value& v) {
+        // Values are of the form: "(Address, Identifier, Payload)"
+        // Split value into components:
+        vector<string> vals;
+        boost::split(vals, v,boost::is_any_of(",")); 
 
-     // TODO this is a hack too
+        // Remove first parenthesis
+        vals[0].erase(0,1);
+        // Remove last parenthesis
+        vector<string> payloads;
+        boost::split(payloads, vals[2],boost::is_any_of(")")); 
+        Value payload = payloads[0];
+
+        // Take apart the Address:
+        vector<string> addrs;
+        boost::split(addrs,vals[0],boost::is_any_of(":"));
+        string ip = addrs[0];
+        unsigned short port = (unsigned short) std::strtoul(addrs[1].c_str(), NULL, 0);
+
+        // Construct Message from components:
+        Address a = make_address(ip, port);
+        Identifier m = vals[1];
+        return Message(a,m,payload);
+      };
+ 
       Value show_message(const Message& m) {
         ostringstream os;
-        os << m.target() << "," << m.contents();
+        os << "(" << addressAsString(m.address()) << "," << m.id() << "," << m.contents() << ")";
         return os.str();
       }
     protected:

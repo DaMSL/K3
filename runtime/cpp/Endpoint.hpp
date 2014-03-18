@@ -20,9 +20,8 @@ namespace K3
   using namespace std;
   using namespace boost;
 
-  template<typename T> using shared_ptr = std::shared_ptr<T>;
-  using std::bind;
   using mutex = boost::mutex;
+  using std::bind;
 
   typedef tuple<int, int> BufferSpec;
 
@@ -44,6 +43,7 @@ namespace K3
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
@@ -70,7 +70,7 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  class EndpointBuffer : public LogMT {
+  class EndpointBuffer : public virtual LogMT {
   public:
     typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
@@ -99,7 +99,7 @@ namespace K3
     virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
-  class ScalarEPBufferST : public EndpointBuffer, public LogMT {
+  class ScalarEPBufferST : public EndpointBuffer {
   public:
     ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
     // Metadata
@@ -178,10 +178,9 @@ namespace K3
     shared_ptr<Value> contents;
   };
 
-  class ContainerEPBufferST : public EndpointBuffer, public LogMT {
+  class ContainerEPBufferST : public EndpointBuffer {
   public:
-    ContainerEPBufferST(BufferSpec s) : spec(s), EndpointBuffer(),
-    LogMT("ScalarEPBufferST") {
+    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), LogMT("ScalarEPBufferST"), spec(s) {
       contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
@@ -278,7 +277,6 @@ namespace K3
   class EndpointBindings : public LogMT {
   public:
 
-    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
     typedef list<tuple<Address, Identifier>> Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
