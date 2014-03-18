@@ -20,10 +20,6 @@ namespace K3
   using namespace std;
   using namespace boost;
 
-  using K3::Engine::SendFunctionPtr;
-
-  template<typename T> using shared_ptr = std::shared_ptr<T>;
-  using std::bind;
   using mutex = boost::mutex;
 
   typedef tuple<int, int> BufferSpec;
@@ -46,6 +42,7 @@ namespace K3
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }

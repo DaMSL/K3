@@ -1,17 +1,21 @@
 #ifndef K3_RUNTIME_ENGINE_H
 #define K3_RUNTIME_ENGINE_H
 
-#include <map>
-#include <list>
-#include <tuple>
+#include <atomic>
 #include <functional>
+#include <list>
+#include <map>
+#include <memory>
+#include <tuple>
 #include "Common.hpp"
 
 namespace K3 {
 
   using namespace std;
 
-  using Net = K3::Asio;
+  using std::atomic;
+
+  namespace Net = K3::Asio;
 
   //---------------
   // Configuration
@@ -57,7 +61,7 @@ namespace K3 {
     EngineControl(shared_ptr<EngineConfiguration> conf)
       : LogMT("EngineControl"), config(conf)
     {
-      terminateV        = shared_ptr<atomic_bool>(new atomic_bool(false));
+      terminateV        = shared_ptr<atomic<bool>>(new atomic<bool>(false));
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
       waitMutex         = shared_ptr<mutex>(new mutex());
       waitCondition     = shared_ptr<condition_variable>(new condition_variable());
@@ -103,7 +107,7 @@ namespace K3 {
     shared_ptr<EngineConfiguration> config;
 
     // Engine termination indicator
-    shared_ptr<atomic_bool> terminateV;
+    shared_ptr<atomic<bool>> terminateV;
 
     // Network listener completion indicator.
     shared_ptr<ListenerCounter> listenerCounter;
@@ -131,8 +135,8 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      InternalCodec& _internal_codec,
-      ExternalCodec& _external_codec
+      shared_ptr<InternalCodec> _internal_codec,
+      shared_ptr<ExternalCodec> _external_codec
     ):
       LogMT("Engine"), internal_codec(_internal_codec), external_codec(_external_codec) {
 
