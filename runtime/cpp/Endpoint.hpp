@@ -74,7 +74,7 @@ namespace K3
   public:
     typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
-    EndpointBuffer() : LogMT("Endpoint Buffer") {}
+    EndpointBuffer() : EndpointBuffer("Endpoint Buffer") {}
 
     virtual bool empty() = 0;
     virtual bool full() = 0;
@@ -97,11 +97,13 @@ namespace K3
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
     virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
+  protected:
+    EndpointBuffer(string log_channel): LogMT(log_channel) {}
   };
 
-  class ScalarEPBufferST : public EndpointBuffer, public LogMT {
+  class ScalarEPBufferST : public EndpointBuffer {
   public:
-    ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
+    ScalarEPBufferST() : EndpointBuffer("ScalarEPBufferST") {}
     // Metadata
     bool   empty()    { return !contents; }
     bool   full()     { return static_cast<bool>(contents); }
@@ -178,10 +180,9 @@ namespace K3
     shared_ptr<Value> contents;
   };
 
-  class ContainerEPBufferST : public EndpointBuffer, public LogMT {
+  class ContainerEPBufferST : public EndpointBuffer {
   public:
-    ContainerEPBufferST(BufferSpec s) : spec(s), EndpointBuffer(),
-    LogMT("ScalarEPBufferST") {
+    ContainerEPBufferST(BufferSpec s) : spec(s), EndpointBuffer("ScalarEPBufferST") {
       contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
