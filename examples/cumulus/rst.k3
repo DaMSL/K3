@@ -320,7 +320,7 @@ declare add_delta_to_ATIMESD_mT1_mR1 : {
                bind (existing_out_tier.filter
                       (\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                      _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                      _r4_:_r4_} in _r2_ == S_B and _r3_ == S_C)).fold
                       ((\_b2_ ->
                       bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -359,7 +359,7 @@ declare add_delta_to_ATIMESD_mT1_mR1 : {
           (((ATIMESD_mT1_mR1.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -638,7 +638,7 @@ declare cond_add_delta_to_ATIMESD_mT1 : {
           bind _b1_ as {_r1_:vid, _r2_:S_C, _r3_:__map_ret__7} in 
           let lhs_slice = ATIMESD_mT1.filter
             (\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
               _r2_ == S_C) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -717,7 +717,7 @@ declare cond_add_delta_to_ATIMESD_mT1_mR1 : {
           let lhs_slice = ATIMESD_mT1_mR1.filter
             (\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-              (_r1_ == vid * _r3_ == S_C) * _r2_ == S_B) in
+              (_r1_ == vid and _r3_ == S_C) * _r2_ == S_B) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
             } @ { Set }
@@ -735,7 +735,8 @@ declare cond_add_delta_to_ATIMESD_mT1_mR1 : {
                  bind (existing_out_tier.filter
                         (\_b1_ -> 
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                        _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                        _r4_:_r4_} in _r2_ == S_B and _r3_ ==
+                          S_C)).fold
                         ((\_b2_ ->
                         bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                           bind _b5_ as {_r1_:map_vid, _r2_:__map_0,
@@ -774,7 +775,7 @@ declare cond_add_delta_to_ATIMESD_mT1_mR1 : {
           (((ATIMESD_mT1_mR1.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -801,7 +802,7 @@ declare cond_add_delta_to_ATIMESD_mS1 : {
           bind _b1_ as {_r1_:vid, _r2_:R_B, _r3_:__val_ret__17} in 
           let lhs_slice = ATIMESD_mS1.filter
             (\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
               _r2_ == R_B) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -879,7 +880,7 @@ declare cond_add_delta_to_ATIMESD_mS2 : {
           bind _b1_ as {_r1_:vid, _r2_:T_C, _r3_:__val_ret__2} in 
           let lhs_slice = ATIMESD_mS2.filter
             (\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
               _r2_ == T_C) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -957,7 +958,7 @@ declare cond_add_delta_to_ATIMESD_mR1 : {
           bind _b1_ as {_r1_:vid, _r2_:ATIMESD_mRR_B, _r3_:__prod_ret__2} in 
           let lhs_slice = ATIMESD_mR1.filter
             (\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
               _r2_ == ATIMESD_mRR_B) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -1105,7 +1106,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s2_buf : {
                bind (existing_out_tier.filter
                       (\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                      _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                      _r4_:_r4_} in _r2_ == S_B and _r3_ == S_C)).fold
                       ((\_b2_ ->
                       bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1144,7 +1145,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s2_buf : {
           (((map_ATIMESD_mT1_mR1_s2_buf.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -1239,7 +1240,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s5_buf : {
                bind (existing_out_tier.filter
                       (\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                      _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                      _r4_:_r4_} in _r2_ == S_B and _r3_ == S_C)).fold
                       ((\_b2_ ->
                       bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1278,7 +1279,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s5_buf : {
           (((map_ATIMESD_mT1_mR1_s5_buf.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -1893,7 +1894,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s15_buf : {
                bind (existing_out_tier.filter
                       (\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                      _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                      _r4_:_r4_} in _r2_ == S_B and _r3_ == S_C)).fold
                       ((\_b2_ ->
                       bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1932,7 +1933,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s15_buf : {
           (((map_ATIMESD_mT1_mR1_s15_buf.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -2027,7 +2028,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s18_buf : {
                bind (existing_out_tier.filter
                       (\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
-                                      _r4_:_r4_} in _r2_ == S_B * _r3_ == S_C)).fold
+                                      _r4_:_r4_} in _r2_ == S_B and _r3_ == S_C)).fold
                       ((\_b2_ ->
                       bind _b2_ as {_r1_:acc, _r2_:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -2066,7 +2067,7 @@ declare add_delta_to_map_ATIMESD_mT1_mR1_s18_buf : {
           (((map_ATIMESD_mT1_mR1_s18_buf.filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
-               _r2_ == __arg_0 * _r3_ == __arg_1)).filter
+               _r2_ == __arg_0 and _r3_ == __arg_1)).filter
              (\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_val} in vid > min_vid)).map
@@ -2710,7 +2711,7 @@ declare remove_node : { _r1_:address, _r2_:string, _r3_:string } -> () =
     let nodes_to_delete = node_ring.filter
       (\_b1_ -> 
         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in (_r1_ ==
-        addr * _r3_ == name) * _r2_ == _role_) in
+        addr and _r3_ == name) * _r2_ == _role_) in
     nodes_to_delete.iterate (\x ->  node_ring.delete x)
 
 declare get_ring_node : { _r1_:int, _r2_:int } -> address = \_b1_ -> 
@@ -3568,12 +3569,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -3736,40 +3737,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_s0_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mT1_s0_buf.update
             (case ((map_ATIMESD_mT1_s0_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_s0_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        0) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 0) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 0)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 0)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:0, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 0)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:0, _r3_:0}
         then (insert_T_do_complete_s0, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
@@ -3790,43 +3791,43 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_mR1_s2_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                           _r4_:__temp_3} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_}) != empty {
+                           _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+            __temp_2) * _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           } @ { Set }
         then
           map_ATIMESD_mT1_mR1_s2_buf.update
             (case ((map_ATIMESD_mT1_mR1_s2_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                             _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
-            ()) of { Some x -> x } { None -> error () }) tuple
+                             _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+              __temp_2) * _r2_ == __temp_1)).peek ()) of { Some x -> x }
+            { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s2_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        2) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 2) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 2)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 2)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:2, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 2)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:2, _r3_:0}
         then (insert_T_do_complete_s2, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
@@ -3961,7 +3962,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 0)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 0)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:0, _r3_:0}
         then
           bind log_get_bound_insert_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -3986,7 +3987,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 2)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 2)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:2, _r3_:0}
         then
           bind log_get_bound_insert_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4140,12 +4141,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -4308,40 +4309,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_s3_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mT1_s3_buf.update
             (case ((map_ATIMESD_mT1_s3_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mT1_s3_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        3) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 3) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 3)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 3)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:3, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 3)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:3, _r3_:0}
         then (delete_T_do_complete_s3, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
@@ -4362,43 +4363,43 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_mR1_s5_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                           _r4_:__temp_3} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_}) != empty {
+                           _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+            __temp_2) * _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           } @ { Set }
         then
           map_ATIMESD_mT1_mR1_s5_buf.update
             (case ((map_ATIMESD_mT1_mR1_s5_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                             _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
-            ()) of { Some x -> x } { None -> error () }) tuple
+                             _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+              __temp_2) * _r2_ == __temp_1)).peek ()) of { Some x -> x }
+            { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s5_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        5) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 5) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 5)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 5)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:5, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 5)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:5, _r3_:0}
         then (delete_T_do_complete_s5, me)<- {_r1_:vid, _r2_:T_C, _r3_:T_D}
@@ -4533,7 +4534,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 3)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 3)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:3, _r3_:0}
         then
           bind log_get_bound_delete_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4558,7 +4559,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 5)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 5)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:5, _r3_:0}
         then
           bind log_get_bound_delete_T compute_vid as {_r1_:vid, _r2_:T_C,
@@ -4736,12 +4737,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -5006,40 +5007,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS1_s6_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS1_s6_buf.update
             (case ((map_ATIMESD_mS1_s6_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s6_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        6) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 6) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:6, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:6, _r3_:0}
         then (insert_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -5059,40 +5060,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS2_s6_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS2_s6_buf.update
             (case ((map_ATIMESD_mS2_s6_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s6_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        6) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 6) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:6, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 6)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:6, _r3_:0}
         then (insert_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -5112,40 +5113,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS1_s7_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS1_s7_buf.update
             (case ((map_ATIMESD_mS1_s7_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s7_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        7) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 7) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 7)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 7)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:7, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 7)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:7, _r3_:0}
         then (insert_S_do_complete_s7, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -5165,40 +5166,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS2_s9_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS2_s9_buf.update
             (case ((map_ATIMESD_mS2_s9_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s9_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        9) != empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 9) != empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 9)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 9)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:9, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 9)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:9, _r3_:0}
         then (insert_S_do_complete_s9, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -5403,7 +5404,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 6)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5428,7 +5429,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 6)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 6)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5453,7 +5454,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 7)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 7)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:7, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5478,7 +5479,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 9)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 9)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:9, _r3_:0}
         then
           bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -5756,12 +5757,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -6028,40 +6029,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS1_s10_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS1_s10_buf.update
             (case ((map_ATIMESD_mS1_s10_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s10_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        10) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 10) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:10, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:10, _r3_:0}
         then (delete_S_do_complete_s10, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -6081,40 +6082,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS2_s10_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS2_s10_buf.update
             (case ((map_ATIMESD_mS2_s10_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s10_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        10) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 10) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:10, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 10)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:10, _r3_:0}
         then (delete_S_do_complete_s10, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -6134,40 +6135,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS1_s11_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS1_s11_buf.update
             (case ((map_ATIMESD_mS1_s11_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS1_s11_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        11) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 11) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 11)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 11)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:11, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 11)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:11, _r3_:0}
         then (delete_S_do_complete_s11, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -6187,40 +6188,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mS2_s13_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mS2_s13_buf.update
             (case ((map_ATIMESD_mS2_s13_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mS2_s13_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        13) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 13) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 13)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 13)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:13, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 13)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:13, _r3_:0}
         then (delete_S_do_complete_s13, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
@@ -6426,7 +6427,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 10)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6451,7 +6452,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 10)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 10)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6476,7 +6477,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 11)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 11)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:11, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6501,7 +6502,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 13)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 13)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:13, _r3_:0}
         then
           bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
@@ -6755,12 +6756,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -6924,40 +6925,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mR1_s14_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mR1_s14_buf.update
             (case ((map_ATIMESD_mR1_s14_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mR1_s14_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        14) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 14) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 14)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 14)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:14, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 14)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:14, _r3_:0}
         then (insert_R_do_complete_s14, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
@@ -6978,43 +6979,43 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_mR1_s15_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                           _r4_:__temp_3} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_}) != empty {
+                           _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+            __temp_2) * _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           } @ { Set }
         then
           map_ATIMESD_mT1_mR1_s15_buf.update
             (case ((map_ATIMESD_mT1_mR1_s15_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                             _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
-            ()) of { Some x -> x } { None -> error () }) tuple
+                             _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+              __temp_2) * _r2_ == __temp_1)).peek ()) of { Some x -> x }
+            { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s15_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        15) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 15) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 15)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 15)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:15, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 15)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:15, _r3_:0}
         then (insert_R_do_complete_s15, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
@@ -7149,7 +7150,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 14)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 14)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:14, _r3_:0}
         then
           bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7174,7 +7175,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 15)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 15)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:15, _r3_:0}
         then
           bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7328,12 +7329,12 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
         bind _b1_ as {_r1_:stmt_id, _r2_:count} in 
         if __stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:_, _r2_:_, _r3_:old_count} in 
           let new_count = old_count + count in (
@@ -7497,40 +7498,40 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mR1_s17_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:_}) != empty {
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         then
           map_ATIMESD_mR1_s17_buf.update
             (case ((map_ATIMESD_mR1_s17_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:_})).peek ()) of
+              _r1_ == __temp_0 and _r2_ == __temp_1)).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_ATIMESD_mR1_s17_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        17) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 17) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 17)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 17)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:17, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 17)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:17, _r3_:0}
         then (delete_R_do_complete_s17, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
@@ -7551,43 +7552,43 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
     tuples.iterate
       (\tuple -> 
         if map_ATIMESD_mT1_mR1_s18_buf.filter
-          (\_r1_ -> 
-            _r1_ ==
+          (\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                           _r4_:__temp_3} in 
-            {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_}) != empty {
+                           _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+            __temp_2) * _r2_ == __temp_1) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           } @ { Set }
         then
           map_ATIMESD_mT1_mR1_s18_buf.update
             (case ((map_ATIMESD_mT1_mR1_s18_buf.filter
-            (\_r1_ -> 
-              _r1_ ==
+            (\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
-                             _r4_:__temp_3} in 
-              {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2, _r4_:_})).peek
-            ()) of { Some x -> x } { None -> error () }) tuple
+                             _r4_:__temp_3} in (_r1_ == __temp_0 and _r3_ ==
+              __temp_2) * _r2_ == __temp_1)).peek ()) of { Some x -> x }
+            { None -> error () }) tuple
         else map_ATIMESD_mT1_mR1_s18_buf.insert tuple);
     if __stmt_cntrs__.filter
       (\_b1_ -> 
-        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid * _r2_ ==
-        18) != empty {
+        bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and _r2_
+        == 18) != empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
     then (
         __stmt_cntrs__.update
           (case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 18)).peek ()) of { Some x -> x } { None -> error () })
           (bind case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 18)).peek ()) of { Some x -> x }
           { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
           {_r1_:vid, _r2_:18, _r3_:count - 1});
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid *
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == 18)).peek ()) of { Some x -> x } { None -> error () } ==
           {_r1_:vid, _r2_:18, _r3_:0}
         then (delete_R_do_complete_s18, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
@@ -7722,7 +7723,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 17)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 17)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:17, _r3_:0}
         then
           bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -7747,7 +7748,7 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int } @ { Set }
         if case ((__stmt_cntrs__.filter
           (\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid * _r2_ == 18)).peek ()) of { Some x -> x }
+            compute_vid and _r2_ == 18)).peek ()) of { Some x -> x }
           { None -> error () } == {_r1_:compute_vid, _r2_:18, _r3_:0}
         then
           bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
@@ -8378,21 +8379,21 @@ _r1_:int, _r2_:int }, _r4_:option { _r1_:int, _r2_:int }
                   _r4_:insert_R_args} in 
     if trigger_id == "insert_R"
     then
-      (insert_insert_R, me)<- let insert_R_args_unwrap = case insert_R_args of
+      (insert_R, me)<- let insert_R_args_unwrap = case insert_R_args of
         { Some x -> x }
         { None -> error () } in
         insert_R_args_unwrap
     else
       if trigger_id == "insert_S"
       then
-        (insert_insert_S, me)<- let insert_S_args_unwrap = case insert_S_args of
+        (insert_S, me)<- let insert_S_args_unwrap = case insert_S_args of
           { Some x -> x }
           { None -> error () } in
           insert_S_args_unwrap
       else
         if trigger_id == "insert_T"
         then
-          (insert_insert_T, me)<- let insert_T_args_unwrap = case insert_T_args of
+          (insert_T, me)<- let insert_T_args_unwrap = case insert_T_args of
             { Some x -> x }
             { None -> error () } in
             insert_T_args_unwrap
