@@ -29,14 +29,17 @@ vfun f = liftIO (makeStableName f) >>= return . VFunction . (f,[],)
 
 {- State and result accessors -}
 
+emptyAnnotationEnv :: AEnvironment Value
+emptyAnnotationEnv = AEnvironment [] []
+
 emptyStaticEnv :: SEnvironment Value
-emptyStaticEnv = ([], AEnvironment [] [])
+emptyStaticEnv = ([], emptyAnnotationEnv)
 
 emptyBindStack :: BindPathStack
 emptyBindStack = []
 
 emptyState :: IState
-emptyState = IState [] [] (AEnvironment [] []) emptyStaticEnv emptyBindStack
+emptyState = IState [] [] emptyAnnotationEnv emptyStaticEnv emptyBindStack
 
 annotationState :: AEnvironment Value -> IState
 annotationState aEnv = IState [] [] aEnv emptyStaticEnv emptyBindStack

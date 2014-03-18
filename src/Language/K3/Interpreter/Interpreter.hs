@@ -580,9 +580,8 @@ declaration (tag &&& children -> (DGlobal n t eO, ch)) =
 declaration (details -> (DTrigger n t e, cs, anns)) =
     debugDecl n t $ (expression e >>= replaceTrigger n anns) >> mapM_ declaration cs
 
-declaration (tag &&& children -> (DRole r, ch)) = role r ch
-declaration (tag -> DAnnotation n vdecls members)      =
-    annotation n vdecls members
+declaration (tag &&& children -> (DRole r, ch))   = role r ch
+declaration (tag -> DAnnotation n vdecls members) = annotation n vdecls members
 
 declaration _ = undefined
 
@@ -628,7 +627,7 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
 --   environment resulting immediately after declaration initialization.
 staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
 staticEnvironment prog = do
-  initSt  <- initState prog
+  initSt  <- initState emptyAnnotationEnv prog
   staticR <- runInterpretation' initSt (declaration prog)
   logState "STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
@@ -730,8 +729,8 @@ initEnvironment decl st =
     registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
 
 
-initState :: K3 Declaration -> EngineM Value IState
-initState prog = initEnvironment prog emptyState
+initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState
+initState aEnv prog = initEnvironment prog (annotationState aEnv)
 
 initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
@@ -762,7 +761,7 @@ injectBootstrap bootstrap r = case r of
 
 initProgram :: PeerBootstrap -> SEnvironment Value -> K3 Declaration -> EngineM Value (IResult Value)
 initProgram bootstrap staticEnv prog = do
-    initSt   <- initState prog
+    initSt   <- initState (snd staticEnv) prog
     staticSt <- return $ modifyStateSEnv (const staticEnv) initSt
     declR    <- runInterpretation' staticSt (declaration prog)
     bootR    <- injectBootstrap bootstrap declR
