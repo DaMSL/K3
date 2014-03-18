@@ -21,6 +21,7 @@ namespace K3
   using namespace boost;
 
   using mutex = boost::mutex;
+  using std::bind;
 
   typedef tuple<int, int> BufferSpec;
 

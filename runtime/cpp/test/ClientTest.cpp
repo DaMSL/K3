@@ -29,20 +29,27 @@ void setup() {
   // EndpointBindings::SendFunctionPtr func = do_nothing;
   // auto bindings = make_shared<EndpointBindings>(func); 
   // shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
-  context->service_threads->create_thread(*(context));
-  Value v = "(127.0.0.1:40000, trig1, Test Message)";
-  
-  cout << "sleep" << endl;
- 
-  while(!net_handle.hasWrite()) {
-    cout << "waiting" << endl;
-    boost::this_thread::sleep_for( boost::chrono::seconds(5) );
-  }
-  cout << "got here" << endl;
-  net_handle.doWrite(v);
-  context->service_threads->join_all();  
 
-   
+  auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
+  Endpoint:SendFunctionPtr func = do_nothing;
+  auto bindings = make_shared<EndpointBindings>(func); 
+  shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
+  context->service_threads->create_thread(*(context));
+
+ 
+  while(!ep->hasWrite()) {
+    cout << "waiting for hasWrite" << endl;
+    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+  }
+  cout << "writing" << endl;
+  for (int i =0; i < 15; i++) {
+    Value val = "(127.0.0.1:40000, trig1, message_" + std::to_string(i) + ")";
+    ep->doWrite(val);
+    ep->flushBuffer();
+  }
+ 
+  
+  context->service_threads->join_all();  
 }
 
 

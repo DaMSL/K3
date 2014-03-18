@@ -231,6 +231,7 @@ namespace K3 {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
+                listenerLog->logAt(trivial::trace, string("Received data: ")+*v);
                 if (v) {
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
