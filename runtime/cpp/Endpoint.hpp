@@ -70,11 +70,11 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  class EndpointBuffer : public LogMT {
+  class EndpointBuffer : public virtual LogMT {
   public:
     typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
-    EndpointBuffer() : EndpointBuffer("Endpoint Buffer") {}
+    EndpointBuffer() : LogMT("Endpoint Buffer") {}
 
     virtual bool empty() = 0;
     virtual bool full() = 0;
@@ -97,13 +97,11 @@ namespace K3
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided InternalCodec to convert from Value to Message
     virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
-  protected:
-    EndpointBuffer(string log_channel): LogMT(log_channel) {}
   };
 
   class ScalarEPBufferST : public EndpointBuffer {
   public:
-    ScalarEPBufferST() : EndpointBuffer("ScalarEPBufferST") {}
+    ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
     // Metadata
     bool   empty()    { return !contents; }
     bool   full()     { return static_cast<bool>(contents); }
@@ -182,7 +180,7 @@ namespace K3
 
   class ContainerEPBufferST : public EndpointBuffer {
   public:
-    ContainerEPBufferST(BufferSpec s) : spec(s), EndpointBuffer("ScalarEPBufferST") {
+    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), LogMT("ScalarEPBufferST"), spec(s) {
       contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
