@@ -6,8 +6,7 @@
 #include <boost/thread/thread.hpp>
 
 namespace K3 {
-
-
+  
 using NContext = K3::Asio::NContext;
 
 // Utils
@@ -19,23 +18,15 @@ void setup() {
   Address server = defaultAddress;
   shared_ptr<NContext> context = shared_ptr<NContext>(new NContext());
   
-  
   // setup connection
   shared_ptr<K3::Asio::NConnection> n_conn = shared_ptr<K3::Asio::NConnection>(new K3::Asio::NConnection(context, server));
   DefaultCodec cdec = DefaultCodec();
   NetworkHandle net_handle = NetworkHandle(make_shared<DefaultCodec>(cdec), n_conn);
-  // Setup Endpoint
-  // auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
-  // EndpointBindings::SendFunctionPtr func = do_nothing;
-  // auto bindings = make_shared<EndpointBindings>(func); 
-  // shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
-
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
   Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func); 
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
   context->service_threads->create_thread(*(context));
-
  
   while(!ep->hasWrite()) {
     cout << "waiting for hasWrite" << endl;
@@ -48,12 +39,10 @@ void setup() {
     ep->flushBuffer();
   }
  
-  
   context->service_threads->join_all();  
 }
-
-
 };
+
 int main() {
   K3::setup();
   return 0;
