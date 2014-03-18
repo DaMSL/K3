@@ -230,7 +230,7 @@ namespace K3 {
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, shared_ptr<Codec> codec string mode) {
+    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, string mode) {
       externalEndpointId(eid) ?
         genericOpenFile(eid, path, codec, mode);
         : invalidEndpointIdentifier("external", eid);
