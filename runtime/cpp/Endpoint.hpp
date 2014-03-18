@@ -20,6 +20,8 @@ namespace K3
   using namespace std;
   using namespace boost;
 
+  using K3::Engine::SendFunctionPtr;
+
   template<typename T> using shared_ptr = std::shared_ptr<T>;
   using std::bind;
   using mutex = boost::mutex;
@@ -277,7 +279,6 @@ namespace K3
   class EndpointBindings : public LogMT {
   public:
 
-    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
     typedef list<tuple<Address, Identifier>> Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 

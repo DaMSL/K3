@@ -4,6 +4,7 @@
 #include <map>
 #include <list>
 #include <tuple>
+#include <functional>
 #include "Common.hpp"
 
 namespace K3 {
@@ -122,8 +123,8 @@ namespace K3 {
 
   class Engine : public virtual LogMT {
   public:
-    typedef map<Identifier, Listener<Message>> Listeners;
-    typedef function<void(Address, Identifier, Value)> SendFunction; // TODO: ref or rvalue-ref for value arg.
+    typedef map<Identifier, Listener<Net::NContext, Net::NEndpoint>> Listeners;
+    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
     Engine() : LogMT("Engine") {}
 
@@ -216,7 +217,7 @@ namespace K3 {
       }
     }
 
-    SendFunction sendFunction() {
+    SendFunctionPtr sendFunction() {
       return [this](Address a, Identifier i, Value v){ this->send(addr,i,v); }
     }
 
