@@ -127,7 +127,7 @@ namespace K3 {
   //------------
   // Engine
 
-  class Engine : public virtual LogMT {
+  class Engine : public LogMT {
   public:
     typedef map<Identifier, Listener<Net::NContext, Net::NEndpoint>> Listeners;
 
@@ -185,10 +185,10 @@ namespace K3 {
     // Messaging.
 
     // TODO: ref or rvalue-ref for value argument.
-    void send(Address addr, Identifier triggerId, Value v) {
+    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
       if (deployment) {
         bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
-        Message msg(addr, triggerId, v);
+        Message msg(addr, triggerId, *v);
 
         if ( shortCircuit ) {
           // Directly enqueue.
@@ -210,7 +210,7 @@ namespace K3 {
           }
 
           if ( !sent ) {
-            string errorMsg = "Failed to send a message to " + m.target();
+            string errorMsg = "Failed to send a message to " + msg.target();
             logAt(trivial::error, errorMsg);
             throw runtime_error(errorMsg);
           }
@@ -222,8 +222,9 @@ namespace K3 {
       }
     }
 
+    // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, Value v){ this->send(addr,i,v); }
+      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); }
     }
 
     //---------------------------------------
