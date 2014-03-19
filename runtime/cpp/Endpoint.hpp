@@ -344,6 +344,15 @@ namespace K3
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
+    // TODO: Signal subscribers.
+    void close() {
+      EndpointNotification nt = (handle_->builtin() || handle_->file())?
+        EndpointNotification::FileClose : EndpointNotification::SocketClose;
+
+      subscribers_->notifyEvent(nt, nullptr);
+      handle_->close();
+    };
+
     void notify_subscribers(shared_ptr<Value> v) {
       EndpointNotification nt =
         (handle_->builtin() || handle_->file())?
@@ -724,7 +733,7 @@ namespace K3
      return r;
    }
   };
-}
+};
 
 #endif
 // vim: set sw=2 ts=2 sts=2:

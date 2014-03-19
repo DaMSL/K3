@@ -8,8 +8,9 @@
 #include <memory>
 #include <tuple>
 
-#include "Endpoint.hpp"
 #include "Common.hpp"
+#include "Endpoint.hpp"
+#include "MessageProcessor.hpp"
 
 namespace K3 {
 
@@ -18,6 +19,13 @@ namespace K3 {
   using std::atomic;
 
   namespace Net = K3::Asio;
+
+  //-------------------
+  // Utility functions
+
+  Identifier listenerId(Address& addr) {
+    return string("__") + "_listener_" + addressAsString(addr);
+  }
 
   //---------------
   // Configuration
@@ -76,6 +84,10 @@ namespace K3 {
       return done && (terminateV? terminateV->load() : false);
     }
 
+    void set_terminate() {
+      terminateV->store(true);
+    }
+
     bool networkDone() { return listenerCounter? (*listenerCounter)() : false; }
 
     // Wait for a notification that the engine associated
@@ -90,12 +102,12 @@ namespace K3 {
 
     // Wait for a notification that the engine associated
     // with this control object has queued messages.
-    template<typename Predicate>
-    void waitForMessage(shared_ptr<Predicate> pred)
+    template <class Predicate>
+    void waitForMessage(Predicate pred)
     {
       if ( pred && msgAvailMutex && msgAvailCondition ) {
         unique_lock<mutex> lock(*msgAvailMutex);
-        while ( (*pred)() ) { msgAvailCondition->wait(lock); }
+        while ( pred() ) { msgAvailCondition->wait(lock); }
       } else { logAt(warning, "Could not wait for message, no condition variable available."); }
     }
 
@@ -129,7 +141,7 @@ namespace K3 {
 
   class Engine : public LogMT {
   public:
-    typedef map<Identifier, Listener<Net::NContext, Net::NEndpoint>> Listeners;
+    typedef map<Identifier, shared_ptr<Net::Listener>> Listeners;
 
     Engine() : LogMT("Engine") {}
 
@@ -154,11 +166,12 @@ namespace K3 {
       config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
       control     = shared_ptr<EngineControl>(new EngineControl(config));
       deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
-
-      workers     = shared_ptr<WorkerPool>(new InlinePool());
-      networkCtxt = shared_ptr<Net::NContext>(new Net::NContext());
-      listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
+      // workers     = shared_ptr<WorkerPool>(new InlinePool());
+      network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints   = shared_ptr<EndpointState>(new EndpointState());
+      
+      listeners     = shared_ptr<Listeners>(new Listeners());
+      listener_ctrl = shared_ptr<ListenerControl>(new ListenerControl());
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -169,15 +182,19 @@ namespace K3 {
           queues = perPeerQueues(processAddrs);
         }
 
-        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, true));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, true));
       }
       else {
         // Network engine initialization.
         queues      = perPeerQueues(processAddrs);
-        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, false));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
 
-        // TODO: start network listeners. Note this means opening up the listener sockets,
-        // while the openSocket() method is the function that actually starts the thread.
+        // Start network listeners for all K3 processes on this engine.
+        // This opens engine sockets with an internal code, relying on openSocketInternal()
+        // to construct the Listener object and the thread runs the listener's event loop.
+        for (Address k3proc : processAddrs) {
+          openSocketInternal(peerEndpointId(k3proc), k3proc, IOMode::Read);
+        }
       }
     }
 
@@ -185,7 +202,8 @@ namespace K3 {
     // Messaging.
 
     // TODO: ref or rvalue-ref for value argument.
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
+    void send(Address addr, Identifier triggerId, shared_ptr<Value> v)
+    {
       if (deployment) {
         bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
         Message msg(addr, triggerId, *v);
@@ -236,14 +254,14 @@ namespace K3 {
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, string mode) {
+    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenFile(eid, path, codec, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
     // TODO: listener state?
-    void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, string mode) {
+    void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenSocket(eid, addr, codec, mode)
         : invalidEndpointIdentifier("external", eid);
@@ -261,7 +279,7 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);
     }
 
-    void openFileInternal(Identifier eid, string path, string mode) {
+    void openFileInternal(Identifier eid, string path, IOMode mode) {
       !externalEndpointId(eid)?
         genericOpenFile(eid, path, internal_codec, mode)
         : invalidEndpointIdentifier("internal", eid);
@@ -309,80 +327,83 @@ namespace K3 {
     }
 
     void doWriteInternal(Identifier eid, Message v) {
-        return endpoints->getInternalEndpoint(eid)->doWrite(make_shared<Value>(internal_codec->show_message(v)));
+        return endpoints->getInternalEndpoint(eid)->doWrite(
+                  make_shared<Value>(internal_codec->show_message(v)));
     }
 
     //-----------------------
     // Engine execution loop
 
-    MPStatus processMessage(MessageProcessor mp) {
-
+    MPStatus processMessage(shared_ptr<MessageProcessor> mp)
+    {
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
-
-          // If there was a message, return the result of processing that message.
-          return mp.process(*next_message);
+        // If there was a message, return the result of processing that message.
+        return mp->process(*next_message);
       } else {
-
-          // Otherwise return a Done, indicating no messages in the queues.
-          return LoopStatus::Done;
+        // Otherwise return a Done, indicating no messages in the queues.
+        return LoopStatus::Done;
       }
     }
 
     // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
     // refactored a bit.
-    void runMessages(MessageProcessor mp, MPStatus st) {
-        MPStatus next_status;
-        switch (st) {
+    void runMessages(shared_ptr<MessageProcessor> mp, MPStatus st)
+    {
+      MPStatus next_status;
+      switch (st) {
 
-            // If we are not in error, process the next message.
-            case LoopStatus::Continue:
-                next_status = processMessage(mp);
-                break;
+        // If we are not in error, process the next message.
+        case LoopStatus::Continue:
+          next_status = processMessage(mp);
+          break;
 
-            // If we were in error, exit out with error.
-            case LoopStatus::Error:
-                return;
+        // If we were in error, exit out with error.
+        case LoopStatus::Error:
+          return;
 
-            // If there are no messages on the queues,
-            //  - If the terminate flag has been set, exit out normally.
-            //  - Otherwise, wait for a message and continue.
-            case LoopStatus::Done:
+        // If there are no messages on the queues,
+        //  - If the terminate flag has been set, exit out normally.
+        //  - Otherwise, wait for a message and continue.
+        case LoopStatus::Done:
+          if (control->terminate()) {
+              return;
+          }
 
-                if (control->terminate()) {
-                    return;
-                }
+          // FIXME: Timeout for waiting on messages?
+          control->waitForMessage([] () { return true; });
+          next_status = LoopStatus::Continue;
+          break;
+      }
 
-                // FIXME: Timeout for waiting on messages?
-                control->waitForMessage([] () { return true; });
-                next_status = LoopStatus::Continue;
-                break;
-        }
-
-        // Recurse on the next message.
-        runMessages(mp, next_status);
+      // Recurse on the next message.
+      runMessages(mp, next_status);
     }
 
-    void runEngine(MessageProcessor mp) {
+    void runEngine(shared_ptr<MessageProcessor> mp) {
       // TODO MessageProcessor initialize() is empty.
       // In the Haskell code base, this is where the K3 AST
       // is passed to the MessageProcessor
-      mp.initialize()
+      mp->initialize();
 
       // TODO Check PoolType for Uniprocess, Multithreaded..etc
       // Following code is for Uniprocess mode only:
       // TODO Dummy ID. Need to log actual ThreadID
-      workers->setId(1);
+      // workers->setId(1);
 
-      runMessages(mp, mp.status());
+      runMessages(mp, mp->status());
     }
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    thread forkEngine(MessageProcessor<Message> mp) {
-      thread engineThread(runEngine, mp);
+    thread forkEngine(shared_ptr<MessageProcessor> mp) {
+      using std::placeholders::_1;
+      std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
+        &Engine::runEngine, this, _1
+      );
+      thread engineThread(_runEngine, mp);
       return engineThread;
     }
 
@@ -393,7 +414,7 @@ namespace K3 {
 
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
-      control->terminateV->store(true);
+      control->set_terminate();
     }
 
     // Clear the Engine's connections and endpointis
@@ -415,7 +436,7 @@ namespace K3 {
     list<Address> nodes() {
       list<Address> r;
       if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(error, "Invalid system environment."); }
+      else { logAt(trivial::error, "Invalid system environment."); }
       return r;
     }
 
@@ -426,7 +447,7 @@ namespace K3 {
 
     bool simulation() {
       if ( connections ) { return connections->hasInternalConnections(); }
-      else { logAt(error, "Invalid connection state."); }
+      else { logAt(trivial::error, "Invalid connection state."); }
       return false;
     }
 
@@ -437,11 +458,16 @@ namespace K3 {
     shared_ptr<InternalCodec>       internal_codec;
     shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
-    shared_ptr<WorkerPool>          workers;
-    shared_ptr<Net::NContext>       networkCtxt;
-    shared_ptr<Listeners>           listeners;
+    // shared_ptr<WorkerPool>          workers;
+    shared_ptr<Net::NContext>       network_ctxt;
+    
+    // Endpoint and collection tracked by the engine.
     shared_ptr<EndpointState>       endpoints;
     shared_ptr<ConnectionState>     connections;
+    
+    // Listeners tracked by the engine.
+    shared_ptr<Listeners>           listeners;
+    shared_ptr<ListenerControl>     listener_ctrl;
 
     void invalidEndpointIdentifier(string idType, Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
@@ -478,7 +504,7 @@ namespace K3 {
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericOpenBuiltin(string id, string builtinid, shared_ptr<Codec> codec) {
+    void genericOpenBuiltin(string id, string builtinId, shared_ptr<Codec> codec) {
       if (endpoints) {
         Builtin b = builtin(builtinId);
 
@@ -494,7 +520,7 @@ namespace K3 {
         switch (b) {
           case Builtin::Stdout:
           case Builtin::Stderr:
-            buf = shared_ptr<EndpointBindings>(new ScalarEPBufferST());
+            buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
             break;
           case Builtin::Stdin:
             break;
@@ -505,15 +531,16 @@ namespace K3 {
       else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenFile(string id, string path, shared_ptr<Codec> codec, string mode) {
+    void genericOpenFile(string id, string path, shared_ptr<Codec> codec, IOMode mode) {
       if ( endpoints ) {
         // Create the IO Handle
-        shared_ptr<IOHandle> ioh = openFileHandle(path, codec, ioMode(mode));
+        shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
         // Add the endpoint to the given endpoint state.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBindings>(new ScalarEPBufferST());
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
 
-        shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings =
+          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
 
@@ -521,25 +548,29 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, string mode, xxxListenerState) {
+    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, IOMode handleMode) {
       if (endpoints) {
-        IOMode handleMode = ioMode(mode);
 
         // Create the IO Handle.
         shared_ptr<IOHandle> ioh = openSocketHandle(addr, codec, handleMode);
 
         // Add the endpoint.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBindings>(
-            new ContainerEPBufferMT(config->defaultBufferSpec()));
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
+            new ContainerEPBufferST(config->defaultBufferSpec()));
 
-        shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings =
+          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
 
         // Mode-based handling of endpoint vs connection, e.g., to start network listener.
         switch (handleMode) {
           case IOMode::Read:
-            startListener();
+            if (externalEndpointId(id)) {
+              startListener(addr, endpoints->getExternalEndpoint(id));
+            } else {
+              startListener(addr, endpoints->getInternalEndpoint(id));
+            }
             break;
           case IOMode::Write:
           case IOMode::Append:
@@ -550,53 +581,67 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    // TODO: deregistration?
     void genericClose(Identifier eid, shared_ptr<Endpoint> ep) {
       // Close the endpoint
-      if (ep) { ep->close(); }
-
-      // TODO: Deregister the listener if this is a network source (needed in C++?)
+      if (ep) { 
+        // Deregister the listener if this is a network source
+        // TODO: check
+        if ( get<1>(ep->handle()->networkSource()) ) {
+          stopListener(eid);
+        }
+        ep->close();
+      }
 
       // Remove the endpoint
       endpoints->removeEndpoint(eid);
+    }
 
-      // Notify the endpoint subscribers.
-      if ( ep ) {
-        shared_ptr<IOHandle> ioh = ep->handle();
-        EndpointNotification nt = (ioh->builtin() || ioh->file())?
-          EndpointNotification::FileClose : EndpointNotification::SocketClose;
+    // Creates and registers a listener instance for the given address and network endpoint.
+    void startListener(Address& listenerAddr, shared_ptr<Endpoint> ep)
+    {
+      if ( listeners ) {
+        // Create a listener object, which in turn will start the
+        // thread for receiving messages.
+        Identifier lstnr_name = listenerId(listenerAddr);
 
-        ep->subscribers()->notifyEvent(nt);
+        shared_ptr<Net::Listener> lstnr = shared_ptr<Net::Listener>(
+          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec)
+        );
+
+        // Register the listener (track in map, and update control).
+        (*listeners)[lstnr_name] = lstnr;
+
+        // TODO: update listener control to increment network done counter.
+      } else {
+        logAt(trivial::error, "Unintialized engine listeners");
       }
     }
 
-    // TODO
-    void startListener() {
-      // Create a listener object, which in turn will start the thread for receiving messages.
-
-      // Register the listener (track in map, and update control).
+    void stopListener(Identifier listener_name) {
+      // TODO: update listener control to decrement network done counter.
+      listeners->erase(listener_name);
     }
 
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> openBuiltinHandle(shared_ptr<Codec> codec, Builtin b) {
+    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Codec> codec) {
       shared_ptr<IOHandle> r;
       switch (b) {
-        case Stdin:
+        case Builtin::Stdin:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stdin()));
           break;
-        case Stdout:
+        case Builtin::Stdout:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stdout()));
           break;
-        case Stderr:
+        case Builtin::Stderr:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stderr()));
           break;
       }
       return r;
     }
 
-    shared_ptr<IOHandle> openFileHandle(shared_ptr<Codec> codec, const string& path, IOMode m) {
+    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Codec> codec, IOMode m) {
       shared_ptr<IOHandle> r;
       switch (m) {
         case IOMode::Read:
@@ -605,8 +650,8 @@ namespace K3 {
         case IOMode::Write:
           r = shared_ptr<IOHandle>(new FileHandle(codec, path, LineBasedHandle::Output()));
           break;
-        case Append:
-        case ReadWrite:
+        case IOMode::Append:
+        case IOMode::ReadWrite:
           string errorMsg = "Unsupported open mode for file handle";
           logAt(trivial::error, errorMsg);
           throw runtime_error(errorMsg);
@@ -615,24 +660,30 @@ namespace K3 {
       return r;
     }
 
-    shared_ptr<IOHandle> openSocketHandle(shared_ptr<Codec> codec, const Address& addr, IOMode m) {
+    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m) {
       shared_ptr<IOHandle> r;
       switch ( m ) {
-        case IOMode::Read:
-          // TODO
-          r = shared_ptr<IOHandle>(new NetworkHandle(xxxNEndpoint));
-          break;
-        case IOMode::Write:
-          // TODO
-          r = shared_ptr<IOHandle>(new NetworkHandle(xxxNConnection));
-          break;
-        case IOMode::Append:
-        case IOMode::ReadWrite:
-          string errorMsg = "Unsupported open mode for network handle";
-          logAt(trivial::error, errorMsg);
-          throw runtime_error(errorMsg);
+        case IOMode::Read: {
+          // TODO: check
+          shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, nep));
           break;
         }
+        case IOMode::Write: {
+          // TODO: check
+          shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, nc));
+          break;
+        }
+
+        case IOMode::Append:
+        case IOMode::ReadWrite: {
+            string errorMsg = "Unsupported open mode for network handle";
+            logAt(trivial::error, errorMsg);
+            throw runtime_error(errorMsg);
+            break;
+        }
+      }
       return r;
     }
   };
