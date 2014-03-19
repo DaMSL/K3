@@ -330,14 +330,14 @@ namespace K3 {
     //-----------------------
     // Engine execution loop
 
-    MPStatus processMessage(MessageProcessor mp)
+    MPStatus processMessage(shared_ptr<MessageProcessor> mp)
     {
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
         // If there was a message, return the result of processing that message.
-        return mp.process(*next_message);
+        return mp->process(*next_message);
       } else {
         // Otherwise return a Done, indicating no messages in the queues.
         return LoopStatus::Done;
@@ -346,7 +346,7 @@ namespace K3 {
 
     // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
     // refactored a bit.
-    void runMessages(MessageProcessor mp, MPStatus st)
+    void runMessages(shared_ptr<MessageProcessor> mp, MPStatus st)
     {
       MPStatus next_status;
       switch (st) {
@@ -378,24 +378,28 @@ namespace K3 {
       runMessages(mp, next_status);
     }
 
-    void runEngine(MessageProcessor mp) {
+    void runEngine(shared_ptr<MessageProcessor> mp) {
       // TODO MessageProcessor initialize() is empty.
       // In the Haskell code base, this is where the K3 AST
       // is passed to the MessageProcessor
-      mp.initialize();
+      mp->initialize();
 
       // TODO Check PoolType for Uniprocess, Multithreaded..etc
       // Following code is for Uniprocess mode only:
       // TODO Dummy ID. Need to log actual ThreadID
       // workers->setId(1);
 
-      runMessages(mp, mp.status());
+      runMessages(mp, mp->status());
     }
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    thread forkEngine(MessageProcessor mp) {
-      thread engineThread(runEngine, mp);
+    thread forkEngine(shared_ptr<MessageProcessor> mp) {
+      using std::placeholders::_1;
+      std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
+        &Engine::runEngine, this, _1
+      );
+      thread engineThread(_runEngine, mp);
       return engineThread;
     }
 
@@ -667,13 +671,13 @@ namespace K3 {
         case IOMode::Read: {
           // TODO: check
           shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
-          r = make_shared<IOHandle>(NetworkHandle(codec, nep));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, nep));
           break;
         }
         case IOMode::Write: {
           // TODO: check
           shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
-          r = make_shared<IOHandle>(NetworkHandle(codec, nc));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, nc));
           break;
         }
 
