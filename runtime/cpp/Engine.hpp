@@ -156,9 +156,9 @@ namespace K3 {
       deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
 
       workers     = shared_ptr<WorkerPool>(new InlinePool());
-      networkCtxt = shared_ptr<Net::NContext>(new Net::NContext(initialAddress));
+      networkCtxt = shared_ptr<Net::NContext>(new Net::NContext());
       listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
-      endpoints   = shared_ptr<EndpointState>(new EndpointState(networkCtxt));
+      endpoints   = shared_ptr<EndpointState>(new EndpointState());
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -202,7 +202,7 @@ namespace K3 {
           for (int i = 0; !sent && i < config->connectionRetries(); ++i) {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
             if ( ep && ep->hasWrite() ) {
-              ep->doWrite(internal_codec->show_message(msg));
+              ep->doWrite(make_shared<Value>(internal_codec->show_message(msg)));
               sent = true;
             } else {
               openSocketInternal(eid, addr, IOMode::Write);

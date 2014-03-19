@@ -380,7 +380,7 @@ namespace K3
       return;
     }
 
-    void doWrite(shared_ptr<Value> v) {
+    void doWrite(shared_ptr<Value> v_ptr) {
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.
@@ -439,6 +439,28 @@ namespace K3
      } else {
        removeEndpoint(id, internalEndpoints);
      }
+   }
+
+   void clearEndpoints() {
+     clearEndpoints(internalEndpoints);
+     clearEndpoints(externalEndpoints);
+     return;
+   }
+
+   void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
+     list<Identifier> endpoint_names;
+
+     strict_lock<EndpointState> guard(*this);
+
+     for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
+       endpoint_names.push_back(p.first);
+     }
+
+     for (Identifier i: endpoint_names) {
+       removeEndpoint(i);
+     }
+
+     return;
    }
 
    // TODO: endpoint id validation.
