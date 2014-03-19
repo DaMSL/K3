@@ -84,6 +84,10 @@ namespace K3 {
       return done && (terminateV? terminateV->load() : false);
     }
 
+    void set_terminate() {
+      terminateV->store(true);
+    }
+
     bool networkDone() { return listenerCounter? (*listenerCounter)() : false; }
 
     // Wait for a notification that the engine associated
@@ -410,7 +414,7 @@ namespace K3 {
 
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
-      control->terminateV->store(true);
+      control->set_terminate();
     }
 
     // Clear the Engine's connections and endpointis
@@ -580,7 +584,7 @@ namespace K3 {
     void genericClose(Identifier eid, shared_ptr<Endpoint> ep) {
       // Close the endpoint
       if (ep) { 
-        // Deregister the listener if this is a network source (needed in C++?)
+        // Deregister the listener if this is a network source
         // TODO: check
         if ( get<1>(ep->handle()->networkSource()) ) {
           stopListener(eid);
@@ -590,15 +594,6 @@ namespace K3 {
 
       // Remove the endpoint
       endpoints->removeEndpoint(eid);
-
-      // Notify the endpoint subscribers.
-      if ( ep ) {
-        shared_ptr<IOHandle> ioh = ep->handle();
-        EndpointNotification nt = (ioh->builtin() || ioh->file())?
-          EndpointNotification::FileClose : EndpointNotification::SocketClose;
-
-        ep->subscribers()->notifyEvent(nt, nullptr);
-      }
     }
 
     // Creates and registers a listener instance for the given address and network endpoint.

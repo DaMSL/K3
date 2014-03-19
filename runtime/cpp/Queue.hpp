@@ -95,6 +95,7 @@ namespace K3 {
     MessageQueues() : LogMT("queue") {}
     virtual void enqueue(Message m) = 0; // TODO: use a ref / rvalue ref to avoid copying
     virtual shared_ptr<Message> dequeue() = 0;
+    virtual size_t size() = 0;
   };
 
 
@@ -124,8 +125,6 @@ namespace K3 {
       }
       return r;
     }
-
-    virtual size_t size() = 0;
 
   protected:
     virtual bool validTarget(Message& m) = 0;
