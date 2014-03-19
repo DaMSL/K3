@@ -2688,15 +2688,16 @@ declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = \_b1_ ->
         (case ((replicas).peek ()) of { Some x -> x.i } { None -> error () }) in
     let new_elems =
       rng.map
-        (\i ->  {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)}) in
-    (
+        (\_b1_ -> 
+          bind _b1_ as {i:i} in 
+          {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)}) in (
       new_elems.iterate (\x ->  node_ring.insert x);
       let temp_ring = node_ring.sort
-        (\_b1_ -> 
-          bind _b1_ as {_r1_:_b2_, _r2_:_b7_} in 
-          bind _b2_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash1} in 
-          bind _b7_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash2} in hash1
-          > hash2) in
+        ((\_b2_ ->
+        bind _b2_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash1} in (\_b7_ ->
+        
+          bind _b7_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash2} in 
+          if hash1 > hash2 then -1 else 1))) in
       (
         node_ring.iterate (\node ->  node_ring.delete node);
         temp_ring.iterate (\node ->  node_ring.insert node)
@@ -2803,10 +2804,11 @@ declare route_to_ATIMESD_mT1 :
             bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
-          ((\prev_cart_prod -> (\_b3_ -> 
+          ((\_b2_ -> bind _b2_ as {i:prev_cart_prod} in (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
-              (\domain_element -> 
+              (\_b1_ -> 
+                bind _b1_ as {i:domain_element} in 
                 if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
                   } @ { Seq }} @ { Seq }
                 then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
@@ -2814,17 +2816,18 @@ declare route_to_ATIMESD_mT1 :
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
                   prev_cart_prod.map
-                    (\rest_tup -> 
-                      rest_tup.combine
+                    (\_b1_ -> 
+                      bind _b1_ as {i:rest_tup} in rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
           empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
-           (\free_bucket -> 
+           (\_b1_ -> 
+             bind _b1_ as {i:free_bucket} in 
              get_ring_node
                {_r1_:free_bucket.fold
-                       ((\acc -> (\_b3_ -> 
+                       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
                          bind _b3_ as {_r1_:i, _r2_:val} in acc + (val *
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
@@ -2832,7 +2835,8 @@ declare route_to_ATIMESD_mT1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
+          (\_b1_ ->  bind _b1_ as {i:ip} in ip) ((\_ -> (\_ ->  ())))
+          empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
       then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
@@ -2898,10 +2902,11 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
             bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
-          ((\prev_cart_prod -> (\_b3_ -> 
+          ((\_b2_ -> bind _b2_ as {i:prev_cart_prod} in (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
-              (\domain_element -> 
+              (\_b1_ -> 
+                bind _b1_ as {i:domain_element} in 
                 if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
                   } @ { Seq }} @ { Seq }
                 then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
@@ -2909,17 +2914,18 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
                   prev_cart_prod.map
-                    (\rest_tup -> 
-                      rest_tup.combine
+                    (\_b1_ -> 
+                      bind _b1_ as {i:rest_tup} in rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
           empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
-           (\free_bucket -> 
+           (\_b1_ -> 
+             bind _b1_ as {i:free_bucket} in 
              get_ring_node
                {_r1_:free_bucket.fold
-                       ((\acc -> (\_b3_ -> 
+                       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
                          bind _b3_ as {_r1_:i, _r2_:val} in acc + (val *
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
@@ -2927,7 +2933,8 @@ declare route_to_ATIMESD_mT1_mR1 : { _r1_:option int, _r2_:option int
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
+          (\_b1_ ->  bind _b1_ as {i:ip} in ip) ((\_ -> (\_ ->  ())))
+          empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
       then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
@@ -2973,10 +2980,11 @@ declare route_to_ATIMESD_mS1 :
             bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
-          ((\prev_cart_prod -> (\_b3_ -> 
+          ((\_b2_ -> bind _b2_ as {i:prev_cart_prod} in (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
-              (\domain_element -> 
+              (\_b1_ -> 
+                bind _b1_ as {i:domain_element} in 
                 if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
                   } @ { Seq }} @ { Seq }
                 then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
@@ -2984,17 +2992,18 @@ declare route_to_ATIMESD_mS1 :
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
                   prev_cart_prod.map
-                    (\rest_tup -> 
-                      rest_tup.combine
+                    (\_b1_ -> 
+                      bind _b1_ as {i:rest_tup} in rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
           empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
-           (\free_bucket -> 
+           (\_b1_ -> 
+             bind _b1_ as {i:free_bucket} in 
              get_ring_node
                {_r1_:free_bucket.fold
-                       ((\acc -> (\_b3_ -> 
+                       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
                          bind _b3_ as {_r1_:i, _r2_:val} in acc + (val *
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
@@ -3002,7 +3011,8 @@ declare route_to_ATIMESD_mS1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
+          (\_b1_ ->  bind _b1_ as {i:ip} in ip) ((\_ -> (\_ ->  ())))
+          empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
       then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
@@ -3048,10 +3058,11 @@ declare route_to_ATIMESD_mS2 :
             bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
-          ((\prev_cart_prod -> (\_b3_ -> 
+          ((\_b2_ -> bind _b2_ as {i:prev_cart_prod} in (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
-              (\domain_element -> 
+              (\_b1_ -> 
+                bind _b1_ as {i:domain_element} in 
                 if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
                   } @ { Seq }} @ { Seq }
                 then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
@@ -3059,17 +3070,18 @@ declare route_to_ATIMESD_mS2 :
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
                   prev_cart_prod.map
-                    (\rest_tup -> 
-                      rest_tup.combine
+                    (\_b1_ -> 
+                      bind _b1_ as {i:rest_tup} in rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
           empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
-           (\free_bucket -> 
+           (\_b1_ -> 
+             bind _b1_ as {i:free_bucket} in 
              get_ring_node
                {_r1_:free_bucket.fold
-                       ((\acc -> (\_b3_ -> 
+                       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
                          bind _b3_ as {_r1_:i, _r2_:val} in acc + (val *
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
@@ -3077,7 +3089,8 @@ declare route_to_ATIMESD_mS2 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
+          (\_b1_ ->  bind _b1_ as {i:ip} in ip) ((\_ -> (\_ ->  ())))
+          empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
       then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
@@ -3123,10 +3136,11 @@ declare route_to_ATIMESD_mR1 :
             bind _b1_ as {_r1_:i, _r2_:b_i} in {_r1_:i, _r2_:range b_i}) in
       let free_cart_prod =
         free_domains.fold
-          ((\prev_cart_prod -> (\_b3_ -> 
+          ((\_b2_ -> bind _b2_ as {i:prev_cart_prod} in (\_b3_ -> 
             bind _b3_ as {_r1_:i, _r2_:domain} in 
             domain.ext
-              (\domain_element -> 
+              (\_b1_ -> 
+                bind _b1_ as {i:domain_element} in 
                 if prev_cart_prod == empty {i:collection { _r1_:int, _r2_:int
                   } @ { Seq }} @ { Seq }
                 then {|i:collection { _r1_:int, _r2_:int } @ { Seq }| {|
@@ -3134,17 +3148,18 @@ declare route_to_ATIMESD_mR1 :
                   {_r1_:i, _r2_:domain_element}|} @ { Seq }|} @ { Seq }
                 else
                   prev_cart_prod.map
-                    (\rest_tup -> 
-                      rest_tup.combine
+                    (\_b1_ -> 
+                      bind _b1_ as {i:rest_tup} in rest_tup.combine
                       ({| _r1_:int, _r2_:int |
                       {_r1_:i, _r2_:domain_element}|} @ { Seq }))))))
           empty {i:collection { _r1_:int, _r2_:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.map
-           (\free_bucket -> 
+           (\_b1_ -> 
+             bind _b1_ as {i:free_bucket} in 
              get_ring_node
                {_r1_:free_bucket.fold
-                       ((\acc -> (\_b3_ -> 
+                       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
                          bind _b3_ as {_r1_:i, _r2_:val} in acc + (val *
                          bind case ((dim_bounds.filter
                          (\_b1_ -> 
@@ -3152,7 +3167,8 @@ declare route_to_ATIMESD_mR1 :
                          ()) of { Some x -> x }
                          { None -> error () } as {_r1_:__1, _r2_:__2} in __2))))
                        bound_bucket, _r2_:max_val})).groupby
-          (\ip ->  ip) ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq } in
+          (\_b1_ ->  bind _b1_ as {i:ip} in ip) ((\_ -> (\_ ->  ())))
+          empty {i:address} @ { Seq } in
       if sorted_ip_list == empty { _r1_:address, _r2_:() } @ { Seq }
       then {|i:address|
         get_ring_node {_r1_:bound_bucket, _r2_:max_val}|} @ { Seq }
@@ -3171,7 +3187,8 @@ declare shuffle_ATIMESD_mT1_ATIMESD : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD ()).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3184,14 +3201,15 @@ declare shuffle_ATIMESD_mT1_ATIMESD : {
          (\r_tuple -> 
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            (route_to_ATIMESD ()).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mR1_0t0 : {
   _r1_:option int, _r2_:collection {
@@ -3206,7 +3224,8 @@ declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mR1_0t0 : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD_mR1 l_key).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
              _r4_:int } @ { Set }})
@@ -3220,13 +3239,14 @@ declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mR1_0t0 : {
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2,
                             _r4_:__id_r3} in let full_lkey = Some __id_r1 in
            (route_to_ATIMESD_mR1 full_lkey).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
                 _r4_:int | r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty {
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
       } @ { Set }
 
@@ -3242,7 +3262,8 @@ declare shuffle_ATIMESD_mS2_ATIMESD : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD ()).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3255,14 +3276,15 @@ declare shuffle_ATIMESD_mS2_ATIMESD : {
          (\r_tuple -> 
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            (route_to_ATIMESD ()).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mS1_ATIMESD : {
   _r1_:(), _r2_:collection {
@@ -3276,7 +3298,8 @@ declare shuffle_ATIMESD_mS1_ATIMESD : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD ()).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3289,14 +3312,15 @@ declare shuffle_ATIMESD_mS1_ATIMESD : {
          (\r_tuple -> 
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            (route_to_ATIMESD ()).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mS1_ATIMESD_mT1 : {
   _r1_:option int, _r2_:collection {
@@ -3311,7 +3335,8 @@ declare shuffle_ATIMESD_mS1_ATIMESD_mT1 : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD_mT1 l_key).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3325,14 +3350,15 @@ declare shuffle_ATIMESD_mS1_ATIMESD_mT1 : {
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            let full_lkey = __id_l0 in
            (route_to_ATIMESD_mT1 full_lkey).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mS2_ATIMESD_mR1 : {
   _r1_:option int, _r2_:collection {
@@ -3347,7 +3373,8 @@ declare shuffle_ATIMESD_mS2_ATIMESD_mR1 : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD_mR1 l_key).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3361,14 +3388,15 @@ declare shuffle_ATIMESD_mS2_ATIMESD_mR1 : {
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            let full_lkey = __id_l0 in
            (route_to_ATIMESD_mR1 full_lkey).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mR1_ATIMESD : {
   _r1_:(), _r2_:collection {
@@ -3382,7 +3410,8 @@ declare shuffle_ATIMESD_mR1_ATIMESD : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD ()).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Set }})
@@ -3395,14 +3424,15 @@ declare shuffle_ATIMESD_mR1_ATIMESD : {
          (\r_tuple -> 
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2} in 
            (route_to_ATIMESD ()).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
                 r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-      } @ { Set }
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
 
 declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mT1_0t1 : {
   _r1_:option int, _r2_:collection {
@@ -3417,7 +3447,8 @@ declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mT1_0t1 : {
       if shuffle_on_empty == true
       then
         (route_to_ATIMESD_mT1 l_key).map
-          (\ip -> 
+          (\_b1_ -> 
+            bind _b1_ as {i:ip} in 
             {_r1_:ip, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
              _r4_:int } @ { Set }})
@@ -3431,13 +3462,14 @@ declare shuffle_ATIMESD_mT1_mR1_ATIMESD_mT1_0t1 : {
            bind r_tuple as {_r1_:__id_r0, _r2_:__id_r1, _r3_:__id_r2,
                             _r4_:__id_r3} in let full_lkey = Some __id_r2 in
            (route_to_ATIMESD_mT1 full_lkey).map
-             (\ip -> 
+             (\_b1_ -> 
+               bind _b1_ as {i:ip} in 
                {_r1_:ip, _r2_:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
                 _r4_:int | r_tuple|} @ { Set }})))).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\acc -> 
-      (\_b3_ ->  bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc)))
-      empty {
+      (\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:tuple} in ip) ((\_b2_ ->
+      bind _b2_ as {i:acc} in (\_b3_ -> 
+        bind _b3_ as {_r1_:ip, _r2_:tuple} in tuple.combine acc))) empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
       } @ { Set }
 
@@ -3460,12 +3492,11 @@ declare filter_corrective_list : {
         (\_b1_ -> 
           bind _b1_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
           {_r1_:vid, _r2_:stmt_id})).sort
-      (\_b1_ -> 
-        bind _b1_ as {_r1_:_b2_, _r2_:_b5_} in 
-        bind _b2_ as {_r1_:vid1, _r2_:stmt1} in 
-        bind _b5_ as {_r1_:vid2, _r2_:stmt2} in vid_lt {_r1_:vid1, _r2_:vid2})).groupby
-      (\_b1_ ->  bind _b1_ as {_r1_:_, _r2_:stmt_id} in stmt_id) ((\vid_list ->
-      (\_b3_ -> 
+      ((\_b2_ -> bind _b2_ as {_r1_:vid1, _r2_:stmt1} in (\_b5_ -> 
+        bind _b5_ as {_r1_:vid2, _r2_:stmt2} in 
+        if vid_lt {_r1_:vid1, _r2_:vid2} then -1 else 1)))).groupby
+      (\_b1_ ->  bind _b1_ as {_r1_:_, _r2_:stmt_id} in stmt_id) ((\_b2_ ->
+      bind _b2_ as {i:vid_list} in (\_b3_ -> 
         bind _b3_ as {_r1_:vid, _r2_:_} in vid_list.combine
         ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq })))) empty {
       _r1_:int, _r2_:int, _r3_:int } @ { Seq }
@@ -3496,13 +3527,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:T_C, _r3_:T_D} in (
     (route_to_ATIMESD_mS2 (Some T_C)).iterate
-      (\ip ->  (insert_T_do_complete_s1, ip)<- {_r1_:vid, _r2_:T_C, _r3_:T_D});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (insert_T_do_complete_s1, ip)<- {_r1_:vid, _r2_:T_C, _r3_:T_D});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mT1 (Some T_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mT1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -3512,7 +3546,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:0, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mT1_mR1 {_r1_:None immut, _r2_:Some T_C}).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_ATIMESD_mR1_0t0
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
@@ -3522,11 +3557,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:2, _r3_:sender_count})))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -3538,12 +3574,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:T_C, _r5_:T_D}
           ));
     ((((route_to_ATIMESD_mT1_mR1 {_r1_:None immut, _r2_:Some T_C}).map
-         (\ip ->  {_r1_:2, _r2_:3, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:2, _r2_:3, _r3_:ip})).combine
        (((route_to_ATIMESD_mT1 (Some T_C)).map
-           (\ip ->  {_r1_:0, _r2_:2, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:0, _r2_:2, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -4068,13 +4104,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:T_C, _r3_:T_D} in (
     (route_to_ATIMESD_mS2 (Some T_C)).iterate
-      (\ip ->  (delete_T_do_complete_s4, ip)<- {_r1_:vid, _r2_:T_C, _r3_:T_D});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (delete_T_do_complete_s4, ip)<- {_r1_:vid, _r2_:T_C, _r3_:T_D});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mT1 (Some T_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mT1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4084,7 +4123,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:3, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mT1_mR1 {_r1_:None immut, _r2_:Some T_C}).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_ATIMESD_mR1_0t0
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
@@ -4094,11 +4134,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:5, _r3_:sender_count})))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -4110,12 +4151,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:T_C, _r5_:T_D}
           ));
     ((((route_to_ATIMESD_mT1_mR1 {_r1_:None immut, _r2_:Some T_C}).map
-         (\ip ->  {_r1_:5, _r2_:3, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:5, _r2_:3, _r3_:ip})).combine
        (((route_to_ATIMESD_mT1 (Some T_C)).map
-           (\ip ->  {_r1_:3, _r2_:2, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:3, _r2_:2, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -4640,13 +4681,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
     (route_to_ATIMESD_mT1_mR1 {_r1_:Some S_B, _r2_:Some S_C}).iterate
-      (\ip ->  (insert_S_do_complete_s8, ip)<- {_r1_:vid, _r2_:S_B, _r3_:S_C});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (insert_S_do_complete_s8, ip)<- {_r1_:vid, _r2_:S_B, _r3_:S_C});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mS2 (Some S_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS2_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4656,7 +4700,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:6, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS1 (Some S_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4666,7 +4711,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:6, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS1 (Some S_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_ATIMESD_mT1
             {_r1_:Some S_C, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4676,7 +4722,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:7, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS2 (Some S_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mS2_ATIMESD_mR1
            {_r1_:Some S_B, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4686,11 +4733,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:9, _r3_:sender_count})))))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -4702,16 +4750,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:S_B, _r5_:S_C}
           ));
     ((((route_to_ATIMESD_mS2 (Some S_C)).map
-         (\ip ->  {_r1_:9, _r2_:5, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:9, _r2_:5, _r3_:ip})).combine
        (((route_to_ATIMESD_mS1 (Some S_B)).map
-           (\ip ->  {_r1_:7, _r2_:4, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:7, _r2_:4, _r3_:ip})).combine
        (((route_to_ATIMESD_mS2 (Some S_C)).map
-           (\ip ->  {_r1_:6, _r2_:5, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:6, _r2_:5, _r3_:ip})).combine
        (((route_to_ATIMESD_mS1 (Some S_B)).map
-           (\ip ->  {_r1_:6, _r2_:4, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:6, _r2_:4, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })))).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -5660,13 +5708,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
     (route_to_ATIMESD_mT1_mR1 {_r1_:Some S_B, _r2_:Some S_C}).iterate
-      (\ip ->  (delete_S_do_complete_s12, ip)<- {_r1_:vid, _r2_:S_B, _r3_:S_C});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (delete_S_do_complete_s12, ip)<- {_r1_:vid, _r2_:S_B, _r3_:S_C});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mS2 (Some S_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS2_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5676,7 +5727,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:10, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS1 (Some S_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5686,7 +5738,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:10, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS1 (Some S_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_ATIMESD_mT1
             {_r1_:Some S_C, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5696,7 +5749,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:11, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mS2 (Some S_C)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mS2_ATIMESD_mR1
            {_r1_:Some S_B, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5706,11 +5760,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:13, _r3_:sender_count})))))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -5722,16 +5777,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:S_B, _r5_:S_C}
           ));
     ((((route_to_ATIMESD_mS2 (Some S_C)).map
-         (\ip ->  {_r1_:13, _r2_:5, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:13, _r2_:5, _r3_:ip})).combine
        (((route_to_ATIMESD_mS1 (Some S_B)).map
-           (\ip ->  {_r1_:11, _r2_:4, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:11, _r2_:4, _r3_:ip})).combine
        (((route_to_ATIMESD_mS2 (Some S_C)).map
-           (\ip ->  {_r1_:10, _r2_:5, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:10, _r2_:5, _r3_:ip})).combine
        (((route_to_ATIMESD_mS1 (Some S_B)).map
-           (\ip ->  {_r1_:10, _r2_:4, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:10, _r2_:4, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })))).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -6683,13 +6738,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B} in (
     (route_to_ATIMESD_mS1 (Some R_B)).iterate
-      (\ip ->  (insert_R_do_complete_s16, ip)<- {_r1_:vid, _r2_:R_A, _r3_:R_B});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (insert_R_do_complete_s16, ip)<- {_r1_:vid, _r2_:R_A, _r3_:R_B});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mR1 (Some R_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mR1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -6699,7 +6757,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:14, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mT1_mR1 {_r1_:Some R_B, _r2_:None immut}).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_ATIMESD_mT1_0t1
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
@@ -6709,11 +6768,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:15, _r3_:sender_count})))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -6725,12 +6785,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:R_A, _r5_:R_B}
           ));
     ((((route_to_ATIMESD_mT1_mR1 {_r1_:Some R_B, _r2_:None immut}).map
-         (\ip ->  {_r1_:15, _r2_:3, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:15, _r2_:3, _r3_:ip})).combine
        (((route_to_ATIMESD_mR1 (Some R_B)).map
-           (\ip ->  {_r1_:14, _r2_:6, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:14, _r2_:6, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -7256,13 +7316,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 
   bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B} in (
     (route_to_ATIMESD_mS1 (Some R_B)).iterate
-      (\ip ->  (delete_R_do_complete_s19, ip)<- {_r1_:vid, _r2_:R_A, _r3_:R_B});
+      (\_b1_ -> 
+        bind _b1_ as {i:ip} in 
+        (delete_R_do_complete_s19, ip)<- {_r1_:vid, _r2_:R_A, _r3_:R_B});
     ((((empty {
         _r1_:address, _r2_:int, _r3_:int
         } @ { Collection }).combine
         (let sender_count =
            (route_to_ATIMESD_mR1 (Some R_B)).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mR1_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -7272,7 +7335,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:17, _r3_:sender_count})).combine
         (let sender_count =
            (route_to_ATIMESD_mT1_mR1 {_r1_:Some R_B, _r2_:None immut}).fold
-             ((\count -> (\ip ->  count + 1))) 0 in
+             ((\_b2_ -> bind _b2_ as {i:count} in (\_b3_ -> 
+               bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_ATIMESD_mT1_0t1
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
@@ -7282,11 +7346,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {_r1_:ip, _r2_:18, _r3_:sender_count})))).groupby
         (\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:ip, _r2_:stmt_id}) ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
+          {_r1_:ip, _r2_:stmt_id}) ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ ->
+         bind _b3_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in acc + count))) 0).groupby
        (\_b1_ -> 
          bind _b1_ as {_r1_:_b2_, _r2_:count} in 
-         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\acc -> (\_b3_ -> 
+         bind _b2_ as {_r1_:ip, _r2_:stmt_id} in ip) ((\_b2_ ->
+       bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:ip_and_stmt_id, _r2_:count} in 
          bind ip_and_stmt_id as {_r1_:ip, _r2_:stmt_id} in acc.combine
          ({| _r1_:int, _r2_:int |
@@ -7298,12 +7363,12 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                     _r4_:R_A, _r5_:R_B}
           ));
     ((((route_to_ATIMESD_mT1_mR1 {_r1_:Some R_B, _r2_:None immut}).map
-         (\ip ->  {_r1_:18, _r2_:3, _r3_:ip})).combine
+         (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:18, _r2_:3, _r3_:ip})).combine
        (((route_to_ATIMESD_mR1 (Some R_B)).map
-           (\ip ->  {_r1_:17, _r2_:6, _r3_:ip})).combine
+           (\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:17, _r2_:6, _r3_:ip})).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupby
        (\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip)
-       ((\acc -> (\_b3_ -> 
+       ((\_b2_ -> bind _b2_ as {i:acc} in (\_b3_ -> 
          bind _b3_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in acc.combine
          ({| _r1_:int, _r2_:int |
          {_r1_:stmt_id, _r2_:map_id}|} @ { Collection })))) empty {
@@ -8400,6 +8465,6 @@ _r1_:int, _r2_:int }, _r4_:option { _r1_:int, _r2_:int }
 source s1 : {
 _r1_:string, _r2_:option { _r1_:int, _r2_:int }, _r3_:option {
 _r1_:int, _r2_:int }, _r4_:option { _r1_:int, _r2_:int }
-} = file "default.k3" k3
+} = file "rst.csv" k3
 feed s1 |> switch_main
 
