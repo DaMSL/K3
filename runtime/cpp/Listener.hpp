@@ -47,7 +47,7 @@ namespace K3 {
 
     ListenerControl() {
       listenerCounter = shared_ptr<ListenerCounter>(new ListenerCounter());
-      msgAvailable = False;
+      msgAvailable = false;
       msgAvailMutex = shared_ptr<mutex>(new mutex());
       msgAvailCondition = shared_ptr<condition_variable>(new condition_variable());
     }

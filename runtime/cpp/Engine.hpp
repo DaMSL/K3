@@ -250,14 +250,14 @@ namespace K3 {
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, string mode) {
+    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenFile(eid, path, codec, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
     // TODO: listener state?
-    void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, string mode) {
+    void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenSocket(eid, addr, codec, mode)
         : invalidEndpointIdentifier("external", eid);
@@ -275,7 +275,7 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);
     }
 
-    void openFileInternal(Identifier eid, string path, string mode) {
+    void openFileInternal(Identifier eid, string path, IOMode mode) {
       !externalEndpointId(eid)?
         genericOpenFile(eid, path, internal_codec, mode)
         : invalidEndpointIdentifier("internal", eid);
@@ -523,10 +523,10 @@ namespace K3 {
       else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenFile(string id, string path, shared_ptr<Codec> codec, string mode) {
+    void genericOpenFile(string id, string path, shared_ptr<Codec> codec, IOMode mode) {
       if ( endpoints ) {
         // Create the IO Handle
-        shared_ptr<IOHandle> ioh = openFileHandle(path, codec, ioMode(mode));
+        shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
         // Add the endpoint to the given endpoint state.
         shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
@@ -540,9 +540,8 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, string mode) {
+    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, IOMode handleMode) {
       if (endpoints) {
-        IOMode handleMode = ioMode(mode);
 
         // Create the IO Handle.
         shared_ptr<IOHandle> ioh = openSocketHandle(addr, codec, handleMode);
@@ -607,7 +606,7 @@ namespace K3 {
         Identifier lstnr_name = listenerId(listenerAddr);
 
         shared_ptr<Net::Listener> lstnr = shared_ptr<Net::Listener>(
-          new Net::Listener(lstnrName, networkCtxt, queues, ep, listener_ctrl, internal_codec)
+          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec)
         );
 
         // Register the listener (track in map, and update control).
@@ -665,23 +664,27 @@ namespace K3 {
     shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m) {
       shared_ptr<IOHandle> r;
       switch ( m ) {
-        case IOMode::Read:
+        case IOMode::Read: {
           // TODO: check
           shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
           r = make_shared<IOHandle>(NetworkHandle(codec, nep));
           break;
-        case IOMode::Write:
+        }
+        case IOMode::Write: {
           // TODO: check
           shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
           r = make_shared<IOHandle>(NetworkHandle(codec, nc));
           break;
-        case IOMode::Append:
-        case IOMode::ReadWrite:
-          string errorMsg = "Unsupported open mode for network handle";
-          logAt(trivial::error, errorMsg);
-          throw runtime_error(errorMsg);
-          break;
         }
+
+        case IOMode::Append:
+        case IOMode::ReadWrite: {
+            string errorMsg = "Unsupported open mode for network handle";
+            logAt(trivial::error, errorMsg);
+            throw runtime_error(errorMsg);
+            break;
+        }
+      }
       return r;
     }
   };
