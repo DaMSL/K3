@@ -163,7 +163,7 @@ namespace K3 {
       control     = shared_ptr<EngineControl>(new EngineControl(config));
       deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
 
-      workers     = shared_ptr<WorkerPool>(new InlinePool());
+      // workers     = shared_ptr<WorkerPool>(new InlinePool());
       networkCtxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints   = shared_ptr<EndpointState>(new EndpointState());
       
@@ -390,7 +390,7 @@ namespace K3 {
       // TODO Check PoolType for Uniprocess, Multithreaded..etc
       // Following code is for Uniprocess mode only:
       // TODO Dummy ID. Need to log actual ThreadID
-      workers->setId(1);
+      // workers->setId(1);
 
       runMessages(mp, mp.status());
     }
@@ -453,7 +453,7 @@ namespace K3 {
     shared_ptr<InternalCodec>       internal_codec;
     shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
-    shared_ptr<WorkerPool>          workers;
+    // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       networkCtxt;
     
     // Endpoint and collection tracked by the engine.
