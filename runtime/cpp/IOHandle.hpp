@@ -42,9 +42,14 @@ namespace K3
     shared_ptr<Codec> codec;
   };
 
+  
   class IStreamHandle : public virtual LogMT
   {
   public:
+    template<typename Source>
+    IStreamHandle(shared_ptr<Codec> cdec, Source& src) 
+      : LogMT("IStreamHandle"), input(std::dynamic_pointer_cast<istream>(src)), codec(cdec) 
+    {}
 
     bool hasRead() { 
       return input? 
@@ -55,9 +60,10 @@ namespace K3
     shared_ptr<string> doRead() {
       shared_ptr<string> result;
       while ( !result && input->good() ) {
-        string buffer(1024, 0);
-        input->read(buffer.data(), sizeof(buffer));
-        result = codec->decode(buffer);
+        char * buffer = new char[1024];
+        input->read(buffer,sizeof(buffer));
+        result = codec->decode(string(buffer));
+        delete[] buffer;
       } 
       return result;
     }
@@ -73,16 +79,100 @@ namespace K3
 
     // Invoke the destructor on the filtering_istream, which in 
     // turn closes all associated iostream filters and devices.
-    void close() { if ( input ) { input->reset(); } }
+    void close() { if ( input ) { input.reset(); } }
 
   protected:
     shared_ptr<istream> input;
+    shared_ptr<Codec> codec;
   };
 
-  // Josh TODO
   class OStreamHandle : public virtual LogMT
   {
+  public:
+    template<typename Sink>
+    OStreamHandle(shared_ptr<Codec> cdec, Sink& sink) 
+      : LogMT("OStreamHandle"), output(std::dynamic_pointer_cast<ostream>(sink)), codec(cdec)
+    {}
 
+    bool hasRead() {
+      BOOST_LOG(*this) << "Invalid read operation on output handle";
+      return false;
+    }
+
+    shared_ptr<string> doRead() {
+      BOOST_LOG(*this) << "Invalid read operation on output handle";
+      return shared_ptr<string>();
+    }
+
+    bool hasWrite() { return output? output->good() : false; }
+    
+    void doWrite(string& data) { if ( output ) { (*output) << data << std::endl; } }
+  
+    void close() { if ( output ) { output.reset(); } }
+
+  protected:
+    shared_ptr<ostream> output;
+    shared_ptr<Codec> codec;
+  };
+
+  class StreamHandle : public IOHandle
+  {
+  public:
+    struct Input  {};
+    struct Output {};
+
+    template<typename Source>
+    StreamHandle(shared_ptr<Codec> cdec, Input i, Source& src)
+      : LogMT("StreamHandle"), IOHandle(cdec)
+    {
+      inImpl = shared_ptr<IStreamHandle>(new IStreamHandle(cdec, src));
+    }
+    
+    template<typename Sink>
+    StreamHandle(shared_ptr<Codec>  cdec, Output o, Sink& sink)
+      : LogMT("StreamHandle"), IOHandle(cdec)
+    {
+      outImpl = shared_ptr<OStreamHandle>(new OStreamHandle(cdec, sink));
+    }
+
+    bool hasRead()  { 
+      bool r = false;
+      if ( inImpl ) { r = inImpl->hasRead(); }
+      else { BOOST_LOG(*this) << "Invalid hasRead on LineBasedHandle"; }
+      return r;
+    }
+    
+    bool hasWrite() {
+      bool r = false;
+      if ( outImpl ) { r = outImpl->hasWrite(); }
+      else { BOOST_LOG(*this) << "Invalid hasWrite on LineBasedHandle"; }
+      return r;
+    }
+
+    shared_ptr<Value> doRead() {
+      shared_ptr<Value> data;
+      if ( inImpl ) {
+        data = inImpl->doRead();
+      }
+      else { BOOST_LOG(*this) << "Invalid doRead on LineBasedHandle"; }
+      return data;      
+    }
+
+    void doWrite(Value& v) {
+      if ( outImpl) {
+        outImpl->doWrite(v);
+      }
+      else { BOOST_LOG(*this) << "Invalid doWrite on LineBasedHandle"; }
+    }
+
+    void close() {
+      if ( inImpl ) { inImpl->close(); }
+      else if ( outImpl ) { outImpl->close(); }
+    }
+
+  protected:
+    shared_ptr<IStreamHandle> inImpl;
+    shared_ptr<OStreamHandle> outImpl;
   };
 
   class LineInputHandle : public virtual LogMT
@@ -263,15 +353,19 @@ namespace K3
     }
   };
 
-  class FileHandle : public LineBasedHandle 
+  class FileHandle : public StreamHandle 
   {
   public:
-    FileHandle(shared_ptr<Codec> cdec, const file_source& fs, LineBasedHandle::Input i) 
-      :  LogMT("FileHandle"), LineBasedHandle(cdec, i, fs) 
-    {}
+    FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_source> fs, StreamHandle::Input i) 
+      :  StreamHandle(cdec, i, fs), LogMT("FileHandle")
+    {
+      
+      
 
-    FileHandle(shared_ptr<Codec> cdec, const file_sink& fs, LineBasedHandle::Output o)
-      :  LogMT("FileHandle"), LineBasedHandle(cdec, o, fs)
+    }
+
+    FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_sink> fs, StreamHandle::Output o)
+      :  LogMT("FileHandle"), StreamHandle(cdec, o, fs)
     {}
 
     bool builtin () { return false; }

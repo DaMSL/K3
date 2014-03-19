@@ -33,9 +33,9 @@ tuple<int,string> readFile(K3::shared_ptr<R> r) {
 shared_ptr<FileHandle> createReadFileHandle(string path) {
   // Setup a K3 Codec 
   shared_ptr<DefaultCodec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
-  auto x = LineBasedHandle::Input();
+  auto x = StreamHandle::Input();
   // Create a file source
-  file_source fs = file_source(path); 
+  shared_ptr<file_source> fs = shared_ptr<file_source>(new file_source(path)); 
   // Construct File Handle
   shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
   return f;
@@ -44,9 +44,9 @@ shared_ptr<FileHandle> createReadFileHandle(string path) {
 shared_ptr<FileHandle> createWriteFileHandle(string path) {
   // Setup a K3 Codec 
   shared_ptr<DefaultCodec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
-  auto x = LineBasedHandle::Output();
+  auto x = StreamHandle::Output();
   // Create a file source
-  file_sink fs = file_sink(path); 
+  shared_ptr<file_sink> fs = shared_ptr<file_sink>(new file_sink(path)); 
   // Construct File Handle
   shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
   return f;
@@ -111,7 +111,7 @@ FACT("Endpoint read file by line. ScalarST Buffer")
 
   // Setup a K3 Endpoint
   auto buf = make_shared<ScalarEPBufferST>();
-  EndpointBindings::SendFunctionPtr func = do_nothing;
+  Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
   
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
@@ -136,7 +136,7 @@ FACT("Endpoint read file by line. ContainerST Buffer")
 
   // Setup a K3 Endpoint
   auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
-  EndpointBindings::SendFunctionPtr func = do_nothing;
+  SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
   
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
