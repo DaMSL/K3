@@ -42,6 +42,49 @@ namespace K3
     shared_ptr<Codec> codec;
   };
 
+  class IStreamHandle : public virtual LogMT
+  {
+  public:
+
+    bool hasRead() { 
+      return input? 
+        ((input->good() && codec->good()) || codec->decode_ready())
+        : false;
+    }
+    
+    shared_ptr<string> doRead() {
+      shared_ptr<string> result;
+      while ( !result && input->good() ) {
+        string buffer(1024, 0);
+        input->read(buffer.data(), sizeof(buffer));
+        result = codec->decode(buffer);
+      } 
+      return result;
+    }
+
+    bool hasWrite() {
+      BOOST_LOG(*this) << "Invalid write operation on input handle";
+      return false;
+    }
+    
+    void doWrite(string& data) {
+      BOOST_LOG(*this) << "Invalid write operation on input handle";
+    }
+
+    // Invoke the destructor on the filtering_istream, which in 
+    // turn closes all associated iostream filters and devices.
+    void close() { if ( input ) { input->reset(); } }
+
+  protected:
+    shared_ptr<istream> input;
+  };
+
+  // Josh TODO
+  class OStreamHandle : public virtual LogMT
+  {
+
+  };
+
   class LineInputHandle : public virtual LogMT
   {
   public:
