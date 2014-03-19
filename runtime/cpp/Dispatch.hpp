@@ -4,7 +4,7 @@
 #include <functional>
 #include <map>
 #include <string>
-#include "Common.hpp"
+#include <runtime/cpp/Common.hpp>
 
 namespace K3 {
     // A TriggerWrapper is a function which wraps a trigger with the functionality necessary to

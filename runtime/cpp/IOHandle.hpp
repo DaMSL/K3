@@ -48,8 +48,11 @@ namespace K3
   public:
     template<typename Source>
     IStreamHandle(shared_ptr<Codec> cdec, Source& src) 
-      : LogMT("IStreamHandle"), input(std::dynamic_pointer_cast<istream>(src)), codec(cdec) 
-    {}
+      : LogMT("IStreamHandle"), codec(cdec) 
+    {
+      input = shared_ptr<filtering_istream>(new filtering_istream());
+      input->push(src);      
+    }
 
     bool hasRead() { 
       return input? 
@@ -82,7 +85,7 @@ namespace K3
     void close() { if ( input ) { input.reset(); } }
 
   protected:
-    shared_ptr<istream> input;
+    shared_ptr<filtering_istream> input;
     shared_ptr<Codec> codec;
   };
 
@@ -91,8 +94,11 @@ namespace K3
   public:
     template<typename Sink>
     OStreamHandle(shared_ptr<Codec> cdec, Sink& sink) 
-      : LogMT("OStreamHandle"), output(std::dynamic_pointer_cast<ostream>(sink)), codec(cdec)
-    {}
+      : LogMT("OStreamHandle"), codec(cdec)
+    {
+      output = shared_ptr<filtering_ostream>(new filtering_ostream());
+      output->push(sink);
+    }
 
     bool hasRead() {
       BOOST_LOG(*this) << "Invalid read operation on output handle";
@@ -111,7 +117,7 @@ namespace K3
     void close() { if ( output ) { output.reset(); } }
 
   protected:
-    shared_ptr<ostream> output;
+    shared_ptr<filtering_ostream> output;
     shared_ptr<Codec> codec;
   };
 
@@ -357,15 +363,11 @@ namespace K3
   {
   public:
     FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_source> fs, StreamHandle::Input i) 
-      :  StreamHandle(cdec, i, fs), LogMT("FileHandle")
-    {
-      
-      
-
-    }
+      :  StreamHandle(cdec, i, *fs), LogMT("FileHandle")
+    {}
 
     FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_sink> fs, StreamHandle::Output o)
-      :  LogMT("FileHandle"), StreamHandle(cdec, o, fs)
+      :  LogMT("FileHandle"), StreamHandle(cdec, o, *fs)
     {}
 
     bool builtin () { return false; }
