@@ -645,10 +645,12 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch (m) {
         case IOMode::Read:
-          r = shared_ptr<IOHandle>(new FileHandle(codec, path, LineBasedHandle::Input()));
+          r = make_shared<FileHandle>(
+                FileHandle(codec, make_shared<file_source>(file_source(path)), StreamHandle::Input()));
           break;
         case IOMode::Write:
-          r = shared_ptr<IOHandle>(new FileHandle(codec, path, LineBasedHandle::Output()));
+          r = make_shared<FileHandle>(
+                FileHandle(codec, make_shared<file_sink>(file_sink(path)), StreamHandle::Output()));
           break;
         case IOMode::Append:
         case IOMode::ReadWrite:
