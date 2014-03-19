@@ -288,12 +288,12 @@ namespace K3 {
         }
     }
 
-    EValue doReadExternal(Identifier eid) {
+    shared_ptr<Value> doReadExternal(Identifier eid) {
         return endpoints->getExternalEndpoint(eid)->doRead();
     }
 
-    Message doReadInternal() {
-        return endpoints->getInternalEndpoint(eid)->doRead();
+    Message doReadInternal(Identifier eid) {
+        return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
     bool hasWrite(Identifier eid) {
