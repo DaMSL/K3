@@ -29,6 +29,8 @@ namespace K3
       LoopStatus _status;
   };
 
+  using MPStatus = LoopStatus;
+
   using NativeMessageProcessor = MessageProcessor;
 
   template <class E>
