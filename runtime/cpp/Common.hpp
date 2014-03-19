@@ -214,13 +214,20 @@ namespace K3 {
 
       virtual Value encode(const Value&) = 0;
       virtual shared_ptr<Value> decode(const Value&) = 0;
+      virtual bool decode_ready() = 0;
+      virtual bool good() = 0;
   };
 
   class DefaultCodec : public Codec, public virtual LogMT {
     public:
-      DefaultCodec() : Codec(), LogMT("DefaultCodec") {}
+      DefaultCodec() : Codec(), LogMT("DefaultCodec"), good_(true) {}
       Value encode(const Value& v) { return v; }
       shared_ptr<Value> decode(const Value& v) { return std::make_shared<Value>(v); } 
+      bool decode_ready() { return true; }
+      bool good() { return good_; }
+    
+    protected:
+      bool good_;
   };
 
   class InternalCodec: public Codec {
@@ -231,11 +238,55 @@ namespace K3 {
       virtual Value show_message(const Message&) = 0;
   };
 
+  class DelimiterCodec : public Codec, public virtual LogMT {
+    public:
+      DelimiterCodec(char delimiter) 
+        : Codec(), LogMT("DelimiterCodec"), delimiter_(delimiter), good_(true), buf_(new string())
+      {}
+      
+      Value encode(const Value& v) { 
+        string res = string(v);
+        res.push_back(delimiter_);
+        return res;
+      }
+
+      shared_ptr<Value> decode(const Value& v) { 
+        // Append to buffer
+        *buf_ = *buf_ + v;
+        // Determine if there is a complete value in the buffer
+        shared_ptr<Value> result = shared_ptr<Value>();
+        size_t pos = find_delimiter();
+        if (pos != std::string::npos) {
+          // There is a complete value
+          // Grab it from the buffer
+          *result = buf_->substr(0, pos); // ignore the delimiter at pos
+          // Delete from the buffer
+          *buf_ = buf_->substr(pos+1);
+        }
+        return result;
+      }
+
+      bool decode_ready() {  
+       return buf_? 
+          find_delimiter() != std::string::npos : false;
+      }
+
+      bool good() { return good_; }
+
+    protected:
+      size_t find_delimiter() { return buf_->find(delimiter_); }
+      char delimiter_;
+      bool good_;
+      shared_ptr<string> buf_;
+  };
+
   class DefaultInternalCodec : public InternalCodec, public virtual LogMT {
     public:
       DefaultInternalCodec() : InternalCodec(), LogMT("DefaultInternalCodec"), dc(DefaultCodec()) {}
       Value encode(const Value& v) { return dc.encode(v); }
       shared_ptr<Value> decode(const Value &v) { return dc.decode(v); }
+      bool decode_ready() { return dc.decode_ready(); } 
+      bool good() { return dc.good(); } 
 
       Message read_message(const Value& v) {
         // Values are of the form: "(Address, Identifier, Payload)"

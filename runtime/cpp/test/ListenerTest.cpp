@@ -25,7 +25,7 @@ void setup() {
   NetworkHandle net_handle = NetworkHandle(make_shared<DefaultCodec>(cdec), make_shared<K3::Asio::NEndpoint>(n_ep));
   // Setup Endpoint
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
-  Endpoint:SendFunctionPtr func = do_nothing;
+  SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func); 
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
   // Setup Listener Control
