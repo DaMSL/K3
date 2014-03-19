@@ -162,8 +162,7 @@ namespace K3 {
       config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
       control     = shared_ptr<EngineControl>(new EngineControl(config));
       deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
-
-      workers     = shared_ptr<WorkerPool>(new InlinePool());
+      // workers     = shared_ptr<WorkerPool>(new InlinePool());
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints   = shared_ptr<EndpointState>(new EndpointState());
       
@@ -383,19 +382,19 @@ namespace K3 {
       // TODO MessageProcessor initialize() is empty.
       // In the Haskell code base, this is where the K3 AST
       // is passed to the MessageProcessor
-      mp.initialize()
+      mp.initialize();
 
       // TODO Check PoolType for Uniprocess, Multithreaded..etc
       // Following code is for Uniprocess mode only:
       // TODO Dummy ID. Need to log actual ThreadID
-      workers->setId(1);
+      // workers->setId(1);
 
       runMessages(mp, mp.status());
     }
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    thread forkEngine(MessageProcessor<Message> mp) {
+    thread forkEngine(MessageProcessor mp) {
       thread engineThread(runEngine, mp);
       return engineThread;
     }
@@ -451,7 +450,7 @@ namespace K3 {
     shared_ptr<InternalCodec>       internal_codec;
     shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
-    shared_ptr<WorkerPool>          workers;
+    // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
     
     // Endpoint and collection tracked by the engine.
@@ -513,7 +512,7 @@ namespace K3 {
         switch (b) {
           case Builtin::Stdout:
           case Builtin::Stderr:
-            buf = shared_ptr<EndpointBindings>(new ScalarEPBufferST());
+            buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
             break;
           case Builtin::Stdin:
             break;
@@ -530,7 +529,7 @@ namespace K3 {
         shared_ptr<IOHandle> ioh = openFileHandle(path, codec, ioMode(mode));
 
         // Add the endpoint to the given endpoint state.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBindings>(new ScalarEPBufferST());
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
 
         shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
@@ -548,8 +547,8 @@ namespace K3 {
         shared_ptr<IOHandle> ioh = openSocketHandle(addr, codec, handleMode);
 
         // Add the endpoint.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBindings>(
-            new ContainerEPBufferMT(config->defaultBufferSpec()));
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
+            new ContainerEPBufferST(config->defaultBufferSpec()));
 
         shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
@@ -585,7 +584,7 @@ namespace K3 {
         EndpointNotification nt = (ioh->builtin() || ioh->file())?
           EndpointNotification::FileClose : EndpointNotification::SocketClose;
 
-        ep->subscribers()->notifyEvent(nt);
+        ep->subscribers()->notifyEvent(nt, nullptr);
       }
     }
 
@@ -610,23 +609,23 @@ namespace K3 {
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> openBuiltinHandle(shared_ptr<Codec> codec, Builtin b) {
+    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Codec> codec) {
       shared_ptr<IOHandle> r;
       switch (b) {
-        case Stdin:
+        case Builtin::Stdin:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stdin()));
           break;
-        case Stdout:
+        case Builtin::Stdout:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stdout()));
           break;
-        case Stderr:
+        case Builtin::Stderr:
           r = shared_ptr<IOHandle>(new BuiltinHandle(codec, BuiltinHandle::Stderr()));
           break;
       }
       return r;
     }
 
-    shared_ptr<IOHandle> openFileHandle(shared_ptr<Codec> codec, const string& path, IOMode m) {
+    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Codec> codec, IOMode m) {
       shared_ptr<IOHandle> r;
       switch (m) {
         case IOMode::Read:
@@ -635,8 +634,8 @@ namespace K3 {
         case IOMode::Write:
           r = shared_ptr<IOHandle>(new FileHandle(codec, path, LineBasedHandle::Output()));
           break;
-        case Append:
-        case ReadWrite:
+        case IOMode::Append:
+        case IOMode::ReadWrite:
           string errorMsg = "Unsupported open mode for file handle";
           logAt(trivial::error, errorMsg);
           throw runtime_error(errorMsg);
@@ -645,7 +644,7 @@ namespace K3 {
       return r;
     }
 
-    shared_ptr<IOHandle> openSocketHandle(shared_ptr<Codec> codec, const Address& addr, IOMode m) {
+    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m) {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read:
