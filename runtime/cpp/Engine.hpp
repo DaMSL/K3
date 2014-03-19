@@ -8,8 +8,9 @@
 #include <memory>
 #include <tuple>
 
-#include "Endpoint.hpp"
 #include "Common.hpp"
+#include "Endpoint.hpp"
+#include "MessageProcessor.hpp"
 
 namespace K3 {
 
