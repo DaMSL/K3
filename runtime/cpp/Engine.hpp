@@ -8,9 +8,9 @@
 #include <memory>
 #include <tuple>
 
-#include "Common.hpp"
-#include "Endpoint.hpp"
-#include "MessageProcessor.hpp"
+#include <runtime/cpp/Common.hpp>
+#include <runtime/cpp/Endpoint.hpp>
+#include <runtime/cpp/MessageProcessor.hpp>
 
 namespace K3 {
 
