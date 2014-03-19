@@ -105,7 +105,7 @@ instance (Monad m) => SequentialDataspace m (ListMDS Value) Value where
 
 -- | Set dataspace
 instance OrdM Interpretation Value where
-  compareV v1 v2 = valueCompare v1 v2 >>= \(VInt sgn) -> return $ 
+  compareV v1 v2 = valueCompare Nothing v1 v2 >>= \(VInt sgn) -> return $ 
     if sgn < 0 then LT else if sgn == 0 then EQ else GT
 
 instance (Monad m) => Dataspace m (SetAsOrdListMDS Value) Value where

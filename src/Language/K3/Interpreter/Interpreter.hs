@@ -185,12 +185,12 @@ logic su op a b = do
       _ -> throwSE su $ RunTimeTypeError "Invalid Boolean Operation"
 
 -- | Common comparison operation handling.
-comparison :: (Value -> Value -> Interpretation Value)
+comparison :: Maybe (Span, UID) -> (Maybe (Span, UID) -> Value -> Value -> Interpretation Value)
            -> K3 Expression -> K3 Expression -> Interpretation Value
-comparison op a b = do
+comparison su op a b = do
   a' <- expression a
   b' <- expression b
-  op a' b'
+  op su a' b'
 
 -- | Interpretation of unary operators.
 unary :: Maybe (Span, UID) -> Operator -> K3 Expression -> Interpretation Value
@@ -225,12 +225,12 @@ binary su OAnd = logic su (&&)
 binary su OOr  = logic su (||)
 
 -- | Comparison Operators
-binary _ OEqu = comparison valueEq
-binary _ ONeq = comparison valueNeq
-binary _ OLth = comparison valueLt
-binary _ OLeq = comparison valueLte
-binary _ OGth = comparison valueGt
-binary _ OGeq = comparison valueGte
+binary su OEqu = comparison su valueEq
+binary su ONeq = comparison su valueNeq
+binary su OLth = comparison su valueLt
+binary su OLeq = comparison su valueLte
+binary su OGth = comparison su valueGt
+binary su OGeq = comparison su valueGte
 
 -- | Function Application
 binary su OApp = \f x -> do
@@ -253,7 +253,7 @@ binary su OSnd = \target x -> do
     _ -> throwSE su $ RunTimeTypeError "Invalid Trigger Target"
 
 -- | Sequential expressions
-binary su OSeq = \e1 e2 -> expression e1 >> expression e2
+binary _ OSeq = \e1 e2 -> expression e1 >> expression e2
 
 binary su _ = const . const $ throwSE su $ RunTimeInterpretationError "Unreachable"
 
@@ -384,7 +384,7 @@ expression e_ =
           let (idls, ivls) = (map fst ids, map fst ivs)
 
           -- Testing the intersection with the bindings ensures every bound name
-          -- has a value, while also allowing su to bind a subset of the values.
+          -- has a value, while also allowing us to bind a subset of the values.
           if idls `intersect` ivls == idls
             then do
               let envBindings = catMaybes $ joinByKeys (,) idls ids ivs
@@ -530,7 +530,7 @@ literal (annotations -> anns) = throwAE anns $ RunTimeTypeError "Invalid literal
 {- Declaration interpretation -}
 
 replaceTrigger :: (HasSpan a, HasUID a) => Identifier -> [a] -> Value -> Interpretation()
-replaceTrigger n anns (VFunction (f,[], _)) = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
+replaceTrigger n _ (VFunction (f,[], _))    = modifyE (\env -> replaceAssoc env n (VTrigger (n, Just f)))
 replaceTrigger n anns _                     = throwAE anns $ RunTimeTypeError ("Invalid body for trigger " ++ n)
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()

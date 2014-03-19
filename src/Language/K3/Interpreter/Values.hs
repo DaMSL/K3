@@ -62,7 +62,7 @@ instance Ord Value where
   compare (VOption a)  (VOption b)  = compare a b
   compare (VTuple a)   (VTuple b)   = compare a b
   compare (VRecord a)  (VRecord b)  = compare (sortBy (compare `on` fst) a) (sortBy (compare `on` fst) b)
-  compare _ _                       = error "Invalid value comparison"
+  compare x y                       = error $ "Invalid value comparison: "++show x++", "++show y
 
 
 -- | Haskell Hashable type class implementation.
@@ -82,101 +82,118 @@ instance Hashable Value where
   hashWithSalt _ _ = error "Invalid value hash operation"
 
 -- | Interpreter value equality operation
-valueEq :: Value -> Value -> Interpretation Value
-valueEq  (VOption (Just v)) (VOption (Just v')) = valueEq v v'
-valueEq  (VOption v)        (VOption v')        = return . VBool $ v == v'
-valueEq  (VTuple v)         (VTuple v')         = listEq v v' >>= return . VBool
+valueEq :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueEq  su (VOption (Just v)) (VOption (Just v')) = valueEq su v v'
+valueEq  _ (VOption Nothing)  (VOption Nothing)    = return $ VBool True
+valueEq  su (VTuple v)         (VTuple v')         = listEq su v v' >>= return . VBool
 
-valueEq  (VCollection  v)   (VCollection v') =
-  uncurry collectionEq =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
+valueEq  su (VCollection  v)   (VCollection v') =
+  uncurry (collectionEq su) =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
 
-valueEq  (VRecord v) (VRecord v') = 
+valueEq  su (VRecord v) (VRecord v') = 
   let (ids,  vals)  = unzip $ sortBy (compare `on` fst) v
       (ids', vals') = unzip $ sortBy (compare `on` fst) v'
   in
-  if ids == ids' then listEq vals vals' >>= return . VBool
+  if ids == ids' then listEq su vals vals' >>= return . VBool
                  else return $ VBool False
+valueEq  _ (VBool v) (VBool v')                     = return $ VBool $ v == v'
+valueEq  _ (VByte v) (VByte v')                     = return $ VBool $ v == v'
+valueEq  _ (VInt v) (VInt v')                       = return $ VBool $ v == v'
+valueEq  _ (VReal v) (VReal v')                     = return $ VBool $ v == v'
+valueEq  _ (VString v) (VString v')                 = return $ VBool $ v == v'
+valueEq  _ (VAddress v) (VAddress v')               = return $ VBool $ v == v'
+valueEq  _ (VIndirection v) (VIndirection v')       = return $ VBool $ v == v'
+valueEq  _ (VFunction (_,_,n)) (VFunction (_,_,n')) = return $ VBool $ n == n'
+valueEq  su x y = throwSE su $ RunTimeTypeError $ "Cannot compare " ++ show x ++ " and " ++ show y
 
-valueEq  x y = return . VBool $ x == y
+valueNeq :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueNeq su x y = (\(VBool z) -> VBool $ not z) <$> valueEq su x y
 
-valueNeq :: Value -> Value -> Interpretation Value
-valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
+listEq :: Maybe (Span, UID) -> [Value] -> [Value] -> Interpretation Bool
+listEq su a b = listCompare su a b >>= \sgn -> return $ sgn == 0
 
-listEq :: [Value] -> [Value] -> Interpretation Bool
-listEq a b = listCompare a b >>= \sgn -> return $ sgn == 0
+collectionEq :: Maybe (Span, UID) -> Collection Value -> Collection Value -> Interpretation Value
+collectionEq su c1 c2 = collectionCompare su c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
 
-collectionEq :: Collection Value -> Collection Value -> Interpretation Value
-collectionEq c1 c2 = collectionCompare c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
-
-dataspaceEq :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
-dataspaceEq ds1 ds2 = dataspaceCompare ds1 ds2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
+dataspaceEq :: Maybe (Span, UID) -> CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceEq su ds1 ds2 = dataspaceCompare su ds1 ds2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
 
 
 -- | Interpreter value ordering operation
-valueCompare :: Value -> Value -> Interpretation Value
-valueCompare (VOption (Just v)) (VOption (Just v')) = valueCompare v v'
-valueCompare (VOption v)        (VOption v')        = return . VInt . orderingAsInt $ compare v v'
-valueCompare (VTuple v)         (VTuple v')         = listCompare v v' >>= return . VInt
-valueCompare (VCollection  v)   (VCollection v')    = uncurry collectionCompare =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
+valueCompare :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueCompare su (VOption (Just v)) (VOption (Just v')) = valueCompare su v v'
+valueCompare _ (VOption v)        (VOption v')         = return . VInt . orderingAsInt $ compare v v'
+valueCompare su (VTuple v)         (VTuple v')         = listCompare su v v' >>= return . VInt
+valueCompare su (VCollection  v)   (VCollection v')    = uncurry (collectionCompare su) =<< ((,) <$> readm v <*> readm v')
+  where readm x = liftIO (readMVar x)
 
-valueCompare (VRecord v) (VRecord v') = 
-  listCompare (map snd $ sortBy (compare `on` fst) v) (map snd $ sortBy (compare `on` fst) v') >>= return . VInt  
+valueCompare su (VRecord v) (VRecord v')   = listCompare su (sortRec v) (sortRec v') >>= return . VInt  
+  where sortRec = map snd . sortBy (compare `on` fst)
 
-valueCompare (VIndirection _) _ = throwE $ RunTimeTypeError "Invalid indirection comparison"
-valueCompare _ (VIndirection _) = throwE $ RunTimeTypeError "Invalid indirection comparison"
+valueCompare  _ (VBool v) (VBool v')       = return $ VInt $ orderingAsInt $ compare v v'
+valueCompare  _ (VByte v) (VByte v')       = return $ VInt $ orderingAsInt $ compare v v'
+valueCompare  _ (VInt v) (VInt v')         = return $ VInt $ orderingAsInt $ compare v v'
+valueCompare  _ (VReal v) (VReal v')       = return $ VInt $ orderingAsInt $ compare v v'
+valueCompare  _ (VString v) (VString v')   = return $ VInt $ orderingAsInt $ compare v v'
+valueCompare  _ (VAddress v) (VAddress v') = return $ VInt $ orderingAsInt $ compare v v'
 
-valueCompare (VFunction _) _ = throwE $ RunTimeTypeError "Invalid function comparison"
-valueCompare _ (VFunction _) = throwE $ RunTimeTypeError "Invalid function comparison"
+valueCompare su (VIndirection _) _ = throwSE su $ RunTimeTypeError "Invalid indirection comparison"
+valueCompare su _ (VIndirection _) = throwSE su $ RunTimeTypeError "Invalid indirection comparison"
 
-valueCompare (VTrigger _) _ = throwE $ RunTimeTypeError "Invalid trigger comparison"
-valueCompare _ (VTrigger _) = throwE $ RunTimeTypeError "Invalid trigger comparison"
+valueCompare su (VFunction _) _    = throwSE su $ RunTimeTypeError "Invalid function comparison"
+valueCompare su _ (VFunction _)    = throwSE su $ RunTimeTypeError "Invalid function comparison"
 
-valueCompare x y = return . VInt $ orderingAsInt $ compare x y
+valueCompare su (VTrigger _) _     = throwSE su $ RunTimeTypeError "Invalid trigger comparison"
+valueCompare su _ (VTrigger _)     = throwSE su $ RunTimeTypeError "Invalid trigger comparison"
+
+valueCompare su x y = throwSE su $ RunTimeTypeError $ "Cannot compare " ++ show x ++ " and " ++ show y
 
 orderingAsInt :: Ordering -> Int
 orderingAsInt LT = -1
 orderingAsInt EQ = 0
 orderingAsInt GT = 1
 
-listCompare :: [Value] -> [Value] -> Interpretation Int
-listCompare [] [] = return 0
-listCompare [] _  = return $ -1
-listCompare _ []  = return 1
-listCompare (a:as) (b:bs) = valueCompare a b >>= \(VInt sgn) -> if sgn == 0 then listCompare as bs else return sgn
+listCompare :: Maybe (Span, UID) -> [Value] -> [Value] -> Interpretation Int
+listCompare _ [] [] = return 0
+listCompare _ [] _  = return $ -1
+listCompare _ _ []  = return 1
+listCompare su (a:as) (b:bs) =
+  valueCompare su a b >>= \(VInt sgn) -> 
+    if sgn == 0 then listCompare su as bs else return sgn
 
-collectionCompare :: Collection Value -> Collection Value -> Interpretation Value
-collectionCompare (Collection _ ds cId) (Collection _ ds' cId') = 
+collectionCompare :: Maybe (Span, UID) -> Collection Value -> Collection Value -> Interpretation Value
+collectionCompare su (Collection _ ds cId) (Collection _ ds' cId') = 
   let sgn = orderingAsInt $ compare cId cId' in
-  if sgn == 0 then dataspaceCompare ds ds'
+  if sgn == 0 then dataspaceCompare su ds ds'
               else return $ VInt sgn
 
-dataspaceCompare :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
-dataspaceCompare (InMemoryDS l) (InMemoryDS l') = listCompare l l' >>= return . VInt
-dataspaceCompare (InMemDS l)    (InMemDS l')    = memDSCompare l l'
-dataspaceCompare (ExternalDS _) (ExternalDS _)  =
-  throwE $ RunTimeInterpretationError "External DS comparison not implemented"
-dataspaceCompare _ _ =
-  throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+dataspaceCompare :: Maybe (Span, UID) -> CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceCompare su (InMemoryDS l) (InMemoryDS l') = listCompare su l l' >>= return . VInt
+dataspaceCompare su (InMemDS l)    (InMemDS l')    = memDSCompare su l l'
+dataspaceCompare su (ExternalDS _) (ExternalDS _)  =
+  throwSE su $ RunTimeInterpretationError "External DS comparison not implemented"
+dataspaceCompare su _ _                            =
+  throwSE su $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
 
-memDSCompare :: PrimitiveMDS Value -> PrimitiveMDS Value -> Interpretation Value
-memDSCompare l r = case (listOfMemDS l, listOfMemDS r) of
-    (Just l', Just r') -> listCompare l' r' >>= return . VInt
-    (_, _) -> throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+memDSCompare :: Maybe (Span, UID) -> PrimitiveMDS Value -> PrimitiveMDS Value -> Interpretation Value
+memDSCompare su l r = case (listOfMemDS l, listOfMemDS r) of
+    (Just l', Just r') -> listCompare su l' r' >>= return . VInt
+    (_, _) -> throwSE su $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
 
-valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
-valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
+valueSign :: Maybe (Span, UID) -> (Int -> Bool) -> Value -> Value -> Interpretation Value
+valueSign su sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare su a b
 
-valueLt :: Value -> Value -> Interpretation Value
-valueLt = valueSign $ \sgn -> sgn < 0
+valueLt :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueLt su = valueSign su $ \sgn -> sgn < 0
 
-valueLte :: Value -> Value -> Interpretation Value
-valueLte = valueSign $ \sgn -> sgn <= 0
+valueLte :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueLte su = valueSign su $ \sgn -> sgn <= 0
 
-valueGt :: Value -> Value -> Interpretation Value
-valueGt = valueSign $ \sgn -> sgn > 0
+valueGt :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueGt su = valueSign su $ \sgn -> sgn > 0
 
-valueGte :: Value -> Value -> Interpretation Value
-valueGte = valueSign $ \sgn -> sgn >= 0
+valueGte :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
+valueGte su = valueSign su $ \sgn -> sgn >= 0
 
 -- | Interpreter hash function
 valueHash :: Value -> Interpretation Value
