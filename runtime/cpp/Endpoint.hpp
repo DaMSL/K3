@@ -41,9 +41,10 @@ namespace K3
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
-  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
   int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }

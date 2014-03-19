@@ -7,6 +7,8 @@
 #include <map>
 #include <memory>
 #include <tuple>
+
+#include "Endpoint.hpp"
 #include "Common.hpp"
 
 namespace K3 {
@@ -91,7 +93,7 @@ namespace K3 {
     template<typename Predicate>
     void waitForMessage(shared_ptr<Predicate> pred)
     {
-      if ( p && msgAvailMutex && msgAvailCondition ) {
+      if ( pred && msgAvailMutex && msgAvailCondition ) {
         unique_lock<mutex> lock(*msgAvailMutex);
         while ( (*pred)() ) { msgAvailCondition->wait(lock); }
       } else { logAt(warning, "Could not wait for message, no condition variable available."); }
@@ -128,7 +130,6 @@ namespace K3 {
   class Engine : public virtual LogMT {
   public:
     typedef map<Identifier, Listener<Net::NContext, Net::NEndpoint>> Listeners;
-    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
     Engine() : LogMT("Engine") {}
 
@@ -140,7 +141,7 @@ namespace K3 {
     ):
       LogMT("Engine"), internal_codec(_internal_codec), external_codec(_external_codec) {
 
-      list<Address> processAddrs = deployedNodes(sysEnv);
+      list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
       if (!processAddrs.empty()) {
@@ -151,11 +152,11 @@ namespace K3 {
       }
 
       config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-      ctrl        = shared_ptr<EngineControl>(new EngineControl(config));
-      deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sysEnv));
+      control     = shared_ptr<EngineControl>(new EngineControl(config));
+      deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
 
       workers     = shared_ptr<WorkerPool>(new InlinePool());
-      networkCtxt = shared_ptr<Net::NContext>(new NContext(initialAddress));
+      networkCtxt = shared_ptr<Net::NContext>(new Net::NContext(initialAddress));
       listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
       endpoints   = shared_ptr<EndpointState>(new EndpointState(networkCtxt));
 
@@ -192,7 +193,7 @@ namespace K3 {
         if ( shortCircuit ) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
-          queues->enqueue(m);
+          queues->enqueue(msg);
         } else {
           // Get connection and send a message on it.
           Identifier eid = connectionId(addr);
@@ -201,7 +202,7 @@ namespace K3 {
           for (int i = 0; !sent && i < config->connectionRetries(); ++i) {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
             if ( ep && ep->hasWrite() ) {
-              ep->doWrite(m);
+              ep->doWrite(internal_codec->show_message(msg));
               sent = true;
             } else {
               openSocketInternal(eid, addr, IOMode::Write);
@@ -266,7 +267,7 @@ namespace K3 {
     }
 
     // TODO: listener state.
-    void openSocketInternal(Identifier eid, Address addr, string mode) {
+    void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
         genericOpenSocket(eid, addr, msgFormat, mode)
         : invalidEndpointIdentifier("internal", eid);
@@ -349,12 +350,12 @@ namespace K3 {
             //  - Otherwise, wait for a message and continue.
             case LoopStatus::Done:
 
-                if (ctrl->terminate()) {
+                if (control->terminate()) {
                     return;
                 }
 
                 // FIXME: Timeout for waiting on messages?
-                ctrl->waitForMessage([] () { return true; });
+                control->waitForMessage([] () { return true; });
                 next_status = LoopStatus::Continue;
                 break;
         }
@@ -386,12 +387,12 @@ namespace K3 {
 
     // Delegate wait to EngineControl
     void waitForEngine() {
-      ctrl->waitForEngine();
+      control->waitForEngine();
     }
 
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
-      ctrl->terminateV->store(true);
+      control->terminateV->store(true);
     }
 
     // Clear the Engine's connections and endpointis
@@ -436,7 +437,7 @@ namespace K3 {
     shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
     shared_ptr<WorkerPool>          workers;
-    shared_ptr<NContext>            networkCtxt;
+    shared_ptr<Net::NContext>       networkCtxt;
     shared_ptr<Listeners>           listeners;
     shared_ptr<EndpointState>       endpoints;
     shared_ptr<ConnectionState>     connections;
