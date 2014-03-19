@@ -19,9 +19,11 @@ namespace K3
 {
   using namespace std;
 
-  using boost::thread_group;
   using namespace boost::iostreams;
   using namespace boost::asio;
+
+  using boost::thread_group;
+  using std::bind;
 
   //-------------------------------------------------
   // Abstract base classes for low-level networking.
