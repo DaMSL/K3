@@ -224,7 +224,7 @@ namespace K3 {
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); }
+      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
     }
 
     //---------------------------------------
@@ -238,14 +238,14 @@ namespace K3 {
 
     void openFile(Identifier eid, string path, shared_ptr<Codec> codec, string mode) {
       externalEndpointId(eid) ?
-        genericOpenFile(eid, path, codec, mode);
+        genericOpenFile(eid, path, codec, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
     // TODO: listener state?
     void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, string mode) {
       externalEndpointId(eid) ?
-        genericOpenSocket(wid, addr, codec, mode);
+        genericOpenSocket(eid, addr, codec, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
@@ -257,20 +257,20 @@ namespace K3 {
 
     void openBuiltinInternal(Identifier eid, string builtinId) {
       !externalEndpointId(eid)?
-        genericOpenBuiltin(eid, builtinId, msgFormat)
+        genericOpenBuiltin(eid, builtinId, internal_codec)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openFileInternal(Identifier eid, string path, string mode) {
       !externalEndpointId(eid)?
-        genericOpenFile(eid, path, msgFormat, mode)
+        genericOpenFile(eid, path, internal_codec, mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     // TODO: listener state.
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenSocket(eid, addr, msgFormat, mode)
+        genericOpenSocket(eid, addr, internal_codec, mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
@@ -478,7 +478,7 @@ namespace K3 {
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericopenbuiltin(string id, string builtinid, shared_ptr<Codec> codec) {
+    void genericOpenBuiltin(string id, string builtinid, shared_ptr<Codec> codec) {
       if (endpoints) {
         Builtin b = builtin(builtinId);
 
