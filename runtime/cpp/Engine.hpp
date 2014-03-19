@@ -98,12 +98,12 @@ namespace K3 {
 
     // Wait for a notification that the engine associated
     // with this control object has queued messages.
-    template<typename Predicate>
-    void waitForMessage(shared_ptr<Predicate> pred)
+    template <class Predicate>
+    void waitForMessage(Predicate pred)
     {
       if ( pred && msgAvailMutex && msgAvailCondition ) {
         unique_lock<mutex> lock(*msgAvailMutex);
-        while ( (*pred)() ) { msgAvailCondition->wait(lock); }
+        while ( pred() ) { msgAvailCondition->wait(lock); }
       } else { logAt(warning, "Could not wait for message, no condition variable available."); }
     }
 
@@ -137,7 +137,7 @@ namespace K3 {
 
   class Engine : public LogMT {
   public:
-    typedef map<Identifier, shared_ptr<Net::Listener<Net::NContext, Net::NEndpoint>>> Listeners;
+    typedef map<Identifier, shared_ptr<Net::Listener>> Listeners;
 
     Engine() : LogMT("Engine") {}
 
@@ -428,7 +428,7 @@ namespace K3 {
     list<Address> nodes() {
       list<Address> r;
       if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(error, "Invalid system environment."); }
+      else { logAt(trivial::error, "Invalid system environment."); }
       return r;
     }
 
@@ -439,7 +439,7 @@ namespace K3 {
 
     bool simulation() {
       if ( connections ) { return connections->hasInternalConnections(); }
-      else { logAt(error, "Invalid connection state."); }
+      else { logAt(trivial::error, "Invalid connection state."); }
       return false;
     }
 
@@ -496,7 +496,7 @@ namespace K3 {
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericOpenBuiltin(string id, string builtinid, shared_ptr<Codec> codec) {
+    void genericOpenBuiltin(string id, string builtinId, shared_ptr<Codec> codec) {
       if (endpoints) {
         Builtin b = builtin(builtinId);
 
@@ -557,7 +557,11 @@ namespace K3 {
         // Mode-based handling of endpoint vs connection, e.g., to start network listener.
         switch (handleMode) {
           case IOMode::Read:
-            startListener(addr, externalEndpointId? getExternalEndpoint(id) : getInternalEndpoint(id));
+            if (externalEndpointId(id)) {
+              startListener(addr, endpoints->getExternalEndpoint(id));
+            } else {
+              startListener(addr, endpoints->getInternalEndpoint(id));
+            }
             break;
           case IOMode::Write:
           case IOMode::Append:
@@ -596,8 +600,9 @@ namespace K3 {
         // thread for receiving messages.
         Identifier lstnr_name = listenerId(listenerAddr);
 
-        shared_ptr<Net::Listener> lstnr = new shared_ptr<Listener>(
-          new Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec))
+        shared_ptr<Net::Listener> lstnr = shared_ptr<Net::Listener>(
+          new Net::Listener(lstnrName, networkCtxt, queues, ep, listener_ctrl, internal_codec)
+        );
 
         // Register the listener (track in map, and update control).
         (*listeners)[lstnr_name] = lstnr;
