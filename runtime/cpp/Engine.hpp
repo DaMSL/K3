@@ -531,7 +531,8 @@ namespace K3 {
         // Add the endpoint to the given endpoint state.
         shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
 
-        shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings =
+          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
 
@@ -550,7 +551,8 @@ namespace K3 {
         shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
             new ContainerEPBufferST(config->defaultBufferSpec()));
 
-        shared_ptr<EndpointBindings> bindings = shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings =
+          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
 
@@ -568,12 +570,16 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    // TODO: deregistration?
     void genericClose(Identifier eid, shared_ptr<Endpoint> ep) {
       // Close the endpoint
-      if (ep) { ep->close(); }
-
-      // TODO: Deregister the listener if this is a network source (needed in C++?)
+      if (ep) { 
+        // Deregister the listener if this is a network source (needed in C++?)
+        // TODO: check
+        if ( get<1>(ep->handle()->networkSource()) ) {
+          stopListener(eid);
+        }
+        ep->close();
+      }
 
       // Remove the endpoint
       endpoints->removeEndpoint(eid);
@@ -601,9 +607,16 @@ namespace K3 {
 
         // Register the listener (track in map, and update control).
         (*listeners)[lstnr_name] = lstnr;
+
+        // TODO: update listener control to increment network done counter.
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
+    }
+
+    void stopListener(Identifier listener_name) {
+      // TODO: update listener control to decrement network done counter.
+      listeners->erase(listener_name);
     }
 
     //-----------------------

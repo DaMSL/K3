@@ -724,7 +724,7 @@ namespace K3
      return r;
    }
   };
-}
+};
 
 #endif
 // vim: set sw=2 ts=2 sts=2:
