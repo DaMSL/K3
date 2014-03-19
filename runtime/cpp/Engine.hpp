@@ -19,6 +19,13 @@ namespace K3 {
 
   namespace Net = K3::Asio;
 
+  //-------------------
+  // Utility functions
+
+  Identifier listenerId(Address& addr) {
+    return string("__") + "_listener_" + addressAsString(addr);
+  }
+
   //---------------
   // Configuration
 
@@ -129,7 +136,7 @@ namespace K3 {
 
   class Engine : public LogMT {
   public:
-    typedef map<Identifier, Listener<Net::NContext, Net::NEndpoint>> Listeners;
+    typedef map<Identifier, shared_ptr<Net::Listener<Net::NContext, Net::NEndpoint>>> Listeners;
 
     Engine() : LogMT("Engine") {}
 
@@ -157,8 +164,11 @@ namespace K3 {
 
       workers     = shared_ptr<WorkerPool>(new InlinePool());
       networkCtxt = shared_ptr<Net::NContext>(new Net::NContext());
-      listeners   = shared_ptr<Listeners>(new Listeners()); // TODO
       endpoints   = shared_ptr<EndpointState>(new EndpointState());
+      
+      listeners     = shared_ptr<Listeners>(new Listeners()); // TODO
+      listener_ctrl = shared_ptr<ListenerControl>(new ListenerControl());
+        // TODO: above: arguments, or add default constructor to ListenerControl.
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -176,8 +186,12 @@ namespace K3 {
         queues      = perPeerQueues(processAddrs);
         connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, false));
 
-        // TODO: start network listeners. Note this means opening up the listener sockets,
-        // while the openSocket() method is the function that actually starts the thread.
+        // Start network listeners for all K3 processes on this engine.
+        // This opens engine sockets with an internal code, relying on openSocketInternal()
+        // to construct the Listener object and the thread runs the listener's event loop.
+        for (Address k3proc : processAddrs) {
+          openSocketInternal(peerEndpointId(k3proc), k3proc, IOMode::Read);
+        }
       }
     }
 
@@ -185,7 +199,8 @@ namespace K3 {
     // Messaging.
 
     // TODO: ref or rvalue-ref for value argument.
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
+    void send(Address addr, Identifier triggerId, shared_ptr<Value> v)
+    {
       if (deployment) {
         bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
         Message msg(addr, triggerId, *v);
@@ -439,9 +454,14 @@ namespace K3 {
     shared_ptr<MessageQueues>       queues;
     shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       networkCtxt;
-    shared_ptr<Listeners>           listeners;
+    
+    // Endpoint and collection tracked by the engine.
     shared_ptr<EndpointState>       endpoints;
     shared_ptr<ConnectionState>     connections;
+    
+    // Listeners tracked by the engine.
+    shared_ptr<Listeners>           listeners;
+    shared_ptr<ListenerControl>     listener_ctrl;
 
     void invalidEndpointIdentifier(string idType, Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
@@ -539,7 +559,7 @@ namespace K3 {
         // Mode-based handling of endpoint vs connection, e.g., to start network listener.
         switch (handleMode) {
           case IOMode::Read:
-            startListener();
+            startListener(addr, externalEndpointId? getExternalEndpoint(id) : getInternalEndpoint(id));
             break;
           case IOMode::Write:
           case IOMode::Append:
@@ -570,11 +590,22 @@ namespace K3 {
       }
     }
 
-    // TODO
-    void startListener() {
-      // Create a listener object, which in turn will start the thread for receiving messages.
+    // Creates and registers a listener instance for the given address and network endpoint.
+    void startListener(Address& listenerAddr, shared_ptr<Endpoint> ep)
+    {
+      if ( listeners ) {
+        // Create a listener object, which in turn will start the
+        // thread for receiving messages.
+        Identifier lstnrName = listenerId(listenerAddr);
 
-      // Register the listener (track in map, and update control).
+        shared_ptr<Net::Listener> lstnr = new shared_ptr<Listener>(
+          new Listener(lstnrName, networkCtxt, queues, ep, listener_ctrl, internal_codec))
+
+        // Register the listener (track in map, and update control).
+        (*listeners)[lstnrName] = lstnr;
+      } else {
+        logAt(trivial::error, "Unintialized engine listeners");
+      }
     }
 
     //-----------------------
