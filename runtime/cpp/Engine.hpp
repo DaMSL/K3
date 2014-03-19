@@ -309,7 +309,7 @@ namespace K3 {
     }
 
     void doWriteInternal(Identifier eid, Message v) {
-        return endpoints->getInternalEndpoint(eid)->doWrite(v);
+        return endpoints->getInternalEndpoint(eid)->doWrite(make_shared<Value>(internal_codec->show_message(v)));
     }
 
     //-----------------------

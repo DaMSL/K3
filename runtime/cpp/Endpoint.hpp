@@ -376,7 +376,11 @@ namespace K3
     }
 
     void doWrite(Value& v) {
-      shared_ptr<Value> v_ptr = make_shared<Value>(v);
+      doWrite(make_shared<Value>(v));
+      return;
+    }
+
+    void doWrite(shared_ptr<Value> v) {
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.
