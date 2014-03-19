@@ -320,7 +320,7 @@ namespace K3
   //class MultiLineHandle;
   //class FrameBasedHandle;
 
-  class BuiltinHandle : public LineBasedHandle
+  class BuiltinHandle : public StreamHandle
   {
   public:
     struct Stdin  {};
@@ -328,15 +328,15 @@ namespace K3
     struct Stderr {};
 
     BuiltinHandle(shared_ptr<Codec> cdec, Stdin s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Input(), cin)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Input(), cin)
     {}
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stdout s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cout)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cout)
     {}
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stderr s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cerr)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cerr)
     {}
 
     bool builtin () { return true; }

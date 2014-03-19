@@ -32,7 +32,7 @@ tuple<int,string> readFile(K3::shared_ptr<R> r) {
 
 shared_ptr<FileHandle> createReadFileHandle(string path) {
   // Setup a K3 Codec 
-  shared_ptr<DefaultCodec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
+  shared_ptr<DelimiterCodec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
   auto x = StreamHandle::Input();
   // Create a file source
   shared_ptr<file_source> fs = shared_ptr<file_source>(new file_source(path)); 
@@ -43,7 +43,7 @@ shared_ptr<FileHandle> createReadFileHandle(string path) {
 
 shared_ptr<FileHandle> createWriteFileHandle(string path) {
   // Setup a K3 Codec 
-  shared_ptr<DefaultCodec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
+  shared_ptr<DelimiterCodec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
   auto x = StreamHandle::Output();
   // Create a file source
   shared_ptr<file_sink> fs = shared_ptr<file_sink>(new file_sink(path)); 
