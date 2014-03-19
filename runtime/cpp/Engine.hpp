@@ -164,12 +164,11 @@ namespace K3 {
       deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
 
       workers     = shared_ptr<WorkerPool>(new InlinePool());
-      networkCtxt = shared_ptr<Net::NContext>(new Net::NContext());
+      network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints   = shared_ptr<EndpointState>(new EndpointState());
       
-      listeners     = shared_ptr<Listeners>(new Listeners()); // TODO
+      listeners     = shared_ptr<Listeners>(new Listeners());
       listener_ctrl = shared_ptr<ListenerControl>(new ListenerControl());
-        // TODO: above: arguments, or add default constructor to ListenerControl.
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -180,12 +179,12 @@ namespace K3 {
           queues = perPeerQueues(processAddrs);
         }
 
-        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, true));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, true));
       }
       else {
         // Network engine initialization.
         queues      = perPeerQueues(processAddrs);
-        connections = shared_ptr<ConnectionState>(new ConnectionState(networkCtxt, false));
+        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
 
         // Start network listeners for all K3 processes on this engine.
         // This opens engine sockets with an internal code, relying on openSocketInternal()
@@ -325,60 +324,59 @@ namespace K3 {
     }
 
     void doWriteInternal(Identifier eid, Message v) {
-        return endpoints->getInternalEndpoint(eid)->doWrite(make_shared<Value>(internal_codec->show_message(v)));
+        return endpoints->getInternalEndpoint(eid)->doWrite(
+                  make_shared<Value>(internal_codec->show_message(v)));
     }
 
     //-----------------------
     // Engine execution loop
 
-    MPStatus processMessage(MessageProcessor mp) {
-
+    MPStatus processMessage(MessageProcessor mp)
+    {
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
-
-          // If there was a message, return the result of processing that message.
-          return mp.process(*next_message);
+        // If there was a message, return the result of processing that message.
+        return mp.process(*next_message);
       } else {
-
-          // Otherwise return a Done, indicating no messages in the queues.
-          return LoopStatus::Done;
+        // Otherwise return a Done, indicating no messages in the queues.
+        return LoopStatus::Done;
       }
     }
 
     // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
     // refactored a bit.
-    void runMessages(MessageProcessor mp, MPStatus st) {
-        MPStatus next_status;
-        switch (st) {
+    void runMessages(MessageProcessor mp, MPStatus st)
+    {
+      MPStatus next_status;
+      switch (st) {
 
-            // If we are not in error, process the next message.
-            case LoopStatus::Continue:
-                next_status = processMessage(mp);
-                break;
+        // If we are not in error, process the next message.
+        case LoopStatus::Continue:
+          next_status = processMessage(mp);
+          break;
 
-            // If we were in error, exit out with error.
-            case LoopStatus::Error:
-                return;
+        // If we were in error, exit out with error.
+        case LoopStatus::Error:
+          return;
 
-            // If there are no messages on the queues,
-            //  - If the terminate flag has been set, exit out normally.
-            //  - Otherwise, wait for a message and continue.
-            case LoopStatus::Done:
+        // If there are no messages on the queues,
+        //  - If the terminate flag has been set, exit out normally.
+        //  - Otherwise, wait for a message and continue.
+        case LoopStatus::Done:
+          if (control->terminate()) {
+              return;
+          }
 
-                if (control->terminate()) {
-                    return;
-                }
+          // FIXME: Timeout for waiting on messages?
+          control->waitForMessage([] () { return true; });
+          next_status = LoopStatus::Continue;
+          break;
+      }
 
-                // FIXME: Timeout for waiting on messages?
-                control->waitForMessage([] () { return true; });
-                next_status = LoopStatus::Continue;
-                break;
-        }
-
-        // Recurse on the next message.
-        runMessages(mp, next_status);
+      // Recurse on the next message.
+      runMessages(mp, next_status);
     }
 
     void runEngine(MessageProcessor mp) {
@@ -454,7 +452,7 @@ namespace K3 {
     shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
     shared_ptr<WorkerPool>          workers;
-    shared_ptr<Net::NContext>       networkCtxt;
+    shared_ptr<Net::NContext>       network_ctxt;
     
     // Endpoint and collection tracked by the engine.
     shared_ptr<EndpointState>       endpoints;
@@ -542,7 +540,7 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, string mode, xxxListenerState) {
+    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, string mode) {
       if (endpoints) {
         IOMode handleMode = ioMode(mode);
 
@@ -597,13 +595,13 @@ namespace K3 {
       if ( listeners ) {
         // Create a listener object, which in turn will start the
         // thread for receiving messages.
-        Identifier lstnrName = listenerId(listenerAddr);
+        Identifier lstnr_name = listenerId(listenerAddr);
 
         shared_ptr<Net::Listener> lstnr = new shared_ptr<Listener>(
-          new Listener(lstnrName, networkCtxt, queues, ep, listener_ctrl, internal_codec))
+          new Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec))
 
         // Register the listener (track in map, and update control).
-        (*listeners)[lstnrName] = lstnr;
+        (*listeners)[lstnr_name] = lstnr;
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
@@ -651,12 +649,14 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read:
-          // TODO
-          r = shared_ptr<IOHandle>(new NetworkHandle(xxxNEndpoint));
+          // TODO: check
+          shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
+          r = make_shared<IOHandle>(NetworkHandle(codec, nep));
           break;
         case IOMode::Write:
-          // TODO
-          r = shared_ptr<IOHandle>(new NetworkHandle(xxxNConnection));
+          // TODO: check
+          shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
+          r = make_shared<IOHandle>(NetworkHandle(codec, nc));
           break;
         case IOMode::Append:
         case IOMode::ReadWrite:
