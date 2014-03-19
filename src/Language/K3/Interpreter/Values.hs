@@ -84,7 +84,7 @@ instance Hashable Value where
 -- | Interpreter value equality operation
 valueEq :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
 valueEq  su (VOption (Just v)) (VOption (Just v')) = valueEq su v v'
-valueEq  _ (VOption Nothing)  (VOption Nothing)    = return $ VBool True
+valueEq  _ (VOption v)         (VOption v')        = return $ VBool $ v == v'
 valueEq  su (VTuple v)         (VTuple v')         = listEq su v v' >>= return . VBool
 
 valueEq  su (VCollection  v)   (VCollection v') =
