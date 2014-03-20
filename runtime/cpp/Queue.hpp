@@ -25,6 +25,7 @@ namespace K3 {
   //-------------
   // Queue types.
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class MsgQueue {
   public:
@@ -34,6 +35,7 @@ namespace K3 {
     virtual size_t size() = 0;
   };
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class LockfreeMsgQueue : public MsgQueue<Value> {
   public:
@@ -48,6 +50,7 @@ namespace K3 {
   };
 
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class LockingMsgQueue
     : public MsgQueue<Value>, public basic_lockable_adapter<mutex>
@@ -91,23 +94,24 @@ namespace K3 {
   //------------------
   // Queue containers.
 
+  // TODO: r-ref overload for enqueue
   class MessageQueues : public virtual LogMT {
   public:
     MessageQueues() : LogMT("queue") {}
-    virtual void enqueue(Message m) = 0; // TODO: use a ref / rvalue ref to avoid copying
+    virtual void enqueue(Message& m) = 0;
     virtual shared_ptr<Message> dequeue() = 0;
     virtual size_t size() = 0;
   };
 
 
+  // TODO: r-ref overload for enqueue
   template<typename QueueIndex, typename Queue>
   class IndexedMessageQueues : public MessageQueues
   {
   public:
     IndexedMessageQueues() : LogMT("IndexedMessageQueues") {}
 
-    // TODO: use a ref / rvalue ref to avoid copying
-    void enqueue(Message m)
+    void enqueue(Message& m)
     {
       if ( validTarget(m) ) { enqueue(m, queue(m)); }
       else {
@@ -200,6 +204,8 @@ namespace K3 {
     }
   };
 
+
+  // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiPeerQueue
     : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, Value> > >
@@ -276,6 +282,7 @@ namespace K3 {
   };
 
 
+  // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiTriggerQueue
     : public IndexedMessageQueues<tuple<Address, Identifier>, MsgQueue<Value> >
