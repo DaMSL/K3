@@ -236,14 +236,11 @@ namespace K3
     }
 
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // Flush one batch at a time, building the list of results
-      while (batchAvailable()) {
-        int n = batchSize();
-        for (int i=0; i < n; i++) {
-          shared_ptr<Value> v = this->pop();
-          ioh->doWrite(*v);
-          notify(v);
-        }
+      // Flush entire buffer
+      while (!this->empty()) {
+        shared_ptr<Value> v = this->pop();
+        ioh->doWrite(*v);
+        notify(v);
       }
     }
 

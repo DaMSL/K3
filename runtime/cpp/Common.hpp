@@ -259,6 +259,7 @@ namespace K3 {
         if (pos != std::string::npos) {
           // There is a complete value
           // Grab it from the buffer
+          result = shared_ptr<string>(new string());
           *result = buf_->substr(0, pos); // ignore the delimiter at pos
           // Delete from the buffer
           *buf_ = buf_->substr(pos+1);

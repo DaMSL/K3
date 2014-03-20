@@ -150,4 +150,79 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   Assert.Equal(expected, actual);
   Assert.Equal(4, c);
 }
+
+FACT("Endpoint write file by line. ScalarEPBufferST")
+{
+  // Define input paths
+  string path = "out.txt";
+
+  // Create a File Handle
+  shared_ptr<FileHandle> f = createWriteFileHandle(path);
+  // Setup a K3 Endpoint
+  auto buf = make_shared<ScalarEPBufferST>();
+  Endpoint:SendFunctionPtr func = do_nothing;
+  auto bindings = make_shared<EndpointBindings>(func);
+  
+  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
+
+  string s0 = "Testing";
+  string s1 = "1";
+  string s2 = "2";
+  string s3 = "3";
+
+  ep->doWrite(s0);
+  ep->doWrite(s1);
+  ep->doWrite(s2);
+  ep->doWrite(s3); 
+  ep->flushBuffer();
+  ep->close();
+  shared_ptr<FileHandle> f2 = createReadFileHandle(path);
+
+  tuple<int,string> res = readFile<FileHandle>(f2);  
+  string actual = get<1>(res);
+  int c = get<0>(res);
+  
+  // compare results
+  string expected = "Testing123";
+  Assert.Equal(expected, actual);
+  Assert.Equal(4, c);
+}
+
+FACT("Endpoint write file by line. ContainerEPBufferST")
+{
+  // Define input paths
+  string path = "out.txt";
+
+  // Create a File Handle
+  shared_ptr<FileHandle> f = createWriteFileHandle(path);
+  // Setup a K3 Endpoint
+  auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
+  Endpoint:SendFunctionPtr func = do_nothing;
+  auto bindings = make_shared<EndpointBindings>(func);
+  
+  shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
+
+  string s0 = "Testing";
+  string s1 = "1";
+  string s2 = "2";
+  string s3 = "3";
+
+  ep->doWrite(s0);
+  ep->doWrite(s1);
+  ep->doWrite(s2);
+  ep->doWrite(s3); 
+  ep->flushBuffer();
+  ep->close();
+  shared_ptr<FileHandle> f2 = createReadFileHandle(path);
+
+  tuple<int,string> res = readFile<FileHandle>(f2);  
+  string actual = get<1>(res);
+  int c = get<0>(res);
+  
+  // compare results
+  string expected = "Testing123";
+  Assert.Equal(expected, actual);
+  Assert.Equal(4, c);
+}
+
 };
