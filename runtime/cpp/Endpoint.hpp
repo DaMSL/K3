@@ -7,10 +7,11 @@
 #include <tuple>
 #include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Network.hpp>
-#include <runtime/cpp/IOHandle.hpp>
-#include <runtime/cpp/Queue.hpp>
+
+#include <Common.hpp>
+#include <Network.hpp>
+#include <IOHandle.hpp>
+#include <Queue.hpp>
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.

@@ -11,10 +11,11 @@
 #include <boost/thread/lock_types.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Queue.hpp>
-#include <runtime/cpp/IOHandle.hpp>
-#include <runtime/cpp/Endpoint.hpp>
+
+#include <Common.hpp>
+#include <Queue.hpp>
+#include <IOHandle.hpp>
+#include <Endpoint.hpp>
 
 namespace K3 {
 

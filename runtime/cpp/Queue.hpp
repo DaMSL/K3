@@ -11,7 +11,8 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lockable_adapter.hpp>
 #include <boost/thread/externally_locked.hpp>
-#include <runtime/cpp/Common.hpp>
+
+#include <Common.hpp>
 
 namespace K3 {
 

@@ -13,7 +13,8 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 #include <nanomsg/tcp.h>
-#include <runtime/cpp/Common.hpp>
+
+#include <Common.hpp>
 
 namespace K3
 {

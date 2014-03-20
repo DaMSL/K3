@@ -8,9 +8,9 @@
 #include <memory>
 #include <tuple>
 
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Endpoint.hpp>
-#include <runtime/cpp/MessageProcessor.hpp>
+#include <Common.hpp>
+#include <Endpoint.hpp>
+#include <MessageProcessor.hpp>
 
 namespace K3 {
 
@@ -39,6 +39,7 @@ namespace K3 {
     BufferSpec defaultBufferSpec() { return defaultBufferSpec_; }
     int        connectionRetries() { return connectionRetries_; }
     bool       waitForNetwork()    { return waitForNetwork_; }
+  
   protected:
 
     void defaultConfiguration() {
@@ -201,12 +202,12 @@ namespace K3 {
     //-----------
     // Messaging.
 
-    // TODO: ref or rvalue-ref for value argument.
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v)
+    // TODO: rvalue-ref overload for value argument.
+    void send(Address addr, Identifier triggerId, const Value& v)
     {
       if (deployment) {
         bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
-        Message msg(addr, triggerId, *v);
+        Message msg(addr, triggerId, v);
 
         if ( shortCircuit ) {
           // Directly enqueue.
@@ -238,6 +239,10 @@ namespace K3 {
         logAt(trivial::error, errorMsg);
         throw runtime_error(errorMsg);
       }
+    }
+
+    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
+      send(addr, triggerId, *v);
     }
 
     // TODO: Replace with use of std::bind.
@@ -299,36 +304,36 @@ namespace K3 {
     }
 
     bool hasRead(Identifier eid) {
-        if (externalEndpointId(eid)) {
-            return endpoints->getExternalEndpoint(eid)->hasRead();
-        } else {
-            return endpoints->getInternalEndpoint(eid)->hasRead();
-        }
+      if (externalEndpointId(eid)) {
+        return endpoints->getExternalEndpoint(eid)->hasRead();
+      } else {
+        return endpoints->getInternalEndpoint(eid)->hasRead();
+      }
     }
 
     shared_ptr<Value> doReadExternal(Identifier eid) {
-        return endpoints->getExternalEndpoint(eid)->doRead();
+      return endpoints->getExternalEndpoint(eid)->doRead();
     }
 
     Message doReadInternal(Identifier eid) {
-        return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
+      return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
     bool hasWrite(Identifier eid) {
-        if (externalEndpointId(eid)) {
-            return endpoints->getExternalEndpoint(eid)->hasWrite();
-        } else {
-            return endpoints->getInternalEndpoint(eid)->hasWrite();
-        }
+      if (externalEndpointId(eid)) {
+        return endpoints->getExternalEndpoint(eid)->hasWrite();
+      } else {
+        return endpoints->getInternalEndpoint(eid)->hasWrite();
+      }
     }
 
     void doWriteExternal(Identifier eid, Value v) {
-        return endpoints->getExternalEndpoint(eid)->doWrite(v);
+      return endpoints->getExternalEndpoint(eid)->doWrite(v);
     }
 
     void doWriteInternal(Identifier eid, Message v) {
-        return endpoints->getInternalEndpoint(eid)->doWrite(
-                  make_shared<Value>(internal_codec->show_message(v)));
+      return endpoints->getInternalEndpoint(eid)->doWrite(
+                make_shared<Value>(internal_codec->show_message(v)));
     }
 
     //-----------------------
@@ -603,12 +608,9 @@ namespace K3 {
         // thread for receiving messages.
         Identifier lstnr_name = listenerId(listenerAddr);
 
-        shared_ptr<Net::Listener> lstnr = shared_ptr<Net::Listener>(
-          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec)
-        );
-
         // Register the listener (track in map, and update control).
-        (*listeners)[lstnr_name] = lstnr;
+        (*listeners)[lstnr_name] = shared_ptr<Net::Listener>(
+          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec));
 
         // TODO: update listener control to increment network done counter.
       } else {
@@ -665,13 +667,13 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read: {
-          shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
-          r = make_shared<NetworkHandle>(NetworkHandle(codec, nep));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, 
+                make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr))));
           break;
         }
         case IOMode::Write: {
-          shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
-          r = make_shared<NetworkHandle>(NetworkHandle(codec, nc));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec,
+                make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr))));
           break;
         }
 

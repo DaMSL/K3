@@ -283,6 +283,7 @@ namespace K3 {
   class DefaultInternalCodec : public InternalCodec, public virtual LogMT {
     public:
       DefaultInternalCodec() : InternalCodec(), LogMT("DefaultInternalCodec"), dc(DefaultCodec()) {}
+      
       Value encode(const Value& v) { return dc.encode(v); }
       shared_ptr<Value> decode(const Value &v) { return dc.decode(v); }
       bool decode_ready() { return dc.decode_ready(); } 
