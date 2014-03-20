@@ -585,7 +585,6 @@ namespace K3 {
       // Close the endpoint
       if (ep) { 
         // Deregister the listener if this is a network source
-        // TODO: check
         if ( get<1>(ep->handle()->networkSource()) ) {
           stopListener(eid);
         }
@@ -666,13 +665,11 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read: {
-          // TODO: check
           shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
           r = make_shared<NetworkHandle>(NetworkHandle(codec, nep));
           break;
         }
         case IOMode::Write: {
-          // TODO: check
           shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
           r = make_shared<NetworkHandle>(NetworkHandle(codec, nc));
           break;

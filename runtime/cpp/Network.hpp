@@ -13,7 +13,7 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 #include <nanomsg/tcp.h>
-#include "runtime/cpp/Common.hpp"
+#include <runtime/cpp/Common.hpp>
 
 namespace K3
 {
@@ -131,10 +131,10 @@ namespace K3
               [=] (const boost::system::error_code& error) {
                 if (!error) {
                   connected_ = true;
-                  BOOST_LOG(*(static_cast<LogMT*>(this))) << "connected to " << ::K3::addressAsString(addr);
+                  BOOST_LOG(*this) << "connected to " << ::K3::addressAsString(addr);
 
                 } else {
-                  BOOST_LOG(*(static_cast<LogMT*>(this))) << "Connect error: " << error.message();
+                  BOOST_LOG(*this) << "Connect error: " << error.message();
                 }
               } );
           } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
@@ -154,11 +154,11 @@ namespace K3
         [=](boost::system::error_code ec, size_t s)
         {
           if (!ec && (s == desired)) {
-            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Successfully sent: " <<  val;
+            BOOST_LOG(*this) << "Successfully sent: " <<  val;
           }
           else {
-            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
-              << " sent : " << s << " bytes" << endl;
+            BOOST_LOG(*this) << "Error on write: " << ec.message()
+                             << " sent : " << s << " bytes" << endl;
           }
         });
       }
@@ -189,7 +189,9 @@ namespace K3
       }
 
       // K3 Nanomsg endpoints use the TCP transport.
-      string urlOfAddress(Address addr) { return string("tcp://") + addressAsString(addr); }
+      string urlOfAddress(Address addr) { 
+        return string("tcp://") + addressAsString(addr);
+      }
 
       shared_ptr<thread_group> listenerThreads;
     };

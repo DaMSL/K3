@@ -180,9 +180,6 @@ namespace K3
     shared_ptr<OStreamHandle> outImpl;
   };
 
-  // TODO
-  //class MultiLineHandle;
-  //class FrameBasedHandle;
 
   class BuiltinHandle : public StreamHandle
   {

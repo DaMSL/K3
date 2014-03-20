@@ -110,7 +110,8 @@ namespace K3 {
     {
       if ( validTarget(m) ) { enqueue(m, queue(m)); }
       else {
-        BOOST_LOG(*this) << "Invalid message target: " << addressAsString(m.address()) << ":" << m.id();
+        BOOST_LOG(*this) << "Invalid message target: "
+                         << addressAsString(m.address()) << ":" << m.id();
       }
     }
 
@@ -147,7 +148,10 @@ namespace K3 {
     typedef tuple<QueueKey, shared_ptr<Queue> > PeerMessages;
 
     SinglePeerQueue() : LogMT("SinglePeerQueue") {}
-    SinglePeerQueue(Address addr) : LogMT("SinglePeerQueue"), peerMsgs(addr, shared_ptr<Queue>(new Queue())) {}
+    
+    SinglePeerQueue(Address addr)
+      : LogMT("SinglePeerQueue"), peerMsgs(addr, shared_ptr<Queue>(new Queue()))
+    {}
 
     size_t size() { return get<1>(peerMsgs)->size(); }
 
@@ -157,7 +161,9 @@ namespace K3 {
     
     bool validTarget(Message& m) { return m.address() == get<0>(peerMsgs); }
     
-    shared_ptr<BaseQueue> queue(Message& m) { return dynamic_pointer_cast<BaseQueue, Queue>(get<1>(peerMsgs)); }
+    shared_ptr<BaseQueue> queue(Message& m) { 
+      return dynamic_pointer_cast<BaseQueue, Queue>(get<1>(peerMsgs));
+    }
     
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
     {
@@ -307,7 +313,8 @@ namespace K3 {
     }
 
     shared_ptr<BaseQueue> queue(Message& m) {
-      return dynamic_pointer_cast<BaseQueue, Queue>(multiTriggerMsgs[make_tuple(m.address(), m.id())]);
+      return dynamic_pointer_cast<BaseQueue, Queue>(
+                multiTriggerMsgs[make_tuple(m.address(), m.id())]);
     }
 
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
