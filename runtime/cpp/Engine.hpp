@@ -164,15 +164,13 @@ namespace K3 {
         initialAddress = defaultAddress;
       }
 
-      config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-      control     = shared_ptr<EngineControl>(new EngineControl(config));
-      deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
+      config       = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
+      control      = shared_ptr<EngineControl>(new EngineControl(config));
+      deployment   = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
       // workers     = shared_ptr<WorkerPool>(new InlinePool());
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
-      endpoints   = shared_ptr<EndpointState>(new EndpointState());
-      
-      listeners     = shared_ptr<Listeners>(new Listeners());
-      listener_ctrl = shared_ptr<ListenerControl>(new ListenerControl());
+      endpoints    = shared_ptr<EndpointState>(new EndpointState());
+      listeners    = shared_ptr<Listeners>(new Listeners());
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -265,7 +263,6 @@ namespace K3 {
         : invalidEndpointIdentifier("external", eid);
     }
 
-    // TODO: listener state?
     void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenSocket(eid, addr, codec, mode)
@@ -290,7 +287,6 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);
     }
 
-    // TODO: listener state.
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
         genericOpenSocket(eid, addr, internal_codec, mode)
@@ -472,7 +468,6 @@ namespace K3 {
     
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
-    shared_ptr<ListenerControl>     listener_ctrl;
 
     void invalidEndpointIdentifier(string idType, Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
@@ -608,19 +603,37 @@ namespace K3 {
         // thread for receiving messages.
         Identifier lstnr_name = listenerId(listenerAddr);
 
-        // Register the listener (track in map, and update control).
-        (*listeners)[lstnr_name] = shared_ptr<Net::Listener>(
-          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec));
+        shared_ptr<Net::Listener> lstnr =
+          shared_ptr<Net::Listener>(
+            new Net::Listener(lstnr_name, network_ctxt, queues, ep,
+                              control->listenerControl(), internal_codec));
 
-        // TODO: update listener control to increment network done counter.
+        // Register the listener (track in map, and update control).
+        (*listeners)[lstnr_name] = lstnr;
+
+        // Update listener control to increment network done counter.
+        lstnr->control()->counter()->registerListener();
+
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
     }
 
     void stopListener(Identifier listener_name) {
-      // TODO: update listener control to decrement network done counter.
-      listeners->erase(listener_name);
+      if ( listeners ) {
+      
+        try {
+          // Update listener control to decrement network done counter.
+          shared_ptr<Net::Listener> lstnr = listeners->at(listener_name);
+          if ( lstnr ) { lstnr->control()->counter()->deregisterListener(); }
+          listeners->erase(listener_name);
+        } catch ( std::out_of_range& oor ) {
+          logAt(trivial::error, "Invalid listener identifier "+listener_name);
+        }
+      
+      } else {
+        logAt(trivial::error, "Unintialized engine listeners");
+      }
     }
 
     //-----------------------

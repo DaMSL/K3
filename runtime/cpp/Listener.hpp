@@ -112,6 +112,8 @@ namespace K3 {
         }
       }
 
+      shared_ptr<ListenerControl> control() { return control_; }
+
     protected:
       Identifier name;
 
