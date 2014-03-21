@@ -212,6 +212,9 @@ FACT("Endpoint write file by line. ContainerEPBufferST")
   ep->doWrite(s2);
   ep->doWrite(s3); 
   ep->flushBuffer();
+  // force non-batch flush
+  buf->flush(f,
+        std::bind(&K3::Endpoint::notify_subscribers, ep, std::placeholders::_1), true);
   ep->close();
   shared_ptr<FileHandle> f2 = createReadFileHandle(path);
 

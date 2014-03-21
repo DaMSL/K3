@@ -227,30 +227,46 @@ namespace K3
       }
 
       // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
+      // use it to populate the buffer. try to batch
+      int n = batchSize();
+      for(int i=0; !full() && ioh->hasRead() && i < n; i++) {
         shared_ptr<Value> v = ioh->doRead();
         this->push_back(v);
       }
-
       return r;
     }
 
+    // Default flush: do not force, wait for batch
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // Flush entire buffer
-      while (!this->empty()) {
-        shared_ptr<Value> v = this->pop();
-        ioh->doWrite(*v);
-        notify(v);
+      flush(ioh,notify,false);
+    }
+
+    // flush overloaded with force flag to ignore batching semantics
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force) {
+      while (batchAvailable() || force) {
+        int n = batchSize();
+        for (int i=0; i < n; i++) {
+          if (force && empty()) { return; }
+          shared_ptr<Value> v = this->pop();
+          ioh->doWrite(*v);
+          notify(v);
+        }
       }
     }
 
+    // Default transfer: do not force, wait for batch
     bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      return transfer(queues,cdec,notify,false);
+    }
+
+    // transfer overloaded with force flag to ignore batching semantics
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force) {
       // Transfer as many full batches as possible
       bool transferred = false;
-      while (batchAvailable()) {
+      while (batchAvailable() || force) {
         int n = batchSize();
         for (int i=0; i < n; i++) {
+          if (force && empty()) { return transferred; }
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
             Message msg = cdec->read_message(*v);
