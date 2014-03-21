@@ -1,12 +1,10 @@
 #include <memory>
-
-#include <runtime/cpp/Listener.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Queue.hpp>
+#include <Listener.hpp>
+#include <Common.hpp>
+#include <Queue.hpp>
 
 
 namespace K3 {
-
 
 using NContext = K3::Asio::NContext;
 
@@ -76,15 +74,17 @@ int main() {
   using std::cout;
   using std::endl;
   using std::shared_ptr;
+ 
   // Create (start) a Listener
   K3::Address me = K3::defaultAddress;
   shared_ptr<K3::SinglePeerQueue> qs = shared_ptr<K3::SinglePeerQueue>(new K3::SinglePeerQueue(me));
   shared_ptr<K3::Net::NContext> listener_context = shared_ptr<K3::Net::NContext>(new K3::Net::NContext());
   shared_ptr<K3::Net::Listener> listener = K3::setup(listener_context, me, qs);
+
   // Write to Listener
   shared_ptr<K3::Net::NContext> ep_context = shared_ptr<K3::Net::NContext>(new K3::Net::NContext());
-
   shared_ptr<K3::Endpoint> ep = K3::write_to_listener(ep_context);
+
   // Give the listener 1 second to finish its reads
   boost::this_thread::sleep_for( boost::chrono::seconds(1) );
   cout << "Cleaning up:" << endl;
@@ -93,6 +93,12 @@ int main() {
   ep_context->service->stop();
   ep_context->service_threads->join_all();
 
+  // Make sure messages made it onto the queues
+  // while (qs->size() > 0) {
+  //   K3::Message m = *(qs->dequeue());
+  //   cout << m.payload << endl;
+  // }
+  
   cout << "Done" << endl;
   return 0;
 
