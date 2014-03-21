@@ -1,7 +1,7 @@
 #ifndef K3_RUNTIME_MESSAGEPROC_H
 #define K3_RUNTIME_MESSAGEPROC_H
 
-#include <runtime/cpp/Dispatch.hpp>
+#include <Dispatch.hpp>
 
 namespace K3
 {

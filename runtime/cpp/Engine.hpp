@@ -8,9 +8,9 @@
 #include <memory>
 #include <tuple>
 
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Endpoint.hpp>
-#include <runtime/cpp/MessageProcessor.hpp>
+#include <Common.hpp>
+#include <Endpoint.hpp>
+#include <MessageProcessor.hpp>
 
 namespace K3 {
 
@@ -39,6 +39,7 @@ namespace K3 {
     BufferSpec defaultBufferSpec() { return defaultBufferSpec_; }
     int        connectionRetries() { return connectionRetries_; }
     bool       waitForNetwork()    { return waitForNetwork_; }
+  
   protected:
 
     void defaultConfiguration() {
@@ -163,15 +164,13 @@ namespace K3 {
         initialAddress = defaultAddress;
       }
 
-      config      = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-      control     = shared_ptr<EngineControl>(new EngineControl(config));
-      deployment  = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
+      config       = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
+      control      = shared_ptr<EngineControl>(new EngineControl(config));
+      deployment   = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
       // workers     = shared_ptr<WorkerPool>(new InlinePool());
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
-      endpoints   = shared_ptr<EndpointState>(new EndpointState());
-      
-      listeners     = shared_ptr<Listeners>(new Listeners());
-      listener_ctrl = shared_ptr<ListenerControl>(new ListenerControl());
+      endpoints    = shared_ptr<EndpointState>(new EndpointState());
+      listeners    = shared_ptr<Listeners>(new Listeners());
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -201,12 +200,12 @@ namespace K3 {
     //-----------
     // Messaging.
 
-    // TODO: ref or rvalue-ref for value argument.
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v)
+    // TODO: rvalue-ref overload for value argument.
+    void send(Address addr, Identifier triggerId, const Value& v)
     {
       if (deployment) {
         bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
-        Message msg(addr, triggerId, *v);
+        Message msg(addr, triggerId, v);
 
         if ( shortCircuit ) {
           // Directly enqueue.
@@ -240,6 +239,10 @@ namespace K3 {
       }
     }
 
+    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
+      send(addr, triggerId, *v);
+    }
+
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
       return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
@@ -260,7 +263,6 @@ namespace K3 {
         : invalidEndpointIdentifier("external", eid);
     }
 
-    // TODO: listener state?
     void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, IOMode mode) {
       externalEndpointId(eid) ?
         genericOpenSocket(eid, addr, codec, mode)
@@ -285,7 +287,6 @@ namespace K3 {
         : invalidEndpointIdentifier("internal", eid);
     }
 
-    // TODO: listener state.
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
         genericOpenSocket(eid, addr, internal_codec, mode)
@@ -299,36 +300,36 @@ namespace K3 {
     }
 
     bool hasRead(Identifier eid) {
-        if (externalEndpointId(eid)) {
-            return endpoints->getExternalEndpoint(eid)->hasRead();
-        } else {
-            return endpoints->getInternalEndpoint(eid)->hasRead();
-        }
+      if (externalEndpointId(eid)) {
+        return endpoints->getExternalEndpoint(eid)->hasRead();
+      } else {
+        return endpoints->getInternalEndpoint(eid)->hasRead();
+      }
     }
 
     shared_ptr<Value> doReadExternal(Identifier eid) {
-        return endpoints->getExternalEndpoint(eid)->doRead();
+      return endpoints->getExternalEndpoint(eid)->doRead();
     }
 
     Message doReadInternal(Identifier eid) {
-        return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
+      return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
     bool hasWrite(Identifier eid) {
-        if (externalEndpointId(eid)) {
-            return endpoints->getExternalEndpoint(eid)->hasWrite();
-        } else {
-            return endpoints->getInternalEndpoint(eid)->hasWrite();
-        }
+      if (externalEndpointId(eid)) {
+        return endpoints->getExternalEndpoint(eid)->hasWrite();
+      } else {
+        return endpoints->getInternalEndpoint(eid)->hasWrite();
+      }
     }
 
     void doWriteExternal(Identifier eid, Value v) {
-        return endpoints->getExternalEndpoint(eid)->doWrite(v);
+      return endpoints->getExternalEndpoint(eid)->doWrite(v);
     }
 
     void doWriteInternal(Identifier eid, Message v) {
-        return endpoints->getInternalEndpoint(eid)->doWrite(
-                  make_shared<Value>(internal_codec->show_message(v)));
+      return endpoints->getInternalEndpoint(eid)->doWrite(
+                make_shared<Value>(internal_codec->show_message(v)));
     }
 
     //-----------------------
@@ -467,7 +468,6 @@ namespace K3 {
     
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
-    shared_ptr<ListenerControl>     listener_ctrl;
 
     void invalidEndpointIdentifier(string idType, Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
@@ -585,7 +585,6 @@ namespace K3 {
       // Close the endpoint
       if (ep) { 
         // Deregister the listener if this is a network source
-        // TODO: check
         if ( get<1>(ep->handle()->networkSource()) ) {
           stopListener(eid);
         }
@@ -604,22 +603,37 @@ namespace K3 {
         // thread for receiving messages.
         Identifier lstnr_name = listenerId(listenerAddr);
 
-        shared_ptr<Net::Listener> lstnr = shared_ptr<Net::Listener>(
-          new Net::Listener(lstnr_name, network_ctxt, queues, ep, listener_ctrl, internal_codec)
-        );
+        shared_ptr<Net::Listener> lstnr =
+          shared_ptr<Net::Listener>(
+            new Net::Listener(lstnr_name, network_ctxt, queues, ep,
+                              control->listenerControl(), internal_codec));
 
         // Register the listener (track in map, and update control).
         (*listeners)[lstnr_name] = lstnr;
 
-        // TODO: update listener control to increment network done counter.
+        // Update listener control to increment network done counter.
+        lstnr->control()->counter()->registerListener();
+
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
     }
 
     void stopListener(Identifier listener_name) {
-      // TODO: update listener control to decrement network done counter.
-      listeners->erase(listener_name);
+      if ( listeners ) {
+      
+        try {
+          // Update listener control to decrement network done counter.
+          shared_ptr<Net::Listener> lstnr = listeners->at(listener_name);
+          if ( lstnr ) { lstnr->control()->counter()->deregisterListener(); }
+          listeners->erase(listener_name);
+        } catch ( std::out_of_range& oor ) {
+          logAt(trivial::error, "Invalid listener identifier "+listener_name);
+        }
+      
+      } else {
+        logAt(trivial::error, "Unintialized engine listeners");
+      }
     }
 
     //-----------------------
@@ -666,15 +680,13 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read: {
-          // TODO: check
-          shared_ptr<Net::NEndpoint> nep = make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr));
-          r = make_shared<NetworkHandle>(NetworkHandle(codec, nep));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, 
+                make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr))));
           break;
         }
         case IOMode::Write: {
-          // TODO: check
-          shared_ptr<Net::NConnection> nc = make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr));
-          r = make_shared<NetworkHandle>(NetworkHandle(codec, nc));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec,
+                make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr))));
           break;
         }
 

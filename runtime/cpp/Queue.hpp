@@ -11,7 +11,8 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lockable_adapter.hpp>
 #include <boost/thread/externally_locked.hpp>
-#include <runtime/cpp/Common.hpp>
+
+#include <Common.hpp>
 
 namespace K3 {
 
@@ -24,6 +25,7 @@ namespace K3 {
   //-------------
   // Queue types.
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class MsgQueue {
   public:
@@ -33,6 +35,7 @@ namespace K3 {
     virtual size_t size() = 0;
   };
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class LockfreeMsgQueue : public MsgQueue<Value> {
   public:
@@ -47,6 +50,7 @@ namespace K3 {
   };
 
 
+  // TODO: r-ref overloads for push and pop
   template<typename Value>
   class LockingMsgQueue
     : public MsgQueue<Value>, public basic_lockable_adapter<mutex>
@@ -90,27 +94,29 @@ namespace K3 {
   //------------------
   // Queue containers.
 
+  // TODO: r-ref overload for enqueue
   class MessageQueues : public virtual LogMT {
   public:
     MessageQueues() : LogMT("queue") {}
-    virtual void enqueue(Message m) = 0; // TODO: use a ref / rvalue ref to avoid copying
+    virtual void enqueue(Message& m) = 0;
     virtual shared_ptr<Message> dequeue() = 0;
     virtual size_t size() = 0;
   };
 
 
+  // TODO: r-ref overload for enqueue
   template<typename QueueIndex, typename Queue>
   class IndexedMessageQueues : public MessageQueues
   {
   public:
     IndexedMessageQueues() : LogMT("IndexedMessageQueues") {}
 
-    // TODO: use a ref / rvalue ref to avoid copying
-    void enqueue(Message m)
+    void enqueue(Message& m)
     {
       if ( validTarget(m) ) { enqueue(m, queue(m)); }
       else {
-        BOOST_LOG(*this) << "Invalid message target: " << addressAsString(m.address()) << ":" << m.id();
+        BOOST_LOG(*this) << "Invalid message target: "
+                         << addressAsString(m.address()) << ":" << m.id();
       }
     }
 
@@ -147,7 +153,10 @@ namespace K3 {
     typedef tuple<QueueKey, shared_ptr<Queue> > PeerMessages;
 
     SinglePeerQueue() : LogMT("SinglePeerQueue") {}
-    SinglePeerQueue(Address addr) : LogMT("SinglePeerQueue"), peerMsgs(addr, shared_ptr<Queue>(new Queue())) {}
+    
+    SinglePeerQueue(Address addr)
+      : LogMT("SinglePeerQueue"), peerMsgs(addr, shared_ptr<Queue>(new Queue()))
+    {}
 
     size_t size() { return get<1>(peerMsgs)->size(); }
 
@@ -157,7 +166,9 @@ namespace K3 {
     
     bool validTarget(Message& m) { return m.address() == get<0>(peerMsgs); }
     
-    shared_ptr<BaseQueue> queue(Message& m) { return dynamic_pointer_cast<BaseQueue, Queue>(get<1>(peerMsgs)); }
+    shared_ptr<BaseQueue> queue(Message& m) { 
+      return dynamic_pointer_cast<BaseQueue, Queue>(get<1>(peerMsgs));
+    }
     
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
     {
@@ -193,6 +204,8 @@ namespace K3 {
     }
   };
 
+
+  // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiPeerQueue
     : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, Value> > >
@@ -269,6 +282,7 @@ namespace K3 {
   };
 
 
+  // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiTriggerQueue
     : public IndexedMessageQueues<tuple<Address, Identifier>, MsgQueue<Value> >
@@ -307,7 +321,8 @@ namespace K3 {
     }
 
     shared_ptr<BaseQueue> queue(Message& m) {
-      return dynamic_pointer_cast<BaseQueue, Queue>(multiTriggerMsgs[make_tuple(m.address(), m.id())]);
+      return dynamic_pointer_cast<BaseQueue, Queue>(
+                multiTriggerMsgs[make_tuple(m.address(), m.id())]);
     }
 
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
