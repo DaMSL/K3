@@ -1,4 +1,5 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Interpreter_new.Data.Accessors where
 
@@ -7,16 +8,15 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
-import Data.Function
 import Data.List
 import Data.Maybe
-import qualified Data.Hashtable.IO as HT 
+import qualified Data.HashTable.IO as HT 
 
 import System.Mem.StableName
 
-import Language.K3.Interpreter.new.Data.Types
+import Language.K3.Interpreter_new.Data.Types
+import Language.K3.Interpreter_new.Data.Instances ()
 
-import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 
@@ -25,29 +25,39 @@ vunit :: Value
 vunit = VTuple []
 
 vfun :: IFunction -> Interpretation Value
-vfun f = (\(env, tg) -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
+vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
 
 {- Value and environment accessors -}
 memEntTag :: a -> Interpretation EntityTag
-memEntTag a = liftIO $ makeStableName a
+memEntTag a = liftIO (makeStableName a >>= return . MemEntTag)
 
 emptyEnv :: Interpretation (IEnvironment Value)
-emptyEnv = liftIO HT.new
+emptyEnv = liftIO emptyEnvIO
+
+emptyEnvIO :: IO (IEnvironment Value)
+emptyEnvIO = HT.new
 
 {- State and result accessors -}
-
-emptyStaticEnv :: Interpretation (SEnvironment Value)
-emptyStaticEnv = emptyEnv >>= return . (, AEnvironment [] [])
 
 emptyProxyStack :: ProxyPathStack
 emptyProxyStack = []
 
+emptyStaticEnv :: Interpretation (SEnvironment Value)
+emptyStaticEnv = emptyEnv >>= return . (, AEnvironment [] [])
+
+emptyStaticEnvIO :: IO (SEnvironment Value)
+emptyStaticEnvIO = emptyEnvIO >>= return . (, AEnvironment [] [])
+
 emptyState :: Interpretation IState
-emptyState = (\(env, sEnv) -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack)
+emptyState = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack)
                 <$> emptyEnv <*> emptyStaticEnv 
 
+emptyStateIO :: IO IState
+emptyStateIO = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack)
+                  <$> emptyEnvIO <*> emptyStaticEnvIO
+
 annotationState :: AEnvironment Value -> Interpretation IState
-annotationState aEnv = (\(env, sEnv) -> IState [] env aEnv sEnv emptyProxyStack)
+annotationState aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack)
                           <$> emptyEnv <*> emptyStaticEnv
 
 modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
@@ -61,11 +71,11 @@ modifyStateProxies f (IState g e a s b) = (IState g e a s (f b))
 
 modifyStateEnv :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> IState
                -> Interpretation IState
-modifyStateEnv f (IState g e a s b) = f x >>= \ne -> return . IState g ne a s b
+modifyStateEnv f (IState g e a s b) = f e >>= \ne -> return $ IState g ne a s b
 
 modifyStateSEnv :: (SEnvironment Value -> Interpretation (SEnvironment Value)) -> IState
                 -> Interpretation IState
-modifyStateSEnv f (IState g e a s b) = IState g e a (f s) b
+modifyStateSEnv f (IState g e a s b) = f s >>= \ns -> return $ IState g e a ns b
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -102,9 +112,9 @@ throwAE annos f = throwSE (spanUid annos) f
 
 -- | Get the UID and span out of annotations
 spanUid :: (HasUID a, HasSpan a) => [a] -> Maybe (Span, UID)
-spanUid anns = convert span uid
+spanUid anns = convert span_ uid
   where uid     = fromMaybe Nothing $ find isJust $ map getUID anns
-        span    = fromMaybe Nothing $ find isJust $ map getSpan anns
+        span_   = fromMaybe Nothing $ find isJust $ map getSpan anns
         convert (Just x) (Just y) = Just (x,y)
         convert _        _        = Nothing
 
@@ -123,7 +133,7 @@ liftError msg r = either rethrow pass' $ getResultVal r
 -- | Test if a variable is defined in the current interpretation environment.
 
 elemE :: Identifier -> Interpretation Bool
-elemE n = get >>= \s -> HT.lookup (getEnv s) n >>= return . maybe False (/= [])
+elemE n = get >>= \s -> liftIO (HT.lookup (getEnv s) n) >>= return . maybe False null
 
 -- | Environment lookup, with a thrown error if unsuccessful.
 lookupE :: Maybe (Span, UID) -> Identifier -> Interpretation (IEnvEntry Value)
@@ -133,19 +143,19 @@ lookupE su n = get >>= \s -> liftIO (HT.lookup (getEnv s) n)
 
 -- | Environment modification
 modifyE :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> Interpretation ()
-modifyE f = modify $ modifyStateEnv f
+modifyE f = get >>= modifyStateEnv f >>= put
 
 -- | Environment binding removal
 removeE :: (Identifier, IEnvEntry Value) -> a -> Interpretation a
 removeE (n,v) r = modifyE (liftIO . replaceEnv) >> return r
-  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (removeBinding env)
+  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (removeBinding env) >> return env
         removeBinding env (delete v -> nl) = 
-          if nl == [] then HT.delete env n else HT.insert env n nl  
+          if null nl then HT.delete env n else HT.insert env n nl  
 
 -- | Environment binding replacement.
 replaceE :: Identifier -> IEnvEntry Value -> Interpretation ()
 replaceE n v = modifyE $ liftIO . replaceEnv
-  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (replaceBinding env)
+  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (replaceBinding env) >> return env
         replaceBinding env [] = HT.insert env n [v]
         replaceBinding env l  = HT.insert env n (v:tail l)
 

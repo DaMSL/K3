@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 -- | Data types for the K3 Interpreter
 
@@ -11,12 +12,10 @@ import Control.Monad.Writer
 
 import Data.Map  ( Map   )
 import Data.Word ( Word8 )
-import qualified Data.Map          as Map
-import qualified Data.Hashtable.IO as HT 
+import qualified Data.HashTable.IO as HT 
 
 import GHC.Generics
 import System.Mem.StableName
-import System.Mem.Weak
 
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
@@ -190,7 +189,6 @@ data ProxyStep
     | TupleField        Int
     | RecordField       Identifier
     | CollectionMember  Identifier
-  deriving (Eq, Ord, Show, Read)
 
 type ProxyPath       = [ProxyStep]
 type ProxyPathStack  = [Maybe ProxyPath]
@@ -201,9 +199,9 @@ type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog I
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = RunTimeInterpretationError String
-    | RunTimeTypeError String
-  deriving (Eq, Ord, Read, Show)
+    = RunTimeInterpretationError String (Maybe (Span, UID))
+    | RunTimeTypeError String (Maybe (Span, UID))
+  deriving (Eq, Read, Show)
 
 -- | Type synonym for interpreter engine and engine monad
 type IEngine  = Engine  Value
@@ -221,7 +219,6 @@ data IState = IState { getGlobals    :: Globals
                      , getAnnotEnv   :: AEnvironment Value
                      , getStaticEnv  :: SEnvironment Value
                      , getProxyStack :: ProxyPathStack }
-                deriving (Eq, Ord, Read, Show)
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)

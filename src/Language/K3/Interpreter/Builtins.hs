@@ -259,16 +259,6 @@ builtinLiftedAttribute annId n _ _ =
       \f' -> mapDS_ (withClosure f') ds >> return vunit
 
     -- | Collection transformer implementation
-    {-
-    combineFn = valWithCollection $ \other (Collection ns ds extId) ->
-      flip (matchCollection collectionError) other $ 
-        \(Collection _ ds' extId') ->
-          if extId /= extId' then typeMismatchError "combine"
-          else do 
-            new_ds <- combineDS ds ds'
-            copy $ Collection ns new_ds extId
-    -}
-
     binaryCollectionFn fnName binaryDSFn = valWithCollection $ \other (Collection ns ds extId) ->
       flip (matchCollection collectionError) other $ 
         \(Collection _ ds' extId') ->
