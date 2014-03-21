@@ -80,7 +80,7 @@ namespace K3
 
       NContext(shared_ptr<io_service> ios) : service(ios) {}
 
-      void operator()() { if ( service ) { service->run(); } }
+      void operator()() { if ( service ) { service->run();} }
 
       shared_ptr<io_service> service;
       shared_ptr<thread_group> service_threads;
@@ -154,11 +154,12 @@ namespace K3
         [=](boost::system::error_code ec, size_t s)
         {
           if (!ec && (s == desired)) {
-            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Successfully sent: " <<  val;
+            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Successfully wrote " << s
+              << " out of " << desired << " bytes";;
           }
           else {
             BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
-              << " sent : " << s << " bytes" << endl;
+              << " wrote  " << s << " out of " << desired << " bytes" << endl;
           }
         });
       }

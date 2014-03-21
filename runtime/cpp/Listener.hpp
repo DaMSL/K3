@@ -45,13 +45,6 @@ namespace K3 {
   class ListenerControl {
   public:
 
-    ListenerControl() {
-      listenerCounter = shared_ptr<ListenerCounter>(new ListenerCounter());
-      msgAvailable = false;
-      msgAvailMutex = shared_ptr<mutex>(new mutex());
-      msgAvailCondition = shared_ptr<condition_variable>(new condition_variable());
-    }
-
     ListenerControl(shared_ptr<mutex> m, shared_ptr<condition_variable> c,
                     shared_ptr<ListenerCounter> i)
       : listenerCounter(i), msgAvailable(false), msgAvailMutex(m), msgAvailCondition(c)
@@ -190,12 +183,12 @@ namespace K3 {
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
               if ( !ec ) { registerConnection(nextConnection); }
-              else { listenerLog->logAt(trivial::error, "Failed"); }
+              else { this->listenerLog->logAt(trivial::error, "Failed"); }
               // recursive call:
               acceptConnection();
             });
         }
-        else { listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
+        else { this->listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
       }
 
       void registerConnection(shared_ptr<NConnection> c)
@@ -231,28 +224,30 @@ namespace K3 {
           // may invoke this handler simultaneously (i.e. for different connections).
           typedef boost::array<char, 8192> SocketBuffer;
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
-
-          async_read(*(c->socket()), buffer(buffer_->c_array(), buffer_->size()),
+          c->socket()->async_read_some(buffer(buffer_->c_array(), buffer_->size()),
             [=](const error_code& ec, std::size_t bytes_transferred) {
               if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
-                listenerLog->logAt(trivial::trace, string("Received data: ")+*v);
-                if (v) {
+                shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), bytes_transferred));
+                while (v) {
+                  listenerLog->logAt(trivial::trace, string("Received data: ")+*v);
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
                     this->control_->messageAvailable();
                   }
+                  v = this->handle_codec->decode("");
                 }
 
                 // Recursive invocation for the next message.
+
                 receiveMessages(c);
               } else {
                 deregisterConnection(c);
                 listenerLog->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
+
         } else { listenerLog->logAt(trivial::error, "Invalid listener connection"); }
       }
     };

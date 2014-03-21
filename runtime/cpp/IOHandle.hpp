@@ -126,7 +126,7 @@ namespace K3
 
     bool hasWrite() { return output? output->good() : false; }
     
-    void doWrite(string& data) { if ( output ) { (*output) << data << std::endl; } }
+    void doWrite(string& data) { if ( output ) { (*output) << codec->encode(data); } }
   
     void close() { if ( output ) { output.reset(); } }
 

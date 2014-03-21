@@ -1,6 +1,7 @@
 #ifndef K3_RUNTIME_COMMON_H
 #define K3_RUNTIME_COMMON_H
 
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -21,6 +22,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/phoenix/core.hpp>
 #include <boost/phoenix/stl/algorithm.hpp>
+#include <boost/regex.hpp>
 
 namespace K3 {
 
@@ -38,6 +40,8 @@ namespace K3 {
   typedef string Value;
   typedef string EValue;
   typedef string IValue;
+
+  typedef int32_t fixed_int;
 
   typedef tuple<boost::asio::ip::address, unsigned short> Address;
 
@@ -267,7 +271,7 @@ namespace K3 {
         return result;
       }
 
-      bool decode_ready() {  
+      bool decode_ready() {
        return buf_? 
           find_delimiter() != std::string::npos : false;
       }
@@ -281,6 +285,88 @@ namespace K3 {
       shared_ptr<string> buf_;
   };
 
+ class LengthHeaderCodec : public Codec, public virtual LogMT {
+    public:
+      LengthHeaderCodec()
+        : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string())
+      {}
+
+      Value encode(const Value& s) {
+        // calculate size of encoded value
+        fixed_int value_size = fixed_int(s.length());
+        size_t header_size = sizeof(value_size);
+        size_t enc_size = header_size + value_size;
+        // pack data into a buffer
+        char * buffer = new char[enc_size]();
+        memcpy(buffer, &value_size, header_size);
+        memcpy(buffer + header_size, s.c_str(), value_size);
+        // copy into string and free buffer
+        Value enc_v = string(buffer, enc_size);
+        delete[] buffer;
+        return enc_v;
+      }
+
+      shared_ptr<Value> decode(const Value& v) {
+        // Append v to buffer
+        *buf_ = *buf_ + v;
+        if (!next_size_) {
+          // See if there is enough data in buffer to unpack a header
+          shared_ptr<fixed_int> value_size = read_header(*buf_);
+          if (value_size) {
+            next_size_ = value_size;
+            // remove the header bytes from the buffer
+            size_t header_size = sizeof(fixed_int);
+            *buf_ = buf_->substr(header_size);
+          }
+          else {
+            // failure: not enough data in buffer
+            return nullptr;
+          }
+        }
+
+        // Now that we know the size of the next incoming value
+        // See if the buffer contains enough data to unpack
+        if (decode_ready()) {
+          // Unpack next value
+          const char * bytes = buf_->c_str();
+          shared_ptr<Value> result = shared_ptr<Value>(new string(bytes, *next_size_));
+          // Setup for next round
+          *buf_ = buf_->substr(*next_size_);
+          next_size_.reset();
+          return result;
+        }
+        else {
+          // failure: not enough data in buffer
+          return nullptr;
+        }
+      }
+
+      bool decode_ready() {
+       return next_size_?
+         buf_->length() >= *next_size_ : false;
+      }
+
+      bool good() { return good_; }
+
+    protected:
+      size_t find_delimiter() { return buf_->find(delimiter_); }
+      char delimiter_;
+      bool good_;
+      shared_ptr<fixed_int> next_size_;
+      shared_ptr<string> buf_;
+
+      shared_ptr<fixed_int> read_header(Value s) {
+        size_t header_size = sizeof(fixed_int);
+        if (s.length() < header_size) {
+          // failure: input does not contain a full header
+          return nullptr;
+        }
+        const char * bytes = s.c_str();
+        fixed_int x = *bytes;
+        return make_shared<fixed_int>(x);
+      }
+  };
+
   class DefaultInternalCodec : public InternalCodec, public virtual LogMT {
     public:
       DefaultInternalCodec() : InternalCodec(), LogMT("DefaultInternalCodec"), dc(DefaultCodec()) {}
@@ -292,26 +378,34 @@ namespace K3 {
       Message read_message(const Value& v) {
         // Values are of the form: "(Address, Identifier, Payload)"
         // Split value into components:
-        vector<string> vals;
-        boost::split(vals, v,boost::is_any_of(",")); 
+        static const boost::regex value_regex("\\( *(.+) *, *(.+) *, *(.+) *\\)");
+        boost::cmatch value_match;
+        if(boost::regex_match(v.c_str(), value_match, value_regex)){
+          // Parse Address
+          static const boost::regex address_regex("(.+):(.+)");
+          boost::cmatch address_match;
+          Address a;
+          string temp = value_match[1];
+          if(boost::regex_match(temp.c_str(), address_match, address_regex)) {
+            string ip = address_match[1];
+            temp = address_match[2];
+            unsigned short port = (unsigned short) std::strtoul(temp.c_str(), NULL, 0);
+            a = make_address(ip, port);
+          }
+          else {
+            throw CodecException("Invalid Format for Value's Address: " + value_match[1]);
+          }
 
-        // Remove first parenthesis
-        vals[0].erase(0,1);
-        // Remove last parenthesis
-        vector<string> payloads;
-        boost::split(payloads, vals[2],boost::is_any_of(")")); 
-        Value payload = payloads[0];
+          // Parse Identifier
+          Identifier m = value_match[2];
+          // Parse Payload
+          Value payload = value_match[3];
+          return Message(a,m,payload);
+         }
+        else {
+          throw CodecException("Invalid Format for Value:" + v);
+        }
 
-        // Take apart the Address:
-        vector<string> addrs;
-        boost::split(addrs,vals[0],boost::is_any_of(":"));
-        string ip = addrs[0];
-        unsigned short port = (unsigned short) std::strtoul(addrs[1].c_str(), NULL, 0);
-
-        // Construct Message from components:
-        Address a = make_address(ip, port);
-        Identifier m = vals[1];
-        return Message(a,m,payload);
       };
  
       Value show_message(const Message& m) {

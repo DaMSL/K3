@@ -245,6 +245,7 @@ namespace K3
     }
 
     bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      // Transfer as many full batches as possible
       bool transferred = false;
       while (batchAvailable()) {
         int n = batchSize();
@@ -331,7 +332,8 @@ namespace K3
              shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
-      // TODO verify correctness: dont refresh network handle?
+      // TODO verify correctness: i.e: we shouldn't refresh the buffer
+      // if the handle is for output.
       if (handle_->builtin() || handle_->file()) {
         refreshBuffer();
       }
