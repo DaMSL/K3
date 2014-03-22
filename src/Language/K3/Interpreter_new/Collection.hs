@@ -11,10 +11,6 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.List
-import Data.Map ( Map )
-import qualified Data.Map as Map
-
-import System.Mem.StableName
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -22,9 +18,9 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
-import Language.K3.Interpreter.Data.Types
-import Language.K3.Interpreter.Data.Accessors
-import Language.K3.Interpreter.Dataspace()
+import Language.K3.Interpreter_new.Data.Types
+import Language.K3.Interpreter_new.Data.Accessors
+import Language.K3.Interpreter_new.Dataspace()
 
 import Language.K3.Runtime.Dataspace
 
@@ -111,9 +107,9 @@ emptyCollectionBody annIds =
 
 initialCollectionBody :: [Identifier] -> [Value] -> Interpretation (Collection Value)
 initialCollectionBody annIds vals =
-  initialDataspace annIds vals >>= initialCollectionBodyDS
+  initialDataspace annIds vals >>= initialCollectionBodyDS annIds
 
-initialCollectionBodyDS :: [Identifier] -> [Value] -> Interpretation (Collection Value)
+initialCollectionBodyDS :: [Identifier] -> CollectionDataspace Value -> Interpretation (Collection Value)
 initialCollectionBodyDS annIds ds =
   return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
 
@@ -126,7 +122,7 @@ initialCollection annIds vals = do
   freshCollection c
 
 initialCollectionDS :: [Identifier] -> CollectionDataspace Value -> Interpretation Value
-initialCollection annIds ds = do
+initialCollectionDS annIds ds = do
   c <- initialCollectionBodyDS annIds ds
   freshCollection c
 
@@ -139,7 +135,7 @@ initialAnnotatedCollection :: Identifier -> [Value] -> Interpretation Value
 initialAnnotatedCollection comboId vals = lookupACombo comboId >>= \cstrs -> initialCtor cstrs $ vals
 
 copyCollection :: Collection Value -> Interpretation Value
-copyCollection newC = lookupACombo $ extensionId newC >>= \cstrs -> copyCtor cstrs $ newC
+copyCollection newC = lookupACombo (realizationId newC) >>= \cstrs -> (copyCtor cstrs) newC
 
 
 {- Collection tying and value construction helpers. -}
@@ -147,7 +143,7 @@ copyCollection newC = lookupACombo $ extensionId newC >>= \cstrs -> copyCtor cst
 tieCollection :: MVar Value -> Collection Value -> Interpretation Value
 tieCollection selfMV c = do
   result <- return $ VCollection (selfMV, c)
-  void $ liftIO $ modifyMVar_ $ const result
+  void . liftIO . modifyMVar_ selfMV . const . return $ result
   return result      
 
 freshCollection :: Collection Value -> Interpretation Value
@@ -218,7 +214,7 @@ getComposedAnnotation annIds = case annIds of
 
     mkEmplaceConstructor :: [(Identifier, NamedMembers Value)] -> CEmplaceConstructor Value
     mkEmplaceConstructor cAnnDefs = \ds ->
-      initialCollectionBodyDS (map fst cAnnDefs) >>= mkContextualizedCollection cAnnDefs
+      initialCollectionBodyDS (map fst cAnnDefs) ds >>= mkContextualizedCollection cAnnDefs
 
     mkCopyConstructor :: [(Identifier, NamedMembers Value)] -> CCopyConstructor Value
     mkCopyConstructor cAnnDefs = \coll -> do
@@ -252,7 +248,7 @@ getComposedAnnotation annIds = case annIds of
                         -> (Identifier, NamedMembers Value)
                         -> Interpretation (NamedMembers Value, [(Identifier, NamedMembers Value)])
     contextualizeAnnDef replace selfMV (cns, ans) (annId, annDef) = do
-      annForC <- mapM (contextualizeFunction selfMV) annDef
+      annForC <- mapMembers (const $ contextualizeFunction selfMV) annDef
       ncns    <- foldMembers (if replace then replaceDup else insertNonDup) cns annForC 
       nans    <- return $ if replace then replaceAssoc ans annId annForC else (annId, annForC):ans
       return (ncns, nans)
@@ -262,7 +258,7 @@ getComposedAnnotation annIds = case annIds of
     insertNonDup mems n vq =
       maybe (return $ insertMember n vq mems) (duplicateError n) $ lookupMember n mems
     
-    duplicateError n =
+    duplicateError n _ =
       throwE $ RunTimeInterpretationError $ "Duplicate annotation member detected for: " ++ n
 
 
@@ -274,16 +270,17 @@ getComposedAnnotation annIds = case annIds of
 -- TODO:
 -- i. lift/lower data segment.
 -- ii. lift/lower annotation namespaces
-contextualizeFunction :: MVar Value -> Value -> Interpretation Value
-contextualizeFunction selfMV (VFunction (f,cl,tg)) =
-  return $ VFunction . (, cl, tg) $ \x -> do
+contextualizeFunction :: MVar Value -> (Value, MemberQualifier)
+                      -> Interpretation (Value, MemberQualifier)
+contextualizeFunction selfMV (VFunction (f,cl,tg), mq) =
+  return . (, mq) . VFunction . (, cl, tg) $ \x -> do
     (bindings, selfBinding) <- liftCollection
-    result <- f x >>= return . contextualizeFunction selfMV
+    result <- f x >>= contextualizeFunction selfMV . (, MemImmut) >>= return . fst
     lowerCollection bindings selfBinding
     return result
 
   where
-    liftCollection = liftIO $ readMVar selfMV >>= \case
+    liftCollection = liftIO (readMVar selfMV) >>= \case
       selfV@(VCollection (_, Collection (CollectionNamespace cns _) _ _)) -> do
         insertE annotationSelfId $ IVal selfV
         bindings <- bindMembers cns
@@ -292,12 +289,12 @@ contextualizeFunction selfMV (VFunction (f,cl,tg)) =
       _ -> throwE $ RunTimeInterpretationError "Invalid self value for a collection"
 
     lowerCollection bindings (selfId, selfEntry) = do
-      removeE selfId selfEntry
+      void $ removeE selfId selfEntry ()
       cns <- unbindMembers bindings
       void $ liftIO $ modifyMVar_ selfMV
-        $ \(VCollection (_,c)) -> VCollection (selfMV, rebuildNamespace c cns)
+        $ \(VCollection (_,c)) -> return $ VCollection (selfMV, rebuildNamespace c cns)
 
-    rebuildNamespace (Collection (CollectionNamespace cns ans) ds cId) ncns =
+    rebuildNamespace (Collection (CollectionNamespace _ ans) ds cId) ncns =
       Collection (CollectionNamespace ncns ans) ds cId
 
-contextualizeFunction _ v = v
+contextualizeFunction _ vq = return vq
