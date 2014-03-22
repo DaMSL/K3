@@ -267,6 +267,10 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
+inline (tag &&& children -> (ELambda arg, [body])) = do
+    let fvs = map text . L.delete arg $ freeVariables body
+    body' <- reify RReturn body
+    return (empty, list fvs <+> parens (text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -274,6 +278,9 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
         (tag -> EProject _) -> do
             (pe, pv) <- inline f
             return (ae PL.<//> pe, pv <> parens av)
+        (tag -> ELambda _) -> do
+            (fe, fv) <- inline f
+            return (ae PL.<//> fe, fv <> parens av)
         _ -> throwE $ CPPGenE $ "Invalid Function Form " ++ show f
 inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a])), v])) = do
     (te, tv) <- inline t
