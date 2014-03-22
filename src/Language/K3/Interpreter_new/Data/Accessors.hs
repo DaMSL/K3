@@ -83,6 +83,14 @@ bindMembers mems = mapMembers pushMember mems
         envEntry (v, MemImmut) = return $ IVal v
         envEntry (v, MemMut)   = liftIO (newMVar v) >>= return . MVal
 
+refreshEnvMembers :: NamedMembers Value -> Interpretation ()
+refreshEnvMembers mems = mapMembers_ refreshMember mems
+  where refreshMember k vq = do
+          entry <- envEntry vq
+          modifyE $ replaceEnv k entry
+        envEntry (v, MemImmut) = return $ IVal v
+        envEntry (v, MemMut)   = liftIO (newMVar v) >>= return . MVal
+
 unbindMembers :: NamedBindings (IEnvEntry Value) -> Interpretation (NamedMembers Value)
 unbindMembers bindings = mapBindings popMember bindings
   where popMember k entry = do
@@ -118,6 +126,20 @@ replaceEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . maybe (
   where replace env [] = HT.insert env n [v]
         replace env l  = HT.insert env n (v:tail l)
 
+-- | Adds all bindings from the source environment to the destination environment.
+--   All bindings in the source are accessible prior to those in the destination during lookup
+mergeEnv :: IEnvironment Value -> IEnvironment Value -> Interpretation (IEnvironment Value)
+mergeEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> insertEnvIO k v a2) a vl) dest src
+  where insertEnvIO n v env = HT.lookup env n >>= HT.insert env n . (maybe [v] (v:)) >> return env
+
+-- | Removes all bindings from the source environment if they are present in the destination.
+--   This is the inverse of the merge operation above.
+pruneEnv :: IEnvironment Value -> IEnvironment Value -> Interpretation (IEnvironment Value)
+pruneEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> removeEnvIO k v a2) a vl) dest src
+  where removeEnvIO n v env = HT.lookup env n >>= maybe (return ()) (remove n v env) >> return env
+        remove n v env l = 
+          let nl = delete v l
+          in if null nl then HT.delete env n else HT.insert env n nl
 
 {- State and result accessors -}
 
@@ -238,6 +260,14 @@ removeE n v r = modifyE (removeEnv n v) >> return r
 -- | Environment binding replacement.
 replaceE :: Identifier -> IEnvEntry Value -> Interpretation ()
 replaceE n v = modifyE $ replaceEnv n v
+
+-- | Bulk environment binding insertion.
+mergeE :: IEnvironment Value -> Interpretation ()
+mergeE env = modifyE $ mergeEnv env 
+
+-- | Bulk environment binding removal.
+pruneE :: IEnvironment Value -> Interpretation ()
+pruneE env = modifyE $ pruneEnv env
 
 -- | Annotation environment helpers.
 lookupADef :: Identifier -> Interpretation (NamedMembers Value)
