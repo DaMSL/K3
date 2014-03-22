@@ -95,6 +95,7 @@ library
         Language.K3.Interpreter_new.Values,
         Language.K3.Interpreter_new.Utils,
         Language.K3.Interpreter_new.Dataspace,
+        Language.K3.Interpreter_new.Collection,
         Language.K3.Runtime.Common,
         Language.K3.Runtime.Dataspace,
         Language.K3.Runtime.FileDataspace,

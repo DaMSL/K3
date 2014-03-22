@@ -4,6 +4,7 @@
 module Language.K3.Interpreter_new.Data.Accessors where
 
 import Control.Applicative
+import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
@@ -11,6 +12,7 @@ import Control.Monad.Writer
 import Data.List
 import Data.Maybe
 import qualified Data.HashTable.IO as HT 
+import qualified Data.Map          as Map
 
 import System.Mem.StableName
 
@@ -27,15 +29,95 @@ vunit = VTuple []
 vfun :: IFunction -> Interpretation Value
 vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
 
-{- Value and environment accessors -}
+{- Entity tag accessors -}
 memEntTag :: a -> Interpretation EntityTag
 memEntTag a = liftIO (makeStableName a >>= return . MemEntTag)
+
+
+{- Named bindings and members operations -}
+emptyBindings :: NamedBindings a
+emptyBindings = Map.empty
+
+lookupBinding :: Identifier -> NamedBindings a -> Maybe a
+lookupBinding = Map.lookup
+
+insertBinding :: Identifier -> a -> NamedBindings a -> NamedBindings a
+insertBinding = Map.insert
+
+foldBindings :: (Monad m) => (a -> Identifier -> b -> m a) -> a -> NamedBindings b -> m a
+foldBindings f z bindings = Map.foldlWithKey chainAcc (return z) bindings
+  where chainAcc macc n v = macc >>= \acc -> f acc n v
+
+mapBindings :: (Monad m) => (Identifier -> a -> m b) -> NamedBindings a -> m (NamedBindings b)
+mapBindings f bindings = foldBindings appendAcc emptyBindings bindings
+  where appendAcc acc k v = f k v >>= \nv -> return $ insertBinding k nv acc 
+
+mapBindings_ :: (Monad m) => (Identifier -> a -> m b) -> NamedBindings a -> m ()
+mapBindings_ f bindings = foldBindings chainF () bindings
+  where chainF _ k v = f k v >>= const (return ())
+
+emptyMembers :: NamedMembers Value
+emptyMembers = Map.empty
+
+lookupMember :: Identifier -> NamedMembers Value -> Maybe (Value, MemberQualifier)
+lookupMember = lookupBinding
+
+insertMember :: Identifier -> (Value, MemberQualifier) -> NamedMembers Value -> NamedMembers Value
+insertMember = insertBinding
+
+foldMembers :: (Monad m) => (a -> Identifier -> (Value, MemberQualifier) -> m a) -> a -> NamedMembers Value -> m a
+foldMembers f z mems = foldBindings f z mems
+
+mapMembers :: (Monad m) => (Identifier -> (Value, MemberQualifier) -> m a) -> NamedMembers Value -> m (NamedBindings a)
+mapMembers f mems = mapBindings f mems
+
+mapMembers_ :: (Monad m) => (Identifier -> (Value, MemberQualifier) -> m a) -> NamedMembers Value -> m ()
+mapMembers_ f mems = mapBindings_ f mems
+
+bindMembers :: NamedMembers Value -> Interpretation (NamedBindings (IEnvEntry Value))
+bindMembers mems = mapMembers pushMember mems
+  where pushMember k vq = do
+          entry <- envEntry vq
+          void $ modifyE $ insertEnv k entry
+          return entry
+        envEntry (v, MemImmut) = return $ IVal v
+        envEntry (v, MemMut)   = liftIO (newMVar v) >>= return . MVal
+
+unbindMembers :: NamedBindings (IEnvEntry Value) -> Interpretation (NamedMembers Value)
+unbindMembers bindings = mapBindings popMember bindings
+  where popMember k entry = do
+          void $ modifyE $ removeEnv k entry
+          case entry of 
+            IVal v  -> return (v, MemImmut)
+            MVal mv -> liftIO (readMVar mv) >>= return . (, MemMut)
+
+
+{- Environment accessors -}
+emptyEnvIO :: IO (IEnvironment Value)
+emptyEnvIO = HT.new
 
 emptyEnv :: Interpretation (IEnvironment Value)
 emptyEnv = liftIO emptyEnvIO
 
-emptyEnvIO :: IO (IEnvironment Value)
-emptyEnvIO = HT.new
+chainEnv :: (IEnvironment Value -> Interpretation ()) -> IEnvironment Value
+         -> Interpretation (IEnvironment Value)
+chainEnv f env = f env >>= const (return env)
+
+insertEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
+          -> Interpretation (IEnvironment Value)
+insertEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . HT.insert env n . (maybe [v] (v:)))
+
+removeEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
+          -> Interpretation (IEnvironment Value)
+removeEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . maybe (return ()) (remove env))
+  where remove env (delete v -> nl) = if null nl then HT.delete env n else HT.insert env n nl
+
+replaceEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
+           -> Interpretation (IEnvironment Value)
+replaceEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . maybe (return ()) (replace env))
+  where replace env [] = HT.insert env n [v]
+        replace env l  = HT.insert env n (v:tail l)
+
 
 {- State and result accessors -}
 
@@ -145,19 +227,17 @@ lookupE su n = get >>= \s -> liftIO (HT.lookup (getEnv s) n)
 modifyE :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> Interpretation ()
 modifyE f = get >>= modifyStateEnv f >>= put
 
+-- | Environment binding insertion
+insertE :: Identifier -> IEnvEntry Value -> Interpretation()
+insertE n v = modifyE $ insertEnv n v
+
 -- | Environment binding removal
-removeE :: (Identifier, IEnvEntry Value) -> a -> Interpretation a
-removeE (n,v) r = modifyE (liftIO . replaceEnv) >> return r
-  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (removeBinding env) >> return env
-        removeBinding env (delete v -> nl) = 
-          if null nl then HT.delete env n else HT.insert env n nl  
+removeE :: Identifier -> IEnvEntry Value -> a -> Interpretation a
+removeE n v r = modifyE (removeEnv n v) >> return r
 
 -- | Environment binding replacement.
 replaceE :: Identifier -> IEnvEntry Value -> Interpretation ()
-replaceE n v = modifyE $ liftIO . replaceEnv
-  where replaceEnv env = HT.lookup env n >>= maybe (return ()) (replaceBinding env) >> return env
-        replaceBinding env [] = HT.insert env n [v]
-        replaceBinding env l  = HT.insert env n (v:tail l)
+replaceE n v = modifyE $ replaceEnv n v
 
 -- | Annotation environment helpers.
 lookupADef :: Identifier -> Interpretation (NamedMembers Value)

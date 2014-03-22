@@ -139,12 +139,12 @@ type CEmptyConstructor v = () -> Interpretation Value
 --   a collection populated with those values.
 type CInitialConstructor v = [v] -> Interpretation Value
 
+-- | An emplacing constructor that takes a dataspace, and injects it into a new collection.
+type CEmplaceConstructor v = CollectionDataspace v -> Interpretation Value
+
 -- | A copy constructor that takes a collection, copies its mutable fields,
 --   and rebinds its member functions to lift/lower bindings to/from the new collection.
 type CCopyConstructor v = Collection v -> Interpretation Value
-
--- | An emplacing constructor that takes a dataspace, and injects it into a new collection.
-type CEmplaceConstructor v = CollectionDataspace v -> Interpretation Value
 
 -- | Annotation environment, for lifted attributes. This contains two mappings:
 --  i. annotation ids => lifted attribute ids, lifted attribute value
