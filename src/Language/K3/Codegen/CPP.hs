@@ -267,10 +267,16 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
-inline (tag &&& children -> (ELambda arg, [body])) = do
+inline e@(tag &&& children -> (ELambda arg, [body])) = do
+    (ta, tr) <- canonicalType e >>= \case
+        (tag &&& children -> (TFunction, [ta, tr])) -> do
+            ta' <- cType ta
+            tr' <- cType tr
+            return (ta', tr')
+        _ -> throwE $ CPPGenE "Invalid Function Form"
     let fvs = map text . L.delete arg $ freeVariables body
     body' <- reify RReturn body
-    return (empty, list fvs <+> parens (text arg) <+> hangBrace body')
+    return (empty, list fvs <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
