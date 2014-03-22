@@ -228,7 +228,7 @@ modifyE :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> Interp
 modifyE f = get >>= modifyStateEnv f >>= put
 
 -- | Environment binding insertion
-insertE :: Identifier -> IEnvEntry Value -> Interpretation()
+insertE :: Identifier -> IEnvEntry Value -> Interpretation ()
 insertE n v = modifyE $ insertEnv n v
 
 -- | Environment binding removal
