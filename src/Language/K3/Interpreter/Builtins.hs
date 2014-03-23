@@ -8,8 +8,6 @@ module Language.K3.Interpreter.Builtins where
 import Control.Concurrent.MVar
 import Control.Monad.State
 import Data.List
-import Debug.Trace
-import System.Mem.StableName
 import System.Random
 
 import Language.K3.Core.Annotation
@@ -29,7 +27,7 @@ import Language.K3.Runtime.Dataspace
 {- Built-in functions -}
 
 builtin :: Identifier -> K3 Type -> Interpretation ()
-builtin n t = genBuiltin n t >>= modifyE . (:) . (n,)
+builtin n t = genBuiltin n t >>= insertE n . IVal
 
 genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
@@ -120,7 +118,8 @@ genBuiltin "hash" _ = vfun $ \v -> valueHash v
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
   vfun $ \(VInt upper) ->
-    initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
+    initialAnnotatedCollection "Collection"
+      $ map (\i -> VRecord (insertBinding "i" (VInt i) $ emptyBindings)) [0..(upper-1)]
 
 -- int_of_real :: int -> real
 genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
@@ -135,9 +134,9 @@ genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
   return $ VInt $ toInt $ parseString s
   where parseString s = foldl' readChar [0] s
-        readChar xs '-'    = 0:xs
+        readChar xs '-'   = 0:xs
         readChar (x:xs) n = (x*10 + read [n]):xs
-        readChar _ _       = error "Bad sql date string"
+        readChar _ _      = error "Bad sql date string"
         toInt [y,m,d] = y*10000 + m*100 + d
         toInt _       = error "Bad sql date format"
 
@@ -161,7 +160,7 @@ registerNotifier n =
           liftEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
-        targetOfValue (VTuple [VTrigger (m, _), VAddress addr]) = (addr, m, vunit)
+        targetOfValue (VTuple [VTrigger (m, _, _), VAddress addr]) = (addr, m, vunit)
         targetOfValue _ = error "Invalid notifier target"
 
 
@@ -218,54 +217,36 @@ builtinLiftedAttribute annId n _ _ =
     copy = copyCollection
 
     -- | Collection accessor implementation
-    peekFn = valWithCollection $ \_ (Collection _ ds _) -> do 
+    peekFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> do
       inner_val <- peekDS ds
       return $ VOption inner_val
 
     -- | Collection modifier implementation
-    insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
-    deleteFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (deleteCollection el)
-    updateFn = valWithCollectionMV $ \old cmv -> vfun $ \new -> modifyCollection cmv (updateCollection old new)
+    insertFn = vfun $ \v -> modifySelf $ \selfMV (Collection ns ds cId) -> do
+      new_ds <- insertDS ds v
+      return $ (VCollection (selfMV, Collection ns new_ds cId), vunit)
 
-    -- BREAKING EXCEPTION SAFETY
-    modifyCollection :: MVar (Collection Value) 
-                     -> (Collection Value -> Interpretation (Collection Value))
-                     -> Interpretation Value
-    --TODO modifyMVar_ function has to be over IO
-    modifyCollection cmv f = do
-        old_col <- liftIO $ readMVar cmv
-        result <- f old_col
-        --liftIO $ putMVar cmv result
-        liftIO $ modifyMVar_ cmv (const $ return result)
-        return vunit
-
-    -- TODO move wrapping / unwrapping DataSpace into modifyCollection?
-    insertCollection :: Value -> Collection (Value) -> Interpretation (Collection Value)
-    insertCollection v  (Collection ns ds extId) = do
-        new_ds <- insertDS ds v
-        return $ Collection ns new_ds extId
-
-    deleteCollection v    (Collection ns ds extId) = do
-        new_ds <- deleteDS v ds
-        return $ Collection ns new_ds extId
-
-    updateCollection v v' (Collection ns ds extId) = do
-        new_ds <- updateDS v v' ds
-        return $ Collection ns new_ds extId
+    deleteFn = vfun $ \v -> modifySelf $ \selfMV (Collection ns ds cId) -> do
+      new_ds <- deleteDS v ds
+      return $ (VCollection (selfMV, Collection ns new_ds cId), vunit)
+    
+    updateFn = vfun $ \old -> vfun $ \new -> modifySelf $ \selfMV (Collection ns ds cId) -> do
+      new_ds <- updateDS old new ds
+      return $ (VCollection (selfMV, Collection ns new_ds cId), vunit)
 
     -- | Collection effector implementation
-    iterateFn = valWithCollection $ \f (Collection _ ds _) -> 
+    iterateFn = vfun $ \f -> withSelf $ \(Collection _ ds _) ->
       flip (matchFunction $ funArgError "iterate") f $
       \f' -> mapDS_ (withClosure f') ds >> return vunit
 
     -- | Collection transformer implementation
-    binaryCollectionFn fnName binaryDSFn = valWithCollection $ \other (Collection ns ds extId) ->
-      flip (matchCollection collectionError) other $ 
-        \(Collection _ ds' extId') ->
-          if extId /= extId' then typeMismatchError fnName
-          else binaryDSFn ns extId ds ds'
+    binaryCollectionFn fnName binaryDSFn = vfun $ \other -> withSelf $ \(Collection ns ds cId) ->
+      flip (matchCollection collectionError) (IVal other) $
+        \(Collection _ ds' cId') -> 
+          if cId /= cId' then typeMismatchError fnName
+          else binaryDSFn ns cId ds ds'
 
-    injectFn binaryDSFn ns extId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds extId
+    injectFn binaryDSFn ns cId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds cId
     
     combineFn    = binaryCollectionFn "combine"    $ injectFn combineDS
     isSubsetOfFn = binaryCollectionFn "isSubsetOf" $ (\_ _ ds ds' -> isSubsetOfDS ds ds' >>= return . VBool)
@@ -273,82 +254,77 @@ builtinLiftedAttribute annId n _ _ =
     intersectFn  = binaryCollectionFn "intersect"  $ injectFn intersectDS
     differenceFn = binaryCollectionFn "difference" $ injectFn differenceDS
 
-    splitFn = valWithCollection $ \_ (Collection ns ds extId) -> do
+    splitFn = vfun $ \_ -> withSelf $ \(Collection ns ds cId) -> do
         (l, r) <- splitDS ds
-        lc <- copy (Collection ns l extId)
-        rc <- copy (Collection ns r extId)
+        lc <- copy (Collection ns l cId)
+        rc <- copy (Collection ns r cId)
         return $ VTuple [lc, rc]
     
     -- Pass in the namespace
-    mapFn = valWithCollection $ \f (Collection ns ds ext) ->
+    mapFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
       flip (matchFunction $ funArgError "map") f $ 
         \f'  -> mapDS (withClosure f') ds >>= 
-        \ds' -> copy (Collection ns ds' ext)
+        \ds' -> copy (Collection ns ds' cId)
 
-    filterFn = valWithCollection $ \f (Collection ns ds extId) ->
+    filterFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
       flip (matchFunction $ funArgError "filter") f $
         \f'  -> filterDS (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
-        \ds' -> copy (Collection ns ds' extId)
+        \ds' -> copy (Collection ns ds' cId)
 
-    foldFn = valWithCollection $ \f (Collection _ ds _) ->
+    foldFn = vfun $ \f -> vfun $ \accInit -> withSelf $ \(Collection _ ds _) ->
       flip (matchFunction $ funArgError "fold") f $
-        \f' -> vfun $ \accInit -> foldDS (curryFoldFn f') accInit ds
+        \f' -> foldDS (curryFoldFn f') accInit ds
 
-    curryFoldFn :: (IFunction, Closure Value, StableName IFunction) -> Value -> Value -> Interpretation Value
+    curryFoldFn :: (IFunction, Closure Value, EntityTag) -> Value -> Value -> Interpretation Value
     curryFoldFn f' acc v = do
       result <- withClosure f' acc
       (matchFunction curryFnError) (flip withClosure v) result
 
     -- TODO: replace assoc lists with a hashmap.
-    groupByFn = valWithCollection heres_the_answer
-      where
-        heres_the_answer :: Value -> Collection Value -> Interpretation Value
-        heres_the_answer gb (Collection ns ds ext) = -- Am I passing the right namespace & stuff to the later collections?
-          flip (matchFunction $ funArgError "group-by partition") gb $ \gb' -> vfun $ \f -> 
-          flip (matchFunction $ funArgError "group-by aggregate") f $ \f' -> vfun $ \accInit ->
-            do
-              new_space <- emptyDS (Just ds)
-              kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
-              -- TODO typecheck that collection
-              copy (Collection ns kvRecords ext)
+    groupByFn = vfun $ \gb -> vfun $ \f -> vfun $ \accInit -> withSelf $ \(Collection ns ds cId) ->
+      flip (matchFunction $ funArgError "group-by partition") gb $ \gb' ->
+      flip (matchFunction $ funArgError "group-by aggregate") f  $ \f'  ->
+        do
+          new_space <- emptyDS (Just ds)
+          kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
+          -- TODO typecheck that collection
+          copy (Collection ns kvRecords cId)
 
     groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value)
-                   => (IFunction, Closure Value, StableName IFunction)
-                   -> (IFunction, Closure Value, StableName IFunction)
+                   => (IFunction, Closure Value, EntityTag)
+                   -> (IFunction, Closure Value, EntityTag)
                    -> Value -> ads -> Value -> Interpretation ads
     groupByElement gb' f' accInit acc v = do
       k <- withClosure gb' v
       look_result <- lookupKV acc k
       case look_result of
         Nothing         -> do
-          val <- curryFoldFn f' accInit v 
-          --tmp_ds <- emptyDS ()
-          tmp_ds <- emptyDS (Just acc)
-          tmp_ds <- insertKV tmp_ds k val
+          val    <- curryFoldFn f' accInit v 
+          tmp_ds <- emptyDS (Just acc) >>= \ds -> insertKV ds k val
           combineDS acc tmp_ds
         Just partialAcc -> do 
           new_val <- curryFoldFn f' partialAcc v
           replaceKV acc k new_val
 
-    extFn = valWithCollection $ \f (Collection _ ds _) -> 
+    extFn = vfun $ \f -> withSelf $ \(Collection _ ds _) -> 
       flip (matchFunction $ funArgError "ext") f $ 
       \f' -> do
-            val_ds <- mapDS (withClosure f') ds
-            first_subcol <- peekDS val_ds
-            case first_subcol of
-              Nothing -> extError -- Maybe not the right error here
-                                  -- really, I should create an empty VCollection
-                                  -- with the right type (that of f(elem)), but I
-                                  -- don't have a value to copy the type out of
-              Just sub_val -> do
-                val_ds <- deleteDS sub_val val_ds
-                result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
-                maybe (typeMismatchError "ext combine") return result
+                val_ds <- mapDS (withClosure f') ds
+                first_subcol <- peekDS val_ds
+                case first_subcol of
+                  Nothing -> extError -- Maybe not the right error here
+                                      -- really, I should create an empty VCollection
+                                      -- with the right type (that of f(elem)), but I
+                                      -- don't have a value to copy the type out of
+                  Just sub_val -> do
+                    val_ds2 <- deleteDS sub_val val_ds
+                    result  <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds2
+                    maybe (typeMismatchError "ext combine") return result
 
-    sortFn = valWithCollection $ \f (Collection ns ds extId) ->
+    sortFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
       flip (matchFunction $ funArgError "sort") f $ 
         \f'  -> sortDS (sortResultAsOrdering f') ds >>= 
-        \ds' -> copy (Collection ns ds' extId)
+        \ds' -> copy (Collection ns ds' cId)
 
     sortResultAsOrdering (f, cl, sn) = \v1 v2 -> do
         f2V  <- withClosure (f, cl, sn) v1
@@ -359,17 +335,16 @@ builtinLiftedAttribute annId n _ _ =
                                    | otherwise = return GT
             intAsOrdering _        = throwE $ RunTimeTypeError "Invalid sort comparator result"
 
-    memberFn = valWithCollection $ \el (Collection _ ds _) -> memberDS el ds >>= return . VBool
+    memberFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> memberDS el ds >>= return . VBool
 
-    minFn = valWithCollection $ \_ (Collection _ ds _) -> minDS ds >>= return . VOption
-    maxFn = valWithCollection $ \_ (Collection _ ds _) -> maxDS ds >>= return . VOption
+    minFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> minDS ds >>= return . VOption
+    maxFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> maxDS ds >>= return . VOption
 
-    lowerBoundFn = valWithCollection $ \el (Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption
-    upperBoundFn = valWithCollection $ \el (Collection _ ds _) -> upperBoundDS el ds >>= return . VOption
+    lowerBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption
+    upperBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> upperBoundDS el ds >>= return . VOption
 
-    sliceFn = valWithCollection $ 
-      \lowerEl (Collection ns ds extId) -> vfun $ \upperEl -> 
-        sliceDS lowerEl upperEl ds >>= \nds -> copy $ Collection ns nds extId
+    sliceFn = vfun $ \lowerEl -> vfun $ \upperEl -> withSelf $ \(Collection ns ds cId) -> 
+        sliceDS lowerEl upperEl ds >>= \nds -> copy $ Collection ns nds cId
 
 
     combine' :: Maybe Value -> Maybe Value -> Interpretation (Maybe Value)
@@ -378,35 +353,53 @@ builtinLiftedAttribute annId n _ _ =
 
     -- TODO: make more efficient by avoiding intermediate MVar construction.
     combine' (Just acc) (Just cv) =
-      flip (matchCollection $ return Nothing) acc $ \(Collection ns1 ds1 extId1) -> 
-      flip (matchCollection $ return Nothing) cv  $ \(Collection _ ds2 extId2) -> 
-      if extId1 /= extId2 then return Nothing
+      flip (matchCollection $ return Nothing) (IVal acc) $ \(Collection ns1 ds1 cId1) -> 
+      flip (matchCollection $ return Nothing) (IVal cv)  $ \(Collection _ ds2 cId2) -> 
+      if cId1 /= cId2 then return Nothing
       else do
         new_ds <- combineDS ds1 ds2
-        copy (Collection ns1 new_ds extId1) >>= return . Just
+        copy (Collection ns1 new_ds cId1) >>= return . Just
 
 
     -- | Collection implementation helpers.
-    withClosure :: (IFunction, Closure Value, StableName IFunction) -> Value -> Interpretation Value
-    withClosure (f, cl, _) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
 
-    valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Interpretation Value
-    valWithCollection f = vfun $ \arg -> 
-      lookupE Nothing annotationSelfId >>= matchCollection collectionError (f arg)
+    withClosure :: (IFunction, Closure Value, EntityTag) -> Value -> Interpretation Value
+    withClosure (f, cl, _) arg = mergeE cl >> f arg >>= \r -> pruneE cl >> return r
 
-    valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Interpretation Value
-    valWithCollectionMV f = vfun $ \arg -> 
-      lookupE Nothing annotationSelfId >>= matchCollectionMV collectionError (f arg)
+    withSelf :: (Collection Value -> Interpretation Value) -> Interpretation Value
+    withSelf f = lookupE Nothing annotationSelfId >>= matchCollection collectionError f
 
-    matchCollection :: Interpretation a -> (Collection Value -> Interpretation a) -> Value -> Interpretation a
-    matchCollection _ f (VCollection cmv) = liftIO (readMVar cmv) >>= f
+    -- | Modifies the collection currently referenced by the self keyword with the given
+    --   function, and rebinds all collection components with the function's result. 
+    modifySelf :: (MVar Value -> Collection Value -> Interpretation (Value, Value)) -> Interpretation Value
+    modifySelf f = lookupE Nothing annotationSelfId >>= matchSelf collectionError modifySMV 
+      where modifySMV selfMV c = do
+              (nSelfV, r) <- f selfMV c
+              void $ liftIO (modifyMVar_ selfMV $ const $ return nSelfV)
+              void $ rebindSelf nSelfV
+              return r
+
+    -- | Refresh components of a collection bound in the environment.
+    rebindSelf :: Value -> Interpretation ()
+    rebindSelf v@(VCollection (_, c)) = do
+      void $ replaceE annotationSelfId (IVal v)
+      refreshEnvMembers (collectionNS (namespace c))
+
+    rebindSelf _ = throwE $ RunTimeInterpretationError "Invalid collection when rebinding self"
+
+    matchCollection :: Interpretation a
+                    -> (Collection Value -> Interpretation a) -> IEnvEntry Value
+                    -> Interpretation a
+    matchCollection _ f (IVal (VCollection (_,c))) = f c
     matchCollection err _  _ =  err
 
-    matchCollectionMV :: Interpretation a -> (MVar (Collection Value) -> Interpretation a) -> Value -> Interpretation a
-    matchCollectionMV _ f (VCollection cmv) = f cmv
-    matchCollectionMV err _ _ = err
+    matchSelf :: Interpretation a
+              -> (MVar Value -> Collection Value -> Interpretation a) -> IEnvEntry Value
+              -> Interpretation a
+    matchSelf _ f (IVal (VCollection (s,c))) = f s c
+    matchSelf err _ _ = err  
 
-    matchFunction :: a -> ((IFunction, Closure Value, StableName IFunction) -> a) -> Value -> a
+    matchFunction :: a -> ((IFunction, Closure Value, EntityTag) -> a) -> Value -> a
     matchFunction _ f (VFunction f') = f f'
     matchFunction err _ _ = err
 

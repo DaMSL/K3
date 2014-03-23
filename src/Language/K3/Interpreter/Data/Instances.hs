@@ -5,7 +5,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 
-module Language.K3.Interpreter_new.Data.Instances where
+module Language.K3.Interpreter.Data.Instances where
 
 import qualified Data.Map as Map
 
@@ -15,7 +15,7 @@ import System.Mem.StableName
 import Text.Read hiding ( get, lift )
 
 import Language.K3.Core.Common
-import Language.K3.Interpreter_new.Data.Types
+import Language.K3.Interpreter.Data.Types
 import Language.K3.Runtime.FileDataspace
 import Language.K3.Utils.Pretty
 

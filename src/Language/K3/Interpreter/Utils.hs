@@ -8,11 +8,12 @@ module Language.K3.Interpreter.Utils where
 
 import Control.Applicative
 import Control.Arrow
+import Control.Concurrent.MVar
 import Control.Monad.State
 
 import Data.Function
 import Data.List
-import Data.Tree
+import qualified Data.HashTable.IO as HT 
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -20,7 +21,6 @@ import Language.K3.Core.Type
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
-import Language.K3.Interpreter.Values
 
 import Language.K3.Runtime.Engine
 
@@ -37,34 +37,73 @@ isFunction (tag -> TFunction) = True
 isFunction (tag &&& children -> (TForall _, [t])) = isFunction t
 isFunction _ = False
 
+
 {- Pretty printing -}
-prettyValue :: Value -> IO String
-prettyValue = packValueSyntax False
 
-prettyResultValue :: Either InterpretationError Value -> IO [String]
-prettyResultValue (Left err)  = return ["Error: " ++ show err]
-prettyResultValue (Right val) = prettyValue val >>= return . (:[]) . ("Value: " ++)
-
-prettyEnv :: IEnvironment Value -> IO [String]
-prettyEnv env = do
-    nWidth   <- return . maximum $ map (length . fst) env
-    bindings <- mapM (prettyEnvEntry nWidth) $ sortBy (on compare fst) env
+prettyIEnvM :: IEnvironment Value -> EngineM Value [String]
+prettyIEnvM env = do
+    nWidth   <- return . maximum . map (length . fst) =<< liftIO (HT.toList env)
+    bindings <- mapM (prettyEnvEntries nWidth) . sortBy (compare `on` fst) =<< liftIO (HT.toList env)
     return $ ["Environment:"] ++ concat bindings 
   where 
-    prettyEnvEntry w (n,v) =
-      prettyValue v >>= return . shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70
+    prettyEnvEntries w (n, eel) = do
+      sl <- mapM prettyEnvEntry eel
+      return . concat $ map (shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70) sl
+
+    prettyEnvEntry (IVal v)  = return $ pretty v
+    prettyEnvEntry (MVal mv) = liftIO (readMVar mv) >>= return . pretty
 
     prettyName w n    = (suffixPadTo w n) ++ " => "
     suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
     prefixPadTo len n = replicate (max (len - length n) 0) ' ' ++ n
 
-prettyIResult :: IResult Value -> EngineM Value [String]
-prettyIResult ((res, st), _) =
-  liftIO ((++) <$> prettyResultValue res <*> prettyEnv (getEnv st))
+prettyIStateM :: IState -> EngineM Value [String]
+prettyIStateM st = do
+  envLines <- prettyIEnvM $ getEnv st
+  return $ ["Environment:"] ++ (indent 2 $ envLines)
+        ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv st)
+        ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv st)
+        ++ ["Aliases:"]     ++ (indent 2 $ lines $ show $ getProxyStack st)
 
-showIResult :: IResult Value -> EngineM Value String
-showIResult r = prettyIResult r >>= return . boxToString
+prettyIResultM :: IResult Value -> EngineM Value [String]
+prettyIResultM ((res, st), _) =
+  return . shift (showResultValue res) "  " =<< prettyIStateM st 
 
+
+{- Additional show methods -}
+
+showResultValue :: Either InterpretationError Value -> String
+showResultValue (Left err)  = "Error: " ++ show err
+showResultValue (Right val) = "Value: " ++ show val
+
+showTag :: String -> [String] -> [String]
+showTag str l = [str ++ " { "] ++ (indent 2 l) ++ ["}"]
+
+showIEnvTagM :: String -> IEnvironment Value -> EngineM Value [String]
+showIEnvTagM str env = prettyIEnvM env >>= return . showTag str
+
+showIStateTagM :: String -> IState -> EngineM Value [String]
+showIStateTagM str st = prettyIStateM st >>= return . showTag str
+
+showIResultTagM :: String -> IResult Value -> EngineM Value [String]
+showIResultTagM str r = prettyIResultM r >>= return . showTag str
+
+showIEnvM :: IEnvironment Value -> EngineM Value String
+showIEnvM e = prettyIEnvM e >>= return . boxToString
+
+showIStateM :: IState -> EngineM Value String
+showIStateM s = prettyIStateM s >>= return . boxToString
+
+showIResultM :: IResult Value -> EngineM Value String
+showIResultM r = prettyIResultM r >>= return . boxToString
+
+showDispatchM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
+showDispatchM addr name args r =
+    wrap' (pretty args) <$> (showIResultTagM "BEFORE" r >>= return . indent 2)
+  where
+    wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
+                  ++ ["  Args: " ++ arg] 
+                  ++ res ++ ["}"]
 
 {- Debugging helpers -}
 
@@ -72,59 +111,24 @@ debugDecl :: (Show a, Pretty b) => a -> b -> c -> c
 debugDecl n t = _debugI . boxToString $
   [concat ["Declaring ", show n, " : "]] ++ (indent 2 $ prettyLines t)
 
-showState :: String -> IState -> EngineM Value [String]
-showState str st = return $ [str ++ " { "] ++ (indent 2 $ prettyLines st) ++ ["}"]
-
-showResult :: String -> IResult Value -> EngineM Value [String]
-showResult str r = 
-  prettyIResult r >>= return . ([str ++ " { "] ++) . (++ ["}"]) . indent 2
-
-showDispatch :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
-showDispatch addr name args r =
-    wrap' <$> liftIO (prettyValue args)
-         <*> (showResult "BEFORE" r >>= return . indent 2)
-  where
-    wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
-                  ++ ["  Args: " ++ arg] 
-                  ++ res ++ ["}"]
-
-logState :: String -> Maybe Address -> IState -> EngineM Value ()
-logState tag' addr st = do
-    msg <- showState (tag' ++ (maybe "" show $ addr)) st
+logIStateM :: String -> Maybe Address -> IState -> EngineM Value ()
+logIStateM tag' addr st = do
+    msg <- showIStateTagM (tag' ++ (maybe "" show $ addr)) st
     void $ _notice_Dispatch $ boxToString msg
 
-logResult :: String -> Maybe Address -> IResult Value -> EngineM Value ()
-logResult tag' addr r = do
-    msg <- showResult (tag' ++ (maybe "" show $ addr)) r 
+logIResultM :: String -> Maybe Address -> IResult Value -> EngineM Value ()
+logIResultM tag' addr r = do
+    msg <- showIResultTagM (tag' ++ (maybe "" show $ addr)) r 
     void $ _notice_Dispatch $ boxToString msg
 
-logTrigger :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
-logTrigger addr n args r = do
-    msg <- showDispatch addr n args r
+logTriggerM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
+logTriggerM addr n args r = do
+    msg <- showDispatchM addr n args r
     void $ _notice_Dispatch $ boxToString msg
 
-logIState :: Interpretation ()
-logIState = get >>= liftIO . putStrLn . pretty
+logIStateMI :: Interpretation ()
+logIStateMI = get >>= liftEngine . showIStateM >>= liftIO . putStrLn 
 
-logBindPath :: Interpretation ()
-logBindPath = getBindPath >>= void . _notice_BindPath . ("BIND PATH: "++) . show
+logProxyPathI :: Interpretation ()
+logProxyPathI = getProxyPath >>= void . _notice_BindPath . ("BIND PATH: "++) . show
 
-{- Instances -}
-instance Pretty IState where
-  prettyLines istate =
-         ["Environment:"] ++ (indent 2 $ map prettyEnvEntry $ sortBy (on compare fst) (getEnv istate))
-      ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv istate)
-      ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv istate)
-      ++ ["Aliases:"]     ++ (indent 2 $ lines $ show $ getBindStack istate)
-    where
-      prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
-      maxNameLength        = maximum $ map (length . fst) (getEnv istate)
-
-instance (Pretty a) => Pretty (IResult a) where
-    prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st
-
-instance (Pretty a) => Pretty [(Address, IResult a)] where
-    prettyLines l = concatMap (\(x,y) -> [""] ++ prettyLines x ++ (indent 2 $ prettyLines y)) l
-
-instance (Show v) => Show (AEnvironment v) where
-  show (AEnvironment defs _) = show defs

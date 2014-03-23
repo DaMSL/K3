@@ -5,7 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Interpreter_new.Context (
+module Language.K3.Interpreter.Context (
   runInterpretation,
 
   runExpression,
@@ -41,13 +41,13 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
-import Language.K3.Interpreter_new.Data.Types
-import Language.K3.Interpreter_new.Data.Accessors
-import Language.K3.Interpreter_new.Values
-import Language.K3.Interpreter_new.Collection
-import Language.K3.Interpreter_new.Utils
-import Language.K3.Interpreter_new.Builtins
-import Language.K3.Interpreter_new.Evaluation
+import Language.K3.Interpreter.Data.Types
+import Language.K3.Interpreter.Data.Accessors
+import Language.K3.Interpreter.Values
+import Language.K3.Interpreter.Collection
+import Language.K3.Interpreter.Utils
+import Language.K3.Interpreter.Builtins
+import Language.K3.Interpreter.Evaluation
 
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 import Language.K3.Runtime.Dispatch
