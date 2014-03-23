@@ -20,6 +20,9 @@ import Language.K3.Interpreter_new.Data.Types
 import Language.K3.Interpreter_new.Data.Instances ()
 
 import Language.K3.Core.Common
+import Language.K3.Core.Annotation
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
 import Language.K3.Runtime.Engine
 
 {- Constants and simple value constructors. -}
@@ -29,14 +32,53 @@ vunit = VTuple []
 vfun :: IFunction -> Interpretation Value
 vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
 
+valueOfEntry :: IEnvEntry Value -> Interpretation Value
+valueOfEntry = liftIO . valueOfEntryIO 
+
+valueOfEntryOpt :: Maybe (IEnvEntry Value) -> Interpretation (Maybe Value)
+valueOfEntryOpt = liftIO . valueOfEntryOptIO
+
+valueOfEntryIO :: IEnvEntry Value -> IO Value
+valueOfEntryIO (IVal v)  = return v
+valueOfEntryIO (MVal mv) = readMVar mv
+
+valueOfEntryOptIO :: Maybe (IEnvEntry Value) -> IO (Maybe Value)
+valueOfEntryOptIO (Just e) = valueOfEntryIO e >>= return . Just
+valueOfEntryOptIO Nothing  = return Nothing
+
+mkMVal :: Value -> IO (IEnvEntry Value)
+mkMVal v = newMVar v >>= return . MVal
+
+mkIVal :: Value -> IO (IEnvEntry Value)
+mkIVal v = return $ IVal v
+
+entryOfValueE :: Maybe (Annotation Expression) -> Value -> Interpretation (IEnvEntry Value)
+entryOfValueE (Just EMutable)   = liftIO . mkMVal
+entryOfValueE (Just EImmutable) = liftIO . mkIVal
+entryOfValueE Nothing           = liftIO . mkIVal
+entryOfValueE _                 = const $ throwE $ RunTimeTypeError "Invalid qualifier annotation"
+
+entryOfValueT :: Maybe (Annotation Type) -> Value -> Interpretation (IEnvEntry Value)
+entryOfValueT (Just TMutable)   = liftIO . mkMVal
+entryOfValueT (Just TImmutable) = liftIO . mkIVal
+entryOfValueT Nothing           = liftIO . mkIVal
+entryOfValueT _                 = const $ throwE $ RunTimeTypeError "Invalid qualifier annotation"
+
+
 {- Entity tag accessors -}
 memEntTag :: a -> Interpretation EntityTag
 memEntTag a = liftIO (makeStableName a >>= return . MemEntTag)
 
 
 {- Named bindings and members operations -}
+boundNames :: NamedBindings a -> [Identifier] 
+boundNames = Map.keys
+
 emptyBindings :: NamedBindings a
 emptyBindings = Map.empty
+
+bindingsFromList :: [(Identifier, a)] -> NamedBindings a
+bindingsFromList = Map.fromList
 
 lookupBinding :: Identifier -> NamedBindings a -> Maybe a
 lookupBinding = Map.lookup
@@ -58,6 +100,9 @@ mapBindings_ f bindings = foldBindings chainF () bindings
 
 emptyMembers :: NamedMembers Value
 emptyMembers = Map.empty
+
+membersFromList :: [(Identifier, (Value, MemberQualifier))] -> NamedMembers Value
+membersFromList = bindingsFromList
 
 lookupMember :: Identifier -> NamedMembers Value -> Maybe (Value, MemberQualifier)
 lookupMember = lookupBinding
@@ -107,17 +152,35 @@ emptyEnvIO = HT.new
 emptyEnv :: Interpretation (IEnvironment Value)
 emptyEnv = liftIO emptyEnvIO
 
-chainEnv :: (IEnvironment Value -> Interpretation ()) -> IEnvironment Value
-         -> Interpretation (IEnvironment Value)
+envFromList :: [(Identifier, IEnvEntry Value)] -> Interpretation (IEnvironment Value)
+envFromList l = liftIO (envFromListIO l)
+
+envFromListIO :: [(Identifier, IEnvEntry Value)] -> IO (IEnvironment Value)
+envFromListIO l = emptyEnvIO >>= \env -> foldM (\acc (n,e) -> insertEnvIO n e acc) env l
+
+lookupEnv :: Identifier -> IEnvironment Value -> Interpretation (Maybe (IEnvEntry Value))
+lookupEnv n env = liftIO $ lookupEnvIO n env
+
+lookupEnvIO :: Identifier -> IEnvironment Value -> IO (Maybe (IEnvEntry Value))
+lookupEnvIO n env =
+  HT.lookup env n >>= return . maybe Nothing (\l -> if null l then Nothing else Just $ head l)
+
+chainEnv :: (Monad m) => (IEnvironment Value -> m ()) -> IEnvironment Value -> m (IEnvironment Value)
 chainEnv f env = f env >>= const (return env)
 
 insertEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
           -> Interpretation (IEnvironment Value)
-insertEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . HT.insert env n . (maybe [v] (v:)))
+insertEnv n v env = liftIO (insertEnvIO n v env)
+
+insertEnvIO :: Identifier -> IEnvEntry Value -> IEnvironment Value -> IO (IEnvironment Value)
+insertEnvIO n v = chainEnv (\env -> HT.lookup env n >>= HT.insert env n . (maybe [v] (v:)))
 
 removeEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
           -> Interpretation (IEnvironment Value)
-removeEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . maybe (return ()) (remove env))
+removeEnv n v env = liftIO (removeEnvIO n v env)
+
+removeEnvIO :: Identifier -> IEnvEntry Value -> IEnvironment Value -> IO (IEnvironment Value)
+removeEnvIO n v = chainEnv (\env -> HT.lookup env n >>= maybe (return ()) (remove env))
   where remove env (delete v -> nl) = if null nl then HT.delete env n else HT.insert env n nl
 
 replaceEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
@@ -130,16 +193,18 @@ replaceEnv n v = chainEnv (\env -> liftIO (HT.lookup env n) >>= liftIO . maybe (
 --   All bindings in the source are accessible prior to those in the destination during lookup
 mergeEnv :: IEnvironment Value -> IEnvironment Value -> Interpretation (IEnvironment Value)
 mergeEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> insertEnvIO k v a2) a vl) dest src
-  where insertEnvIO n v env = HT.lookup env n >>= HT.insert env n . (maybe [v] (v:)) >> return env
 
 -- | Removes all bindings from the source environment if they are present in the destination.
 --   This is the inverse of the merge operation above.
 pruneEnv :: IEnvironment Value -> IEnvironment Value -> Interpretation (IEnvironment Value)
 pruneEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> removeEnvIO k v a2) a vl) dest src
-  where removeEnvIO n v env = HT.lookup env n >>= maybe (return ()) (remove n v env) >> return env
-        remove n v env l = 
-          let nl = delete v l
-          in if null nl then HT.delete env n else HT.insert env n nl
+
+foldEnv :: (a -> Identifier -> IEnvEntry Value -> IO a) -> a -> IEnvironment Value -> Interpretation a
+foldEnv f z env = liftIO $ foldEnvIO f z env
+
+foldEnvIO :: (a -> Identifier -> IEnvEntry Value -> IO a) -> a -> IEnvironment Value -> IO a
+foldEnvIO f z env = HT.foldM (\a (k,vl) -> foldM (\a2 v -> f a2 k v) a vl) z env
+
 
 {- State and result accessors -}
 
@@ -164,6 +229,10 @@ annotationState :: AEnvironment Value -> Interpretation IState
 annotationState aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack)
                           <$> emptyEnv <*> emptyStaticEnv
 
+annotationStateIO :: AEnvironment Value -> IO IState
+annotationStateIO aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack)
+                            <$> emptyEnvIO <*> emptyStaticEnvIO
+
 modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
 modifyStateGlobals f (IState g e a s b) = IState (f g) e a s b
 
@@ -177,9 +246,17 @@ modifyStateEnv :: (IEnvironment Value -> Interpretation (IEnvironment Value)) ->
                -> Interpretation IState
 modifyStateEnv f (IState g e a s b) = f e >>= \ne -> return $ IState g ne a s b
 
+modifyStateEnvIO :: (IEnvironment Value -> IO (IEnvironment Value)) -> IState
+                 -> IO IState
+modifyStateEnvIO f (IState g e a s b) = f e >>= \ne -> return $ IState g ne a s b
+
 modifyStateSEnv :: (SEnvironment Value -> Interpretation (SEnvironment Value)) -> IState
                 -> Interpretation IState
 modifyStateSEnv f (IState g e a s b) = f s >>= \ns -> return $ IState g e a ns b
+
+modifyStateSEnvIO :: (SEnvironment Value -> IO (SEnvironment Value)) -> IState
+                  -> IO IState
+modifyStateSEnvIO f (IState g e a s b) = f s >>= \ns -> return $ IState g e a ns b
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -241,8 +318,7 @@ elemE n = get >>= \s -> liftIO (HT.lookup (getEnv s) n) >>= return . maybe False
 
 -- | Environment lookup, with a thrown error if unsuccessful.
 lookupE :: Maybe (Span, UID) -> Identifier -> Interpretation (IEnvEntry Value)
-lookupE su n = get >>= \s -> liftIO (HT.lookup (getEnv s) n)
-                   >>= maybe err (\l -> if l == [] then err else return $ head l)
+lookupE su n = get >>= \s -> lookupEnv n (getEnv s) >>= maybe err return
   where err = throwSE su $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
 -- | Environment modification

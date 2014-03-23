@@ -52,12 +52,30 @@ valueEq a b = valueCompare a b >>= asBool
   where asBool (VInt sgn) = return . VBool $ sgn == 0
         asBool _          = throwE $ RunTimeInterpretationError "Invalid comparison value in equality test"
 
+valueNeq :: Value -> Value -> Interpretation Value
+valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
+
 valueCompare :: Value -> Value -> Interpretation Value
 valueCompare (VOption (Just v))  (VOption (Just v'))  = valueCompare v v'
 valueCompare (VTuple v)          (VTuple v')          = valueListCompare v v' >>= return . VInt
 valueCompare (VRecord v)         (VRecord v')         = namedBindingsCompare v v'
 valueCompare (VCollection (_,v)) (VCollection (_,v')) = collectionCompare v v'
 valueCompare a b = return . VInt . orderingAsInt $ compare a b
+
+valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
+valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
+
+valueLt :: Value -> Value -> Interpretation Value
+valueLt = valueSign $ \sgn -> sgn < 0
+
+valueLte :: Value -> Value -> Interpretation Value
+valueLte = valueSign $ \sgn -> sgn <= 0
+
+valueGt :: Value -> Value -> Interpretation Value
+valueGt = valueSign $ \sgn -> sgn > 0
+
+valueGte :: Value -> Value -> Interpretation Value
+valueGte = valueSign $ \sgn -> sgn >= 0
 
 valueHashWithSalt :: Int -> Value -> Interpretation Value
 valueHashWithSalt salt (VOption (Just v))  = valueHashWithSalt salt v >>= composeHash (salt `hashWithSalt` (0 :: Int)) >>= return . VInt
