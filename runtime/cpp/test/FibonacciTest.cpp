@@ -9,9 +9,11 @@
 
 #include <boost/regex.hpp>
 
-
+#include <xUnit++/xUnit++.h>
 
 namespace K3 {
+
+int final = -1;
 
 using std::cout;
 using std::endl;
@@ -58,7 +60,7 @@ void fibonacci(shared_ptr<Engine> engine, string message_contents) {
 
 void result(shared_ptr<Engine> engine, string message_contents) {
   int n = std::stoi(message_contents);
-  cout << "Fibonacci Result: " << n << endl;
+  final = n;
 }
 
 // MP setup
@@ -91,14 +93,8 @@ shared_ptr<Engine> buildEngine() {
 
 }
 
-
-int main(int argc, char * argv[]) {
-  if (argc < 2) {
-    std::cout << "usage: " << argv[0] << " num" << std::endl;
-    return -1;
-  }
-
-  std::string num = argv[1];
+FACT("The 6th fibonacci number = 8") {
+  std::string num = "6";
   auto engine = K3::buildEngine();
   auto mp = K3::buildMP(engine);
   K3::Message m = K3::Message(K3::defaultAddress, "start", num);
@@ -106,5 +102,7 @@ int main(int argc, char * argv[]) {
 
   // Run Engine
   engine->runEngine(mp);
-  return 0;
+
+  // Check the result (the 6th fib number should = 8)
+  Assert.Equal(8, K3::final);
 }
