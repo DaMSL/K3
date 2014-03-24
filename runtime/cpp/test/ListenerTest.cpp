@@ -11,7 +11,7 @@ using NContext = K3::Asio::NContext;
 // Utils
 void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 
-shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, shared_ptr<SinglePeerQueue> qs) {
+shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, shared_ptr<MessageQueues> qs) {
   // Setup context and Queues
   Identifier id = "id";
   // Setup network IOHandle
@@ -74,10 +74,11 @@ int main() {
   using std::cout;
   using std::endl;
   using std::shared_ptr;
+  using std::make_shared;
  
   // Create (start) a Listener
   K3::Address me = K3::defaultAddress;
-  shared_ptr<K3::SinglePeerQueue> qs = shared_ptr<K3::SinglePeerQueue>(new K3::SinglePeerQueue(me));
+  shared_ptr<K3::MessageQueues> qs = make_shared<K3::SinglePeerQueue>(K3::SinglePeerQueue(me));
   shared_ptr<K3::Net::NContext> listener_context = shared_ptr<K3::Net::NContext>(new K3::Net::NContext());
   shared_ptr<K3::Net::Listener> listener = K3::setup(listener_context, me, qs);
 
@@ -87,18 +88,18 @@ int main() {
 
   // Give the listener 1 second to finish its reads
   boost::this_thread::sleep_for( boost::chrono::seconds(1) );
-  cout << "Cleaning up:" << endl;
+  cout << "Cleaning up threads:" << endl;
   listener_context->service->stop();
   listener_context->service_threads->join_all();
   ep_context->service->stop();
   ep_context->service_threads->join_all();
-
+  cout << "Flushing MessageQueues:" << endl;
   // Make sure messages made it onto the queues
-  // while (qs->size() > 0) {
-  //   K3::Message m = *(qs->dequeue());
-  //   cout << m.payload << endl;
-  // }
-  
+  while (qs->size() > 0) {
+     K3::Message m = *(qs->dequeue());
+     cout << m.contents() << endl;
+  }
+
   cout << "Done" << endl;
   return 0;
 
