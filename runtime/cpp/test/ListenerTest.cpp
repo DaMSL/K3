@@ -10,6 +10,16 @@ using NContext = K3::Asio::NContext;
 
 // Utils
 void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
+void echo_notification(const Address& addr, const Identifier& id, shared_ptr<Value> v) {
+  cout << "------------------------" << endl;
+  cout << "Listener Received a SocketData notification:" << endl;
+  string val = "(No Value Provided)";
+  if (v){
+    val = *v;
+  }
+  cout << addressAsString(addr) << "," << id << "," << val << endl;
+  cout << "------------------------" << endl;
+}
 
 shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, shared_ptr<MessageQueues> qs) {
   // Setup context and Queues
@@ -20,9 +30,11 @@ shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, s
   shared_ptr<NetworkHandle> net_handle = shared_ptr<NetworkHandle>(new NetworkHandle(make_shared<LengthHeaderCodec>(cdec), n_ep));
   // Setup Endpoint
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
-  SendFunctionPtr func = do_nothing;
+  SendFunctionPtr func = echo_notification;
   auto bindings = make_shared<EndpointBindings>(func); 
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(net_handle, buf, bindings));
+  // Add some subscribers:
+  bindings->attachNotifier(EndpointNotification::SocketData ,me, "TestTrigger");
   // Setup Listener Control
   shared_ptr<mutex> m = shared_ptr<mutex>(new mutex());
   shared_ptr<condition_variable> c = shared_ptr<condition_variable>(new condition_variable());
@@ -52,7 +64,7 @@ shared_ptr<Endpoint> write_to_listener(shared_ptr<NContext> context) {
   LengthHeaderCodec cdec = LengthHeaderCodec();
   NetworkHandle net_handle = NetworkHandle(make_shared<LengthHeaderCodec>(cdec), n_conn);
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
-  SendFunctionPtr func = do_nothing;
+  SendFunctionPtr func = echo_notification;
   auto bindings = make_shared<EndpointBindings>(func);
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(make_shared<NetworkHandle>(net_handle), buf, bindings));
   // Run the io_service to establish the connection
