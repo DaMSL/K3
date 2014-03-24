@@ -163,6 +163,12 @@ namespace K3 {
         }
       }
 
+      ~Listener() {
+        if (ctxt_ && thread_) {
+          ctxt_->service_threads->remove_thread(thread_.get());
+        }
+      }
+
     protected:
       shared_ptr<thread> thread_;
       shared_ptr<externally_locked<shared_ptr<ConnectionList>, Listener> > connections_;

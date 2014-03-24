@@ -3,6 +3,10 @@
 #include <Common.hpp>
 #include <Queue.hpp>
 
+#include <xUnit++/xUnit++.h>
+
+using std::atomic_uint;
+std::shared_ptr<atomic_uint> notify_count = std::shared_ptr<atomic_uint>(new atomic_uint(0));
 
 namespace K3 {
 
@@ -10,15 +14,9 @@ using NContext = K3::Asio::NContext;
 
 // Utils
 void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
+
 void echo_notification(const Address& addr, const Identifier& id, shared_ptr<Value> v) {
-  cout << "------------------------" << endl;
-  cout << "Listener Received a SocketData notification:" << endl;
-  string val = "(No Value Provided)";
-  if (v){
-    val = *v;
-  }
-  cout << addressAsString(addr) << "," << id << "," << val << endl;
-  cout << "------------------------" << endl;
+  notify_count->fetch_add(1);
 }
 
 shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, shared_ptr<MessageQueues> qs) {
@@ -54,6 +52,7 @@ shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, s
 
   return l;
 }
+
 shared_ptr<Endpoint> write_to_listener(shared_ptr<NContext> context) {
   // Setup context
   Identifier id = "id";
@@ -82,38 +81,42 @@ shared_ptr<Endpoint> write_to_listener(shared_ptr<NContext> context) {
 }
 
 };
-int main() {
+
+FACT("Send 15 messages from Endpoint to Listener => 15 notifications, 15 messages on queue") {
   using std::cout;
   using std::endl;
   using std::shared_ptr;
   using std::make_shared;
+  using std::string;
  
   // Create (start) a Listener
   K3::Address me = K3::defaultAddress;
   shared_ptr<K3::MessageQueues> qs = make_shared<K3::SinglePeerQueue>(K3::SinglePeerQueue(me));
   shared_ptr<K3::Net::NContext> listener_context = shared_ptr<K3::Net::NContext>(new K3::Net::NContext());
   shared_ptr<K3::Net::Listener> listener = K3::setup(listener_context, me, qs);
-
   // Write to Listener
   shared_ptr<K3::Net::NContext> ep_context = shared_ptr<K3::Net::NContext>(new K3::Net::NContext());
   shared_ptr<K3::Endpoint> ep = K3::write_to_listener(ep_context);
 
   // Give the listener 1 second to finish its reads
   boost::this_thread::sleep_for( boost::chrono::seconds(1) );
-  cout << "Cleaning up threads:" << endl;
   listener_context->service->stop();
   listener_context->service_threads->join_all();
   ep_context->service->stop();
   ep_context->service_threads->join_all();
-  cout << "Flushing MessageQueues:" << endl;
+
   // Make sure messages made it onto the queues
+  int i = 0;
   while (qs->size() > 0) {
      K3::Message m = *(qs->dequeue());
-     cout << m.contents() << endl;
+     string expected = "message_" + std::to_string(i);
+     i++;
+     string actual = m.contents();
+     Assert.Equal(expected, actual);
   }
 
-  cout << "Done" << endl;
-  return 0;
-
+  // Make sure 15 notifications occured
+  int x = *notify_count;
+  Assert.Equal(15, x);
 }
 
