@@ -51,6 +51,28 @@ sendE addr n val = liftEngine $ send addr n val
 
 {- Interpretation -}
 
+-- | Refresh the collection's cached value from its shared (self) value.
+--   This treats the shared value as the authoritative contents.
+syncCollection :: Value -> Interpretation Value
+syncCollection (VCollection (s,_)) =
+  liftIO (readMVar s) >>= \case
+      VCollection (s2,c2) | s == s2 -> return $ VCollection (s, c2) 
+      _ -> throwE $ RunTimeInterpretationError "Invalid cyclic self value"
+syncCollection v = return v
+
+-- | Refreshes a collection's cached value while also modifying a binding.
+syncCollectionE :: Identifier -> IEnvEntry Value -> Value -> Interpretation Value
+syncCollectionE i (IVal _)  v@(VCollection _) = syncCollection v >>= \nv -> replaceE i (IVal nv) >> return nv
+syncCollectionE _ (MVal mv) v@(VCollection _) = syncCollection v >>= \nv -> liftIO (modifyMVar_ mv $ const $ return nv) >> return nv
+syncCollectionE _ _ v = return v
+
+-- | Return a fresh, unshared collection value after synchronization.
+freshenValue :: Value -> Interpretation Value
+freshenValue v@(VCollection _) = syncCollection v >>= \case
+  VCollection (_,c2) -> freshCollection c2
+  _                  -> throwE $ RunTimeInterpretationError "Invalid collection value"
+freshenValue v = return v
+
 -- | Default values for specific types
 defaultValue :: K3 Type -> Interpretation Value
 defaultValue (tag -> TBool)       = return $ VBool False
@@ -201,13 +223,13 @@ binary _ OGeq = comparison valueGte
 -- | Function Application
 binary su OApp = \f x -> do
   f' <- expression f
-  x' <- expression x
+  x' <- expression x >>= freshenValue
 
   case f' of
       VFunction (b, cl, _) -> withClosure cl $ b x'
       _ -> throwSE su $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
 
-  where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> return r
+  where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> freshenValue r
 
 -- | Message Passing
 binary su OSnd = \target x -> do
@@ -245,29 +267,31 @@ expression e_ =
     expr (details -> (EConstant c, _, as)) = constant c as
 
     -- | Interpretation of variable lookups.
-    expr (details -> (EVariable i, _, anns)) = lookupE (spanUid anns) i >>= valueOfEntry
+    expr (details -> (EVariable i, _, anns)) =
+      lookupE (spanUid anns) i >>= \e -> valueOfEntry e >>= syncCollectionE i e 
 
     -- | Interpretation of option type construction expressions.
-    expr (tag &&& children -> (ESome, [x])) = expression x >>= return . VOption . Just
+    expr (tag &&& children -> (ESome, [x])) =
+      expression x >>= freshenValue >>= return . VOption . Just
+    
     expr (details -> (ESome, _, anns)) =
       throwAE anns $ RunTimeTypeError "Invalid Construction of Option"
 
     -- | Interpretation of indirection type construction expressions.
     expr (tag &&& children -> (EIndirect, [x])) = do
-      new_val <- expression x >>= \case
-        VCollection (_,c) -> freshCollection c
-        v                 -> return v
+      new_val <- expression x >>= freshenValue
       (\a b -> VIndirection (a,b)) <$> liftIO (newMVar new_val) <*> memEntTag new_val
 
     expr (details -> (EIndirect, _, anns)) =
       throwAE anns $ RunTimeTypeError "Invalid Construction of Indirection"
 
     -- | Interpretation of tuple construction expressions.
-    expr (tag &&& children -> (ETuple, cs)) = mapM expression cs >>= return . VTuple
+    expr (tag &&& children -> (ETuple, cs)) =
+      mapM (\e -> expression e >>= freshenValue) cs >>= return . VTuple
 
     -- | Interpretation of record construction expressions.
     expr (tag &&& children -> (ERecord is, cs)) =
-      mapM expression cs >>= return . VRecord . bindingsFromList . zip is
+      mapM (\e -> expression e >>= freshenValue) cs >>= return . VRecord . bindingsFromList . zip is
 
     -- | Interpretation of function construction.
     expr (details -> (ELambda i, [b], anns)) =
@@ -294,7 +318,7 @@ expression e_ =
         | otherwise = undefined
 
     -- | Interpretation of Record Projection.
-    expr (details -> (EProject i, [r], anns)) = expression r >>= \case
+    expr (details -> (EProject i, [r], anns)) = expression r >>= syncCollection >>= \case
         VRecord vb -> maybe (unknownField i) return $ lookupBinding i vb
 
         VCollection (_, c) -> do
@@ -312,16 +336,16 @@ expression e_ =
 
     -- | Interpretation of Let-In Constructions.
     expr (tag &&& children -> (ELetIn i, [e, b])) = do
-      entry <- expression e >>= entryOfValueE (e @~ isEQualified)
+      entry <- expression e >>= freshenValue >>= entryOfValueE (e @~ isEQualified)
       insertE i entry >> expression b >>= removeE i entry
-    
+
     expr (details -> (ELetIn _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid LetIn Construction"
 
     -- | Interpretation of Assignment.
     expr (details -> (EAssign i, [e], anns)) = do
       entry <- lookupE (spanUid anns) i
       case entry of 
-        MVal mv -> expression e >>= \v -> liftIO (modifyMVar_ mv $ const return v) >> return v
+        MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const return v) >> return v
         IVal _  -> throwAE anns $ RunTimeInterpretationError "Invalid assignment to an immutable value"
 
     expr (details -> (EAssign _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Assignment"

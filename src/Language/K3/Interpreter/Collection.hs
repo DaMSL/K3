@@ -281,10 +281,13 @@ contextualizeFunction selfMV (VFunction (f,cl,tg), mq) =
 
   where
     liftCollection = liftIO (readMVar selfMV) >>= \case
-      selfV@(VCollection (_, Collection (CollectionNamespace cns _) _ _)) -> do
-        insertE annotationSelfId $ IVal selfV
-        bindings <- bindMembers cns
-        return (bindings, (annotationSelfId, IVal selfV))
+      selfV@(VCollection (s, Collection (CollectionNamespace cns _) _ _)) -> do
+        if s == selfMV
+          then do
+            insertE annotationSelfId $ IVal selfV
+            bindings <- bindMembers cns
+            return (bindings, (annotationSelfId, IVal selfV))
+          else throwE $ RunTimeInterpretationError "Invalid cyclic self value"
 
       _ -> throwE $ RunTimeInterpretationError "Invalid self value for a collection"
 
