@@ -126,9 +126,8 @@ namespace K3 {
       shared_ptr<Message> r;
       tuple<QueueIndex, shared_ptr<Queue> > idxQ = nonEmptyQueue();
       if ( get<1>(idxQ) ) { r = dequeue(idxQ); }
-      else {
-        BOOST_LOG(*this) << "Invalid non-empty queue on dequeue";
-      }
+      
+      // upon failure: return nullptr (Nothing)
       return r;
     }
 

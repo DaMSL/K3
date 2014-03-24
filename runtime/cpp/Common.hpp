@@ -135,6 +135,13 @@ namespace K3 {
   typedef any Literal;
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
+  
+  SystemEnvironment defaultEnvironment() {
+    PeerBootstrap bootstrap = PeerBootstrap();
+    SystemEnvironment s_env = SystemEnvironment();
+    s_env[defaultAddress] = bootstrap;
+    return s_env;
+  }
 
   list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     list<Address> r;
@@ -329,7 +336,7 @@ namespace K3 {
         if (decode_ready()) {
           // Unpack next value
           const char * bytes = buf_->c_str();
-          shared_ptr<Value> result = shared_ptr<Value>(new string(bytes, *next_size_));
+          shared_ptr<Value> result = make_shared<Value>(string(bytes, *next_size_));
           // Setup for next round
           *buf_ = buf_->substr(*next_size_);
           next_size_.reset();

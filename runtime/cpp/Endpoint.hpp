@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include <boost/thread/mutex.hpp>
 #include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
 

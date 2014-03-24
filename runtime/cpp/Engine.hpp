@@ -82,15 +82,16 @@ namespace K3 {
     }
 
     bool terminate() {
-      bool done = networkDone() || !config->waitForNetwork();
-      return done && (terminateV? terminateV->load() : false);
+      bool net_done = networkDone();
+      bool force_term = !config->waitForNetwork() && (terminateV? terminateV->load() : false);
+      return net_done || force_term;
     }
 
     void set_terminate() {
       terminateV->store(true);
     }
 
-    bool networkDone() { return listenerCounter? (*listenerCounter)() : false; }
+    bool networkDone() { return listenerCounter? (*listenerCounter)() == 0 : false; }
 
     // Wait for a notification that the engine associated
     // with this control object is finished.
@@ -242,6 +243,14 @@ namespace K3 {
 
     void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
       send(addr, triggerId, *v);
+    }
+
+    void send(Message& m) {
+      send(m.address(), m.id(), m.contents());
+    }
+
+    void send(shared_ptr<Message> m) {
+      send(m->address(), m->id(), m->contents());
     }
 
     // TODO: Replace with use of std::bind.
