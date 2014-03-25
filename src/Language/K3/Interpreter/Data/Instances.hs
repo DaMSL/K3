@@ -25,18 +25,18 @@ import Language.K3.Utils.Pretty
 --   This uses entity-tag equality for indirections, functions and triggers.
 --   All other values use structural equality.
 instance Eq Value where
-  VBool v             == VBool v'             = v == v'
-  VByte v             == VByte v'             = v == v'
-  VInt  v             == VInt  v'             = v == v'
-  VReal v             == VReal v'             = v == v'
-  VString v           == VString v'           = v == v'
-  VAddress v          == VAddress v'          = v == v'  
-  VOption v           == VOption v'           = v == v'
-  VTuple v            == VTuple v'            = v == v'
-  VRecord v           == VRecord v'           = v == v'   -- Equality based on Data.Map.Eq
-  VIndirection (_,tg) == VIndirection (_,tg') = tg == tg'  
-  VFunction (_,_,tg)  == VFunction (_,_,tg')  = tg == tg'
-  VTrigger (n,_,tg)   == VTrigger (n',_,tg')  = n == n' && tg == tg'
+  VBool v               == VBool v'             = v == v'
+  VByte v               == VByte v'             = v == v'
+  VInt  v               == VInt  v'             = v == v'
+  VReal v               == VReal v'             = v == v'
+  VString v             == VString v'           = v == v'
+  VAddress v            == VAddress v'          = v == v'  
+  VOption v             == VOption v'           = v == v'
+  VTuple v              == VTuple v'            = v == v'
+  VRecord v             == VRecord v'           = v == v'   -- Equality based on Data.Map.Eq
+  VIndirection (_,_,tg) == VIndirection (_,_,tg') = tg == tg'  
+  VFunction (_,_,tg)    == VFunction (_,_,tg')  = tg == tg'
+  VTrigger (n,_,tg)     == VTrigger (n',_,tg')  = n == n' && tg == tg'
   
   -- Collections must compare their namespaces due to mutable members.
   VCollection (_,v)   == VCollection (_,v') =
@@ -86,9 +86,9 @@ instance Ord Value where
   compare (VTuple a)   (VTuple b)   = compare a b
   compare (VRecord a)  (VRecord b)  = compare a b    -- Based on Data.Map.Ord
 
-  compare (VIndirection (_,tga)) (VIndirection (_,tgb)) = compare tga tgb
-  compare (VFunction (_,_,tga))  (VFunction (_,_,tgb))  = compare tga tgb
-  compare (VTrigger (n,_,tga))   (VTrigger (n',_,tgb))  = compare (n,tga) (n',tgb)
+  compare (VIndirection (_,_,tga)) (VIndirection (_,_,tgb)) = compare tga tgb
+  compare (VFunction (_,_,tga))    (VFunction (_,_,tgb))    = compare tga tgb
+  compare (VTrigger (n,_,tga))     (VTrigger (n',_,tgb))    = compare (n,tga) (n',tgb)
 
   compare (VCollection (_,v)) (VCollection (_,v')) =
     compare (realizationId v, namespace v, dataspace v)
@@ -133,14 +133,14 @@ instance Hashable Value where
   hashWithSalt salt (VTuple a)          = hashWithSalt salt a
   hashWithSalt salt (VRecord a)         = hashWithSalt salt a
 
-  hashWithSalt salt (VIndirection (_,tg)) = hashWithSalt salt tg
-  hashWithSalt salt (VFunction (_,_,tg))  = hashWithSalt salt tg
-  hashWithSalt salt (VTrigger (_,_,tg))   = hashWithSalt salt tg
+  hashWithSalt salt (VIndirection (_,_,tg)) = hashWithSalt salt tg
+  hashWithSalt salt (VFunction (_,_,tg))    = hashWithSalt salt tg
+  hashWithSalt salt (VTrigger (_,_,tg))     = hashWithSalt salt tg
 
   hashWithSalt salt (VCollection (_,a)) =
     salt `hashWithSalt` (namespace a) `hashWithSalt` (dataspace a) 
 
-instance Hashable MemberQualifier
+instance Hashable VQualifier
 
 instance Hashable EntityTag where
   hashWithSalt salt (MemEntTag sn) = salt `hashWithSalt` (hashStableName sn)
@@ -198,8 +198,8 @@ instance Show Value where
   showsPrec d (VAddress v)         = showsPrecTag "VAddress" d v  
   showsPrec d (VCollection (_,c))  = showsPrecTag "VCollection"  d c
 
-  showsPrec d (VIndirection (_,tg))       = showsPrecTagF "VIndirection" d $ showString $ "<" ++ (show tg) ++ ">"
-  showsPrec d (VFunction (_,_,tg))        = showsPrecTagF "VFunction"    d $ showString $ "<" ++ (show tg) ++ ">"
+  showsPrec d (VIndirection (_,q,tg))     = showsPrecTagF "VIndirection" d $ showString $ "<" ++ show q ++ ", " ++ show tg ++ ">"
+  showsPrec d (VFunction (_,_,tg))        = showsPrecTagF "VFunction"    d $ showString $ "<" ++ show tg ++ ">"
   showsPrec d (VTrigger (_, Nothing, tg)) = showsPrecTagF "VTrigger"     d $ showString $ "<uninitialized:" ++ (show tg) ++">"
   showsPrec d (VTrigger (_, Just _, tg))  = showsPrecTagF "VTrigger"     d $ showString $ "<function:" ++ (show tg) ++ ">"
 
@@ -354,10 +354,10 @@ instance Pretty [Value] where
 instance Pretty EntityTag where
   prettyLines v = [show v]
 
-instance Pretty MemberQualifier where
+instance Pretty VQualifier where
   prettyLines v = [show v]
 
-instance Pretty (Value, MemberQualifier) where
+instance Pretty (Value, VQualifier) where
   prettyLines (v,q) = shift (show q ++ " ") "  " $ prettyLines v
 
 instance Pretty (NamedBindings Value) where

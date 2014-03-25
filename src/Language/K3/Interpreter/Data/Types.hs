@@ -47,13 +47,16 @@ data Value
     | VReal        Double
     | VString      String
     | VAddress     Address
-    | VOption      (Maybe Value)
-    | VTuple       [Value]
-    | VRecord      (NamedBindings Value)
+    | VOption      (Maybe Value, VQualifier)
+    | VTuple       [(Value, VQualifier)]
+    | VRecord      (NamedMembers Value)
+    | VIndirection (IIndirection, VQualifier, EntityTag)
     | VCollection  (IIndirection, Collection Value)
-    | VIndirection (IIndirection, EntityTag)
     | VFunction    (IFunction, Closure Value, EntityTag)
     | VTrigger     (Identifier, Maybe IFunction, EntityTag)
+
+-- | Runtime qualifier values. Used to construct environment entries.
+data VQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
 
 -- | Entity tags for values. 
 --   In-memory values use stable names, while external values use an integer
@@ -97,8 +100,7 @@ data CollectionDataspace v
 
 -- | Collection members, which must be pure values to support Eq and Ord
 --   instances for collection values (e.g., for comparison on mutable members).
-data MemberQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
-type NamedMembers v  = NamedBindings (v, MemberQualifier)
+type NamedMembers v  = NamedBindings (v, VQualifier)
 
 -- | Collection implementation.
 --   The namespace contains lifted members, the dataspace contains final

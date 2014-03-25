@@ -270,8 +270,8 @@ getComposedAnnotation annIds = case annIds of
 -- TODO:
 -- i. lift/lower data segment.
 -- ii. lift/lower annotation namespaces
-contextualizeFunction :: MVar Value -> (Value, MemberQualifier)
-                      -> Interpretation (Value, MemberQualifier)
+contextualizeFunction :: MVar Value -> (Value, VQualifier)
+                      -> Interpretation (Value, VQualifier)
 contextualizeFunction selfMV (VFunction (f,cl,tg), mq) =
   return . (, mq) . VFunction . (, cl, tg) $ \x -> do
     (bindings, selfBinding) <- liftCollection

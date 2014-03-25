@@ -56,10 +56,12 @@ valueNeq :: Value -> Value -> Interpretation Value
 valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
 
 valueCompare :: Value -> Value -> Interpretation Value
-valueCompare (VOption (Just v))  (VOption (Just v'))  = valueCompare v v'
-valueCompare (VTuple v)          (VTuple v')          = valueListCompare v v' >>= return . VInt
-valueCompare (VRecord v)         (VRecord v')         = namedBindingsCompare v v'
-valueCompare (VCollection (_,v)) (VCollection (_,v')) = collectionCompare v v'
+valueCompare (VOption (Just v, q))  (VOption (Just v', q')) =
+    if q /= q' then return (VInt $ orderingAsInt $ compare q q') else valueCompare v v'
+
+valueCompare (VTuple v)             (VTuple v')             = qvalueListCompare v v' >>= return . VInt
+valueCompare (VRecord v)            (VRecord v')            = namedMembersCompare v v'
+valueCompare (VCollection (_,v))    (VCollection (_,v'))    = collectionCompare v v'
 valueCompare a b = return . VInt . orderingAsInt $ compare a b
 
 valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
@@ -78,9 +80,12 @@ valueGte :: Value -> Value -> Interpretation Value
 valueGte = valueSign $ \sgn -> sgn >= 0
 
 valueHashWithSalt :: Int -> Value -> Interpretation Value
-valueHashWithSalt salt (VOption (Just v))  = valueHashWithSalt salt v >>= composeHash (salt `hashWithSalt` (0 :: Int)) >>= return . VInt
-valueHashWithSalt salt (VTuple v)          = valueListHashWithSalt (salt `hashWithSalt` (1 :: Int)) v
-valueHashWithSalt salt (VRecord v)         = namedBindingsHashWithSalt (salt `hashWithSalt` (2 :: Int)) v
+valueHashWithSalt salt (VOption (Just v, q)) =
+  valueHashWithSalt salt v >>= composeHash (salt `hashWithSalt` (0 :: Int) `hashWithSalt` q)
+                           >>= return . VInt
+
+valueHashWithSalt salt (VTuple v)          = qvalueListHashWithSalt (salt `hashWithSalt` (1 :: Int)) v
+valueHashWithSalt salt (VRecord v)         = namedMembersHashWithSalt (salt `hashWithSalt` (2 :: Int)) v
 valueHashWithSalt salt (VCollection (_,v)) = collectionHashWithSalt (salt `hashWithSalt` (3 :: Int)) v
 valueHashWithSalt salt x = return . VInt $ hashWithSalt salt x
 
@@ -100,9 +105,23 @@ valueListCompare (a:as) (b:bs) =
   valueCompare a b >>= \(VInt sgn) ->
     if sgn == 0 then valueListCompare as bs else return sgn
 
+qvalueListCompare :: [(Value, VQualifier)] -> [(Value, VQualifier)] -> Interpretation Int
+qvalueListCompare [] [] = return 0
+qvalueListCompare [] _  = return $ -1
+qvalueListCompare _ []  = return 1
+qvalueListCompare ((a,aq):as) ((b,bq):bs) =
+  if aq /= bq
+    then return . orderingAsInt $ compare aq bq 
+    else valueCompare a b >>= \(VInt sgn) ->
+            if sgn == 0 then qvalueListCompare as bs else return sgn
+
 valueListHashWithSalt :: Int -> [Value] -> Interpretation Value
 valueListHashWithSalt salt l = foldM hashNext salt l >>= return . VInt
   where hashNext accSalt v = valueHashWithSalt accSalt v >>= intOfValue
+
+qvalueListHashWithSalt :: Int -> [(Value, VQualifier)] -> Interpretation Value
+qvalueListHashWithSalt salt l = foldM hashNext salt l >>= return . VInt
+  where hashNext accSalt (v, q) = valueHashWithSalt (accSalt `hashWithSalt` q) v >>= intOfValue
 
 valueListHash :: [Value] -> Interpretation Int
 valueListHash vl = valueListHashWithSalt HE.salt vl >>= intOfValue
@@ -229,8 +248,8 @@ namedBindingsHash = namedBindingsHashWithSalt HE.salt
 
 
 -- | Name members (i.e., collection namespaces) comparison
-namedMembersEq :: NamedBindings (Value, MemberQualifier)
-               -> NamedBindings (Value, MemberQualifier)
+namedMembersEq :: NamedBindings (Value, VQualifier)
+               -> NamedBindings (Value, VQualifier)
                -> Interpretation Value
 namedMembersEq a b = namedBindingsCompareBy chainValueQualEq (\_ _ -> return $ VBool False) (return $ VBool True) a b
   where
@@ -240,8 +259,8 @@ namedMembersEq a b = namedBindingsCompareBy chainValueQualEq (\_ _ -> return $ V
     chainEq _ _ _ (VBool False) = return $ VBool False
     chainEq _ _ _ _             = throwE $ RunTimeInterpretationError "Invalid collection member equality test result"
 
-namedMembersCompare :: NamedBindings (Value, MemberQualifier)
-                    -> NamedBindings (Value, MemberQualifier)
+namedMembersCompare :: NamedBindings (Value, VQualifier)
+                    -> NamedBindings (Value, VQualifier)
                     -> Interpretation Value
 namedMembersCompare a b = namedBindingsCompareBy chainValueQualCompare compareAsList (return $ VInt 0) a b
   where 
@@ -258,12 +277,12 @@ namedMembersCompare a b = namedBindingsCompareBy chainValueQualCompare compareAs
                   else valueCompare x y >>= intOfValue
                                         >>= \i -> return . VInt $ if i == 0 then orderingAsInt $ compare xq yq else i
 
-namedMembersHashWithSalt :: Int -> NamedBindings (Value, MemberQualifier) -> Interpretation Value
+namedMembersHashWithSalt :: Int -> NamedBindings (Value, VQualifier) -> Interpretation Value
 namedMembersHashWithSalt salt a = Map.foldl (\macc vq -> macc >>= chainHash vq) (return $ VInt salt) a
   where chainHash (v,q) (VInt slt) = valueHashWithSalt (slt `hashWithSalt` q) v
         chainHash _ _              = throwE $ RunTimeInterpretationError "Invalid salt value for hashing a collection member"
 
-namedMembersHash :: NamedBindings (Value, MemberQualifier) -> Interpretation Value
+namedMembersHash :: NamedBindings (Value, VQualifier) -> Interpretation Value
 namedMembersHash = namedMembersHashWithSalt HE.salt
 
 
@@ -289,18 +308,18 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     rt = return
     packValue :: Int -> Value -> IO ShowS
     packValue d = \case
-      VBool v'     -> rt $ showsPrec d v'
-      VByte v'     -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v')
-      VInt v'      -> rt $ showsPrec d v'
-      VReal v'     -> rt $ showsPrec d v'
-      VString v'   -> rt $ showsPrec d v'
-      VOption vOpt -> packOpt d vOpt
-      VTuple v'    -> parens' (packValue $ d+1) v'
-      VRecord v'   -> packNamedBindings (d+1) v'
-      
-      VCollection (_,c)   -> packCollection (d+1) c      
-      VIndirection (i,_)  -> readMVar i >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValue (d+1) v')
-      VAddress v'         -> rt $ showsPrec d v'
+      VBool v'          -> rt $ showsPrec d v'
+      VByte v'          -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v')
+      VInt v'           -> rt $ showsPrec d v'
+      VReal v'          -> rt $ showsPrec d v'
+      VString v'        -> rt $ showsPrec d v'
+      VOption vOptQ     -> packOptQ d vOptQ
+      VTuple v'         -> parens' (packValueQ $ d+1) v'
+      VRecord v'        -> packNamedMembers (d+1) v'
+      VAddress v'       -> rt $ showsPrec d v'
+
+      VCollection (_,c)     -> packCollection (d+1) c      
+      VIndirection (i,q,_)  -> readMVar i >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValueQ (d+1) (v', q))
 
       VFunction (_,_,tg) -> (forTransport ? error $ (rt . showString)) $ funSym tg
       VTrigger (n,_,tg)  -> (forTransport ? error $ (rt . showString)) $ trigSym n tg
@@ -312,9 +331,13 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     braces   = packCustomList "{" "}" ","
     brackets = packCustomList "[" "]" ","
 
-    packOpt d vOpt =
-      maybe (rt ("Nothing "++)) 
-            (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) ("Just " ++) . showS))
+    packValueQ d (v',q) = (\x y -> x . showChar ' ' . y) <$> packQualifier d q <*> packValue d v'
+
+    packQualifier d q = rt $ showsPrec d q
+
+    packOptQ d (vOpt,q) =
+      maybe (rt (("Nothing " ++ show q ++ " ") ++)) 
+            (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) (("Just " ++ show q ++ " ") ++) . showS))
             vOpt
 
     packCollection d (Collection ns ds cId) = do
@@ -400,27 +423,36 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
 
       +++ (do
             Ident "Just" <- lexP
+            q <- readPrec
             v <- unpackValue
-            return (v >>= rt . VOption . Just))
+            return (v >>= rt . VOption . (,q) . Just))
 
       +++ (do
             Ident "Nothing" <- lexP
-            return . rt $ VOption Nothing)
+            q <- readPrec
+            return . rt $ VOption (Nothing, q))
 
       +++ (prec appPrec1 $ do
-            v <- readParens unpackValue
+            v <- readParens unpackValueQ
             return (sequence v >>= rt . VTuple))
 
       +++ (do
-            nv <- readNamedBindings
+            nv <- readNamedMembers
             return (nv >>= rt . VRecord))
 
       +++ (do
             Ident "I" <- lexP
-            v <- unpackValue
-            return (v >>= \nv -> (\x y -> VIndirection (x, MemEntTag y)) <$> newMVar nv <*> makeStableName nv))
+            vq <- unpackValueQ
+            return (vq >>= \(nv,q) ->
+              (\x y -> VIndirection (x, q, MemEntTag y)) <$> newMVar nv <*> makeStableName nv))
       
       +++ readCollectionPrec)
+
+    unpackValueQ =
+      parens $ reset $ do
+        q <- readPrec
+        v <- unpackValue
+        return (v >>= rt . (,q))
 
     readCollectionPrec = parens $
       (prec appPrec1 $ do
@@ -492,7 +524,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
         v <- readBraces $ readNamedF readValueQual
         return $ Map.fromList <$> sequence v
 
-    readValueQual :: ReadPrec (IO (Value, MemberQualifier))
+    readValueQual :: ReadPrec (IO (Value, VQualifier))
     readValueQual = parens $ do
         Punc "(" <- lexP
         v        <- step unpackValue

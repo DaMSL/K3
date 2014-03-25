@@ -44,6 +44,39 @@ import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 
+-- | Helper functions.
+onQualifiedType :: K3 Type -> a -> a -> a
+onQualifiedType t immutR mutR = case t @~ isTQualified of  
+  Just TMutable -> mutR
+  _ -> immutR
+
+onQualifiedExpression :: K3 Expression -> a -> a -> a
+onQualifiedExpression e immutR mutR = case e @~ isEQualified of  
+  Just EMutable -> mutR
+  _ -> immutR
+
+onQualifiedAnnotationsE :: [Annotation Expression] -> a -> a -> a
+onQualifiedAnnotationsE anns immutR mutR = case anns @~ isEQualified of 
+  Just EMutable -> mutR
+  _ -> immutR
+
+onQualifiedLiteral :: K3 Literal -> a -> a -> a
+onQualifiedLiteral l immutR mutR = case l @~ isLQualified of
+  Just LMutable -> mutR
+  _ -> immutR
+
+vQualOfType :: K3 Type -> VQualifier
+vQualOfType t = onQualifiedType t MemImmut MemMut
+
+vQualOfExpr :: K3 Expression -> VQualifier
+vQualOfExpr e = onQualifiedExpression e MemImmut MemMut
+
+vQualOfLit :: K3 Literal -> VQualifier
+vQualOfLit l = onQualifiedLiteral l MemImmut MemMut
+
+vQualOfAnnsE :: [Annotation Expression] -> VQualifier
+vQualOfAnnsE anns = onQualifiedAnnotationsE anns MemImmut MemMut
+
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
 sendE addr n val = liftEngine $ send addr n val
@@ -80,12 +113,18 @@ defaultValue (tag -> TByte)       = return $ VByte 0
 defaultValue (tag -> TInt)        = return $ VInt 0
 defaultValue (tag -> TReal)       = return $ VReal 0.0
 defaultValue (tag -> TString)     = return $ VString ""
-defaultValue (tag -> TOption)     = return $ VOption Nothing
+defaultValue t@(tag -> TOption)   = return $ VOption (Nothing, vQualOfType t)
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
-defaultValue (tag &&& children -> (TIndirection, [x])) = defaultValue x >>= (\y -> (,) <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
-defaultValue (tag &&& children -> (TTuple, ch))        = mapM defaultValue ch >>= return . VTuple
-defaultValue (tag &&& children -> (TRecord ids, ch))   = mapM defaultValue ch >>= return . VRecord . bindingsFromList . zip ids
+defaultValue (tag &&& children -> (TIndirection, [x])) = 
+  defaultValue x >>= (\y -> (\i tg -> (i, onQualifiedType x MemImmut MemMut, tg)) 
+    <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
+
+defaultValue (tag &&& children -> (TTuple, ch)) =
+  mapM (\ct -> defaultValue ct >>= return . (, vQualOfType ct)) ch >>= return . VTuple
+
+defaultValue (tag &&& children -> (TRecord ids, ch)) =
+  mapM (\ct -> defaultValue ct >>= return . (, vQualOfType ct)) ch >>= return . VRecord . membersFromList . zip ids
 
 defaultValue (tag &&& annotations -> (TCollection, anns)) = 
   (getComposedAnnotationT anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
@@ -103,12 +142,12 @@ defaultValue t = throwE . RunTimeTypeError $ "Cannot create default value for " 
 
 -- | Interpretation of Constants.
 constant :: Constant -> [Annotation Expression] -> Interpretation Value
-constant (CBool b)   _ = return $ VBool b
-constant (CByte w)   _ = return $ VByte w
-constant (CInt i)    _ = return $ VInt i
-constant (CReal r)   _ = return $ VReal r
-constant (CString s) _ = return $ VString s
-constant (CNone _)   _ = return $ VOption Nothing
+constant (CBool b)   _   = return $ VBool b
+constant (CByte w)   _   = return $ VByte w
+constant (CInt i)    _   = return $ VInt i
+constant (CReal r)   _   = return $ VReal r
+constant (CString s) _   = return $ VString s
+constant (CNone _)  anns = return $ VOption (Nothing, vQualOfAnnsE anns)
 constant (CEmpty _) anns = 
   (getComposedAnnotationE anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
   where annIds = namedEAnnotations anns
@@ -237,7 +276,7 @@ binary su OSnd = \target x -> do
   x'       <- expression x
 
   case target' of
-    VTuple [VTrigger (n, _, _), VAddress addr] -> sendE addr n x' >> return vunit
+    VTuple [(VTrigger (n, _, _), _), (VAddress addr, _)] -> sendE addr n x' >> return vunit
     _ -> throwSE su $ RunTimeTypeError "Invalid Trigger Target"
 
 -- | Sequential expressions
@@ -272,7 +311,7 @@ expression e_ =
 
     -- | Interpretation of option type construction expressions.
     expr (tag &&& children -> (ESome, [x])) =
-      expression x >>= freshenValue >>= return . VOption . Just
+      expression x >>= freshenValue >>= return . VOption . (, vQualOfExpr x) . Just
     
     expr (details -> (ESome, _, anns)) =
       throwAE anns $ RunTimeTypeError "Invalid Construction of Option"
@@ -280,18 +319,18 @@ expression e_ =
     -- | Interpretation of indirection type construction expressions.
     expr (tag &&& children -> (EIndirect, [x])) = do
       new_val <- expression x >>= freshenValue
-      (\a b -> VIndirection (a,b)) <$> liftIO (newMVar new_val) <*> memEntTag new_val
+      (\a b -> VIndirection (a, vQualOfExpr x, b)) <$> liftIO (newMVar new_val) <*> memEntTag new_val
 
     expr (details -> (EIndirect, _, anns)) =
       throwAE anns $ RunTimeTypeError "Invalid Construction of Indirection"
 
     -- | Interpretation of tuple construction expressions.
     expr (tag &&& children -> (ETuple, cs)) =
-      mapM (\e -> expression e >>= freshenValue) cs >>= return . VTuple
+      mapM (\e -> expression e >>= freshenValue >>= return . (, vQualOfExpr e)) cs >>= return . VTuple
 
     -- | Interpretation of record construction expressions.
     expr (tag &&& children -> (ERecord is, cs)) =
-      mapM (\e -> expression e >>= freshenValue) cs >>= return . VRecord . bindingsFromList . zip is
+      mapM (\e -> expression e >>= freshenValue >>= return . (, vQualOfExpr e)) cs >>= return . VRecord . membersFromList . zip is
 
     -- | Interpretation of function construction.
     expr (details -> (ELambda i, [b], anns)) =
@@ -319,7 +358,7 @@ expression e_ =
 
     -- | Interpretation of Record Projection.
     expr (details -> (EProject i, [r], anns)) = expression r >>= syncCollection >>= \case
-        VRecord vb -> maybe (unknownField i) return $ lookupBinding i vb
+        VRecord vm -> maybe (unknownField i) (return . fst) $ lookupMember i vm
 
         VCollection (_, c) -> do
           if null (realizationId c) then unannotatedCollection
@@ -368,8 +407,8 @@ expression e_ =
     -- | Interpretation of Case-Matches.
     -- TODO: case expressions should behave like bind, i.e., w/ bind aliases and transactional write-backs
     expr (details -> (ECaseOf i, [e, s, n], anns)) = expression e >>= \case
-        VOption (Just v) -> insertE i (IVal v) >> expression s >>= removeE i (IVal v)
-        VOption Nothing  -> expression n
+        VOption (Just v, q)  -> entryOfValueQ v q >>= \entry -> insertE i entry >> expression s >>= removeE i entry
+        VOption (Nothing, _) -> expression n
         _ -> throwAE anns $ RunTimeTypeError "Invalid Argument to Case-Match"
     expr (details -> (ECaseOf _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Case-Match"
 
@@ -384,15 +423,15 @@ expression e_ =
         _ -> throwAE anns $ RunTimeTypeError "Invalid bind path in bind-as expression"
 
       case (b, bv) of
-        (BIndirection i, VIndirection (r,_)) -> do
-          entry <- liftIO (readMVar r) >>= liftIO . mkMVal
+        (BIndirection i, VIndirection (r,q,_)) -> do
+          entry <- liftIO (readMVar r) >>= flip entryOfValueQ q
           void $ insertE i entry
           fV <- expression f
           void $ refreshBindings b bp bv
           removeE i entry fV
 
         (BTuple ts, VTuple vs) -> do
-          let tupMems = membersFromList $ map (\(n,v) -> (n, (v, MemMut))) $ zip ts vs
+          let tupMems = membersFromList $ zip ts vs
           bindAndRefresh bp bv tupMems
 
         (BRecord ids, VRecord ivs) -> do
@@ -402,7 +441,7 @@ expression e_ =
           -- has a value, while also allowing us to bind a subset of the values.
           if idls `intersect` ivls == idls
             then do
-              let recordMems = membersFromList $ map (\(n,v) -> (n, (v, MemMut))) $ joinByKeys (,) idls ids ivs
+              let recordMems = membersFromList $ joinByKeys (,) idls ids ivs
               bindAndRefresh bp bv recordMems
             
             else throwAE anns $ RunTimeTypeError "Invalid Bind-Pattern"
@@ -421,33 +460,41 @@ expression e_ =
           unbindMembers bindings >> return fV
 
         joinByKeys joinF keys l r =
-          catMaybes $ map (\k -> lookup k l >>= (\matchL -> lookupBinding k r >>= return . joinF matchL)) keys
+          catMaybes $ map (\k -> lookup k l >>= (\matchL -> lookupMember k r >>= return . joinF matchL)) keys
 
         refreshEntry :: Identifier -> IEnvEntry Value -> Value -> Interpretation ()
         refreshEntry n (IVal _) v  = replaceE n (IVal v)
         refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
 
-        lookupForRefresh :: Identifier -> Interpretation Value
-        lookupForRefresh i = lookupE su i >>= valueOfEntry
+        lookupForRefresh :: Identifier -> Interpretation (Value, VQualifier)
+        lookupForRefresh i = lookupE su i >>= valueQOfEntry
 
         -- | Performs a write-back for a bind expression.
         --   This retrieves the current binding values from the environment
         --   and reconstructs a path value to replace the bind target.
         refreshBindings :: Binder -> ProxyPath -> Value -> Interpretation ()
         refreshBindings (BIndirection i) bindPath bindV = 
-          lookupForRefresh i >>= replaceBindPath bindPath bindV (\oldV newPathV ->
-            case oldV of 
-              VIndirection (mv,_) -> liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
-              _ -> throwAE anns $ RunTimeTypeError "Invalid bind indirection target")
+          lookupForRefresh i >>= \case
+            (iV, MemMut) ->
+              flip (replaceBindPath bindPath bindV) iV (\oldV newPathV ->
+                case oldV of 
+                  VIndirection (mv, MemMut, _) -> liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
+                  _ -> throwAE anns $ RunTimeTypeError "Invalid bind indirection target")
+
+            _ -> return () -- Skip writeback to an immutable value.
 
         refreshBindings (BTuple ts) bindPath bindV =
-          mapM lookupForRefresh ts
-            >>= replaceBindPath bindPath bindV (\_ newPathV -> return newPathV) . VTuple
+          mapM lookupForRefresh ts >>= \vqs ->
+            if any (/= MemImmut) $ map snd vqs
+              then replaceBindPath bindPath bindV (\_ newPathV -> return newPathV) $ VTuple vqs
+              else return () -- Skip writeback if all fields are immutable.
 
         refreshBindings (BRecord ids) bindPath bindV =
-          mapM lookupForRefresh (map snd ids) 
-            >>= return . VRecord . bindingsFromList . zip (map fst ids)
-            >>= replaceBindPath bindPath bindV (\oldV newPathV -> mergeRecords oldV newPathV)
+          mapM lookupForRefresh (map snd ids) >>= \vqs ->
+            if any (/= MemImmut) $ map snd vqs
+              then replaceBindPath bindPath bindV (\oldV newPathV -> mergeRecords oldV newPathV)
+                      $ VRecord $ membersFromList $ zip (map fst ids) vqs
+              else return () -- Skip writebsack if all fields are immutable.
 
         replaceBindPath :: ProxyPath -> Value -> (Value -> Value -> Interpretation Value) -> Value
                         -> Interpretation ()
@@ -467,19 +514,19 @@ expression e_ =
         reconstructPathValue [] newR@(VRecord _) oldR@(VRecord _) = mergeRecords oldR newR
         reconstructPathValue [] v _ = return v
         
-        reconstructPathValue (Dereference:t) v (VIndirection (iv, tg)) =
+        reconstructPathValue (Dereference:t) v (VIndirection (iv, q, tg)) =
           liftIO (readMVar iv)
             >>= reconstructPathValue t v
-            >>= \nv -> liftIO (modifyMVar_ iv $ const $ return nv) >> return (VIndirection (iv, tg))
+            >>= \nv -> liftIO (modifyMVar_ iv $ const $ return nv) >> return (VIndirection (iv, q, tg))
 
         reconstructPathValue ((TupleField i):t) v (VTuple vs) =
           let (x,y) = splitAt i vs in
-          reconstructPathValue t v (last x) >>= \nv -> return $ VTuple ((init x) ++ [nv] ++ y)
+          reconstructPathValue t v (fst $ last x) >>= \nv -> return $ VTuple ((init x) ++ [(nv, snd $ last x)] ++ y)
 
         reconstructPathValue ((RecordField n):t) v (VRecord ivs) = do
-          fields <- flip mapBindings ivs (\fn fv -> 
-                      if fn == n then reconstructPathValue t v fv
-                                 else return fv)
+          fields <- flip mapMembers ivs (\fn (fv, fq) -> 
+                      if fn == n then reconstructPathValue t v fv >>= return . (, fq)
+                                 else return (fv, fq))
           return $ VRecord fields
 
         reconstructPathValue _ _ _ =
@@ -507,18 +554,18 @@ literal (tag -> LByte b)   = return $ VByte b
 literal (tag -> LInt i)    = return $ VInt i
 literal (tag -> LReal r)   = return $ VReal r
 literal (tag -> LString s) = return $ VString s
-literal (tag -> LNone _)   = return $ VOption Nothing
+literal l@(tag -> LNone _) = return $ VOption (Nothing, vQualOfLit l)
 
-literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . Just
+literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . (, vQualOfLit x) . Just
 literal (details -> (LSome, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid option literal"
 
-literal (tag &&& children -> (LIndirect, [x])) = literal x >>= (\y -> (,) <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
+literal (tag &&& children -> (LIndirect, [x])) = literal x >>= (\y -> (\i tg -> (i, vQualOfLit x, tg)) <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
 literal (details -> (LIndirect, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid indirection literal"
 
-literal (tag &&& children -> (LTuple, ch)) = mapM literal ch >>= return . VTuple
+literal (tag &&& children -> (LTuple, ch)) = mapM (\l -> literal l >>= return . (, vQualOfLit l)) ch >>= return . VTuple
 literal (details -> (LTuple, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid tuple literal"
 
-literal (tag &&& children -> (LRecord ids, ch)) = mapM literal ch >>= return . VRecord . bindingsFromList . zip ids
+literal (tag &&& children -> (LRecord ids, ch)) = mapM (\l -> literal l >>= return . (, vQualOfLit l)) ch >>= return . VRecord . membersFromList . zip ids
 literal (details -> (LRecord _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid record literal"
 
 literal (details -> (LEmpty _, [], anns)) =
@@ -638,7 +685,7 @@ annotation n _ memberDecls = do
 
 
 annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl 
-                 -> Interpretation (Maybe (Identifier, (Value, MemberQualifier)))
+                 -> Interpretation (Maybe (Identifier, (Value, VQualifier)))
 annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
   (True,  Lifted    Provides n t (Just e) _)   | matchF t -> initializeMember n t e
   (False, Attribute Provides n t (Just e) _)   | matchF t -> initializeMember n t e

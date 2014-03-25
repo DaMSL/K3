@@ -32,15 +32,21 @@ vunit = VTuple []
 vfun :: IFunction -> Interpretation Value
 vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
 
+valueQOfEntry :: IEnvEntry Value -> Interpretation (Value, VQualifier)
+valueQOfEntry = liftIO . valueQOfEntryIO
+
+valueQOfEntryIO :: IEnvEntry Value -> IO (Value, VQualifier)
+valueQOfEntryIO (IVal v)  = return (v, MemImmut)
+valueQOfEntryIO (MVal mv) = readMVar mv >>= return . (, MemMut)
+
 valueOfEntry :: IEnvEntry Value -> Interpretation Value
 valueOfEntry = liftIO . valueOfEntryIO 
 
+valueOfEntryIO :: IEnvEntry Value -> IO Value
+valueOfEntryIO entry = valueQOfEntryIO entry >>= return . fst
+
 valueOfEntryOpt :: Maybe (IEnvEntry Value) -> Interpretation (Maybe Value)
 valueOfEntryOpt = liftIO . valueOfEntryOptIO
-
-valueOfEntryIO :: IEnvEntry Value -> IO Value
-valueOfEntryIO (IVal v)  = return v
-valueOfEntryIO (MVal mv) = readMVar mv
 
 valueOfEntryOptIO :: Maybe (IEnvEntry Value) -> IO (Maybe Value)
 valueOfEntryOptIO (Just e) = valueOfEntryIO e >>= return . Just
@@ -64,6 +70,9 @@ entryOfValueT (Just TImmutable) = liftIO . mkIVal
 entryOfValueT Nothing           = liftIO . mkIVal
 entryOfValueT _                 = const $ throwE $ RunTimeTypeError "Invalid qualifier annotation"
 
+entryOfValueQ :: Value -> VQualifier -> Interpretation (IEnvEntry Value)
+entryOfValueQ v MemImmut = liftIO $ mkIVal v
+entryOfValueQ v MemMut   = liftIO $ mkMVal v
 
 {- Entity tag accessors -}
 memEntTag :: a -> Interpretation EntityTag
@@ -101,22 +110,22 @@ mapBindings_ f bindings = foldBindings chainF () bindings
 emptyMembers :: NamedMembers Value
 emptyMembers = Map.empty
 
-membersFromList :: [(Identifier, (Value, MemberQualifier))] -> NamedMembers Value
+membersFromList :: [(Identifier, (Value, VQualifier))] -> NamedMembers Value
 membersFromList = bindingsFromList
 
-lookupMember :: Identifier -> NamedMembers Value -> Maybe (Value, MemberQualifier)
+lookupMember :: Identifier -> NamedMembers Value -> Maybe (Value, VQualifier)
 lookupMember = lookupBinding
 
-insertMember :: Identifier -> (Value, MemberQualifier) -> NamedMembers Value -> NamedMembers Value
+insertMember :: Identifier -> (Value, VQualifier) -> NamedMembers Value -> NamedMembers Value
 insertMember = insertBinding
 
-foldMembers :: (Monad m) => (a -> Identifier -> (Value, MemberQualifier) -> m a) -> a -> NamedMembers Value -> m a
+foldMembers :: (Monad m) => (a -> Identifier -> (Value, VQualifier) -> m a) -> a -> NamedMembers Value -> m a
 foldMembers f z mems = foldBindings f z mems
 
-mapMembers :: (Monad m) => (Identifier -> (Value, MemberQualifier) -> m a) -> NamedMembers Value -> m (NamedBindings a)
+mapMembers :: (Monad m) => (Identifier -> (Value, VQualifier) -> m a) -> NamedMembers Value -> m (NamedBindings a)
 mapMembers f mems = mapBindings f mems
 
-mapMembers_ :: (Monad m) => (Identifier -> (Value, MemberQualifier) -> m a) -> NamedMembers Value -> m ()
+mapMembers_ :: (Monad m) => (Identifier -> (Value, VQualifier) -> m a) -> NamedMembers Value -> m ()
 mapMembers_ f mems = mapBindings_ f mems
 
 bindMembers :: NamedMembers Value -> Interpretation (NamedBindings (IEnvEntry Value))

@@ -119,7 +119,7 @@ genBuiltin "hash" _ = vfun $ \v -> valueHash v
 genBuiltin "range" _ =
   vfun $ \(VInt upper) ->
     initialAnnotatedCollection "Collection"
-      $ map (\i -> VRecord (insertBinding "i" (VInt i) $ emptyBindings)) [0..(upper-1)]
+      $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- int_of_real :: int -> real
 genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
@@ -160,7 +160,7 @@ registerNotifier n =
           liftEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
-        targetOfValue (VTuple [VTrigger (m, _, _), VAddress addr]) = (addr, m, vunit)
+        targetOfValue (VTuple [(VTrigger (m, _, _), _), (VAddress addr, _)]) = (addr, m, vunit)
         targetOfValue _ = error "Invalid notifier target"
 
 
@@ -219,7 +219,7 @@ builtinLiftedAttribute annId n _ _ =
     -- | Collection accessor implementation
     peekFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> do
       inner_val <- peekDS ds
-      return $ VOption inner_val
+      return $ VOption (inner_val, MemImmut)
 
     -- | Collection modifier implementation
     insertFn = vfun $ \v -> modifySelf $ \selfMV (Collection ns ds cId) -> do
@@ -258,7 +258,7 @@ builtinLiftedAttribute annId n _ _ =
         (l, r) <- splitDS ds
         lc <- copy (Collection ns l cId)
         rc <- copy (Collection ns r cId)
-        return $ VTuple [lc, rc]
+        return $ VTuple [(lc, MemImmut), (rc, MemImmut)]
     
     -- Pass in the namespace
     mapFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
@@ -337,11 +337,11 @@ builtinLiftedAttribute annId n _ _ =
 
     memberFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> memberDS el ds >>= return . VBool
 
-    minFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> minDS ds >>= return . VOption
-    maxFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> maxDS ds >>= return . VOption
+    minFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> minDS ds >>= return . VOption . (, MemImmut)
+    maxFn = vfun $ \_ -> withSelf $ \(Collection _ ds _) -> maxDS ds >>= return . VOption . (, MemImmut)
 
-    lowerBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption
-    upperBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> upperBoundDS el ds >>= return . VOption
+    lowerBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption . (, MemImmut)
+    upperBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> upperBoundDS el ds >>= return . VOption . (, MemImmut)
 
     sliceFn = vfun $ \lowerEl -> vfun $ \upperEl -> withSelf $ \(Collection ns ds cId) -> 
         sliceDS lowerEl upperEl ds >>= \nds -> copy $ Collection ns nds cId

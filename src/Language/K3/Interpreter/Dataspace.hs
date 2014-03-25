@@ -308,18 +308,15 @@ $(dsChainInstanceGenerator
 matchPair :: Value -> Interpretation (Value, Value)
 matchPair v =
   case v of
-    VTuple (h:t) -> 
-      case t of
-        (p:[])    -> return (h, p)
-        _         -> throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
-    _ -> throwE $ RunTimeTypeError "Non-tuple"
+    VTuple [(l,_), (r,_)] -> return (l, r)
+    _ -> throwE $ RunTimeTypeError "Invalid pair value"
 
 -- TODO kill dependence on Interpretation for error handling
 instance EmbeddedKV Interpretation Value Value where
   extractKey value = do
     (key, _) <- matchPair value
     return key
-  embedKey key value = return $ VTuple [key, value]
+  embedKey key value = return $ VTuple [(key, MemImmut), (value, MemImmut)]
   
 instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
   lookupKV ds key = 
