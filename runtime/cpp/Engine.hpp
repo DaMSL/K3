@@ -108,7 +108,7 @@ namespace K3 {
     template <class Predicate>
     void waitForMessage(Predicate pred)
     {
-      if ( pred && msgAvailMutex && msgAvailCondition ) {
+      if (  msgAvailMutex && msgAvailCondition ) {
         unique_lock<mutex> lock(*msgAvailMutex);
         while ( pred() ) { msgAvailCondition->wait(lock); }
       } else { logAt(warning, "Could not wait for message, no condition variable available."); }
@@ -117,6 +117,10 @@ namespace K3 {
     shared_ptr<ListenerControl> listenerControl() {
       return shared_ptr<ListenerControl>(
               new ListenerControl(msgAvailMutex, msgAvailCondition, listenerCounter));
+    }
+
+    void messageAvail() {
+      msgAvailCondition->notify_one();
     }
 
   protected:
@@ -191,7 +195,7 @@ namespace K3 {
         connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
 
         // Start network listeners for all K3 processes on this engine.
-        // This opens engine sockets with an internal code, relying on openSocketInternal()
+        // This opens engine sockets with an internal codec, relying on openSocketInternal()
         // to construct the Listener object and the thread runs the listener's event loop.
         for (Address k3proc : processAddrs) {
           openSocketInternal(peerEndpointId(k3proc), k3proc, IOMode::Read);
@@ -206,7 +210,8 @@ namespace K3 {
     void send(Address addr, Identifier triggerId, const Value& v)
     {
       if (deployment) {
-        bool shortCircuit = isDeployedNode(*deployment, addr) || simulation();
+        bool local_address = isDeployedNode(*deployment, addr);
+        bool shortCircuit =  local_address || simulation();
         Message msg(addr, triggerId, v);
 
         if ( shortCircuit ) {
@@ -220,11 +225,21 @@ namespace K3 {
 
           for (int i = 0; !sent && i < config->connectionRetries(); ++i) {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
+
             if ( ep && ep->hasWrite() ) {
               ep->doWrite(make_shared<Value>(internal_codec->show_message(msg)));
+              ep->flushBuffer();
               sent = true;
             } else {
-              openSocketInternal(eid, addr, IOMode::Write);
+              if (ep && !ep->hasWrite()) {
+                logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
+                boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+
+              }
+              else {
+                logAt(trivial::trace, "Creating endpoint: " + eid);
+                openSocketInternal(eid, addr, IOMode::Write);
+              }
             }
           }
 
@@ -373,6 +388,7 @@ namespace K3 {
 
         // If we were in error, exit out with error.
         case LoopStatus::Error:
+          //TODO silent error?
           return;
 
         // If there are no messages on the queues,
@@ -383,8 +399,11 @@ namespace K3 {
               return;
           }
 
-          // FIXME: Timeout for waiting on messages?
-          control->waitForMessage([] () { return true; });
+          // TODO waiting timeout?
+          control->waitForMessage([=] () { return !control->terminate() && queues->size() < 1; });
+          if (control->terminate()) {
+            return;
+          }
           next_status = LoopStatus::Continue;
           break;
       }
@@ -426,19 +445,31 @@ namespace K3 {
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
       control->set_terminate();
+      logAt(trivial::trace, "Signalled engine termination");
+    }
+
+    void forceTerminateEngine() {
+      terminateEngine();
+      control->messageAvail();
+      cleanupEngine();
     }
 
     // Clear the Engine's connections and endpointis
     void cleanupEngine() {
-      if (connections) {
-        connections->clearConnections();
-      }
-      if (endpoints) {
-        // TODO: clearEndpoints() does not exists.
-        // It should call removeEndpoint() on all endpoints
-        // in the internal and external endpoint maps
-        endpoints->clearEndpoints();
-      }
+      network_ctxt->service->stop();
+      network_ctxt->service_threads->join_all();
+
+      // TODO the following code never finishes running (deadlock?) :
+
+      // if (connections) {
+      //   connections->clearConnections();
+      // }
+      // if (endpoints) {
+      //    //TODO: clearEndpoints() does not exists.
+      //    //It should call removeEndpoint() on all endpoints
+      //    // in the internal and external endpoint maps
+      //    //endpoints->clearEndpoints();
+      // }
     }
 
     //-------------------
@@ -457,7 +488,8 @@ namespace K3 {
     }
 
     bool simulation() {
-      if ( connections ) { return connections->hasInternalConnections(); }
+      if ( connections ) {
+        return !connections->hasInternalConnections(); }
       else { logAt(trivial::error, "Invalid connection state."); }
       return false;
     }
@@ -566,7 +598,7 @@ namespace K3 {
 
         // Add the endpoint.
         shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
-            new ContainerEPBufferST(config->defaultBufferSpec()));
+            new ScalarEPBufferST());
 
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
@@ -690,13 +722,13 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read: {
-          r = make_shared<NetworkHandle>(NetworkHandle(codec, 
-                make_shared<Net::NEndpoint>(Net::NEndpoint(network_ctxt, addr))));
+          shared_ptr<Net::NEndpoint> n_ep = shared_ptr<Net::NEndpoint>(new Net::NEndpoint(network_ctxt, addr));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, n_ep));
           break;
         }
         case IOMode::Write: {
-          r = make_shared<NetworkHandle>(NetworkHandle(codec,
-                make_shared<Net::NConnection>(Net::NConnection(network_ctxt, addr))));
+          shared_ptr<Net::NConnection> conn = shared_ptr<Net::NConnection>(new Net::NConnection(network_ctxt, addr));
+          r = make_shared<NetworkHandle>(NetworkHandle(codec, conn));
           break;
         }
 

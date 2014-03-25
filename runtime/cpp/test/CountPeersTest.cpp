@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include <boost/regex.hpp>
+#include <boost/thread/thread.hpp>
 
 #include <xUnit++/xUnit++.h>
 
@@ -20,7 +21,6 @@ Address peer3;
 Address rendezvous;
 
 int nodeCounter(0);
-
 
 using std::cout;
 using std::endl;
@@ -55,19 +55,8 @@ shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
 }
 
 // Engine setup
-shared_ptr<Engine> buildEngine() {
+shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
   // Configure engine components
-  bool simulation = true;
-
-
-
-  list<Address> peers = list<Address>();
-  peers.push_back(peer1);
-  peers.push_back(peer2);
-  peers.push_back(peer3);
-
-
-  SystemEnvironment s_env = defaultEnvironment(peers);
   shared_ptr<InternalCodec> i_cdec = make_shared<DefaultInternalCodec>(DefaultInternalCodec());
   shared_ptr<ExternalCodec> e_cdec = make_shared<DefaultCodec>(DefaultCodec());
 
@@ -78,13 +67,19 @@ shared_ptr<Engine> buildEngine() {
 
 }
 
-FACT("CountPeers with 3 peers should count 3") {
+FACT("Simulation mode CountPeers with 3 peers should count 3") {
+  K3::nodeCounter = 0;
   K3::peer1 = K3::make_address(K3::localhost, 3000);
   K3::peer2 = K3::make_address(K3::localhost, 3001);
   K3::peer3 = K3::make_address(K3::localhost, 3002);
   K3::rendezvous = K3::peer1;
+  std::list<K3::Address> peers = std::list<K3::Address>();
+  peers.push_back(K3::peer1);
+  peers.push_back(K3::peer2);
+  peers.push_back(K3::peer3);
+  K3::SystemEnvironment s_env = K3::defaultEnvironment(peers);
 
-  auto engine = K3::buildEngine();
+  auto engine = K3::buildEngine(true, s_env);
   auto mp = K3::buildMP(engine);
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
@@ -95,6 +90,53 @@ FACT("CountPeers with 3 peers should count 3") {
 
   // Run Engine
   engine->runEngine(mp);
+
+  // Check the result (the 6th fib number should = 8)
+  Assert.Equal(3, K3::nodeCounter);
+}
+
+FACT("Network mode CountPeers with 3 peers should count 3") {
+  K3::nodeCounter = 0;
+  using boost::thread;
+  using boost::thread_group;
+  // Create peers
+  K3::peer1 = K3::make_address(K3::localhost, 3000);
+  K3::peer2 = K3::make_address(K3::localhost, 3005);
+  K3::peer3 = K3::make_address(K3::localhost, 3002);
+  K3::rendezvous = K3::peer1;
+  // Create engines
+  auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer1));
+  auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
+  auto engine3 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer3));
+  // Create MPs
+  auto mp1 = K3::buildMP(engine1);
+  auto mp2 = K3::buildMP(engine2);
+  auto mp3 = K3::buildMP(engine3);
+  // Create initial messages (source)
+  K3::Message m1 = K3::Message(K3::peer1, "join", "()");
+  K3::Message m2 = K3::Message(K3::peer2, "join", "()");
+  K3::Message m3 = K3::Message(K3::peer3, "join", "()");
+  engine1->send(m1);
+  engine2->send(m2);
+  engine3->send(m3);
+  // Fork a thread for each engine
+  auto service_threads = std::shared_ptr<thread_group>(new thread_group());
+  thread t1 = engine1->forkEngine(mp1);
+  thread t2 = engine2->forkEngine(mp2);
+  thread t3 = engine3->forkEngine(mp3);
+
+  service_threads->add_thread(&t1);
+  service_threads->add_thread(&t2);
+  service_threads->add_thread(&t3);
+
+  boost::this_thread::sleep_for( boost::chrono::seconds(5) );
+  engine1->forceTerminateEngine();
+  engine2->forceTerminateEngine();
+  engine3->forceTerminateEngine();
+  service_threads->join_all();
+  service_threads->remove_thread(&t1);
+  service_threads->remove_thread(&t2);
+  service_threads->remove_thread(&t3);
 
   // Check the result (the 6th fib number should = 8)
   Assert.Equal(3, K3::nodeCounter);

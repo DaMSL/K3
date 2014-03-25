@@ -191,8 +191,14 @@ namespace K3 {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
-              if ( !ec ) { registerConnection(nextConnection); }
-              else { this->listenerLog->logAt(trivial::error, "Failed"); }
+              if ( !ec ) {
+                registerConnection(nextConnection);
+                this->listenerLog->logAt(trivial::trace, "Listener Registered a connection");
+
+              }
+              else {
+                this->listenerLog->logAt(trivial::error, "Failed to accept a connection: " + ec.message());
+              }
               // recursive call:
               acceptConnection();
             });
@@ -240,10 +246,13 @@ namespace K3 {
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), bytes_transferred));
                 while (v) {
-                  listenerLog->logAt(trivial::trace, string("Listener Received data: ")+*v);
+                  listenerLog->logAt(trivial::trace, "Listener Received data: " +*v);
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
+                    listenerLog->logAt(trivial::trace, "Message was transferred to the queues");
                     this->control_->messageAvailable();
+                  } else {
+                    listenerLog->logAt(trivial::trace, "Message was not transferred to queues");
                   }
                   v = this->handle_codec->decode("");
                 }

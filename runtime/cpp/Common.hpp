@@ -135,11 +135,11 @@ namespace K3 {
   typedef any Literal;
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
-  
-  SystemEnvironment defaultEnvironment() {
+
+  SystemEnvironment defaultEnvironment(Address addr) {
     PeerBootstrap bootstrap = PeerBootstrap();
     SystemEnvironment s_env = SystemEnvironment();
-    s_env[defaultAddress] = bootstrap;
+    s_env[addr] = bootstrap;
     return s_env;
   }
 
@@ -150,6 +150,10 @@ namespace K3 {
       s_env[addr] = bootstrap;
     }
     return s_env;
+  }
+
+  SystemEnvironment defaultEnvironment() {
+    return defaultEnvironment(defaultAddress);
   }
 
   list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
@@ -241,11 +245,22 @@ namespace K3 {
   class DefaultCodec : public Codec, public virtual LogMT {
     public:
       DefaultCodec() : Codec(), LogMT("DefaultCodec"), good_(true) {}
+
       Value encode(const Value& v) { return v; }
-      shared_ptr<Value> decode(const Value& v) { return std::make_shared<Value>(v); } 
+
+      shared_ptr<Value> decode(const Value& v) {
+        shared_ptr<Value> result;
+        if (v != "") {
+          result = std::make_shared<Value>(v);
+        }
+        return result;
+
+      }
+
       bool decode_ready() { return true; }
+
       bool good() { return good_; }
-    
+
     protected:
       bool good_;
   };

@@ -132,7 +132,8 @@ namespace K3
               [=] (const boost::system::error_code& error) {
                 if (!error) {
                   connected_ = true;
-                  BOOST_LOG(*this) << "connected to " << ::K3::addressAsString(addr);
+                  //logAt(warning, "connected");
+                  BOOST_LOG(*this) << "Connected! ";
 
                 } else {
                   BOOST_LOG(*this) << "Connect error: " << error.message();
@@ -168,7 +169,7 @@ namespace K3
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
-          LogMT("NConnection"), socket_(s)
+          LogMT("NConnection"), socket_(s), connected_(false)
       {}
       
       Socket socket_;
