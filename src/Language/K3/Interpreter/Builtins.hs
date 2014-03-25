@@ -41,9 +41,9 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
 -- openBuilting :: ChannelId -> String -> ()
 genBuiltin "openBuiltin" _ =
-  vfun $ \(VString cid) -> 
-    vfun $ \(VString builtinId) ->
-      vfun $ \(VString format) -> 
+  vfun $ \_ (VString cid) -> 
+    vfun $ \_ (VString builtinId) ->
+      vfun $ \_ (VString format) -> 
         do   
           sEnv <- get >>= return . getStaticEnv
           let wd = wireDesc sEnv format
@@ -52,10 +52,10 @@ genBuiltin "openBuiltin" _ =
 
 -- openFile :: ChannelId -> String -> String -> String -> ()
 genBuiltin "openFile" t =
-  vfun $ \(VString cid) ->
-    vfun $ \(VString path) ->
-      vfun $ \(VString format) ->
-        vfun $ \(VString mode) ->
+  vfun $ \_ (VString cid) ->
+    vfun $ \_ (VString path) ->
+      vfun $ \_ (VString format) ->
+        vfun $ \_ (VString mode) ->
           do
             sEnv <- get >>= return . getStaticEnv
             let wd = wireDesc sEnv format
@@ -64,10 +64,10 @@ genBuiltin "openFile" t =
 
 -- openSocket :: ChannelId -> Address -> String -> String -> ()
 genBuiltin "openSocket" t =
-  vfun $ \(VString cid) ->
-    vfun $ \(VAddress addr) ->
-      vfun $ \(VString format) ->
-        vfun $ \(VString mode) ->
+  vfun $ \_ (VString cid) ->
+    vfun $ \_ (VAddress addr) ->
+      vfun $ \_ (VString format) ->
+        vfun $ \_ (VString mode) ->
           do
             sEnv <- get >>= return . getStaticEnv
             let wd = wireDesc sEnv format
@@ -76,7 +76,7 @@ genBuiltin "openSocket" t =
 
 
 -- close :: ChannelId -> ()
-genBuiltin "close" _ = vfun $ \(VString cid) -> liftEngine (close cid) >> return vunit
+genBuiltin "close" _ = vfun $ \_ (VString cid) -> liftEngine (close cid) >> return vunit
 
 -- TODO: deregister methods
 -- register*Trigger :: ChannelId -> TTrigger () -> ()
@@ -88,61 +88,65 @@ genBuiltin "registerSocketDataTrigger"   _ = registerNotifier "data"
 genBuiltin "registerSocketCloseTrigger"  _ = registerNotifier "close"
 
 -- <source>HasRead :: () -> Bool
-genBuiltin (channelMethod -> ("HasRead", Just n)) _ = vfun $ \_ -> checkChannel
-  where checkChannel = liftEngine (hasRead n) >>= maybe invalid (return . VBool)
-        invalid = throwE $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
+genBuiltin (channelMethod -> ("HasRead", Just n)) _ = vfun $ \su _ -> checkChannel su
+  where checkChannel su = liftEngine (hasRead n) >>= maybe (invalid su) (return . VBool)
+        invalid su = throwSE su $ RunTimeInterpretationError $ "Invalid source \"" ++ n ++ "\""
 
 -- <source>Read :: () -> t
-genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> liftEngine (doRead n) >>= throwOnError
-  where throwOnError (Just v) = return v
-        throwOnError Nothing =
-          throwE $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
+genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \su _ -> liftEngine (doRead n) >>= throwOnError su
+  where throwOnError _  (Just v) = return v
+        throwOnError su Nothing =
+          throwSE su $ RunTimeInterpretationError $ "Invalid next value from source \"" ++ n ++ "\""
 
 -- <sink>HasWrite :: () -> Bool
-genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \_ -> checkChannel
-  where checkChannel = liftEngine (hasWrite n) >>= maybe invalid (return . VBool)
-        invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
+genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \su _ -> checkChannel su
+  where checkChannel su = liftEngine (hasWrite n) >>= maybe (invalid su) (return . VBool)
+        invalid su      = throwSE su $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
-  vfun $ \arg -> liftEngine (doWrite n arg) >> return vunit
+  vfun $ \_ arg -> liftEngine (doWrite n arg) >> return vunit
 
 -- random :: int -> int
 genBuiltin "random" _ =
-  vfun $ \(VInt upper) -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+  vfun $ \su x -> case x of
+    VInt upper -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+    _          -> throwSE su $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- randomFraction :: () -> real
-genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
+genBuiltin "randomFraction" _ = vfun $ \_ _ -> liftIO randomIO >>= return . VReal
 
 -- hash :: forall a . a -> int
-genBuiltin "hash" _ = vfun $ \v -> valueHash v
+genBuiltin "hash" _ = vfun $ \_ v -> valueHash v
 
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
-  vfun $ \(VInt upper) ->
-    initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
+  vfun $ \su x -> case x of
+      VInt upper -> initialAnnotatedCollection "Collection" $ map (\i -> VRecord [("i", VInt i)]) [0..(upper-1)]
+      _          -> throwSE su $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- int_of_real :: int -> real
-genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
+genBuiltin "int_of_real" _ = vfun $ \su x -> case x of 
+  VReal r   -> return $ VInt $ truncate r
+  _         -> throwSE su $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
 -- real_of_int :: real -> int
-genBuiltin "real_of_int" _ = vfun $ \(VInt i)  -> return $ VReal $ fromIntegral i
+genBuiltin "real_of_int" _ = vfun $ \su x -> case x of
+  VInt i    -> return $ VReal $ fromIntegral i
+  _         -> throwSE su $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- get_max_int :: () -> int
-genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
+genBuiltin "get_max_int" _ = vfun $ \_ _  -> return $ VInt maxBound
 
 -- Parse an SQL date string and convert to integer
-genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
-  return $ VInt $ toInt $ parseString s
+genBuiltin "parse_sql_date" _ = vfun $ \su (VString s) ->
+  return (VInt $ toInt $ parseString s)
   where parseString s = foldl' readChar [0] s
-        readChar xs '-'    = 0:xs
+        readChar xs '-'   = 0:xs
         readChar (x:xs) n = (x*10 + read [n]):xs
-        readChar _ _       = error "Bad sql date string"
-        toInt [y,m,d] = y*10000 + m*100 + d
-        toInt _       = error "Bad sql date format"
+        toInt [y,m,d]     = y*10000 + m*100 + d
 
-genBuiltin "error" _ = vfun $ \_ -> throwE $
-  RunTimeTypeError "Error encountered in program"
+genBuiltin "error" _ = vfun $ \su _ -> throwSE su $ RunTimeTypeError "Error encountered in program"
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
@@ -155,7 +159,7 @@ channelMethod x =
 
 registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
-  vfun $ \cid -> vfun $ \target -> attach cid n target >> return vunit
+  vfun $ \_ cid -> vfun $ \_ target -> attach cid n target >> return vunit
 
   where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = 
           liftEngine $ attachNotifier_ cid n (addr, tid, v)
@@ -218,14 +222,14 @@ builtinLiftedAttribute annId n _ _ =
     copy = copyCollection
 
     -- | Collection accessor implementation
-    peekFn = valWithCollection $ \_ (Collection _ ds _) -> do 
+    peekFn = valWithCollection $ \_ _ (Collection _ ds _) -> do 
       inner_val <- peekDS ds
       return $ VOption inner_val
 
     -- | Collection modifier implementation
-    insertFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (insertCollection el)
-    deleteFn = valWithCollectionMV $ \el cmv -> modifyCollection cmv (deleteCollection el)
-    updateFn = valWithCollectionMV $ \old cmv -> vfun $ \new -> modifyCollection cmv (updateCollection old new)
+    insertFn = valWithCollectionMV $ \_ el cmv -> modifyCollection cmv (insertCollection el)
+    deleteFn = valWithCollectionMV $ \_ el cmv -> modifyCollection cmv (deleteCollection el)
+    updateFn = valWithCollectionMV $ \_ old cmv -> vfun $ \_ new -> modifyCollection cmv (updateCollection old new)
 
     -- BREAKING EXCEPTION SAFETY
     modifyCollection :: MVar (Collection Value) 
@@ -234,7 +238,7 @@ builtinLiftedAttribute annId n _ _ =
     --TODO modifyMVar_ function has to be over IO
     modifyCollection cmv f = do
         old_col <- liftIO $ readMVar cmv
-        result <- f old_col
+        result  <- f old_col
         --liftIO $ putMVar cmv result
         liftIO $ modifyMVar_ cmv (const $ return result)
         return vunit
@@ -254,9 +258,9 @@ builtinLiftedAttribute annId n _ _ =
         return $ Collection ns new_ds extId
 
     -- | Collection effector implementation
-    iterateFn = valWithCollection $ \f (Collection _ ds _) -> 
-      flip (matchFunction $ funArgError "iterate") f $
-      \f' -> mapDS_ (withClosure f') ds >> return vunit
+    iterateFn = valWithCollection $ \su f (Collection _ ds _) -> 
+      flip (matchFunction $ funArgError su "iterate") f $
+      \f' -> mapDS_ (withClosure su f') ds >> return vunit
 
     -- | Collection transformer implementation
     {-
@@ -269,10 +273,10 @@ builtinLiftedAttribute annId n _ _ =
             copy $ Collection ns new_ds extId
     -}
 
-    binaryCollectionFn fnName binaryDSFn = valWithCollection $ \other (Collection ns ds extId) ->
-      flip (matchCollection collectionError) other $ 
+    binaryCollectionFn fnName binaryDSFn = valWithCollection $ \su other (Collection ns ds extId) ->
+      flip (matchCollection $ collectionError su) other $ 
         \(Collection _ ds' extId') ->
-          if extId /= extId' then typeMismatchError fnName
+          if extId /= extId' then typeMismatchError su fnName
           else binaryDSFn ns extId ds ds'
 
     injectFn binaryDSFn ns extId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds extId
@@ -283,102 +287,103 @@ builtinLiftedAttribute annId n _ _ =
     intersectFn  = binaryCollectionFn "intersect"  $ injectFn intersectDS
     differenceFn = binaryCollectionFn "difference" $ injectFn differenceDS
 
-    splitFn = valWithCollection $ \_ (Collection ns ds extId) -> do
+    splitFn = valWithCollection $ \_ _ (Collection ns ds extId) -> do
         (l, r) <- splitDS ds
         lc <- copy (Collection ns l extId)
         rc <- copy (Collection ns r extId)
         return $ VTuple [lc, rc]
     
     -- Pass in the namespace
-    mapFn = valWithCollection $ \f (Collection ns ds ext) ->
-      flip (matchFunction $ funArgError "map") f $ 
-        \f'  -> mapDS (withClosure f') ds >>= 
+    mapFn = valWithCollection $ \su f (Collection ns ds ext) ->
+      flip (matchFunction $ funArgError su "map") f $ 
+        \f'  -> mapDS (withClosure su f') ds >>= 
         \ds' -> copy (Collection ns ds' ext)
 
-    filterFn = valWithCollection $ \f (Collection ns ds extId) ->
-      flip (matchFunction $ funArgError "filter") f $
-        \f'  -> filterDS (\v -> withClosure f' v >>= matchBool filterValError) ds >>=
+    filterFn = valWithCollection $ \su f (Collection ns ds extId) ->
+      flip (matchFunction $ funArgError su "filter") f $
+        \f'  -> filterDS (\v -> withClosure su f' v >>= matchBool (filterValError su)) ds >>=
         \ds' -> copy (Collection ns ds' extId)
 
-    foldFn = valWithCollection $ \f (Collection _ ds _) ->
-      flip (matchFunction $ funArgError "fold") f $
-        \f' -> vfun $ \accInit -> foldDS (curryFoldFn f') accInit ds
+    foldFn = valWithCollection $ \su f (Collection _ ds _) ->
+      flip (matchFunction $ funArgError su "fold") f $
+        \f' -> vfun $ \su accInit -> foldDS (curryFoldFn su f') accInit ds
 
-    curryFoldFn :: (IFunction, Closure Value, StableName IFunction) -> Value -> Value -> Interpretation Value
-    curryFoldFn f' acc v = do
-      result <- withClosure f' acc
-      (matchFunction curryFnError) (flip withClosure v) result
+    curryFoldFn :: Maybe (Span, UID) -> (IFunction, Closure Value, StableName IFunction) -> Value -> Value -> Interpretation Value
+    curryFoldFn su f' acc v = do
+      result <- withClosure su f' acc
+      (matchFunction (curryFnError su)) (flip (withClosure su) v) result
 
     -- TODO: replace assoc lists with a hashmap.
     groupByFn = valWithCollection heres_the_answer
       where
-        heres_the_answer :: Value -> Collection Value -> Interpretation Value
-        heres_the_answer gb (Collection ns ds ext) = -- Am I passing the right namespace & stuff to the later collections?
-          flip (matchFunction $ funArgError "group-by partition") gb $ \gb' -> vfun $ \f -> 
-          flip (matchFunction $ funArgError "group-by aggregate") f $ \f' -> vfun $ \accInit ->
+        heres_the_answer :: Maybe (Span, UID) -> Value -> Collection Value -> Interpretation Value
+        heres_the_answer su gb (Collection ns ds ext) = -- Am I passing the right namespace & stuff to the later collections?
+          flip (matchFunction $ (funArgError su) "group-by partition") gb $ \gb' -> vfun $ \_ f -> 
+          flip (matchFunction $ (funArgError su) "group-by aggregate") f $ \f' -> vfun $   \_ accInit ->
             do
               new_space <- emptyDS (Just ds)
-              kvRecords <- foldDS (groupByElement gb' f' accInit) new_space ds
+              kvRecords <- foldDS (groupByElement su gb' f' accInit) new_space ds
               -- TODO typecheck that collection
               copy (Collection ns kvRecords ext)
 
     groupByElement :: (AssociativeDataspace (Interpretation) ads Value Value)
-                   => (IFunction, Closure Value, StableName IFunction)
+                   => Maybe (Span, UID)
+                   -> (IFunction, Closure Value, StableName IFunction)
                    -> (IFunction, Closure Value, StableName IFunction)
                    -> Value -> ads -> Value -> Interpretation ads
-    groupByElement gb' f' accInit acc v = do
-      k <- withClosure gb' v
+    groupByElement su gb' f' accInit acc v = do
+      k <- withClosure su gb' v
       look_result <- lookupKV acc k
       case look_result of
         Nothing         -> do
-          val <- curryFoldFn f' accInit v 
+          val <- curryFoldFn su f' accInit v 
           --tmp_ds <- emptyDS ()
           tmp_ds <- emptyDS (Just acc)
           tmp_ds <- insertKV tmp_ds k val
           combineDS acc tmp_ds
         Just partialAcc -> do 
-          new_val <- curryFoldFn f' partialAcc v
+          new_val <- curryFoldFn su f' partialAcc v
           replaceKV acc k new_val
 
-    extFn = valWithCollection $ \f (Collection _ ds _) -> 
-      flip (matchFunction $ funArgError "ext") f $ 
+    extFn = valWithCollection $ \su f (Collection _ ds _) -> 
+      flip (matchFunction $ (funArgError su) "ext") f $ 
       \f' -> do
-            val_ds <- mapDS (withClosure f') ds
+            val_ds <- mapDS (withClosure su f') ds
             first_subcol <- peekDS val_ds
             case first_subcol of
-              Nothing -> extError -- Maybe not the right error here
-                                  -- really, I should create an empty VCollection
-                                  -- with the right type (that of f(elem)), but I
-                                  -- don't have a value to copy the type out of
+              Nothing -> extError su -- Maybe not the right error here
+                                     -- really, I should create an empty VCollection
+                                     -- with the right type (that of f(elem)), but I
+                                     -- don't have a value to copy the type out of
               Just sub_val -> do
                 val_ds <- deleteDS sub_val val_ds
                 result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
-                maybe (typeMismatchError "ext combine") return result
+                maybe (typeMismatchError su "ext combine") return result
 
-    sortFn = valWithCollection $ \f (Collection ns ds extId) ->
-      flip (matchFunction $ funArgError "sort") f $ 
-        \f'  -> sortDS (sortResultAsOrdering f') ds >>= 
+    sortFn = valWithCollection $ \su f (Collection ns ds extId) ->
+      flip (matchFunction $ (funArgError su) "sort") f $ 
+        \f'  -> sortDS (sortResultAsOrdering su f') ds >>= 
         \ds' -> copy (Collection ns ds' extId)
 
-    sortResultAsOrdering (f, cl, sn) = \v1 v2 -> do
-        f2V  <- withClosure (f, cl, sn) v1
-        cmpV <- (matchFunction curryFnError) (flip withClosure v2) f2V
+    sortResultAsOrdering su (f, cl, sn) = \v1 v2 -> do
+        f2V  <- withClosure su (f, cl, sn) v1
+        cmpV <- (matchFunction (curryFnError su)) (flip (withClosure su) v2) f2V
         intAsOrdering cmpV
       where intAsOrdering (VInt i) | i < 0     = return LT
                                    | i == 0    = return EQ
                                    | otherwise = return GT
-            intAsOrdering _        = throwE $ RunTimeTypeError "Invalid sort comparator result"
+            intAsOrdering _        = throwSE su $ RunTimeTypeError "Invalid sort comparator result"
 
-    memberFn = valWithCollection $ \el (Collection _ ds _) -> memberDS el ds >>= return . VBool
+    memberFn = valWithCollection $ \_ el (Collection _ ds _) -> memberDS el ds >>= return . VBool
 
-    minFn = valWithCollection $ \_ (Collection _ ds _) -> minDS ds >>= return . VOption
-    maxFn = valWithCollection $ \_ (Collection _ ds _) -> maxDS ds >>= return . VOption
+    minFn = valWithCollection $ \_ _ (Collection _ ds _) -> minDS ds >>= return . VOption
+    maxFn = valWithCollection $ \_ _ (Collection _ ds _) -> maxDS ds >>= return . VOption
 
-    lowerBoundFn = valWithCollection $ \el (Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption
-    upperBoundFn = valWithCollection $ \el (Collection _ ds _) -> upperBoundDS el ds >>= return . VOption
+    lowerBoundFn = valWithCollection $ \_ el (Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption
+    upperBoundFn = valWithCollection $ \_ el (Collection _ ds _) -> upperBoundDS el ds >>= return . VOption
 
     sliceFn = valWithCollection $ 
-      \lowerEl (Collection ns ds extId) -> vfun $ \upperEl -> 
+      \_ lowerEl (Collection ns ds extId) -> vfun $ \_ upperEl -> 
         sliceDS lowerEl upperEl ds >>= \nds -> copy $ Collection ns nds extId
 
 
@@ -397,16 +402,16 @@ builtinLiftedAttribute annId n _ _ =
 
 
     -- | Collection implementation helpers.
-    withClosure :: (IFunction, Closure Value, StableName IFunction) -> Value -> Interpretation Value
-    withClosure (f, cl, _) arg = modifyE (cl ++) >> f arg >>= flip (foldM $ flip removeE) cl
+    withClosure :: Maybe (Span, UID) -> (IFunction, Closure Value, StableName IFunction) -> Value -> Interpretation Value
+    withClosure su (f, cl, _) arg = modifyE (cl ++) >> f su arg >>= flip (foldM $ flip removeE) cl
 
-    valWithCollection :: (Value -> Collection Value -> Interpretation Value) -> Interpretation Value
-    valWithCollection f = vfun $ \arg -> 
-      lookupE Nothing annotationSelfId >>= matchCollection collectionError (f arg)
+    valWithCollection :: (Maybe (Span, UID) -> Value -> Collection Value -> Interpretation Value) -> Interpretation Value
+    valWithCollection f = vfun $ \su arg -> 
+      lookupE Nothing annotationSelfId >>= matchCollection (collectionError su) (f su arg)
 
-    valWithCollectionMV :: (Value -> MVar (Collection Value) -> Interpretation Value) -> Interpretation Value
-    valWithCollectionMV f = vfun $ \arg -> 
-      lookupE Nothing annotationSelfId >>= matchCollectionMV collectionError (f arg)
+    valWithCollectionMV :: (Maybe (Span, UID) -> Value -> MVar (Collection Value) -> Interpretation Value) -> Interpretation Value
+    valWithCollectionMV f = vfun $ \su arg -> 
+      lookupE Nothing annotationSelfId >>= matchCollectionMV (collectionError su) (f su arg)
 
     matchCollection :: Interpretation a -> (Collection Value -> Interpretation a) -> Value -> Interpretation a
     matchCollection _ f (VCollection cmv) = liftIO (readMVar cmv) >>= f
@@ -424,13 +429,13 @@ builtinLiftedAttribute annId n _ _ =
     matchBool _ (VBool b) = return b
     matchBool err _ = err
 
-    collectionError  = throwE $ RunTimeTypeError "Invalid collection"
-    filterValError   = throwE $ RunTimeTypeError "Invalid filter function result"
-    curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"
-    extError         = throwE $ RunTimeTypeError "Invalid function argument for ext"
+    collectionError su = throwSE su $ RunTimeTypeError "Invalid collection"
+    filterValError su  = throwSE su $ RunTimeTypeError "Invalid filter function result"
+    curryFnError su    = throwSE su $ RunTimeTypeError "Invalid curried function"
+    extError su        = throwSE su $ RunTimeTypeError "Invalid function argument for ext"
 
-    funArgError       fnName = throwE $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
-    typeMismatchError fnName = throwE $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
+    funArgError       su fnName = throwSE su $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
+    typeMismatchError su fnName = throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
                  -> Interpretation (Maybe (Identifier, Value))

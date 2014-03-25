@@ -238,7 +238,7 @@ binary su OApp = \f x -> do
   x' <- expression x
 
   case f' of
-      VFunction (b, cl, _) -> withClosure cl $ b x'
+      VFunction (b, cl, _) -> withClosure cl $ b su x'
       _ -> throwSE su $ RunTimeTypeError $ "Invalid Function Application\n" ++ pretty f
 
   where withClosure cl doApp = modifyE (cl ++) >> doApp >>= flip (foldM $ flip removeE) cl
@@ -300,7 +300,7 @@ expression e_ =
 
     -- | Interpretation of function construction.
     expr (details -> (ELambda i, [b], anns)) =
-      mkFunction $ \v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
+      mkFunction $ \_ v -> modifyE ((i,v):) >> expression b >>= removeE (i,v)
       where
         mkFunction f = (\cl n -> VFunction (f, cl, n)) <$> closure (spanUid anns) <*> liftIO (makeStableName f)
 
@@ -735,7 +735,7 @@ initState aEnv prog = initEnvironment prog (annotationState aEnv)
 initMessages :: IResult () -> EngineM Value (IResult Value)
 initMessages = \case
     ((Right _, s), ilog)
-      | Just (VFunction (f, [], _)) <- lookupInit s -> runInterpretation' s (f vunit)
+      | Just (VFunction (f, [], _)) <- lookupInit s -> runInterpretation' s (f Nothing vunit)
       | otherwise                                   -> return ((unknownTrigger, s), ilog)
     ((Left err, s), ilog)                           -> return ((Left err, s), ilog)
   where 
@@ -769,7 +769,7 @@ initProgram bootstrap staticEnv prog = do
 
 finalProgram :: IState -> EngineM Value (IResult Value)
 finalProgram st = runInterpretation' st $ maybe unknownTrigger runFinal $ lookup "atExit" $ getEnv st
-  where runFinal (VFunction (f,[],_)) = f vunit
+  where runFinal (VFunction (f,[],_)) = f Nothing vunit
         runFinal _                    = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger                = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
@@ -840,7 +840,7 @@ runNetwork isPar systemEnv prog =
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger r n a = \case
     (VTrigger (_, Just f)) -> do
-        result <- runInterpretation' (getResultState r) (f a)
+        result <- runInterpretation' (getResultState r) (f Nothing a)
         logTrigger defaultAddress n a result
         return result
     (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ n) Nothing
