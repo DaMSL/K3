@@ -138,6 +138,6 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   service_threads->remove_thread(&t2);
   service_threads->remove_thread(&t3);
 
-  // Check the result (the 6th fib number should = 8)
+  // Check the result
   Assert.Equal(3, K3::nodeCounter);
 }
