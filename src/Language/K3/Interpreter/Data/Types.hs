@@ -35,7 +35,7 @@ data Value
     | VTrigger     (Identifier, Maybe IFunction)
 
 -- | Type synonym for interpreted lambdas.
-type IFunction = Value -> Interpretation Value
+type IFunction = Maybe (Span, UID) -> Value -> Interpretation Value
 
 -- | Identifiers for global declarations
 type Globals = [Identifier]

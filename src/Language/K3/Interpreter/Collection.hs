@@ -235,9 +235,9 @@ getComposedAnnotation annIds = case annIds of
 contextualizeFunction :: MVar (Collection Value)
                       -> (IFunction, Closure Value, StableName IFunction)
                       -> Value
-contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \x -> do
+contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \su x -> do
       bindings <- liftCollection
-      result   <- f x >>= return . contextualizeResult
+      result   <- f su x >>= return . contextualizeResult
       lowerCollection bindings result
 
   where
