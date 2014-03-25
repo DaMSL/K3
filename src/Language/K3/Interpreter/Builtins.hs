@@ -276,7 +276,7 @@ builtinLiftedAttribute annId n _ _ =
     binaryCollectionFn fnName binaryDSFn = valWithCollection $ \su other (Collection ns ds extId) ->
       flip (matchCollection $ collectionError su) other $ 
         \(Collection _ ds' extId') ->
-          if extId /= extId' then typeMismatchError su fnName
+          if extId /= extId' then typeMismatchError su fnName (Just (extId, extId'))
           else binaryDSFn ns extId ds ds'
 
     injectFn binaryDSFn ns extId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds extId
@@ -345,20 +345,23 @@ builtinLiftedAttribute annId n _ _ =
           new_val <- curryFoldFn su f' partialAcc v
           replaceKV acc k new_val
 
-    extFn = valWithCollection $ \su f (Collection _ ds _) -> 
+    extFn = valWithCollection $ \su f (Collection ns ds ext) ->
+      vfun $ \_ emptyCol ->
+      flip (matchCollection $ extError su) emptyCol $ \(Collection ns1 ds1 extId1) -> 
       flip (matchFunction $ (funArgError su) "ext") f $ 
       \f' -> do
             val_ds <- mapDS (withClosure su f') ds
             first_subcol <- peekDS val_ds
             case first_subcol of
-              Nothing -> extError su -- Maybe not the right error here
+              Nothing -> --extError su -- Maybe not the right error here
                                      -- really, I should create an empty VCollection
                                      -- with the right type (that of f(elem)), but I
                                      -- don't have a value to copy the type out of
+                        copy (Collection ns1 ds1 extId1)
               Just sub_val -> do
                 val_ds <- deleteDS sub_val val_ds
-                result <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds
-                maybe (typeMismatchError su "ext combine") return result
+                result <- foldDS (\acc val -> combine' acc $ Just val) (Just sub_val) val_ds
+                maybe (typeMismatchError su "ext combine" Nothing) return result
 
     sortFn = valWithCollection $ \su f (Collection ns ds extId) ->
       flip (matchFunction $ (funArgError su) "sort") f $ 
@@ -435,7 +438,10 @@ builtinLiftedAttribute annId n _ _ =
     extError su        = throwSE su $ RunTimeTypeError "Invalid function argument for ext"
 
     funArgError       su fnName = throwSE su $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
-    typeMismatchError su fnName = throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
+    typeMismatchError :: Maybe (Span, UID) -> String -> Maybe (Identifier, Identifier) -> Interpretation b
+    typeMismatchError su fnName Nothing = throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
+    typeMismatchError su fnName (Just (t1, t2)) =
+      throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName ++ " type 1: " ++ show t1 ++ " type 2: " ++ show t2
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
                  -> Interpretation (Maybe (Identifier, Value))
