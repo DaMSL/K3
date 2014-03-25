@@ -91,7 +91,7 @@ FACT("Simulation mode CountPeers with 3 peers should count 3") {
   // Run Engine
   engine->runEngine(mp);
 
-  // Check the result (the 6th fib number should = 8)
+  // Check the result 
   Assert.Equal(3, K3::nodeCounter);
 }
 
