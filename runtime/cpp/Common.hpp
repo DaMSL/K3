@@ -143,6 +143,15 @@ namespace K3 {
     return s_env;
   }
 
+  SystemEnvironment defaultEnvironment(list<Address> addrs) {
+    SystemEnvironment s_env;
+    for (Address addr : addrs) {
+      PeerBootstrap bootstrap = PeerBootstrap();
+      s_env[addr] = bootstrap;
+    }
+    return s_env;
+  }
+
   list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     list<Address> r;
     for ( auto x : sysEnv ) { r.push_back(x.first); }

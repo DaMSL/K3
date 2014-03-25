@@ -246,7 +246,7 @@ namespace K3 {
 
       MultiPeerMessages::iterator it =
         find_if(multiPeerMsgs.begin(), multiPeerMsgs.end(),
-          [](MultiPeerMessages::value_type& x){ return x.second->empty(); });
+          [](MultiPeerMessages::value_type& x){ return !x.second->empty(); });
 
       if ( it != multiPeerMsgs.end() ) { 
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));
