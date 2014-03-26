@@ -596,10 +596,10 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 eTerm :: ExpressionParser
 eTerm = do
   e <- EUID # (ESpan <-> rawTerm)
-  mi <- optional (spanned eProject)
+  mi <- many (spanned eProject)
   case mi of
-    Nothing -> return e
-    Just (i, sp) -> EUID # (return $ (EC.project i e) @+ ESpan sp)
+    [] -> return e
+    l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l 
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ (try eAssign),
