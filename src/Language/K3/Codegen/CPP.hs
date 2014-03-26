@@ -205,6 +205,7 @@ cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 cType (tag -> TAddress) = return $ text "Address"
 
 -- TODO: Are these all the cases that need to be handled?
+cType (tag -> TNumber) = return $ text "double"
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This isn't really C++ specific.
@@ -461,7 +462,18 @@ hangBrace d = text "{" PL.<$$> indent 4 d PL.<$$> text "}"
 
 templateLine :: [Doc] -> Doc
 templateLine [] = empty
-templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typename" <+> td | td <- ts])
+templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "class" <+> td | td <- ts])
+
+genCFunction :: Doc -> Doc -> [Doc] -> Doc -> Doc
+genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
+
+genCBoostSerialize :: [Identifier] -> CPPGenR
+genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
+  where
+    serializeTemplateLine = templateLine [(text "archive")]
+    serializeMethod = genCFunction (text "void") (text "serialize") [(text "archive _archive")] serializeBody
+    serializeBody = vsep $ map serializeMember dataDecls
+    serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
 -- | An Annotation Combination Composite should contain the following:
 --  - Inlined implementations for all provided methods.
@@ -483,11 +495,8 @@ composite className ans = do
     let (dataDecls, methDecls) = L.partition isDataDecl positives
 
     -- Generate a serialization method based on engine preferences.
-    serializationDefn <- do
-        -- Filter all data members from positives.
-        -- Generate serialize function.
-        -- Add all members to archive.
-        return empty
+    serializationDefn <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
     constructors' <- sequence constructors
 
@@ -560,7 +569,11 @@ annMemDecl (MAnnotation _ i _) = return $ text i
 record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
-    return $ text "struct" <+> text rName <+> hangBrace members <> semi
+    sD <- serializeDefn
+    return $ text "struct" <+> text rName <+> hangBrace (members PL.<$$> sD) <> semi
+  where
+    serializeDefn = serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i (tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
