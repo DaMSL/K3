@@ -1,7 +1,7 @@
 declare a : ind mut int = ind mut 5
 declare b : (mut int, mut bool) = (mut 7, mut false) 
-declare c : { m : mut int, n : mut bool } = { m:9, n:false }
-declare d : { d_a : mut int, d_b : mut { db_c : mut int, db_d : mut int} } = { d_a:5, d_b:mut { db_c:mut 100, db_d:mut 1000} }
+declare c : { m : mut int, n : mut bool } = { m : mut 9, n : mut false }
+declare d : { d_a : mut int, d_b : mut { db_c : mut int, db_d : mut int} } = { d_a : mut 5, d_b : mut { db_c : mut 100, db_d : mut 1000} }
 
 trigger t : int = \x -> (
   bind a as ind y in (

@@ -143,8 +143,9 @@ copyCollection newC = lookupACombo (realizationId newC) >>= \cstrs -> (copyCtor 
 tieCollection :: MVar Value -> Collection Value -> Interpretation Value
 tieCollection selfMV c = do
   result <- return $ VCollection (selfMV, c)
-  void . liftIO . modifyMVar_ selfMV . const . return $ result
-  return result      
+  success <- liftIO $ tryPutMVar selfMV result
+  if success then return result
+             else throwE $ RunTimeInterpretationError "Failed to tie a collection with tryPutMVar"
 
 freshCollection :: Collection Value -> Interpretation Value
 freshCollection c = do

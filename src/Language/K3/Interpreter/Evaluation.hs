@@ -296,10 +296,99 @@ expression e_ =
     Just _   -> throwAE (annotations e_) $ RunTimeInterpretationError "Invalid bind alias annotation matching"
 
   where
+    isBindAliasAnnotation :: Annotation Expression -> Bool
     isBindAliasAnnotation (EAnalysis (BindAlias _))          = True
     isBindAliasAnnotation (EAnalysis (BindFreshAlias _))     = True
     isBindAliasAnnotation (EAnalysis (BindAliasExtension _)) = True
     isBindAliasAnnotation _                                  = False
+
+    withProxyFrame :: Interpretation a -> Interpretation a
+    withProxyFrame eval = pushProxyFrame >> eval >>= \r -> popProxyFrame >> return r
+
+    refreshEntry :: Identifier -> IEnvEntry Value -> Value -> Interpretation ()
+    refreshEntry n (IVal _) v  = replaceE n (IVal v)
+    refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
+
+    lookupVQ :: Identifier -> Interpretation (Value, VQualifier)
+    lookupVQ i = lookupE (spanUid $ annotations e_) i >>= valueQOfEntry
+
+    -- | Performs a write-back for a bind expression.
+    --   This retrieves the current binding values from the environment
+    --   and reconstructs a path value to replace the bind target.
+    refreshBindings :: Binder -> ProxyPath -> Value -> Interpretation ()
+    refreshBindings (BIndirection i) proxyPath bindV = 
+      lookupVQ i >>= \case
+        (iV, MemMut) ->
+          replaceProxyPath proxyPath bindV iV (\oldV newPathV ->
+            case oldV of 
+              VIndirection (mv, MemMut, _) ->
+                liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
+              _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
+
+        _ -> return () -- Skip writeback to an immutable value.
+
+    refreshBindings (BTuple ts) proxyPath bindV =
+      mapM lookupVQ ts >>= \vqs ->
+        if any (/= MemImmut) $ map snd vqs
+          then replaceProxyPath proxyPath bindV (VTuple vqs) (\_ newPathV -> return newPathV)
+          else return () -- Skip writeback if all fields are immutable.
+
+    refreshBindings (BRecord ids) proxyPath bindV =
+      mapM lookupVQ (map snd ids) >>= \vqs ->
+        if any (/= MemImmut) $ map snd vqs
+          then replaceProxyPath proxyPath bindV
+                  (VRecord $ membersFromList $ zip (map fst ids) vqs)
+                  (\oldV newPathV -> mergeRecords oldV newPathV)
+          else return () -- Skip writebsack if all fields are immutable.
+
+    replaceProxyPath :: ProxyPath -> Value -> Value 
+                     -> (Value -> Value -> Interpretation Value)
+                     -> Interpretation ()
+    replaceProxyPath proxyPath origV newComponentV refreshF =
+      case proxyPath of 
+        (Named n):t     -> do
+                            entry <- lookupE (spanUid $ annotations e_) n
+                            oldV  <- valueOfEntry entry
+                            pathV <- reconstructPathValue t newComponentV oldV
+                            refreshF oldV pathV >>= refreshEntry n entry
+
+        (Temporary _):t -> reconstructPathValue t newComponentV origV >>= refreshF origV >> return ()
+        _               -> throwE $ RunTimeInterpretationError "Invalid path in bind writeback"
+
+
+    reconstructPathValue :: ProxyPath -> Value -> Value -> Interpretation Value
+    reconstructPathValue [] newR@(VRecord _) oldR@(VRecord _) = mergeRecords oldR newR
+    reconstructPathValue [] v _ = return v
+    
+    reconstructPathValue (Dereference:t) v (VIndirection (iv, q, tg)) =
+      liftIO (readMVar iv)
+        >>= reconstructPathValue t v
+        >>= \nv -> liftIO (modifyMVar_ iv $ const $ return nv) >> return (VIndirection (iv, q, tg))
+
+    reconstructPathValue (MatchOption:t) v (VOption (Just ov, q)) =
+      reconstructPathValue t v ov >>= \nv -> return $ VOption (Just nv, q)
+
+    reconstructPathValue ((TupleField i):t) v (VTuple vs) =
+      let (x,y) = splitAt i vs in
+      reconstructPathValue t v (fst $ last x) >>= \nv -> return $ VTuple ((init x) ++ [(nv, snd $ last x)] ++ y)
+
+    reconstructPathValue ((RecordField n):t) v (VRecord ivs) = do
+      fields <- flip mapMembers ivs (\fn (fv, fq) -> 
+                  if fn == n then reconstructPathValue t v fv >>= return . (, fq)
+                             else return (fv, fq))
+      return $ VRecord fields
+
+    reconstructPathValue _ _ _ =
+      throwE $ RunTimeInterpretationError "Invalid path in bind writeback reconstruction"
+
+    -- | Merge two records, restricting to the domain of the first record, and
+    --   preferring values from the second argument for duplicates.
+    mergeRecords :: Value -> Value -> Interpretation Value
+    mergeRecords (VRecord r1) (VRecord r2) =
+      mapBindings (\n v -> maybe (return v) return $ lookupBinding n r2) r1 >>= return . VRecord
+
+    mergeRecords _ _ =
+      throwE $ RunTimeTypeError "Invalid bind record target"
 
     expr :: K3 Expression -> Interpretation Value
     -- | Interpretation of constant expressions.
@@ -384,7 +473,7 @@ expression e_ =
     expr (details -> (EAssign i, [e], anns)) = do
       entry <- lookupE (spanUid anns) i
       case entry of 
-        MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const return v) >> return v
+        MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const $ return v) >> return v
         IVal _  -> throwAE anns $ RunTimeInterpretationError "Invalid assignment to an immutable value"
 
     expr (details -> (EAssign _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Assignment"
@@ -406,16 +495,32 @@ expression e_ =
 
     -- | Interpretation of Case-Matches.
     -- TODO: case expressions should behave like bind, i.e., w/ bind aliases and transactional write-backs
-    expr (details -> (ECaseOf i, [e, s, n], anns)) = expression e >>= \case
-        VOption (Just v, q)  -> entryOfValueQ v q >>= \entry -> insertE i entry >> expression s >>= removeE i entry
-        VOption (Nothing, _) -> expression n
-        _ -> throwAE anns $ RunTimeTypeError "Invalid Argument to Case-Match"
+    expr (details -> (ECaseOf i, [e, s, n], anns)) = withProxyFrame $ do
+        targetV <- expression e
+        case targetV of 
+          VOption (Just v, q) -> do
+            pp <- getProxyPath >>= \case
+              Just ((Named pn):t)     -> return $ (Named pn):t
+              Just ((Temporary pn):t) -> return $ (Temporary pn):t
+              _ -> throwAE anns $ RunTimeTypeError "Invalid proxy path in case-of expression"
+
+            entry <- entryOfValueQ v q
+            insertE i entry
+            sV <- expression s
+            void $ lookupVQ i >>= \case
+              (iV, MemMut) -> replaceProxyPath pp targetV iV (\_ newPathV -> return newPathV) 
+              _            -> return () -- Skip writeback for immutable values.
+            removeE i entry sV
+
+          VOption (Nothing, _) -> expression n
+          _ -> throwAE anns $ RunTimeTypeError "Invalid Argument to Case-Match"
+    
     expr (details -> (ECaseOf _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Case-Match"
 
     -- | Interpretation of Binding.
     -- TODO: For now, all bindings are added in mutable fashion. This should be extracted from
     -- the type inferred for the bind target expression.
-    expr (details -> (EBindAs b, [e, f], anns)) = withBindFrame $ do
+    expr (details -> (EBindAs b, [e, f], anns)) = withProxyFrame $ do
       bv <- expression e
       bp <- getProxyPath >>= \case
         Just ((Named n):t)     -> return $ (Named n):t
@@ -449,10 +554,6 @@ expression e_ =
         _ -> throwAE anns $ RunTimeTypeError "Bind Mis-Match"
 
       where 
-        su = spanUid anns
-
-        withBindFrame bindEval = pushProxyFrame >> bindEval >>= \r -> popProxyFrame >> return r
-
         bindAndRefresh bp bv mems = do
           bindings <- bindMembers mems
           fV <- expression f
@@ -461,85 +562,6 @@ expression e_ =
 
         joinByKeys joinF keys l r =
           catMaybes $ map (\k -> lookup k l >>= (\matchL -> lookupMember k r >>= return . joinF matchL)) keys
-
-        refreshEntry :: Identifier -> IEnvEntry Value -> Value -> Interpretation ()
-        refreshEntry n (IVal _) v  = replaceE n (IVal v)
-        refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
-
-        lookupForRefresh :: Identifier -> Interpretation (Value, VQualifier)
-        lookupForRefresh i = lookupE su i >>= valueQOfEntry
-
-        -- | Performs a write-back for a bind expression.
-        --   This retrieves the current binding values from the environment
-        --   and reconstructs a path value to replace the bind target.
-        refreshBindings :: Binder -> ProxyPath -> Value -> Interpretation ()
-        refreshBindings (BIndirection i) bindPath bindV = 
-          lookupForRefresh i >>= \case
-            (iV, MemMut) ->
-              flip (replaceBindPath bindPath bindV) iV (\oldV newPathV ->
-                case oldV of 
-                  VIndirection (mv, MemMut, _) -> liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
-                  _ -> throwAE anns $ RunTimeTypeError "Invalid bind indirection target")
-
-            _ -> return () -- Skip writeback to an immutable value.
-
-        refreshBindings (BTuple ts) bindPath bindV =
-          mapM lookupForRefresh ts >>= \vqs ->
-            if any (/= MemImmut) $ map snd vqs
-              then replaceBindPath bindPath bindV (\_ newPathV -> return newPathV) $ VTuple vqs
-              else return () -- Skip writeback if all fields are immutable.
-
-        refreshBindings (BRecord ids) bindPath bindV =
-          mapM lookupForRefresh (map snd ids) >>= \vqs ->
-            if any (/= MemImmut) $ map snd vqs
-              then replaceBindPath bindPath bindV (\oldV newPathV -> mergeRecords oldV newPathV)
-                      $ VRecord $ membersFromList $ zip (map fst ids) vqs
-              else return () -- Skip writebsack if all fields are immutable.
-
-        replaceBindPath :: ProxyPath -> Value -> (Value -> Value -> Interpretation Value) -> Value
-                        -> Interpretation ()
-        replaceBindPath bindPath bindV refreshF newV =
-          case bindPath of 
-            (Named n):t     -> do
-                                entry <- lookupE su n
-                                oldV  <- valueOfEntry entry
-                                pathV <- reconstructPathValue t newV oldV
-                                refreshF oldV pathV >>= refreshEntry n entry
-
-            (Temporary _):t -> reconstructPathValue t newV bindV >>= refreshF bindV >> return ()
-            _               -> throwAE anns $ RunTimeInterpretationError "Invalid path in bind writeback"
-
-
-        reconstructPathValue :: ProxyPath -> Value -> Value -> Interpretation Value
-        reconstructPathValue [] newR@(VRecord _) oldR@(VRecord _) = mergeRecords oldR newR
-        reconstructPathValue [] v _ = return v
-        
-        reconstructPathValue (Dereference:t) v (VIndirection (iv, q, tg)) =
-          liftIO (readMVar iv)
-            >>= reconstructPathValue t v
-            >>= \nv -> liftIO (modifyMVar_ iv $ const $ return nv) >> return (VIndirection (iv, q, tg))
-
-        reconstructPathValue ((TupleField i):t) v (VTuple vs) =
-          let (x,y) = splitAt i vs in
-          reconstructPathValue t v (fst $ last x) >>= \nv -> return $ VTuple ((init x) ++ [(nv, snd $ last x)] ++ y)
-
-        reconstructPathValue ((RecordField n):t) v (VRecord ivs) = do
-          fields <- flip mapMembers ivs (\fn (fv, fq) -> 
-                      if fn == n then reconstructPathValue t v fv >>= return . (, fq)
-                                 else return (fv, fq))
-          return $ VRecord fields
-
-        reconstructPathValue _ _ _ =
-          throwAE anns $ RunTimeInterpretationError "Invalid path in bind writeback reconstruction"
-
-        -- | Merge two records, restricting to the domain of the first record, and
-        --   preferring values from the second argument for duplicates.
-        mergeRecords :: Value -> Value -> Interpretation Value
-        mergeRecords (VRecord r1) (VRecord r2) =
-          mapBindings (\n v -> maybe (return v) return $ lookupBinding n r2) r1 >>= return . VRecord
-
-        mergeRecords _ _ =
-          throwAE anns $ RunTimeTypeError "Invalid bind record target"
 
     expr (details -> (EBindAs _,_,anns)) = throwAE anns $ RunTimeTypeError "Invalid Bind Construction"
 

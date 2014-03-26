@@ -44,7 +44,7 @@ prettyIEnvM :: IEnvironment Value -> EngineM Value [String]
 prettyIEnvM env = do
     nWidth   <- return . maximum . map (length . fst) =<< liftIO (HT.toList env)
     bindings <- mapM (prettyEnvEntries nWidth) . sortBy (compare `on` fst) =<< liftIO (HT.toList env)
-    return $ ["Environment:"] ++ concat bindings 
+    return $ concat bindings 
   where 
     prettyEnvEntries w (n, eel) = do
       sl <- mapM prettyEnvEntry eel
@@ -67,7 +67,7 @@ prettyIStateM st = do
 
 prettyIResultM :: IResult Value -> EngineM Value [String]
 prettyIResultM ((res, st), _) =
-  return . shift (showResultValue res) "  " =<< prettyIStateM st 
+  return . ([showResultValue res] ++) =<< prettyIStateM st 
 
 
 {- Additional show methods -}

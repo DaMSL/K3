@@ -375,7 +375,7 @@ virtualizedProcessor staticEnv = MessageProcessor {
 
     reportNodeIResult (addr, r) = do
       void $ liftIO (putStrLn ("[" ++ show addr ++ "]"))
-      void $ prettyIResultM r >>= liftIO . putStr . unlines . indent 2 
+      void $ prettyIResultM r >>= liftIO . putStr . boxToString . indent 2 
 
 
 -- | Message processing for a single peer.

@@ -57,17 +57,26 @@ labelBindAliases prog = snd $ labelDecl 0 prog
 
     labelAnnMem cnt annMem = (cnt, annMem)
 
-    labelExpr :: Int -> K3 Expression -> (Int, K3 Expression)
-    labelExpr cnt e@(tag &&& children -> (EBindAs b, [s, t])) =
-      (ncnt2, Node (EBindAs b :@: annotations e) [ns, nt])
-      where (ncnt, ns)     = (\(i, ne) -> annotateAliases i (exprUIDs $ extractReturns ne) ne) $ labelExpr cnt s
-            (ncnt2, nt)    = labelExpr ncnt t
-            exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
+    labelProxyPath (i, e) = annotateAliases i (exprUIDs $ extractReturns e) e
+      where exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
             asUID (EUID x) = [x]
             asUID _        = []
 
+    labelExpr :: Int -> K3 Expression -> (Int, K3 Expression)
+    labelExpr cnt e@(tag &&& children -> (EBindAs b, [s, t])) =
+      (ncnt2, Node (EBindAs b :@: annotations e) [ns, nt])
+      where (ncnt, ns)     = labelProxyPath $ labelExpr cnt s
+            (ncnt2, nt)    = labelExpr ncnt t
+
+    labelExpr cnt e@(tag &&& children -> (ECaseOf i, [c, s, n])) =
+      (ncnt3, Node (ECaseOf i :@: annotations e) [nc, ns, nn])
+      where (ncnt, nc)  = labelProxyPath $ labelExpr cnt c
+            (ncnt2, ns) = labelExpr ncnt s
+            (ncnt3, nn) = labelExpr ncnt2 n
+
     -- Recur through all other operations.
-    labelExpr cnt (Node t cs) = (\(x,y) -> (maxCnt cnt x, Node t y)) $ unzip $ foldl (threadCnt labelExpr cnt) [] cs
+    labelExpr cnt (Node t cs) =
+      (\(x,y) -> (maxCnt cnt x, Node t y)) $ unzip $ foldl (threadCnt labelExpr cnt) [] cs
         
     threadCnt f cnt acc c = acc++[f (maxCnt cnt $ map fst acc) c]
     maxCnt i l          = if l == [] then i else last l
