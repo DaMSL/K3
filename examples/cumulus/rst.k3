@@ -2846,7 +2846,6 @@ declare route_to_ATIMESD_mT1 :
                          bound_bucket, value:max_val}}))).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
           empty {i:address} @ { Collection } in
-      let sorted_ip_list = coerce sorted_ip_list "Collection" in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -2948,7 +2947,6 @@ declare route_to_ATIMESD_mT1_mR1 : { key:option int, value:option int
                          bound_bucket, value:max_val}}))).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
           empty {i:address} @ { Collection } in
-      let sorted_ip_list = coerce sorted_ip_list "Collection" in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3030,7 +3028,6 @@ declare route_to_ATIMESD_mS1 :
                          bound_bucket, value:max_val}}))).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
           empty {i:address} @ { Collection } in
-      let sorted_ip_list = coerce sorted_ip_list "Collection" in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3112,7 +3109,6 @@ declare route_to_ATIMESD_mS2 :
                          bound_bucket, value:max_val}}))).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
           empty {i:address} @ { Collection } in
-      let sorted_ip_list = coerce sorted_ip_list "Collection" in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3194,7 +3190,6 @@ declare route_to_ATIMESD_mR1 :
                          bound_bucket, value:max_val}}))).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
           empty {i:address} @ { Collection } in
-      let sorted_ip_list = coerce sorted_ip_list "Collection" in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
