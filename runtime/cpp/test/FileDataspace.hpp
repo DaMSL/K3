@@ -29,11 +29,30 @@ T fromString(std::string str)
 
 std::string generateListDataspaceFilename(K3::Engine * engine);
 std::string openListDataspaceFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
+K3::Identifier openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
 
-typedef K3::Value AccumT;
-//template<typename AccumT>
-AccumT foldOpenFile(K3::Engine * engine, std::function<AccumT(AccumT, K3::Value)> accumulation, AccumT initial_accumulator, const K3::Identifier& file_id);
-AccumT foldFile(K3::Engine * engine, std::function<AccumT(AccumT, K3::Value)> accumulation, AccumT initial_accumulator, const K3::Identifier& file_id);
+template<typename AccumT>
+AccumT foldOpenFile(K3::Engine * engine, std::function<AccumT(AccumT, K3::Value)> accumulation, AccumT initial_accumulator, const K3::Identifier& file_id)
+{
+    while (engine->hasRead(file_id))
+    {
+        std::shared_ptr<K3::Value> cur_val = engine->doReadExternal(file_id);
+        if (cur_val)
+            initial_accumulator = accumulation(initial_accumulator, *cur_val);
+        else
+            return initial_accumulator;
+    }
+    return initial_accumulator;
+}
+
+template<typename AccumT>
+AccumT foldFile(K3::Engine * engine, std::function<AccumT(AccumT, K3::Value)> accumulation, AccumT initial_accumulator, const K3::Identifier& file_id)
+{
+    openCollectionFile(engine, file_id, K3::IOMode::Read);
+    AccumT result = foldOpenFile<AccumT>(engine, accumulation, initial_accumulator, file_id);
+    engine->close(file_id);
+    return result;
+}
 
 std::string copyFile(K3::Engine * engine, const std::string& old_id);
 
