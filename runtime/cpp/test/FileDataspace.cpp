@@ -68,11 +68,10 @@ K3::Identifier mapFile(K3::Engine * engine, std::function<K3::Value(K3::Value)> 
     K3::Identifier tmp_ds = copyFile(engine, file_ds);
     K3::Identifier new_id = generateCollectionFilename(engine);
     openCollectionFile(engine, new_id, K3::IOMode::Write);
-    foldFile<std::tuple<>>(engine,
-            [engine, &new_id, &function](std::tuple<>, K3::Value val) {
+    mapFile_(engine,
+            [engine, &new_id, &function](K3::Value val) {
                 engine->doWriteExternal(new_id, function(val));
-                return std::tuple<>();
-            }, std::tuple<>(), tmp_ds);
+            }, tmp_ds);
     engine->close(new_id);
     return new_id;
 }
@@ -91,12 +90,11 @@ K3::Identifier filterFile(K3::Engine * engine, std::function<bool(K3::Value)> pr
     K3::Identifier tmp_ds = copyFile(engine, old_ds);
     K3::Identifier new_id = generateCollectionFilename(engine);
     openCollectionFile(engine, new_id, K3::IOMode::Write);
-    foldFile<std::tuple<>>(engine,
-            [engine, &new_id, &predicate](std::tuple<>, K3::Value val) {
+    mapFile_(engine,
+            [engine, &new_id, &predicate](K3::Value val) {
                 if (predicate(val))
                     engine->doWriteExternal(new_id, val);
-                return std::tuple<>();
-            }, std::tuple<>(), tmp_ds);
+            }, tmp_ds);
     engine->close(new_id);
     return new_id;
 }
@@ -154,11 +152,10 @@ K3::Identifier combineFile(K3::Engine * engine, const K3::Identifier& self, cons
 {
     K3::Identifier new_id = copyFile(engine, self);
     openCollectionFile(engine, new_id, K3::IOMode::Append);
-    foldFile<std::tuple<>>(engine,
-            [engine, &new_id](std::tuple<>, K3::Value v) {
+    mapFile_(engine,
+            [engine, &new_id](K3::Value v) {
                 engine->doWriteExternal(new_id, v);
-                return std::tuple<>();
-            }, std::tuple<>(), values);
+            }, values);
     engine->close(new_id);
     return new_id;
 }
