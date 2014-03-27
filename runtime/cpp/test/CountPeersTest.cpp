@@ -58,10 +58,9 @@ shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
 shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
   // Configure engine components
   shared_ptr<InternalCodec> i_cdec = make_shared<LengthHeaderInternalCodec>(LengthHeaderInternalCodec());
-  shared_ptr<ExternalCodec> e_cdec = make_shared<LengthHeaderCodec>(LengthHeaderCodec());
 
   // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec, e_cdec);
+  Engine engine = Engine(simulation, s_env, i_cdec);
   return make_shared<Engine>(engine);
 }
 
@@ -140,4 +139,53 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
 
   // Check the result
   Assert.Equal(3, K3::nodeCounter);
+}
+
+FACT("Network mode CountPeers with 100 messages per 3 peers should count 300") {
+  K3::nodeCounter = 0;
+  using boost::thread;
+  using boost::thread_group;
+  // Create peers
+  K3::peer1 = K3::make_address(K3::localhost, 3000);
+  K3::peer2 = K3::make_address(K3::localhost, 3005);
+  K3::peer3 = K3::make_address(K3::localhost, 3002);
+  K3::rendezvous = K3::peer1;
+  // Create engines
+  auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer1));
+  auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
+  auto engine3 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer3));
+  // Create MPs
+  auto mp1 = K3::buildMP(engine1);
+  auto mp2 = K3::buildMP(engine2);
+  auto mp3 = K3::buildMP(engine3);
+  // Create initial messages (source)
+  K3::Message m1 = K3::Message(K3::peer1, "join", "()");
+  K3::Message m2 = K3::Message(K3::peer2, "join", "()");
+  K3::Message m3 = K3::Message(K3::peer3, "join", "()");
+  for (int i = 0; i < 100; i++) {
+    engine1->send(m1);
+    engine2->send(m2);
+    engine3->send(m3);
+  }
+  // Fork a thread for each engine
+  auto service_threads = std::shared_ptr<thread_group>(new thread_group());
+  thread t1 = engine1->forkEngine(mp1);
+  thread t2 = engine2->forkEngine(mp2);
+  thread t3 = engine3->forkEngine(mp3);
+
+  service_threads->add_thread(&t1);
+  service_threads->add_thread(&t2);
+  service_threads->add_thread(&t3);
+
+  boost::this_thread::sleep_for( boost::chrono::seconds(5) );
+  engine1->forceTerminateEngine();
+  engine2->forceTerminateEngine();
+  engine3->forceTerminateEngine();
+  service_threads->join_all();
+  service_threads->remove_thread(&t1);
+  service_threads->remove_thread(&t2);
+  service_threads->remove_thread(&t3);
+
+  // Check the result
+  Assert.Equal(300, K3::nodeCounter);
 }

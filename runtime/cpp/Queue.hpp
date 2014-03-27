@@ -330,7 +330,7 @@ namespace K3 {
     
       MultiTriggerMessages::iterator it =
         find_if(multiTriggerMsgs.begin(), multiTriggerMsgs.end(), 
-          [](MultiTriggerMessages::value_type& x) { return x.second->empty(); });
+          [](MultiTriggerMessages::value_type& x) { return !x.second->empty(); });
       
       if ( it != multiTriggerMsgs.end() ) {
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));

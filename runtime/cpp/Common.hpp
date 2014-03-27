@@ -240,6 +240,11 @@ namespace K3 {
       virtual shared_ptr<Value> decode(const Value&) = 0;
       virtual bool decode_ready() = 0;
       virtual bool good() = 0;
+
+      // codec cloning
+      virtual ~Codec() {}
+      virtual shared_ptr<Codec> clone() = 0;
+
   };
 
   class DefaultCodec : public virtual Codec, public virtual LogMT {
@@ -260,6 +265,11 @@ namespace K3 {
       bool decode_ready() { return true; }
 
       bool good() { return good_; }
+
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec(*this));
+        return cdec;
+      };
 
     protected:
       bool good_;
@@ -308,6 +318,12 @@ namespace K3 {
       }
 
       bool good() { return good_; }
+
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(*this));
+        return cdec;
+      };
+
 
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
@@ -378,6 +394,12 @@ namespace K3 {
       }
 
       bool good() { return good_; }
+
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec(*this));
+        return cdec;
+      };
+
 
     protected:
       bool good_;

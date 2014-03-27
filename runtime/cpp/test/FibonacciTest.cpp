@@ -84,10 +84,9 @@ shared_ptr<Engine> buildEngine() {
   bool simulation = true;
   SystemEnvironment s_env = defaultEnvironment();
   shared_ptr<InternalCodec> i_cdec = make_shared<DefaultInternalCodec>(DefaultInternalCodec());
-  shared_ptr<ExternalCodec> e_cdec = make_shared<DefaultCodec>(DefaultCodec());
 
   // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec, e_cdec);
+  Engine engine = Engine(simulation, s_env, i_cdec);
   return make_shared<Engine>(engine);
 }
 

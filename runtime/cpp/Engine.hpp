@@ -155,10 +155,9 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec,
-      shared_ptr<ExternalCodec> _external_codec
+      shared_ptr<InternalCodec> _internal_codec
     ):
-      LogMT("Engine"), internal_codec(_internal_codec), external_codec(_external_codec) {
+      LogMT("Engine"), internal_codec(_internal_codec) {
 
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
@@ -276,21 +275,21 @@ namespace K3 {
     //---------------------------------------
     // Internal and external channel methods.
 
-    void openBuiltin(Identifier eid, string builtinId, shared_ptr<Codec> codec) {
+    void openBuiltin(Identifier eid, string builtinId) {
       externalEndpointId(eid) ?
-        genericOpenBuiltin(eid, builtinId, codec)
+        genericOpenBuiltin(eid, builtinId)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, shared_ptr<Codec> codec, IOMode mode) {
+    void openFile(Identifier eid, string path, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenFile(eid, path, codec, mode)
+        genericOpenFile(eid, path, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openSocket(Identifier eid, Address addr, shared_ptr<Codec> codec, IOMode mode) {
+    void openSocket(Identifier eid, Address addr, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenSocket(eid, addr, codec, mode)
+        genericOpenSocket(eid, addr, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
@@ -302,19 +301,19 @@ namespace K3 {
 
     void openBuiltinInternal(Identifier eid, string builtinId) {
       !externalEndpointId(eid)?
-        genericOpenBuiltin(eid, builtinId, internal_codec)
+        genericOpenBuiltin(eid, builtinId)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openFileInternal(Identifier eid, string path, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenFile(eid, path, internal_codec, mode)
+        genericOpenFile(eid, path, mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenSocket(eid, addr, internal_codec, mode)
+        genericOpenSocket(eid, addr, mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
@@ -376,7 +375,7 @@ namespace K3 {
 
     // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
     // refactored a bit.
-    void runMessages(shared_ptr<MessageProcessor> mp, MPStatus st)
+    void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus st)
     {
       MPStatus next_status;
       switch (st) {
@@ -499,7 +498,6 @@ namespace K3 {
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
     shared_ptr<InternalCodec>       internal_codec;
-    shared_ptr<ExternalCodec>       external_codec;
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
@@ -546,8 +544,10 @@ namespace K3 {
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericOpenBuiltin(string id, string builtinId, shared_ptr<Codec> codec) {
+    void genericOpenBuiltin(string id, string builtinId) {
       if (endpoints) {
+        shared_ptr<Codec> codec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
+
         Builtin b = builtin(builtinId);
 
         // Create the IO Handle
@@ -573,8 +573,10 @@ namespace K3 {
       else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenFile(string id, string path, shared_ptr<Codec> codec, IOMode mode) {
+    void genericOpenFile(string id, string path, IOMode mode) {
       if ( endpoints ) {
+        shared_ptr<Codec> codec =  shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
+
         // Create the IO Handle
         shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
@@ -590,8 +592,9 @@ namespace K3 {
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void genericOpenSocket(string id, Address addr, shared_ptr<Codec> codec, IOMode handleMode) {
+    void genericOpenSocket(string id, Address addr, IOMode handleMode) {
       if (endpoints) {
+        shared_ptr<Codec> codec =  shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec());
 
         // Create the IO Handle.
         shared_ptr<IOHandle> ioh = openSocketHandle(addr, codec, handleMode);
