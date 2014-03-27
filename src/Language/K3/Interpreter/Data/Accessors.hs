@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -31,6 +32,27 @@ vunit = VTuple []
 
 vfun :: IFunction -> Interpretation Value
 vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
+
+-- | Refresh the collection's cached value from its shared (self) value.
+--   This treats the shared value as the authoritative contents.
+syncCollection :: Value -> Interpretation Value
+syncCollection (VCollection (s,_)) =
+  liftIO (readMVar s) >>= \case
+      VCollection (s2,c2) | s == s2 -> return $ VCollection (s, c2) 
+      _ -> throwE $ RunTimeInterpretationError "Invalid cyclic self value"
+syncCollection v = return v
+
+syncCollectionIO :: Value -> IO Value
+syncCollectionIO v@(VCollection (s,_)) = readMVar s >>= \case
+    VCollection (s2,c2) | s == s2 -> return (VCollection (s,c2))
+    _ -> return v 
+syncCollectionIO v = return v
+
+-- | Refreshes a collection's cached value while also modifying a binding.
+syncCollectionE :: Identifier -> IEnvEntry Value -> Value -> Interpretation Value
+syncCollectionE i (IVal _)  v@(VCollection _) = syncCollection v >>= \nv -> replaceE i (IVal nv) >> return nv
+syncCollectionE _ (MVal mv) v@(VCollection _) = syncCollection v >>= \nv -> liftIO (modifyMVar_ mv $ const $ return nv) >> return nv
+syncCollectionE _ _ v = return v
 
 valueQOfEntry :: IEnvEntry Value -> Interpretation (Value, VQualifier)
 valueQOfEntry = liftIO . valueQOfEntryIO
@@ -71,8 +93,11 @@ entryOfValueT Nothing           = liftIO . mkIVal
 entryOfValueT _                 = const $ throwE $ RunTimeTypeError "Invalid qualifier annotation"
 
 entryOfValueQ :: Value -> VQualifier -> Interpretation (IEnvEntry Value)
-entryOfValueQ v MemImmut = liftIO $ mkIVal v
-entryOfValueQ v MemMut   = liftIO $ mkMVal v
+entryOfValueQ v q = liftIO $ entryOfValueQIO v q
+
+entryOfValueQIO :: Value -> VQualifier -> IO (IEnvEntry Value)
+entryOfValueQIO v MemImmut = mkIVal v
+entryOfValueQIO v MemMut   = mkMVal v
 
 {- Entity tag accessors -}
 memEntTag :: a -> Interpretation EntityTag
@@ -137,27 +162,21 @@ mapMembers_ f mems = mapBindings_ f mems
 bindMembers :: NamedMembers Value -> Interpretation (NamedBindings (IEnvEntry Value))
 bindMembers mems = mapMembers pushMember mems
   where pushMember k vq = do
-          entry <- envEntry vq
+          entry <- (uncurry entryOfValueQ) vq
           void $ modifyE $ insertEnv k entry
           return entry
-        envEntry (v, MemImmut) = return $ IVal v
-        envEntry (v, MemMut)   = liftIO (newMVar v) >>= return . MVal
 
 refreshEnvMembers :: NamedMembers Value -> Interpretation ()
 refreshEnvMembers mems = mapMembers_ refreshMember mems
   where refreshMember k vq = do
-          entry <- envEntry vq
+          entry <- (uncurry entryOfValueQ) vq
           modifyE $ replaceEnv k entry
-        envEntry (v, MemImmut) = return $ IVal v
-        envEntry (v, MemMut)   = liftIO (newMVar v) >>= return . MVal
 
 unbindMembers :: NamedBindings (IEnvEntry Value) -> Interpretation (NamedMembers Value)
 unbindMembers bindings = mapBindings popMember bindings
   where popMember k entry = do
-          void $ modifyE $ removeEnv k entry
-          case entry of 
-            IVal v  -> return (v, MemImmut)
-            MVal mv -> liftIO (readMVar mv) >>= return . (, MemMut)
+          void $ modifyE $ removeEnv k
+          valueQOfEntry entry
 
 
 {- Environment accessors -}
@@ -190,13 +209,13 @@ insertEnv n v env = liftIO (insertEnvIO n v env)
 insertEnvIO :: Identifier -> IEnvEntry Value -> IEnvironment Value -> IO (IEnvironment Value)
 insertEnvIO n v = chainEnv (\env -> HT.lookup env n >>= HT.insert env n . (maybe [v] (v:)))
 
-removeEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
-          -> Interpretation (IEnvironment Value)
-removeEnv n v env = liftIO (removeEnvIO n v env)
+removeEnv :: Identifier -> IEnvironment Value -> Interpretation (IEnvironment Value)
+removeEnv n env = liftIO (removeEnvIO n env)
 
-removeEnvIO :: Identifier -> IEnvEntry Value -> IEnvironment Value -> IO (IEnvironment Value)
-removeEnvIO n v = chainEnv (\env -> HT.lookup env n >>= maybe (return ()) (remove env))
-  where remove env (delete v -> nl) = if null nl then HT.delete env n else HT.insert env n nl
+removeEnvIO :: Identifier -> IEnvironment Value -> IO (IEnvironment Value)
+removeEnvIO n = chainEnv (\env -> HT.lookup env n >>= maybe (return ()) (remove env))
+  where remove env []           = HT.delete env n 
+        remove env (tail -> nl) = if null nl then HT.delete env n else HT.insert env n nl
 
 replaceEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
            -> Interpretation (IEnvironment Value)
@@ -211,8 +230,9 @@ mergeEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> insertEnvIO 
 
 -- | Removes all bindings from the source environment if they are present in the destination.
 --   This is the inverse of the merge operation above.
+-- TODO: think through name-only removal in this instance, rather than named value removal.
 pruneEnv :: IEnvironment Value -> IEnvironment Value -> Interpretation (IEnvironment Value)
-pruneEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 v -> removeEnvIO k v a2) a vl) dest src
+pruneEnv src dest = liftIO $ HT.foldM (\a (k,vl) -> foldM (\a2 _ -> removeEnvIO k a2) a vl) dest src
 
 foldEnv :: (a -> Identifier -> IEnvEntry Value -> IO a) -> a -> IEnvironment Value -> Interpretation a
 foldEnv f z env = liftIO $ foldEnvIO f z env
@@ -220,6 +240,14 @@ foldEnv f z env = liftIO $ foldEnvIO f z env
 foldEnvIO :: (a -> Identifier -> IEnvEntry Value -> IO a) -> a -> IEnvironment Value -> IO a
 foldEnvIO f z env = HT.foldM (\a (k,vl) -> foldM (\a2 v -> f a2 k v) a vl) z env
 
+-- | Synchronizes all collection bindings in an environment.
+syncEnv :: IEnvironment Value -> Interpretation (IEnvironment Value)
+syncEnv env = liftIO $ syncEnvIO env
+
+syncEnvIO :: IEnvironment Value -> IO (IEnvironment Value)
+syncEnvIO env = emptyEnvIO >>= \nenv ->
+  HT.foldM (\acc (k,vl) -> mapM syncEntry vl >>= HT.insert acc k >> return acc) nenv env
+  where syncEntry e = valueQOfEntryIO e >>= \(v,q) -> syncCollectionIO v >>= flip entryOfValueQIO q
 
 {- State and result accessors -}
 
@@ -285,6 +313,9 @@ getResultState ((_, x), _) = x
 getResultVal :: IResult a -> Either InterpretationError a
 getResultVal ((x, _), _) = x
 
+syncIResult :: IResult a -> IO (IResult a)
+syncIResult ((r,st),l) = modifyStateEnvIO syncEnvIO st >>= \nst -> return ((r,nst), l)
+
 
 {- Interpretation Helpers -}
 
@@ -342,8 +373,8 @@ insertE :: Identifier -> IEnvEntry Value -> Interpretation ()
 insertE n v = modifyE $ insertEnv n v
 
 -- | Environment binding removal
-removeE :: Identifier -> IEnvEntry Value -> a -> Interpretation a
-removeE n v r = modifyE (removeEnv n v) >> return r
+removeE :: Identifier -> a -> Interpretation a
+removeE n r = modifyE (removeEnv n) >> return r
 
 -- | Environment binding replacement.
 replaceE :: Identifier -> IEnvEntry Value -> Interpretation ()
@@ -356,6 +387,10 @@ mergeE env = modifyE $ mergeEnv env
 -- | Bulk environment binding removal.
 pruneE :: IEnvironment Value -> Interpretation ()
 pruneE env = modifyE $ pruneEnv env
+
+-- | Synchronize cached collection values
+syncE :: Interpretation ()
+syncE = modifyE $ syncEnv
 
 -- | Annotation environment helpers.
 lookupADef :: Identifier -> Interpretation (NamedMembers Value)

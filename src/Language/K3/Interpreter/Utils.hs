@@ -125,7 +125,8 @@ logIResultM tag' addr r = do
 
 logTriggerM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
 logTriggerM addr n args r = do
-    msg <- showDispatchM addr n args r
+    syncR <- liftIO $ syncIResult r
+    msg   <- showDispatchM addr n args syncR
     void $ _notice_Dispatch $ boxToString msg
 
 logIStateMI :: Interpretation ()

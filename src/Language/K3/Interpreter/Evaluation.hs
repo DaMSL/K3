@@ -84,28 +84,6 @@ sendE addr n val = liftEngine $ send addr n val
 
 {- Interpretation -}
 
--- | Refresh the collection's cached value from its shared (self) value.
---   This treats the shared value as the authoritative contents.
-syncCollection :: Value -> Interpretation Value
-syncCollection (VCollection (s,_)) =
-  liftIO (readMVar s) >>= \case
-      VCollection (s2,c2) | s == s2 -> return $ VCollection (s, c2) 
-      _ -> throwE $ RunTimeInterpretationError "Invalid cyclic self value"
-syncCollection v = return v
-
--- | Refreshes a collection's cached value while also modifying a binding.
-syncCollectionE :: Identifier -> IEnvEntry Value -> Value -> Interpretation Value
-syncCollectionE i (IVal _)  v@(VCollection _) = syncCollection v >>= \nv -> replaceE i (IVal nv) >> return nv
-syncCollectionE _ (MVal mv) v@(VCollection _) = syncCollection v >>= \nv -> liftIO (modifyMVar_ mv $ const $ return nv) >> return nv
-syncCollectionE _ _ v = return v
-
--- | Return a fresh, unshared collection value after synchronization.
-freshenValue :: Value -> Interpretation Value
-freshenValue v@(VCollection _) = syncCollection v >>= \case
-  VCollection (_,c2) -> freshCollection c2
-  _                  -> throwE $ RunTimeInterpretationError "Invalid collection value"
-freshenValue v = return v
-
 -- | Default values for specific types
 defaultValue :: K3 Type -> Interpretation Value
 defaultValue (tag -> TBool)       = return $ VBool False
@@ -447,7 +425,7 @@ expression e_ = traceExpression $ do
 
     -- | Interpretation of function construction.
     expr (details -> (ELambda i, [b], _)) =
-      mkFunction $ \v -> insertE i (IVal v) >> expression b >>= removeE i (IVal v)
+      mkFunction $ \v -> insertE i (IVal v) >> expression b >>= removeE i
       where
         mkFunction f = (\cl tg -> VFunction (f, cl, tg)) <$> closure <*> memEntTag f
 
@@ -489,7 +467,7 @@ expression e_ = traceExpression $ do
     -- | Interpretation of Let-In Constructions.
     expr (tag &&& children -> (ELetIn i, [e, b])) = do
       entry <- expression e >>= freshenValue >>= entryOfValueE (e @~ isEQualified)
-      insertE i entry >> expression b >>= removeE i entry
+      insertE i entry >> expression b >>= removeE i
 
     expr (details -> (ELetIn _, _, _)) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
 
@@ -534,7 +512,7 @@ expression e_ = traceExpression $ do
             void $ lookupVQ i >>= \case
               (iV, MemMut) -> replaceProxyPath pp targetV iV (\_ newPathV -> return newPathV) 
               _            -> return () -- Skip writeback for immutable values.
-            removeE i entry sV
+            removeE i sV
 
           VOption (Nothing, _) -> expression n
           _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
@@ -557,7 +535,7 @@ expression e_ = traceExpression $ do
           void $ insertE i entry
           fV <- expression f
           void $ refreshBindings b bp bv
-          removeE i entry fV
+          removeE i fV
 
         (BTuple ts, VTuple vs) -> do
           let tupMems = membersFromList $ zip ts vs

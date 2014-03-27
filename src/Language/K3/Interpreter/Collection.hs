@@ -9,8 +9,10 @@ module Language.K3.Interpreter.Collection where
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.State
 
 import Data.List
+import Data.List.Split ( splitOn )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -21,8 +23,10 @@ import Language.K3.Core.Type
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Dataspace()
+import Language.K3.Interpreter.Utils
 
 import Language.K3.Runtime.Dataspace
+import Language.K3.Utils.Pretty
 
 
 {- Identifiers -}
@@ -68,6 +72,9 @@ annotationComboIdE (namedEAnnotations -> ids) = Just $ annotationComboId ids
 annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
 annotationComboIdL (namedLAnnotations -> [])  = Nothing
 annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
+
+annotationIdsOfCombo :: Identifier -> [Identifier]
+annotationIdsOfCombo s = filter (not . null) $ splitOn ";" s 
 
 
 {- Collection operations -}
@@ -140,10 +147,23 @@ copyCollection newC = lookupACombo (realizationId newC) >>= \cstrs -> (copyCtor 
 
 {- Collection tying and value construction helpers. -}
 
-tieCollection :: MVar Value -> Collection Value -> Interpretation Value
-tieCollection selfMV c = do
+-- | Tie a self reference and a collection value, assuming the collection member methods
+--   have already been contextualized to the self reference. 
+tieContextualizedCollection :: MVar Value -> Collection Value -> Interpretation Value
+tieContextualizedCollection selfMV c = do
   result <- return $ VCollection (selfMV, c)
   success <- liftIO $ tryPutMVar selfMV result
+  if success then return result
+             else throwE $ RunTimeInterpretationError "Failed to tie a collection with tryPutMVar"
+
+-- | Tie a self reference and a collection value, contextualizing the collection members as necessary.
+tieCollection :: MVar Value -> Collection Value -> Interpretation Value
+tieCollection selfMV (Collection ns ds cId) = do
+  let annIds = annotationIdsOfCombo cId
+  cAnnDefs <- mapM (\x -> lookupADef x >>= return . (x,)) annIds
+  nns      <- recontextualizeAnnDefs selfMV ns cAnnDefs
+  result   <- return $ VCollection (selfMV, Collection nns ds cId)
+  success  <- liftIO $ tryPutMVar selfMV result
   if success then return result
              else throwE $ RunTimeInterpretationError "Failed to tie a collection with tryPutMVar"
 
@@ -152,6 +172,12 @@ freshCollection c = do
   selfMV <- liftIO $ newEmptyMVar
   tieCollection selfMV c
 
+-- | Return a fresh, unshared collection value after synchronization.
+freshenValue :: Value -> Interpretation Value
+freshenValue v@(VCollection _) = syncCollection v >>= \case
+  VCollection (_,c2) -> freshCollection c2
+  _                  -> throwE $ RunTimeInterpretationError "Invalid collection value"
+freshenValue v = return v
 
 
 {- Annotation realization and constructor function utilities -}
@@ -196,7 +222,7 @@ getComposedAnnotation annIds = case annIds of
       selfMV      <- liftIO $ newEmptyMVar
       nns         <- contextualizeAnnDefs selfMV cAnnDefs
       completeCol <- return $ injectNamespace cSkeleton nns
-      tieCollection selfMV completeCol
+      tieContextualizedCollection selfMV completeCol
 
     mkCConstructors :: [(Identifier, NamedMembers Value)] -> CollectionConstructors Value
     mkCConstructors cAnnDefs =
@@ -224,43 +250,50 @@ getComposedAnnotation annIds = case annIds of
       selfMV      <- liftIO $ newEmptyMVar
       nns         <- recontextualizeAnnDefs selfMV (namespace partialCol) cAnnDefs
       completeCol <- return $ injectNamespace partialCol nns
-      tieCollection selfMV completeCol
+      tieContextualizedCollection selfMV completeCol
 
-    contextualizeAnnDefs :: MVar Value
-                         -> [(Identifier, NamedMembers Value)]
-                         -> Interpretation (CollectionNamespace Value)
-    contextualizeAnnDefs selfMV cAnnDefs = do
-      (cns, ans) <- foldM (contextualizeAnnDef False selfMV)
-                          (emptyMembers, emptyAnnotationNamespace) cAnnDefs
-      return $ CollectionNamespace cns ans
 
-    recontextualizeAnnDefs :: MVar Value
-                           -> CollectionNamespace Value
-                           -> [(Identifier, NamedMembers Value)]
-                           -> Interpretation (CollectionNamespace Value)
-    recontextualizeAnnDefs selfMV ns cAnnDefs = do
-      (cns, ans) <- foldM (contextualizeAnnDef True selfMV)
-                          (collectionNS ns, annotationNS ns) cAnnDefs
-      return $ CollectionNamespace cns ans
+contextualizeAnnDefs :: MVar Value -> [(Identifier, NamedMembers Value)]
+                     -> Interpretation (CollectionNamespace Value)
+contextualizeAnnDefs selfMV cAnnDefs = do
+  (cns, ans) <- foldM (contextualizeAnnDef False selfMV)
+                      (emptyMembers, emptyAnnotationNamespace) cAnnDefs
+  return $ CollectionNamespace cns ans
 
-    contextualizeAnnDef :: Bool
-                        -> MVar Value
-                        -> (NamedMembers Value, [(Identifier, NamedMembers Value)]) 
-                        -> (Identifier, NamedMembers Value)
-                        -> Interpretation (NamedMembers Value, [(Identifier, NamedMembers Value)])
-    contextualizeAnnDef replace selfMV (cns, ans) (annId, annDef) = do
-      annForC <- mapMembers (const $ contextualizeFunction selfMV) annDef
-      ncns    <- foldMembers (if replace then replaceDup else insertNonDup) cns annForC 
-      nans    <- return $ if replace then replaceAssoc ans annId annForC else (annId, annForC):ans
-      return (ncns, nans)
+recontextualizeAnnDefs :: MVar Value -> CollectionNamespace Value -> [(Identifier, NamedMembers Value)]
+                       -> Interpretation (CollectionNamespace Value)
+recontextualizeAnnDefs selfMV ns cAnnDefs = do
+  (cns, ans) <- foldM (contextualizeAnnDef True selfMV)
+                      (collectionNS ns, annotationNS ns) cAnnDefs
+  return $ CollectionNamespace cns ans
 
-    replaceDup mems n vq = return $ insertMember n vq mems
+contextualizeAnnDef :: Bool -> MVar Value
+                    -> (NamedMembers Value, [(Identifier, NamedMembers Value)]) 
+                    -> (Identifier, NamedMembers Value)
+                    -> Interpretation (NamedMembers Value, [(Identifier, NamedMembers Value)])
+contextualizeAnnDef True selfMV (cns, ans) (annId, annDef) = do
+    annForC <- foldMembers (insertFunctionMems selfMV) emptyMembers annDef
+    ncns    <- foldMembers replaceDup cns annForC 
+    nans    <- return $ replaceAssoc ans annId annForC
+    return (ncns, nans)
 
-    insertNonDup mems n vq =
-      maybe (return $ insertMember n vq mems) (duplicateError n) $ lookupMember n mems
-    
-    duplicateError n _ =
-      throwE $ RunTimeInterpretationError $ "Duplicate annotation member detected for: " ++ n
+  where insertFunctionMems mv mems i (v@(VFunction _), q) =
+          contextualizeFunction mv (v,q) >>= \vq -> return $ insertMember i vq mems
+        insertFunctionMems _ mems _ _ = return mems
+
+        replaceDup mems n vq = return $ insertMember n vq mems
+
+contextualizeAnnDef False selfMV (cns, ans) (annId, annDef) = do
+    annForC <- mapMembers (const $ contextualizeFunction selfMV) annDef
+    ncns    <- foldMembers insertNonDup cns annForC 
+    nans    <- return $ (annId, annForC):ans
+    return (ncns, nans)
+
+  where insertNonDup mems n vq =
+          maybe (return $ insertMember n vq mems) (duplicateError n) $ lookupMember n mems
+
+        duplicateError n _ =
+          throwE $ RunTimeInterpretationError $ "Duplicate annotation member detected for: " ++ n
 
 
 -- | Creates a contextualized collection member function. That is, the member function
@@ -275,25 +308,24 @@ contextualizeFunction :: MVar Value -> (Value, VQualifier)
                       -> Interpretation (Value, VQualifier)
 contextualizeFunction selfMV (VFunction (f,cl,tg), mq) =
   return . (, mq) . VFunction . (, cl, tg) $ \x -> do
-    (bindings, selfBinding) <- liftCollection
+    bindings <- liftCollection
     result <- f x >>= contextualizeFunction selfMV . (, MemImmut) >>= return . fst
-    lowerCollection bindings selfBinding
+    lowerCollection bindings
     return result
 
   where
     liftCollection = liftIO (readMVar selfMV) >>= \case
-      selfV@(VCollection (s, Collection (CollectionNamespace cns _) _ _)) -> do
-        if s == selfMV
-          then do
-            insertE annotationSelfId $ IVal selfV
-            bindings <- bindMembers cns
-            return (bindings, (annotationSelfId, IVal selfV))
-          else throwE $ RunTimeInterpretationError "Invalid cyclic self value"
+        selfV@(VCollection (s, Collection (CollectionNamespace cns _) _ _)) -> do
+          if s == selfMV
+            then do
+              insertE annotationSelfId $ IVal selfV
+              bindMembers cns
+            else throwE $ RunTimeInterpretationError "Invalid cyclic self value"
 
-      _ -> throwE $ RunTimeInterpretationError "Invalid self value for a collection"
+        _ -> throwE $ RunTimeInterpretationError "Invalid self value for a collection"
 
-    lowerCollection bindings (selfId, selfEntry) = do
-      void $ removeE selfId selfEntry ()
+    lowerCollection bindings = do
+      void $ removeE annotationSelfId ()
       cns <- unbindMembers bindings
       void $ liftIO $ modifyMVar_ selfMV
         $ \(VCollection (_,c)) -> return $ VCollection (selfMV, rebuildNamespace c cns)

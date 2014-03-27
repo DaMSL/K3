@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -424,12 +425,18 @@ builtinLiftedAttribute annId n _ _ =
                     -> (Collection Value -> Interpretation a) -> IEnvEntry Value
                     -> Interpretation a
     matchCollection _ f (IVal (VCollection (_,c))) = f c
+    matchCollection err f (MVal mv) = liftIO (readMVar mv) >>= \case
+      VCollection (_,c) -> f c
+      _ -> err
     matchCollection err _  _ =  err
 
     matchSelf :: Interpretation a
               -> (MVar Value -> Collection Value -> Interpretation a) -> IEnvEntry Value
               -> Interpretation a
     matchSelf _ f (IVal (VCollection (s,c))) = f s c
+    matchSelf err f (MVal mv) = liftIO (readMVar mv) >>= \case
+      VCollection (s,c) -> f s c
+      _ -> err
     matchSelf err _ _ = err  
 
     matchFunction :: a -> ((IFunction, Closure Value, EntityTag) -> a) -> Value -> a

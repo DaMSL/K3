@@ -207,7 +207,7 @@ finalMessages st = do
     atExitVOpt <- liftIO (lookupEnvIO "atExit" (getEnv st) >>= valueOfEntryOptIO)
     runInterpretation' st $ maybe unknownTrigger runFinal atExitVOpt
   
-  where runFinal (VFunction (f,_,_)) = f vunit
+  where runFinal (VFunction (f,_,_)) = f vunit >>= \r -> syncE >> return r
         runFinal _                   = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger               = throwE $ RunTimeTypeError "Could not find atExit trigger"
 
@@ -339,15 +339,16 @@ virtualizedProcessor staticEnv = MessageProcessor {
       sequence [initNode node program (deployment engine) | node <- nodes engine]
 
     initNode node program systemEnv = do
-      initEnv <- return $ maybe [] id $ lookup node systemEnv
-      iProgram <- initProgram initEnv staticEnv program
-      logIResultM "INIT " (Just node) iProgram
-      return (node, iProgram)
+      initEnv     <- return $ maybe [] id $ lookup node systemEnv
+      initIResult <- initProgram initEnv staticEnv program
+      logIResultM "INIT " (Just node) initIResult
+      return (node, initIResult)
 
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-      dispatch addr (\s -> logTriggerM addr name args s >> runTrigger' s name args)
+      dispatch addr (\s -> runTrigger' s addr name args)
 
-    runTrigger' s n a = do
+    runTrigger' s addr n a = do
+      void $ logTriggerM addr n a s 
       entryOpt <- liftIO $ lookupEnvIO n $ getEnv $ getResultState s
       vOpt     <- liftIO $ valueOfEntryOptIO entryOpt
       case vOpt of
