@@ -51,5 +51,8 @@ declare get_max_int : () -> int
 // Sql data -> integer
 declare parse_sql_date : string -> int
 
+// Any collection -> another collection type
+declare coerce : forall a, b. a -> string -> b
+
 // Error (exceptional state)
 declare error : forall a. () -> a

@@ -306,20 +306,16 @@ $(dsChainInstanceGenerator
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
-matchPair v =
-  case v of
-    VTuple (h:t) -> 
-      case t of
-        (p:[])    -> return (h, p)
-        _         -> throwE $ RunTimeTypeError "Wrong number of elements in tuple; expected a pair"
-    _ -> throwE $ RunTimeTypeError "Non-tuple"
+matchPair (VRecord [(_,v1),(_,v2)]) = return (v1, v2)
+matchPair x                         = throwE $ RunTimeTypeError $ "Expected a key/value record, but got " ++ show x
 
 -- TODO kill dependence on Interpretation for error handling
 instance EmbeddedKV Interpretation Value Value where
   extractKey value = do
     (key, _) <- matchPair value
     return key
-  embedKey key value = return $ VTuple [key, value]
+
+  embedKey key value = return $ VRecord [("key", key), ("value", value)]
   
 instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
   lookupKV ds key = 
@@ -329,6 +325,7 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
         Nothing -> if match_key == key then Just match_val else Nothing
         Just val -> Just val
      ) Nothing ds
+
   removeKV ds key _ =
     filterDS (inner) ds
      where
@@ -336,7 +333,9 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
         inner val = do
           cur_val <- extractKey val
           return $ if cur_val == key then False else True
+
   insertKV ds key value = embedKey key value >>= insertDS ds
+
   replaceKV ds k v = do
     _ <- removeKV ds k vunit
     insertKV ds k v

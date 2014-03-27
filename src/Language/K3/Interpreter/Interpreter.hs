@@ -390,9 +390,9 @@ expression e_ =
               let envBindings = catMaybes $ joinByKeys (,) idls ids ivs
               modifyE ((++) envBindings) >>
                 expression f >>= (\fV -> refreshBindings b bp bv >> removeAllE envBindings fV)
-            else throwAE anns $ RunTimeTypeError "Invalid Bind-Pattern"
+            else throwAE anns $ RunTimeTypeError $ "Invalid Bind-Pattern: expected " ++ show idls ++ " but got " ++ show ivls
 
-        _ -> throwAE anns $ RunTimeTypeError "Bind Mis-Match"
+        (bs, rs) -> throwAE anns $ RunTimeTypeError $ "Bind Mis-Match: expected " ++ show bs ++ " but got " ++ show rs
 
       where 
         su = spanUid anns

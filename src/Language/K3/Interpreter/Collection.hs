@@ -76,15 +76,15 @@ annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 emptyCollectionNamespace :: CollectionNamespace Value
 emptyCollectionNamespace = CollectionNamespace [] []
 
-emptyDataspace :: [Identifier] -> Interpretation (CollectionDataspace Value)
-emptyDataspace annIds = case annIds `intersect` dataspaceAnnotationIds of
+emptyDataspace :: Maybe (Span, UID) -> [Identifier] -> Interpretation (CollectionDataspace Value)
+emptyDataspace su annIds = case annIds `intersect` dataspaceAnnotationIds of
   []                                -> emptyDS Nothing >>= return . InMemDS . MemDS
   [x] | x == collectionAnnotationId -> emptyDS Nothing >>= return . InMemDS . MemDS
   [x] | x == sequentialAnnotationId -> emptyDS Nothing >>= return . InMemDS . SeqDS
   [x] | x == setAnnotationId        -> emptyDS Nothing >>= return . InMemDS . SetDS
   [x] | x == sortedAnnotationId     -> emptyDS Nothing >>= return . InMemDS . SortedDS
   [x] | x == externalAnnotationId   -> emptyDS Nothing >>= return . ExternalDS
-  _   -> throwE $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
+  _   -> throwSE su $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
 
 initialDataspace :: [Identifier] -> [Value] -> Interpretation (CollectionDataspace Value)
 initialDataspace annIds vals = case annIds `intersect` dataspaceAnnotationIds of
@@ -99,7 +99,7 @@ initialDataspace annIds vals = case annIds `intersect` dataspaceAnnotationIds of
 -- | Create collections with empty namespaces
 emptyCollectionBody :: [Identifier] -> Interpretation (Collection Value)
 emptyCollectionBody annIds =
-  emptyDataspace annIds >>= \ds -> return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
+  emptyDataspace Nothing annIds >>= \ds -> return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
 
 initialCollectionBody :: [Identifier] -> [Value] -> Interpretation (Collection Value)
 initialCollectionBody annIds vals =

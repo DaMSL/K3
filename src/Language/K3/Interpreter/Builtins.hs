@@ -146,6 +146,22 @@ genBuiltin "parse_sql_date" _ = vfun $ \su (VString s) ->
         readChar (x:xs) n = (x*10 + read [n]):xs
         toInt [y,m,d]     = y*10000 + m*100 + d
 
+genBuiltin "coerce" _ = 
+  vfun $ \su cmv ->
+    flip (matchCollectionMV $ coerceError su) cmv $ \cmv' ->
+  vfun $ \_  str   ->
+    matchString (coerceError su) str >>= \s ->
+  modifyCollection cmv' (castCol su s) >> return cmv
+  where 
+    coerceError su = throwSE su $ RunTimeTypeError "Invalid coerce call"
+
+    castCol :: Maybe (Span, UID) -> Identifier -> Collection (Value) -> Interpretation (Collection Value)
+    castCol su s (Collection ns ds ext) = do
+      newDS  <- emptyDataspace su [s]
+      newDS' <- foldDS (\accDS v -> insertDS newDS v) newDS ds
+      return $ Collection ns newDS' s
+    castCol su _                      _ = coerceError su
+  
 genBuiltin "error" _ = vfun $ \su _ -> throwSE su $ RunTimeTypeError "Error encountered in program"
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
@@ -174,6 +190,17 @@ providesError :: String -> Identifier -> a
 providesError kind n = error $
   "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
+-- BREAKING EXCEPTION SAFETY
+modifyCollection :: MVar (Collection Value) 
+                  -> (Collection Value -> Interpretation (Collection Value))
+                  -> Interpretation Value
+--TODO modifyMVar_ function has to be over IO
+modifyCollection cmv f = do
+    old_col <- liftIO $ readMVar cmv
+    result  <- f old_col
+    --liftIO $ putMVar cmv result
+    liftIO $ modifyMVar_ cmv (const $ return result)
+    return vunit
 
 {-
  - Collection API : head, map, fold, append/concat, delete
@@ -231,17 +258,6 @@ builtinLiftedAttribute annId n _ _ =
     deleteFn = valWithCollectionMV $ \_ el cmv -> modifyCollection cmv (deleteCollection el)
     updateFn = valWithCollectionMV $ \_ old cmv -> vfun $ \_ new -> modifyCollection cmv (updateCollection old new)
 
-    -- BREAKING EXCEPTION SAFETY
-    modifyCollection :: MVar (Collection Value) 
-                     -> (Collection Value -> Interpretation (Collection Value))
-                     -> Interpretation Value
-    --TODO modifyMVar_ function has to be over IO
-    modifyCollection cmv f = do
-        old_col <- liftIO $ readMVar cmv
-        result  <- f old_col
-        --liftIO $ putMVar cmv result
-        liftIO $ modifyMVar_ cmv (const $ return result)
-        return vunit
 
     -- TODO move wrapping / unwrapping DataSpace into modifyCollection?
     insertCollection :: Value -> Collection (Value) -> Interpretation (Collection Value)
@@ -420,18 +436,6 @@ builtinLiftedAttribute annId n _ _ =
     matchCollection _ f (VCollection cmv) = liftIO (readMVar cmv) >>= f
     matchCollection err _  _ =  err
 
-    matchCollectionMV :: Interpretation a -> (MVar (Collection Value) -> Interpretation a) -> Value -> Interpretation a
-    matchCollectionMV _ f (VCollection cmv) = f cmv
-    matchCollectionMV err _ _ = err
-
-    matchFunction :: a -> ((IFunction, Closure Value, StableName IFunction) -> a) -> Value -> a
-    matchFunction _ f (VFunction f') = f f'
-    matchFunction err _ _ = err
-
-    matchBool :: Interpretation Bool -> Value -> Interpretation Bool
-    matchBool _ (VBool b) = return b
-    matchBool err _ = err
-
     collectionError su = throwSE su $ RunTimeTypeError "Invalid collection"
     filterValError su  = throwSE su $ RunTimeTypeError "Invalid filter function result"
     curryFnError su    = throwSE su $ RunTimeTypeError "Invalid curried function"
@@ -442,6 +446,22 @@ builtinLiftedAttribute annId n _ _ =
     typeMismatchError su fnName Nothing = throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
     typeMismatchError su fnName (Just (t1, t2)) =
       throwSE su $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName ++ " type 1: " ++ show t1 ++ " type 2: " ++ show t2
+
+matchCollectionMV :: Interpretation a -> (MVar (Collection Value) -> Interpretation a) -> Value -> Interpretation a
+matchCollectionMV _ f (VCollection cmv) = f cmv
+matchCollectionMV err _ _ = err
+
+matchFunction :: a -> ((IFunction, Closure Value, StableName IFunction) -> a) -> Value -> a
+matchFunction _ f (VFunction f') = f f'
+matchFunction err _ _ = err
+
+matchString :: Interpretation String -> Value -> Interpretation String
+matchString _ (VString s) = return s
+matchString err _ = err
+
+matchBool :: Interpretation Bool -> Value -> Interpretation Bool
+matchBool _ (VBool b) = return b
+matchBool err _ = err
 
 builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
                  -> Interpretation (Maybe (Identifier, Value))
