@@ -57,8 +57,8 @@ shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
 // Engine setup
 shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
   // Configure engine components
-  shared_ptr<InternalCodec> i_cdec = make_shared<DefaultInternalCodec>(DefaultInternalCodec());
-  shared_ptr<ExternalCodec> e_cdec = make_shared<DefaultCodec>(DefaultCodec());
+  shared_ptr<InternalCodec> i_cdec = make_shared<LengthHeaderInternalCodec>(LengthHeaderInternalCodec());
+  shared_ptr<ExternalCodec> e_cdec = make_shared<LengthHeaderCodec>(LengthHeaderCodec());
 
   // Construct an engine
   Engine engine = Engine(simulation, s_env, i_cdec, e_cdec);
@@ -129,7 +129,7 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   service_threads->add_thread(&t2);
   service_threads->add_thread(&t3);
 
-  boost::this_thread::sleep_for( boost::chrono::seconds(5) );
+  boost::this_thread::sleep_for( boost::chrono::seconds(3) );
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
   engine3->forceTerminateEngine();

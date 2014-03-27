@@ -306,17 +306,16 @@ $(dsChainInstanceGenerator
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
-matchPair v =
-  case v of
-    VTuple [(l,_), (r,_)] -> return (l, r)
-    _ -> throwE $ RunTimeTypeError "Invalid pair value"
+matchPair v@(VRecord nb) = case membersToList nb of 
+    [(_, (v1, _)), (_, (v2, _))] -> return (v1, v2)
+    _ -> throwE $ RunTimeTypeError $ "Expected a key/value record, but got " ++ show v
+
+matchPair x = throwE $ RunTimeTypeError $ "Expected a key/value record, but got " ++ show x
 
 -- TODO kill dependence on Interpretation for error handling
 instance EmbeddedKV Interpretation Value Value where
-  extractKey value = do
-    (key, _) <- matchPair value
-    return key
-  embedKey key value = return $ VTuple [(key, MemImmut), (value, MemImmut)]
+  extractKey value = matchPair value >>= return . fst
+  embedKey key value = return . VRecord $ membersFromList [("key", (key, MemImmut)), ("value", (value, MemImmut))]
   
 instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
   lookupKV ds key = 
@@ -326,14 +325,16 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
         Nothing -> if match_key == key then Just match_val else Nothing
         Just val -> Just val
      ) Nothing ds
-  removeKV ds key _ =
-    filterDS (inner) ds
+
+  removeKV ds key _ = filterDS inner ds
      where
         inner :: Value -> Interpretation Bool
         inner val = do
           cur_val <- extractKey val
           return $ if cur_val == key then False else True
+
   insertKV ds key value = embedKey key value >>= insertDS ds
+
   replaceKV ds k v = do
     _ <- removeKV ds k vunit
     insertKV ds k v

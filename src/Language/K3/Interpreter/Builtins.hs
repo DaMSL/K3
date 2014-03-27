@@ -174,6 +174,17 @@ providesError :: String -> Identifier -> a
 providesError kind n = error $
   "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
+-- BREAKING EXCEPTION SAFETY
+modifyCollection :: MVar (Collection Value) 
+                  -> (Collection Value -> Interpretation (Collection Value))
+                  -> Interpretation Value
+--TODO modifyMVar_ function has to be over IO
+modifyCollection cmv f = do
+    old_col <- liftIO $ readMVar cmv
+    result  <- f old_col
+    --liftIO $ putMVar cmv result
+    liftIO $ modifyMVar_ cmv (const $ return result)
+    return vunit
 
 {-
  - Collection API : head, map, fold, append/concat, delete
@@ -245,19 +256,38 @@ builtinLiftedAttribute annId n _ _ =
       \f' -> mapDS_ (withClosure f') ds >> return vunit
 
     -- | Collection transformer implementation
-    binaryCollectionFn fnName binaryDSFn = vfun $ \other -> withSelf $ \(Collection ns ds cId) ->
+    binaryCollectionFn binaryDSFn crossDSFn = vfun $ \other -> withSelf $ \(Collection ns ds cId) ->
       flip (matchCollection collectionError) (IVal other) $
         \(Collection _ ds' cId') -> 
-          if cId /= cId' then typeMismatchError fnName
-          else binaryDSFn ns cId ds ds'
+          if cId == cId' 
+            then binaryDSFn ns cId ds ds'
+            else crossDSFn ns cId ds ds'
 
     injectFn binaryDSFn ns cId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds cId
     
-    combineFn    = binaryCollectionFn "combine"    $ injectFn combineDS
-    isSubsetOfFn = binaryCollectionFn "isSubsetOf" $ (\_ _ ds ds' -> isSubsetOfDS ds ds' >>= return . VBool)
-    unionFn      = binaryCollectionFn "union"      $ injectFn unionDS
-    intersectFn  = binaryCollectionFn "intersect"  $ injectFn intersectDS
-    differenceFn = binaryCollectionFn "difference" $ injectFn differenceDS
+    -- | Implement a membership test as a complete traversal. This is necessary, since we do not
+    --   know that the backing collection is actually a set during cross-collection binary operations.
+    memberDSFn ds v = foldDS (\acc v' -> if acc then return acc else return $ v == v') False ds
+
+    -- | Linear time union, and quadratic time intersection and difference.
+    --   These are all LHS-domain restrictive implementations.
+    unionCrossFn ds ds'      = copyDS ds  >>= \nds -> foldDS (\accDS v -> insertDS accDS v) nds ds'
+    intersectCrossFn ds ds'  = emptyDS (Just ds) >>= \nds -> foldDS (\accDS v -> memberDSFn ds' v >>= onSuccess insertDS accDS v) nds ds
+    differenceCrossFn ds ds' = emptyDS (Just ds) >>= \nds -> foldDS (\accDS v -> memberDSFn ds' v >>= onFail insertDS accDS v) nds ds
+
+    setSubsetFn _ _ ds ds'   = isSubsetOfDS ds ds' >>= return . VBool
+    crossSubsetFn _ _ ds ds' = foldDS (\acc v -> if not acc then return acc else memberDSFn ds' v) True ds >>= return . VBool
+
+    onSuccess f ds v True  = f ds v
+    onSuccess _ ds _ False = return ds 
+    onFail _ ds _ True  = return ds
+    onFail f ds v False = f ds v
+
+    combineFn    = binaryCollectionFn (injectFn combineDS)    (injectFn unionCrossFn)
+    unionFn      = binaryCollectionFn (injectFn unionDS)      (injectFn unionCrossFn)
+    intersectFn  = binaryCollectionFn (injectFn intersectDS)  (injectFn intersectCrossFn)
+    differenceFn = binaryCollectionFn (injectFn differenceDS) (injectFn differenceCrossFn)
+    isSubsetOfFn = binaryCollectionFn setSubsetFn crossSubsetFn
 
     splitFn = vfun $ \_ -> withSelf $ \(Collection ns ds cId) -> do
         (l, r) <- splitDS ds
@@ -312,20 +342,18 @@ builtinLiftedAttribute annId n _ _ =
           new_val <- curryFoldFn f' partialAcc v
           replaceKV acc k new_val
 
-    extFn = vfun $ \f -> withSelf $ \(Collection _ ds _) -> 
-      flip (matchFunction $ funArgError "ext") f $ 
-      \f' -> do
-                val_ds <- mapDS (withClosure f') ds
-                first_subcol <- peekDS val_ds
-                case first_subcol of
-                  Nothing -> extError -- Maybe not the right error here
-                                      -- really, I should create an empty VCollection
-                                      -- with the right type (that of f(elem)), but I
-                                      -- don't have a value to copy the type out of
-                  Just sub_val -> do
-                    val_ds2 <- deleteDS sub_val val_ds
-                    result  <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds2
-                    maybe (typeMismatchError "ext combine") return result
+    extFn = vfun $ \f -> vfun $ \emptyColV -> withSelf $ \(Collection _ ds _) -> 
+      flip (matchFunction $ funArgError "ext") f $ \f' -> 
+      flip (matchCollection extError) (IVal emptyColV) $ \emptyCol -> 
+        do
+          val_ds <- mapDS (withClosure f') ds
+          first_subcol <- peekDS val_ds
+          case first_subcol of
+            Nothing -> copy emptyCol
+            Just sub_val -> do
+              val_ds2 <- deleteDS sub_val val_ds
+              result  <- foldDS (\acc val -> combine' acc (Just val)) (Just sub_val) val_ds2
+              maybe (typeMismatchError "ext combine") return result
 
     sortFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
       flip (matchFunction $ funArgError "sort") f $ 

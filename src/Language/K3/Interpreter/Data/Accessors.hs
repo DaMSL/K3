@@ -89,6 +89,9 @@ emptyBindings = Map.empty
 bindingsFromList :: [(Identifier, a)] -> NamedBindings a
 bindingsFromList = Map.fromList
 
+bindingsToList :: NamedBindings a -> [(Identifier, a)]
+bindingsToList = Map.toList
+
 lookupBinding :: Identifier -> NamedBindings a -> Maybe a
 lookupBinding = Map.lookup
 
@@ -112,6 +115,9 @@ emptyMembers = Map.empty
 
 membersFromList :: [(Identifier, (Value, VQualifier))] -> NamedMembers Value
 membersFromList = bindingsFromList
+
+membersToList :: NamedMembers Value -> [(Identifier, (Value, VQualifier))]
+membersToList = bindingsToList
 
 lookupMember :: Identifier -> NamedMembers Value -> Maybe (Value, VQualifier)
 lookupMember = lookupBinding
