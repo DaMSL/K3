@@ -5,8 +5,9 @@
 #include <boost/iostreams/device/file.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/line.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Network.hpp>
+
+#include <Common.hpp>
+#include <Network.hpp>
 
 namespace K3
 {
@@ -42,35 +43,47 @@ namespace K3
     shared_ptr<Codec> codec;
   };
 
-  class LineInputHandle : public virtual LogMT
+  class IStreamHandle : public virtual LogMT
   {
   public:
     template<typename Source>
-    LineInputHandle(Source& src) : LogMT("LineInputHandle"), pending(shared_ptr<string>())
+    IStreamHandle(shared_ptr<Codec> cdec, Source& src) 
+      : LogMT("IStreamHandle"), codec(cdec) 
     {
       input = shared_ptr<filtering_istream>(new filtering_istream());
-      input->push(src);
+      input->push(src);      
     }
 
-    bool hasRead() { return input? input->good() : false; }
+    bool hasRead() { 
+      return input? 
+        ((input->good() && codec->good()) || codec->decode_ready())
+        : false;
+    }
     
     shared_ptr<string> doRead() {
-      if ( !input ) { return shared_ptr<string>(); }
-
-      bool success = true;
-      shared_ptr<string> v = shared_ptr<string>(new string());
-      
-      std::getline(*input, *v);
-      
-      if ( !input && v && v->size() == v->max_size() ) {
-        if ( !pending ) { pending = make_shared<string>(""); }
-        *pending = *pending + *v;
-        v.reset();
-      }
-      else if ( pending ) { *v = *pending + *v; pending.reset(); }
-      else if ( v->empty() ) { v.reset(); }
-
-      return v;
+      shared_ptr<string> result;
+      while ( !result ) {
+        if (codec->decode_ready()) {
+          // return a buffered value if possible
+          result = codec->decode("");
+        } 
+        else if (input->good()) {
+          // no buffered values: grab data from stream
+          char * buffer = new char[1024]();
+          input->read(buffer,sizeof(buffer));
+          string s = string(buffer);
+          // use the new data to attempt a decode.
+          // if it fails: continue the loop
+          result = codec->decode(s);
+          delete[] buffer;
+        } 
+        else {
+          // Failure: ran out of buffered values and stream data
+          BOOST_LOG(*this) << "doRead: Stream has been exhausted, and no values in buffer";
+          return result;
+        }
+      } 
+      return result;
     }
 
     bool hasWrite() {
@@ -84,18 +97,19 @@ namespace K3
 
     // Invoke the destructor on the filtering_istream, which in 
     // turn closes all associated iostream filters and devices.
-    void close() { if ( input ) { input->reset(); } }
+    void close() { if ( input ) { input.reset(); } }
 
   protected:
     shared_ptr<filtering_istream> input;
-    shared_ptr<string> pending;
+    shared_ptr<Codec> codec;
   };
 
-  class LineOutputHandle : public virtual LogMT
+  class OStreamHandle : public virtual LogMT
   {
   public:
     template<typename Sink>
-    LineOutputHandle(Sink& sink) : LogMT("LineOutputHandle")
+    OStreamHandle(shared_ptr<Codec> cdec, Sink& sink) 
+      : LogMT("OStreamHandle"), codec(cdec)
     {
       output = shared_ptr<filtering_ostream>(new filtering_ostream());
       output->push(sink);
@@ -106,39 +120,40 @@ namespace K3
       return false;
     }
 
-    shared_ptr<string> doRead() {
+    shared_ptr<Value> doRead() {
       BOOST_LOG(*this) << "Invalid read operation on output handle";
-      return shared_ptr<string>();
+      return shared_ptr<Value>();
     }
 
     bool hasWrite() { return output? output->good() : false; }
     
-    void doWrite(string& data) { if ( output ) { (*output) << data << std::endl; } }
+    void doWrite(string& data) { if ( output ) { (*output) << codec->encode(data); } }
   
-    void close() { if ( output ) { output->reset(); } }
+    void close() { if ( output ) { output.reset(); } }
 
   protected:
     shared_ptr<filtering_ostream> output;
+    shared_ptr<Codec> codec;
   };
 
-  class LineBasedHandle : public IOHandle
+  class StreamHandle : public IOHandle
   {
   public:
     struct Input  {};
     struct Output {};
 
     template<typename Source>
-    LineBasedHandle(shared_ptr<Codec> cdec, Input i, Source& src)
-      : LogMT("LineBasedHandle"), IOHandle(cdec)
+    StreamHandle(shared_ptr<Codec> cdec, Input i, Source& src)
+      : LogMT("StreamHandle"), IOHandle(cdec)
     {
-      inImpl = shared_ptr<LineInputHandle>(new LineInputHandle(src));
+      inImpl = shared_ptr<IStreamHandle>(new IStreamHandle(cdec, src));
     }
     
     template<typename Sink>
-    LineBasedHandle(shared_ptr<Codec>  cdec, Output o, Sink& sink)
-      : LogMT("LineBasedHandle"), IOHandle(cdec)
+    StreamHandle(shared_ptr<Codec>  cdec, Output o, Sink& sink)
+      : LogMT("StreamHandle"), IOHandle(cdec)
     {
-      outImpl = shared_ptr<LineOutputHandle>(new LineOutputHandle(sink));
+      outImpl = shared_ptr<OStreamHandle>(new OStreamHandle(cdec, sink));
     }
 
     bool hasRead()  { 
@@ -156,19 +171,17 @@ namespace K3
     }
 
     shared_ptr<Value> doRead() {
-      shared_ptr<Value> r;
-      if ( inImpl && this->codec ) { 
-        shared_ptr<string> data = inImpl->doRead();
-        if ( data ) { r = this->codec->decode(*data); }
+      shared_ptr<Value> data;
+      if ( inImpl ) {
+        data = inImpl->doRead();
       }
       else { BOOST_LOG(*this) << "Invalid doRead on LineBasedHandle"; }
-      return r;      
+      return data;      
     }
 
     void doWrite(Value& v) {
-      if ( outImpl && this->codec ) {
-        string data = this->codec->encode(v);
-        outImpl->doWrite(data);
+      if ( outImpl) {
+        outImpl->doWrite(v);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on LineBasedHandle"; }
     }
@@ -179,15 +192,12 @@ namespace K3
     }
 
   protected:
-    shared_ptr<LineInputHandle> inImpl;
-    shared_ptr<LineOutputHandle> outImpl;
+    shared_ptr<IStreamHandle> inImpl;
+    shared_ptr<OStreamHandle> outImpl;
   };
 
-  // TODO
-  //class MultiLineHandle;
-  //class FrameBasedHandle;
 
-  class BuiltinHandle : public LineBasedHandle
+  class BuiltinHandle : public StreamHandle
   {
   public:
     struct Stdin  {};
@@ -195,15 +205,15 @@ namespace K3
     struct Stderr {};
 
     BuiltinHandle(shared_ptr<Codec> cdec, Stdin s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Input(), cin)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Input(), cin)
     {}
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stdout s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cout)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cout)
     {}
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stderr s)
-      : LogMT("BuiltinHandle"), LineBasedHandle(cdec, LineBasedHandle::Output(), cerr)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cerr)
     {}
 
     bool builtin () { return true; }
@@ -220,15 +230,15 @@ namespace K3
     }
   };
 
-  class FileHandle : public LineBasedHandle 
+  class FileHandle : public StreamHandle 
   {
   public:
-    FileHandle(shared_ptr<Codec> cdec, const file_source& fs, LineBasedHandle::Input i) 
-      :  LogMT("FileHandle"), LineBasedHandle(cdec, i, fs) 
+    FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_source> fs, StreamHandle::Input i) 
+      :  StreamHandle(cdec, i, *fs), LogMT("FileHandle")
     {}
 
-    FileHandle(shared_ptr<Codec> cdec, const file_sink& fs, LineBasedHandle::Output o)
-      :  LogMT("FileHandle"), LineBasedHandle(cdec, o, fs)
+    FileHandle(shared_ptr<Codec> cdec, shared_ptr<file_sink> fs, StreamHandle::Output o)
+      :  LogMT("FileHandle"), StreamHandle(cdec, o, *fs)
     {}
 
     bool builtin () { return false; }
@@ -267,7 +277,8 @@ namespace K3
     
     bool hasWrite() {
       bool r = false;
-      if ( connection ) { r = connection->good(); }
+      if ( connection ) {
+        r = connection->connected(); }
       else { BOOST_LOG(*this) << "Invalid hasWrite on NetworkHandle"; }
       return r;
     }
@@ -280,7 +291,7 @@ namespace K3
     void doWrite(Value& v) {
       if ( connection && this->codec ) {
         string data = this->codec->encode(v);
-        (*connection) << data;
+        connection->write(data);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
     }

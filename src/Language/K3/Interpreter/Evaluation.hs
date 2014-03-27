@@ -171,45 +171,44 @@ numericOp byteOpF intOpF realOpF err a b =
 
 
 -- | Common Numeric-Operation handling, with casing for int/real promotion.
-numeric :: Maybe (Span, UID) -> (forall a. Num a => a -> a -> a) -> 
-        K3 Expression -> K3 Expression -> Interpretation Value
-numeric su op a b = do
+numeric :: (forall a. Num a => a -> a -> a)
+        -> K3 Expression -> K3 Expression -> Interpretation Value
+numeric op a b = do
     a' <- expression a
     b' <- expression b
     numericOp op op op err a' b'
 
-  where err = throwSE su $ RunTimeTypeError "Arithmetic Type Mis-Match"
+  where err = throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 -- | Similar to numeric above, except disallow a zero value for the second argument.
-numericExceptZero :: Maybe (Span, UID)
-                  -> (Word8 -> Word8 -> Word8)
+numericExceptZero :: (Word8 -> Word8 -> Word8)
                   -> (Int -> Int -> Int)
                   -> (Double -> Double -> Double) 
                   -> K3 Expression -> K3 Expression -> Interpretation Value
-numericExceptZero su byteOpF intOpF realOpF a b = do
+numericExceptZero byteOpF intOpF realOpF a b = do
     a' <- expression a
     b' <- expression b
 
     void $ case b' of
-        VByte 0 -> throwSE su $ RunTimeInterpretationError "Zero denominator"
-        VInt  0 -> throwSE su $ RunTimeInterpretationError "Zero denominator"
-        VReal 0 -> throwSE su $ RunTimeInterpretationError "Zero denominator"
+        VByte 0 -> throwE $ RunTimeInterpretationError "Zero denominator"
+        VInt  0 -> throwE $ RunTimeInterpretationError "Zero denominator"
+        VReal 0 -> throwE $ RunTimeInterpretationError "Zero denominator"
         _       -> return ()
 
     numericOp byteOpF intOpF realOpF err a' b'
 
-  where err = throwSE su $ RunTimeTypeError "Arithmetic Type Mis-Match"
+  where err = throwE $ RunTimeTypeError "Arithmetic Type Mis-Match"
 
 
 -- | Common boolean operation handling.
-logic :: Maybe (Span, UID) -> (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
-logic su op a b = do
+logic :: (Bool -> Bool -> Bool) -> K3 Expression -> K3 Expression -> Interpretation Value
+logic op a b = do
   a' <- expression a
   b' <- expression b
 
   case (a', b') of
       (VBool x, VBool y) -> return $ VBool $ op x y
-      _ -> throwSE su $ RunTimeTypeError "Invalid Boolean Operation"
+      _ -> throwE $ RunTimeTypeError "Invalid Boolean Operation"
 
 -- | Common comparison operation handling.
 comparison :: (Value -> Value -> Interpretation Value)
@@ -220,82 +219,107 @@ comparison op a b = do
   op a' b'
 
 -- | Interpretation of unary operators.
-unary :: Maybe (Span, UID) -> Operator -> K3 Expression -> Interpretation Value
+unary :: Operator -> K3 Expression -> Interpretation Value
 
 -- | Interpretation of unary negation of numbers.
-unary su ONeg a = expression a >>= \case
+unary ONeg a = expression a >>= \case
   VInt i   -> return $ VInt  (negate i)
   VReal r  -> return $ VReal (negate r)
-  _ -> throwSE su $ RunTimeTypeError "Invalid Negation"
+  _ -> throwE $ RunTimeTypeError "Invalid Negation"
 
 -- | Interpretation of unary negation of booleans.
-unary su ONot a = expression a >>= \case
+unary ONot a = expression a >>= \case
   VBool b -> return $ VBool (not b)
-  _ -> throwSE su $ RunTimeTypeError "Invalid Complement"
+  _ -> throwE $ RunTimeTypeError "Invalid Complement"
 
-unary su _ _ = throwSE su $ RunTimeTypeError "Invalid Unary Operator"
+unary _ _ = throwE $ RunTimeTypeError "Invalid Unary Operator"
 
 -- | Interpretation of binary operators.
-binary :: Maybe (Span, UID) -> Operator -> K3 Expression -> K3 Expression -> Interpretation Value
+binary :: Operator -> K3 Expression -> K3 Expression -> Interpretation Value
 
 -- | Standard numeric operators.
-binary su OAdd = numeric su (+)
-binary su OSub = numeric su (-)
-binary su OMul = numeric su (*)
+binary OAdd = numeric (+)
+binary OSub = numeric (-)
+binary OMul = numeric (*)
 
 -- | Division and modulo handled similarly, but accounting zero-division errors.
-binary su ODiv = numericExceptZero su div div (/)
-binary su OMod = numericExceptZero su mod mod mod'
+binary ODiv = numericExceptZero div div (/)
+binary OMod = numericExceptZero mod mod mod'
 
 -- | Logical Operators
-binary su OAnd = logic su (&&)
-binary su OOr  = logic su (||)
+binary OAnd = logic (&&)
+binary OOr  = logic (||)
 
 -- | Comparison Operators
-binary _ OEqu = comparison valueEq
-binary _ ONeq = comparison valueNeq
-binary _ OLth = comparison valueLt
-binary _ OLeq = comparison valueLte
-binary _ OGth = comparison valueGt
-binary _ OGeq = comparison valueGte
+binary OEqu = comparison valueEq
+binary ONeq = comparison valueNeq
+binary OLth = comparison valueLt
+binary OLeq = comparison valueLte
+binary OGth = comparison valueGt
+binary OGeq = comparison valueGte
 
 -- | Function Application
-binary su OApp = \f x -> do
+binary OApp = \f x -> do
   f' <- expression f
   x' <- expression x >>= freshenValue
 
   case f' of
       VFunction (b, cl, _) -> withClosure cl $ b x'
-      _ -> throwSE su $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
+      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
 
   where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> freshenValue r
 
 -- | Message Passing
-binary su OSnd = \target x -> do
+binary OSnd = \target x -> do
   target'  <- expression target
   x'       <- expression x
 
   case target' of
     VTuple [(VTrigger (n, _, _), _), (VAddress addr, _)] -> sendE addr n x' >> return vunit
-    _ -> throwSE su $ RunTimeTypeError "Invalid Trigger Target"
+    _ -> throwE $ RunTimeTypeError "Invalid Trigger Target"
 
 -- | Sequential expressions
-binary _ OSeq = \e1 e2 -> expression e1 >> expression e2
+binary OSeq = \e1 e2 -> expression e1 >> expression e2
 
-binary su _ = const . const $ throwSE su $ RunTimeInterpretationError "Unreachable"
+binary _ = \_ _ -> throwE $ RunTimeInterpretationError "Unreachable"
 
 -- | Interpretation of Expressions
 expression :: K3 Expression -> Interpretation Value
-expression e_ = 
-  -- TODO: dataspace bind aliases
-  case e_ @~ isBindAliasAnnotation of
-    Just (EAnalysis (BindAlias i))          -> expr e_ >>= \r -> appendAlias (Named i) >> return r
-    Just (EAnalysis (BindFreshAlias i))     -> expr e_ >>= \r -> appendAlias (Temporary i) >> return r
-    Just (EAnalysis (BindAliasExtension i)) -> expr e_ >>= \r -> appendAliasExtension i >> return r
-    Nothing  -> expr e_
-    Just _   -> throwAE (annotations e_) $ RunTimeInterpretationError "Invalid bind alias annotation matching"
+expression e_ = traceExpression $ do
+    result <- expr e_
+    void $ buildProxyPath e_ 
+    return result
 
   where
+    traceExpression :: Interpretation a -> Interpretation a
+    traceExpression m = do
+      let suOpt = spanUid (annotations e_)
+      pushed <- maybe (return False) (\su -> pushTraceUID su >> return True) suOpt
+      result <- m
+      void $ if pushed then popTraceUID else return ()
+      case suOpt of 
+        Nothing -> return ()
+        Just (_, uid) -> do
+            (watched, wvars) <- (,) <$> isWatchedExpression uid <*> getWatchedVariables uid
+            void $ if watched then logIStateMI else return ()
+            void $ mapM_ (prettyWatchedVar $ maximum $ map length wvars) wvars
+      return result
+
+    prettyWatchedVar :: Int -> Identifier -> Interpretation ()
+    prettyWatchedVar w i =
+      lookupE i >>= liftEngine . prettyIEnvEntry
+                >>= liftIO . putStrLn . ((i ++ replicate (max (w - length i) 0) ' '  ++ " => ") ++)
+
+    -- TODO: dataspace bind aliases
+    buildProxyPath :: K3 Expression -> Interpretation ()
+    buildProxyPath e = 
+      case e @~ isBindAliasAnnotation of
+        Just (EAnalysis (BindAlias i))          -> appendAlias (Named i)
+        Just (EAnalysis (BindFreshAlias i))     -> appendAlias (Temporary i)
+        Just (EAnalysis (BindAliasExtension i)) -> appendAliasExtension i
+        Nothing  -> return ()
+        Just _   -> throwE $ RunTimeInterpretationError "Invalid bind alias annotation matching"
+
     isBindAliasAnnotation :: Annotation Expression -> Bool
     isBindAliasAnnotation (EAnalysis (BindAlias _))          = True
     isBindAliasAnnotation (EAnalysis (BindFreshAlias _))     = True
@@ -310,7 +334,7 @@ expression e_ =
     refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
 
     lookupVQ :: Identifier -> Interpretation (Value, VQualifier)
-    lookupVQ i = lookupE (spanUid $ annotations e_) i >>= valueQOfEntry
+    lookupVQ i = lookupE i >>= valueQOfEntry
 
     -- | Performs a write-back for a bind expression.
     --   This retrieves the current binding values from the environment
@@ -347,7 +371,7 @@ expression e_ =
     replaceProxyPath proxyPath origV newComponentV refreshF =
       case proxyPath of 
         (Named n):t     -> do
-                            entry <- lookupE (spanUid $ annotations e_) n
+                            entry <- lookupE n
                             oldV  <- valueOfEntry entry
                             pathV <- reconstructPathValue t newComponentV oldV
                             refreshF oldV pathV >>= refreshEntry n entry
@@ -395,23 +419,23 @@ expression e_ =
     expr (details -> (EConstant c, _, as)) = constant c as
 
     -- | Interpretation of variable lookups.
-    expr (details -> (EVariable i, _, anns)) =
-      lookupE (spanUid anns) i >>= \e -> valueOfEntry e >>= syncCollectionE i e 
+    expr (details -> (EVariable i, _, _)) =
+      lookupE i >>= \e -> valueOfEntry e >>= syncCollectionE i e 
 
     -- | Interpretation of option type construction expressions.
     expr (tag &&& children -> (ESome, [x])) =
       expression x >>= freshenValue >>= return . VOption . (, vQualOfExpr x) . Just
     
-    expr (details -> (ESome, _, anns)) =
-      throwAE anns $ RunTimeTypeError "Invalid Construction of Option"
+    expr (details -> (ESome, _, _)) =
+      throwE $ RunTimeTypeError "Invalid Construction of Option"
 
     -- | Interpretation of indirection type construction expressions.
     expr (tag &&& children -> (EIndirect, [x])) = do
       new_val <- expression x >>= freshenValue
       (\a b -> VIndirection (a, vQualOfExpr x, b)) <$> liftIO (newMVar new_val) <*> memEntTag new_val
 
-    expr (details -> (EIndirect, _, anns)) =
-      throwAE anns $ RunTimeTypeError "Invalid Construction of Indirection"
+    expr (details -> (EIndirect, _, _)) =
+      throwE $ RunTimeTypeError "Invalid Construction of Indirection"
 
     -- | Interpretation of tuple construction expressions.
     expr (tag &&& children -> (ETuple, cs)) =
@@ -422,31 +446,31 @@ expression e_ =
       mapM (\e -> expression e >>= freshenValue >>= return . (, vQualOfExpr e)) cs >>= return . VRecord . membersFromList . zip is
 
     -- | Interpretation of function construction.
-    expr (details -> (ELambda i, [b], anns)) =
+    expr (details -> (ELambda i, [b], _)) =
       mkFunction $ \v -> insertE i (IVal v) >> expression b >>= removeE i (IVal v)
       where
-        mkFunction f = (\cl tg -> VFunction (f, cl, tg)) <$> closure (spanUid anns) <*> memEntTag f
+        mkFunction f = (\cl tg -> VFunction (f, cl, tg)) <$> closure <*> memEntTag f
 
         -- TODO: currently, this definition of a closure captures 
         -- annotation member variables during annotation member initialization.
         -- This invalidates the use of annotation member function contextualization
         -- since the context is overridden by the closure whenever applying the
         -- member function.
-        closure :: Maybe (Span, UID) -> Interpretation (Closure Value)
-        closure su = do
+        closure :: Interpretation (Closure Value)
+        closure = do
           globals <- get >>= return . getGlobals
           vars    <- return $ filter (\n -> n /= i && n `notElem` globals) $ freeVariables b
-          vals    <- mapM (lookupE su) vars
+          vals    <- mapM lookupE vars
           envFromList $ zip vars vals
 
     -- | Interpretation of unary/binary operators.
-    expr (details -> (EOperate otag, cs, anns))
-        | otag `elem` [ONeg, ONot], [a] <- cs = unary (spanUid anns) otag a
-        | otherwise, [a, b] <- cs = binary (spanUid anns) otag a b
+    expr (details -> (EOperate otag, cs, _))
+        | otag `elem` [ONeg, ONot], [a] <- cs = unary otag a
+        | otherwise, [a, b] <- cs = binary otag a b
         | otherwise = undefined
 
     -- | Interpretation of Record Projection.
-    expr (details -> (EProject i, [r], anns)) = expression r >>= syncCollection >>= \case
+    expr (details -> (EProject i, [r], _)) = expression r >>= syncCollection >>= \case
         VRecord vm -> maybe (unknownField i) (return . fst) $ lookupMember i vm
 
         VCollection (_, c) -> do
@@ -454,55 +478,55 @@ expression e_ =
           else maybe (unknownCollectionMember i c) (return . fst)
                   $ lookupMember i $ collectionNS $ namespace c
 
-        v -> throwAE anns . RunTimeTypeError $ "Invalid projection on value: " ++ show v
+        v -> throwE . RunTimeTypeError $ "Invalid projection on value: " ++ show v
 
-      where unknownField i' = throwAE anns $ RunTimeTypeError $ "Unknown record field " ++ i'
-            unannotatedCollection = throwAE anns $ RunTimeTypeError $ "Invalid projection on an unannotated collection"
-            unknownCollectionMember i' c = throwAE anns $ RunTimeTypeError $ "Unknown collection member " ++ i' ++ " in collection " ++ show c
+      where unknownField i'              = throwE . RunTimeTypeError $ "Unknown record field " ++ i'
+            unannotatedCollection        = throwE . RunTimeTypeError $ "Invalid projection on an unannotated collection"
+            unknownCollectionMember i' c = throwE . RunTimeTypeError $ "Unknown collection member " ++ i' ++ " in collection " ++ show c
 
-    expr (details -> (EProject _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Record Projection"
+    expr (details -> (EProject _, _, _)) = throwE $ RunTimeTypeError "Invalid Record Projection"
 
     -- | Interpretation of Let-In Constructions.
     expr (tag &&& children -> (ELetIn i, [e, b])) = do
       entry <- expression e >>= freshenValue >>= entryOfValueE (e @~ isEQualified)
       insertE i entry >> expression b >>= removeE i entry
 
-    expr (details -> (ELetIn _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid LetIn Construction"
+    expr (details -> (ELetIn _, _, _)) = throwE $ RunTimeTypeError "Invalid LetIn Construction"
 
     -- | Interpretation of Assignment.
-    expr (details -> (EAssign i, [e], anns)) = do
-      entry <- lookupE (spanUid anns) i
+    expr (details -> (EAssign i, [e], _)) = do
+      entry <- lookupE i
       case entry of 
         MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const $ return v) >> return v
-        IVal _  -> throwAE anns $ RunTimeInterpretationError "Invalid assignment to an immutable value"
+        IVal _  -> throwE $ RunTimeInterpretationError "Invalid assignment to an immutable value"
 
-    expr (details -> (EAssign _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Assignment"
+    expr (details -> (EAssign _, _, _)) = throwE $ RunTimeTypeError "Invalid Assignment"
 
     -- | Interpretation of If-Then-Else constructs.
-    expr (details -> (EIfThenElse, [p, t, e], anns)) = expression p >>= \case
+    expr (details -> (EIfThenElse, [p, t, e], _)) = expression p >>= \case
         VBool True  -> expression t
         VBool False -> expression e
-        _ -> throwAE anns $ RunTimeTypeError "Invalid Conditional Predicate"
+        _ -> throwE $ RunTimeTypeError "Invalid Conditional Predicate"
 
-    expr (details -> (EAddress, [h, p], anns)) = do
+    expr (details -> (EAddress, [h, p], _)) = do
       hv <- expression h
       pv <- expression p
       case (hv, pv) of
         (VString host, VInt port) -> return $ VAddress $ Address (host, port)
-        _ -> throwAE anns $ RunTimeTypeError "Invalid address"
+        _ -> throwE $ RunTimeTypeError "Invalid address"
 
-    expr (details -> (ESelf, _, anns)) = lookupE (spanUid anns) annotationSelfId >>= valueOfEntry
+    expr (details -> (ESelf, _, _)) = lookupE annotationSelfId >>= valueOfEntry
 
     -- | Interpretation of Case-Matches.
-    -- TODO: case expressions should behave like bind, i.e., w/ bind aliases and transactional write-backs
-    expr (details -> (ECaseOf i, [e, s, n], anns)) = withProxyFrame $ do
+    -- Case expressions behave like bind-as, i.e., w/ isolated bindings and writeback
+    expr (details -> (ECaseOf i, [e, s, n], _)) = withProxyFrame $ do
         targetV <- expression e
         case targetV of 
           VOption (Just v, q) -> do
             pp <- getProxyPath >>= \case
               Just ((Named pn):t)     -> return $ (Named pn):t
               Just ((Temporary pn):t) -> return $ (Temporary pn):t
-              _ -> throwAE anns $ RunTimeTypeError "Invalid proxy path in case-of expression"
+              _ -> throwE $ RunTimeTypeError "Invalid proxy path in case-of expression"
 
             entry <- entryOfValueQ v q
             insertE i entry
@@ -513,19 +537,19 @@ expression e_ =
             removeE i entry sV
 
           VOption (Nothing, _) -> expression n
-          _ -> throwAE anns $ RunTimeTypeError "Invalid Argument to Case-Match"
+          _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
     
-    expr (details -> (ECaseOf _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid Case-Match"
+    expr (details -> (ECaseOf _, _, _)) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
     -- | Interpretation of Binding.
     -- TODO: For now, all bindings are added in mutable fashion. This should be extracted from
     -- the type inferred for the bind target expression.
-    expr (details -> (EBindAs b, [e, f], anns)) = withProxyFrame $ do
+    expr (details -> (EBindAs b, [e, f], _)) = withProxyFrame $ do
       bv <- expression e
       bp <- getProxyPath >>= \case
         Just ((Named n):t)     -> return $ (Named n):t
         Just ((Temporary n):t) -> return $ (Temporary n):t
-        _ -> throwAE anns $ RunTimeTypeError "Invalid bind path in bind-as expression"
+        _ -> throwE $ RunTimeTypeError "Invalid bind path in bind-as expression"
 
       case (b, bv) of
         (BIndirection i, VIndirection (r,q,_)) -> do
@@ -549,9 +573,9 @@ expression e_ =
               let recordMems = membersFromList $ joinByKeys (,) idls ids ivs
               bindAndRefresh bp bv recordMems
             
-            else throwAE anns $ RunTimeTypeError "Invalid Bind-Pattern"
+            else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
 
-        _ -> throwAE anns $ RunTimeTypeError "Bind Mis-Match"
+        _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
 
       where 
         bindAndRefresh bp bv mems = do
@@ -563,9 +587,9 @@ expression e_ =
         joinByKeys joinF keys l r =
           catMaybes $ map (\k -> lookup k l >>= (\matchL -> lookupMember k r >>= return . joinF matchL)) keys
 
-    expr (details -> (EBindAs _,_,anns)) = throwAE anns $ RunTimeTypeError "Invalid Bind Construction"
+    expr (details -> (EBindAs _,_,_)) = throwE $ RunTimeTypeError "Invalid Bind Construction"
 
-    expr (annotations -> anns) = throwAE anns $ RunTimeInterpretationError "Invalid Expression"
+    expr _ = throwE $ RunTimeInterpretationError "Invalid Expression"
 
 
 {- Literal interpretation -}
@@ -579,22 +603,22 @@ literal (tag -> LString s) = return $ VString s
 literal l@(tag -> LNone _) = return $ VOption (Nothing, vQualOfLit l)
 
 literal (tag &&& children -> (LSome, [x])) = literal x >>= return . VOption . (, vQualOfLit x) . Just
-literal (details -> (LSome, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid option literal"
+literal (details -> (LSome, _, _)) = throwE $ RunTimeTypeError "Invalid option literal"
 
 literal (tag &&& children -> (LIndirect, [x])) = literal x >>= (\y -> (\i tg -> (i, vQualOfLit x, tg)) <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
-literal (details -> (LIndirect, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid indirection literal"
+literal (details -> (LIndirect, _, _)) = throwE $ RunTimeTypeError "Invalid indirection literal"
 
 literal (tag &&& children -> (LTuple, ch)) = mapM (\l -> literal l >>= return . (, vQualOfLit l)) ch >>= return . VTuple
-literal (details -> (LTuple, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid tuple literal"
+literal (details -> (LTuple, _, _)) = throwE $ RunTimeTypeError "Invalid tuple literal"
 
 literal (tag &&& children -> (LRecord ids, ch)) = mapM (\l -> literal l >>= return . (, vQualOfLit l)) ch >>= return . VRecord . membersFromList . zip ids
-literal (details -> (LRecord _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid record literal"
+literal (details -> (LRecord _, _, _)) = throwE $ RunTimeTypeError "Invalid record literal"
 
 literal (details -> (LEmpty _, [], anns)) =
   getComposedAnnotationL anns >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
   where annIds = namedLAnnotations anns
 
-literal (details -> (LEmpty _, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid empty literal"
+literal (details -> (LEmpty _, _, _)) = throwE $ RunTimeTypeError "Invalid empty literal"
 
 literal (details -> (LCollection _, elems, anns)) = do
   cElems <- mapM literal elems
@@ -603,23 +627,23 @@ literal (details -> (LCollection _, elems, anns)) = do
     Nothing       -> initialCollection (namedLAnnotations anns) cElems
     Just comboId  -> initialAnnotatedCollection comboId cElems
 
-literal (details -> (LAddress, [h,p], anns)) = mapM literal [h,p] >>= \case 
+literal (details -> (LAddress, [h,p], _)) = mapM literal [h,p] >>= \case 
   [VString a, VInt b] -> return . VAddress $ Address (a,b)
-  _     -> throwAE anns $ RunTimeTypeError "Invalid address literal"
+  _     -> throwE $ RunTimeTypeError "Invalid address literal"
 
-literal (details -> (LAddress, _, anns)) = throwAE anns $ RunTimeTypeError "Invalid address literal" 
+literal (details -> (LAddress, _, _)) = throwE $ RunTimeTypeError "Invalid address literal" 
 
-literal (annotations -> anns) = throwAE anns $ RunTimeTypeError "Invalid literal"
+literal _ = throwE $ RunTimeTypeError "Invalid literal"
 
 {- Declaration interpretation -}
 
 replaceTrigger :: (HasSpan a, HasUID a) => Identifier -> [a] -> Value -> Interpretation ()
-replaceTrigger n _    (VFunction (f,_,tg))  = replaceE n (IVal $ VTrigger (n, Just f, tg))
-replaceTrigger n anns _                     = throwAE anns $ RunTimeTypeError ("Invalid body for trigger " ++ n)
+replaceTrigger n _    (VFunction (f,_,tg)) = replaceE n (IVal $ VTrigger (n, Just f, tg))
+replaceTrigger n _ _                       = throwE $ RunTimeTypeError ("Invalid body for trigger " ++ n)
 
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> Interpretation ()
 global n (details -> (TSink, _, anns)) (Just e) = expression e >>= replaceTrigger n anns
-global _ (details -> (TSink, _, anns)) Nothing  = throwAE anns $ RunTimeInterpretationError "Invalid sink trigger"
+global _ (details -> (TSink, _, _)) Nothing     = throwE $ RunTimeInterpretationError "Invalid sink trigger"
 -- ^ Interpret and add sink triggers to the program environment.
 
 -- | Sources have already been translated into K3 code
@@ -631,7 +655,7 @@ global _ (isFunction -> True) _ = return ()
 -- | Add collection declaration, generating the collection type given by the annotation
 --   combination on demand.
 --   n is the name of the variable
-global n t@(details -> (TCollection, _, anns)) eOpt = elemE n >>= \case
+global n t@(details -> (TCollection, _, _)) eOpt = elemE n >>= \case
   True  -> void . getComposedAnnotationT $ annotations t
   False -> (getComposedAnnotationT $ annotations t) >>= initializeCollection . maybe "" id
   where
@@ -649,8 +673,8 @@ global n t@(details -> (TCollection, _, anns)) eOpt = elemE n >>= \case
                             else collInitError
       _ -> collValError
 
-    collInitError = throwAE anns . RunTimeTypeError $ "Invalid annotations on collection initializer for " ++ n
-    collValError  = throwAE anns . RunTimeTypeError $ "Invalid collection value " ++ n
+    collInitError = throwE . RunTimeTypeError $ "Invalid annotations on collection initializer for " ++ n
+    collValError  = throwE . RunTimeTypeError $ "Invalid collection value " ++ n
 
 -- | Instantiate all other globals in the interpretation environment.
 global n t eOpt = elemE n >>= \case

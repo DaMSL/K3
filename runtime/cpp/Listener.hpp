@@ -11,10 +11,11 @@
 #include <boost/thread/lock_types.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Queue.hpp>
-#include <runtime/cpp/IOHandle.hpp>
-#include <runtime/cpp/Endpoint.hpp>
+
+#include <Common.hpp>
+#include <Queue.hpp>
+#include <IOHandle.hpp>
+#include <Endpoint.hpp>
 
 namespace K3 {
 
@@ -95,7 +96,7 @@ namespace K3 {
                shared_ptr<InternalCodec> c)
         : name(n), ctxt_(ctxt), queues(q), 
           endpoint_(ep), control_(ctrl), transfer_codec(c),
-          listenerLog(new LogMT("Listener_"+n))
+          listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
       {
         if ( endpoint_ ) {
           IOHandle::SourceDetails source = ep->handle()->networkSource();
@@ -103,6 +104,8 @@ namespace K3 {
           handle_codec = get<0>(source);
         }
       }
+
+      shared_ptr<ListenerControl> control() { return control_; }
 
     protected:
       Identifier name;
@@ -153,9 +156,16 @@ namespace K3 {
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
-          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
+          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));     
+
         } else {
           listenerLog->logAt(trivial::error, "Invalid listener arguments.");
+        }
+      }
+
+      ~Listener() {
+        if (ctxt_ && thread_) {
+          ctxt_->service_threads->remove_thread(thread_.get());
         }
       }
 
@@ -176,19 +186,24 @@ namespace K3 {
       // Endpoint execution.
 
       void acceptConnection()
-      {
+      { 
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
-
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
-              if ( !ec ) { registerConnection(nextConnection); }
-              else { listenerLog->logAt(trivial::error, string("Failed to accept a connection: ")+ec.message()); }
-            });
+              if ( !ec ) {
+                registerConnection(nextConnection);
+                this->listenerLog->logAt(trivial::trace, "Listener Registered a connection");
 
-          acceptConnection();
+              }
+              else {
+                this->listenerLog->logAt(trivial::error, "Failed to accept a connection: " + ec.message());
+              }
+              // recursive call:
+              acceptConnection();
+            });
         }
-        else { listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
+        else { this->listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
       }
 
       void registerConnection(shared_ptr<NConnection> c)
@@ -224,27 +239,33 @@ namespace K3 {
           // may invoke this handler simultaneously (i.e. for different connections).
           typedef boost::array<char, 8192> SocketBuffer;
           shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
-
-          async_read(*(c->socket()), buffer(buffer_->c_array(), buffer_->size()),
+          c->socket()->async_read_some(buffer(buffer_->c_array(), buffer_->size()),
             [=](const error_code& ec, std::size_t bytes_transferred) {
-              if (!ec) {
+              if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
                 // Unpack buffer, check if it returns a valid message, and pass that to the processor.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), buffer_->size()));
-                if (v) {
+                shared_ptr<Value> v = this->handle_codec->decode(string(buffer_->c_array(), bytes_transferred));
+                while (v) {
+                  listenerLog->logAt(trivial::trace, "Listener Received data: " +*v);
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
+                    listenerLog->logAt(trivial::trace, "Message was transferred to the queues");
                     this->control_->messageAvailable();
+                  } else {
+                    listenerLog->logAt(trivial::trace, "Message was not transferred to queues");
                   }
+                  v = this->handle_codec->decode("");
                 }
 
                 // Recursive invocation for the next message.
+
                 receiveMessages(c);
               } else {
                 deregisterConnection(c);
                 listenerLog->logAt(trivial::error, string("Connection error: ")+ec.message());
               }
             });
+
         } else { listenerLog->logAt(trivial::error, "Invalid listener connection"); }
       }
     };

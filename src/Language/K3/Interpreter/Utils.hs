@@ -40,6 +40,10 @@ isFunction _ = False
 
 {- Pretty printing -}
 
+prettyIEnvEntry :: IEnvEntry Value -> EngineM Value String
+prettyIEnvEntry (IVal v)  = return $ pretty v
+prettyIEnvEntry (MVal mv) = liftIO (readMVar mv) >>= return . pretty
+
 prettyIEnvM :: IEnvironment Value -> EngineM Value [String]
 prettyIEnvM env = do
     nWidth   <- return . maximum . map (length . fst) =<< liftIO (HT.toList env)
@@ -47,11 +51,8 @@ prettyIEnvM env = do
     return $ concat bindings 
   where 
     prettyEnvEntries w (n, eel) = do
-      sl <- mapM prettyEnvEntry eel
+      sl <- mapM prettyIEnvEntry eel
       return . concat $ map (shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70) sl
-
-    prettyEnvEntry (IVal v)  = return $ pretty v
-    prettyEnvEntry (MVal mv) = liftIO (readMVar mv) >>= return . pretty
 
     prettyName w n    = (suffixPadTo w n) ++ " => "
     suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
@@ -63,7 +64,8 @@ prettyIStateM st = do
   return $ ["Environment:"] ++ (indent 2 $ envLines)
         ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv st)
         ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv st)
-        ++ ["Aliases:"]     ++ (indent 2 $ lines $ show $ getProxyStack st)
+        ++ ["Proxy stack:"] ++ (indent 2 $ lines $ show $ getProxyStack st)
+        ++ ["Tracing: "]    ++ (indent 2 $ lines $ show $ getTracer st)
 
 prettyIResultM :: IResult Value -> EngineM Value [String]
 prettyIResultM ((res, st), _) =

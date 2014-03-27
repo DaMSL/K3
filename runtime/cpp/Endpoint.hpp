@@ -5,12 +5,14 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include <boost/thread/mutex.hpp>
 #include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
-#include <runtime/cpp/Common.hpp>
-#include <runtime/cpp/Network.hpp>
-#include <runtime/cpp/IOHandle.hpp>
-#include <runtime/cpp/Queue.hpp>
+
+#include <Common.hpp>
+#include <Network.hpp>
+#include <IOHandle.hpp>
+#include <Queue.hpp>
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.
@@ -20,9 +22,8 @@ namespace K3
   using namespace std;
   using namespace boost;
 
-  template<typename T> using shared_ptr = std::shared_ptr<T>;
-  using std::bind;
   using mutex = boost::mutex;
+  using std::bind;
 
   typedef tuple<int, int> BufferSpec;
 
@@ -41,6 +42,8 @@ namespace K3
     EndpointException( const string& msg ) : runtime_error(msg) {}
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
+
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
@@ -70,7 +73,7 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  class EndpointBuffer : public LogMT {
+  class EndpointBuffer : public virtual LogMT {
   public:
     typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
@@ -84,7 +87,7 @@ namespace K3
     // Appends to this buffer, returning if the append succeeds.
     virtual bool push_back(shared_ptr<Value> v) = 0;
 
-    // Maybe Removes a value from the buffer and returns it 
+    // Maybe Removes a value from the buffer and returns it
     virtual shared_ptr<Value> pop() = 0;
 
     // Attempt to pull a value from the provided IOHandle
@@ -99,7 +102,7 @@ namespace K3
     virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
-  class ScalarEPBufferST : public EndpointBuffer, public LogMT {
+  class ScalarEPBufferST : public EndpointBuffer {
   public:
     ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
     // Metadata
@@ -169,7 +172,7 @@ namespace K3
           queues->enqueue(msg);
           transferred = true;
         }
-        notify(v);      
+        notify(v);
       }
       return transferred;
     }
@@ -178,10 +181,9 @@ namespace K3
     shared_ptr<Value> contents;
   };
 
-  class ContainerEPBufferST : public EndpointBuffer, public LogMT {
+  class ContainerEPBufferST : public EndpointBuffer {
   public:
-    ContainerEPBufferST(BufferSpec s) : spec(s), EndpointBuffer(),
-    LogMT("ScalarEPBufferST") {
+    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), LogMT("ScalarEPBufferST"), spec(s) {
       contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
@@ -201,7 +203,7 @@ namespace K3
       if (!v || !contents || full()) {
         return false;
       }
-     
+
       // Success
       contents->push_back(*v);
       return true;
@@ -226,20 +228,26 @@ namespace K3
       }
 
       // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
+      // use it to populate the buffer. try to batch
+      int n = batchSize();
+      for(int i=0; !full() && ioh->hasRead() && i < n; i++) {
         shared_ptr<Value> v = ioh->doRead();
         this->push_back(v);
       }
-
       return r;
     }
 
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {      
-      // Flush one batch at a time, building the list of results
-      while (batchAvailable()) {
+    // Default flush: do not force, wait for batch
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      flush(ioh,notify,false);
+    }
+
+    // flush overloaded with force flag to ignore batching semantics
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force) {
+      while (batchAvailable() || force) {
         int n = batchSize();
         for (int i=0; i < n; i++) {
+          if (force && empty()) { return; }
           shared_ptr<Value> v = this->pop();
           ioh->doWrite(*v);
           notify(v);
@@ -247,16 +255,24 @@ namespace K3
       }
     }
 
+    // Default transfer: do not force, wait for batch
     bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      return transfer(queues,cdec,notify,false);
+    }
+
+    // transfer overloaded with force flag to ignore batching semantics
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force) {
+      // Transfer as many full batches as possible
       bool transferred = false;
-      while (batchAvailable()) {
+      while (batchAvailable() || force) {
         int n = batchSize();
         for (int i=0; i < n; i++) {
+          if (force && empty()) { return transferred; }
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
             Message msg = cdec->read_message(*v);
-            queues->enqueue(msg);   
-            transferred = true;         
+            queues->enqueue(msg);
+            transferred = true;
           }
           notify(v);
         }
@@ -278,7 +294,6 @@ namespace K3
   class EndpointBindings : public LogMT {
   public:
 
-    typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
     typedef list<tuple<Address, Identifier>> Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
@@ -335,7 +350,11 @@ namespace K3
              shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
-      refreshBuffer();
+      // TODO verify correctness: i.e: we shouldn't refresh the buffer
+      // if the handle is for output.
+      if (handle_->builtin() || handle_->file()) {
+        refreshBuffer();
+      }
     }
 
     shared_ptr<IOHandle> handle() { return handle_; }
@@ -374,10 +393,14 @@ namespace K3
     }
 
     void doWrite(Value& v) {
-      shared_ptr<Value> v_ptr = make_shared<Value>(v);
+      doWrite(make_shared<Value>(v));
+      return;
+    }
+
+    void doWrite(shared_ptr<Value> v_ptr) {
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
-        // Flush buffer, and then try to append again.    
+        // Flush buffer, and then try to append again.
         flushBuffer();
 
         // Try to append again, and if this still fails, throw a buffering exception.
@@ -392,6 +415,16 @@ namespace K3
       return buffer_->transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
+    // Closes the endpoint's IOHandle, while also notifying subscribers
+    // of the close event.
+    void close() {
+      EndpointNotification nt = (handle_->builtin() || handle_->file())?
+        EndpointNotification::FileClose : EndpointNotification::SocketClose;
+
+      subscribers_->notifyEvent(nt, nullptr);
+      handle_->close();
+    };
+
   protected:
     shared_ptr<IOHandle> handle_;
     shared_ptr<EndpointBuffer> buffer_;
@@ -402,306 +435,331 @@ namespace K3
   class EndpointState : public basic_lockable_adapter<mutex>
   {
   public:
-   typedef basic_lockable_adapter<mutex> eplockable;
-  
-   using ConcurrentEndpointMap =
-     externally_locked<shared_ptr<EndpointMap>,EndpointState>;
+    typedef basic_lockable_adapter<mutex> eplockable;
 
-   using EndpointDetails = tuple<shared_ptr<IOHandle>,
+    using ConcurrentEndpointMap =
+      externally_locked<shared_ptr<EndpointMap>,EndpointState>;
+
+    using EndpointDetails = tuple<shared_ptr<IOHandle>,
                                  shared_ptr<EndpointBuffer>,
                                  shared_ptr<EndpointBindings> >;
 
-   EndpointState()
-     : eplockable(), epsLogger(new LogMT("EndpointState")),
-       internalEndpoints(emptyEndpointMap()),
-       externalEndpoints(emptyEndpointMap())
-   {}
+    EndpointState()
+      : eplockable(), epsLogger(new LogMT("EndpointState")),
+        internalEndpoints(emptyEndpointMap()),
+        externalEndpoints(emptyEndpointMap())
+    {}
 
-   void addEndpoint(Identifier id, EndpointDetails details) {
-     if ( !externalEndpointId(id) ) {
-       addEndpoint(id, details, internalEndpoints);
-     } else {
-       string errorMsg = "Invalid internal endpoint identifier";
-       if ( epsLogger ) { epsLogger->logAt(trivial::error, errorMsg); }
-       throw EndpointException(errorMsg);
-     }
-   }
+    void addEndpoint(Identifier id, EndpointDetails details) {
+      if ( !externalEndpointId(id) ) {
+        addEndpoint(id, details, internalEndpoints);
+      } else {
+        string errorMsg = "Invalid internal endpoint identifier";
+        if ( epsLogger ) { epsLogger->logAt(trivial::error, errorMsg); }
+        throw EndpointException(errorMsg);
+      }
+    }
 
-   void removeEndpoint(Identifier id) {
-     if ( !externalEndpointId(id) ) {
-       removeEndpoint(id, externalEndpoints);
-     } else {
-       removeEndpoint(id, internalEndpoints);
-     }
-   }
+    void removeEndpoint(Identifier id) {
+      if ( !externalEndpointId(id) ) {
+        removeEndpoint(id, externalEndpoints);
+      } else {
+        removeEndpoint(id, internalEndpoints);
+      }
+    }
 
-   // TODO: endpoint id validation.
-   shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
-     return getEndpoint(id, internalEndpoints);
-   }
+    void clearEndpoints() {
+      clearEndpoints(internalEndpoints);
+      clearEndpoints(externalEndpoints);
+      return;
+    }
 
-   shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
-     return getEndpoint(id, externalEndpoints);
-   }
+    void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
+      list<Identifier> endpoint_names;
+ 
+      strict_lock<EndpointState> guard(*this);
+ 
+      for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
+        endpoint_names.push_back(p.first);
+      }
+ 
+      for (Identifier i: endpoint_names) {
+        removeEndpoint(i);
+      }
+ 
+      return;
+    }
 
-   size_t numEndpoints() {
-     strict_lock<EndpointState> guard(*this);
-     return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
-   }
+    shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
+      if ( externalEndpointId(id) ) {
+        epsLogger->logAt(trivial::error, "Invalid request for internal endpoint: "+id);
+        return shared_ptr<Endpoint>();
+      }
+      return getEndpoint(id, internalEndpoints);
+    }
+
+    shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
+      if ( !externalEndpointId(id) ) {
+        epsLogger->logAt(trivial::error, "Invalid request for external endpoint: "+id);
+        return shared_ptr<Endpoint>();
+      }
+      return getEndpoint(id, externalEndpoints);
+    }
+
+    size_t numEndpoints() {
+      strict_lock<EndpointState> guard(*this);
+      return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
+    }
 
   protected:
-   shared_ptr<LogMT> epsLogger;
-   shared_ptr<ConcurrentEndpointMap> internalEndpoints;
-   shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+    shared_ptr<LogMT> epsLogger;
+    shared_ptr<ConcurrentEndpointMap> internalEndpoints;
+    shared_ptr<ConcurrentEndpointMap> externalEndpoints;
 
-   shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
-   {
-     shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
-     return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
-   }
+    shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
+    {
+      shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
+      return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
+    }
 
 
-   void addEndpoint(Identifier id, EndpointDetails details,
-                    shared_ptr<ConcurrentEndpointMap> epMap)
-   {
-     strict_lock<EndpointState> guard(*this);
-     auto lb = epMap->get(guard)->lower_bound(id);
-     if ( lb == epMap->get(guard)->end() || id != lb->first )
-     {
-       shared_ptr<Endpoint> ep =
-         shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
+    void addEndpoint(Identifier id, EndpointDetails details,
+                     shared_ptr<ConcurrentEndpointMap> epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      auto lb = epMap->get(guard)->lower_bound(id);
 
-       epMap->get(guard)->insert(lb, make_pair(id, ep));
-     } else if ( epsLogger ) {
+      if ( lb == epMap->get(guard)->end() || id != lb->first )
+      {
+        shared_ptr<Endpoint> ep =
+          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
+ 
+        epMap->get(guard)->insert(lb, make_pair(id, ep));
+      } else if ( epsLogger ) {
         BOOST_LOG(*epsLogger) << "Invalid attempt to add a duplicate endpoint for " << id;
-     }
-   }
+      }
+    }
 
-   void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
-   {
-     strict_lock<EndpointState> guard(*this);
-     epMap->get(guard)->erase(id);
-   }
+    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      epMap->get(guard)->erase(id);
+    }
 
-   shared_ptr<Endpoint>
-   getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
-   {
-     strict_lock<EndpointState> guard(*this);
-     shared_ptr<Endpoint> r;
-     auto it = epMap->get(guard)->find(id);
-     if ( it != epMap->get(guard)->end() ) { r = it->second; }
-     return r;
-   }
-
+    shared_ptr<Endpoint>
+    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      shared_ptr<Endpoint> r;
+      auto it = epMap->get(guard)->find(id);
+      if ( it != epMap->get(guard)->end() ) { r = it->second; }
+      return r;
+    }
   };
 
 
   ////-------------------------------------
   //// Connections and their containers.
 
-  //class ConnectionState : public shared_lockable_adapter<shared_mutex>,
-  //                        public virtual LogMT
-  //{
-  //protected:
-  //  // Connection maps are not thread-safe themselves, but are only
-  //  // ever used by ConnectionState methods (which are thread-safe).
-  //  class ConnectionMap : public virtual LogMT {
-  //  public:
-  //    ConnectionMap() : LogMT("ConnectionMap") {}
-  //
-  //    ConnectionMap(shared_ptr<Net::NContext> ctxt)
-  //      : LogMT("ConnectionMap"), context_(ctxt)
-  //    {}
+  class ConnectionState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
+  {
+  protected:
+    // Connection maps are not thread-safe themselves, but are only
+    // ever used by ConnectionState methods (which are thread-safe).
+    class ConnectionMap : public virtual LogMT {
+    public:
+      ConnectionMap() : LogMT("ConnectionMap") {}
 
-  //    bool addConnection(Address& addr, shared_ptr<Net::NConnection> c)
-  //    {
-  //      bool r = false;
-  //      auto lb = cache.lower_bound(addr);
-  //      if ( lb == cache.end() || addr != lb->first ) {
-  //        auto it = cache.insert(lb, make_pair(addr, c));
-  //        r = it->first == addr;
-  //      } else {
-  //        BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << addressAsString(addr);
-  //      }
-  //      return r;
-  //    }
+      ConnectionMap(shared_ptr<Net::NContext> ctxt): LogMT("ConnectionMap"), context_(ctxt) {}
 
-  //    shared_ptr<Net::NConnection> getConnection(Address& addr)
-  //    {
-  //      shared_ptr<Net::NConnection> r;
-  //      try {
-  //        r = cache.at(addr);
-  //      } catch (const out_of_range& oor) {}
-  //      if ( !r ) { BOOST_LOG(*this) << "No connection found for " << addressAsString(addr); }
-  //      return r;
-  //    }
+      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c) {
+        bool r = false;
+        auto lb = cache.lower_bound(addr);
+        if ( lb == cache.end() || addr != lb->first ) {
+          auto it = cache.insert(lb, make_pair(addr, c));
+          r = it->first == addr;
+        } else {
+          BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << addressAsString(addr);
+        }
+        return r;
+      }
 
-  //    void removeConnection(Address& addr) { cache.erase(addr); }
+      shared_ptr<Net::NConnection> getConnection(Address& addr)
+      {
+        shared_ptr<Net::NConnection> r;
+        try {
+          r = cache.at(addr);
+        } catch (const out_of_range& oor) {}
+        if ( !r ) { BOOST_LOG(*this) << "No connection found for " << addressAsString(addr); }
+        return r;
+      }
+ 
+      void removeConnection(Address& addr) { cache.erase(addr); }
+ 
+      void clearConnections() { cache.clear(); }
+ 
+      size_t size() { return cache.size(); }
+ 
+    protected:
+      shared_ptr<Net::NContext> context_;
+      map<Address, shared_ptr<Net::NConnection> > cache;
+   };
 
-  //    void clearConnections() { cache.clear(); }
+  public:
+    typedef shared_lockable_adapter<shared_mutex> shlockable;
 
-  //    size_t size() { return cache.size(); }
-
-  //  protected:
-  //    shared_ptr<Net::NContext> context_;
-  //    map<Address, shared_ptr<Net::NConnection> > cache;
-  //  };
-
-  //public:
-  //  typedef shared_lockable_adapter<shared_mutex> shlockable;
-  //
-  //  typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
-  //            ConcurrentConnectionMap;
+    typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
+              ConcurrentConnectionMap;
 
 
-  //  ConnectionState(shared_ptr<Net::NContext> ctxt)
-  //    : shlockable(), LogMT("ConnectionState"),
-  //      networkCtxt(ctxt),
-  //      internalConnections(uninitializedConnectionMap()),
-  //      externalConnections(emptyConnectionMap(ctxt))
-  //  {}
+    ConnectionState(shared_ptr<Net::NContext> ctxt)
+      : shlockable(), LogMT("ConnectionState"),
+        networkCtxt(ctxt),
+        internalConnections(uninitializedConnectionMap()),
+        externalConnections(emptyConnectionMap(ctxt))
+    {}
 
-  //  ConnectionState(shared_ptr<Net::NContext> ctxt, bool simulation) : ConnectionState(ctxt)
-  //  {
-  //    if ( !simulation ) { internalConnections = emptyConnectionMap(ctxt); }
-  //  }
+    ConnectionState(shared_ptr<Net::NContext> ctxt, bool simulation) : ConnectionState(ctxt)
+    {
+      if ( !simulation ) { internalConnections = emptyConnectionMap(ctxt); }
+    }
 
-  //  void lock()          { shlockable::lock(); }
-  //  void lock_shared()   { shlockable::lock_shared(); }
-  //  void unlock()        { shlockable::unlock(); }
-  //  void unlock_shared() { shlockable::unlock_shared(); }
+    void lock()          { shlockable::lock(); }
+    void lock_shared()   { shlockable::lock_shared(); }
+    void unlock()        { shlockable::unlock(); }
+    void unlock_shared() { shlockable::unlock_shared(); }
 
-  //  bool hasInternalConnections() {
-  //    bool r = false;
-  //    if ( internalConnections ) {
-  //      strict_lock<ConnectionState> guard(*this);
-  //      r = internalConnections->get(guard)? true : false;
-  //    }
-  //    return r;
-  //  }
+    bool hasInternalConnections() {
+      bool r = false;
+      if ( internalConnections ) {
+        strict_lock<ConnectionState> guard(*this);
+        r = internalConnections->get(guard)? true : false;
+      }
+      return r;
+    }
 
-  //  shared_ptr<Net::NConnection> addConnection(Address addr, bool internal)
-  //  {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap =
-  //      internal? internalConnections : externalConnections;
+    shared_ptr<Net::NConnection> addConnection(Address addr, bool internal)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap =
+        internal? internalConnections : externalConnections;
+ 
+      shared_ptr<Net::NConnection> conn =
+        shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
+ 
+      return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
+    }
 
-  //    shared_ptr<Net::NConnection> conn =
-  //      shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
-  //
-  //    return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
-  //  }
+    void removeConnection(Address addr)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
+      if ( cMap ) {
+        cMap->get(guard)->removeConnection(addr);
+      } else {
+        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
+      }
+    }
 
-  //  void removeConnection(Address addr)
-  //  {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
-  //    if ( cMap ) {
-  //      cMap->get(guard)->removeConnection(addr);
-  //    } else {
-  //      BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-  //    }
-  //  }
-  //
-  //  void removeConnection(Address addr, bool internal)
-  //  {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
-  //    if ( cMap ) {
-  //      cMap->get(guard)->removeConnection(addr);
-  //    } else {
-  //      BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-  //    }
-  //  }
+    void removeConnection(Address addr, bool internal)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
+      if ( cMap ) {
+        cMap->get(guard)->removeConnection(addr);
+      } else {
+        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
+      }
+    }
 
-  //  // TODO: Ideally, this should be a shared lock.
-  //  // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
-  //  shared_ptr<Net::NConnection> getConnection(Address addr)
-  //  {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
-  //    return getConnection(addr, cMap, guard);
-  //  }
+    // TODO: Ideally, this should be a shared lock.
+    // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
+    shared_ptr<Net::NConnection> getConnection(Address addr)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
+      return getConnection(addr, cMap, guard);
+    }
 
-  //  // TODO: Ideally, this should be a shared lock.
-  //  shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
-  //  {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
-  //    return getConnection(addr, cMap, guard);
-  //  }
+    // TODO: Ideally, this should be a shared lock.
+    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
+    {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
+      return getConnection(addr, cMap, guard);
+    }
 
-  //  // TODO
-  //  virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;
-  //  virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
+    // TODO
+    // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;
+    // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
 
-  //  void clearConnections() {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
-  //    if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
-  //  }
-  //
-  //  void clearConnections(bool internal) {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    shared_ptr<ConcurrentConnectionMap> cMap =
-  //      internal ? internalConnections : externalConnections;
-  //    if ( cMap ) { cMap->get(guard)->clearConnections(); }
-  //  };
+    void clearConnections() {
+      strict_lock<ConnectionState> guard(*this);
+      if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
+      if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
+    }
 
-  //  size_t numConnections() {
-  //    strict_lock<ConnectionState> guard(*this);
-  //    size_t r = 0;
-  //    if ( internalConnections ) { r += internalConnections->get(guard)->size(); }
-  //    if ( externalConnections ) { r += externalConnections->get(guard)->size(); }
-  //    return r;
-  //  }
+    void clearConnections(bool internal) {
+      strict_lock<ConnectionState> guard(*this);
+      shared_ptr<ConcurrentConnectionMap> cMap =
+        internal ? internalConnections : externalConnections;
+      if ( cMap ) { cMap->get(guard)->clearConnections(); }
+    };
 
-  //protected:
-  //  shared_ptr<Net::NContext> networkCtxt;
-  //  shared_ptr<ConcurrentConnectionMap> internalConnections;
-  //  shared_ptr<ConcurrentConnectionMap> externalConnections;
+    size_t numConnections() {
+      strict_lock<ConnectionState> guard(*this);
+      size_t r = 0;
+      if ( internalConnections ) { r += internalConnections->get(guard)->size(); }
+      if ( externalConnections ) { r += externalConnections->get(guard)->size(); }
+      return r;
+    }
 
-  //  shared_ptr<ConcurrentConnectionMap> uninitializedConnectionMap() {
-  //    return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this));
-  //  }
+  protected:
+    shared_ptr<Net::NContext> networkCtxt;
+    shared_ptr<ConcurrentConnectionMap> internalConnections;
+    shared_ptr<ConcurrentConnectionMap> externalConnections;
 
-  //  shared_ptr<ConcurrentConnectionMap>
-  //  emptyConnectionMap(shared_ptr<Net::NContext> ctxt)
-  //  {
-  //    shared_ptr<ConnectionMap> mp(new ConnectionMap(ctxt));
-  //    return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));
-  //  }
+    shared_ptr<ConcurrentConnectionMap> uninitializedConnectionMap() {
+      return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this));
+    }
 
-  //  shared_ptr<ConcurrentConnectionMap> mapForId(Identifier& id) {
-  //    return externalEndpointId(id) ? externalConnections : internalConnections;
-  //  }
+    shared_ptr<ConcurrentConnectionMap>
+    emptyConnectionMap(shared_ptr<Net::NContext> ctxt)
+    {
+      shared_ptr<ConnectionMap> mp(new ConnectionMap(ctxt));
+      return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));
+    }
 
-  //  // TODO: implement an alternative using a shared_lock_guard
-  //  shared_ptr<ConcurrentConnectionMap>
-  //  mapForAddress(Address& addr, strict_lock<ConnectionState>& guard)
-  //  {
-  //    shared_ptr<ConcurrentConnectionMap> r;
-  //    if ( internalConnections && getConnection(addr, internalConnections, guard) ) {
-  //      r = internalConnections;
-  //      if ( !r && externalConnections && getConnection(addr, externalConnections, guard) ) {
-  //        r = externalConnections;
-  //      }
-  //    }
-  //    return r;
-  //  }
+    shared_ptr<ConcurrentConnectionMap> mapForId(Identifier& id) {
+      return externalEndpointId(id) ? externalConnections : internalConnections;
+    }
 
-  //  // TODO: implement an alternative using a shared_lock_guard
-  //  shared_ptr<Net::NConnection>
-  //  getConnection(Address& addr,
-  //                shared_ptr<ConcurrentConnectionMap> connections,
-  //                strict_lock<ConnectionState>& guard)
-  //  {
-  //    shared_ptr<Net::NConnection> r;
-  //    if ( connections ) { r = connections->get(guard)->getConnection(addr); }
-  //    return r;
-  //  }
-  //};
-}
+    // TODO: implement an alternative using a shared_lock_guard
+    shared_ptr<ConcurrentConnectionMap>
+    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard)
+    {
+      shared_ptr<ConcurrentConnectionMap> r;
+      if ( internalConnections && getConnection(addr, internalConnections, guard) ) {
+        r = internalConnections;
+        if ( !r && externalConnections && getConnection(addr, externalConnections, guard) ) {
+          r = externalConnections;
+        }
+      }
+      return r;
+    }
+
+    // TODO: implement an alternative using a shared_lock_guard
+    shared_ptr<Net::NConnection>
+    getConnection(Address& addr,
+                  shared_ptr<ConcurrentConnectionMap> connections,
+                  strict_lock<ConnectionState>& guard)
+    {
+      shared_ptr<Net::NConnection> r;
+      if ( connections ) { r = connections->get(guard)->getConnection(addr); }
+      return r;
+    }
+  };
+};
 
 #endif
 // vim: set sw=2 ts=2 sts=2:

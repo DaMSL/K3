@@ -52,9 +52,6 @@ valueEq a b = valueCompare a b >>= asBool
   where asBool (VInt sgn) = return . VBool $ sgn == 0
         asBool _          = throwE $ RunTimeInterpretationError "Invalid comparison value in equality test"
 
-valueNeq :: Value -> Value -> Interpretation Value
-valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
-
 valueCompare :: Value -> Value -> Interpretation Value
 valueCompare (VOption (Just v, q))  (VOption (Just v', q')) =
     if q /= q' then return (VInt $ orderingAsInt $ compare q q') else valueCompare v v'
@@ -66,6 +63,9 @@ valueCompare a b = return . VInt . orderingAsInt $ compare a b
 
 valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
 valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
+
+valueNeq :: Value -> Value -> Interpretation Value
+valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
 
 valueLt :: Value -> Value -> Interpretation Value
 valueLt = valueSign $ \sgn -> sgn < 0
@@ -184,8 +184,10 @@ dataspaceEq a b = dataspaceCompare a b >>= \(VInt sgn) -> return . VBool $ sgn =
 dataspaceCompare :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
 dataspaceCompare (InMemoryDS l) (InMemoryDS l') = valueListCompare l l' >>= return . VInt
 dataspaceCompare (InMemDS l)    (InMemDS l')    = memDSCompare l l'
+
 dataspaceCompare (ExternalDS _) (ExternalDS _)  =
   throwE $ RunTimeInterpretationError "External DS comparison not implemented"
+
 dataspaceCompare _ _ =
   throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
 
@@ -371,11 +373,11 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     -- for now, external ds are shared file path
     -- Need to preserve copy semantics for external dataspaces
 
+    {- UNUSED
     packNamedBindings d nb = braces (packNamedValue d) $ Map.toList nb
-    packNamedMembers  d nm = braces (packNamedValueQual d) $ Map.toList nm
-
-    packNamedValue d (n,v') = (.) <$> rt (showString n . showChar '=') <*> packValue d v'
-    
+    packNamedValue d (n,v') = (.) <$> t (showString n . showChar '=') <*> packValue d v'
+    -}
+    packNamedMembers d nm = braces (packNamedValueQual d) $ Map.toList nm
     packNamedValueQual d (n,(v',q)) =
       (\x y z -> x . showChar '(' . y . showChar ',' . z . showChar ')') 
         <$> rt (showString n . showChar '=') <*> packValue d v' <*> packQual d q 
@@ -514,10 +516,12 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
         v <- readBraces $ readNamedF readNamedMembers
         return $ sequence v)
 
+    {- UNUSED
     readNamedBindings :: ReadPrec (IO (NamedBindings Value))
     readNamedBindings = parens $ do
         v <- readBraces $ readNamedF unpackValue
         return $ Map.fromList <$> sequence v 
+    -}
 
     readNamedMembers :: ReadPrec (IO (NamedMembers Value))
     readNamedMembers = parens $ do

@@ -220,6 +220,9 @@ foldEnvIO f z env = HT.foldM (\a (k,vl) -> foldM (\a2 v -> f a2 k v) a vl) z env
 emptyProxyStack :: ProxyPathStack
 emptyProxyStack = []
 
+emptyTracer :: ITracer
+emptyTracer = ITracer [] [] []
+
 emptyStaticEnv :: Interpretation (SEnvironment Value)
 emptyStaticEnv = emptyEnv >>= return . (, AEnvironment [] [])
 
@@ -227,45 +230,48 @@ emptyStaticEnvIO :: IO (SEnvironment Value)
 emptyStaticEnvIO = emptyEnvIO >>= return . (, AEnvironment [] [])
 
 emptyState :: Interpretation IState
-emptyState = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack)
+emptyState = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack emptyTracer)
                 <$> emptyEnv <*> emptyStaticEnv 
 
 emptyStateIO :: IO IState
-emptyStateIO = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack)
+emptyStateIO = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack emptyTracer)
                   <$> emptyEnvIO <*> emptyStaticEnvIO
 
 annotationState :: AEnvironment Value -> Interpretation IState
-annotationState aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack)
+annotationState aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack emptyTracer)
                           <$> emptyEnv <*> emptyStaticEnv
 
 annotationStateIO :: AEnvironment Value -> IO IState
-annotationStateIO aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack)
+annotationStateIO aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack emptyTracer)
                             <$> emptyEnvIO <*> emptyStaticEnvIO
 
 modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
-modifyStateGlobals f (IState g e a s b) = IState (f g) e a s b
+modifyStateGlobals f (IState g e a s b t) = IState (f g) e a s b t
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (IState g e a s b) = IState g e (f a) s b
+modifyStateAEnv f (IState g e a s b t) = IState g e (f a) s b t
 
 modifyStateProxies :: (ProxyPathStack -> ProxyPathStack) -> IState -> IState
-modifyStateProxies f (IState g e a s b) = (IState g e a s (f b))
+modifyStateProxies f (IState g e a s b t) = IState g e a s (f b) t
+
+modifyTracer :: (ITracer -> ITracer) -> IState -> IState
+modifyTracer f (IState g e a s b t) = IState g e a s b $ f t
 
 modifyStateEnv :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> IState
                -> Interpretation IState
-modifyStateEnv f (IState g e a s b) = f e >>= \ne -> return $ IState g ne a s b
+modifyStateEnv f (IState g e a s b t) = f e >>= \ne -> return $ IState g ne a s b t
 
 modifyStateEnvIO :: (IEnvironment Value -> IO (IEnvironment Value)) -> IState
                  -> IO IState
-modifyStateEnvIO f (IState g e a s b) = f e >>= \ne -> return $ IState g ne a s b
+modifyStateEnvIO f (IState g e a s b t) = f e >>= \ne -> return $ IState g ne a s b t
 
 modifyStateSEnv :: (SEnvironment Value -> Interpretation (SEnvironment Value)) -> IState
                 -> Interpretation IState
-modifyStateSEnv f (IState g e a s b) = f s >>= \ns -> return $ IState g e a ns b
+modifyStateSEnv f (IState g e a s b t) = f s >>= \ns -> return $ IState g e a ns b t
 
 modifyStateSEnvIO :: (SEnvironment Value -> IO (SEnvironment Value)) -> IState
                   -> IO IState
-modifyStateSEnvIO f (IState g e a s b) = f s >>= \ns -> return $ IState g e a ns b
+modifyStateSEnvIO f (IState g e a s b t) = f s >>= \ns -> return $ IState g e a ns b t
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x
@@ -287,18 +293,9 @@ runInterpretation' s = runWriterT . flip runStateT s . runEitherT
 valueOfInterpretation :: IState -> Interpretation a -> EngineM Value (Maybe a)
 valueOfInterpretation s i = runInterpretation' s i >>= return . either (const $ Nothing) Just . fst . fst
 
--- | Raise an error inside an interpretation. The error will be captured alongside the event log
---   to date, and the current state.
-throwSE :: Maybe (Span, UID) -> (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
-throwSE su f = Control.Monad.Trans.Either.left $ f su
-
 -- | Raise an exception in the interpretation monad.
 throwE :: (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
-throwE f = throwSE Nothing f
-
--- | Raise an error with a UID and span
-throwAE :: (HasSpan b, HasUID b) => [b] -> (Maybe (Span, UID) -> InterpretationError) -> Interpretation a
-throwAE annos f = throwSE (spanUid annos) f
+throwE f = getTraceUID >>= Control.Monad.Trans.Either.left . f
 
 -- | Get the UID and span out of annotations
 spanUid :: (HasUID a, HasSpan a) => [a] -> Maybe (Span, UID)
@@ -326,9 +323,9 @@ elemE :: Identifier -> Interpretation Bool
 elemE n = get >>= \s -> liftIO (HT.lookup (getEnv s) n) >>= return . maybe False null
 
 -- | Environment lookup, with a thrown error if unsuccessful.
-lookupE :: Maybe (Span, UID) -> Identifier -> Interpretation (IEnvEntry Value)
-lookupE su n = get >>= \s -> lookupEnv n (getEnv s) >>= maybe err return
-  where err = throwSE su $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
+lookupE :: Identifier -> Interpretation (IEnvEntry Value)
+lookupE n = get >>= \s -> lookupEnv n (getEnv s) >>= maybe err return
+  where err = throwE $ RunTimeTypeError $ "Unknown Variable: '" ++ n ++ "'"
 
 -- | Environment modification
 modifyE :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> Interpretation ()
@@ -407,6 +404,36 @@ appendAliasExtension n = modifyProxyStack_ pushProxyAliasExtension
         pushProxyAliasExtension ps = case last ps of
           Just proxypath -> return $ init ps ++ [Just $ proxypath++[RecordField n]]
           Nothing       -> throwE $ RunTimeInterpretationError "No bind alias found for extension"
+
+-- | Tracing helpers
+pushTraceUID :: (Span, UID) -> Interpretation ()
+pushTraceUID su = modify $ modifyTracer $ \(ITracer s we wv) -> ITracer (su:s) we wv
+
+getTraceUID :: Interpretation (Maybe (Span, UID))
+getTraceUID = get >>= (\l -> if null l then return Nothing else return . Just $ head l) . stackTrace . getTracer
+
+popTraceUID :: Interpretation ()
+popTraceUID = modify $ modifyTracer $ \(ITracer s we wv) -> ITracer (tail s) we wv
+
+watchExpression :: UID -> Interpretation ()
+watchExpression uid = modify $ modifyTracer $ \(ITracer s we wv) -> ITracer s (uid:we) wv
+
+isWatchedExpression :: UID -> Interpretation Bool
+isWatchedExpression uid = get >>= return . elem uid . watchedExprs . getTracer
+
+ignoreWatchExpression :: UID -> Interpretation ()
+ignoreWatchExpression uid = modify $ modifyTracer $ \(ITracer s we wv) -> ITracer s (delete uid we) wv
+
+watchVariable :: UID -> Identifier -> Interpretation ()
+watchVariable uid i = modify $ modifyTracer $
+  \(ITracer s we wv) -> ITracer s we $ snd $ modifyAssoc wv uid $ maybe ((), Just [i]) $ \l -> ((), Just $ i:l)
+
+getWatchedVariables :: UID -> Interpretation [Identifier]
+getWatchedVariables uid = get >>= return . maybe [] id . lookup uid . watchedVars . getTracer
+
+ignoreWatchVariable :: UID -> Identifier -> Interpretation ()
+ignoreWatchVariable uid i = modify $ modifyTracer $
+  \(ITracer s we wv) -> ITracer s we $ snd $ modifyAssoc wv uid $ maybe ((), Nothing) $ \l -> ((), Just $ delete i l) 
 
 
 {- Dataspace accessors -}

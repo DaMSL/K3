@@ -99,7 +99,7 @@ genBuiltin (channelMethod -> ("Read", Just n)) _ = vfun $ \_ -> liftEngine (doRe
 -- <sink>HasWrite :: () -> Bool
 genBuiltin (channelMethod -> ("HasWrite", Just n)) _ = vfun $ \_ -> checkChannel
   where checkChannel = liftEngine (hasWrite n) >>= maybe invalid (return . VBool)
-        invalid = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
+        invalid      = throwE $ RunTimeInterpretationError $ "Invalid sink \"" ++ n ++ "\""
 
 -- <sink>Write :: t -> ()
 genBuiltin (channelMethod -> ("Write", Just n)) _ =
@@ -107,7 +107,9 @@ genBuiltin (channelMethod -> ("Write", Just n)) _ =
 
 -- random :: int -> int
 genBuiltin "random" _ =
-  vfun $ \(VInt upper) -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+  vfun $ \x -> case x of
+    VInt upper -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+    _          -> throwE $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- randomFraction :: () -> real
 genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
@@ -122,26 +124,29 @@ genBuiltin "range" _ =
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- int_of_real :: int -> real
-genBuiltin "int_of_real" _ = vfun $ \(VReal r) -> return $ VInt $ truncate r
+genBuiltin "int_of_real" _ = vfun $ \x -> case x of 
+  VReal r   -> return $ VInt $ truncate r
+  _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
 -- real_of_int :: real -> int
-genBuiltin "real_of_int" _ = vfun $ \(VInt i)  -> return $ VReal $ fromIntegral i
+genBuiltin "real_of_int" _ = vfun $ \x -> case x of
+  VInt i    -> return $ VReal $ fromIntegral i
+  _         -> throwE $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- get_max_int :: () -> int
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
-  return $ VInt $ toInt $ parseString s
-  where parseString s = foldl' readChar [0] s
-        readChar xs '-'   = 0:xs
-        readChar (x:xs) n = (x*10 + read [n]):xs
-        readChar _ _      = error "Bad sql date string"
-        toInt [y,m,d] = y*10000 + m*100 + d
-        toInt _       = error "Bad sql date format"
+  parseString s >>= toInt >>= return . VInt
+  where parseString s = foldM readChar [0] s
+        readChar xs '-'   = return $ 0:xs
+        readChar (x:xs) n = return $ (x*10 + read [n]):xs
+        readChar _ _      = throwE $ RunTimeInterpretationError "Bad sql date string"
+        toInt [y,m,d]     = return $ y*10000 + m*100 + d
+        toInt _           = throwE $ RunTimeInterpretationError "Bad sql date format"
 
-genBuiltin "error" _ = vfun $ \_ -> throwE $
-  RunTimeTypeError "Error encountered in program"
+genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
@@ -302,6 +307,7 @@ builtinLiftedAttribute annId n _ _ =
           val    <- curryFoldFn f' accInit v 
           tmp_ds <- emptyDS (Just acc) >>= \ds -> insertKV ds k val
           combineDS acc tmp_ds
+
         Just partialAcc -> do 
           new_val <- curryFoldFn f' partialAcc v
           replaceKV acc k new_val
@@ -362,17 +368,16 @@ builtinLiftedAttribute annId n _ _ =
 
 
     -- | Collection implementation helpers.
-
     withClosure :: (IFunction, Closure Value, EntityTag) -> Value -> Interpretation Value
     withClosure (f, cl, _) arg = mergeE cl >> f arg >>= \r -> pruneE cl >> return r
 
     withSelf :: (Collection Value -> Interpretation Value) -> Interpretation Value
-    withSelf f = lookupE Nothing annotationSelfId >>= matchCollection collectionError f
+    withSelf f = lookupE annotationSelfId >>= matchCollection collectionError f
 
     -- | Modifies the collection currently referenced by the self keyword with the given
     --   function, and rebinds all collection components with the function's result. 
     modifySelf :: (MVar Value -> Collection Value -> Interpretation (Value, Value)) -> Interpretation Value
-    modifySelf f = lookupE Nothing annotationSelfId >>= matchSelf collectionError modifySMV 
+    modifySelf f = lookupE annotationSelfId >>= matchSelf collectionError modifySMV 
       where modifySMV selfMV c = do
               (nSelfV, r) <- f selfMV c
               void $ liftIO (modifyMVar_ selfMV $ const $ return nSelfV)
@@ -407,10 +412,10 @@ builtinLiftedAttribute annId n _ _ =
     matchBool _ (VBool b) = return b
     matchBool err _ = err
 
-    collectionError  = throwE $ RunTimeTypeError "Invalid collection"
-    filterValError   = throwE $ RunTimeTypeError "Invalid filter function result"
-    curryFnError     = throwE $ RunTimeTypeError "Invalid curried function"
-    extError         = throwE $ RunTimeTypeError "Invalid function argument for ext"
+    collectionError = throwE $ RunTimeTypeError "Invalid collection"
+    filterValError  = throwE $ RunTimeTypeError "Invalid filter function result"
+    curryFnError    = throwE $ RunTimeTypeError "Invalid curried function"
+    extError        = throwE $ RunTimeTypeError "Invalid function argument for ext"
 
     funArgError       fnName = throwE $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
     typeMismatchError fnName = throwE $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName

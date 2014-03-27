@@ -95,9 +95,10 @@ removeAssoc l a = filter ((a /=) . fst) l
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
-modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c,b)) -> (c, [(a,b)])
-modifyAssoc l k f = (r, replaceAssoc l k nv)
-  where (r, nv) = f $ lookup k l
+modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c, Maybe b)) -> (c, [(a,b)])
+modifyAssoc l k f = case f $ lookup k l of
+  (r, Nothing) -> (r, l)
+  (r, Just nv) -> (r, replaceAssoc l k nv)
 
 
 {- Instance implementations -}

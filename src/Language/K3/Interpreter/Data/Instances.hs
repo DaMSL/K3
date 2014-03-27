@@ -419,13 +419,11 @@ instance Pretty InterpretationError where
 --   These instances are partial; for complete output use L.K3.I.Utils.prettyI{State|Result}M
 instance Pretty IState where
   prettyLines istate =
-         ["Environment:"] ++ ["<opaque>"] --(indent 2 $ map prettyEnvEntry $ Map.toAscList (getEnv istate))
+         ["Environment:"] ++ ["<opaque>"]
       ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv istate)
       ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv istate)
       ++ ["Aliases:"]     ++ (indent 2 $ lines $ show $ getProxyStack istate)
-    where
-      prettyEnvEntry (n,v) = n ++ replicate (maxNameLength - length n) ' ' ++ " => " ++ show v
-      maxNameLength        = 0 --maximum $ map (length . fst) $ Map.toAscList $ getEnv istate
+      ++ ["Tracer:"]      ++ (indent 2 $ lines $ show $ getTracer istate)
 
 instance (Pretty a) => Pretty (IResult a) where
   prettyLines ((r, st), _) = ["Status: "] ++ either ((:[]) . show) prettyLines r ++ prettyLines st

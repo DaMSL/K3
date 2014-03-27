@@ -3,6 +3,7 @@
 
 #include <list>
 #include <memory>
+
 namespace K3 {
 
   using namespace std;

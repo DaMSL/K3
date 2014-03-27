@@ -215,12 +215,19 @@ type ILog = [String]
 -- | Identifiers for global declarations
 type Globals = [Identifier]
 
+-- | Interpreter tracing and debugging
+data ITracer = ITracer { stackTrace   :: [(Span, UID)]
+                       , watchedExprs :: [UID]
+                       , watchedVars  :: [(UID, [Identifier])] }
+                deriving (Eq, Read, Show)
+
 -- | Type declaration for an Interpretation's state.
 data IState = IState { getGlobals    :: Globals
                      , getEnv        :: IEnvironment Value
                      , getAnnotEnv   :: AEnvironment Value
                      , getStaticEnv  :: SEnvironment Value
-                     , getProxyStack :: ProxyPathStack }
+                     , getProxyStack :: ProxyPathStack
+                     , getTracer     :: ITracer }
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)
