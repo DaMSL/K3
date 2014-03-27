@@ -257,6 +257,9 @@ emptyProxyStack = []
 emptyTracer :: ITracer
 emptyTracer = ITracer [] [] []
 
+emptyAnnotationEnv :: AEnvironment Value
+emptyAnnotationEnv = AEnvironment [] []
+
 emptyStaticEnv :: Interpretation (SEnvironment Value)
 emptyStaticEnv = emptyEnv >>= return . (, AEnvironment [] [])
 

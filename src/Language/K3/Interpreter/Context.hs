@@ -72,7 +72,7 @@ $(customLoggingFunctions ["RegisterGlobal"])
 --   environment resulting immediately after declaration initialization.
 staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
 staticEnvironment prog = do
-  initSt  <- initState prog
+  initSt  <- initState emptyAnnotationEnv prog
   staticR <- runInterpretation' initSt (declaration prog)
   logIStateM "STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
@@ -188,8 +188,11 @@ initEnvironment decl st =
     registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
 
 
-initState :: K3 Declaration -> EngineM Value IState
-initState prog = liftIO emptyStateIO >>= initEnvironment prog
+{-initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState-}
+{-initState aEnv prog = liftIO emptyStateIO >>= initEnvironment prog -}
+
+initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState
+initState aEnv prog = liftIO (annotationStateIO aEnv) >>= initEnvironment prog
 
 {- Program initialization and finalization via the atInit and atExit triggers -}
 initMessages :: IResult () -> EngineM Value (IResult Value)
@@ -236,7 +239,7 @@ injectBootstrap bootstrap ((Right val, st), rLog) = do
 
 initProgram :: PeerBootstrap -> SEnvironment Value -> K3 Declaration -> EngineM Value (IResult Value)
 initProgram bootstrap staticEnv prog = do
-    initSt   <- initState prog
+    initSt   <- initState (snd staticEnv) prog
     staticSt <- liftIO $ modifyStateSEnvIO (const $ return staticEnv) initSt
     declR    <- runInterpretation' staticSt (declaration prog)
     bootR    <- injectBootstrap bootstrap declR
