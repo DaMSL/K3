@@ -132,11 +132,10 @@ class FileDataspace
         file_id = updateFile(engine, v, v2, file_id);
     }
 
-    //template<typename Z>
-    typedef K3::Value Z;
+    template<typename Z>
     Z fold(std::function<Z(Z, E)> accum, Z initial_accumulator)
     {
-        return foldFile(engine, accum, initial_accumulator, file_id);
+        return foldFile<Z>(engine, accum, initial_accumulator, file_id);
     }
 
     //template<typename T>
@@ -291,8 +290,7 @@ class ListDataspace
     }
 
     //template <typename E>
-    //template <typename Z>
-    typedef K3::Value Z;
+    template <typename Z>
     Z fold(std::function<Z(Z, E)> f, Z z) {
         for (auto i: __data) {
             z = f(z, i);
