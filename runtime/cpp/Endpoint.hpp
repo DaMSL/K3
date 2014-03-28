@@ -20,7 +20,6 @@
 namespace K3
 {
   using namespace std;
-  using namespace boost;
 
   using mutex = boost::mutex;
   using std::bind;
@@ -48,20 +47,20 @@ namespace K3
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
 
-  int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
+  static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
+  static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
-  string internalEndpointPrefix() { return string("__");  }
+  static inline string internalEndpointPrefix() { return string("__");  }
 
-  Identifier connectionId(Address& addr) {
+  static inline Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
   }
 
-  Identifier peerEndpointId(Address& addr) {
+  static inline Identifier peerEndpointId(Address& addr) {
     return internalEndpointPrefix() + "_node_" + addressAsString(addr);
   }
 
-  bool externalEndpointId(Identifier& id) {
+  static inline bool externalEndpointId(Identifier& id) {
     string pfx = internalEndpointPrefix();
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }
@@ -432,13 +431,13 @@ namespace K3
   };
 
 
-  class EndpointState : public basic_lockable_adapter<mutex>
+  class EndpointState : public boost::basic_lockable_adapter<mutex>
   {
   public:
     typedef basic_lockable_adapter<mutex> eplockable;
 
     using ConcurrentEndpointMap =
-      externally_locked<shared_ptr<EndpointMap>,EndpointState>;
+      boost::externally_locked<shared_ptr<EndpointMap>,EndpointState>;
 
     using EndpointDetails = tuple<shared_ptr<IOHandle>,
                                  shared_ptr<EndpointBuffer>,
@@ -477,7 +476,7 @@ namespace K3
     void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
       list<Identifier> endpoint_names;
  
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
  
       for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
         endpoint_names.push_back(p.first);
@@ -507,7 +506,7 @@ namespace K3
     }
 
     size_t numEndpoints() {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
     }
 
@@ -526,7 +525,7 @@ namespace K3
     void addEndpoint(Identifier id, EndpointDetails details,
                      shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       auto lb = epMap->get(guard)->lower_bound(id);
       if ( lb == epMap->get(guard)->end() || id != lb->first )
       {
@@ -541,14 +540,14 @@ namespace K3
 
     void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       epMap->get(guard)->erase(id);
     }
 
     shared_ptr<Endpoint>
     getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       shared_ptr<Endpoint> r;
       auto it = epMap->get(guard)->find(id);
       if ( it != epMap->get(guard)->end() ) { r = it->second; }
@@ -560,7 +559,7 @@ namespace K3
   ////-------------------------------------
   //// Connections and their containers.
 
-  class ConnectionState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
+  class ConnectionState : public boost::shared_lockable_adapter<boost::shared_mutex>, public virtual LogMT
   {
   protected:
     // Connection maps are not thread-safe themselves, but are only
@@ -605,9 +604,9 @@ namespace K3
    };
 
   public:
-    typedef shared_lockable_adapter<shared_mutex> shlockable;
+    typedef boost::shared_lockable_adapter<boost::shared_mutex> shlockable;
 
-    typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
+    typedef boost::externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
               ConcurrentConnectionMap;
 
 
@@ -631,7 +630,7 @@ namespace K3
     bool hasInternalConnections() {
       bool r = false;
       if ( internalConnections ) {
-        strict_lock<ConnectionState> guard(*this);
+        boost::strict_lock<ConnectionState> guard(*this);
         r = internalConnections->get(guard)? true : false;
       }
       return r;
@@ -639,7 +638,7 @@ namespace K3
 
     shared_ptr<Net::NConnection> addConnection(Address addr, bool internal)
     {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap =
         internal? internalConnections : externalConnections;
  
@@ -651,7 +650,7 @@ namespace K3
 
     void removeConnection(Address addr)
     {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
       if ( cMap ) {
         cMap->get(guard)->removeConnection(addr);
@@ -662,7 +661,7 @@ namespace K3
 
     void removeConnection(Address addr, bool internal)
     {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
       if ( cMap ) {
         cMap->get(guard)->removeConnection(addr);
@@ -675,7 +674,7 @@ namespace K3
     // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
     shared_ptr<Net::NConnection> getConnection(Address addr)
     {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
       return getConnection(addr, cMap, guard);
     }
@@ -683,7 +682,7 @@ namespace K3
     // TODO: Ideally, this should be a shared lock.
     shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
     {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
       return getConnection(addr, cMap, guard);
     }
@@ -693,20 +692,20 @@ namespace K3
     // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
 
     void clearConnections() {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
       if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
     }
 
     void clearConnections(bool internal) {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap =
         internal ? internalConnections : externalConnections;
       if ( cMap ) { cMap->get(guard)->clearConnections(); }
     };
 
     size_t numConnections() {
-      strict_lock<ConnectionState> guard(*this);
+      boost::strict_lock<ConnectionState> guard(*this);
       size_t r = 0;
       if ( internalConnections ) { r += internalConnections->get(guard)->size(); }
       if ( externalConnections ) { r += externalConnections->get(guard)->size(); }
@@ -735,7 +734,7 @@ namespace K3
 
     // TODO: implement an alternative using a shared_lock_guard
     shared_ptr<ConcurrentConnectionMap>
-    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard)
+    mapForAddress(Address& addr, boost::strict_lock<ConnectionState>& guard)
     {
       shared_ptr<ConcurrentConnectionMap> r;
       if ( internalConnections && getConnection(addr, internalConnections, guard) ) {
@@ -751,7 +750,7 @@ namespace K3
     shared_ptr<Net::NConnection>
     getConnection(Address& addr,
                   shared_ptr<ConcurrentConnectionMap> connections,
-                  strict_lock<ConnectionState>& guard)
+                  boost::strict_lock<ConnectionState>& guard)
     {
       shared_ptr<Net::NConnection> r;
       if ( connections ) { r = connections->get(guard)->getConnection(addr); }

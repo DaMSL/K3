@@ -24,7 +24,8 @@ namespace K3 {
   //-------------------
   // Utility functions
 
-  Identifier listenerId(Address& addr) {
+  // TODO Paul asks, should this be inlined?
+  static inline Identifier listenerId(Address& addr) {
     return string("__") + "_listener_" + addressAsString(addr);
   }
 
@@ -409,12 +410,12 @@ namespace K3 {
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    thread forkEngine(shared_ptr<MessageProcessor> mp) {
+    boost::thread forkEngine(shared_ptr<MessageProcessor> mp) {
       using std::placeholders::_1;
       std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
         &Engine::runEngine, this, _1
       );
-      thread engineThread(_runEngine, mp);
+      boost::thread engineThread(_runEngine, mp);
       return engineThread;
     }
 
