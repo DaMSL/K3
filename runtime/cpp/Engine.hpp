@@ -174,6 +174,7 @@ namespace K3 {
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
+      collectionCount   = 0;
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -463,6 +464,12 @@ namespace K3 {
       return false;
     }
 
+    /* Paul's hacky functions */
+    unsigned getCollectionCount() { return collectionCount; }
+    void incrementCollectionCount() { collectionCount += 1; }
+    Address getAddress() { return config->address(); }
+    shared_ptr<Codec> getExternalFormat() { return external_codec; }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
@@ -479,8 +486,9 @@ namespace K3 {
     
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
+    unsigned                        collectionCount;
 
-    void invalidEndpointIdentifier(string idType, Identifier& eid) {
+    void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
       logAt(trivial::error, errorMsg);
       throw runtime_error(errorMsg);
