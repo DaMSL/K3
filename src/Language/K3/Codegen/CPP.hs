@@ -17,6 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
+import Data.Maybe (isJust)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -240,7 +241,13 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Just ac -> cType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
 
 inline (tag -> EConstant c) = (empty,) <$> constant c
-inline (tag -> EVariable v) = return (empty, text v)
+
+-- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
+-- dereferenced.
+inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
+        then (empty, text "*" <> text v)
+        else (empty, text v)
+
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- canonicalType c
