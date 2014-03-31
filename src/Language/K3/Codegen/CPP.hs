@@ -431,8 +431,8 @@ triggerWrapper i t = do
     let triggerDispatch = text i <> parens (text "arg") <> semi
     let unpackCall = text "arg" <+> equals <+> text "engine.valueFormat->unpack"
             <> angles tmpType <> parens (text "msg")
-    return $ text "void" <+> text i <> text "_dispatch" <> parens (text "string msg")
-        <+> hangBrace (vsep [
+    return $ genCFunction (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
+            vsep [
                 tmpDecl,
                 unpackCall,
                 triggerDispatch,
@@ -444,9 +444,7 @@ generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ text "void" <+> text "populate_dispatch" <> parens empty <+> hangBrace (
-            vsep dispatchStatements
-        )
+    return $ genCFunction (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
     genDispatch tName = return $
         text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
