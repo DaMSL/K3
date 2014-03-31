@@ -57,8 +57,7 @@ data PrintOutput
   deriving (Eq, Read, Show)
 
 data PrintOptions
-    = PrintOptions { inLanguage :: String
-                   , printOutput :: PrintOutput }
+    = PrintOptions { printOutput :: PrintOutput }
   deriving (Eq, Read, Show)
 
 
@@ -204,16 +203,8 @@ parOptions = switch (
 
 -- | Printing options
 printOptions :: Parser Mode
-printOptions = mkPrint <$> inLanguageOpt <*> (astPrintOpt <|> syntaxPrintOpt)
-  where mkPrint l o = Print $ PrintOptions l o
-
-inLanguageOpt :: Parser String
-inLanguageOpt = option ( short   'l'
-                      <> long    "language"
-                      <> value   defaultInLanguage
-                      <> reader  str
-                      <> help    "Specify source language"
-                      <> metavar "LANG" )
+printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt)
+  where mkPrint o = Print $ PrintOptions o
 
 astPrintOpt :: Parser PrintOutput
 astPrintOpt = flag' PrintAST (   long "ast"
@@ -288,7 +279,7 @@ inputOptions = commaSep1 <$> argument str (
     )
       -- Separate a word list by commas
       where commaSep1 l  = fst $ foldr sep_fn ([[]], False) l
-            sep_fn c@',' (x, _)    = (x, True)
+            sep_fn ',' (x, _)    = (x, True)
             sep_fn c ([], False)   = ([[c]], False)
             sep_fn c (x:xs, False) = ((c:x):xs, False)
             sep_fn c (xs, True)    = ([c]:xs, False)

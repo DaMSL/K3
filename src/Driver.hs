@@ -40,11 +40,7 @@ dispatch op = do
   case mode op of
     Compile   c -> compile c
     Interpret i -> interpret i addPreloadVals
-    Print     p -> let parse = case map toLower $ inLanguage p of
-                        "k3"      -> k3Program
-                        "k3ocaml" -> k3OcamlProgram
-                        lang      -> error $ lang ++ " parsing not supported."
-                   in printer parse (printOutput p) addPreloadVals
+    Print     p -> printer k3Program (printOutput p) addPreloadVals
 
     Typecheck   -> k3Program >>= either parseError (typecheck . addPreloadVals)
     Analyze   a -> analyzer a
@@ -68,7 +64,6 @@ dispatch op = do
         analyzer BindPaths    = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
  
         k3Program      = parseK3Input (includes $ paths op) (input op)
-        k3OcamlProgram = parseK3OcamlInput (includes $ paths op) (input op)
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
 
