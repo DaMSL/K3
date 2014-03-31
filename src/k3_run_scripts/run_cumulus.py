@@ -28,7 +28,7 @@ def main():
   with open(args.peers_file, 'r') as peerfile:
     peer_str = peerfile.read().replace('\n', '')
   #print(peer_str)
-  reg = r'declare peers .* = \{\|[^|]+\|(.+)\|\} @.+'
+  reg = r'declare my_peers .* = \{\|[^|]+\|(.+)\|\} @.+'
   m = re.compile(reg).match(peer_str)
   inner_str = m.group(1)
   #print(inner_str)
@@ -57,7 +57,7 @@ def main():
     peer_s += '-p {0}{1} '.format(peer[0], role)
 
   # Create command line
-  log_s = '--log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3/Runtime.Engine#EngineSteps:debug" '
+  log_s = '--log "debug"'
   file_s = 'pre.k3,{0},{1},{2}'.format(args.peers_file, args.part_map, args.k3_file)
   cmd = 'K3-Driver/dist/build/k3/k3 -I K3-Core/lib interpret {0} -b {1} {2}'.format(peer_s, log_s, file_s)
   print(cmd) # so we can see what's going on
