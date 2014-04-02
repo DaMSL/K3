@@ -17,7 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -82,12 +82,15 @@ data CPPGenS = CPPGenS {
         triggers :: S.Set Identifier,
 
         -- | The serialization method to use.
-        serializationMethod :: SerializationMethod
+        serializationMethod :: SerializationMethod,
+
+        -- | The code necessary to perform cleanup actions in the current scope.
+        scopeCleanUp :: Maybe CPPGenR
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization Nothing
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -353,18 +356,31 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
-        (tag -> EVariable v) -> return (empty, text v)
+        (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
             return (ae', text g')
-    ee <- reify r e
-    return $ (ae PL.<$>) . hangBrace . (PL.<$> ee) $ case b of
-        BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
-        BTuple is -> vsep
-            [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
-        BRecord iis -> vsep
-            [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+    let bindInit = case b of
+            BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
+            BTuple is -> vsep
+                [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
+            BRecord iis -> vsep
+                [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+
+    let bindWriteback = case b of
+            BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
+            BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
+            BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
+
+    modify (\s -> s { scopeCleanUp = (bindWriteback PL.<$>) <$> scopeCleanUp s})
+
+    bindBody <- reify r e
+
+    return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody)
+  where
+    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i
+    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -374,11 +390,15 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
 
 reify r e = do
     (effects, value) <- inline e
-    return $ effects PL.<//> case r of
-        RForget -> empty
-        RName k -> text k <+> equals <+> value <> semi
-        RReturn -> text "return" <+> value <> semi
-        RSplice f -> f [value] <> semi
+    reification <- case r of
+        RForget -> return empty
+        RName k -> return $ text k <+> equals <+> value <> semi
+        RReturn -> do
+            sc <- fromMaybe empty . scopeCleanUp <$> get
+            modify (\s -> s { scopeCleanUp = Nothing })
+            return $ sc PL.<$> text "return" <+> value <> semi
+        RSplice f -> return $ f [value] <> semi
+    return $ effects PL.<//> reification
 
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
@@ -471,6 +491,9 @@ templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "class
 
 genCFunction :: Doc -> Doc -> [Doc] -> Doc -> Doc
 genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
+
+genCCall :: Doc -> Maybe [Doc] -> [Doc] -> Doc
+genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
 
 genCBoostSerialize :: [Identifier] -> CPPGenR
 genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
