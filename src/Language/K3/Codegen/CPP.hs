@@ -17,7 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -82,15 +82,12 @@ data CPPGenS = CPPGenS {
         triggers :: S.Set Identifier,
 
         -- | The serialization method to use.
-        serializationMethod :: SerializationMethod,
-
-        -- | The code necessary to perform cleanup actions in the current scope.
-        scopeCleanUp :: Maybe CPPGenR
+        serializationMethod :: SerializationMethod
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization Nothing
+defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -373,12 +370,16 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
             BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
 
-    modify (\s -> s { scopeCleanUp = (bindWriteback PL.<$>) <$> scopeCleanUp s})
+    (bindBody, k) <- case r of
+        RReturn -> do
+            g' <- genSym
+            (, Just g') <$> reify (RName g') e
+        _ -> (,Nothing) <$> reify r e
 
-    bindBody <- reify r e
+    let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
 
-    return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody)
-  where
+    return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
+    where
     genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i
     genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v
 
@@ -393,10 +394,7 @@ reify r e = do
     reification <- case r of
         RForget -> return empty
         RName k -> return $ text k <+> equals <+> value <> semi
-        RReturn -> do
-            sc <- fromMaybe empty . scopeCleanUp <$> get
-            modify (\s -> s { scopeCleanUp = Nothing })
-            return $ sc PL.<$> text "return" <+> value <> semi
+        RReturn -> return $ text "return" <+> value <> semi
         RSplice f -> return $ f [value] <> semi
     return $ effects PL.<//> reification
 
