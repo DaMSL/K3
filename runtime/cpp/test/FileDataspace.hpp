@@ -225,6 +225,9 @@ class ListDataspace
         if (location != end(__data)) {
             *location = next;
         }
+        else {
+            __data.push_back(next);
+        }
 
         return;
     }
