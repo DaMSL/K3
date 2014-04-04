@@ -27,8 +27,8 @@ T fromString(std::string str)
     return not_string;
 }
 
-std::string generateListDataspaceFilename(K3::Engine * engine);
-std::string openListDataspaceFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
+std::string generateCollectionFilename(K3::Engine * engine);
+std::string openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
 K3::Identifier openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
 
 template<typename AccumT>
@@ -59,8 +59,8 @@ std::string copyFile(K3::Engine * engine, const std::string& old_id);
 template<typename Iterator>
 K3::Identifier initialFile(K3::Engine* engine, Iterator start, Iterator finish)
 {
-    K3::Identifier new_id = generateListDataspaceFilename(engine);
-    openListDataspaceFile(engine, new_id, K3::IOMode::Write);
+    K3::Identifier new_id = generateCollectionFilename(engine);
+    openCollectionFile(engine, new_id, K3::IOMode::Write);
     for (Iterator iter = start; iter != finish; ++iter )
     {
         engine->doWriteExternal(new_id, *iter);
@@ -97,7 +97,7 @@ class FileDataspace
 
     public:
     FileDataspace(K3::Engine * eng)
-        : engine(eng), file_id(generateListDataspaceFilename(eng))
+        : engine(eng), file_id(generateCollectionFilename(eng))
     { }
 
     template<typename Iterator>
