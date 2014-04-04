@@ -100,7 +100,7 @@ getSymbolCounters (x,_,_,_) = x
 
 modifySymbolCounters :: (SymbolCounters -> (a, SymbolCounters)) -> CGState -> (a, CGState)
 modifySymbolCounters f (w,x,y,z) = (r, (nw, x, y, z))
-  where (r,nw) = f w
+  where (r, nw) = f w
 
 getTriggerDispatchSpecs :: CGState -> TriggerDispatchSpec
 getTriggerDispatchSpecs (_,x,_,_) = x
@@ -128,8 +128,8 @@ throwCG = Control.Monad.Trans.Either.left
 
 gensymCG :: Identifier -> CodeGeneration Identifier
 gensymCG n = state $ modifySymbolCounters $ \c -> modifyAssoc c n incrSym
-  where incrSym Nothing  = (n ++ show (0::Int), 1)
-        incrSym (Just i) = (n ++ show i, i+1)
+  where incrSym Nothing  = (n ++ show (0::Int), Just 1)
+        incrSym (Just i) = (n ++ show i, Just $ i+1)
 
 getTriggerDispatchCG :: CodeGeneration TriggerDispatchSpec
 getTriggerDispatchCG = get >>= return . getTriggerDispatchSpecs
@@ -1546,7 +1546,6 @@ generateCollectionCompositions =
 literal' :: K3 Type -> CodeGeneration CGExpr
 literal' lt = immutL lt 
   where
-    details (Node (tg :@: anns) ch) = (tg, ch, anns)
     litF e = return $ mkPCG e $ SFunction $ Action SValue
 
     immutL (tag -> TBool)    = litF [hs| L.bool |]

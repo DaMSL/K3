@@ -9,10 +9,10 @@ module Language.K3.Interpreter.Collection where
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.State
 
 import Data.List
-
-import System.Mem.StableName
+import Data.List.Split ( splitOn )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -23,8 +23,10 @@ import Language.K3.Core.Type
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Dataspace()
+import Language.K3.Interpreter.Utils
 
 import Language.K3.Runtime.Dataspace
+import Language.K3.Utils.Pretty
 
 
 {- Identifiers -}
@@ -71,10 +73,17 @@ annotationComboIdL :: [Annotation Literal] -> Maybe Identifier
 annotationComboIdL (namedLAnnotations -> [])  = Nothing
 annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 
+annotationIdsOfCombo :: Identifier -> [Identifier]
+annotationIdsOfCombo s = filter (not . null) $ splitOn ";" s 
+
 
 {- Collection operations -}
+
+emptyAnnotationNamespace :: [(Identifier, NamedMembers Value)]
+emptyAnnotationNamespace = []
+
 emptyCollectionNamespace :: CollectionNamespace Value
-emptyCollectionNamespace = CollectionNamespace [] []
+emptyCollectionNamespace = CollectionNamespace emptyMembers emptyAnnotationNamespace
 
 emptyDataspace :: [Identifier] -> Interpretation (CollectionDataspace Value)
 emptyDataspace annIds = case annIds `intersect` dataspaceAnnotationIds of
@@ -96,41 +105,79 @@ initialDataspace annIds vals = case annIds `intersect` dataspaceAnnotationIds of
   [x] | x == externalAnnotationId   -> initialDS vals Nothing >>= return . ExternalDS
   _   -> throwE $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
 
--- | Create collections with empty namespaces
+-- | Create collections with empty namespaces.
+--   These are internal methods that should not be used directly, since they 
+--   produce partially consistent collections (i.e. w/ inconsistencies between the comboId and namespace).
 emptyCollectionBody :: [Identifier] -> Interpretation (Collection Value)
 emptyCollectionBody annIds =
   emptyDataspace annIds >>= \ds -> return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
 
 initialCollectionBody :: [Identifier] -> [Value] -> Interpretation (Collection Value)
 initialCollectionBody annIds vals =
-  initialDataspace annIds vals >>= \ds -> return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
+  initialDataspace annIds vals >>= initialCollectionBodyDS annIds
+
+initialCollectionBodyDS :: [Identifier] -> CollectionDataspace Value -> Interpretation (Collection Value)
+initialCollectionBodyDS annIds ds =
+  return $ Collection emptyCollectionNamespace ds $ annotationComboId annIds
 
 emptyCollection :: [Identifier] -> Interpretation Value
 emptyCollection annIds = initialCollection annIds []
 
 initialCollection :: [Identifier] -> [Value] -> Interpretation Value
-initialCollection annIds vals = initialCollectionBody annIds vals >>= liftIO . newMVar >>= return . VCollection
+initialCollection annIds vals = do
+  c <- initialCollectionBody annIds vals
+  freshCollection c
 
--- | Create collections with namespaces populated based on the annotation realization.
-emptyAnnotatedCollectionBody :: Identifier -> Interpretation (MVar (Collection Value))
-emptyAnnotatedCollectionBody comboId = lookupACombo comboId >>= \cstrs -> emptyCtor cstrs $ ()
+initialCollectionDS :: [Identifier] -> CollectionDataspace Value -> Interpretation Value
+initialCollectionDS annIds ds = do
+  c <- initialCollectionBodyDS annIds ds
+  freshCollection c
 
-initialAnnotatedCollectionBody :: Identifier -> [Value] -> Interpretation (MVar (Collection Value))
-initialAnnotatedCollectionBody comboId vals = lookupACombo comboId >>= \cstrs -> initialCtor cstrs $ vals
-
+-- | Create annotated collections using constructors.
+--   These methods should be used to create consistent collections in the interpreter code.
 emptyAnnotatedCollection :: Identifier -> Interpretation Value
-emptyAnnotatedCollection comboId = emptyAnnotatedCollectionBody comboId >>= return . VCollection
+emptyAnnotatedCollection comboId = lookupACombo comboId >>= \cstrs -> emptyCtor cstrs $ ()
 
 initialAnnotatedCollection :: Identifier -> [Value] -> Interpretation Value
-initialAnnotatedCollection comboId vals =
-  initialAnnotatedCollectionBody comboId vals >>= return . VCollection
+initialAnnotatedCollection comboId vals = lookupACombo comboId >>= \cstrs -> initialCtor cstrs $ vals
 
-copyCollection :: Collection Value -> Interpretation (Value)
-copyCollection newC = do
-  binders <- lookupACombo $ extensionId newC
-  let copyCstr = copyCtor binders
-  c' <- copyCstr newC
-  return $ VCollection c'
+copyCollection :: Collection Value -> Interpretation Value
+copyCollection newC = lookupACombo (realizationId newC) >>= \cstrs -> (copyCtor cstrs) newC
+
+
+{- Collection tying and value construction helpers. -}
+
+-- | Tie a self reference and a collection value, assuming the collection member methods
+--   have already been contextualized to the self reference. 
+tieContextualizedCollection :: MVar Value -> Collection Value -> Interpretation Value
+tieContextualizedCollection selfMV c = do
+  result <- return $ VCollection (selfMV, c)
+  success <- liftIO $ tryPutMVar selfMV result
+  if success then return result
+             else throwE $ RunTimeInterpretationError "Failed to tie a collection with tryPutMVar"
+
+-- | Tie a self reference and a collection value, contextualizing the collection members as necessary.
+tieCollection :: MVar Value -> Collection Value -> Interpretation Value
+tieCollection selfMV (Collection ns ds cId) = do
+  let annIds = annotationIdsOfCombo cId
+  cAnnDefs <- mapM (\x -> lookupADef x >>= return . (x,)) annIds
+  nns      <- recontextualizeAnnDefs selfMV ns cAnnDefs
+  result   <- return $ VCollection (selfMV, Collection nns ds cId)
+  success  <- liftIO $ tryPutMVar selfMV result
+  if success then return result
+             else throwE $ RunTimeInterpretationError "Failed to tie a collection with tryPutMVar"
+
+freshCollection :: Collection Value -> Interpretation Value
+freshCollection c = do
+  selfMV <- liftIO $ newEmptyMVar
+  tieCollection selfMV c
+
+-- | Return a fresh, unshared collection value after synchronization.
+freshenValue :: Value -> Interpretation Value
+freshenValue v@(VCollection _) = syncCollection v >>= \case
+  VCollection (_,c2) -> freshCollection c2
+  _                  -> throwE $ RunTimeInterpretationError "Invalid collection value"
+freshenValue v = return v
 
 
 {- Annotation realization and constructor function utilities -}
@@ -159,112 +206,131 @@ getComposedAnnotation annIds = case annIds of
   where
     initializeComposition comboId = \case
       Nothing -> do
-                  namedAnnDefs <- mapM (\x -> lookupADef x >>= return . (x,)) annIds
-                  modifyACombos . (:) . (comboId,) $ mkCConstructors namedAnnDefs
+                  cAnnDefs <- mapM (\x -> lookupADef x >>= return . (x,)) annIds
+                  modifyACombos . (:) . (comboId,) $ mkCConstructors cAnnDefs
       Just _  -> return ()
 
-    mkCConstructors :: [(Identifier, IEnvironment Value)] -> CollectionConstructors Value
-    mkCConstructors namedAnnDefs =
-      CollectionConstructors (mkEmptyConstructor   namedAnnDefs)
-                             (mkInitialConstructor namedAnnDefs)
-                             (mkCopyConstructor    namedAnnDefs)
-                             (mkEmplaceConstructor namedAnnDefs)
+    injectNamespace :: Collection Value -> CollectionNamespace Value -> Collection Value
+    injectNamespace (Collection _ ds cId) ns = Collection ns ds cId
 
-    mkEmptyConstructor :: [(Identifier, IEnvironment Value)] -> CEmptyConstructor Value
-    mkEmptyConstructor namedAnnDefs = const $ do
-      collection <- emptyCollectionBody (map fst namedAnnDefs)
-      newCMV     <- liftIO $ newMVar collection
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return $ newCMV
-    
-    mkInitialConstructor :: [(Identifier, IEnvironment Value)] -> CInitialConstructor Value
-    mkInitialConstructor namedAnnDefs = \vals -> do
-      collection <- initialCollectionBody (map fst namedAnnDefs) vals
-      newCMV     <- liftIO $ newMVar collection
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return $ newCMV
-    
-    mkCopyConstructor :: [(Identifier, IEnvironment Value)] -> CCopyConstructor Value
-    mkCopyConstructor namedAnnDefs = \coll -> do
-      newDataSpace <- copyDS (dataspace coll)
-      let newcol = Collection (namespace coll) (newDataSpace) (extensionId coll)
-      newCMV <- liftIO (newMVar newcol)
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      return newCMV
-   
-    mkEmplaceConstructor :: [(Identifier, IEnvironment Value)] -> CEmplaceConstructor Value
-    mkEmplaceConstructor namedAnnDefs = \ds -> do
-      let newcol = Collection emptyCollectionNamespace ds $ annotationComboId $ map fst namedAnnDefs
-      newCMV <- liftIO (newMVar newcol)
-      void $ mapM_ (rebindFunctionsInEnv newCMV) namedAnnDefs
-      void $ mapM_ (bindAnnotationDef newCMV) namedAnnDefs
-      return newCMV
+    injectDataspace :: Collection Value -> CollectionDataspace Value -> Collection Value
+    injectDataspace (Collection ns _ cId) ds = Collection ns ds cId
 
-    bindAnnotationDef :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
-    bindAnnotationDef cmv (n, env) = mapM_ (bindMember cmv n) env
+    mkContextualizedCollection :: [(Identifier, NamedMembers Value)] -> Collection Value
+                               -> Interpretation Value
+    mkContextualizedCollection cAnnDefs cSkeleton = do
+      selfMV      <- liftIO $ newEmptyMVar
+      nns         <- contextualizeAnnDefs selfMV cAnnDefs
+      completeCol <- return $ injectNamespace cSkeleton nns
+      tieContextualizedCollection selfMV completeCol
 
-    bindMember _ _ (_, VFunction _) = return ()
-    bindMember cmv annId (n, v) =
-      liftIO $ modifyMVar_ cmv (\(Collection (CollectionNamespace cns ans) ds extId) ->
-        let (cns', ans') = extendNamespace cns ans annId n v
-        in return $ Collection (CollectionNamespace cns' ans') ds extId)
+    mkCConstructors :: [(Identifier, NamedMembers Value)] -> CollectionConstructors Value
+    mkCConstructors cAnnDefs =
+      CollectionConstructors (mkEmptyConstructor   cAnnDefs)
+                             (mkInitialConstructor cAnnDefs)
+                             (mkCopyConstructor    cAnnDefs)
+                             (mkEmplaceConstructor cAnnDefs)
 
-    rebindFunctionsInEnv :: MVar (Collection Value) -> (Identifier, IEnvironment Value) -> Interpretation ()
-    rebindFunctionsInEnv cmv (n, env) = mapM_ (rebindFunction cmv n) env
-    
-    rebindFunction cmv annId (n, VFunction f) =
-      liftIO $ modifyMVar_ cmv (\(Collection (CollectionNamespace cns ans) ds extId) ->
-        let newF         = contextualizeFunction cmv f
-            (cns', ans') = extendNamespace cns ans annId n newF
-        in return $ Collection (CollectionNamespace cns' ans') ds extId)
-    
-    rebindFunction _ _ _ = return ()
+    mkEmptyConstructor :: [(Identifier, NamedMembers Value)] -> CEmptyConstructor Value
+    mkEmptyConstructor cAnnDefs = const $
+      emptyCollectionBody (map fst cAnnDefs) >>= mkContextualizedCollection cAnnDefs
 
-    extendNamespace cns ans annId n v =
-      let cns'   = replaceAssoc cns n v
-          annEnv = maybe Nothing (\env -> Just $ replaceAssoc env n v) $ lookup annId ans
-          ans'   = maybe ans (replaceAssoc ans annId) annEnv
-      in (cns', ans')
+    mkInitialConstructor :: [(Identifier, NamedMembers Value)] -> CInitialConstructor Value
+    mkInitialConstructor cAnnDefs = \vals -> 
+      initialCollectionBody (map fst cAnnDefs) vals >>= mkContextualizedCollection cAnnDefs
+
+    mkEmplaceConstructor :: [(Identifier, NamedMembers Value)] -> CEmplaceConstructor Value
+    mkEmplaceConstructor cAnnDefs = \ds ->
+      initialCollectionBodyDS (map fst cAnnDefs) ds >>= mkContextualizedCollection cAnnDefs
+
+    mkCopyConstructor :: [(Identifier, NamedMembers Value)] -> CCopyConstructor Value
+    mkCopyConstructor cAnnDefs = \coll -> do
+      nds         <- copyDS (dataspace coll)
+      partialCol  <- return $ injectDataspace coll nds
+      selfMV      <- liftIO $ newEmptyMVar
+      nns         <- recontextualizeAnnDefs selfMV (namespace partialCol) cAnnDefs
+      completeCol <- return $ injectNamespace partialCol nns
+      tieContextualizedCollection selfMV completeCol
+
+
+contextualizeAnnDefs :: MVar Value -> [(Identifier, NamedMembers Value)]
+                     -> Interpretation (CollectionNamespace Value)
+contextualizeAnnDefs selfMV cAnnDefs = do
+  (cns, ans) <- foldM (contextualizeAnnDef False selfMV)
+                      (emptyMembers, emptyAnnotationNamespace) cAnnDefs
+  return $ CollectionNamespace cns ans
+
+recontextualizeAnnDefs :: MVar Value -> CollectionNamespace Value -> [(Identifier, NamedMembers Value)]
+                       -> Interpretation (CollectionNamespace Value)
+recontextualizeAnnDefs selfMV ns cAnnDefs = do
+  (cns, ans) <- foldM (contextualizeAnnDef True selfMV)
+                      (collectionNS ns, annotationNS ns) cAnnDefs
+  return $ CollectionNamespace cns ans
+
+contextualizeAnnDef :: Bool -> MVar Value
+                    -> (NamedMembers Value, [(Identifier, NamedMembers Value)]) 
+                    -> (Identifier, NamedMembers Value)
+                    -> Interpretation (NamedMembers Value, [(Identifier, NamedMembers Value)])
+contextualizeAnnDef True selfMV (cns, ans) (annId, annDef) = do
+    annForC <- foldMembers (insertFunctionMems selfMV) emptyMembers annDef
+    ncns    <- foldMembers replaceDup cns annForC 
+    nans    <- return $ replaceAssoc ans annId annForC
+    return (ncns, nans)
+
+  where insertFunctionMems mv mems i (v@(VFunction _), q) =
+          contextualizeFunction mv (v,q) >>= \vq -> return $ insertMember i vq mems
+        insertFunctionMems _ mems _ _ = return mems
+
+        replaceDup mems n vq = return $ insertMember n vq mems
+
+contextualizeAnnDef False selfMV (cns, ans) (annId, annDef) = do
+    annForC <- mapMembers (const $ contextualizeFunction selfMV) annDef
+    ncns    <- foldMembers insertNonDup cns annForC 
+    nans    <- return $ (annId, annForC):ans
+    return (ncns, nans)
+
+  where insertNonDup mems n vq =
+          maybe (return $ insertMember n vq mems) (duplicateError n) $ lookupMember n mems
+
+        duplicateError n _ =
+          throwE $ RunTimeInterpretationError $ "Duplicate annotation member detected for: " ++ n
+
 
 -- | Creates a contextualized collection member function. That is, the member function
 --   will add all collection members to the interpretation environment prior to its
 --   evaluation. This way, the member function's body can directly refer to other members
 --   by name, rather than using the 'self' keyword.
-contextualizeFunction :: MVar (Collection Value)
-                      -> (IFunction, Closure Value, StableName IFunction)
-                      -> Value
-contextualizeFunction cmv (f, cl, n) = VFunction . (, cl, n) $ \x -> do
-      bindings <- liftCollection
-      result   <- f x >>= return . contextualizeResult
-      lowerCollection bindings result
+--
+-- TODO:
+-- i. lift/lower data segment.
+-- ii. lift/lower annotation namespaces
+contextualizeFunction :: MVar Value -> (Value, VQualifier)
+                      -> Interpretation (Value, VQualifier)
+contextualizeFunction selfMV (VFunction (f,cl,tg), mq) =
+  return . (, mq) . VFunction . (, cl, tg) $ \x -> do
+    bindings <- liftCollection
+    result <- f x >>= contextualizeFunction selfMV . (, MemImmut) >>= return . fst
+    lowerCollection bindings
+    return result
 
   where
-    contextualizeResult (VFunction f') = contextualizeFunction cmv f'
-    contextualizeResult r = r
+    liftCollection = liftIO (readMVar selfMV) >>= \case
+        selfV@(VCollection (s, Collection (CollectionNamespace cns _) _ _)) -> do
+          if s == selfMV
+            then do
+              insertE annotationSelfId $ IVal selfV
+              bindMembers cns
+            else throwE $ RunTimeInterpretationError "Invalid cyclic self value"
 
-    -- TODO:
-    -- i. lift/lower data segment.
-    -- ii. handle aliases, e.g., 'self.x' and 'x'. 
-    --     Also, this needs to be done more generally for bind as expressions.
-    -- iii. handle lowering of annotation-specific namespaces
-    liftCollection = do
-      Collection (CollectionNamespace cns _) _ _ <- liftIO $ readMVar cmv
-      bindings <- return $ cns ++ [(annotationSelfId, VCollection cmv)]
-      void $ modifyE (bindings ++)
-      return bindings
+        _ -> throwE $ RunTimeInterpretationError "Invalid self value for a collection"
 
-    lowerCollection bindings result = do
-        newNsInfo <- lowerBindings bindings
-        void $ liftIO $ modifyMVar_ cmv $ \(Collection ns ds extId) -> 
-          return (Collection (rebuildNamespace ns newNsInfo) ds extId)
-        foldM (flip removeE) result bindings
+    lowerCollection bindings = do
+      void $ removeE annotationSelfId ()
+      cns <- unbindMembers bindings
+      void $ liftIO $ modifyMVar_ selfMV
+        $ \(VCollection (_,c)) -> return $ VCollection (selfMV, rebuildNamespace c cns)
 
-    lowerBindings env =
-      mapM (\(n2,_) -> lookupE Nothing n2 >>= return . (n2,)) env 
-        >>= return . partition ((annotationSelfId /= ) . fst)
+    rebuildNamespace (Collection (CollectionNamespace _ ans) ds cId) ncns =
+      Collection (CollectionNamespace ncns ans) ds cId
 
-    -- TODO: rebind annotation-specific namespace
-    rebuildNamespace ns (newGlobalNS, _) =
-      CollectionNamespace newGlobalNS $ annotationNS ns
+contextualizeFunction _ vq = return vq

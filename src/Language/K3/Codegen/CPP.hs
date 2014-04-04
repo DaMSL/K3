@@ -17,6 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
+import Data.Maybe (isJust)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -205,6 +206,7 @@ cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 cType (tag -> TAddress) = return $ text "Address"
 
 -- TODO: Are these all the cases that need to be handled?
+cType (tag -> TNumber) = return $ text "double"
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This isn't really C++ specific.
@@ -239,7 +241,13 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Just ac -> cType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
 
 inline (tag -> EConstant c) = (empty,) <$> constant c
-inline (tag -> EVariable v) = return (empty, text v)
+
+-- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
+-- dereferenced.
+inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
+        then (empty, text "*" <> text v)
+        else (empty, text v)
+
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- canonicalType c
@@ -345,18 +353,35 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
-        (tag -> EVariable v) -> return (empty, text v)
+        (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
             return (ae', text g')
-    ee <- reify r e
-    return $ (ae PL.<$>) . hangBrace . (PL.<$> ee) $ case b of
-        BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
-        BTuple is -> vsep
-            [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
-        BRecord iis -> vsep
-            [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+    let bindInit = case b of
+            BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
+            BTuple is -> vsep
+                [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
+            BRecord iis -> vsep
+                [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+
+    let bindWriteback = case b of
+            BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
+            BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
+            BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
+
+    (bindBody, k) <- case r of
+        RReturn -> do
+            g' <- genSym
+            (, Just g') <$> reify (RName g') e
+        _ -> (,Nothing) <$> reify r e
+
+    let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
+
+    return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
+    where
+    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i
+    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -366,11 +391,12 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
 
 reify r e = do
     (effects, value) <- inline e
-    return $ effects PL.<//> case r of
-        RForget -> empty
-        RName k -> text k <+> equals <+> value <> semi
-        RReturn -> text "return" <+> value <> semi
-        RSplice f -> f [value] <> semi
+    reification <- case r of
+        RForget -> return empty
+        RName k -> return $ text k <+> equals <+> value <> semi
+        RReturn -> return $ text "return" <+> value <> semi
+        RSplice f -> return $ f [value] <> semi
+    return $ effects PL.<//> reification
 
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
@@ -430,8 +456,8 @@ triggerWrapper i t = do
     let triggerDispatch = text i <> parens (text "arg") <> semi
     let unpackCall = text "arg" <+> equals <+> text "engine.valueFormat->unpack"
             <> angles tmpType <> parens (text "msg")
-    return $ text "void" <+> text i <> text "_dispatch" <> parens (text "string msg")
-        <+> hangBrace (vsep [
+    return $ genCFunction (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
+            vsep [
                 tmpDecl,
                 unpackCall,
                 triggerDispatch,
@@ -443,9 +469,7 @@ generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ text "void" <+> text "populate_dispatch" <> parens empty <+> hangBrace (
-            vsep dispatchStatements
-        )
+    return $ genCFunction (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
     genDispatch tName = return $
         text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
@@ -461,7 +485,21 @@ hangBrace d = text "{" PL.<$$> indent 4 d PL.<$$> text "}"
 
 templateLine :: [Doc] -> Doc
 templateLine [] = empty
-templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typename" <+> td | td <- ts])
+templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "class" <+> td | td <- ts])
+
+genCFunction :: Doc -> Doc -> [Doc] -> Doc -> Doc
+genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
+
+genCCall :: Doc -> Maybe [Doc] -> [Doc] -> Doc
+genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
+
+genCBoostSerialize :: [Identifier] -> CPPGenR
+genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
+  where
+    serializeTemplateLine = templateLine [(text "archive")]
+    serializeMethod = genCFunction (text "void") (text "serialize") [(text "archive _archive")] serializeBody
+    serializeBody = vsep $ map serializeMember dataDecls
+    serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
 -- | An Annotation Combination Composite should contain the following:
 --  - Inlined implementations for all provided methods.
@@ -483,11 +521,8 @@ composite className ans = do
     let (dataDecls, methDecls) = L.partition isDataDecl positives
 
     -- Generate a serialization method based on engine preferences.
-    serializationDefn <- do
-        -- Filter all data members from positives.
-        -- Generate serialize function.
-        -- Add all members to archive.
-        return empty
+    serializationDefn <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
     constructors' <- sequence constructors
 
@@ -560,7 +595,11 @@ annMemDecl (MAnnotation _ i _) = return $ text i
 record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
-    return $ text "struct" <+> text rName <+> hangBrace members <> semi
+    sD <- serializeDefn
+    return $ text "struct" <+> text rName <+> hangBrace (members PL.<$$> sD) <> semi
+  where
+    serializeDefn = serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i (tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do

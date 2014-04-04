@@ -1,5 +1,8 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 
 module Language.K3.Interpreter.Values where
@@ -7,18 +10,16 @@ module Language.K3.Interpreter.Values where
 import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad
-import Control.Monad.IO.Class
 
-import Data.Function
 import Data.Hashable
-import Data.IORef
-import Data.List
+import qualified Data.Map             as Map
+import qualified Data.Hashable.Extras as HE ( salt )
 
 import System.Mem.StableName
 
-import Text.Read hiding (get, lift)
-import qualified Text.Read          as TR (lift)
-import Text.ParserCombinators.ReadP as P (skipSpaces)
+import Text.Read                    hiding ( get, lift )
+import qualified Text.Read          as TR ( lift )
+import Text.ParserCombinators.ReadP as P  ( skipSpaces )
 
 import Language.K3.Core.Common
 
@@ -28,318 +29,263 @@ import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Runtime.Common ( defaultSystem )
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
-import Language.K3.Utils.Pretty
 
-{- Value equality -}
-
--- | Haskell Eq type class implementation.
---   This does not support comparison for triggers. Also, collection comparison
---   here is based on MVar comparison, and not K3 record comparison semantics.
-instance Eq Value where
-  VBool v           == VBool v'           = v == v'
-  VByte v           == VByte v'           = v == v'
-  VInt  v           == VInt  v'           = v == v'
-  VReal v           == VReal v'           = v == v'
-  VString v         == VString v'         = v == v'
-  VAddress v        == VAddress v'        = v == v'  
-  VOption v         == VOption v'         = v == v'
-  VIndirection v    == VIndirection v'    = v == v'  
-  VTuple v          == VTuple v'          = v == v'
-  VRecord v         == VRecord v'         = (sortBy (compare `on` fst) v) == (sortBy (compare `on` fst) v')
-  VCollection  v    == VCollection v'     = v == v'
-  VFunction (_,_,n) == VFunction (_,_,n') = n == n'
-  _                 == _                  = False
-
--- | Haskell Ord type class implementation.
---   This does not support comparisons for indirections, collections, functions or triggers.
-instance Ord Value where
-  compare (VBool a)    (VBool b)    = compare a b
-  compare (VByte a)    (VByte b)    = compare a b
-  compare (VInt a)     (VInt b)     = compare a b
-  compare (VReal a)    (VReal b)    = compare a b
-  compare (VString a)  (VString b)  = compare a b
-  compare (VAddress a) (VAddress b) = compare a b
-  compare (VOption a)  (VOption b)  = compare a b
-  compare (VTuple a)   (VTuple b)   = compare a b
-  compare (VRecord a)  (VRecord b)  = compare (sortBy (compare `on` fst) a) (sortBy (compare `on` fst) b)
-  compare x y                       = error $ "Invalid value comparison: "++show x++", "++show y
-
-
--- | Haskell Hashable type class implementation.
---   This does not support hashing indirections, collections, or triggers.
---   Functions can be hashed, based on the hash value of their stable names.
-instance Hashable Value where
-  hashWithSalt salt (VBool a)           = hashWithSalt salt a
-  hashWithSalt salt (VByte a)           = hashWithSalt salt a
-  hashWithSalt salt (VInt a)            = hashWithSalt salt a
-  hashWithSalt salt (VReal a)           = hashWithSalt salt a
-  hashWithSalt salt (VString a)         = hashWithSalt salt a
-  hashWithSalt salt (VAddress a)        = hashWithSalt salt a
-  hashWithSalt salt (VOption a)         = hashWithSalt salt a
-  hashWithSalt salt (VTuple a)          = hashWithSalt salt a
-  hashWithSalt salt (VRecord a)         = hashWithSalt salt a
-  hashWithSalt salt (VFunction (_,_,n)) = salt `hashWithSalt` (hashStableName n)
-  hashWithSalt _ _ = error "Invalid value hash operation"
-
--- | Interpreter value equality operation
-valueEq :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueEq  su (VOption (Just v)) (VOption (Just v')) = valueEq su v v'
-valueEq  _ (VOption v)         (VOption v')        = return $ VBool $ v == v'
-valueEq  su (VTuple v)         (VTuple v')         = listEq su v v' >>= return . VBool
-
-valueEq  su (VCollection  v)   (VCollection v') =
-  uncurry (collectionEq su) =<< ((,) <$> liftIO (readMVar v) <*> liftIO (readMVar v'))
-
-valueEq  su (VRecord v) (VRecord v') = 
-  let (ids,  vals)  = unzip $ sortBy (compare `on` fst) v
-      (ids', vals') = unzip $ sortBy (compare `on` fst) v'
-  in
-  if ids == ids' then listEq su vals vals' >>= return . VBool
-                 else return $ VBool False
-valueEq  _ (VBool v) (VBool v')                     = return $ VBool $ v == v'
-valueEq  _ (VByte v) (VByte v')                     = return $ VBool $ v == v'
-valueEq  _ (VInt v) (VInt v')                       = return $ VBool $ v == v'
-valueEq  _ (VReal v) (VReal v')                     = return $ VBool $ v == v'
-valueEq  _ (VString v) (VString v')                 = return $ VBool $ v == v'
-valueEq  _ (VAddress v) (VAddress v')               = return $ VBool $ v == v'
-valueEq  _ (VIndirection v) (VIndirection v')       = return $ VBool $ v == v'
-valueEq  _ (VFunction (_,_,n)) (VFunction (_,_,n')) = return $ VBool $ n == n'
-valueEq  su x y = throwSE su $ RunTimeTypeError $ "Cannot compare " ++ show x ++ " and " ++ show y
-
-valueNeq :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueNeq su x y = (\(VBool z) -> VBool $ not z) <$> valueEq su x y
-
-listEq :: Maybe (Span, UID) -> [Value] -> [Value] -> Interpretation Bool
-listEq su a b = listCompare su a b >>= \sgn -> return $ sgn == 0
-
-collectionEq :: Maybe (Span, UID) -> Collection Value -> Collection Value -> Interpretation Value
-collectionEq su c1 c2 = collectionCompare su c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
-
-dataspaceEq :: Maybe (Span, UID) -> CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
-dataspaceEq su ds1 ds2 = dataspaceCompare su ds1 ds2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
-
-
--- | Interpreter value ordering operation
-valueCompare :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueCompare su (VOption (Just v)) (VOption (Just v')) = valueCompare su v v'
-valueCompare _ (VOption v)        (VOption v')         = return . VInt . orderingAsInt $ compare v v'
-valueCompare su (VTuple v)         (VTuple v')         = listCompare su v v' >>= return . VInt
-valueCompare su (VCollection  v)   (VCollection v')    = uncurry (collectionCompare su) =<< ((,) <$> readm v <*> readm v')
-  where readm x = liftIO (readMVar x)
-
-valueCompare su (VRecord v) (VRecord v')   = listCompare su (sortRec v) (sortRec v') >>= return . VInt  
-  where sortRec = map snd . sortBy (compare `on` fst)
-
-valueCompare  _ (VBool v) (VBool v')       = return $ VInt $ orderingAsInt $ compare v v'
-valueCompare  _ (VByte v) (VByte v')       = return $ VInt $ orderingAsInt $ compare v v'
-valueCompare  _ (VInt v) (VInt v')         = return $ VInt $ orderingAsInt $ compare v v'
-valueCompare  _ (VReal v) (VReal v')       = return $ VInt $ orderingAsInt $ compare v v'
-valueCompare  _ (VString v) (VString v')   = return $ VInt $ orderingAsInt $ compare v v'
-valueCompare  _ (VAddress v) (VAddress v') = return $ VInt $ orderingAsInt $ compare v v'
-
-valueCompare su (VIndirection _) _ = throwSE su $ RunTimeTypeError "Invalid indirection comparison"
-valueCompare su _ (VIndirection _) = throwSE su $ RunTimeTypeError "Invalid indirection comparison"
-
-valueCompare su (VFunction _) _    = throwSE su $ RunTimeTypeError "Invalid function comparison"
-valueCompare su _ (VFunction _)    = throwSE su $ RunTimeTypeError "Invalid function comparison"
-
-valueCompare su (VTrigger _) _     = throwSE su $ RunTimeTypeError "Invalid trigger comparison"
-valueCompare su _ (VTrigger _)     = throwSE su $ RunTimeTypeError "Invalid trigger comparison"
-
-valueCompare su x y = throwSE su $ RunTimeTypeError $ "Cannot compare " ++ show x ++ " and " ++ show y
 
 orderingAsInt :: Ordering -> Int
 orderingAsInt LT = -1
 orderingAsInt EQ = 0
 orderingAsInt GT = 1
 
-listCompare :: Maybe (Span, UID) -> [Value] -> [Value] -> Interpretation Int
-listCompare _ [] [] = return 0
-listCompare _ [] _  = return $ -1
-listCompare _ _ []  = return 1
-listCompare su (a:as) (b:bs) =
-  valueCompare su a b >>= \(VInt sgn) -> 
-    if sgn == 0 then listCompare su as bs else return sgn
+intOfValue :: Value -> Interpretation Int
+intOfValue (VInt i) = return i
+intOfValue _        = throwE $ RunTimeInterpretationError "Invalid value, expected an integer"
 
-collectionCompare :: Maybe (Span, UID) -> Collection Value -> Collection Value -> Interpretation Value
-collectionCompare su (Collection _ ds cId) (Collection _ ds' cId') = 
-  let sgn = orderingAsInt $ compare cId cId' in
-  if sgn == 0 then dataspaceCompare su ds ds'
-              else return $ VInt sgn
+composeHash :: Int -> Value -> Interpretation Int
+composeHash s1 (VInt s2) = return $ hashWithSalt s1 s2
+composeHash _ _          = throwE $ RunTimeInterpretationError "Invalid salt value in hash composition"
 
-dataspaceCompare :: Maybe (Span, UID) -> CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
-dataspaceCompare su (InMemoryDS l) (InMemoryDS l') = listCompare su l l' >>= return . VInt
-dataspaceCompare su (InMemDS l)    (InMemDS l')    = memDSCompare su l l'
-dataspaceCompare su (ExternalDS _) (ExternalDS _)  =
-  throwSE su $ RunTimeInterpretationError "External DS comparison not implemented"
-dataspaceCompare su _ _                            =
-  throwSE su $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+-- | Interpreter implementations of equality and comparison functions.
+--   Since these operate in the interpretation monad, these can perform side-effects,
+--   for example, to compare external dataspaces.
+valueEq :: Value -> Value -> Interpretation Value
+valueEq a b = valueCompare a b >>= asBool
+  where asBool (VInt sgn) = return . VBool $ sgn == 0
+        asBool _          = throwE $ RunTimeInterpretationError "Invalid comparison value in equality test"
 
-memDSCompare :: Maybe (Span, UID) -> PrimitiveMDS Value -> PrimitiveMDS Value -> Interpretation Value
-memDSCompare su l r = case (listOfMemDS l, listOfMemDS r) of
-    (Just l', Just r') -> listCompare su l' r' >>= return . VInt
-    (_, _) -> throwSE su $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+valueCompare :: Value -> Value -> Interpretation Value
+valueCompare (VOption (Just v, q))  (VOption (Just v', q')) =
+    if q /= q' then return (VInt $ orderingAsInt $ compare q q') else valueCompare v v'
 
-valueSign :: Maybe (Span, UID) -> (Int -> Bool) -> Value -> Value -> Interpretation Value
-valueSign su sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare su a b
+valueCompare (VTuple v)             (VTuple v')             = qvalueListCompare v v' >>= return . VInt
+valueCompare (VRecord v)            (VRecord v')            = namedMembersCompare v v'
+valueCompare (VCollection (_,v))    (VCollection (_,v'))    = collectionCompare v v'
+valueCompare a b = return . VInt . orderingAsInt $ compare a b
 
-valueLt :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueLt su = valueSign su $ \sgn -> sgn < 0
+valueSign :: (Int -> Bool) -> Value -> Value -> Interpretation Value
+valueSign sgnOp a b = (\(VInt sgn) -> VBool $ sgnOp sgn) <$> valueCompare a b
 
-valueLte :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueLte su = valueSign su $ \sgn -> sgn <= 0
+valueNeq :: Value -> Value -> Interpretation Value
+valueNeq x y = (\(VBool z) -> VBool $ not z) <$> valueEq x y
 
-valueGt :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueGt su = valueSign su $ \sgn -> sgn > 0
+valueLt :: Value -> Value -> Interpretation Value
+valueLt = valueSign $ \sgn -> sgn < 0
 
-valueGte :: Maybe (Span, UID) -> Value -> Value -> Interpretation Value
-valueGte su = valueSign su $ \sgn -> sgn >= 0
+valueLte :: Value -> Value -> Interpretation Value
+valueLte = valueSign $ \sgn -> sgn <= 0
 
--- | Interpreter hash function
+valueGt :: Value -> Value -> Interpretation Value
+valueGt = valueSign $ \sgn -> sgn > 0
+
+valueGte :: Value -> Value -> Interpretation Value
+valueGte = valueSign $ \sgn -> sgn >= 0
+
+valueHashWithSalt :: Int -> Value -> Interpretation Value
+valueHashWithSalt salt (VOption (Just v, q)) =
+  valueHashWithSalt salt v >>= composeHash (salt `hashWithSalt` (0 :: Int) `hashWithSalt` q)
+                           >>= return . VInt
+
+valueHashWithSalt salt (VTuple v)          = qvalueListHashWithSalt (salt `hashWithSalt` (1 :: Int)) v
+valueHashWithSalt salt (VRecord v)         = namedMembersHashWithSalt (salt `hashWithSalt` (2 :: Int)) v
+valueHashWithSalt salt (VCollection (_,v)) = collectionHashWithSalt (salt `hashWithSalt` (3 :: Int)) v
+valueHashWithSalt salt x = return . VInt $ hashWithSalt salt x
+
 valueHash :: Value -> Interpretation Value
-valueHash (VOption Nothing)  = return . VInt $ hash (Nothing :: Maybe Value)
-valueHash (VOption (Just v)) = composeHash (VInt 0) v
-valueHash (VTuple v)         = foldM composeHash (VInt 1) v
-valueHash (VRecord v)        = foldM composeRecordHash (VInt 2) v
-valueHash (VIndirection v)   = liftIO (readIORef v) >>= composeHash (VInt 3)
-valueHash (VCollection v)    = liftIO (readMVar v) >>= collectionHash
-valueHash (VTrigger _)       = throwE $ RunTimeTypeError "Invalid hash operation on trigger value"
-valueHash x = return . VInt $ hash x
+valueHash = valueHashWithSalt HE.salt
 
-composeHash :: Value -> Value -> Interpretation Value
-composeHash (VInt s) v = valueHash v >>= \(VInt vh) -> return $ VInt $ hashWithSalt s vh
-composeHash _ _ = throwE $ RunTimeInterpretationError "Invalid salt value in hash operation"
 
-composeRecordHash :: Value -> (Identifier, Value) -> Interpretation Value
-composeRecordHash (VInt s) (n,v) = valueHash v >>= \(VInt vh) -> return $ VInt (s `hashWithSalt` vh `hashWithSalt` n)
-composeRecordHash _ _ = throwE $ RunTimeInterpretationError "Invalid salt value in hash operation"
+-- | Value list comparison helpers.
+valueListEq :: [Value] -> [Value] -> Interpretation Bool
+valueListEq a b = valueListCompare a b >>= \sgn -> return $ sgn == 0
+
+valueListCompare :: [Value] -> [Value] -> Interpretation Int
+valueListCompare [] [] = return 0
+valueListCompare [] _  = return $ -1
+valueListCompare _ []  = return 1
+valueListCompare (a:as) (b:bs) =
+  valueCompare a b >>= \(VInt sgn) ->
+    if sgn == 0 then valueListCompare as bs else return sgn
+
+qvalueListCompare :: [(Value, VQualifier)] -> [(Value, VQualifier)] -> Interpretation Int
+qvalueListCompare [] [] = return 0
+qvalueListCompare [] _  = return $ -1
+qvalueListCompare _ []  = return 1
+qvalueListCompare ((a,aq):as) ((b,bq):bs) =
+  if aq /= bq
+    then return . orderingAsInt $ compare aq bq 
+    else valueCompare a b >>= \(VInt sgn) ->
+            if sgn == 0 then qvalueListCompare as bs else return sgn
+
+valueListHashWithSalt :: Int -> [Value] -> Interpretation Value
+valueListHashWithSalt salt l = foldM hashNext salt l >>= return . VInt
+  where hashNext accSalt v = valueHashWithSalt accSalt v >>= intOfValue
+
+qvalueListHashWithSalt :: Int -> [(Value, VQualifier)] -> Interpretation Value
+qvalueListHashWithSalt salt l = foldM hashNext salt l >>= return . VInt
+  where hashNext accSalt (v, q) = valueHashWithSalt (accSalt `hashWithSalt` q) v >>= intOfValue
+
+valueListHash :: [Value] -> Interpretation Int
+valueListHash vl = valueListHashWithSalt HE.salt vl >>= intOfValue
+
+-- | Collection comparison, including the namespace and dataspace components.
+collectionEq :: Collection Value -> Collection Value -> Interpretation Value
+collectionEq c1 c2 = collectionCompare c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
+
+collectionCompare :: Collection Value -> Collection Value -> Interpretation Value
+collectionCompare (Collection ns ds cId) (Collection ns' ds' cId') = 
+  let idOrd = compare cId cId' in
+  if idOrd /= EQ then return . VInt $ orderingAsInt idOrd
+                 else do
+                        (VInt nsOrd) <- namespaceCompare ns ns'
+                        if nsOrd /= 0 then return $ VInt nsOrd else dataspaceCompare ds ds'
+
+collectionHashWithSalt :: Int -> Collection Value -> Interpretation Value
+collectionHashWithSalt salt (Collection ns ds cId) = do
+  let idSalt = salt `hashWithSalt` cId
+  (VInt nsSalt) <- namespaceHashWithSalt idSalt ns
+  dataspaceHashWithSalt nsSalt ds
 
 collectionHash :: Collection Value -> Interpretation Value
-collectionHash (Collection _ ds cId) = dataspaceHash ds >>= flip composeHash (VString cId)
+collectionHash = collectionHashWithSalt HE.salt
+
+-- | Collection namespace comparisons.
+namespaceEq :: CollectionNamespace Value -> CollectionNamespace Value -> Interpretation Value
+namespaceEq a b = namespaceCompare a b >>= \(VInt sgn) -> return . VBool $ sgn == 0
+
+namespaceCompare :: CollectionNamespace Value -> CollectionNamespace Value -> Interpretation Value
+namespaceCompare (CollectionNamespace cns ans) (CollectionNamespace cns' ans') =
+  do 
+    (VInt cSgn) <- namedMembersCompare cns cns'
+    if cSgn /= 0 
+      then return $ VInt cSgn
+      else foldM chainCompare (VInt 0) $ zip ans ans' 
+  
+  where chainCompare (VInt 0) ((na,a), (nb,b)) = if na /= nb then return . VInt . orderingAsInt $ compare na nb 
+                                                      else namedMembersCompare a b
+        chainCompare (VInt sgn) _ = return $ VInt sgn
+        chainCompare _ _          = throwE $ RunTimeInterpretationError "Invalid comparison result"
+
+namespaceHashWithSalt :: Int -> CollectionNamespace Value -> Interpretation Value
+namespaceHashWithSalt salt (CollectionNamespace cns ans) =
+  do 
+    (VInt cSalt) <- namedMembersHashWithSalt salt cns
+    foldM hashAnnNs cSalt ans >>= return . VInt
+  
+  where hashAnnNs accSalt (n, mems) =
+          namedMembersHashWithSalt (accSalt `hashWithSalt` n) mems >>= intOfValue
+
+namespaceHash :: CollectionNamespace Value -> Interpretation Value
+namespaceHash = namespaceHashWithSalt HE.salt
+
+
+-- | Dataspace comparisons
+dataspaceEq :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceEq a b = dataspaceCompare a b >>= \(VInt sgn) -> return . VBool $ sgn == 0
+
+dataspaceCompare :: CollectionDataspace Value -> CollectionDataspace Value -> Interpretation Value
+dataspaceCompare (InMemoryDS l) (InMemoryDS l') = valueListCompare l l' >>= return . VInt
+dataspaceCompare (InMemDS l)    (InMemDS l')    = memDSCompare l l'
+
+dataspaceCompare (ExternalDS _) (ExternalDS _)  =
+  throwE $ RunTimeInterpretationError "External DS comparison not implemented"
+
+dataspaceCompare _ _ =
+  throwE $ RunTimeInterpretationError "Cross-representation dataspace comparison not implemented"
+
+memDSCompare :: PrimitiveMDS Value -> PrimitiveMDS Value -> Interpretation Value
+memDSCompare l r = case (listOfMemDS l, listOfMemDS r) of
+    (Just l', Just r') -> valueListCompare l' r' >>= return . VInt
+    (_, _) -> throwE $ RunTimeInterpretationError "Invalid in-memory dataspace comparison"
+
+dataspaceHashWithSalt :: Int -> CollectionDataspace Value -> Interpretation Value
+dataspaceHashWithSalt salt (InMemoryDS l)                           = valueListHashWithSalt (salt `hashWithSalt` (0 :: Int)) l
+dataspaceHashWithSalt salt (InMemDS (MemDS    (ListMDS l)))         = valueListHashWithSalt (salt `hashWithSalt` (1 :: Int)) l
+dataspaceHashWithSalt salt (InMemDS (SeqDS    (ListMDS l)))         = valueListHashWithSalt (salt `hashWithSalt` (2 :: Int)) l
+dataspaceHashWithSalt salt (InMemDS (SetDS    (SetAsOrdListMDS l))) = valueListHashWithSalt (salt `hashWithSalt` (3 :: Int)) l
+dataspaceHashWithSalt salt (InMemDS (SortedDS (BagAsOrdListMDS l))) = valueListHashWithSalt (salt `hashWithSalt` (4 :: Int)) l
+dataspaceHashWithSalt _ _ = throwE $ RunTimeInterpretationError "Unsupported dataspace hashing"
 
 dataspaceHash :: CollectionDataspace Value -> Interpretation Value
-dataspaceHash (InMemoryDS l) = foldM composeHash (VInt 4) l
-dataspaceHash (InMemDS ds) = 
-  case listOfMemDS ds of 
-    Just l -> foldM composeHash (VInt 4) l
-    _      -> throwE $ RunTimeInterpretationError "Memory non-list DS hash not implemented"
-
-dataspaceHash _ = throwE $ RunTimeInterpretationError "External DS hash not implemented"
+dataspaceHash = dataspaceHashWithSalt HE.salt
 
 
-{- Value show and display -}
-showsPrecTag :: Show a => String -> Int -> a -> ShowS
-showsPrecTag s d v = showsPrecTagF s d $ showsPrec (appPrec+1) v
-  where appPrec = 10
+-- | Named bindings (i.e., record value contents) comparisons
+namedBindingsCompareBy :: (Interpretation b -> a -> a -> Interpretation b)
+                       -> (NamedBindings a -> NamedBindings a -> Interpretation b)
+                       -> Interpretation b
+                       -> NamedBindings a -> NamedBindings a
+                       -> Interpretation b
+namedBindingsCompareBy f failF initR a b =
+  let pairs = Map.intersectionWith (,) a b in
+  if Map.size pairs /= max (Map.size a) (Map.size b)
+    then failF a b
+    else Map.foldl (\macc (x,y) -> f macc x y) initR pairs
 
-showsPrecTagF :: String -> Int -> ShowS -> ShowS
-showsPrecTagF s d showF =
-  showParen (d > appPrec) $ showString (s++" ") . showF
-  where appPrec = 10
+namedBindingsEq :: NamedBindings Value -> NamedBindings Value -> Interpretation Value
+namedBindingsEq a b = namedBindingsCompareBy chainValueEq (\_ _ -> return $ VBool False) (return $ VBool True) a b
+  where 
+    chainValueEq macc x y     = macc >>= chainEq valueEq x y
+    chainEq f x y (VBool True)  = f x y
+    chainEq _ _ _ (VBool False) = return $ VBool False
+    chainEq _ _ _ _             = throwE $ RunTimeInterpretationError "Invalid equality test result"
 
--- | Verbose stringification of values through show instance.
---   This produces <tag> placeholders for unshowable values (IORefs and functions)
-instance Show Value where
-  showsPrec d (VBool v)        = showsPrecTag "VBool" d v
-  showsPrec d (VByte v)        = showsPrecTag "VByte" d v
-  showsPrec d (VInt v)         = showsPrecTag "VInt" d v
-  showsPrec d (VReal v)        = showsPrecTag "VReal" d v
-  showsPrec d (VString v)      = showsPrecTag "VString" d v
-  showsPrec d (VOption v)      = showsPrecTag "VOption" d v
-  showsPrec d (VTuple v)       = showsPrecTag "VTuple" d v
-  showsPrec d (VRecord v)      = showsPrecTag "VRecord" d v
-  showsPrec d (VAddress v)     = showsPrecTag "VAddress" d v
-  
-  showsPrec d (VCollection _)  = showsPrecTagF "VCollection"  d $ showString "<opaque>"
-  showsPrec d (VIndirection _) = showsPrecTagF "VIndirection" d $ showString "<opaque>"
-  showsPrec d (VFunction (_,_,n))     = showsPrecTagF "VFunction" d $ showString $ "<function " ++ (show $ hashStableName n) ++ ">"
-  showsPrec d (VTrigger (_, Nothing)) = showsPrecTagF "VTrigger" d $ showString "<uninitialized>"
-  showsPrec d (VTrigger (_, Just _))  = showsPrecTagF "VTrigger" d $ showString "<function>"
+namedBindingsCompare :: NamedBindings Value -> NamedBindings Value -> Interpretation Value
+namedBindingsCompare a b = namedBindingsCompareBy chainValueCompare compareAsList (return $ VInt 0) a b
+  where 
+    chainValueCompare macc x y = macc >>= chainCompare valueCompare x y
+    chainCompare f x y (VInt 0)       = f x y
+    chainCompare _ _ _ (VInt i)       = return $ VInt i
+    chainCompare _ _ _ _              = throwE $ RunTimeInterpretationError "Invalid comparison result"
+
+    compareAsList x y                         = foldM chainEntryPairCompare (VInt 0) $ zip (Map.toAscList x) (Map.toAscList y)
+    chainEntryPairCompare compareAcc (e1, e2) = chainCompare namedEntryCompare e1 e2 compareAcc
+    namedEntryCompare (n1,x) (n2,y)           = if n1 /= n2 then return . VInt . orderingAsInt $ compare n1 n2 else valueCompare x y
+
+namedBindingsHashWithSalt :: Int -> NamedBindings Value -> Interpretation Value
+namedBindingsHashWithSalt salt a = Map.foldl (\macc v -> macc >>= chainHash v) (return $ VInt salt) a
+  where chainHash v (VInt slt) = valueHashWithSalt slt v
+        chainHash _ _          = throwE $ RunTimeInterpretationError "Invalid salt value for hashing a binding"
+
+namedBindingsHash :: NamedBindings Value -> Interpretation Value
+namedBindingsHash = namedBindingsHashWithSalt HE.salt
 
 
--- | Verbose stringification of values through read instance.
---   This errors on attempting to read unshowable values (IORefs and functions)
-instance Read Value where
-  readPrec = parens $ 
-        (prec app_prec $ do
-          Ident "VBool" <- lexP
-          v <- step readPrec
-          return (VBool v))
+-- | Name members (i.e., collection namespaces) comparison
+namedMembersEq :: NamedBindings (Value, VQualifier)
+               -> NamedBindings (Value, VQualifier)
+               -> Interpretation Value
+namedMembersEq a b = namedBindingsCompareBy chainValueQualEq (\_ _ -> return $ VBool False) (return $ VBool True) a b
+  where
+    chainValueQualEq macc (v,q) (v',q') =
+      macc >>= \eq -> if q == q' then chainEq valueEq v v' eq else return $ VBool False
+    chainEq f x y (VBool True)  = f x y
+    chainEq _ _ _ (VBool False) = return $ VBool False
+    chainEq _ _ _ _             = throwE $ RunTimeInterpretationError "Invalid collection member equality test result"
 
-    +++ (prec app_prec $ do
-          Ident "VByte" <- lexP
-          v <- step readPrec
-          return (VByte v))
+namedMembersCompare :: NamedBindings (Value, VQualifier)
+                    -> NamedBindings (Value, VQualifier)
+                    -> Interpretation Value
+namedMembersCompare a b = namedBindingsCompareBy chainValueQualCompare compareAsList (return $ VInt 0) a b
+  where 
+    chainValueQualCompare macc (v,q) (v',q') =
+      macc >>= \sgn -> if q == q' then chainCompare valueCompare v v' sgn else return . VInt . orderingAsInt $ compare q q'
+    chainCompare f x y (VInt 0) = f x y
+    chainCompare _ _ _ (VInt i) = return $ VInt i  
+    chainCompare _ _ _ _        = throwE $ RunTimeInterpretationError "Invalid collection member comparison result"
 
-    +++ (prec app_prec $ do
-          Ident "VInt" <- lexP
-          v <- step readPrec
-          return (VInt v))
+    compareAsList x y                         = foldM chainEntryPairCompare (VInt 0) $ zip (Map.toAscList x) (Map.toAscList y)
+    chainEntryPairCompare compareAcc (e1, e2) = chainCompare namedEntryCompare e1 e2 compareAcc
+    namedEntryCompare (n1,(x,xq)) (n2,(y,yq)) =
+      if n1 /= n2 then return . VInt . orderingAsInt $ compare n1 n2
+                  else valueCompare x y >>= intOfValue
+                                        >>= \i -> return . VInt $ if i == 0 then orderingAsInt $ compare xq yq else i
 
-    +++ (prec app_prec $ do
-          Ident "VReal" <- lexP
-          v <- step readPrec
-          return (VReal v))
+namedMembersHashWithSalt :: Int -> NamedBindings (Value, VQualifier) -> Interpretation Value
+namedMembersHashWithSalt salt a = Map.foldl (\macc vq -> macc >>= chainHash vq) (return $ VInt salt) a
+  where chainHash (v,q) (VInt slt) = valueHashWithSalt (slt `hashWithSalt` q) v
+        chainHash _ _              = throwE $ RunTimeInterpretationError "Invalid salt value for hashing a collection member"
 
-    +++ (prec app_prec $ do
-          Ident "VString" <- lexP
-          v <- step readPrec
-          return (VString v))
-
-    +++ (prec app_prec $ do
-          Ident "VOption" <- lexP
-          v <- step readPrec
-          return (VOption v))
-
-    +++ (prec app_prec $ do
-          Ident "VTuple" <- lexP
-          v <- step readPrec
-          return (VTuple v))
-
-    +++ (prec app_prec $ do
-          Ident "VRecord" <- lexP
-          v <- step readPrec
-          return (VRecord v))
-
-    +++ (prec app_prec $ do
-          Ident "VCollection" <- lexP
-          Ident "<opaque>" <- step readPrec
-          error "Cannot read collections")
-
-    +++ (prec app_prec $ do
-          Ident "VIndirection" <- lexP
-          Ident "<opaque>" <- step readPrec
-          error "Cannot read indirections")
-
-    +++ (prec app_prec $ do
-          Ident "VFunction" <- lexP
-          Ident "<function>" <- step readPrec
-          error "Cannot read functions")
-
-    +++ (prec app_prec $ do
-          Ident "VAddress" <- lexP
-          v <- step readPrec
-          return (VAddress v))
-
-    +++ (prec app_prec $ do
-          Ident "VTrigger" <- lexP
-          Ident _ <- lexP
-          Ident "<uninitialized>" <- step readPrec
-          error "Cannot read triggers")
-
-    +++ (prec app_prec $ do
-          Ident "VTrigger" <- lexP
-          Ident _ <- lexP
-          Ident "<function>" <- step readPrec
-          error "Cannot read triggers")
-
-    where app_prec = 10
-
-  readListPrec = readListPrecDefault
-
--- TODO
-instance Pretty Value where
-  prettyLines v = [show v]
+namedMembersHash :: NamedBindings (Value, VQualifier) -> Interpretation Value
+namedMembersHash = namedMembersHashWithSalt HE.salt
 
 
 {- Wire description support for values. -}
@@ -364,50 +310,55 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     rt = return
     packValue :: Int -> Value -> IO ShowS
     packValue d = \case
-      VBool v'     -> rt $ showsPrec d v'
-      VByte v'     -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v')
-      VInt v'      -> rt $ showsPrec d v'
-      VReal v'     -> rt $ showsPrec d v'
-      VString v'   -> rt $ showsPrec d v'
-      VOption vOpt -> packOpt d vOpt
-      VTuple v'    -> parens' (packValue $ d+1) v'
-      VRecord v'   -> packNamedValues (d+1) v'
-      
-      VCollection c  -> packCollectionPrec (d+1) c      
-      VIndirection r -> readIORef r >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValue (d+1) v')
-      VAddress v'    -> rt $ showsPrec d v'
+      VBool v'          -> rt $ showsPrec d v'
+      VByte v'          -> rt $ showChar 'B' . showParen True (showsPrec appPrec1 v')
+      VInt v'           -> rt $ showsPrec d v'
+      VReal v'          -> rt $ showsPrec d v'
+      VString v'        -> rt $ showsPrec d v'
+      VOption vOptQ     -> packOptQ d vOptQ
+      VTuple v'         -> parens' (packValueQ $ d+1) v'
+      VRecord v'        -> packNamedMembers (d+1) v'
+      VAddress v'       -> rt $ showsPrec d v'
 
-      VFunction (_,_,n) -> (forTransport ? error $ (rt . showString)) $ funSym n
-      VTrigger (n,_)    -> (forTransport ? error $ (rt . showString)) $ trigSym n
+      VCollection (_,c)     -> packCollection (d+1) c      
+      VIndirection (i,q,_)  -> readMVar i >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValueQ (d+1) (v', q))
 
-    funSym n  = "<function " ++ (show $ hashStableName n) ++ ">"
-    trigSym n = "<trigger " ++ n ++ " >"
+      VFunction (_,_,tg) -> (forTransport ? error $ (rt . showString)) $ funSym tg
+      VTrigger (n,_,tg)  -> (forTransport ? error $ (rt . showString)) $ trigSym n tg
+
+    funSym    tg = "<function " ++ (show tg) ++ ">"
+    trigSym n tg = "<trigger " ++ n ++ " " ++ (show tg) ++ " >"
 
     parens'  = packCustomList "(" ")" ","
     braces   = packCustomList "{" "}" ","
     brackets = packCustomList "[" "]" ","
 
-    packOpt d vOpt =
-      maybe (rt ("Nothing "++)) 
-            (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) ("Just " ++) . showS))
+    packValueQ d (v',q) = (\x y -> x . showChar ' ' . y) <$> packQualifier d q <*> packValue d v'
+
+    packQualifier d q = rt $ showsPrec d q
+
+    packOptQ d (vOpt,q) =
+      maybe (rt (("Nothing " ++ show q ++ " ") ++)) 
+            (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) (("Just " ++ show q ++ " ") ++) . showS))
             vOpt
 
-    packCollectionPrec d cmv = do
-      Collection (CollectionNamespace cns ans) v' extId <- readMVar cmv 
+    packCollection d (Collection ns ds cId) = do
       wrap' "{" "}" ((\a b c d' -> a . b . c . d')
-        <$> packCollectionNamespace (d+1) (cns, ans)
+        <$> packCollectionNamespace (d+1) ns
         <*> rt (showChar ',')
-        <*> packCollectionDataspace (d+1) v'
-        <*> rt (showChar ',' . showString extId))
+        <*> packCollectionDataspace (d+1) ds
+        <*> rt (showChar ',' . showString cId))
 
-    packCollectionNamespace d (cns, ans) =
+    packCollectionNamespace d (CollectionNamespace cns ans) =
       (\a b c d' e -> a . b . c . d' . e)
-        <$> rt (showString "CNS=") <*> packNamedValues d (namespaceNonFunctions cns) 
+        <$> rt (showString "CNS=") <*> packNamedMembers d (nonMemberFunctions cns) 
         <*> rt (showChar ',')
         <*> rt (showString "ANS=") 
-        <*> braces (packDoublyNamedValues d) (map (\(x,y) -> (x, namespaceNonFunctions y)) ans)
-    
-    -- TODO Need to pattern match on kind of dataspace
+        <*> braces (packAnnotationNamespace d) (map (\(x,y) -> (x, nonMemberFunctions y)) ans)
+
+    packAnnotationNamespace d (n, namedMems) =
+      (.) <$> rt (showString $ n ++ "=") <*> packNamedMembers d namedMems
+
     packCollectionDataspace d (InMemoryDS ds) =
       (\a b -> a . b) <$> (rt $ showString "InMemoryDS=") <*> brackets (packValue d) ds
 
@@ -421,11 +372,17 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
       (\a b -> a . b) <$> (rt $ showString "ExternalDS=") <*> (rt $ showString $ getFile filename)
     -- for now, external ds are shared file path
     -- Need to preserve copy semantics for external dataspaces
-    
-    packDoublyNamedValues d (n, nv)  = (.) <$> rt (showString $ n ++ "=") <*> packNamedValues d nv
 
-    packNamedValues d nv        = braces (packNamedValuePrec d) nv
-    packNamedValuePrec d (n,v') = (.) <$> rt (showString n . showChar '=') <*> packValue d v'
+    {- UNUSED
+    packNamedBindings d nb = braces (packNamedValue d) $ Map.toList nb
+    packNamedValue d (n,v') = (.) <$> t (showString n . showChar '=') <*> packValue d v'
+    -}
+    packNamedMembers d nm = braces (packNamedValueQual d) $ Map.toList nm
+    packNamedValueQual d (n,(v',q)) =
+      (\x y z -> x . showChar '(' . y . showChar ',' . z . showChar ')') 
+        <$> rt (showString n . showChar '=') <*> packValue d v' <*> packQual d q 
+
+    packQual d q = rt $ showsPrec d q
 
     packCustomList :: String -> String -> String -> (a -> IO ShowS) -> [a] -> IO ShowS
     packCustomList lWrap rWrap _ _ []             = rt $ \s -> lWrap ++ rWrap ++ s
@@ -439,7 +396,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     appPrec  = 10
     appPrec1 = 11  
 
-    namespaceNonFunctions = filter (nonFunction . snd)
+    nonMemberFunctions = Map.filter (nonFunction . fst)
     nonFunction (VFunction _) = False
     nonFunction _             = True
 
@@ -468,27 +425,36 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
 
       +++ (do
             Ident "Just" <- lexP
+            q <- readPrec
             v <- unpackValue
-            return (v >>= rt . VOption . Just))
+            return (v >>= rt . VOption . (,q) . Just))
 
       +++ (do
             Ident "Nothing" <- lexP
-            return . rt $ VOption Nothing)
+            q <- readPrec
+            return . rt $ VOption (Nothing, q))
 
       +++ (prec appPrec1 $ do
-            v <- readParens unpackValue
+            v <- readParens unpackValueQ
             return (sequence v >>= rt . VTuple))
 
       +++ (do
-            nv <- readNamedValues unpackValue
+            nv <- readNamedMembers
             return (nv >>= rt . VRecord))
 
       +++ (do
             Ident "I" <- lexP
-            v <- unpackValue
-            return (v >>= newIORef >>= rt . VIndirection))
+            vq <- unpackValueQ
+            return (vq >>= \(nv,q) ->
+              (\x y -> VIndirection (x, q, MemEntTag y)) <$> newMVar nv <*> makeStableName nv))
       
       +++ readCollectionPrec)
+
+    unpackValueQ =
+      parens $ reset $ do
+        q <- readPrec
+        v <- unpackValue
+        return (v >>= rt . (,q))
 
     readCollectionPrec = parens $
       (prec appPrec1 $ do
@@ -500,19 +466,22 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
         Ident n  <- lexP
         Punc "}" <- lexP
         return $ (do
-          x   <- ns
-          y   <- v
-          cmv <- rebuildCollection n $ Collection x y n
-          rt $ VCollection cmv))
+          x <- ns
+          y <- v
+          c <- rebuildCollection n $ Collection x y n
+          s <- newEmptyMVar
+          r <- return $ VCollection (s, c)
+          void . modifyMVar_ s $ const $ return r
+          rt $ r))
 
     readCollectionNamespace :: ReadPrec (IO (CollectionNamespace Value))
     readCollectionNamespace = parens $
       (prec appPrec1 $ do
         void      $ readExpectedName "CNS"
-        cns      <- readNamedValues unpackValue
+        cns      <- readNamedMembers
         Punc "," <- lexP
         void      $ readExpectedName "ANS"
-        ans      <- readDoublyNamedValues
+        ans      <- readAnnotationNamespace
         return $ (do
           cns' <- cns
           ans' <- ans
@@ -523,40 +492,53 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
       (parens $ do
         void $ readExpectedName "InMemoryDS"
         v <- readBrackets unpackValue
-        return $ InMemoryDS <$> sequence v
-      )
-      +++
-      (parens $ do
-        void $ readExpectedName "InMemDS"
-        n <- readMemDSTag
-        v <- readBrackets unpackValue
-        case n of 
-          "MemDS"    -> return $ InMemDS . MemDS . ListMDS            <$> sequence v
-          "SeqDS"    -> return $ InMemDS . SeqDS . ListMDS            <$> sequence v
-          "SetDS"    -> return $ InMemDS . SetDS . SetAsOrdListMDS    <$> sequence v
-          "SortedDS" -> return $ InMemDS . SortedDS . BagAsOrdListMDS <$> sequence v
-          _ -> pfail
-      )
-      +++
-      (parens $ do
-        void $ readExpectedName "ExternalDS"
-        String filename <- lexP
-        return $ rt $ ExternalDS $ FileDataspace filename
-      )
+        return $ InMemoryDS <$> sequence v)
+
+      +++ (parens $ do
+            void $ readExpectedName "InMemDS"
+            n <- readMemDSTag
+            v <- readBrackets unpackValue
+            case n of 
+              "MemDS"    -> return $ InMemDS . MemDS . ListMDS            <$> sequence v
+              "SeqDS"    -> return $ InMemDS . SeqDS . ListMDS            <$> sequence v
+              "SetDS"    -> return $ InMemDS . SetDS . SetAsOrdListMDS    <$> sequence v
+              "SortedDS" -> return $ InMemDS . SortedDS . BagAsOrdListMDS <$> sequence v
+              _ -> pfail)
       
+      +++ (parens $ do
+            void $ readExpectedName "ExternalDS"
+            String filename <- lexP
+            return $ rt $ ExternalDS $ FileDataspace filename)
+    
+    readAnnotationNamespace :: ReadPrec (IO ([(Identifier, NamedMembers Value)]))
+    readAnnotationNamespace = 
+      (parens $ do
+        v <- readBraces $ readNamedF readNamedMembers
+        return $ sequence v)
 
-    readDoublyNamedValues :: ReadPrec (IO [(String, [(String, Value)])])
-    readDoublyNamedValues = parens $ do
-        v <- readBraces $ readNamedPrec $ readNamedValues unpackValue
-        return $ sequence v
+    {- UNUSED
+    readNamedBindings :: ReadPrec (IO (NamedBindings Value))
+    readNamedBindings = parens $ do
+        v <- readBraces $ readNamedF unpackValue
+        return $ Map.fromList <$> sequence v 
+    -}
 
-    readNamedValues :: ReadPrec (IO a) -> ReadPrec (IO [(String, a)])
-    readNamedValues readF = parens $ do
-        v <- readBraces $ readNamedPrec readF
-        return $ sequence v
+    readNamedMembers :: ReadPrec (IO (NamedMembers Value))
+    readNamedMembers = parens $ do
+        v <- readBraces $ readNamedF readValueQual
+        return $ Map.fromList <$> sequence v
 
-    readNamedPrec :: ReadPrec (IO a) -> ReadPrec (IO (String, a))
-    readNamedPrec readF = parens $ do
+    readValueQual :: ReadPrec (IO (Value, VQualifier))
+    readValueQual = parens $ do
+        Punc "(" <- lexP
+        v        <- step unpackValue
+        Punc "," <- lexP
+        memQ     <- readPrec
+        Punc ")" <- lexP
+        return $ v >>= rt . (, memQ)
+
+    readNamedF :: ReadPrec (IO a) -> ReadPrec (IO (String, a))
+    readNamedF readF = parens $ do
         n <- readName 
         v <- step readF
         return $ v >>= rt . (n,)
@@ -615,11 +597,11 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
 
     rebuildCollection comboId c = 
       case lookup comboId $ realizations $ snd sEnv of
-        Nothing -> newMVar c
+        Nothing -> return c
         Just r  -> do
           let copyCstr = copyCtor r
-          cCopyResult <- simpleEngine >>= \e -> runInterpretation e emptyState (copyCstr c)
-          either (const $ newMVar c) (either (const $ newMVar c) return . getResultVal) cCopyResult
+          cCopyResult <- simpleEngine >>= \e -> emptyStateIO >>= \st -> runInterpretation e st (copyCstr c)
+          either (const $ return c) (either (const $ return c) (\(VCollection (_,c')) -> return c') . getResultVal) cCopyResult
     
     appPrec1 = 11  
 
@@ -627,5 +609,6 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
 
 --TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
-simpleEngine = simulationEngine [] False defaultSystem (syntaxValueWD emptyStaticEnv)
+simpleEngine = emptyStaticEnvIO >>= \sEnv -> 
+  simulationEngine [] False defaultSystem (syntaxValueWD sEnv)
 

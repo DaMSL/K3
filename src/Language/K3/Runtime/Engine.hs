@@ -753,7 +753,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
           -- The last worker to terminate does engine cleanup
           if n == 0
           then shutdownEngine r
-          else die s r (control engine)
+          else die s (Right r) (control engine)
         else do
           -- Continue with Loop
           debugStep
@@ -767,7 +767,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
             -- The last worker to terminate does engine cleanup
             if n == 0 
             then shutdownEngine r
-            else die s r (control engine)
+            else die s (Right r) (control engine)
 
         _    -> do
             decAwakeWorkers
@@ -788,15 +788,15 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
       logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
     
     err msg r cntrl = do
-      die msg r cntrl
+      die msg (Left r) cntrl
       throwEngineError $ MessagesError $ msg ++ (pretty r) 
 
-    die msg r cntrl = do
-        logStep $ boxToString $ ["", msg] ++ prettyLines r
+    die msg errOrResult cntrl = do
+        void $ report mp $ errOrResult
         logStep $ "Finished."
 
-    logStep s = void $ _notice_EngineSteps $ s
-    
+    logStep s = void $ _notice_EngineSteps s
+
     -- TODO: verify thread safety 
     isShutdownTime :: EngineM a Bool
     isShutdownTime = do
@@ -819,7 +819,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
       engine <- ask
       -- Finalize MP and output result
       fr     <- finalize mp r
-      die "Last Worker Terminated:" fr (control engine)
+      die "Last Worker Terminated:" (Right fr) (control engine)
       -- Cleanup and signal the engine's waitV
       cleanupEngine
       void $ liftIO $ tryPutMVar (waitV $ control engine) ()

@@ -527,6 +527,7 @@ namespace K3
     {
       boost::strict_lock<EndpointState> guard(*this);
       auto lb = epMap->get(guard)->lower_bound(id);
+
       if ( lb == epMap->get(guard)->end() || id != lb->first )
       {
         shared_ptr<Endpoint> ep =

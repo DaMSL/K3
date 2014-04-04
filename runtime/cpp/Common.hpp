@@ -137,11 +137,24 @@ namespace K3 {
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
   
-  static inline SystemEnvironment defaultEnvironment() {
+  static inline SystemEnvironment defaultEnvironment(Address addr) {
     PeerBootstrap bootstrap = PeerBootstrap();
     SystemEnvironment s_env = SystemEnvironment();
-    s_env[defaultAddress] = bootstrap;
+    s_env[addr] = bootstrap;
     return s_env;
+  }
+
+  static inline SystemEnvironment defaultEnvironment(list<Address> addrs) {
+    SystemEnvironment s_env;
+    for (Address addr : addrs) {
+      PeerBootstrap bootstrap = PeerBootstrap();
+      s_env[addr] = bootstrap;
+    }
+    return s_env;
+  }
+
+  static inline SystemEnvironment defaultEnvironment() {
+    return defaultEnvironment(defaultAddress);
   }
 
   static inline list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
@@ -228,21 +241,42 @@ namespace K3 {
       virtual shared_ptr<Value> decode(const Value&) = 0;
       virtual bool decode_ready() = 0;
       virtual bool good() = 0;
+
+      // codec cloning
+      virtual ~Codec() {}
+      virtual shared_ptr<Codec> clone() = 0;
+
   };
 
-  class DefaultCodec : public Codec, public virtual LogMT {
+  class DefaultCodec : public virtual Codec, public virtual LogMT {
     public:
       DefaultCodec() : Codec(), LogMT("DefaultCodec"), good_(true) {}
+
       Value encode(const Value& v) { return v; }
-      shared_ptr<Value> decode(const Value& v) { return std::make_shared<Value>(v); } 
+
+      shared_ptr<Value> decode(const Value& v) {
+        shared_ptr<Value> result;
+        if (v != "") {
+          result = std::make_shared<Value>(v);
+        }
+        return result;
+
+      }
+
       bool decode_ready() { return true; }
+
       bool good() { return good_; }
-    
+
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec(*this));
+        return cdec;
+      };
+
     protected:
       bool good_;
   };
 
-  class InternalCodec: public Codec {
+  class InternalCodec: public virtual Codec {
     public:
       InternalCodec() : LogMT("InternalCodec") {}
 
@@ -250,7 +284,7 @@ namespace K3 {
       virtual Value show_message(const Message&) = 0;
   };
 
-  class DelimiterCodec : public Codec, public virtual LogMT {
+  class DelimiterCodec : public virtual Codec, public virtual LogMT {
     public:
       DelimiterCodec(char delimiter) 
         : Codec(), LogMT("DelimiterCodec"), delimiter_(delimiter), good_(true), buf_(new string())
@@ -286,6 +320,12 @@ namespace K3 {
 
       bool good() { return good_; }
 
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(*this));
+        return cdec;
+      };
+
+
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
       char delimiter_;
@@ -293,7 +333,7 @@ namespace K3 {
       shared_ptr<string> buf_;
   };
 
- class LengthHeaderCodec : public Codec, public virtual LogMT {
+ class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
     public:
       LengthHeaderCodec()
         : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string())
@@ -356,9 +396,13 @@ namespace K3 {
 
       bool good() { return good_; }
 
+      shared_ptr<Codec> clone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec(*this));
+        return cdec;
+      };
+
+
     protected:
-      size_t find_delimiter() { return buf_->find(delimiter_); }
-      char delimiter_;
       bool good_;
       shared_ptr<fixed_int> next_size_;
       shared_ptr<string> buf_;
@@ -375,14 +419,9 @@ namespace K3 {
       }
   };
 
-  class DefaultInternalCodec : public InternalCodec, public virtual LogMT {
+  class AbstractDefaultInternalCodec : public InternalCodec, public virtual LogMT {
     public:
-      DefaultInternalCodec() : InternalCodec(), LogMT("DefaultInternalCodec"), dc(DefaultCodec()) {}
-      
-      Value encode(const Value& v) { return dc.encode(v); }
-      shared_ptr<Value> decode(const Value &v) { return dc.decode(v); }
-      bool decode_ready() { return dc.decode_ready(); } 
-      bool good() { return dc.good(); } 
+      AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
 
       Message read_message(const Value& v) {
         // Values are of the form: "(Address, Identifier, Payload)"
@@ -416,14 +455,33 @@ namespace K3 {
         }
 
       };
- 
+
       Value show_message(const Message& m) {
         ostringstream os;
         os << "(" << addressAsString(m.address()) << "," << m.id() << "," << m.contents() << ")";
         return os.str();
       }
-    protected:
-      DefaultCodec dc;
+  };
+
+  class DefaultInternalCodec : public AbstractDefaultInternalCodec, public DefaultCodec, public virtual LogMT {
+    public:
+      DefaultInternalCodec()
+        : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
+      {}
+  };
+
+  class DelimeterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
+    public:
+      DelimeterInternalCodec(char delimiter)
+        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimeterInternalCodec")
+      {}
+  };
+
+  class LengthHeaderInternalCodec : public AbstractDefaultInternalCodec, public LengthHeaderCodec, public virtual LogMT {
+    public:
+      LengthHeaderInternalCodec()
+        : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
+      {}
   };
 
   using ExternalCodec = Codec;

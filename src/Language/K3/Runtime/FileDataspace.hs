@@ -34,7 +34,7 @@ import qualified System.FilePath as FP
 import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 
-newtype FileDataspace v = FileDataspace String
+newtype FileDataspace v = FileDataspace String deriving (Eq, Read, Show)
 
 getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
