@@ -41,30 +41,37 @@ class ExtraElementsException : public std::runtime_error
 };
 
 template<typename DS>
-DS findAndRemoveElement(std::shared_ptr<K3::Engine> engine, DS ds, const K3::Value& val)
+std::shared_ptr<DS> findAndRemoveElement(std::shared_ptr<DS> ds, const K3::Value& val)
 {
     if (!ds)
-        return std::make_shared<DS>(nullptr);
+        return std::shared_ptr<DS>(nullptr);
     else {
-        if (containsDS(engine, *ds, val))
-            return std::make_shared(deleteDS(engine, ds, val));
+        if (containsDS(*ds, val)) {
+            ds->delete_first(val);
+            return ds;
+        }
         else
             throw ElementNotFoundException(val);
     }
 }
 
 template<typename DS>
-bool compareDataspaceToList(std::shared_ptr<K3::Engine> engine, DS dataspace, std::vector<K3::Value> l)
+bool compareDataspaceToList(DS dataspace, std::vector<K3::Value> l)
 {
-    K3::Value result = foldDS(engine.get(),
-            [engine](K3::Value, DS ds, K3::Value cur_val) {
-                return findAndRemoveElement(engine, ds, cur_val);
-            }, dataspace, l);
-    auto s = sizeDS(result);
-    if (s == 0)
-        return true;
+    std::shared_ptr<DS> ds_ptr = std::make_shared<DS>(dataspace);
+    std::shared_ptr<DS> result = std::accumulate(begin(l), end(l), ds_ptr,
+            [](std::shared_ptr<DS> ds, K3::Value cur_val) {
+                return findAndRemoveElement(ds, cur_val);
+            });
+    if (result) {
+        auto s = sizeDS(*result);
+        if (s == 0)
+            return true;
+        else
+            throw ExtraElementsException(s);
+    }
     else
-        throw ExtraElementsException(s);
+        return false;
 }
 
 template<typename DS>
@@ -93,7 +100,7 @@ bool testPeek(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
     std::shared_ptr<K3::Value> peekResult = test_ds.peek();
-    if (peekResult)
+    if (!peekResult)
         throw std::runtime_error("Peek returned nothing!");
     else
         return containsDS(test_ds, *peekResult);
@@ -210,12 +217,14 @@ bool testCombineSelf(std::shared_ptr<K3::Engine> engine)
     long_lst.insert(end(long_lst), begin(test_lst), end(test_lst));
     return compareDataspaceToList(combined, long_lst);
 }
+
 template<typename DS>
 std::shared_ptr<std::tuple<DS, DS>> split_findAndRemoveElement(std::shared_ptr<std::tuple<DS, DS>> maybeTuple, K3::Value cur_val)
 {
     typedef std::shared_ptr<std::tuple<DS, DS>> MaybePair;
-    if (!maybeTuple)
+    if (!maybeTuple) {
         return nullptr;
+    }
     else {
         DS& left = std::get<0>(*maybeTuple);
         DS& right = std::get<1>(*maybeTuple);
@@ -223,15 +232,16 @@ std::shared_ptr<std::tuple<DS, DS>> split_findAndRemoveElement(std::shared_ptr<s
             left.delete_first(cur_val);
             // TODO copying everywhere!
             // this copies the DS into the tuple, then the tuple is copied into the new target of the shared_ptr
-            return std::make_shared(std::make_tuple(left, right));
+            return std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         }
         else if (containsDS(right, cur_val)) {
             right.delete_first(cur_val);
             // TODO see above
-            return std::make_shared(std::make_tuple(left, right));
+            return std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         }
         else {
-            return std::shared_ptr<MaybePair>(nullptr);
+            throw ElementNotFoundException(cur_val);
+            return MaybePair(nullptr);
         }
     }
 }
@@ -248,17 +258,17 @@ bool testSplit(std::shared_ptr<K3::Engine> engine)
 
     unsigned leftLen = sizeDS(left);
     unsigned rightLen = sizeDS(right);
-    
+
     // TODO should the >= be just > ?
     if (leftLen >= long_lst.size() || rightLen >= long_lst.size() || leftLen + rightLen > long_lst.size())
         return false;
     else {
-        std::shared_ptr<std::tuple<std::vector<K3::Value>, std::vector<K3::Value>>> remainders;
+        std::shared_ptr<std::tuple<DS, DS>> remainders = std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         for (K3::Value val : long_lst)
-            remainders = split_findAndRemoveElement(remainders, left, right);
-
-        if (!remainders)
+            remainders = split_findAndRemoveElement(remainders, val);
+        if (!remainders) {
             return false;
+        }
         else {
             const DS& l = std::get<0>(*remainders);
             const DS& r = std::get<1>(*remainders);
@@ -268,16 +278,18 @@ bool testSplit(std::shared_ptr<K3::Engine> engine)
 }
 
 // TODO This just makes sure that nothing crashes, but should probably check for correctness also
-template<typename DS>
-bool insertInsideMap(std::shared_ptr<K3::Engine> engine)
-{
-    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
-    DS result_ds = self.map([&outer_ds](K3::Value cur_val) {
-            outer_ds.insert_basic("256");
-            return "4";
-            });
-    return true;
-}
+// This test is commented out because it segfaults clang 3.4.  It's bug #18473.
+// There's a temporary fix in r200954 that may be included in 3.4.1, but that's not released yet.
+//template<typename DS>
+//bool insertInsideMap(std::shared_ptr<K3::Engine> engine)
+//{
+//    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
+//    DS result_ds = outer_ds.map([&outer_ds, &v, &v4](K3::Value cur_val) {
+//            outer_ds.insert_basic("256");
+//            return "4";
+//            });
+//    return true;
+//}
 
 // Engine setup
 std::shared_ptr<K3::Engine> buildEngine()
@@ -301,7 +313,7 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
        success = testFunc(engine);
        xUnitpp::Assert.Equal(success, true);
     }
-    catch( std::exception e)
+    catch( const std::exception& e)
     {
         xUnitpp::Assert.Fail() << e.what();
     }
