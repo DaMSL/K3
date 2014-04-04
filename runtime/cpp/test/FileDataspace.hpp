@@ -202,7 +202,7 @@ class ListDataspace
     std::shared_ptr<E> peek() const
     {
         if (__data.empty())
-            return std::make_shared<E>(nullptr);
+            return std::shared_ptr<E>(nullptr);
         else
             return std::make_shared<E>(__data.front());
     }
