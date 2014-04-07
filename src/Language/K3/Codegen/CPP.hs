@@ -300,7 +300,9 @@ inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a
     (te, tv) <- inline t
     (ae, av) <- inline a
     (ve, vv) <- inline v
-    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, dquotes tv, vv])
+    argType <- canonicalType v >>= cType
+    let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
+    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, dquotes tv, serializationCall])
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
@@ -632,6 +634,8 @@ program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     globals' <- globals
     program' <- declaration d
+    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
+    genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     return $ vsep $ punctuate line [
             vsep genIncludes,
             vsep genNamespaces,
@@ -640,12 +644,10 @@ program d = do
             program'
         ]
   where
-    genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
-    genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
-includes :: [Identifier]
-includes = [
+includes :: CPPGenM [Identifier]
+includes = return $ [
         -- Standard Library
         "memory",
         "sstream",
@@ -657,11 +659,16 @@ includes = [
         -- K3 Runtime
         "Collections.hpp",
         "Dispatch.hpp",
-        "Engine.hpp"
+        "Engine.hpp",
+        "Serialization"
     ]
 
-namespaces :: [Identifier]
-namespaces = ["std", "K3"]
+namespaces :: CPPGenM [Identifier]
+namespaces = do
+    serializationNamespace <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ "K3::BoostSerializer"
+        _ -> throwE $ CPPGenE $ "Unknown Serialization Namespace"
+    return ["std", "K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [

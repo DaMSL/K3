@@ -15,8 +15,7 @@ namespace K3 {
   using std::shared_ptr;
   using std::string;
 
-  class BoostSerializer {
-    public:
+  namespace BoostSerializer {
       template <typename V>
       string pack(const V& v) {
         ostringstream out_sstream;
@@ -34,7 +33,7 @@ namespace K3 {
         in_archive >> *p;
         return p;
       }
-  };
+  }
 
 }
 
