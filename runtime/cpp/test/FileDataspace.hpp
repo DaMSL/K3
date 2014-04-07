@@ -30,6 +30,7 @@ T fromString(std::string str)
 std::string generateCollectionFilename(K3::Engine * engine);
 std::string openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
 K3::Identifier openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode);
+K3::Identifier emptyFile(K3::Engine * engine);
 
 template<typename AccumT>
 AccumT foldOpenFile(K3::Engine * engine, std::function<AccumT(AccumT, K3::Value)> accumulation, AccumT initial_accumulator, const K3::Identifier& file_id)
@@ -98,7 +99,9 @@ class FileDataspace
     public:
     FileDataspace(K3::Engine * eng)
         : engine(eng), file_id(generateCollectionFilename(eng))
-    { }
+    {
+        emptyFile(eng);
+    }
 
     template<typename Iterator>
     FileDataspace(K3::Engine * eng, Iterator start, Iterator finish)
