@@ -213,16 +213,6 @@ namespace K3 {
     void logAt(severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
 
-  std::string getHex(char * bytes, size_t num) {
-    std::ostringstream os;
-    os << "|";
-    for (int i = 0; i < num; i++) {
-      os << std::setw(2) << std::hex << (int) bytes[i] << "|";
-    }
-    return os.str();
-  }
-
-
   //--------------------
   // Wire descriptions
 

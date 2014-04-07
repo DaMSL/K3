@@ -151,7 +151,6 @@ namespace K3 {
   class Engine : public LogMT {
   public:
     typedef map<Identifier, shared_ptr<Net::Listener>> Listeners;
-    int count;
     Engine() : LogMT("Engine") {}
 
     Engine(
@@ -159,7 +158,7 @@ namespace K3 {
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec
     ):
-      LogMT("Engine"), internal_codec(_internal_codec), count(0) {
+      LogMT("Engine"), internal_codec(_internal_codec) {
 
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
@@ -417,7 +416,6 @@ namespace K3 {
             next_status = LoopStatus::Continue;
             break;
         }
-        count = count+1;
         curr_status = next_status;
       }
     }
