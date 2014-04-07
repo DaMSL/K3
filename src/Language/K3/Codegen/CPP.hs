@@ -287,7 +287,7 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-    (ta, tr) <- canonicalType e >>= \case
+    (ta, _) <- canonicalType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- cType ta
             tr' <- cType tr

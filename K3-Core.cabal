@@ -100,6 +100,7 @@ library
         Language.K3.Transform.Alpha,
         Language.K3.Transform.Conflicts,
         Language.K3.Transform.Interpreter.BindAlias,
+        Language.K3.Transform.AnnotationGraph,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
