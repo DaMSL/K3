@@ -18,28 +18,24 @@ import Language.K3.Interpreter
 import Language.K3.Runtime.Dataspace
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
+import Language.K3.Interpreter.Values
+import Language.K3.Interpreter.Data.Accessors
 
 compareDataspaceToList :: (Dataspace Interpretation ds Value) => ds -> [Value] -> Interpretation Bool
 compareDataspaceToList dataspace l = do
-  result <- foldM findAndRemoveElement (Just dataspace) l
-  case result of
-    Nothing -> return False
-    Just ds -> do
-      s <- sizeDS ds
-      if s == 0 then return True else throwE $ RunTimeInterpretationError $ "Dataspace had " ++ (show s) ++ " extra elements"
+  ds <- foldM findAndRemoveElement dataspace l
+  s <- sizeDS ds
+  if s == 0 then return True else throwE $ RunTimeInterpretationError $ "Dataspace had " ++ (show s) ++ " extra elements"
   where
-    findAndRemoveElement :: (Dataspace Interpretation ds Value) => Maybe ds -> Value -> Interpretation (Maybe ds)
-    findAndRemoveElement maybeTuple cur_val = do
-      case maybeTuple of
-        Nothing -> return Nothing
-        Just ds -> do
-          contains <- containsDS ds cur_val
-          if contains
-            then do
-              removed <- deleteDS cur_val ds
-              return $ Just removed
-            else
-              throwE $ RunTimeInterpretationError $ "Could not find element " ++ (show cur_val)
+    findAndRemoveElement :: (Dataspace Interpretation ds Value) => ds -> Value -> Interpretation (ds)
+    findAndRemoveElement ds cur_val = do
+      contains <- containsDS ds cur_val
+      if contains
+        then do
+          removed <- deleteDS cur_val ds
+          return $ removed
+        else
+          throwE $ RunTimeInterpretationError $ "Could not find element " ++ (show cur_val)
 
 emptyPeek :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 emptyPeek dataspace _ = do
@@ -65,7 +61,6 @@ testPeek dataspace _ = do
   case peekResult of
     Nothing -> throwE $ RunTimeInterpretationError "Peek returned nothing!"
     Just v -> containsDS test_ds v
-  
 
 testInsert :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 testInsert dataspace _ = do
@@ -160,6 +155,7 @@ testSplit dataspace _ = do
   (left', right') <- splitDS first_ds
   leftLen <- sizeDS left'
   rightLen <- sizeDS right'
+  --TODO should the >= be just > ?
   if leftLen >= length long_lst || rightLen >= length long_lst || leftLen + rightLen > length long_lst
     then
       return False
@@ -195,6 +191,7 @@ testSplit dataspace _ = do
               else
                 return Nothing
 
+-- TODO These just makes sure that nothing crashes, but should probably check for correctness also
 insertInsideMap :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
 insertInsideMap dataspace _ = do
   outer_ds <- initialDS test_lst (Just dataspace)
@@ -203,14 +200,33 @@ insertInsideMap dataspace _ = do
     return $ VInt 4
     ) outer_ds
   return True
+insertInsideMap_ :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+insertInsideMap_ dataspace _ = do
+  outer_ds <- initialDS test_lst (Just dataspace)
+  mapDS_ (\cur_val -> do
+    insertDS outer_ds (VInt 256)
+    return $ VInt 4
+    ) outer_ds
+  return True
+insertInsideFilter :: (Dataspace Interpretation ds Value) => ds -> () -> Interpretation Bool
+insertInsideFilter dataspace _ = do
+  outer_ds <- initialDS test_lst (Just dataspace)
+  result_ds <- filterDS (\cur_val -> do
+    insertDS outer_ds (VInt 256);
+    return True
+    ) outer_ds
+  return True
 
 containsDS :: (Monad m, Dataspace m ds Value) => ds -> Value -> m Bool
 containsDS ds val =
   foldDS (\fnd cur -> return $ fnd || cur == val) False ds
 
+callTest :: (() -> Interpretation Bool) -> IO ()
 callTest testFunc = do
-  engine <- simulationEngine [] False defaultSystem (syntaxValueWD emptyStaticEnv)
-  interpResult <- runInterpretation engine emptyState (testFunc ())
+  emptyEnv <- emptyStaticEnvIO
+  engine <- simulationEngine [] False defaultSystem (syntaxValueWD emptyEnv)
+  eState <- emptyStateIO
+  interpResult <- runInterpretation engine eState (testFunc ())
   success <- either (return . Just . show) (either (return . Just . show) (\good -> if good then return Nothing else return $ Just "Dataspace test failed") . getResultVal) interpResult
   case success of
     Nothing -> return ()
@@ -235,7 +251,9 @@ makeTestGroup name ds =
         testCase "Combine Test" $ callTest $ testCombine ds,
         testCase "Combine with Self Test" $ callTest $ testCombineSelf ds,
         testCase "Split Test" $ callTest $ testSplit ds,
-        testCase "Insert inside map" $ callTest $ insertInsideMap ds
+        testCase "Insert inside map" $ callTest $ insertInsideMap ds,
+        testCase "Insert inside map_" $ callTest $ insertInsideMap_ ds,
+        testCase "Insert inside filter" $ callTest $ insertInsideFilter ds
     ]
 
 tests :: [Test]

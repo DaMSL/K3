@@ -103,7 +103,7 @@ copyFile old_id = do
     ) () old_id
   close new_id
   return $ FileDataspace new_id
-  
+
 initialFile :: (Monad m) => (forall c. EngineM b c -> m c) -> [b] -> m (FileDataspace b)
 initialFile liftM vals = do
   new_id <- liftM generateCollectionFilename
@@ -128,7 +128,7 @@ peekFile liftM (FileDataspace file_id) = do
   liftM $ close file_id
   return result
 
--- Pass a lift into these functions, so that "inner loop" can be in 
+-- Pass a lift into these functions, so that "inner loop" can be in
 -- some Monad m.  foldDS etc. can know which lift to use, since they
 -- are in the instance of the typeclass.
 foldFile :: forall (m :: * -> *) a b.
@@ -183,8 +183,9 @@ mapFile liftM function file_ds = do
       return ()
 
 mapFile_ :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m a) -> FileDataspace b -> m ()
-mapFile_ liftM function file_id =
-  foldFile liftM inner_func () file_id
+mapFile_ liftM function file_id = do
+  tmp_ds <- liftM $ copyFile file_id
+  foldFile liftM inner_func () tmp_ds
   where
     --inner_func :: () -> b -> EngineM b ()
     inner_func _ v = do
@@ -194,8 +195,9 @@ mapFile_ liftM function file_id =
 filterFile :: (Monad m) => (forall c. EngineM b c -> m c) -> (b -> m Bool) -> FileDataspace b -> m (FileDataspace b)
 filterFile liftM predicate old_id = do
   new_id <- liftM generateCollectionFilename
+  tmp_ds <- liftM $ copyFile old_id
   _ <- liftM $ openCollectionFile new_id "w"
-  foldFile liftM (inner_func new_id) () old_id
+  foldFile liftM (inner_func new_id) () tmp_ds
   liftM $ close new_id
   return $ FileDataspace new_id
   where
@@ -207,7 +209,7 @@ filterFile liftM predicate old_id = do
       else
         return ()
 
-insertFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> b -> m (FileDataspace b) 
+insertFile :: (Monad m) => (forall c. EngineM b c -> m c) -> FileDataspace b -> b -> m (FileDataspace b)
 insertFile liftM file_ds@(FileDataspace file_id) v = do
   _ <- liftM $ openCollectionFile file_id "a"
   -- can_write <- hasWrite ext_id -- TODO handle errors here
@@ -287,10 +289,9 @@ sortFile liftM sortF old_id = do
             case merged_opt of
               Just merged_id -> return $ FileDataspace merged_id
               Nothing        -> liftM $ throwEngineError $ EngineError $ "Invalid sortFile did not merge any runs."
-  
   where
     block_size = 1000000 :: Int
-    partition_runs (cnt, v_acc, id_acc) v 
+    partition_runs (cnt, v_acc, id_acc) v
       | cnt < block_size = return (cnt+1, v:v_acc, id_acc)
       | otherwise = do
           -- Write out a sorted run.
@@ -320,7 +321,7 @@ sortFile liftM sortF old_id = do
     merge_pair Nothing     Nothing     = return Nothing
     merge_pair (Just a_id) Nothing     = return $ Just a_id
     merge_pair Nothing     (Just b_id) = return $ Just b_id
-    merge_pair (Just a_id) (Just b_id) = 
+    merge_pair (Just a_id) (Just b_id) =
       do
         a_vals <- foldFile liftM (\acc v -> return $ acc++[v]) [] $ FileDataspace a_id
         b_vals <- foldFile liftM (\acc v -> return $ acc++[v]) [] $ FileDataspace b_id
