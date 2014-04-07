@@ -9,7 +9,6 @@ module Language.K3.Interpreter.Collection where
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.State
 
 import Data.List
 import Data.List.Split ( splitOn )
@@ -23,10 +22,8 @@ import Language.K3.Core.Type
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Dataspace()
-import Language.K3.Interpreter.Utils
 
 import Language.K3.Runtime.Dataspace
-import Language.K3.Utils.Pretty
 
 
 {- Identifiers -}

@@ -123,6 +123,9 @@ lookupBinding = Map.lookup
 insertBinding :: Identifier -> a -> NamedBindings a -> NamedBindings a
 insertBinding = Map.insert
 
+mergeBindings :: NamedMembers Value -> NamedMembers Value -> NamedMembers Value
+mergeBindings = Map.union
+
 foldBindings :: (Monad m) => (a -> Identifier -> b -> m a) -> a -> NamedBindings b -> m a
 foldBindings f z bindings = Map.foldlWithKey chainAcc (return z) bindings
   where chainAcc macc n v = macc >>= \acc -> f acc n v
@@ -149,6 +152,9 @@ lookupMember = lookupBinding
 
 insertMember :: Identifier -> (Value, VQualifier) -> NamedMembers Value -> NamedMembers Value
 insertMember = insertBinding
+
+mergeMembers :: NamedMembers Value -> NamedMembers Value -> NamedMembers Value
+mergeMembers = mergeBindings
 
 foldMembers :: (Monad m) => (a -> Identifier -> (Value, VQualifier) -> m a) -> a -> NamedMembers Value -> m a
 foldMembers f z mems = foldBindings f z mems
@@ -261,26 +267,31 @@ emptyAnnotationEnv :: AEnvironment Value
 emptyAnnotationEnv = AEnvironment [] []
 
 emptyStaticEnv :: Interpretation (SEnvironment Value)
-emptyStaticEnv = emptyEnv >>= return . (, AEnvironment [] [])
+emptyStaticEnv = emptyEnv >>= return . (, emptyAnnotationEnv)
 
 emptyStaticEnvIO :: IO (SEnvironment Value)
-emptyStaticEnvIO = emptyEnvIO >>= return . (, AEnvironment [] [])
+emptyStaticEnvIO = emptyEnvIO >>= return . (, emptyAnnotationEnv)
 
 emptyState :: Interpretation IState
-emptyState = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack emptyTracer)
+emptyState = (\env sEnv -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer)
                 <$> emptyEnv <*> emptyStaticEnv 
 
 emptyStateIO :: IO IState
-emptyStateIO = (\env sEnv -> IState [] env (AEnvironment [] []) sEnv emptyProxyStack emptyTracer)
+emptyStateIO = (\env sEnv -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer)
                   <$> emptyEnvIO <*> emptyStaticEnvIO
 
 annotationState :: AEnvironment Value -> Interpretation IState
-annotationState aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack emptyTracer)
-                          <$> emptyEnv <*> emptyStaticEnv
+annotationState aEnv = liftIO $ annotationStateIO aEnv
 
 annotationStateIO :: AEnvironment Value -> IO IState
 annotationStateIO aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack emptyTracer)
                             <$> emptyEnvIO <*> emptyStaticEnvIO
+
+staticState :: SEnvironment Value -> Interpretation IState
+staticState sEnv = liftIO $ staticStateIO sEnv
+
+staticStateIO :: SEnvironment Value -> IO IState
+staticStateIO sEnv = (\env -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer) <$> emptyEnvIO
 
 modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
 modifyStateGlobals f (IState g e a s b t) = IState (f g) e a s b t
@@ -397,8 +408,11 @@ syncE = modifyE $ syncEnv
 
 -- | Annotation environment helpers.
 lookupADef :: Identifier -> Interpretation (NamedMembers Value)
-lookupADef n = get >>= maybe err return . lookup n . definitions . getAnnotEnv
+lookupADef n = tryLookupADef n >>= maybe err return
   where err = throwE $ RunTimeTypeError $ "Unknown annotation definition: '" ++ n ++ "'"
+
+tryLookupADef :: Identifier -> Interpretation (Maybe (NamedMembers Value))
+tryLookupADef n = get >>= return . lookup n . definitions . getAnnotEnv
 
 lookupACombo :: Identifier -> Interpretation (CollectionConstructors Value)
 lookupACombo n = tryLookupACombo n >>= maybe err return
