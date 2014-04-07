@@ -231,7 +231,7 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
 
 -- TODO: As with cType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
-    Nothing -> return $ text "Collection" <+> text i
+    Nothing -> return $ text "Collection" <+> text i <> semi
     Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
@@ -300,7 +300,12 @@ inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a
     (te, tv) <- inline t
     (ae, av) <- inline a
     (ve, vv) <- inline v
-    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, tv, vv])
+    argType <- canonicalType v >>= cType
+    let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
+    return (
+            vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
+            text "unit_t()"
+        )
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
@@ -358,11 +363,19 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             g' <- genSym
             ae' <- reify (RName g') a
             return (ae', text g')
-    let bindInit = case b of
-            BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
-            BTuple is -> vsep
-                [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
-            BRecord iis -> vsep
+
+    ta <- canonicalType a
+
+    bindInit <- case b of
+            BIndirection i -> do
+                let (tag &&& children -> (TIndirection, [ti])) = ta
+                di <- cDecl ti i
+                return $ di PL.<$> (text i <+> equals <+> text "*" <> g <> semi)
+            BTuple is -> do
+                let (tag &&& children -> (TTuple, ts)) = ta
+                ds <- zipWithM cDecl ts is
+                return $ vsep ds PL.<$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
+            BRecord iis -> return $ vsep
                 [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
 
     let bindWriteback = case b of
@@ -373,15 +386,18 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (bindBody, k) <- case r of
         RReturn -> do
             g' <- genSym
-            (, Just g') <$> reify (RName g') e
+            te <- canonicalType e
+            de <- cDecl te g'
+            re <- reify (RName g') e
+            return (de PL.<$> re, Just g')
         _ -> (,Nothing) <$> reify r e
 
     let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
 
     return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
     where
-    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i
-    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v
+    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i <> semi
+    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -621,6 +637,8 @@ program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     globals' <- globals
     program' <- declaration d
+    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
+    genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     return $ vsep $ punctuate line [
             vsep genIncludes,
             vsep genNamespaces,
@@ -629,12 +647,10 @@ program d = do
             program'
         ]
   where
-    genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
-    genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
-includes :: [Identifier]
-includes = [
+includes :: CPPGenM [Identifier]
+includes = return $ [
         -- Standard Library
         "memory",
         "sstream",
@@ -644,12 +660,18 @@ includes = [
         "boost/archive/text_iarchive.hpp",
 
         -- K3 Runtime
-        "runtime/cpp/Collections.hpp",
-        "runtime/cpp/Dispatch.hpp"
+        "Collections.hpp",
+        "Dispatch.hpp",
+        "Engine.hpp",
+        "Serialization.hpp"
     ]
 
-namespaces :: [Identifier]
-namespaces = ["std", "K3"]
+namespaces :: CPPGenM [Identifier]
+namespaces = do
+    serializationNamespace <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ "K3::BoostSerializer"
+        _ -> throwE $ CPPGenE $ "Unknown Serialization Namespace"
+    return ["std", "K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
