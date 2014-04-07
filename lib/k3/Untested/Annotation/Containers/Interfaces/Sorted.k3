@@ -1,0 +1,12 @@
+include "Annotation/Containers/Interfaces/Collection.k3"
+
+annotation Sorted
+{
+  requires Collection
+
+  requires lifted min         : () -> option content
+  requires lifted max         : () -> option content
+  requires lifted lowerBound  : content -> option content
+  requires lifted upperBound  : content -> option content
+  requires lifted slice       : content -> (content -> self)
+}

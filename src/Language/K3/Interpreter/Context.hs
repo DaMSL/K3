@@ -54,6 +54,7 @@ import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
 import Language.K3.Transform.Interpreter.BindAlias ( labelBindAliases )
+import Language.K3.Transform.AnnotationGraph
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -74,10 +75,11 @@ staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
 staticEnvironment prog = do
   initSt  <- initState emptyAnnotationEnv prog
   staticR <- runInterpretation' initSt (declaration prog)
-  logIStateM "STATIC " Nothing $ getResultState staticR
+  logIStateM "PRE STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
   funEnv   <- staticFunctions st   
   annotEnv <- staticAnnotations st
+  liftIO (staticStateIO (funEnv, annotEnv)) >>= logIStateM "STATIC " Nothing 
   return (funEnv, annotEnv)
 
   where
@@ -98,12 +100,26 @@ staticEnvironment prog = do
 
     staticAnnotations :: IState -> EngineM Value (AEnvironment Value)
     staticAnnotations st = do
-      let annEnvI = foldM addRealization (getAnnotEnv st) $ nub $ declCombos prog
-      resultAEnv <- runInterpretation' st annEnvI >>= liftError "(constructing static annotation environment)"
+      let annProvs  = annotationProvides prog
+      let flatADefs = flattenADefinitions annProvs (definitions $ getAnnotEnv st)
+      let newAEnv   = AEnvironment flatADefs []
+      let annEnvI   = foldM addRealization newAEnv $ nub $ declCombos prog
+      resultAEnv    <- liftIO (annotationStateIO newAEnv) 
+                        >>= \est -> runInterpretation' est annEnvI
+                        >>= liftError "(constructing static annotation environment)"
       case getResultVal resultAEnv of
         Left err                 -> throwEngineError . EngineError $ show err
         Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
     
+    flattenADefinitions :: [(Identifier, Identifier)] -> AnnotationDefinitions Value
+                        -> AnnotationDefinitions Value
+    flattenADefinitions provides aDefs = foldl addProvidesMembers aDefs provides
+
+    addProvidesMembers aDefs (s,t) = case (lookup s aDefs, lookup t aDefs) of
+      (Just sMems, Just tMems) -> replaceAssoc aDefs s $ mergeMembers sMems tMems 
+      _ -> aDefs
+
+    addRealization :: AEnvironment Value -> [Identifier] -> Interpretation (AEnvironment Value)
     addRealization aEnv@(AEnvironment d r) annNames = do
       comboIdOpt <- getComposedAnnotation annNames
       case comboIdOpt of
@@ -187,9 +203,6 @@ initEnvironment decl st =
     registerDecl st' (tag -> DTrigger n _ _) = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
     registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
 
-
-{-initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState-}
-{-initState aEnv prog = liftIO emptyStateIO >>= initEnvironment prog -}
 
 initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState
 initState aEnv prog = liftIO (annotationStateIO aEnv) >>= initEnvironment prog

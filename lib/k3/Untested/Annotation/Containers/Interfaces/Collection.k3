@@ -1,0 +1,12 @@
+include "Annotation/Containers/Interfaces/Primitive/Composable.k3"
+include "Annotation/Containers/Interfaces/Primitive/Transformers.k3"
+include "Annotation/Containers/Interfaces/Primitive/Accessors.k3"
+include "Annotation/Containers/Interfaces/Primitive/Extendible.k3"
+
+annotation Collection
+{
+  requires Composable
+  requires Transformers
+  requires Accessors
+  requires Extendible
+}

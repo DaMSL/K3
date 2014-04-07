@@ -1,0 +1,12 @@
+include "Annotation/Containers/Interfaces/Collection.k3"
+
+annotation Set
+{
+  requires Collection
+
+  requires lifted elem         : content -> bool
+  requires lifted isSubsetOf   : self -> bool
+  requires lifted union        : self -> self
+  requires lifted intersect    : self -> self
+  requires lifted difference   : self -> self
+}

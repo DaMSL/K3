@@ -1,0 +1,37 @@
+include "Annotation/Containers/Interfaces/Seq.k3"
+
+annotation List given type a,b
+{
+  // Interfaces provided.
+  provides Array
+  provides Collection
+  provides Seq
+
+  // Implementations provided.
+  provides lifted get     : int -> content -> ()
+  provides lifted set     : int -> content -> ()
+
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  provides lifted peek    : () -> option content
+  provides lifted find    : (content -> bool) -> option content
+  provides lifted member  : (content -> bool) -> bool
+
+  provides lifted combine : self -> self
+  provides lifted split   : self -> (self, self)
+
+  provides lifted iterate : (content -> ()) -> ()
+  provides lifted map     : (content -> a) -> collection {elem : a} @ { Collection }
+  provides lifted filter  : (content -> bool) -> self
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+  provides lifted sort    : (content -> content -> int) -> collection content @ { Seq }
+
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ { Collection }
+
+  provides lifted ext     : (content -> collection {elem : a} @ { Collection })
+                             -> collection {elem : a} @ { Collection }
+                             -> collection {elem : a} @ { Collection }
+}
