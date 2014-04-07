@@ -358,11 +358,19 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             g' <- genSym
             ae' <- reify (RName g') a
             return (ae', text g')
-    let bindInit = case b of
-            BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
-            BTuple is -> vsep
-                [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
-            BRecord iis -> vsep
+
+    ta <- canonicalType a
+
+    bindInit <- case b of
+            BIndirection i -> do
+                let (tag &&& children -> (TIndirection, [ti])) = ta
+                di <- cDecl ti i
+                return $ di PL.<$> (text i <+> equals <+> text "*" <> g <> semi)
+            BTuple is -> do
+                let (tag &&& children -> (TTuple, ts)) = ta
+                ds <- zipWithM cDecl ts is
+                return $ vsep ds PL.<$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
+            BRecord iis -> return $ vsep
                 [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
 
     let bindWriteback = case b of
@@ -373,15 +381,18 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (bindBody, k) <- case r of
         RReturn -> do
             g' <- genSym
-            (, Just g') <$> reify (RName g') e
+            te <- canonicalType e
+            de <- cDecl te g'
+            re <- reify (RName g') e
+            return (de PL.<$> re, Just g')
         _ -> (,Nothing) <$> reify r e
 
     let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
 
     return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
     where
-    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i
-    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v
+    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i <> semi
+    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
