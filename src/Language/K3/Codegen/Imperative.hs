@@ -78,7 +78,7 @@ declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i
     ne' <- expression e
     cs' <- mapM declaration cs
-    return $ Node (DGlobal i (T.function t T.unit) (Just ne') :@: as) cs'
+    return $ Node (DTrigger i t ne' :@: as) cs'
 declaration (Node t cs) = Node t <$> mapM declaration cs
 
 expression :: K3 Expression -> ImperativeM (K3 Expression)
