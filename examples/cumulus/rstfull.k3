@@ -1,3 +1,28 @@
+include "Core/Builtins.k3"
+include "Annotation/Set.k3"
+include "Annotation/Seq.k3"
+
+declare my_peers : collection { _r1_ : address, _r2_ : string, _r3_ : string} @ {Set} 
+
+ = {|_r1_:address,_r2_:string,_r3_:string| 
+    {_r1_:127.0.0.1:40000, _r2_: "switch", _r3_:""},
+    {_r1_:127.0.0.1:50000, _r2_: "node",   _r3_:""}
+  |} @ {Set}
+
+declare pmap_input : collection {
+  key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
+  {| key:string, value:collection { key:int, value:int } @ { Seq } |
+  {key:"ATIMESD_mT1", value:{| key:int, value:int |
+   {key:0, value:32}|} @ { Seq }},
+  {key:"ATIMESD_mT1_mR1", value:{| key:int, value:int | {key:0, value:8},
+   {key:1, value:4}|} @ { Seq }},
+  {key:"ATIMESD_mS1", value:{| key:int, value:int |
+   {key:0, value:32}|} @ { Seq }},
+  {key:"ATIMESD_mS2", value:{| key:int, value:int |
+   {key:0, value:32}|} @ { Seq }},
+  {key:"ATIMESD_mR1", value:{| key:int, value:int |
+   {key:0, value:32}|} @ { Seq }}|} @ { Seq }
+
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
   } @ { Set } = {| _r1_:int, _r2_:string, _r3_:int |
   {_r1_:1, _r2_:"ATIMESD", _r3_:1}, {_r1_:2, _r2_:"ATIMESD_mT1", _r3_:2},
@@ -3644,12 +3669,19 @@ _r1_:int, _r2_:int, _r3_:int }, _r4_:int, _r5_:int
     stmt_id_cnt_list.iterate
       ((\_b1_ -> 
         bind _b1_ as {key:stmt_id, value:count} in 
-        if __stmt_cntrs__.filter
+        let x = __stmt_cntrs__.filter
           ((\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
-            _r2_ == stmt_id)) != empty {
+            _r2_ == stmt_id))
+        in
+        let z = empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
-        then bind case ((__stmt_cntrs__.filter
+        in
+        let y = x != 
+          (empty {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set })
+        in
+        if y then bind case ((__stmt_cntrs__.filter
           ((\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id))).peek ()) of { Some x -> x }
