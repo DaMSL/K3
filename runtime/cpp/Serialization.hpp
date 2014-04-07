@@ -29,9 +29,9 @@ namespace K3 {
         istringstream in_sstream(s);
         boost::archive::text_iarchive in_archive(in_sstream);
 
-        shared_ptr<V> p;
-        in_archive >> *p;
-        return p;
+        V p;
+        in_archive >> p;
+        return make_shared<V>(p);
       }
   }
 }
