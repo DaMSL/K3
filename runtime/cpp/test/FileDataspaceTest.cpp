@@ -298,10 +298,9 @@ std::shared_ptr<K3::Engine> buildEngine()
   bool simulation = true;
   K3::SystemEnvironment s_env = K3::defaultEnvironment();
   auto i_cdec = std::shared_ptr<K3::InternalCodec>(new K3::DefaultInternalCodec());
-  auto e_cdec = std::shared_ptr<K3::ExternalCodec>(new K3::DefaultCodec());
 
   // Construct an engine
-  K3::Engine * engine = new K3::Engine(simulation, s_env, i_cdec, e_cdec);
+  K3::Engine * engine = new K3::Engine(simulation, s_env, i_cdec);
   return std::shared_ptr<K3::Engine>(engine);
 }
 
