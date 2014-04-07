@@ -150,16 +150,20 @@ namespace K3
       void close() { if ( socket_ ) { socket_->close(); } }
 
       void write(const string& val) { 
-        size_t desired = val.length();
-        async_write(*socket_, boost::asio::buffer(val,
+        // TODO revisit this (can we avoid copying the value?)
+        shared_ptr<Value> buf = make_shared<Value>(val);
+        size_t desired = buf->length();
+
+        // Write the value out to the socket
+        async_write(*socket_, boost::asio::buffer(*buf,
           desired),
         [=](boost::system::error_code ec, size_t s)
         {
-          if (!ec && (s == desired)) {
-            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Successfully wrote " << s
-              << " out of " << desired << " bytes";;
-          }
-          else {
+          // Capture the buffer in closure to keep its pointer count > 0
+          // until this callback has been executed
+          shared_ptr<Value> keep_alive = buf;
+
+          if (ec || (s != desired)) {
             BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
               << " wrote  " << s << " out of " << desired << " bytes" << endl;
           }

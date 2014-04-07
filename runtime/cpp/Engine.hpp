@@ -18,13 +18,15 @@ namespace K3 {
   using namespace std;
 
   using std::atomic;
+  using boost::thread;
 
   namespace Net = K3::Asio;
 
   //-------------------
   // Utility functions
 
-  Identifier listenerId(Address& addr) {
+  // TODO Paul asks, should this be inlined?
+  static inline Identifier listenerId(Address& addr) {
     return string("__") + "_listener_" + addressAsString(addr);
   }
 
@@ -149,7 +151,6 @@ namespace K3 {
   class Engine : public LogMT {
   public:
     typedef map<Identifier, shared_ptr<Net::Listener>> Listeners;
-
     Engine() : LogMT("Engine") {}
 
     Engine(
@@ -176,6 +177,7 @@ namespace K3 {
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
+      collectionCount   = 0;
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -226,7 +228,8 @@ namespace K3 {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
 
             if ( ep && ep->hasWrite() ) {
-              ep->doWrite(make_shared<Value>(internal_codec->show_message(msg)));
+              shared_ptr<Value> v = make_shared<Value>(internal_codec->show_message(msg));
+              ep->doWrite(v);
               ep->flushBuffer();
               sent = true;
             } else {
@@ -373,42 +376,48 @@ namespace K3 {
       }
     }
 
-    // FIXME: This is just a transliteration of the Haskell engine logic, and can probably be
-    // refactored a bit.
-    void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus st)
+
+    void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st)
     {
+      MPStatus curr_status = init_st;
       MPStatus next_status;
-      switch (st) {
+      while(true) {
+        switch (curr_status) {
 
-        // If we are not in error, process the next message.
-        case LoopStatus::Continue:
-          next_status = processMessage(mp);
-          break;
+          // If we are not in error, process the next message.
+          case LoopStatus::Continue:
+            next_status = processMessage(mp);
+            break;
 
-        // If we were in error, exit out with error.
-        case LoopStatus::Error:
-          //TODO silent error?
-          return;
-
-        // If there are no messages on the queues,
-        //  - If the terminate flag has been set, exit out normally.
-        //  - Otherwise, wait for a message and continue.
-        case LoopStatus::Done:
-          if (control->terminate()) {
-              return;
-          }
-
-          // TODO waiting timeout?
-          control->waitForMessage([=] () { return !control->terminate() && queues->size() < 1; });
-          if (control->terminate()) {
+          // If we were in error, exit out with error.
+          case LoopStatus::Error:
+            //TODO silent error?
             return;
-          }
-          next_status = LoopStatus::Continue;
-          break;
-      }
 
-      // Recurse on the next message.
-      runMessages(mp, next_status);
+          // If there are no messages on the queues,
+          //  - If the terminate flag has been set, exit out normally.
+          //  - Otherwise, wait for a message and continue.
+          case LoopStatus::Done:
+            if (control->terminate()) {
+                return;
+            }
+
+            // TODO waiting timeout?
+            control->waitForMessage(
+              [=] () {
+                return !control->terminate() && queues->size() < 1;
+              });
+
+            // Check for termination signal after waiting is finished
+            if (control->terminate()) {
+              return;
+            }
+            // Otherwise continue
+            next_status = LoopStatus::Continue;
+            break;
+        }
+        curr_status = next_status;
+      }
     }
 
     void runEngine(shared_ptr<MessageProcessor> mp) {
@@ -427,12 +436,15 @@ namespace K3 {
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    thread forkEngine(shared_ptr<MessageProcessor> mp) {
+    shared_ptr<thread> forkEngine(shared_ptr<MessageProcessor> mp) {
       using std::placeholders::_1;
+
       std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
         &Engine::runEngine, this, _1
       );
-      thread engineThread(_runEngine, mp);
+
+      shared_ptr<thread> engineThread = shared_ptr<thread>(new thread(_runEngine, mp));
+
       return engineThread;
     }
 
@@ -493,6 +505,11 @@ namespace K3 {
       return false;
     }
 
+    /* Paul's hacky functions */
+    unsigned getCollectionCount() { return collectionCount; }
+    void incrementCollectionCount() { collectionCount += 1; }
+    Address getAddress() { return config->address(); }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
@@ -508,8 +525,9 @@ namespace K3 {
     
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
+    unsigned                        collectionCount;
 
-    void invalidEndpointIdentifier(string idType, Identifier& eid) {
+    void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
       logAt(trivial::error, errorMsg);
       throw runtime_error(errorMsg);

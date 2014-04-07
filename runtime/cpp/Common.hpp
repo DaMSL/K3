@@ -51,15 +51,15 @@ namespace K3 {
   //---------------
   // Addresses.
 
-  Address make_address(const string& host, unsigned short port) {
+  static inline Address make_address(const string& host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  Address make_address(const char* host, unsigned short port) {
+  static inline Address make_address(const char* host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  Address make_address(const string&& host, unsigned short port) {
+  static inline Address make_address(const string&& host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
@@ -69,34 +69,35 @@ namespace K3 {
   inline int addressPort(const Address& addr) { return get<1>(addr); }
   inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
 
-  string addressAsString(const Address& addr) {
+  static inline string addressAsString(const Address& addr) {
     return addressHost(addr) + ":" + to_string(addressPort(addr));
   }
 
-  string addressAsString(Address&& addr) {
+  static inline string addressAsString(Address&& addr) {
     return addressHost(std::forward<Address>(addr))
             + ":" + to_string(addressPort(std::forward<Address>(addr)));
   }
 
-  Address internalSendAddress(const Address& addr) {
+  static inline Address internalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+1);
   }
   
-  Address internalSendAddress(Address&& addr) {
+  static inline Address internalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+1);
   }
 
-  Address externalSendAddress(const Address& addr) {
+  static inline Address externalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+2);
   }
   
-  Address externalSendAddress(Address&& addr) {
+  static inline Address externalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+2);
   }
 
-  Address defaultAddress = make_address("127.0.0.1", 40000);
+  // TODO put the definition somewhere
+  static Address defaultAddress = make_address("127.0.0.1", 40000);
 
 
   //-------------
@@ -135,15 +136,15 @@ namespace K3 {
   typedef any Literal;
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
-
-  SystemEnvironment defaultEnvironment(Address addr) {
+  
+  static inline SystemEnvironment defaultEnvironment(Address addr) {
     PeerBootstrap bootstrap = PeerBootstrap();
     SystemEnvironment s_env = SystemEnvironment();
     s_env[addr] = bootstrap;
     return s_env;
   }
 
-  SystemEnvironment defaultEnvironment(list<Address> addrs) {
+  static inline SystemEnvironment defaultEnvironment(list<Address> addrs) {
     SystemEnvironment s_env;
     for (Address addr : addrs) {
       PeerBootstrap bootstrap = PeerBootstrap();
@@ -152,17 +153,17 @@ namespace K3 {
     return s_env;
   }
 
-  SystemEnvironment defaultEnvironment() {
+  static inline SystemEnvironment defaultEnvironment() {
     return defaultEnvironment(defaultAddress);
   }
 
-  list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
+  static inline list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     list<Address> r;
     for ( auto x : sysEnv ) { r.push_back(x.first); }
     return std::move(r);
   }
 
-  bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
+  static inline bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
     return sysEnv.find(addr) != sysEnv.end();
   }
 
@@ -243,7 +244,7 @@ namespace K3 {
 
       // codec cloning
       virtual ~Codec() {}
-      virtual shared_ptr<Codec> clone() = 0;
+      virtual shared_ptr<Codec> freshClone() = 0;
 
   };
 
@@ -266,8 +267,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
         return cdec;
       };
 
@@ -319,20 +320,19 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(delimiter_));
         return cdec;
       };
 
 
+      char delimiter_;
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
-      char delimiter_;
       bool good_;
       shared_ptr<string> buf_;
   };
-
- class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
+   class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
     public:
       LengthHeaderCodec()
         : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string())
@@ -358,7 +358,7 @@ namespace K3 {
         *buf_ = *buf_ + v;
         if (!next_size_) {
           // See if there is enough data in buffer to unpack a header
-          shared_ptr<fixed_int> value_size = read_header(*buf_);
+          shared_ptr<fixed_int> value_size = strip_header();
           if (value_size) {
             next_size_ = value_size;
             // remove the header bytes from the buffer
@@ -395,8 +395,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec());
         return cdec;
       };
 
@@ -406,7 +406,8 @@ namespace K3 {
       shared_ptr<fixed_int> next_size_;
       shared_ptr<string> buf_;
 
-      shared_ptr<fixed_int> read_header(Value s) {
+      shared_ptr<fixed_int> strip_header() {
+        Value s = *buf_;
         size_t header_size = sizeof(fixed_int);
         if (s.length() < header_size) {
           // failure: input does not contain a full header
@@ -418,7 +419,7 @@ namespace K3 {
       }
   };
 
-  class AbstractDefaultInternalCodec : public InternalCodec, public virtual LogMT {
+  class AbstractDefaultInternalCodec : public virtual InternalCodec, public virtual LogMT {
     public:
       AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
 
@@ -467,13 +468,27 @@ namespace K3 {
       DefaultInternalCodec()
         : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
+        return cdec;
+      };
+
   };
 
-  class DelimeterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
+  class DelimiterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
     public:
-      DelimeterInternalCodec(char delimiter)
-        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimeterInternalCodec")
+      DelimiterInternalCodec(char delimiter)
+        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimiterInternalCodec"), delimiter_(delimiter)
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterInternalCodec>(new DelimiterInternalCodec(delimiter_));
+        return cdec;
+      };
+
+    protected:
+      char delimiter_;
   };
 
   class LengthHeaderInternalCodec : public AbstractDefaultInternalCodec, public LengthHeaderCodec, public virtual LogMT {
@@ -481,6 +496,12 @@ namespace K3 {
       LengthHeaderInternalCodec()
         : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderInternalCodec>(new LengthHeaderInternalCodec());
+        return cdec;
+      };
+
   };
 
   using ExternalCodec = Codec;
