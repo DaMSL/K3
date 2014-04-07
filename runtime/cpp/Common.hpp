@@ -51,15 +51,15 @@ namespace K3 {
   //---------------
   // Addresses.
 
-  Address make_address(const string& host, unsigned short port) {
+  static inline Address make_address(const string& host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  Address make_address(const char* host, unsigned short port) {
+  static inline Address make_address(const char* host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  Address make_address(const string&& host, unsigned short port) {
+  static inline Address make_address(const string&& host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
@@ -69,34 +69,35 @@ namespace K3 {
   inline int addressPort(const Address& addr) { return get<1>(addr); }
   inline int addressPort(Address&& addr) { return get<1>(std::forward<Address>(addr)); }
 
-  string addressAsString(const Address& addr) {
+  static inline string addressAsString(const Address& addr) {
     return addressHost(addr) + ":" + to_string(addressPort(addr));
   }
 
-  string addressAsString(Address&& addr) {
+  static inline string addressAsString(Address&& addr) {
     return addressHost(std::forward<Address>(addr))
             + ":" + to_string(addressPort(std::forward<Address>(addr)));
   }
 
-  Address internalSendAddress(const Address& addr) {
+  static inline Address internalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+1);
   }
   
-  Address internalSendAddress(Address&& addr) {
+  static inline Address internalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+1);
   }
 
-  Address externalSendAddress(const Address& addr) {
+  static inline Address externalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+2);
   }
   
-  Address externalSendAddress(Address&& addr) {
+  static inline Address externalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+2);
   }
 
-  Address defaultAddress = make_address("127.0.0.1", 40000);
+  // TODO put the definition somewhere
+  static Address defaultAddress = make_address("127.0.0.1", 40000);
 
 
   //-------------
@@ -135,15 +136,15 @@ namespace K3 {
   typedef any Literal;
   typedef map<Identifier, Literal> PeerBootstrap;
   typedef map<Address, PeerBootstrap> SystemEnvironment;
-
-  SystemEnvironment defaultEnvironment(Address addr) {
+  
+  static inline SystemEnvironment defaultEnvironment(Address addr) {
     PeerBootstrap bootstrap = PeerBootstrap();
     SystemEnvironment s_env = SystemEnvironment();
     s_env[addr] = bootstrap;
     return s_env;
   }
 
-  SystemEnvironment defaultEnvironment(list<Address> addrs) {
+  static inline SystemEnvironment defaultEnvironment(list<Address> addrs) {
     SystemEnvironment s_env;
     for (Address addr : addrs) {
       PeerBootstrap bootstrap = PeerBootstrap();
@@ -152,17 +153,17 @@ namespace K3 {
     return s_env;
   }
 
-  SystemEnvironment defaultEnvironment() {
+  static inline SystemEnvironment defaultEnvironment() {
     return defaultEnvironment(defaultAddress);
   }
 
-  list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
+  static inline list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     list<Address> r;
     for ( auto x : sysEnv ) { r.push_back(x.first); }
     return std::move(r);
   }
 
-  bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
+  static inline bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
     return sysEnv.find(addr) != sysEnv.end();
   }
 

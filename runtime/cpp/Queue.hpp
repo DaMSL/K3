@@ -16,8 +16,6 @@
 
 namespace K3 {
 
-  // using namespace std;
-  using namespace boost;
   using std::shared_ptr;
 
   using mutex = boost::mutex;
@@ -53,26 +51,26 @@ namespace K3 {
   // TODO: r-ref overloads for push and pop
   template<typename Value>
   class LockingMsgQueue
-    : public MsgQueue<Value>, public basic_lockable_adapter<mutex>
+    : public MsgQueue<Value>, public boost::basic_lockable_adapter<mutex>
   {
   public:
-    typedef basic_lockable_adapter<mutex> qlockable;
+    typedef boost::basic_lockable_adapter<mutex> qlockable;
     LockingMsgQueue () : qlockable(), queue(*this) {}
 
     bool empty() {
-      strict_lock<LockingMsgQueue> guard(*this);
+        boost::strict_lock<LockingMsgQueue> guard(*this);
       return queue.get(guard).empty();
     }
 
     bool push(Value& v) {
-      strict_lock<LockingMsgQueue> guard(*this);
+        boost::strict_lock<LockingMsgQueue> guard(*this);
       ++qSize;
       queue.get(guard).push(v);
       return true;
     }
     
     bool pop(Value& v) {
-      strict_lock<LockingMsgQueue> guard(*this);
+        boost::strict_lock<LockingMsgQueue> guard(*this);
       bool r = false;
       if ( !queue.get(guard).empty() ) {
         --qSize;
@@ -86,7 +84,7 @@ namespace K3 {
     size_t size() { return qSize; }
 
   protected:
-    externally_locked<std::queue<Value>, LockingMsgQueue> queue;
+    boost::externally_locked<std::queue<Value>, LockingMsgQueue> queue;
     size_t qSize; // TODO: synchronize
   };
 
@@ -366,17 +364,17 @@ namespace K3 {
   //--------------------
   // Queue constructors.
 
-  shared_ptr<MessageQueues> simpleQueues(Address addr)
+  static inline shared_ptr<MessageQueues> simpleQueues(Address addr)
   {
     return shared_ptr<MessageQueues>(new SinglePeerQueue(addr));
   }
 
-  shared_ptr<MessageQueues> perPeerQueues(const list<Address>& addresses)
+  static inline shared_ptr<MessageQueues> perPeerQueues(const list<Address>& addresses)
   {
     return shared_ptr<MessageQueues>(new MultiPeerQueue(addresses));
   }
 
-  shared_ptr<MessageQueues>
+  static inline shared_ptr<MessageQueues>
   perTriggerQueues(const list<Address>& addresses, const list<Identifier>& triggerIds)
   {
     return shared_ptr<MessageQueues>(new MultiTriggerQueue(addresses, triggerIds));

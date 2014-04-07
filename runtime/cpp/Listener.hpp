@@ -136,11 +136,11 @@ namespace K3 {
     using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
     // TODO: close method, terminating all incoming connections to this acceptor.
-    class Listener : public BaseListener<NContext, NEndpoint>, public basic_lockable_adapter<mutex> {
+    class Listener : public BaseListener<NContext, NEndpoint>, public boost::basic_lockable_adapter<mutex> {
     public:
       typedef basic_lockable_adapter<mutex> llockable;
       typedef list<shared_ptr<NConnection> > ConnectionList;
-      typedef externally_locked<shared_ptr<ConnectionList>, Listener> ConcurrentConnectionList;
+      typedef boost::externally_locked<shared_ptr<ConnectionList>, Listener> ConcurrentConnectionList;
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
@@ -170,7 +170,7 @@ namespace K3 {
 
     protected:
       shared_ptr<thread> thread_;
-      shared_ptr<externally_locked<shared_ptr<ConnectionList>, Listener> > connections_;
+      shared_ptr<boost::externally_locked<shared_ptr<ConnectionList>, Listener> > connections_;
 
       //---------
       // Helpers.
@@ -209,7 +209,7 @@ namespace K3 {
       {
         if ( connections_ ) {
           {
-            strict_lock<Listener> guard(*this);
+            boost::strict_lock<Listener> guard(*this);
             connections_->get(guard)->push_back(c);
           }
 
@@ -227,7 +227,7 @@ namespace K3 {
       void deregisterConnection(shared_ptr<NConnection> c)
       {
         if ( connections_ ) {
-          strict_lock<Listener> guard(*this);
+          boost::strict_lock<Listener> guard(*this);
           connections_->get(guard)->remove(c);
         }
       }
@@ -296,7 +296,7 @@ namespace K3 {
           // Instantiate a new thread to listen for messages on the nanomsg
           // socket, tracking it in the network context.
           terminated_ = false;
-          thread_ = shared_ptr<thread>(this->ctxt_->listenerThreads->create_thread(*this));
+          thread_ = shared_ptr<boost::thread>(this->ctxt_->listenerThreads->create_thread(*this));
         } else {
           listenerLog->logAt(trivial::error, "Invalid listener arguments.");
         }
@@ -341,7 +341,7 @@ namespace K3 {
       void terminate() { terminated_ = true; }
 
     protected:
-      shared_ptr<thread> thread_;
+      shared_ptr<boost::thread> thread_;
       atomic_bool terminated_;
       unordered_set<string> senders;
 

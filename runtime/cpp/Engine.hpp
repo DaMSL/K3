@@ -18,13 +18,15 @@ namespace K3 {
   using namespace std;
 
   using std::atomic;
+  using boost::thread;
 
   namespace Net = K3::Asio;
 
   //-------------------
   // Utility functions
 
-  Identifier listenerId(Address& addr) {
+  // TODO Paul asks, should this be inlined?
+  static inline Identifier listenerId(Address& addr) {
     return string("__") + "_listener_" + addressAsString(addr);
   }
 
@@ -176,6 +178,7 @@ namespace K3 {
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
+      collectionCount   = 0;
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -437,10 +440,13 @@ namespace K3 {
     // with the provided MessageProcessor
     shared_ptr<thread> forkEngine(shared_ptr<MessageProcessor> mp) {
       using std::placeholders::_1;
+
       std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
         &Engine::runEngine, this, _1
       );
+
       shared_ptr<thread> engineThread = shared_ptr<thread>(new thread(_runEngine, mp));
+
       return engineThread;
     }
 
@@ -501,6 +507,11 @@ namespace K3 {
       return false;
     }
 
+    /* Paul's hacky functions */
+    unsigned getCollectionCount() { return collectionCount; }
+    void incrementCollectionCount() { collectionCount += 1; }
+    Address getAddress() { return config->address(); }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
@@ -516,8 +527,9 @@ namespace K3 {
     
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
+    unsigned                        collectionCount;
 
-    void invalidEndpointIdentifier(string idType, Identifier& eid) {
+    void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
       logAt(trivial::error, errorMsg);
       throw runtime_error(errorMsg);
