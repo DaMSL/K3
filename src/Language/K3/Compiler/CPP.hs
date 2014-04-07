@@ -26,10 +26,10 @@ compile opts copts = do
             let (typeErrors, _, typedProgram) = typecheckProgram d
             if not (S.null typeErrors)
                 then putStrLn $ prettyTCErrors typedProgram typeErrors
-                else let (ir, _) = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS in
+                else let (ir, is) = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS in
                     case ir of
                       Left () -> print "Error in Imperative Transformation."
-                      Right ir' -> let (r, _) = CPP.runCPPGenM CPP.defaultCPPGenS (CPP.program ir') in
+                      Right ir' -> let (r, _) = CPP.runCPPGenM (CPP.transitionCPPGenS is) (CPP.program ir') in
                           case r of
                               Left e -> print e
                               Right s -> case buildDir copts of
