@@ -189,7 +189,6 @@ networkOptions :: Parser Bool
 networkOptions = switch (
 	short 'n'
      <> long "network"
-     <> value False
      <> help "Run in Network Mode"
     )
 
@@ -197,7 +196,6 @@ networkOptions = switch (
 parOptions :: Parser Bool
 parOptions = switch (
         long "parallel"
-     <> value False
      <> help "Run the Parallel Engine"
     )
 
