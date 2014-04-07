@@ -655,8 +655,9 @@ includes = [
         "boost/archive/text_iarchive.hpp",
 
         -- K3 Runtime
-        "runtime/cpp/Collections.hpp",
-        "runtime/cpp/Dispatch.hpp"
+        "Collections.hpp",
+        "Dispatch.hpp",
+        "Engine.hpp"
     ]
 
 namespaces :: [Identifier]
