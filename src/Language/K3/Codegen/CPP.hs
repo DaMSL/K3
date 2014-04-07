@@ -482,8 +482,7 @@ triggerWrapper i t = do
     tmpDecl <- cDecl t "arg"
     tmpType <- cType t
     let triggerDispatch = text i <> parens (text "arg") <> semi
-    let unpackCall = text "arg" <+> equals <+> text "engine.valueFormat->unpack"
-            <> angles tmpType <> parens (text "msg")
+    let unpackCall = text "arg" <+> equals <+> text "*" <> genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
     return $ genCFunction (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
             vsep [
                 tmpDecl,
@@ -651,15 +650,25 @@ program d = do
     program' <- declaration d
     genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
+    main <- genKMain
     return $ vsep $ punctuate line [
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
             staticGlobals',
-            program'
+            program',
+            main
         ]
   where
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
+
+genKMain :: CPPGenM CPPGenR
+genKMain = return $ genCFunction (text "int") (text "main") [text "int", text "char**"] $ vsep [
+           text "__global::populate_dispatch();",
+           text "__global::processRole(unit_t());",
+           text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
+           text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
+        ]
 
 includes :: CPPGenM [Identifier]
 includes = return $ [
@@ -673,8 +682,10 @@ includes = return $ [
 
         -- K3 Runtime
         "Collections.hpp",
+        "Common.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
+        "MessageProcessor.hpp",
         "Serialization.hpp"
     ]
 
@@ -692,4 +703,7 @@ aliases = [
 
 staticGlobals :: CPPGenM CPPGenR
 staticGlobals = do
-    return $ text "Engine engine" <> semi
+    return $ vsep [
+            text "SystemEnvironment se = defaultEnvironment()" <> semi,
+            text "Engine engine = Engine(true, se, make_shared<DefaultInternalCodec>(DefaultInternalCodec()))" <> semi
+        ]
