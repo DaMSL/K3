@@ -231,7 +231,7 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
 
 -- TODO: As with cType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
-    Nothing -> return $ text "Collection" <+> text i
+    Nothing -> return $ text "Collection" <+> text i <> semi
     Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
@@ -302,7 +302,10 @@ inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a
     (ve, vv) <- inline v
     argType <- canonicalType v >>= cType
     let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
-    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, dquotes tv, serializationCall])
+    return (
+            vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
+            text "unit_t()"
+        )
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
@@ -660,7 +663,7 @@ includes = return $ [
         "Collections.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
-        "Serialization"
+        "Serialization.hpp"
     ]
 
 namespaces :: CPPGenM [Identifier]
