@@ -35,6 +35,8 @@ import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
 
+import qualified Language.K3.Codegen.Imperative as I
+
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
@@ -67,6 +69,10 @@ data CPPGenS = CPPGenS {
         -- | Forward declarations for constructs as a result of cyclic scope.
         forwards :: CPPGenR,
 
+        -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
+        -- supplied ahead-of-time, due to cyclic scoping.
+        globals  :: [Identifier],
+
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
         recordMap :: M.Map Identifier [(Identifier, K3 Type)],
@@ -83,11 +89,16 @@ data CPPGenS = CPPGenS {
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
+
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty empty [] M.empty M.empty S.empty S.empty BoostSerialization
+
+-- | Copy state elements from the imperative transformation to CPP code generation.
+transitionCPPGenS :: I.ImperativeS -> CPPGenS
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is }
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -282,9 +293,10 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
             tr' <- cType tr
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
-    let fvs = map text . L.delete arg $ freeVariables body
+    exc <- globals <$> get
+    let fvs = L.delete arg $ freeVariables body
     body' <- reify RReturn body
-    return (empty, list fvs <+> parens (ta <+> text arg) <+> hangBrace body')
+    return (empty, list (map text $ fvs L.\\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -635,7 +647,7 @@ definition i t Nothing = cDecl t i
 --  - Generate namespace use directives.
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
-    globals' <- globals
+    staticGlobals' <- staticGlobals
     program' <- declaration d
     genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
@@ -643,7 +655,7 @@ program d = do
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
-            globals',
+            staticGlobals',
             program'
         ]
   where
@@ -678,6 +690,6 @@ aliases = [
         ("unit_t", "struct {}")
     ]
 
-globals :: CPPGenM CPPGenR
-globals = do
+staticGlobals :: CPPGenM CPPGenR
+staticGlobals = do
     return $ text "Engine engine" <> semi
