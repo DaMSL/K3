@@ -53,6 +53,18 @@ K3::Identifier emptyFile(K3::Engine * engine)
     return file_id;
 }
 
+K3::Identifier copyFile(K3::Engine * engine, const K3::Identifier& old_id)
+{
+    K3::Identifier new_id = generateCollectionFilename(engine);
+    openCollectionFile(engine, new_id, K3::IOMode::Write);
+    mapFile_(engine,
+            [engine, &new_id](K3::Value v) {
+                engine->doWriteExternal(new_id, v);
+            }, old_id);
+    engine->close(new_id);
+    return new_id;
+}
+
 std::shared_ptr<K3::Value> peekFile(K3::Engine * engine, const K3::Identifier& file_id)
 {
     openCollectionFile(engine, file_id, K3::IOMode::Read);
