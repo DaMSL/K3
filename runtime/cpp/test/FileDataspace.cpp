@@ -41,7 +41,7 @@ K3::Identifier generateCollectionFilename(K3::Engine * engine)
 
 K3::Identifier openCollectionFile(K3::Engine * engine, const K3::Identifier& name, K3::IOMode mode)
 {
-    engine->openFile(name, name, engine->getExternalFormat(), mode);
+    engine->openFile(name, name, mode);
     return name;
 }
 

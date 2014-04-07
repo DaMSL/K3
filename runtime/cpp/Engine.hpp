@@ -499,7 +499,6 @@ namespace K3 {
     unsigned getCollectionCount() { return collectionCount; }
     void incrementCollectionCount() { collectionCount += 1; }
     Address getAddress() { return config->address(); }
-    shared_ptr<Codec> getExternalFormat() { return external_codec; }
 
   protected:
     shared_ptr<EngineConfiguration> config;
