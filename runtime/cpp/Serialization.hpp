@@ -34,7 +34,30 @@ namespace K3 {
         return p;
       }
   }
+}
 
+namespace boost {
+    namespace serialization {
+        template <uint N>
+        struct tuple_serializer {
+            template <class archive, class ... args>
+            static void serialize(archive& a, std::tuple<args ...>& t, const unsigned int version) {
+                a & std::get<N - 1>(t);
+                tuple_serializer<N - 1>::serialize(a, t, version);
+            }
+        };
+
+        template <>
+        struct tuple_serializer<0> {
+            template <class archive, class ... args>
+            static void serialize(archive&, std::tuple<args ...>&, const unsigned int) {}
+        };
+
+        template <class archive, class ... args>
+        void serialize(archive& a, std::tuple<args ...>& t, const unsigned int version) {
+            tuple_serializer<sizeof ... (args)>::serialize(a, t, version);
+        }
+    }
 }
 
 #endif // K3_RUNTIME_SERIALIZATION_H
