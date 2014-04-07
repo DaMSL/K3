@@ -681,14 +681,18 @@ declaration _ = undefined
 {- Annotations -}
 
 annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> Interpretation ()
-annotation n _ memberDecls = do
-  (annMems, bindings) <- foldM initializeMembers
-                                  (emptyMembers, emptyBindings) 
-                                  [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
-  _ <- unbindMembers bindings
-  void $ modifyADefs $ (:) (n, annMems)
-
+annotation n _ memberDecls = tryLookupADef n >>= \case
+  Nothing -> addAnnotationDef
+  Just _  -> return ()
+  
   where
+    addAnnotationDef = do
+      (annMems, bindings) <- foldM initializeMembers
+                                      (emptyMembers, emptyBindings) 
+                                      [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
+      _ <- unbindMembers bindings
+      void $ modifyADefs $ (:) (n, annMems)
+
     -- | Initialize members, while adding each member declaration to the environment to
     --   support linear immediate initializer access.
     initializeMembers mbAcc spec = foldM (memberWithBindings spec) mbAcc memberDecls

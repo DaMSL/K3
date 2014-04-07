@@ -219,7 +219,7 @@ namespace K3 {
           }
 
           // Start connection, with a new codec(buffer)
-          shared_ptr<Codec> cdec = handle_codec->clone();
+          shared_ptr<Codec> cdec = handle_codec->freshClone();
           receiveMessages(c, cdec);
         }
       }
@@ -237,23 +237,27 @@ namespace K3 {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
           // may invoke this handler simultaneously (i.e. for different connections).
+
           typedef boost::array<char, 8192> SocketBuffer;
-          shared_ptr<SocketBuffer> buffer_(new SocketBuffer());
+          shared_ptr<SocketBuffer> buffer_ = shared_ptr<SocketBuffer>(new SocketBuffer());
           c->socket()->async_read_some(buffer(buffer_->c_array(), buffer_->size()),
             [=](const error_code& ec, std::size_t bytes_transferred) {
-              if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
-                // Unpack buffer, check if it returns a valid message, and pass that to the processor.
+                // Capture the buffer in closure to keep the pointer count > 0
+                // until the callback has finished
+                shared_ptr<SocketBuffer> keep_alive = buffer_;
+
+                if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
+                // Add network data to the codec's buffer.
                 // We assume the processor notifies subscribers regarding socket data events.
                 shared_ptr<Value> v = cdec->decode(string(buffer_->c_array(), bytes_transferred));
+
+                // Exhaust the codec's buffer
                 while (v) {
-                  listenerLog->logAt(trivial::trace, "Listener Received data: " +*v);
                   bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
                   if (t) {
-                    listenerLog->logAt(trivial::trace, "Message was transferred to the queues");
                     this->control_->messageAvailable();
-                  } else {
-                    listenerLog->logAt(trivial::trace, "Message was not transferred to queues");
                   }
+                  // Attempt to decode a buffered value
                   v = cdec->decode("");
                 }
 
@@ -310,7 +314,7 @@ namespace K3 {
       void operator()() {
         typedef boost::array<char, 8192> SocketBuffer;
         SocketBuffer buffer_;
-        shared_ptr<Codec> cdec = this->handle_codec->clone();
+        shared_ptr<Codec> cdec = this->handle_codec->freshClone();
         while ( !terminated_ ) {
           // Receive a message.
           int bytes = nn_recv(this->nEndpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);

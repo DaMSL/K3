@@ -235,7 +235,8 @@ namespace K3 {
     }
 
     shared_ptr<BaseQueue> queue(Message& m) { 
-      return dynamic_pointer_cast<BaseQueue, Queue>(multiPeerMsgs[m.address()]);
+      shared_ptr<BaseQueue> bqueue = multiPeerMsgs[m.address()];
+      return bqueue;
     }
 
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()

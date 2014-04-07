@@ -244,7 +244,7 @@ namespace K3 {
 
       // codec cloning
       virtual ~Codec() {}
-      virtual shared_ptr<Codec> clone() = 0;
+      virtual shared_ptr<Codec> freshClone() = 0;
 
   };
 
@@ -267,8 +267,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
         return cdec;
       };
 
@@ -320,20 +320,19 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec(delimiter_));
         return cdec;
       };
 
 
+      char delimiter_;
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
-      char delimiter_;
       bool good_;
       shared_ptr<string> buf_;
   };
-
- class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
+   class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
     public:
       LengthHeaderCodec()
         : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string())
@@ -359,7 +358,7 @@ namespace K3 {
         *buf_ = *buf_ + v;
         if (!next_size_) {
           // See if there is enough data in buffer to unpack a header
-          shared_ptr<fixed_int> value_size = read_header(*buf_);
+          shared_ptr<fixed_int> value_size = strip_header();
           if (value_size) {
             next_size_ = value_size;
             // remove the header bytes from the buffer
@@ -396,8 +395,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> clone() {
-        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec(*this));
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderCodec>(new LengthHeaderCodec());
         return cdec;
       };
 
@@ -407,7 +406,8 @@ namespace K3 {
       shared_ptr<fixed_int> next_size_;
       shared_ptr<string> buf_;
 
-      shared_ptr<fixed_int> read_header(Value s) {
+      shared_ptr<fixed_int> strip_header() {
+        Value s = *buf_;
         size_t header_size = sizeof(fixed_int);
         if (s.length() < header_size) {
           // failure: input does not contain a full header
@@ -419,7 +419,7 @@ namespace K3 {
       }
   };
 
-  class AbstractDefaultInternalCodec : public InternalCodec, public virtual LogMT {
+  class AbstractDefaultInternalCodec : public virtual InternalCodec, public virtual LogMT {
     public:
       AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
 
@@ -468,13 +468,27 @@ namespace K3 {
       DefaultInternalCodec()
         : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
+        return cdec;
+      };
+
   };
 
-  class DelimeterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
+  class DelimiterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
     public:
-      DelimeterInternalCodec(char delimiter)
-        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimeterInternalCodec")
+      DelimiterInternalCodec(char delimiter)
+        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimiterInternalCodec"), delimiter_(delimiter)
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DelimiterInternalCodec>(new DelimiterInternalCodec(delimiter_));
+        return cdec;
+      };
+
+    protected:
+      char delimiter_;
   };
 
   class LengthHeaderInternalCodec : public AbstractDefaultInternalCodec, public LengthHeaderCodec, public virtual LogMT {
@@ -482,6 +496,12 @@ namespace K3 {
       LengthHeaderInternalCodec()
         : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
       {}
+
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<LengthHeaderInternalCodec>(new LengthHeaderInternalCodec());
+        return cdec;
+      };
+
   };
 
   using ExternalCodec = Codec;

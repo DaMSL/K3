@@ -90,12 +90,13 @@ FACT("Simulation mode CountPeers with 3 peers should count 3") {
   // Run Engine
   engine->runEngine(mp);
 
-  // Check the result 
+  // Check the result
   Assert.Equal(3, K3::nodeCounter);
 }
 
 FACT("Network mode CountPeers with 3 peers should count 3") {
   K3::nodeCounter = 0;
+  using std::shared_ptr;
   using boost::thread;
   using boost::thread_group;
   // Create peers
@@ -120,31 +121,32 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   engine3->send(m3);
   // Fork a thread for each engine
   auto service_threads = std::shared_ptr<thread_group>(new thread_group());
-  thread t1 = engine1->forkEngine(mp1);
-  thread t2 = engine2->forkEngine(mp2);
-  thread t3 = engine3->forkEngine(mp3);
+  shared_ptr<thread> t1 = engine1->forkEngine(mp1);
+  shared_ptr<thread> t2 = engine2->forkEngine(mp2);
+  shared_ptr<thread> t3 = engine3->forkEngine(mp3);
 
-  service_threads->add_thread(&t1);
-  service_threads->add_thread(&t2);
-  service_threads->add_thread(&t3);
+  service_threads->add_thread(t1.get());
+  service_threads->add_thread(t2.get());
+  service_threads->add_thread(t3.get());
 
   boost::this_thread::sleep_for( boost::chrono::seconds(3) );
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
   engine3->forceTerminateEngine();
   service_threads->join_all();
-  service_threads->remove_thread(&t1);
-  service_threads->remove_thread(&t2);
-  service_threads->remove_thread(&t3);
+  service_threads->remove_thread(t1.get());
+  service_threads->remove_thread(t2.get());
+  service_threads->remove_thread(t3.get());
 
   // Check the result
   Assert.Equal(3, K3::nodeCounter);
 }
 
-FACT("Network mode CountPeers with 100 messages per 3 peers should count 300") {
+FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k") {
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
+  using std::shared_ptr;
   // Create peers
   K3::peer1 = K3::make_address(K3::localhost, 3000);
   K3::peer2 = K3::make_address(K3::localhost, 3005);
@@ -162,30 +164,30 @@ FACT("Network mode CountPeers with 100 messages per 3 peers should count 300") {
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
   K3::Message m3 = K3::Message(K3::peer3, "join", "()");
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < 100000; i++) {
     engine1->send(m1);
     engine2->send(m2);
     engine3->send(m3);
   }
   // Fork a thread for each engine
   auto service_threads = std::shared_ptr<thread_group>(new thread_group());
-  thread t1 = engine1->forkEngine(mp1);
-  thread t2 = engine2->forkEngine(mp2);
-  thread t3 = engine3->forkEngine(mp3);
+  shared_ptr<thread> t1 = engine1->forkEngine(mp1);
+  shared_ptr<thread> t2 = engine2->forkEngine(mp2);
+  shared_ptr<thread> t3 = engine3->forkEngine(mp3);
 
-  service_threads->add_thread(&t1);
-  service_threads->add_thread(&t2);
-  service_threads->add_thread(&t3);
+  service_threads->add_thread(t1.get());
+  service_threads->add_thread(t2.get());
+  service_threads->add_thread(t3.get());
 
-  boost::this_thread::sleep_for( boost::chrono::seconds(5) );
+  boost::this_thread::sleep_for( boost::chrono::seconds(15) );
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
   engine3->forceTerminateEngine();
   service_threads->join_all();
-  service_threads->remove_thread(&t1);
-  service_threads->remove_thread(&t2);
-  service_threads->remove_thread(&t3);
+  service_threads->remove_thread(t1.get());
+  service_threads->remove_thread(t2.get());
+  service_threads->remove_thread(t3.get());
 
   // Check the result
-  Assert.Equal(300, K3::nodeCounter);
+  Assert.Equal(300000, K3::nodeCounter);
 }

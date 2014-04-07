@@ -38,6 +38,7 @@ import qualified Language.K3.Core.Constructor.Type as T
 type ImperativeE = ()
 
 data ImperativeS = ImperativeS {
+        globals :: [Identifier],
         mutables :: [Identifier]
     }
 
@@ -47,7 +48,7 @@ runImperativeM :: ImperativeM a -> ImperativeS -> (Either ImperativeE a, Imperat
 runImperativeM m s = flip runState s $ runEitherT m
 
 defaultImperativeS :: ImperativeS
-defaultImperativeS = ImperativeS { mutables = [] }
+defaultImperativeS = ImperativeS { globals = [], mutables = [] }
 
 withMutable :: Identifier -> ImperativeM a -> ImperativeM a
 withMutable i m = do
@@ -60,15 +61,21 @@ withMutable i m = do
         [] -> left ()
     return result
 
+addGlobal :: Identifier -> ImperativeM ()
+addGlobal i = modify $ \s -> s { globals = i : globals s }
+
 isCachedMutable :: Identifier -> ImperativeM Bool
 isCachedMutable i = elem i . mutables <$> get
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
+declaration (Node t@(DGlobal i _ Nothing :@: _) cs) = addGlobal i >> Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
+    addGlobal i
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
 declaration (Node (DTrigger i t e :@: as) cs) = do
+    addGlobal i
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i (T.function t T.unit) (Just ne') :@: as) cs'

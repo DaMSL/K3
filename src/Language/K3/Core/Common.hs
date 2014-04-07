@@ -22,6 +22,7 @@ module Language.K3.Core.Common (
     iread,
 
     addAssoc,
+    insertAssoc,
     removeAssoc,
     replaceAssoc,
     modifyAssoc,
@@ -86,15 +87,25 @@ prefixSpan i (Span n l1 c1 l2 c2) = Span n l1 (c1-i) l2 c2
 prefixSpan _ s = s
 
 -- | Associative lists
+
+-- | Adds an association at the head of the list, allowing for duplicates.
 addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 addAssoc l a b = (a,b):l
 
+-- | Adds an association only if it does not already exist in the list.
+insertAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+insertAssoc l a b = maybe (addAssoc l a b) (const l) $ lookup a l
+
+-- | Removes all associations matching the given key from the list.
 removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
 removeAssoc l a = filter ((a /=) . fst) l
 
+-- | Replaces all associations matching the given key, with a single new association.
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
+-- | Applies a modifier to the first occurrence of the key, replacing all associations
+--   with the result of the modifier.
 modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c, Maybe b)) -> (c, [(a,b)])
 modifyAssoc l k f = case f $ lookup k l of
   (r, Nothing) -> (r, l)
