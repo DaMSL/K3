@@ -1,6 +1,6 @@
 #include <algorithm>
 
-#include "xUnit++/xUnit++.h"
+//#include "xUnit++/xUnit++.h"
 
 #include "FileDataspace.hpp"
 
@@ -310,54 +310,62 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
     bool success = false;
     try {
        success = testFunc(engine);
-       xUnitpp::Assert.Equal(success, true);
+       assert(success == true);
+       //xUnitpp::Assert.Equal(success, true);
     }
-    catch( const std::exception& e)
+    catch( std::exception& e)
     {
-        xUnitpp::Assert.Fail() << e.what();
+        std::cerr << e.what();
+        assert(false);
+        //xUnitpp::Assert.Fail() << e.what();
     }
 }
 
+//#define MAKE_TEST(name, function, ds) \
+//    FACT(name) { callTest(function<ds>); }
 #define MAKE_TEST(name, function, ds) \
-    FACT(name) { callTest(function<ds>); }
+    callTest(function<ds>);
 
-SUITE("List Dataspace") {
-    MAKE_TEST( "EmptyPeek", emptyPeek, ListDataspace)
-    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, ListDataspace)
-    MAKE_TEST( "Peek Test", testPeek, ListDataspace)
-    MAKE_TEST( "Insert Test", testInsert, ListDataspace)
-    MAKE_TEST( "Delete Test", testDelete, ListDataspace)
-    MAKE_TEST( "Delete of missing element Test", testMissingDelete, ListDataspace)
-    MAKE_TEST( "Update Test", testUpdate, ListDataspace)
-    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, ListDataspace)
-    MAKE_TEST( "Update missing element Test", testUpdateMissing, ListDataspace)
-    MAKE_TEST( "Fold Test", testFold, ListDataspace)
-    MAKE_TEST( "Map Test", testMap, ListDataspace)
-    MAKE_TEST( "Filter Test", testFilter, ListDataspace)
-    MAKE_TEST( "Combine Test", testCombine, ListDataspace)
-    MAKE_TEST( "Combine with Self Test", testCombineSelf, ListDataspace)
-    MAKE_TEST( "Split Test", testSplit, ListDataspace)
-    MAKE_TEST( "Insert inside map", insertInsideMap, ListDataspace)
-}
+
+//SUITE("List Dataspace") {
+//    MAKE_TEST( "EmptyPeek", emptyPeek, ListDataspace)
+//    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, ListDataspace)
+//    MAKE_TEST( "Peek Test", testPeek, ListDataspace)
+//    MAKE_TEST( "Insert Test", testInsert, ListDataspace)
+//    MAKE_TEST( "Delete Test", testDelete, ListDataspace)
+//    MAKE_TEST( "Delete of missing element Test", testMissingDelete, ListDataspace)
+//    MAKE_TEST( "Update Test", testUpdate, ListDataspace)
+//    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, ListDataspace)
+//    MAKE_TEST( "Update missing element Test", testUpdateMissing, ListDataspace)
+//    MAKE_TEST( "Fold Test", testFold, ListDataspace)
+//    MAKE_TEST( "Map Test", testMap, ListDataspace)
+//    MAKE_TEST( "Filter Test", testFilter, ListDataspace)
+//    MAKE_TEST( "Combine Test", testCombine, ListDataspace)
+//    MAKE_TEST( "Combine with Self Test", testCombineSelf, ListDataspace)
+//    MAKE_TEST( "Split Test", testSplit, ListDataspace)
+//    MAKE_TEST( "Insert inside map", insertInsideMap, ListDataspace)
+//}
 
 //SUITE("File Dataspace") {
-//    MAKE_TEST( "EmptyPeek", emptyPeek, FileDataspace)
-//    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, FileDataspace)
-//    MAKE_TEST( "Peek Test", testPeek, FileDataspace)
-//    /*MAKE_TEST( "Insert Test", testInsert, FileDataspace)
-//    MAKE_TEST( "Delete Test", testDelete, FileDataspace)
-//    MAKE_TEST( "Delete of missing element Test", testMissingDelete, FileDataspace)
-//    MAKE_TEST( "Update Test", testUpdate, FileDataspace)
-//    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, FileDataspace)
-//    MAKE_TEST( "Update missing element Test", testUpdateMissing, FileDataspace)
-//    MAKE_TEST( "Fold Test", testFold, FileDataspace)
-//    MAKE_TEST( "Map Test", testMap, FileDataspace)
-//    MAKE_TEST( "Filter Test", testFilter, FileDataspace)
-//    MAKE_TEST( "Combine Test", testCombine, FileDataspace)
-//    MAKE_TEST( "Combine with Self Test", testCombineSelf, FileDataspace)
-//    MAKE_TEST( "Split Test", testSplit, FileDataspace)
-//    MAKE_TEST( "Insert inside map", insertInsideMap, FileDataspace)*/
-//}
+int main()
+{
+    MAKE_TEST( "EmptyPeek", emptyPeek, FileDataspace)
+    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, FileDataspace)
+    MAKE_TEST( "Peek Test", testPeek, FileDataspace)
+    MAKE_TEST( "Insert Test", testInsert, FileDataspace)
+    MAKE_TEST( "Delete Test", testDelete, FileDataspace)
+    MAKE_TEST( "Delete of missing element Test", testMissingDelete, FileDataspace)
+    MAKE_TEST( "Update Test", testUpdate, FileDataspace)
+    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, FileDataspace)
+    MAKE_TEST( "Update missing element Test", testUpdateMissing, FileDataspace)
+    MAKE_TEST( "Fold Test", testFold, FileDataspace)
+    MAKE_TEST( "Map Test", testMap, FileDataspace)
+    MAKE_TEST( "Filter Test", testFilter, FileDataspace)
+    MAKE_TEST( "Combine Test", testCombine, FileDataspace)
+    MAKE_TEST( "Combine with Self Test", testCombineSelf, FileDataspace)
+    MAKE_TEST( "Split Test", testSplit, FileDataspace)
+    //MAKE_TEST( "Insert inside map", insertInsideMap, FileDataspace)
+}
 
 //MAKE_TEST_GROUP("List Dataspace", ListDataspace)
 //MAKE_TEST_GROUP("File Dataspace", FileDataspace)
