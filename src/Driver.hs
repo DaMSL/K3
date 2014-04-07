@@ -14,6 +14,7 @@ import Language.K3.Utils.Pretty.Syntax
 
 import Language.K3.Transform.Conflicts
 import Language.K3.Transform.Interpreter.BindAlias
+import Language.K3.Transform.AnnotationGraph
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -61,7 +62,10 @@ dispatch op = do
         analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
         analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)   
         analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)   
-        analyzer BindPaths    = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
+        analyzer ProxyPaths   = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
+        
+        analyzer AnnotationProvidesGraph = k3Program >>= either parseError (putStrLn . show . providesGraph)
+        analyzer FlatAnnotations         = k3Program >>= either parseError (putStrLn . show . flattenAnnotations)
  
         k3Program      = parseK3Input (includes $ paths op) (input op)
         parseError s   = putStrLn $ "Could not parse input: " ++ s

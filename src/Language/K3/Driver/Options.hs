@@ -66,7 +66,9 @@ data AnalyzeOptions
     = Conflicts
     | Tasks
     | ProgramTasks
-    | BindPaths
+    | ProxyPaths
+    | AnnotationProvidesGraph
+    | FlatAnnotations
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -213,7 +215,8 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (conflictsOpt <|> tasksOpt <|> programTasksOpt <|> bindPathsOpt)
+analyzeOptions = Analyze <$> (    conflictsOpt <|> tasksOpt   <|> programTasksOpt <|> proxyPathsOpt
+                              <|> annProvOpt   <|> flatAnnOpt )
 
 conflictsOpt :: Parser AnalyzeOptions
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -227,9 +230,17 @@ programTasksOpt :: Parser AnalyzeOptions
 programTasksOpt = flag' ProgramTasks (   long "programtasks"
                                       <> help "Find program-level tasks to be run in parallel " )
 
-bindPathsOpt :: Parser AnalyzeOptions
-bindPathsOpt = flag' BindPaths (   long "bindpaths"
-                                <> help "Print bind paths for bind expressions" )
+proxyPathsOpt :: Parser AnalyzeOptions
+proxyPathsOpt = flag' ProxyPaths (   long "proxypaths"
+                                  <> help "Print bind paths for bind expressions" )
+
+annProvOpt :: Parser AnalyzeOptions
+annProvOpt = flag' AnnotationProvidesGraph (   long "provides-graph"
+                                            <> help "Print bind paths for bind expressions" )
+
+flatAnnOpt :: Parser AnalyzeOptions
+flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
+                                    <> help "Print bind paths for bind expressions" )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
