@@ -1,8 +1,0 @@
-declare x : mut int = 0
-
-trigger t : { a : int } = \r ->
-  x = r.a
-
-source s1 : { a : int } = value {a : 5}
-
-feed s1 |> t

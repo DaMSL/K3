@@ -9,6 +9,22 @@ declare myNst2 : ind (option int, (real, string)) = ind (Some 1, (2.0, "bar"))
 declare myNstRec1 : {_1:int, _2:(real, string)}         = {_1:1, _2:(2.0,"baz")}
 declare myNstRec2 : {_1:int, _2:{_21:real, _22:string}} = {_1:1, _2:{_21:2.0, _22:"qux"}}
 
-trigger t : () = \_ -> ()
+declare assigned_from_record  : mut int = 0
+declare assigned_from_record2 : mut int = 0
+
+trigger assign_from_record : {_1:bool, _2:int, _3:real, _4:string} = \r -> (
+    assigned_from_record = myRec._2;
+    (assign_from_nested_record, me) <- r
+  )
+
+trigger assign_from_nested_record : {_1:bool, _2:int, _3:real, _4:string} = \r -> (
+    let y = { y_a: r._2, y_b : {y_c: r._2, y_d: r._2} } in
+    assigned_from_record2 = y.y_b.y_c
+  )
+
+trigger t : () = \_ -> (
+    (assign_from_record, me) <- myRec
+  )
+
 source s1 : () = value ()
 feed s1 |> t
