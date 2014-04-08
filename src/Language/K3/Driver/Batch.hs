@@ -32,16 +32,16 @@ setDefaultRole d _ _ = d
 
 
 runBatch :: Options -> InterpretOptions -> (K3 Declaration -> K3 Declaration) -> IO ()
-runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel) addPreloadVals = do
+runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel printConf) addPreloadVals = do
     p <- parseK3Input (includes $ paths progOpts) (input progOpts)
     case p of
         Left e  -> putStrLn e
         Right q -> let q' = addPreloadVals q in
                    if not asNetwork then do
-                      pStatus <- runProgram parallel (sysEnv interpOpts) q'
+                      pStatus <- runProgram printConf parallel (sysEnv interpOpts) q'
                       void $ printError return pStatus
                    else do
-                      nodeStatuses <- runNetwork parallel (sysEnv interpOpts) q'
+                      nodeStatuses <- runNetwork printConf parallel (sysEnv interpOpts) q'
                       void $ mapM_ (printError printNode) nodeStatuses
 
   where printNode (addr, engine, threadid) = do

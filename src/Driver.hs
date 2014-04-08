@@ -24,6 +24,8 @@ import qualified Language.K3.Compiler.Haskell as HaskellC
 import qualified Language.K3.Compiler.CPP as CPPC
 import qualified Language.K3.Core.Utils as CoreUtils
 
+import qualified Data.List as L
+
 -- | Mode Dispatch.
 dispatch :: Options -> IO ()
 dispatch op = do
@@ -36,6 +38,7 @@ dispatch op = do
 
   -- Load files for any global variables
   preLoadVals <- mapM parsePreloads $ preLoad op
+  putStrLn $ "Pre:" ++ concat (L.intersperse ", " (preLoad op))
   let addPreloadVals role = CoreUtils.prependToRole role preLoadVals
 
   case mode op of

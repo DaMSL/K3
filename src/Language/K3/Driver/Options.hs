@@ -15,6 +15,8 @@ import Language.K3.Utils.Pretty
 
 import Language.K3.Driver.Common
 
+import qualified Language.K3.Interpreter.Data.Types as IT
+
 -- | Program Options.
 data Options = Options {
         mode      :: Mode,
@@ -46,7 +48,8 @@ data InterpretOptions
     = Batch { network :: Bool
             , sysEnv :: SystemEnvironment
             , asExpr :: Bool
-            , isPar  :: Bool }
+            , isPar  :: Bool
+            , printConfig :: IT.PrintConfig}
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -168,7 +171,7 @@ batchOptions = flag' Batch (
             short 'b'
          <> long "batch"
          <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions <*> parOptions
+        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions <*> parOptions <*> interpPrintOptions
 
 -- | Expression-Level flag.
 elvlOptions :: Parser Bool
@@ -200,6 +203,14 @@ parOptions = switch (
         long "parallel"
      <> help "Run the Parallel Engine"
     )
+
+-- | Print options for interpreter
+interpPrintOptions :: Parser IT.PrintConfig
+interpPrintOptions = flag (IT.PrintConfig True False True False True True True True)
+                       (IT.PrintConfig True True  True True  True True True True)
+                       (long "verbose"
+                       <> short 'v'
+                       <> help "Verbose interpreter printout")
 
 -- | Printing options
 printOptions :: Parser Mode
@@ -309,10 +320,11 @@ instance Pretty Mode where
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr par) =
+  prettyLines (Batch net env expr par print) =
     ["Batch"] ++ (indent 3 $ ["Network: " ++ show net] ++ prettySysEnv env 
                           ++ ["Expression: " ++ show expr]
-                          ++ ["Parallel: " ++ show par])
+                          ++ ["Parallel: " ++ show par]
+                          ++ ["Print: " ++ show print])
   
   prettyLines v = [show v]
 
