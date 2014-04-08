@@ -450,12 +450,10 @@ namespace K3
     {}
 
     void addEndpoint(Identifier id, EndpointDetails details) {
-      if ( !externalEndpointId(id) ) {
-        addEndpoint(id, details, internalEndpoints);
+      if ( externalEndpointId(id) ) {
+        addEndpoint(id, details, externalEndpoints);
       } else {
-        string errorMsg = "Invalid internal endpoint identifier";
-        if ( epsLogger ) { epsLogger->logAt(trivial::error, errorMsg); }
-        throw EndpointException(errorMsg);
+        addEndpoint(id, details, internalEndpoints);
       }
     }
 
