@@ -1,6 +1,6 @@
 #include <string>
 #include <boost/filesystem.hpp>
-#include "FileDataspace.hpp"
+#include <dataspace/FileDataspace.hpp>
 
 static const boost::filesystem::path rootDataPath = "_DATA";
 

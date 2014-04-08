@@ -2,7 +2,7 @@
 
 //#include "xUnit++/xUnit++.h"
 
-#include "FileDataspace.hpp"
+#include <dataspace/FileDataspace.hpp>
 
 template<typename DS>
 bool containsDS(DS ds, const K3::Value& val)
