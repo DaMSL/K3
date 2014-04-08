@@ -1,9 +1,0 @@
-declare a : mut int = 0
-
-trigger t : option int = \x -> (
-  case x of { Some y  -> a = a + y }
-            { None    -> () }
-)
-
-source s1 : option int = value Some 5
-feed s1 |> t

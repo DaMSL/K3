@@ -196,6 +196,16 @@ comparison op a b = do
   b' <- expression b
   op a' b'
 
+-- | Common string operation handling.
+textual :: (String -> String -> String)
+        -> K3 Expression -> K3 Expression -> Interpretation Value
+textual op a b = do
+  a' <- expression a
+  b' <- expression b
+  case (a', b') of 
+    (VString s1, VString s2) -> return . VString $ op s1 s2
+    _ -> throwE $ RunTimeTypeError "Invalid String Operation"
+
 -- | Interpretation of unary operators.
 unary :: Operator -> K3 Expression -> Interpretation Value
 
@@ -224,17 +234,20 @@ binary OMul = numeric (*)
 binary ODiv = numericExceptZero div div (/)
 binary OMod = numericExceptZero mod mod mod'
 
--- | Logical Operators
+-- | Logical operators
 binary OAnd = logic (&&)
 binary OOr  = logic (||)
 
--- | Comparison Operators
+-- | Comparison operators
 binary OEqu = comparison valueEq
 binary ONeq = comparison valueNeq
 binary OLth = comparison valueLt
 binary OLeq = comparison valueLte
 binary OGth = comparison valueGt
 binary OGeq = comparison valueGte
+
+-- | String operators
+binary OConcat = textual (++)
 
 -- | Function Application
 binary OApp = \f x -> do
@@ -259,7 +272,7 @@ binary OSnd = \target x -> do
 -- | Sequential expressions
 binary OSeq = \e1 e2 -> expression e1 >> expression e2
 
-binary _ = \_ _ -> throwE $ RunTimeInterpretationError "Unreachable"
+binary _ = \_ _ -> throwE $ RunTimeInterpretationError "Invalid binary operation"
 
 -- | Interpretation of Expressions
 expression :: K3 Expression -> Interpretation Value
@@ -285,7 +298,7 @@ expression e_ = traceExpression $ do
 
     prettyWatchedVar :: Int -> Identifier -> Interpretation ()
     prettyWatchedVar w i =
-      lookupE i >>= liftEngine . prettyIEnvEntry
+      lookupE i >>= liftEngine . prettyIEnvEntry defaultPrintConfig
                 >>= liftIO . putStrLn . ((i ++ replicate (max (w - length i) 0) ' '  ++ " => ") ++)
 
     -- TODO: dataspace bind aliases
