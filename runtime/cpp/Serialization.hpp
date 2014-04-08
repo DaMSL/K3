@@ -11,6 +11,7 @@
 namespace K3 {
 
   using std::istringstream;
+  using std::make_shared;
   using std::ostringstream;
   using std::shared_ptr;
   using std::string;
