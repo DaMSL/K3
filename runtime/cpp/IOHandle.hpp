@@ -25,6 +25,7 @@ namespace K3
 
     IOHandle(shared_ptr<Codec> cdec) : LogMT("IOHandle"), codec(cdec) {}
 
+    virtual bool isInput() = 0;
     virtual bool hasRead() = 0;
     virtual shared_ptr<Value> doRead() = 0;
 
@@ -144,17 +145,19 @@ namespace K3
 
     template<typename Source>
     StreamHandle(shared_ptr<Codec> cdec, Input i, Source& src)
-      : LogMT("StreamHandle"), IOHandle(cdec)
+      : LogMT("StreamHandle"), IOHandle(cdec), isInput_(true)
     {
       inImpl = shared_ptr<IStreamHandle>(new IStreamHandle(cdec, src));
     }
     
     template<typename Sink>
     StreamHandle(shared_ptr<Codec>  cdec, Output o, Sink& sink)
-      : LogMT("StreamHandle"), IOHandle(cdec)
+      : LogMT("StreamHandle"), IOHandle(cdec), isInput_(false)
     {
       outImpl = shared_ptr<OStreamHandle>(new OStreamHandle(cdec, sink));
     }
+
+    bool isInput() { return isInput_; } 
 
     bool hasRead()  { 
       bool r = false;
@@ -194,6 +197,7 @@ namespace K3
   protected:
     shared_ptr<IStreamHandle> inImpl;
     shared_ptr<OStreamHandle> outImpl;
+    bool isInput_;
   };
 
 
@@ -205,17 +209,18 @@ namespace K3
     struct Stderr {};
 
     BuiltinHandle(shared_ptr<Codec> cdec, Stdin s)
-      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Input(), cin)
-    {}
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Input(), cin), isInput_(true)
+    {} 
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stdout s)
-      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cout)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cout), isInput_(false)
     {}
     
     BuiltinHandle(shared_ptr<Codec> cdec, Stderr s)
-      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cerr)
+      : LogMT("BuiltinHandle"), StreamHandle(cdec, StreamHandle::Output(), cerr), isInput_(false)
     {}
 
+    bool isInput() { return isInput_; }
     bool builtin () { return true; }
     bool file() { return false; }
 
@@ -228,6 +233,8 @@ namespace K3
     {
       return make_tuple(shared_ptr<Codec>(), shared_ptr<Net::NConnection>());
     }
+  protected:
+    bool isInput_;
   };
 
   class FileHandle : public StreamHandle 
@@ -263,13 +270,14 @@ namespace K3
   {
   public:
     NetworkHandle(shared_ptr<Codec> cdec, shared_ptr<Net::NConnection> c) 
-      : LogMT("NetworkHandle"), connection(c), IOHandle(cdec)
+      : LogMT("NetworkHandle"), connection(c), IOHandle(cdec), isInput_(false)
     {}
     
     NetworkHandle(shared_ptr<Codec> cdec, shared_ptr<Net::NEndpoint> e)
-      : LogMT("NetworkHandle"), endpoint(e), IOHandle(cdec)
+      : LogMT("NetworkHandle"), endpoint(e), IOHandle(cdec), isInput_(false)
     {}
 
+    bool isInput() { return isInput_; }
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
       return false;
@@ -319,6 +327,7 @@ namespace K3
   protected:
     shared_ptr<Net::NConnection> connection;
     shared_ptr<Net::NEndpoint> endpoint;
+    bool isInput_;
   };
 }
 

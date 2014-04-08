@@ -252,7 +252,7 @@ data Terminate = Off | FinishOne | FinishAll
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
 
--- | Each backend provides must provide a message processor which can handle the initialization of
+-- | Each backend provider must provide a message processor which can handle the initialization of
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
 data MessageProcessor prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
