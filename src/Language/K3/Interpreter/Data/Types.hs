@@ -221,13 +221,26 @@ data ITracer = ITracer { stackTrace   :: [(Span, UID)]
                        , watchedVars  :: [(UID, [Identifier])] }
                 deriving (Eq, Read, Show)
 
+-- Configuration for the kind of printing we want to do
+data PrintConfig = PrintConfig { 
+                     printEnv              :: Bool
+                   , printEnvNamespace     :: Bool
+                   , printEnvDataspace     :: Bool
+                   , printEnvRealizationId :: Bool
+                   , printAnnotations      :: Bool
+                   , printStaticEnv        :: Bool
+                   , printProxyStack       :: Bool
+                   , printTracer           :: Bool
+                   } deriving (Eq, Read, Show)
+
 -- | Type declaration for an Interpretation's state.
-data IState = IState { getGlobals    :: Globals
-                     , getEnv        :: IEnvironment Value
-                     , getAnnotEnv   :: AEnvironment Value
-                     , getStaticEnv  :: SEnvironment Value
-                     , getProxyStack :: ProxyPathStack
-                     , getTracer     :: ITracer }
+data IState = IState { getGlobals     :: Globals
+                     , getEnv         :: IEnvironment Value
+                     , getAnnotEnv    :: AEnvironment Value
+                     , getStaticEnv   :: SEnvironment Value
+                     , getProxyStack  :: ProxyPathStack
+                     , getTracer      :: ITracer 
+                     , getPrintConfig :: PrintConfig}
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)

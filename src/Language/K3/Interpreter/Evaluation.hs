@@ -298,7 +298,7 @@ expression e_ = traceExpression $ do
 
     prettyWatchedVar :: Int -> Identifier -> Interpretation ()
     prettyWatchedVar w i =
-      lookupE i >>= liftEngine . prettyIEnvEntry
+      lookupE i >>= liftEngine . prettyIEnvEntry defaultPrintConfig
                 >>= liftIO . putStrLn . ((i ++ replicate (max (w - length i) 0) ' '  ++ " => ") ++)
 
     -- TODO: dataspace bind aliases
