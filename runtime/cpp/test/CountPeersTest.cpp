@@ -129,7 +129,13 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   service_threads->add_thread(t2.get());
   service_threads->add_thread(t3.get());
 
-  boost::this_thread::sleep_for( boost::chrono::seconds(3) );
+  int timeout = 3;
+  int i = 0;
+  int desired = 3;
+  while ((K3::nodeCounter < desired) && i < timeout) {
+    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+    i++;
+  }
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
   engine3->forceTerminateEngine();
@@ -139,10 +145,10 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   service_threads->remove_thread(t3.get());
 
   // Check the result
-  Assert.Equal(3, K3::nodeCounter);
+  Assert.Equal(desired, K3::nodeCounter);
 }
 
-FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k") {
+FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3 million") {
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
@@ -164,7 +170,7 @@ FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k")
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
   K3::Message m3 = K3::Message(K3::peer3, "join", "()");
-  for (int i = 0; i < 100000; i++) {
+  for (int i = 0; i < 1000000; i++) {
     engine1->send(m1);
     engine2->send(m2);
     engine3->send(m3);
@@ -179,7 +185,14 @@ FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k")
   service_threads->add_thread(t2.get());
   service_threads->add_thread(t3.get());
 
-  boost::this_thread::sleep_for( boost::chrono::seconds(15) );
+  int timeout = 120;
+  int i =0;
+  int desired = 3000000;
+  while ((K3::nodeCounter < desired) && i < timeout) {
+    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+    i++;
+  }
+
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
   engine3->forceTerminateEngine();
@@ -189,5 +202,5 @@ FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k")
   service_threads->remove_thread(t3.get());
 
   // Check the result
-  Assert.Equal(300000, K3::nodeCounter);
+  Assert.Equal(desired, K3::nodeCounter);
 }

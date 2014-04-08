@@ -46,8 +46,10 @@ prettyIEnvEntry (MVal mv) = liftIO (readMVar mv) >>= return . pretty
 
 prettyIEnvM :: IEnvironment Value -> EngineM Value [String]
 prettyIEnvM env = do
-    nWidth   <- return . maximum . map (length . fst) =<< liftIO (HT.toList env)
-    bindings <- mapM (prettyEnvEntries nWidth) . sortBy (compare `on` fst) =<< liftIO (HT.toList env)
+    env_list <- liftIO $ HT.toList env
+    let nWidth = maximum $ map (length . fst) env_list
+        sorted_env = sortBy (compare `on` fst) env_list
+    bindings <- mapM (prettyEnvEntries nWidth) sorted_env
     return $ concat bindings 
   where 
     prettyEnvEntries w (n, eel) = do
