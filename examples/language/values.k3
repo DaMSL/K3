@@ -1,0 +1,14 @@
+declare myOpt  : option int                            = Some 1
+declare myInd  : ind int                               = ind  2
+declare myTup  : (bool, int, real, string)             = (true, 1, 2.0, "foo")
+declare myRec  : {_1:bool, _2:int, _3:real, _4:string} = {_1:true, _2:1, _3:2.0, _4:"foo"}
+
+declare myNst1 : option ind int                   = Some ind 1
+declare myNst2 : ind (option int, (real, string)) = ind (Some 1, (2.0, "bar"))
+
+declare myNstRec1 : {_1:int, _2:(real, string)}         = {_1:1, _2:(2.0,"baz")}
+declare myNstRec2 : {_1:int, _2:{_21:real, _22:string}} = {_1:1, _2:{_21:2.0, _22:"qux"}}
+
+trigger t : () = \_ -> ()
+source s1 : () = value ()
+feed s1 |> t
