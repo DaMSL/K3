@@ -2,11 +2,12 @@
 #include <boost/filesystem.hpp>
 #include "FileDataspace.hpp"
 
-static const boost::filesystem::path rootDataPath = "__DATA";
+static const boost::filesystem::path rootDataPath = "_DATA";
 
 boost::filesystem::path engineDataPath(K3::Engine * engine)
 {
     std::string addrString = K3::addressAsString(engine->getAddress());
+    std::replace(begin(addrString), end(addrString), ':', '_');
     return (rootDataPath / addrString);
 }
 
