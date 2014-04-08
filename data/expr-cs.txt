@@ -1,2 +1,2 @@
-{CNS={},ANS={},InMemoryDS=[{word="foo"},{word="bar"},{word="baz"}],Collection}
-{CNS={},ANS={},InMemoryDS=[{word="this"},{word="is"},{word="awesome"}],Collection}
+{CNS={},ANS={},InMemoryDS=[{word=("foo",MemImmut)},{word=("bar",MemImmut)},{word=("baz",MemImmut)}],Collection}
+{CNS={},ANS={},InMemoryDS=[{word=("this",MemImmut)},{word=("is",MemImmut)},{word=("awesome",MemImmut)}],Collection}
