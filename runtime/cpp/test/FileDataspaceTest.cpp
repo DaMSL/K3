@@ -2,7 +2,7 @@
 
 //#include "xUnit++/xUnit++.h"
 
-#include <dataspace/FileDataspace.hpp>
+#include <dataspace/FileDS.hpp>
 
 template<typename DS>
 bool containsDS(DS ds, const K3::Value& val)
@@ -36,7 +36,7 @@ class ExtraElementsException : public std::runtime_error
 {
     public:
     ExtraElementsException(unsigned i)
-        : std::runtime_error("Dataspace had " + toString(i) + " extra elements")
+        : std::runtime_error("Dataspace had " + K3::toString(i) + " extra elements")
     { }
 };
 
@@ -166,7 +166,7 @@ bool testFold(std::shared_ptr<K3::Engine> engine)
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
     unsigned test_sum = test_ds.template fold<unsigned>(
             [](unsigned sum, K3::Value val) {
-                sum += fromString<unsigned>(val);
+                sum += K3::fromString<unsigned>(val);
                 return sum;
             }, 0);
     return test_sum == 114;
@@ -178,7 +178,7 @@ bool testMap(std::shared_ptr<K3::Engine> engine)
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
     DS mapped_ds = test_ds.map(
             [](K3::Value val) {
-                return toString(fromString<int>(val) + 5);
+                return K3::toString(K3::fromString<int>(val) + 5);
             });
     std::vector<K3::Value> mapped_answer({"6", "7", "8", "9", "9", "105"});
     return compareDataspaceToList(mapped_ds, mapped_answer);
@@ -189,7 +189,7 @@ bool testFilter(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
     DS filtered = test_ds.filter([](K3::Value val) {
-            return fromString<int>(val) > 50;
+            return K3::fromString<int>(val) > 50;
             });
     std::vector<K3::Value> filtered_answer({"100"});
     return compareDataspaceToList(filtered, filtered_answer);
@@ -349,23 +349,23 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
 //SUITE("File Dataspace") {
 int main()
 {
-    MAKE_TEST( "EmptyPeek", emptyPeek, FileDataspace)
-    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, FileDataspace)
-    MAKE_TEST( "Peek Test", testPeek, FileDataspace)
-    MAKE_TEST( "Insert Test", testInsert, FileDataspace)
-    MAKE_TEST( "Delete Test", testDelete, FileDataspace)
-    MAKE_TEST( "Delete of missing element Test", testMissingDelete, FileDataspace)
-    MAKE_TEST( "Update Test", testUpdate, FileDataspace)
-    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, FileDataspace)
-    MAKE_TEST( "Update missing element Test", testUpdateMissing, FileDataspace)
-    MAKE_TEST( "Fold Test", testFold, FileDataspace)
-    MAKE_TEST( "Map Test", testMap, FileDataspace)
-    MAKE_TEST( "Filter Test", testFilter, FileDataspace)
-    MAKE_TEST( "Combine Test", testCombine, FileDataspace)
-    MAKE_TEST( "Combine with Self Test", testCombineSelf, FileDataspace)
-    MAKE_TEST( "Split Test", testSplit, FileDataspace)
-    //MAKE_TEST( "Insert inside map", insertInsideMap, FileDataspace)
+    MAKE_TEST( "EmptyPeek", emptyPeek, K3::FileDS)
+    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, K3::FileDS)
+    MAKE_TEST( "Peek Test", testPeek, K3::FileDS)
+    MAKE_TEST( "Insert Test", testInsert, K3::FileDS)
+    MAKE_TEST( "Delete Test", testDelete, K3::FileDS)
+    MAKE_TEST( "Delete of missing element Test", testMissingDelete, K3::FileDS)
+    MAKE_TEST( "Update Test", testUpdate, K3::FileDS)
+    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, K3::FileDS)
+    MAKE_TEST( "Update missing element Test", testUpdateMissing, K3::FileDS)
+    MAKE_TEST( "Fold Test", testFold, K3::FileDS)
+    MAKE_TEST( "Map Test", testMap, K3::FileDS)
+    MAKE_TEST( "Filter Test", testFilter, K3::FileDS)
+    MAKE_TEST( "Combine Test", testCombine, K3::FileDS)
+    MAKE_TEST( "Combine with Self Test", testCombineSelf, K3::FileDS)
+    MAKE_TEST( "Split Test", testSplit, K3::FileDS)
+    //MAKE_TEST( "Insert inside map", insertInsideMap, K3::FileDS)
 }
 
 //MAKE_TEST_GROUP("List Dataspace", ListDataspace)
-//MAKE_TEST_GROUP("File Dataspace", FileDataspace)
+//MAKE_TEST_GROUP("File Dataspace", K3::FileDS)
