@@ -19,22 +19,25 @@
 #include <tuple>
 #include <list>
 
-namespace K3 {
-    template <typename E> using chunk = std::list<E>;
+#include "test/FileDataspace.hpp"
 
+namespace K3 {
     template <typename E>
     class Collection {
+        typedef ListDataspace Dataspace;
+        std::shared_ptr<Dataspace> __dataspace;
+
         public:
             Collection() {}
-            Collection(const chunk<E>& v): __data(v) {}
-            Collection(const Collection& c): __data(c.__data) {}
-            Collection(Collection&& c): __data(c.__data) {}
+            Collection(std::shared_ptr<Dataspace> new_ds): __dataspace(new_ds) {}
+            Collection(const Collection& c): __dataspace(std::make_shared<Dataspace>(c.__dataspace)) {}
+            Collection(Collection&& c): __dataspace(std::move(c.__dataspace)) {}
 
             std::shared_ptr<E> peek();
 
-            void insert_basic(const E&);
-            void delete_first(const E&);
-            void update_first(const E&, const E&);
+            void insert(const E&);
+            void erase(const E&);
+            void update(const E&, const E&);
 
             std::tuple<Collection<E>, Collection<E>> split();
             Collection<E> combine(Collection<E>);
@@ -54,115 +57,68 @@ namespace K3 {
 
             template <typename T>
             Collection<T> ext(std::function<Collection<T>(E)>);
-
-            chunk<E> __data;
     };
 
     template <typename E>
     std::shared_ptr<E> Collection<E>::peek() {
-        if (!__data.empty()) {
-            return std::shared_ptr<E>(__data.front());
-        } else {
-            return nullptr;
-        }
+        return __dataspace->peek();
     }
 
     template <typename E>
-    void Collection<E>::insert_basic(const E& e) {
-        __data.push_back(e);
+    void Collection<E>::insert(const E& e) {
+        __dataspace->insert(e);
     }
 
     template <typename E>
-    void Collection<E>::delete_first(const E& e) {
-        auto location = find(begin(__data), end(__data), e);
-
-        if (location != end(__data)) {
-            __data.erase(location);
-        }
-
-        return;
+    void Collection<E>::erase(const E& e) {
+        __dataspace->erase(e);
     }
 
     template <typename E>
-    void Collection<E>::update_first(const E& prev, const E& next) {
-        auto location = find(begin(__data), end(__data), prev);
-
-        if (location != end(__data)) {
-            *location = next;
-        }
-
-        return;
+    void Collection<E>::update(const E& prev, const E& next) {
+        __dataspace->update(prev, next);
     }
 
     template <typename E>
     std::tuple<Collection<E>, Collection<E>> Collection<E>::split() {
-        if (__data.size() < 2) {
-            // First of the pair is a copy of the original collection, the second is empty.
-            return make_tuple(Collection<E>(*this), Collection<E>());
-        } else {
-            typename chunk<E>::iterator s = begin(__data);
-            for (int i = 0; i < __data.size()/2; ++i, ++s);
-
-            chunk<E> left(begin(__data), s);
-            chunk<E> right(s, end(__data));
-
-            return make_tuple(Collection(left), Collection(right));
-        }
+        std::tuple<Dataspace, Dataspace> ds_tuple = __dataspace->split();
+        // The dataspaces in this tuple should be move-constructed into
+        // their new collections
+        return std::make_tuple(
+                Collection<E>(std::make_shared<Dataspace>(std::move(std::get<0>(ds_tuple)))),
+                Collection<E>(std::make_shared<Dataspace>(std::move(std::get<1>(ds_tuple))))
+              );
     }
 
     template <typename E>
     Collection<E> Collection<E>::combine(Collection<E> other) {
-        chunk<E> result;
-
-        result.insert(end(result), begin(__data), end(__data));
-        result.insert(end(result), begin(other.__data), end(other.__data));
-
+        Dataspace new_ds = __dataspace->combine(other.__dataspace);
+        Collection<E> result(std::make_shared<Dataspace>(std::move(new_ds)));
         return result;
     }
 
     template <typename E>
     void Collection<E>::iterate(std::function<void(E)> f) {
-        for (auto i: __data) {
-            f(i);
-        }
-
-        return;
+        __dataspace->iterate(f);
     }
 
     template <typename E>
     template <typename T>
     Collection<T> Collection<E>::map(std::function<T(E)> f) {
-        chunk<T> v;
-        v.reserve(__data.size());
-
-        for (auto i : __data) {
-            v.push_back(f(i));
-        }
-
-        return Collection<T>(v);
+        Dataspace new_ds = __dataspace->map(f);
+        return Collection<T>(std::make_shared<Dataspace>(std::move(new_ds)));
     }
 
     template <typename E>
     Collection<E> Collection<E>::filter(std::function<bool(E)> p) {
-        chunk<E> v;
-
-        for (auto i: __data) {
-            if (p(i)) {
-                v.push_back(i);
-            }
-        }
-
-        return Collection(v);
+        Dataspace new_ds = __dataspace->filter(p);
+        return Collection<E>(std::make_shared<Dataspace>(std::move(new_ds)));
     }
 
     template <typename E>
     template <typename Z>
     Z Collection<E>::fold(std::function<Z(Z, E)> f, Z z) {
-        for (auto i: __data) {
-            z = f(z, i);
-        }
-
-        return z;
+        return __dataspace->fold(f, z);
     }
 
     template <typename E>
