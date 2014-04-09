@@ -48,20 +48,20 @@ namespace K3
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
 
-  int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
+  static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
+  static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
-  string internalEndpointPrefix() { return string("__");  }
+  static inline string internalEndpointPrefix() { return string("__");  }
 
-  Identifier connectionId(Address& addr) {
+  static inline Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
   }
 
-  Identifier peerEndpointId(Address& addr) {
+  static inline Identifier peerEndpointId(Address& addr) {
     return internalEndpointPrefix() + "_node_" + addressAsString(addr);
   }
 
-  bool externalEndpointId(Identifier& id) {
+  static inline bool externalEndpointId(Identifier& id) {
     string pfx = internalEndpointPrefix();
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }

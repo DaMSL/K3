@@ -25,7 +25,6 @@ namespace K3 {
   //-------------------
   // Utility functions
 
-  // TODO Paul asks, should this be inlined?
   static inline Identifier listenerId(Address& addr) {
     return string("__") + "_listener_" + addressAsString(addr);
   }
@@ -722,12 +721,10 @@ namespace K3 {
       shared_ptr<IOHandle> r;
       switch (m) {
         case IOMode::Read:
-          r = make_shared<FileHandle>(
-                FileHandle(codec, make_shared<file_source>(file_source(path)), StreamHandle::Input()));
+          r = make_shared<FileHandle>(codec, make_shared<file_source>(path), StreamHandle::Input());
           break;
         case IOMode::Write:
-          r = make_shared<FileHandle>(
-                FileHandle(codec, make_shared<file_sink>(file_sink(path)), StreamHandle::Output()));
+          r = make_shared<FileHandle>(codec, make_shared<file_sink>(path), StreamHandle::Output());
           break;
         case IOMode::Append:
         case IOMode::ReadWrite:
