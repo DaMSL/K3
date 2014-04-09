@@ -88,8 +88,10 @@ namespace K3
   shared_ptr<Value> peekFile(Engine * engine, const Identifier& file_id)
   {
       openCollectionFile(engine, file_id, IOMode::Read);
-      if (!engine->hasRead(file_id))
+      if (!engine->hasRead(file_id)) {
+          engine->close(file_id);
           return shared_ptr<Value>(nullptr);
+      }
       shared_ptr<Value> result = engine->doReadExternal(file_id);
       engine->close(file_id);
       return result;
