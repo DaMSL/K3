@@ -23,7 +23,7 @@ namespace K3 {
   template <template <class> class D, class E>
   class Collection: public D<E> {
     public:
-      Collection(): D<E>() {}
+      Collection();
 
       template <template <class> class F>
       Collection(const Collection<F, E>);
@@ -45,7 +45,10 @@ namespace K3 {
       std::tuple<Collection<D, E>, Collection<D, E>> split();
 
       template <template <class> class F>
-      Collection<D, E> combine(Collection<F, E>);
+      Collection<D, E> combine(const Collection<F, E>&);
+
+      template <template <class> class F>
+      Collection<D, E> combine(Collection<F, E>&&);
 
       template <class T>
       Collection<D, T> map(std::function<T(E)>);
