@@ -4,10 +4,14 @@
 -- | Pretty Printing for K3 Trees.
 module Language.K3.Utils.Pretty (
     pretty,
+    prettyPC,
     boxToString,
     removeTrailingWhitespace,
 
+    PrintConfig(..),
+    defaultPrintConfig,
     Pretty(..),
+    PrettyPC(..),
 
     drawSubTrees,
     drawAnnotations,
@@ -42,6 +46,10 @@ import Data.Char
 pretty :: Pretty a => a -> String
 pretty = boxToString . prettyLines
 
+-- Print according to a printConfig
+prettyPC :: PrettyPC a => PrintConfig -> a -> String
+prettyPC pc a = boxToString $ prettyLinesPC pc a
+
 boxToString :: [String] -> String
 boxToString = unlines . map removeTrailingWhitespace
 
@@ -53,8 +61,30 @@ removeTrailingWhitespace s = case s of
             then []
             else c:s''
 
+-- Configuration for the kind of printing we want to do
+data PrintConfig = PrintConfig { 
+                     printVerboseTypes  :: Bool
+                   , printEnv           :: Bool
+                   , printNamespace     :: Bool
+                   , printDataspace     :: Bool
+                   , printRealizationId :: Bool
+                   , printFunctions     :: Bool
+                   , printAnnotations   :: Bool
+                   , printStaticEnv     :: Bool
+                   , printProxyStack    :: Bool
+                   , printTracer        :: Bool
+                   , printQualifiers    :: Bool
+                   } deriving (Eq, Read, Show)
+
+defaultPrintConfig :: PrintConfig
+defaultPrintConfig  = PrintConfig True True True True True True True True True True True
+
 class Pretty a where
     prettyLines :: a -> [String]
+
+-- Pretty printing as directed by a PrintConfig data structure
+class Pretty a => PrettyPC a where
+    prettyLinesPC :: PrintConfig -> a -> [String]
 
 drawSubTrees :: Pretty a => [a] -> [String]
 drawSubTrees [] = []

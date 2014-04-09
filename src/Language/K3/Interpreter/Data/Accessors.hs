@@ -26,6 +26,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Runtime.Engine
 
+import Language.K3.Utils.Pretty (PrintConfig(..), defaultPrintConfig)
+
 {- Constants and simple value constructors. -}
 vunit :: Value
 vunit = VTuple []
@@ -256,9 +258,6 @@ syncEnvIO env = emptyEnvIO >>= \nenv ->
   where syncEntry e = valueQOfEntryIO e >>= \(v,q) -> syncCollectionIO v >>= flip entryOfValueQIO q
 
 {- State and result accessors -}
-
-defaultPrintConfig :: PrintConfig
-defaultPrintConfig  = PrintConfig True True True True True True True True
 
 emptyProxyStack :: ProxyPathStack
 emptyProxyStack = []

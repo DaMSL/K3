@@ -21,6 +21,8 @@ import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
 
+import Language.K3.Utils.Pretty(PrintConfig)
+
 -- | K3 Values
 --   Values are pure, allowing their definition as Eq and Ord instances.
 --
@@ -220,18 +222,6 @@ data ITracer = ITracer { stackTrace   :: [(Span, UID)]
                        , watchedExprs :: [UID]
                        , watchedVars  :: [(UID, [Identifier])] }
                 deriving (Eq, Read, Show)
-
--- Configuration for the kind of printing we want to do
-data PrintConfig = PrintConfig { 
-                     printEnv              :: Bool
-                   , printEnvNamespace     :: Bool
-                   , printEnvDataspace     :: Bool
-                   , printEnvRealizationId :: Bool
-                   , printAnnotations      :: Bool
-                   , printStaticEnv        :: Bool
-                   , printProxyStack       :: Bool
-                   , printTracer           :: Bool
-                   } deriving (Eq, Read, Show)
 
 -- | Type declaration for an Interpretation's state.
 data IState = IState { getGlobals     :: Globals

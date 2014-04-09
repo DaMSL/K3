@@ -43,15 +43,16 @@ isFunction _ = False
 -- Print a value, obeying the instructions in the printconfig structure
 valuePrint :: PrintConfig -> Value -> String
 valuePrint pc (VCollection (_, c)) = "VCollection (Collection {" ++ 
-    if printEnvNamespace pc then "namespace = " ++ (show $ namespace c) ++ ", " else "" ++
-    if printEnvDataspace pc then "dataspace = " ++ (show $ dataspace c) ++ ", " else "" ++
-    if printEnvRealizationId pc then "realizationId = " ++ (show $ realizationId $ c) ++ ", " else "" ++
+    if printNamespace pc then "namespace = " ++ (show $ namespace c) ++ ", " else "" ++
+    if printDataspace pc then "dataspace = " ++ (show $ dataspace c) ++ ", " else "" ++
+    if printRealizationId pc then "realizationId = " ++ (show $ realizationId $ c) ++ ", " else "" ++
     "})"
+valuePrint pc v@(VFunction _) = if printFunctions pc then pretty v else ""
 valuePrint _ v = pretty v
 
 prettyIEnvEntry :: PrintConfig -> IEnvEntry Value -> EngineM Value String
-prettyIEnvEntry pc (IVal v)  = return $ valuePrint pc v
-prettyIEnvEntry pc (MVal mv) = liftIO (readMVar mv) >>= return . valuePrint pc
+prettyIEnvEntry pc (IVal v)  = return $ prettyPC pc v
+prettyIEnvEntry pc (MVal mv) = liftIO (readMVar mv) >>= return . prettyPC pc
 
 prettyIEnvM :: PrintConfig -> IEnvironment Value -> EngineM Value [String]
 prettyIEnvM pc env = do
@@ -62,12 +63,18 @@ prettyIEnvM pc env = do
     return $ concat bindings 
   where 
     prettyEnvEntries w (n, eel) = do
-      sl <- mapM (prettyIEnvEntry pc) eel
+      sl <- foldM checkAndPretty [] eel
       return . concat $ map (shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70) sl
 
     prettyName w n    = (suffixPadTo w n) ++ " => "
     suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
     prefixPadTo len n = replicate (max (len - length n) 0) ' ' ++ n
+    -- If we have an empty string, drop this value
+    checkAndPretty acc e = do
+      str <- prettyIEnvEntry pc e
+      case str of
+        "" -> return acc
+        _  -> return $ acc++[str]
 
 prettyIStateM :: IState -> EngineM Value [String]
 prettyIStateM st = do

@@ -220,6 +220,73 @@ instance Show (AEnvironment Value) where
 
 deriving instance Show ProxyStep
 
+-- | Class to handle Show with a PrintConfig
+class Show a => ShowPC a where
+  showPC :: PrintConfig -> a -> String
+
+-- | A Show class that handles PrintConfig
+
+showPCTag :: ShowPC a => PrintConfig -> Bool -> String -> a -> String
+showPCTag pc regular s v = showPCTagF s $ if regular then show v else showPC pc v
+
+showPCTagF :: String -> String -> String
+showPCTagF s s' = paren $ s++" "++s'
+  where
+    paren x = '(':x++")"
+
+tag :: PrintConfig -> Bool
+tag = printVerboseTypes
+
+instance ShowPC Value where
+  showPC pc (VBool v)    | tag pc = showPCTag pc True "VBool" v
+  showPC pc (VBool v)             = show v
+  showPC pc (VByte v)    | tag pc = showPCTag pc True "VByte" v
+  showPC pc (VByte v)             = show v
+  showPC pc (VInt v)     | tag pc = showPCTag pc True "VInt" v
+  showPC pc (VInt v)              = show v
+  showPC pc (VReal v)    | tag pc = showPCTag pc True "VReal" v
+  showPC pc (VReal v)             = show v
+  showPC pc (VString v)  | tag pc = showPCTag pc True "VString" v
+  showPC pc (VString v)           = show v
+  showPC pc (VOption v)  | tag pc = showPCTag pc False "VOption" v
+  showPC pc (VOption v)           = showPC pc  v
+  showPC pc (VTuple v)   | tag pc = showPCTag pc False "VTuple" v
+  showPC pc (VTuple v)            = showPC pc v
+  showPC pc (VRecord v)  | tag pc = showPCTag pc False "VRecord" v
+  showPC pc (VRecord v)           = showPC pc  v
+  showPC pc (VAddress v) | tag pc = showPCTag pc True "VAddress" v  
+  showPC pc (VAddress v)          = show v
+  showPC pc (VCollection (_,c))   = showPCTag pc True "VCollection" c
+
+  showPC pc (VIndirection (_,q,tg))     = 
+    showPCTagF "VIndirection" $
+      if printQualifiers pc then "<" ++ show q ++ ", " ++ show tg ++ ">"
+      else "<" ++ show tg ++ ">"
+  showPC pc (VFunction (_,_,tg)) | printFunctions pc = showPCTagF "VFunction" $ "<" ++ show tg ++ ">"
+  showPC pc (VFunction (_,_,tg))        = ""
+  showPC pc (VTrigger _) | not $ printFunctions pc = ""
+  showPC pc (VTrigger (_, Nothing, tg)) = showPCTagF "VTrigger" $ "<uninitialized:" ++ (show tg) ++">"
+  showPC pc (VTrigger (_, Just _, tg))  = showPCTagF "VTrigger" $ "<function:" ++ (show tg) ++ ">"
+
+instance ShowPC (Collection Value) where
+  showPC pc (Collection ns ds cId) =
+    let name = if printVerboseTypes pc then "Collection " else ""
+        ns_ds = case (printNamespace pc, printDataspace pc) of
+          (True, True)  -> show ns ++ ", " ++ showPC pc ds
+          (True, False) -> show ns
+          (False, True) -> showPC pc ds
+          _             -> ""
+    showPCTagF (name ++ cid) $ ns_ds
+
+instance ShowPC (CollectionDataspace Value) where
+  showPC pc (InMemoryDs vl) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (PrimitiveMDS (MemDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (PrimitiveMDS (SeqDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (PrimitiveMDS (SetDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (PrimitiveMDS (SetDS(SetAsOrdListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (PrimitiveMDS (SortedMDS(BagAsOrdListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc x@(ExternalDS _) = show x
+  
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
 instance Read Value where
@@ -339,17 +406,40 @@ prettyMap m = concatMap (uncurry prettyEntry) mList
           prettyEntry x y   = [(suffixPadTo nWidth x) ++ " => "] %+ prettyLines y
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
+prettyMapPC :: (PrettyPC a) => PrintConfig -> Map Identifier a -> [String]
+prettyMapPC pc m = concatMap (uncurry prettyEntry) mList
+    where mList  = Map.toAscList m
+          nWidth = maximum . map (length . fst) $ mList
+          prettyEntry x y   = case prettyLinesPC pc y of
+            [] -> []
+            ls -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+          suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
+
 prettyAssocList :: (Pretty a) => [(Identifier, a)] -> [String]
 prettyAssocList l = concatMap (uncurry prettyEntry) l
     where nWidth            = maximum $ map (length . fst) l
           prettyEntry x y   = [(suffixPadTo nWidth x) ++ " => "] %+ prettyLines y
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
+prettyAssocListPC :: (PrettyPC a) => PrintConfig -> [(Identifier, a)] -> [String]
+prettyAssocListPC pc l = concatMap (uncurry prettyEntry) l
+    where nWidth            = maximum $ map (length . fst) l
+          prettyEntry x y   = case prettyLinesPC pc y of
+            [] -> []
+            ls -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+          suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
+
 instance Pretty Value where
   prettyLines v = [show v]
 
+instance PrettyPC Value where
+  prettyLinesPC pc v = [showPC pc v]
+
 instance Pretty [Value] where
   prettyLines vl = concatMap prettyLines vl
+
+instance PrettyPC [Value] where
+  prettyLinesPC pc vl = concatMap (prettyLinesPC pc) vl
 
 instance Pretty EntityTag where
   prettyLines v = [show v]
@@ -366,21 +456,49 @@ instance Pretty (NamedBindings Value) where
 instance Pretty (NamedMembers Value) where
   prettyLines nm = prettyMap nm
 
+instance PrettyPC (NamedMembers Value) where
+  -- No need to take the printConfig any further
+  prettyLinesPC pc nm = prettyMap nm
+
 instance Pretty [(Identifier, NamedMembers Value)] where
   prettyLines = prettyAssocList
+
+instance PrettyPC [(Identifier, NamedMembers Value)] where
+  prettyLinesPC = prettyAssocListPC
 
 instance Pretty (Collection Value) where
   prettyLines (Collection ns ds cId) =
     ["Collection " ++ cId] ++ (indent 2 $ prettyLines ns) ++ (indent 2 $ prettyLines ds) 
 
+instance PrettyPC (Collection Value) where
+  prettyLinesPC pc (Collection ns ds cId) =
+    let name = if printVerboseTypes pc then "Collection " else "" in
+    [name ++ cId] ++ (indent 2 $ prettyLinesPC pc ns) ++ (indent 2 $ prettyLinesPC pc ds) 
+
 instance Pretty (CollectionNamespace Value) where
   prettyLines (CollectionNamespace cns ans) =
     ["CollectionNamespace"] ++ (indent 2 $ prettyLines cns) ++ (indent 2 $ prettyLines ans)
+
+instance PrettyPC (CollectionNamespace Value) where
+  prettyLinesPC pc (CollectionNamespace cns ans) =
+    if printNamespace pc then 
+      let name = if printVerboseTypes pc then ["CollectionNameSpace"] else [] in
+      name ++ (indent 2 $ prettyLinesPC pc cns) ++ (indent 2 $ prettyLinesPC pc ans)
+    else []
 
 instance Pretty (CollectionDataspace Value) where
   prettyLines (InMemoryDS l)    = ["InMemoryDS"] ++ (indent 2 $ prettyLines l)
   prettyLines (InMemDS primMDS) = ["InMemDS"] ++ (indent 2 $ prettyLines primMDS) 
   prettyLines (ExternalDS (FileDataspace fId)) = ["ExternalDS (FileDataspace " ++ fId ++ ")"]
+
+instance PrettyPC (CollectionDataspace Value) where
+  prettyLinesPC pc (InMemoryDS l)    =
+    if printDataspace pc then ["InMemoryDS"] ++ (indent 2 $ prettyLinesPC pc l) else []
+
+  prettyLinesPC pc (InMemDS primMDS) = 
+    if printDataspace pc then ["InMemDS"]    ++ (indent 2 $ prettyLinesPC pc primMDS) else []
+
+  prettyLinesPC _ (ExternalDS (FileDataspace fId)) = ["ExternalDS (FileDataspace " ++ fId ++ ")"]
 
 instance Pretty (PrimitiveMDS Value) where
   prettyLines (MemDS    l) = ["MemDS"]    ++ (indent 2 $ prettyLines l)
@@ -388,9 +506,19 @@ instance Pretty (PrimitiveMDS Value) where
   prettyLines (SetDS    l) = ["SetDS"]    ++ (indent 2 $ prettyLines l)
   prettyLines (SortedDS l) = ["SortedDS"] ++ (indent 2 $ prettyLines l)
 
+instance PrettyPC (PrimitiveMDS Value) where
+  prettyLinesPC pc (MemDS    l) = ["MemDS"]    ++ (indent 2 $ prettyLinesPC pc l)
+  prettyLinesPC pc (SeqDS    l) = ["SeqDS"]    ++ (indent 2 $ prettyLinesPC pc l)
+  prettyLinesPC pc (SetDS    l) = ["SetDS"]    ++ (indent 2 $ prettyLinesPC pc l)
+  prettyLinesPC pc (SortedDS l) = ["SortedDS"] ++ (indent 2 $ prettyLinesPC pc l)
+
 deriving instance Pretty (ListMDS Value)
 deriving instance Pretty (SetAsOrdListMDS Value)
 deriving instance Pretty (BagAsOrdListMDS Value)
+
+deriving instance PrettyPC (ListMDS Value)
+deriving instance PrettyPC (SetAsOrdListMDS Value)
+deriving instance PrettyPC (BagAsOrdListMDS Value)
 
 instance Pretty (AEnvironment Value) where
   prettyLines (AEnvironment defs _) = ["AEnvironment"] ++ (indent 2 $ prettyLines defs)

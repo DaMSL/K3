@@ -41,6 +41,7 @@ import Language.K3.Interpreter.Builtins
 import Language.K3.Runtime.Engine
 
 import Language.K3.Utils.Logger
+import Language.K3.Utils.Pretty (defaultPrintConfig)
 
 $(loggingFunctions)
 
