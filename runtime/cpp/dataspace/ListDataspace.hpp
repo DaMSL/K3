@@ -7,13 +7,14 @@
 #include <Common.hpp>
 #include <Engine.hpp>
 
-// TODO: move into the K3 namespace.
-
-typedef K3::Value E;
-
-class ListDataspace
+namespace K3
 {
-    using chunk = std::list<E>;
+  using namespace std;
+  typedef Value E;
+
+  class ListDataspace
+  {
+    using chunk = list<E>;
 
     protected:
     chunk __data;
@@ -31,17 +32,17 @@ class ListDataspace
         : __data(other.__data)
     { }
     private:
-    ListDataspace(std::list<E> other)
+    ListDataspace(list<E> other)
         : __data(other)
     { }
 
     public:
-    std::shared_ptr<E> peek() const
+    shared_ptr<E> peek() const
     {
         if (__data.empty())
-            return std::shared_ptr<E>(nullptr);
+            return shared_ptr<E>(nullptr);
         else
-            return std::make_shared<E>(__data.front());
+            return make_shared<E>(__data.front());
     }
 
     void insert_basic(const E& e)
@@ -50,16 +51,16 @@ class ListDataspace
     }
     void delete_first(const E& e)
     {
-        auto location = std::find(begin(__data), end(__data), e);
+        auto location = std::find(std::begin(__data), std::end(__data), e);
 
-        if (location != end(__data)) {
+        if (location != std::end(__data)) {
             __data.erase(location);
         }
     }
     void update_first(const E& prev, const E& next) {
-        auto location = find(begin(__data), end(__data), prev);
+        auto location = std::find(std::begin(__data), std::end(__data), prev);
 
-        if (location != end(__data)) {
+        if (location != std::end(__data)) {
             *location = next;
         }
         else {
@@ -69,18 +70,18 @@ class ListDataspace
         return;
     }
 
-    std::tuple<ListDataspace, ListDataspace> split() {
+    tuple<ListDataspace, ListDataspace> split() {
         if (__data.size() < 2) {
             // First of the pair is a copy of the original collection, the second is empty.
-            return std::make_tuple(ListDataspace(*this), ListDataspace(chunk()));
+            return make_tuple(ListDataspace(*this), ListDataspace(chunk()));
         } else {
-            typename chunk::iterator s = begin(__data);
+            typename chunk::iterator s = std::begin(__data);
             for (unsigned i = 0; i < __data.size()/2; ++i, ++s);
 
-            chunk left(begin(__data), s);
-            chunk right(s, end(__data));
+            chunk left(std::begin(__data), s);
+            chunk right(s, std::end(__data));
 
-            return std::make_tuple(ListDataspace(left), ListDataspace(right));
+            return make_tuple(ListDataspace(left), ListDataspace(right));
         }
     }
 
@@ -88,8 +89,8 @@ class ListDataspace
     {
         chunk result;
 
-        result.insert(end(result), begin(__data), end(__data));
-        result.insert(end(result), begin(other.__data), end(other.__data));
+        result.insert(std::end(result), std::begin(__data), std::end(__data));
+        result.insert(std::end(result), std::begin(other.__data), std::end(other.__data));
 
         return result;
     }
@@ -138,4 +139,5 @@ class ListDataspace
 
         return z;
     }
+  };
 };
