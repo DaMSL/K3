@@ -507,6 +507,21 @@ namespace K3
       return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
     }
 
+    void logEndpoints() {
+      strict_lock<EndpointState> guard(*this);
+      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << "):";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
+      {
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
+      }
+
+      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << "):";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
+      {
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
+      }
+    }
+
   protected:
     shared_ptr<LogMT> epsLogger;
     shared_ptr<ConcurrentEndpointMap> internalEndpoints;

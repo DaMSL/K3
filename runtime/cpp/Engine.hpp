@@ -603,7 +603,11 @@ namespace K3 {
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
+        BOOST_LOG(*this) << "before adding the endpoint" << id;
+        endpoints->logEndpoints();
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
+        BOOST_LOG(*this) << "after adding the endpoint";
+        endpoints->logEndpoints();
 
         // TODO: Prime buffers as needed with a read/refresh.
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
@@ -653,8 +657,12 @@ namespace K3 {
         ep->close();
       }
 
+      BOOST_LOG(*this) << "about to remove endpoint " << eid;
+      endpoints->logEndpoints();
       // Remove the endpoint
       endpoints->removeEndpoint(eid);
+      BOOST_LOG(*this) << "just removed it";
+      endpoints->logEndpoints();
     }
 
     // Creates and registers a listener instance for the given address and network endpoint.
