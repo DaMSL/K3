@@ -57,11 +57,27 @@ namespace K3
       return file_id;
   }
 
+  static void iterateOpenFile(Engine * engine, std::function<void(Value)> f, const Identifier& file_id)
+  {
+      while (engine->hasRead(file_id))
+      {
+          shared_ptr<Value> cur_val = engine->doReadExternal(file_id);
+          f(*cur_val);
+      }
+  }
+
+  static void iterateFile_noCopy(Engine * engine, std::function<void(Value)> function, const Identifier& file_id)
+  {
+      openCollectionFile(engine, file_id, IOMode::Read);
+      iterateOpenFile(engine, function, file_id);
+      engine->close(file_id);
+  }
+
   Identifier copyFile(Engine * engine, const Identifier& old_id)
   {
       Identifier new_id = generateCollectionFilename(engine);
       openCollectionFile(engine, new_id, IOMode::Write);
-      mapFile_(engine,
+      iterateFile_noCopy(engine,
               [engine, &new_id](Value v) {
                   engine->doWriteExternal(new_id, v);
               }, old_id);
@@ -84,7 +100,7 @@ namespace K3
       Identifier tmp_ds = copyFile(engine, file_ds);
       Identifier new_id = generateCollectionFilename(engine);
       openCollectionFile(engine, new_id, IOMode::Write);
-      mapFile_(engine,
+      iterateFile_noCopy(engine,
               [engine, &new_id, &function](Value val) {
                   engine->doWriteExternal(new_id, function(val));
               }, tmp_ds);
@@ -94,11 +110,9 @@ namespace K3
   void mapFile_(Engine * engine, std::function<void(Value)> function, const Identifier& file_ds)
   {
       Identifier tmp_ds = copyFile(engine, file_ds);
-      foldFile<tuple<>>(engine,
-              [engine, &function](tuple<>, Value val) {
+      iterateFile_noCopy(engine, [engine, &function](Value val) {
                   function(val);
-                  return tuple<>();
-              }, tuple<>(), tmp_ds);
+              }, tmp_ds);
   }
 
   Identifier filterFile(Engine * engine, std::function<bool(Value)> predicate, const Identifier& old_ds)
@@ -106,7 +120,7 @@ namespace K3
       Identifier tmp_ds = copyFile(engine, old_ds);
       Identifier new_id = generateCollectionFilename(engine);
       openCollectionFile(engine, new_id, IOMode::Write);
-      mapFile_(engine,
+      iterateFile_noCopy(engine,
               [engine, &new_id, &predicate](Value val) {
                   if (predicate(val))
                       engine->doWriteExternal(new_id, val);
@@ -163,12 +177,11 @@ namespace K3
       return file_id;
   }
 
-  // TODO map
   Identifier combineFile(Engine * engine, const Identifier& self, const Identifier& values)
   {
       Identifier new_id = copyFile(engine, self);
       openCollectionFile(engine, new_id, IOMode::Append);
-      mapFile_(engine,
+      iterateFile_noCopy(engine,
               [engine, &new_id](Value v) {
                   engine->doWriteExternal(new_id, v);
               }, values);
