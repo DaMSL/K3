@@ -13,6 +13,7 @@ include "Core/Builtins.k3"
 
 declare sTable : collection {firstName : string, age : int, lastName : string} @ {Collection}
 declare tTable : collection {name : string, age : int, lastName : string} @ {Collection}
+
 declare sNumRows : mut int = 0
 declare tNumRows : mut int = 0
 declare totalRows : int = 2
@@ -24,6 +25,7 @@ declare sMappers : collection {address : address, Id : int} @ {Collection} = {| 
 declare tMappers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:5001, Id : 1}, {address : 127.0.0.1:5002, Id : 2}, {address : 127.0.0.1:5003, Id : 3}, {address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
 declare sNumMappers : int = 4
 declare tNumMappers : int = 4
+
 declare currentMapperSize : mut int = 0
 declare sMapperOutput : collection {regionId : int, output : collection {firstName : string, age : int, lastName : string} @ {Collection}} @ {Collection}
 declare tMapperOutput : collection {regionId : int, output : collection {name : string, age : int, lastName : string} @ {Collection}} @ {Collection}
@@ -43,17 +45,32 @@ declare tTuples : option mut collection {name : string, age : int, lastName : st
 
 /* PHASE 1: PRE-PROCESS 1 */
 
-trigger preProcessCreateCollections : ({fromS : bool, sRow : option {firstName : string, age : int, lastName : string}, tRow : option {name : string, age : int, lastName : string}}) = \tableElement -> (
-    rowCounter = rowCounter + 1;
-    if tableElement.fromS then
-        sNumRows = sNumRows + 1;
-        sTable.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}
-    else
-        tNumRows = tNumRows + 1;
-        tTable.insert {name : tRow.firstName, age : tRow.age, lastName : tRow.lastName}
-    
+trigger preProcessCreateCollections : (collection {fromS : bool, sRow : option {firstName : string, age : int, lastName : string}, tRow : option {name : string, age : int, lastName : string}} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        rowCounter = rowCounter + 1;
+        bind tableElement as {fromS : isItFromS, sRow : sRowElement, tRow : tRowElement} in
+        if isItFromS then
+            sNumRows = sNumRows + 1;
+            case sRowElement of 
+                {Some x -> sTable.insert {firstName : x.firstName, age : x.age, lastName : x.lastName}}
+                {None -> ()}
+        else
+            tNumRows = tNumRows + 1;
+            case tRowElement of
+                {Some x -> tTable.insert {name : x.name, age : x.age, lastName : x.lastName}}
+                {None -> ()}
+    ));
+
+    /* If done dealing with all the rows in the tables, start map procedure. */
     if rowCounter == totalRows then (arrangeMap, me) <- ()
     else ()
+)
+
+trigger preProcessRegions : () = \_ -> (
+    /* 
+     * Either make this pre process step 1 OR call it from preProcessCreateCollections when rowCounter == totalRows.
+     * Based on that call arrangeMap from either preProcessCreateCollections or here.
+     */
 )
 
 /* PHASE 2: MAP */
@@ -101,7 +118,7 @@ trigger arrangeMap : () = \_ -> (
 /* Send row to mapper */
 trigger sendRowToMapper_s : ({firstName : string, age : int, lastName : string}, int) = \x -> (
     bind x as (sRow, mapperId) in (
-        let mapperInstance = sMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
+        let mapperInstance = sMappers.filter (\mapper -> (mapper.Id == mapperId)).peek;
             mapperSize = (getMapperSize mapperId "S") in
             (map_s, mapperInstance.address) <- (sRow, mapperSize)
     )
@@ -109,7 +126,7 @@ trigger sendRowToMapper_s : ({firstName : string, age : int, lastName : string},
 
 trigger sendRowToMapper_t : ({name : string, age : int, lastName : string}, int) = \x -> (
     bind x as (tRow, mapperId) in (
-        let mapperInstance = tMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
+        let mapperInstance = tMappers.filter (\mapper -> (mapper.Id == mapperId)).peek;
             mapperSize = (getMapperSize mapperId "T") in
             (map_t, mapperInstance.address) <- (tRow, mapperSize)
     )
@@ -121,10 +138,12 @@ trigger map_s : ({firstName : string, age : int, lastName : string}, int) = \x -
         randomRow = (getRandom "S");
 
         /* Lookup in the row lookup table for the random row and find all regions. */
-        let lookupRowInstance = rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S")).peak in
+        let lookupRowInstance = rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S")).peek in
             lookupRowInstance.regions.iterate (\region -> (
-                let outputInstance = sMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
-                    sMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId : region.regionId, output : outputInstance.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}}
+                let oldOutput = sMapperOutput.filter (\output -> output.regionId == region.regionId).peek;
+                    newOutput = oldOutput in
+                    newOutput.output.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName};
+                    sMapperOutput.update {regionId : region.regionId, output : oldOutput.output} {regionId : region.regionId, output : newOutput.output}
             ))
 
         /* If mapper is full, then send everything to the reducer */
@@ -139,10 +158,12 @@ trigger map_t : ({name : string, age : int, lastName : string}, int) = \x -> (
         randomColumn = (getRandom "T");
 
         /* Lookup in the column lookup table for the random column and find all regions. */
-        let lookupColumnInstance = columnLookupTable.filter (\lookupColumn -> lookupColumn.row == (getLookupQuotient randomColumn "T")).peak in
+        let lookupColumnInstance = columnLookupTable.filter (\lookupColumn -> lookupColumn.row == (getLookupQuotient randomColumn "T")).peek in
             lookupColumnInstance.regions.iterate (\region -> (
-                let outputInstance = tMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
-                    tMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId: region.regionId} {output: outputInstance.insert {name : tRow.name, age : tRow.age, lastName : tRow.lastName}}
+                let oldOutput = tMapperOutput.filter (\output -> output.regionId == region.regionId).peek;
+                    newOutput = oldOutput in
+                    newOutput.output.insert {name : tRow.name, age : tRow.age, lastName : tRow.lastName};
+                    tMapperOutput.update {regionId : region.regionId, output : oldOutput.output} {regionId : region.regionId, output : newOutput.output}
             ));
         
         /* If mapper is full, then send everything to the reducer */
@@ -155,16 +176,20 @@ trigger map_t : ({name : string, age : int, lastName : string}, int) = \x -> (
 trigger sendAllToReducer : () = \_ -> (
     /* Find reducer with the same regionId as that of the mapper output. */
     sMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peek in
             (reduce_s, reducerInstance.address) <- (mapperOutput.output)
     ));
     tMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peek in
             (reduce_t, reducerInstance.address) <- (mapperOutput.output)
     ))
 )
 
-/* PHASE 3: REDUCER */
+/* 
+ * PHASE 3: REDUCER
+ * We have already divided the tuples into two different sets. So there is no need to do that in the reducer.
+ * In the reducer, we check if the two sets are valid (not None/Null) and implement the join algorithm.
+ */
 
 trigger reduce_s : (immut collection {firstName : string, age : int, lastName : string} @ {Collection}) = \coll -> (
     sTuples = coll;
@@ -176,6 +201,7 @@ trigger reduce_t : (immut collection {name : string, age : int, lastName : strin
     if sTuples == None then () else (reduceDoJoin, me) <- ()
 )
 
+/* Implement custom join algorithm here */
 trigger reduceDoJoin : () = \_ -> (
     sTuples.iterate (\sRow -> (
         tTuples.iterate (\tRow -> (
@@ -184,5 +210,5 @@ trigger reduceDoJoin : () = \_ -> (
     ))
 )
 
-source master : () = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
+source master : (collection {fromS : bool, sRow : option {firstName : string, age : int, lastName : string}, tRow : option {name : string, age : int, lastName : string}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
 feed master |> preProcessCreateCollections

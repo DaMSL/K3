@@ -1,2 +1,3 @@
-{CNS={}, ANS={}, DS=[{fromS = True, sRow = Some {firstName = "Kartik1", age = 20, lastName = "Thapar1"}, tRow = None}], Collection}
-{CNS={}, ANS={}, DS=[{fromS = False, sRow = None, tRow = Some {name = "Kartik2", age = 21, lastName = "Thapar2"}}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{fromS = (True, MemImmut), sRow = (Just MemImmut {firstName = ("Kartik", MemImmut), age = (21, MemImmut), lastName = ("Thapar", MemImmut)}, MemImmut), tRow = (Nothing MemImmut, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{fromS = (False, MemImmut), sRow = (Nothing MemImmut, MemImmut), tRow = (Just MemImmut {name = ("Alpha", MemImmut), age = (15, MemImmut), lastName = ("Beta", MemImmut)}, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{fromS = (False, MemImmut), sRow = (Nothing MemImmut, MemImmut), tRow = (Just MemImmut {name = ("Kartik", MemImmut), age = (21, MemImmut), lastName = ("Thapar", MemImmut)}, MemImmut)}], Collection}
