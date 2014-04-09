@@ -94,30 +94,30 @@ namespace K3
 
   typedef Value E;
 
-  class FileDataspace
+  class FileDS
   {
     protected:
       Engine * engine;
       Identifier file_id;
 
       public:
-      FileDataspace(Engine * eng)
+      FileDS(Engine * eng)
           : engine(eng), file_id(generateCollectionFilename(eng))
       {
         emptyFile(eng);
       }
 
       template<typename Iterator>
-      FileDataspace(Engine * eng, Iterator start, Iterator finish)
+      FileDS(Engine * eng, Iterator start, Iterator finish)
           : engine(eng), file_id(initialFile(eng, start, finish))
       { }
 
-      FileDataspace(const FileDataspace& other)
+      FileDS(const FileDS& other)
           : engine(other.engine), file_id(copyFile(other.engine, other.file_id))
       { }
 
     private:
-      FileDataspace(Engine * eng, Identifier f)
+      FileDS(Engine * eng, Identifier f)
           : engine(eng), file_id(f)
       { }
 
@@ -148,9 +148,9 @@ namespace K3
 
       //template<typename T>
       typedef Value T;
-      FileDataspace map(std::function<T(E)> func)
+      FileDS map(std::function<T(E)> func)
       {
-        return FileDataspace(engine,
+        return FileDS(engine,
                 mapFile(engine, func, file_id)
                 );
       }
@@ -160,24 +160,24 @@ namespace K3
         mapFile_(engine, func, file_id);
       }
 
-      FileDataspace filter(std::function<bool(E)> predicate)
+      FileDS filter(std::function<bool(E)> predicate)
       {
-        return FileDataspace(engine,
+        return FileDS(engine,
                 filterFile(engine, predicate, file_id)
                 );
       }
 
-      tuple< FileDataspace, FileDataspace > split()
+      tuple< FileDS, FileDS > split()
       {
         tuple<Identifier, Identifier> halves = splitFile(engine, file_id);
         return make_tuple(
-                FileDataspace(engine, get<0>(halves)),
-                FileDataspace(engine, get<1>(halves))
+                FileDS(engine, get<0>(halves)),
+                FileDS(engine, get<1>(halves))
                 );
       }
-      FileDataspace combine(FileDataspace other)
+      FileDS combine(FileDS other)
       {
-        return FileDataspace(engine,
+        return FileDS(engine,
                 combineFile(engine, file_id, other.file_id)
                 );
       }

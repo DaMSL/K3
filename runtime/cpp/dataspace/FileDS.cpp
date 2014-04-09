@@ -1,6 +1,6 @@
 #include <string>
 #include <boost/filesystem.hpp>
-#include <dataspace/FileDataspace.hpp>
+#include <dataspace/FileDS.hpp>
 
 namespace K3
 {
