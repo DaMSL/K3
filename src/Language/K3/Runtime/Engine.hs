@@ -4,6 +4,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeSynonymInstances #-} -- For showPC
+{-# LANGUAGE FlexibleInstances #-} -- For showPC
 
 -- | A message processing runtime for the K3 interpreter
 -- TODO: 
@@ -157,7 +159,19 @@ import Language.K3.Utils.Logger
 $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
+-- These can't be in Instances because of cyclical import
+instance ShowPC a => ShowPC (InternalMessage a) where
+  showPC pc (addr, id, v) = "("++show addr++", "++show id++", "++showPC pc v++")"
 
+instance ShowPC a => ShowPC [InternalMessage a] where
+  showPC pc vl = "(" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ ")"
+
+instance (Show b, ShowPC a) => ShowPC (b, [InternalMessage a]) where
+  showPC pc (s, v) = show s++", "++showPC pc v
+
+instance (Show b, ShowPC a) => ShowPC [(b, [InternalMessage a])] where
+  showPC pc vl = "(" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ ")"
+  
 -- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
                        , valueFormat     :: WireDesc a
@@ -738,9 +752,9 @@ processMessage mp pr = do
         nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show a)
-            => MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
-runMessages mp status' = ask >>= \engine -> status' >>= \case
+runMessages :: (Pretty r, Pretty e, ShowPC a)
+            => PrintConfig -> MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+runMessages pc mp status' = ask >>= \engine -> status' >>= \case
     Result r       -> do
         -- check if the engine is flagged to terminate after finishing one message
         t <- terminate True
@@ -757,7 +771,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
         else do
           -- Continue with Loop
           debugStep
-          runMessages mp (processMessage mp r)
+          runMessages pc mp (processMessage mp r)
     Error e        -> decLiveWorkers >> err "Error:" e (control engine)
     MessagesDone r -> terminate False >>= \case
         True -> do
@@ -781,10 +795,10 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
             waitForMessage myId
             -- Record wakeup and recurse:
             incAwakeWorkers
-            runMessages mp (processMessage mp r)
+            runMessages pc mp (processMessage mp r)
   where
     debugStep = do
-      q <- prettyQueues
+      q <- prettyQueues pc
       logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
     
     err msg r cntrl = do
@@ -824,8 +838,8 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
       cleanupEngine
       void $ liftIO $ tryPutMVar (waitV $ control engine) ()
      
-runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
-runEngine mp p = do
+runEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ()
+runEngine pc mp p = do
     engine <- ask
     result <- initialize mp p
     case workers engine of 
@@ -836,19 +850,19 @@ runEngine mp p = do
         configWorkers [myId] qGroups
         incLiveWorkers
         incAwakeWorkers
-        runMessages mp (return . either Error Result $ status mp result)
+        runMessages pc mp (return . either Error Result $ status mp result)
       
       Multithreaded workers_mv -> do 
         engine  <- ask
         qGroups <- liftIO $ readMVar $ queueGroups $ queueConfig engine
-        threads <- mapM (const $ forkWorker mp result) qGroups
+        threads <- mapM (const $ forkWorker pc mp result) qGroups
         configWorkers threads qGroups
         waitForEngine
       
       Multiprocess _ -> throwEngineError $ EngineError "Unsupported engine mode: Multiprocess" 
 
-forkWorker :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> r -> EngineM a ThreadId
-forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
+forkWorker :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> r -> EngineM a ThreadId
+forkWorker pc mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
   where 
    runWorker engine = do
      runEngineM doWork engine
@@ -856,7 +870,7 @@ forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker eng
    doWork = do
      incLiveWorkers
      incAwakeWorkers
-     (runMessages mp (return . either Error Result $ status mp result)) 
+     (runMessages pc mp (return . either Error Result $ status mp result)) 
 
 configWorkers :: [ThreadId] -> [[QueueId]] -> EngineM a ()
 configWorkers threads qgroups = do
@@ -875,8 +889,8 @@ configWorkers threads qgroups = do
   mr_kvs  <- liftIO $ mapM (\tid -> newEmptySV >>= return . ((,) tid) ) threads
   liftIO $ putMVar mrmv (H.fromList mr_kvs)
 
-forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ThreadId
-forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp p) engine
+forkEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ThreadId
+forkEngine pc mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine pc mp p) engine
 
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
@@ -1695,14 +1709,14 @@ modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return
 
 {- Pretty printing helpers -}
 
-showMessageQueues :: Show a => QueueConfiguration a -> EngineM a String
-showMessageQueues qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . show
+showMessageQueues :: ShowPC a => PrintConfig -> QueueConfiguration a -> EngineM a String
+showMessageQueues pc qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . showPC pc . H.toList
 
-showEngine :: Show a => EngineM a String
-showEngine = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues)
+showEngine :: ShowPC a => PrintConfig -> EngineM a String
+showEngine pc = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues pc)
 
-prettyQueues :: Show a => EngineM a [String]
-prettyQueues = ask >>= showMessageQueues . queueConfig >>= return . (["Queues: "]++) . (:[])
+prettyQueues :: ShowPC a => PrintConfig -> EngineM a [String]
+prettyQueues pc = ask >>= showMessageQueues pc . queueConfig >>= return . (["Queues: "]++) . (:[])
 
 
 {- Instance definitions -}

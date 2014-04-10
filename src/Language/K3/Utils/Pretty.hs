@@ -13,6 +13,7 @@ module Language.K3.Utils.Pretty (
     tersePrintConfig,
     Pretty(..),
     PrettyPC(..),
+    ShowPC(..),
 
     drawSubTrees,
     drawAnnotations,
@@ -92,6 +93,13 @@ class Pretty a where
 -- Pretty printing as directed by a PrintConfig data structure
 class Pretty a => PrettyPC a where
     prettyLinesPC :: PrintConfig -> a -> [String]
+
+-- | Class to handle Show with a PrintConfig
+class Show a => ShowPC a where
+  showPC :: PrintConfig -> a -> String
+
+-- | A Show class that handles PrintConfig
+
 
 drawSubTrees :: Pretty a => [a] -> [String]
 drawSubTrees [] = []

@@ -283,7 +283,7 @@ runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
     Right sEnv -> do
       trigs  <- return $ getTriggerIds tProg
       engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM engine $ runEngine (virtualizedProcessor pc sEnv) tProg
+      flip runEngineM engine $ runEngine pc (virtualizedProcessor pc sEnv) tProg
 
   where buildStaticEnv = do
           trigs <- return $ getTriggerIds tProg
@@ -316,7 +316,7 @@ runNetwork pc isPar systemEnv prog =
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
     fork staticEnv (addr, engine) = do
-      threadId <- flip runEngineM engine $ forkEngine (virtualizedProcessor pc staticEnv) tProg
+      threadId <- flip runEngineM engine $ forkEngine pc (virtualizedProcessor pc staticEnv) tProg
       return $ either Left (Right . (addr, engine,)) threadId
 
     tProg = labelBindAliases prog

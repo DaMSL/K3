@@ -223,12 +223,6 @@ instance Show (AEnvironment Value) where
 
 deriving instance Show ProxyStep
 
--- | Class to handle Show with a PrintConfig
-class Show a => ShowPC a where
-  showPC :: PrintConfig -> a -> String
-
--- | A Show class that handles PrintConfig
-
 showPCTag :: ShowPC a => PrintConfig -> String -> a -> String
 showPCTag pc s v = showPCTagF s $ showPC pc v
 
@@ -334,7 +328,8 @@ instance ShowPC [(Identifier, (Value, VQualifier))] where
       canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value") vs
       sort vs = sortBy (compare `on` fst) vs
 
-  
+-- Some instances are in K3/Runtime/Engine.hs because of circular inclusion
+
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
 instance Read Value where

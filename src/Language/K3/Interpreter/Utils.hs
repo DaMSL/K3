@@ -119,7 +119,7 @@ showIResultM :: IResult Value -> EngineM Value String
 showIResultM r = prettyIResultM r >>= return . boxToString
 
 showDispatchM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
-showDispatchM addr name args r@(_,istate),_) =
+showDispatchM addr name args r@((_,istate),_) =
     wrap' (showPC (getPrintConfig istate) args) <$> (showIResultTagM "BEFORE" r >>= return . indent 2)
   where
     wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
