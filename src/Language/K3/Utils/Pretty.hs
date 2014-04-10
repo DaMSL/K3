@@ -10,6 +10,7 @@ module Language.K3.Utils.Pretty (
 
     PrintConfig(..),
     defaultPrintConfig,
+    tersePrintConfig,
     Pretty(..),
     PrettyPC(..),
 
@@ -79,6 +80,12 @@ data PrintConfig = PrintConfig {
 defaultPrintConfig :: PrintConfig
 defaultPrintConfig  = PrintConfig True True True True True True True True True True True
 
+tersePrintConfig :: PrintConfig
+tersePrintConfig = defaultPrintConfig {printNamespace=False, 
+                                       printFunctions=False,
+                                       printQualifiers=False,
+                                       printVerboseTypes=False}
+
 class Pretty a where
     prettyLines :: a -> [String]
 
@@ -104,7 +111,7 @@ nonTerminalShift :: Pretty a => a -> [String]
 nonTerminalShift = shift "+- " "|  " . prettyLines
 
 wrap :: Int -> String -> [String]
-wrap n str 
+wrap n str
    | length str <= n = [str]
    | otherwise       = [take n str] ++ wrap n (drop n str)
 
@@ -113,7 +120,7 @@ indent n = let s = replicate n ' ' in shift s s
 
 hconcatTop :: [String] -> [String] -> [String]
 hconcatTop = hconcat (++[""])
-  
+ 
 hconcatBottom :: [String] -> [String] -> [String]
 hconcatBottom = hconcat ([""]++)
   

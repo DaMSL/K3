@@ -10,6 +10,7 @@ module Language.K3.Interpreter.Data.Instances where
 import qualified Data.Map as Map
 
 import Data.Hashable
+import Data.List (intersperse)
 import Data.Map ( Map )
 import System.Mem.StableName
 import Text.Read hiding ( get, lift )
@@ -19,10 +20,11 @@ import Language.K3.Interpreter.Data.Types
 import Language.K3.Runtime.FileDataspace
 import Language.K3.Utils.Pretty
 
+
 {- Value equality -}
 
 -- | Haskell Eq type class implementation.
---   This uses entity-tag equality for indirections, functions and triggers.
+--   This uses entity-ptag equality for indirections, functions and triggers.
 --   All other values use structural equality.
 instance Eq Value where
   VBool v               == VBool v'             = v == v'
@@ -121,7 +123,7 @@ deriving instance (Ord a) => Ord (SetAsOrdListMDS a)
 deriving instance (Ord a) => Ord (BagAsOrdListMDS a)
 
 -- | Haskell Hashable type class implementation.
---   Indirections, functions and triggers return the hash code of their entity tag.
+--   Indirections, functions and triggers return the hash code of their entity ptag.
 instance Hashable Value where
   hashWithSalt salt (VBool a)           = hashWithSalt salt a
   hashWithSalt salt (VByte a)           = hashWithSalt salt a
@@ -185,7 +187,7 @@ showsPrecTagF s d showF =
   where appPrec = 10
 
 -- | Verbose stringification of values through show instance.
---   This produces <tag> placeholders for unshowable values (IORefs and functions)
+--   This produces <ptag> placeholders for unshowable values (IORefs and functions)
 instance Show Value where
   showsPrec d (VBool v)            = showsPrecTag "VBool" d v
   showsPrec d (VByte v)            = showsPrecTag "VByte" d v
@@ -226,66 +228,107 @@ class Show a => ShowPC a where
 
 -- | A Show class that handles PrintConfig
 
-showPCTag :: ShowPC a => PrintConfig -> Bool -> String -> a -> String
-showPCTag pc regular s v = showPCTagF s $ if regular then show v else showPC pc v
+showPCTag :: ShowPC a => PrintConfig -> String -> a -> String
+showPCTag pc s v = showPCTagF s $ showPC pc v
 
 showPCTagF :: String -> String -> String
-showPCTagF s s' = paren $ s++" "++s'
-  where
-    paren x = '(':x++")"
+showPCTagF s s' = printParens $ s++" "++s'
 
-tag :: PrintConfig -> Bool
-tag = printVerboseTypes
+ptag :: PrintConfig -> Bool
+ptag = printVerboseTypes
+
+pqual :: PrintConfig -> Bool
+pqual = printQualifiers
+
+pfunc :: PrintConfig -> Bool
+pfunc = printFunctions
+
+printParens :: String -> String
+printParens s = '(':s++")"
+
+printBraces :: String -> String
+printBraces s = '{':s++"}"
 
 instance ShowPC Value where
-  showPC pc (VBool v)    | tag pc = showPCTag pc True "VBool" v
-  showPC pc (VBool v)             = show v
-  showPC pc (VByte v)    | tag pc = showPCTag pc True "VByte" v
-  showPC pc (VByte v)             = show v
-  showPC pc (VInt v)     | tag pc = showPCTag pc True "VInt" v
-  showPC pc (VInt v)              = show v
-  showPC pc (VReal v)    | tag pc = showPCTag pc True "VReal" v
-  showPC pc (VReal v)             = show v
-  showPC pc (VString v)  | tag pc = showPCTag pc True "VString" v
-  showPC pc (VString v)           = show v
-  showPC pc (VOption v)  | tag pc = showPCTag pc False "VOption" v
-  showPC pc (VOption v)           = showPC pc  v
-  showPC pc (VTuple v)   | tag pc = showPCTag pc False "VTuple" v
-  showPC pc (VTuple v)            = showPC pc v
-  showPC pc (VRecord v)  | tag pc = showPCTag pc False "VRecord" v
-  showPC pc (VRecord v)           = showPC pc  v
-  showPC pc (VAddress v) | tag pc = showPCTag pc True "VAddress" v  
-  showPC pc (VAddress v)          = show v
-  showPC pc (VCollection (_,c))   = showPCTag pc True "VCollection" c
+  showPC pc (VBool v)    | ptag pc        = "VBool "++ show v
+  showPC pc (VBool v)                     = show v
+  showPC pc (VByte v)    | ptag pc        = "VByte "++ show v
+  showPC pc (VByte v)                     = show v
+  showPC pc (VInt v)     | ptag pc        = "VInt " ++ show v
+  showPC pc (VInt v)                      = show v
+  showPC pc (VReal v)    | ptag pc        = "VReal " ++ show v
+  showPC pc (VReal v)                     = show v
+  showPC pc (VString v)  | ptag pc        = "VString " ++ show v
+  showPC pc (VString v)                   = show v
+  showPC pc (VAddress v) | ptag pc        = "VAddress " ++ show v
+  showPC pc (VAddress v)                  = show v
+  showPC pc (VOption v)  | ptag pc        = showPCTag pc "VOption" v
+  showPC pc (VOption v)                   = showPC pc  v
+  showPC pc (VTuple v)   | ptag pc        = showPCTag pc "VTuple" v
+  showPC pc (VTuple v)                    = showPC pc v
+  showPC pc (VRecord v)  | ptag pc        = showPCTag pc "VRecord" v
+  showPC pc (VRecord v)                   = showPC pc  v
+  showPC pc (VCollection (_,c)) | ptag pc = showPCTag pc "VCollection" c
+  showPC pc (VCollection (_,c))           = showPC pc c
 
-  showPC pc (VIndirection (_,q,tg))     = 
+  showPC pc (VIndirection (_,q,tg))       = 
     showPCTagF "VIndirection" $
       if printQualifiers pc then "<" ++ show q ++ ", " ++ show tg ++ ">"
       else "<" ++ show tg ++ ">"
-  showPC pc (VFunction (_,_,tg)) | printFunctions pc = showPCTagF "VFunction" $ "<" ++ show tg ++ ">"
-  showPC pc (VFunction (_,_,tg))        = ""
-  showPC pc (VTrigger _) | not $ printFunctions pc = ""
-  showPC pc (VTrigger (_, Nothing, tg)) = showPCTagF "VTrigger" $ "<uninitialized:" ++ (show tg) ++">"
-  showPC pc (VTrigger (_, Just _, tg))  = showPCTagF "VTrigger" $ "<function:" ++ (show tg) ++ ">"
+  showPC pc (VFunction (_,_,tg)) | pfunc pc = showPCTagF "VFunction" $ "<" ++ show tg ++ ">"
+  showPC pc (VFunction (_,_,tg))          = ""
+  showPC pc (VTrigger _) | not $ pfunc pc = ""
+  showPC pc (VTrigger (_, Nothing, tg))   = showPCTagF "VTrigger" $ "<uninitialized:" ++ (show tg) ++">"
+  showPC pc (VTrigger (_, Just _, tg))    = showPCTagF "VTrigger" $ "<function:" ++ (show tg) ++ ">"
+
+instance ShowPC (Maybe Value, VQualifier) where
+  showPC pc (Nothing, q) | pqual pc = "(None, " ++ show q ++ ")"
+  showPC pc (Nothing, _)           = "None"
+  showPC pc (Just v,  q) | pqual pc = "(Some "++showPC pc v++", " ++ show q ++ ")"
+  showPC pc (Just v,  _)           = "Some "++showPC pc v
+
+instance ShowPC (Value, VQualifier) where
+  showPC pc (v,  q) | pqual pc = "("++showPC pc v++", " ++ show q ++ ")"
+  showPC pc (v,  _)           = showPC pc v
+
+instance ShowPC [(Value, VQualifier)] where
+  showPC = showListParens
 
 instance ShowPC (Collection Value) where
   showPC pc (Collection ns ds cId) =
-    let name = if printVerboseTypes pc then "Collection " else ""
-        ns_ds = case (printNamespace pc, printDataspace pc) of
-          (True, True)  -> show ns ++ ", " ++ showPC pc ds
-          (True, False) -> show ns
-          (False, True) -> showPC pc ds
-          _             -> ""
-    showPCTagF (name ++ cid) $ ns_ds
+    let ns_s = if printNamespace pc then [show ns] else []
+        ds_s = if printDataspace pc then [showPC pc ds] else []
+        ns_ds = concat $ intersperse ", " $ ns_s++ds_s
+        name = case cId of 
+          ""          -> "Collection"
+          _ | ptag pc -> cId
+          _           -> "Collection " ++ cId
+    in showPCTagF name ns_ds
+
+showListPC :: ShowPC a => PrintConfig -> (String -> String) -> [a] -> String
+showListPC pc f vs = f $ concat $ intersperse ", " $ map (showPC pc) vs
+
+showListParens pc = showListPC pc printParens
+showListBraces pc = showListPC pc printBraces
 
 instance ShowPC (CollectionDataspace Value) where
-  showPC pc (InMemoryDs vl) = intersperse ", " $ map (showPC pc) vl
-  showPC pc (PrimitiveMDS (MemDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
-  showPC pc (PrimitiveMDS (SeqDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
-  showPC pc (PrimitiveMDS (SetDS(ListMDS vl)) = intersperse ", " $ map (showPC pc) vl
-  showPC pc (PrimitiveMDS (SetDS(SetAsOrdListMDS vl)) = intersperse ", " $ map (showPC pc) vl
-  showPC pc (PrimitiveMDS (SortedMDS(BagAsOrdListMDS vl)) = intersperse ", " $ map (showPC pc) vl
+  showPC pc (InMemoryDS vl) = showListParens pc vl
+  showPC pc (InMemDS (MemDS(ListMDS vl))) = showListParens pc vl
+  showPC pc (InMemDS (SeqDS(ListMDS vl))) = showListParens pc vl
+  showPC pc (InMemDS (SetDS(SetAsOrdListMDS vl))) = showListParens pc vl
+  showPC pc (InMemDS (SortedDS(BagAsOrdListMDS vl))) = showListParens pc vl
   showPC pc x@(ExternalDS _) = show x
+
+instance ShowPC (NamedMembers Value) where
+  showPC pc m = showPC pc $ Map.toList m
+
+instance ShowPC (Identifier, (Value, VQualifier)) where
+  showPC pc (id, (v, q)) | pqual pc = show id ++ " = " ++ printParens (showPC pc v ++ ", " ++ show q)
+  showPC pc (id, (v, _))           = show id ++ " = " ++ showPC pc v
+
+instance ShowPC [(Identifier, (Value, VQualifier))] where
+  showPC = showListBraces
+
   
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
@@ -411,8 +454,9 @@ prettyMapPC pc m = concatMap (uncurry prettyEntry) mList
     where mList  = Map.toAscList m
           nWidth = maximum . map (length . fst) $ mList
           prettyEntry x y   = case prettyLinesPC pc y of
-            [] -> []
-            ls -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+            []   -> []
+            [""] -> []
+            ls   -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
 prettyAssocList :: (Pretty a) => [(Identifier, a)] -> [String]
@@ -425,8 +469,9 @@ prettyAssocListPC :: (PrettyPC a) => PrintConfig -> [(Identifier, a)] -> [String
 prettyAssocListPC pc l = concatMap (uncurry prettyEntry) l
     where nWidth            = maximum $ map (length . fst) l
           prettyEntry x y   = case prettyLinesPC pc y of
-            [] -> []
-            ls -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+            []   -> []
+            [""] -> []
+            ls   -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
 instance Pretty Value where
@@ -434,6 +479,16 @@ instance Pretty Value where
 
 instance PrettyPC Value where
   prettyLinesPC pc v = [showPC pc v]
+
+{-
+instance PrettyPC Value where
+  prettyLinesPC pc (VFunction _) | not $ printFunctions pc = []
+  prettyLinesPC pc (VTrigger _)  | not $ printFunctions pc = []
+  prettyLinesPC pc (VCollection (_, c)) | not $ printVerboseTypes pc = prettyLinesPC pc c
+  prettyLinesPC pc (VCollection (_, c)) = ["VCollection"]++(indent 2 $ prettyLinesPC pc c)
+  prettyLinesPC pc (VRecord ns) = ["VRecord"]++(indent 2 $ prettyLinesPC pc ns)
+  prettyLinesPC pc v = [show v]
+-}
 
 instance Pretty [Value] where
   prettyLines vl = concatMap prettyLines vl
@@ -458,7 +513,7 @@ instance Pretty (NamedMembers Value) where
 
 instance PrettyPC (NamedMembers Value) where
   -- No need to take the printConfig any further
-  prettyLinesPC pc nm = prettyMap nm
+  prettyLinesPC _ nm = prettyMap nm
 
 instance Pretty [(Identifier, NamedMembers Value)] where
   prettyLines = prettyAssocList
