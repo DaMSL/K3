@@ -11,11 +11,10 @@ import System.Log
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
-import Language.K3.Utils.Pretty
 
 import Language.K3.Driver.Common
 
-import qualified Language.K3.Interpreter.Data.Types as IT
+import Language.K3.Utils.Pretty (Pretty(..), indent, defaultPrintConfig, PrintConfig(..), tersePrintConfig)
 
 -- | Program Options.
 data Options = Options {
@@ -49,7 +48,7 @@ data InterpretOptions
             , sysEnv :: SystemEnvironment
             , asExpr :: Bool
             , isPar  :: Bool
-            , printConfig :: IT.PrintConfig}
+            , printConfig :: PrintConfig}
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -205,9 +204,10 @@ parOptions = switch (
     )
 
 -- | Print options for interpreter
-interpPrintOptions :: Parser IT.PrintConfig
-interpPrintOptions = flag (IT.PrintConfig True False True False True True True True)
-                       (IT.PrintConfig True True  True True  True True True True)
+interpPrintOptions :: Parser PrintConfig
+interpPrintOptions = flag 
+                       tersePrintConfig
+                       defaultPrintConfig
                        (long "verbose"
                        <> short 'v'
                        <> help "Verbose interpreter printout")
