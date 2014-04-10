@@ -10,7 +10,8 @@ module Language.K3.Interpreter.Data.Instances where
 import qualified Data.Map as Map
 
 import Data.Hashable
-import Data.List (intersperse)
+import Data.List (intersperse, sortBy)
+import Data.Function (on)
 import Data.Map ( Map )
 import System.Mem.StableName
 import Text.Read hiding ( get, lift )
@@ -301,8 +302,8 @@ instance ShowPC (Collection Value) where
         ns_ds = concat $ intersperse ", " $ ns_s++ds_s
         name = case cId of 
           ""          -> "Collection"
-          _ | ptag pc -> cId
-          _           -> "Collection " ++ cId
+          _ | ptag pc -> "Collection " ++ cId
+          _           -> cId
     in showPCTagF name ns_ds
 
 showListPC :: ShowPC a => PrintConfig -> (String -> String) -> [a] -> String
@@ -327,7 +328,11 @@ instance ShowPC (Identifier, (Value, VQualifier)) where
   showPC pc (id, (v, _))           = show id ++ " = " ++ showPC pc v
 
 instance ShowPC [(Identifier, (Value, VQualifier))] where
-  showPC = showListBraces
+  -- We transform into tuples for better readability if we encounter _r1_... or key,value ids
+  showPC pc vs = if canTuplize vs then showPC pc $ map snd $ sort vs else showListBraces pc vs
+    where
+      canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value") vs
+      sort vs = sortBy (compare `on` fst) vs
 
   
 -- | Verbose stringification of values through read instance.
@@ -454,9 +459,8 @@ prettyMapPC pc m = concatMap (uncurry prettyEntry) mList
     where mList  = Map.toAscList m
           nWidth = maximum . map (length . fst) $ mList
           prettyEntry x y   = case prettyLinesPC pc y of
-            []   -> []
-            [""] -> []
-            ls   -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+            []     -> []
+            ls     -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
 prettyAssocList :: (Pretty a) => [(Identifier, a)] -> [String]
@@ -469,16 +473,17 @@ prettyAssocListPC :: (PrettyPC a) => PrintConfig -> [(Identifier, a)] -> [String
 prettyAssocListPC pc l = concatMap (uncurry prettyEntry) l
     where nWidth            = maximum $ map (length . fst) l
           prettyEntry x y   = case prettyLinesPC pc y of
-            []   -> []
-            [""] -> []
-            ls   -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
+            []     -> []
+            ls     -> [(suffixPadTo nWidth x) ++ " => "] %+ ls
           suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
 
 instance Pretty Value where
   prettyLines v = [show v]
 
 instance PrettyPC Value where
-  prettyLinesPC pc v = [showPC pc v]
+  prettyLinesPC pc v = case showPC pc v of
+    "" -> []
+    x  -> [x]
 
 {-
 instance PrettyPC Value where
