@@ -116,19 +116,27 @@ trigger arrangeMap : () = \_ -> (
 )
 
 /* Send row to mapper */
-trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : String}, int) = \x -> (
+trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperId) in (
-        let mapperInstance = sMappers.filter (\mapper -> (mapper.Id == mapperId)).peek in
-            let mapperSize = (getMapperSize mapperId "S") in
-                (map_s, mapperInstance.Address) <- (sRow, mapperSize)
+        let mapperSize = (getMapperSize mapperId "S") in
+            let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in (
+                    case mapperInstance of 
+                        {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
+                        {None -> ()}
+                )
     )
 )
 
 trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (tRow, mapperId) in (
-        let mapperInstance = tMappers.filter (\mapper -> (mapper.Id == mapperId)).peek in
-            let mapperSize = (getMapperSize mapperId "T") in
-                (map_t, mapperInstance.Address) <- (tRow, mapperSize)
+        let mapperSize = (getMapperSize mapperId "T") in
+            let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in (
+                    case mapperInstance of
+                        {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
+                        {None -> ()}
+                )
     )
 )
 
