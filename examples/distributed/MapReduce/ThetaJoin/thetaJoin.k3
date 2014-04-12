@@ -52,13 +52,13 @@ trigger preProcessCreateCollections : (collection {fromS : bool, sRow : option {
         if isItFromS then
             sNumRows = sNumRows + 1;
             case sRowElement of 
-                {Some x -> sTable.insert {FirstName : x.FirstName, Age : x.Age, LastName : x.LastName}}
-                {None -> ()}
+            {Some x -> sTable.insert {FirstName : x.FirstName, Age : x.Age, LastName : x.LastName}}
+            {None -> ()}
         else
             tNumRows = tNumRows + 1;
             case tRowElement of
-                {Some x -> tTable.insert {Name : x.Name, Age : x.Age, LastName : x.LastName}}
-                {None -> ()}
+            {Some x -> tTable.insert {Name : x.Name, Age : x.Age, LastName : x.LastName}}
+            {None -> ()}
     ));
 
     /* If done dealing with all the rows in the tables, start map procedure. */
@@ -91,7 +91,10 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
                 if r == 0 then q else if mapperId <= r then q + 1 else q
 )
 
-declare getRandom : immut (() -> int) = fun () -> 10
+declare getRandom : immut (string -> int) = fun tableName -> (
+    if tableName == "S" then random sNumRows
+    else random tNumRows
+)
 
 declare getLookupQuotient : immut (int -> string -> int) = fun random -> fun tableName -> (
     if tableName == "S" then
@@ -120,11 +123,10 @@ trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string},
     bind x as (sRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "S") in
             let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
-                let mapperInstance = fMappers.peek() in (
+                let mapperInstance = fMappers.peek() in
                     case mapperInstance of 
-                        {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
-                        {None -> ()}
-                )
+                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
+                    {None -> ()}
     )
 )
 
@@ -132,27 +134,34 @@ trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int)
     bind x as (tRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "T") in
             let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
-                let mapperInstance = fMappers.peek() in (
+                let mapperInstance = fMappers.peek() in
                     case mapperInstance of
-                        {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
-                        {None -> ()}
-                )
+                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
+                    {None -> ()}
     )
 )
 
-trigger map_s : ({FirstName : string, Age : int, LastName : String}, int) = \x -> (
+trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperSize) in (
         currentMapperSize = currentMapperSize + 1;
         randomRow = (getRandom "S");
 
         /* Lookup in the row lookup table for the random row and find all regions. */
-        let lookupRowInstance = rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S")).peek in
-            lookupRowInstance.regions.iterate (\region -> (
-                let oldOutput = sMapperOutput.filter (\output -> output.RegionId == region.RegionId).peek;
-                    newOutput = oldOutput in
-                    newOutput.output.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
-                    sMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
-            ))
+        let optLookupRow = (rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S"))).peek() in
+            case optLookupRow of
+            {Some lookupRow -> (
+                lookupRow.regions.iterate (\region -> (
+                    let optOldOutput = (sMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                        case optOldOutput of
+                        {Some oldOutput -> (
+                            let newOutput = oldOutput in
+                                newOutput.output.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
+                                sMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
+                        )}
+                        {None -> ()}
+                ))
+            )}
+            {None -> ()};
 
         /* If mapper is full, then send everything to the reducer */
         if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
@@ -166,14 +175,22 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
         randomColumn = (getRandom "T");
 
         /* Lookup in the column lookup table for the random column and find all regions. */
-        let lookupColumnInstance = columnLookupTable.filter (\lookupColumn -> lookupColumn.row == (getLookupQuotient randomColumn "T")).peek in
-            lookupColumnInstance.regions.iterate (\region -> (
-                let oldOutput = tMapperOutput.filter (\output -> output.regionId == region.regionId).peek;
-                    newOutput = oldOutput in
-                    newOutput.output.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
-                    tMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
-            ));
-        
+        let optLookupColumn = (columnLookupTable.filter (\lookupColumn -> lookupColumn.Column == (getLookupQuotient randomColumn "T"))).peek() in
+            case optLookupColumn of
+            {Some lookupColumn -> (
+                lookupColumn.regions.iterate (\region -> (
+                    let optOldOutput = (tMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                        case optOldOutput of
+                        {Some oldOutput -> (
+                            let newOutput = oldOutput in
+                                newOutput.output.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
+                                tMapperOutput.update {RegionId : region.regionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
+                        )}
+                        {None -> ()}
+                ))
+            )}
+            {None -> ()};
+
         /* If mapper is full, then send everything to the reducer */
         if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
         else ()
