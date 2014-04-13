@@ -43,9 +43,9 @@ declare reducers : collection {Address : address, Id : int} @ {Collection} = {| 
 declare sTuples : option mut collection {FirstName : string, Age : int, LastName : String} @ {Collection} = None
 declare tTuples : option mut collection {Name : string, Age : int, LastName : string} @ {Collection} = None
 
-/* PHASE 1: PRE-PROCESS 1 */
+/* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
-trigger preProcessCreateCollections : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
+trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
     tableElementCollection.iterate (\tableElement -> (
         rowCounter = rowCounter + 1;
         bind tableElement as {fromS : isItFromS, sRow : sRowElement, tRow : tRowElement} in
@@ -61,16 +61,70 @@ trigger preProcessCreateCollections : (collection {fromS : bool, sRow : option {
             {None -> ()}
     ));
 
-    /* If done dealing with all the rows in the tables, start map procedure. */
-    if rowCounter == totalRows then (arrangeMap, me) <- ()
+    /* If all the rows have been processed, process regions. */
+    if rowCounter == totalRows then (preProcessRegions, me) <- ()
+    else ()
+)
+
+/* PHASE 1: PRE-PROCESS 2 - Process Regions*/
+
+declare tmpRegions : mut collection {RegionId : int} @ {Collection}
+
+declare getSRegionsWorker : immut (collection {RegionId : int} @ {Collection} -> int -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * tmpRegionsX is just the carrier collection for RegionIds; count refers to max number of regions in a row which are added to the regionNumber iteratively.
+     * Until count > 0, keep inserting regionNumber + count as a RegionId 
+     */
+    if count > 0 then
+        tmpRegionsX.insert {RegionId : regionNumber + count};
+        (getSRegionsWorker tmpRegionsX regionNumber (count - 1))
+    else
+        tmpRegionsX
+)
+
+declare getSRegions : immut (collection {RegionId : int} @ {Collection} -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun rowNumber -> (
+    (getSRegionsWorker tmpRegionsX ((rowNumber - 1)/maxS * tNumRows/maxT) (tNumRows/maxT))
+)
+
+declare getTRegionsWorker : immut (collection {RegionId : int} @ {Collection} -> int -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * count is a multiplier to the max number of regions in a row;
+     * At every point we check if the regionNumber + thisvalue is greater than total number of regions possible and add to region list if not.
+     */
+    if (regionNumber + count*(tNumRows/maxT)) <= (sNumRows/maxS * tNumRows/maxT) then
+        tmpRegionsX.insert {RegionId : regionNumber + count*(tNumRows/maxT)};
+        (getTRegionsWorker tmpRegionsX regionNumber (count + 1))
+    else
+        tmpRegionsX
+)
+
+declare getTRegions : immut (collection {RegionId : int} @ {Collection} -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun columnNumber -> (
+    (getTRegionsWorker tmpRegionsX ((columnNumber - 1)/maxT + 1) 0)
+)
+
+declare preProcessRegionsWorker : mut (int -> string -> ()) = fun numberOfRows -> fun tableName -> (
+    /* 
+     * Process every single row from the last row to the first row; numberOfRows is just the max row count; but essentially the row number.
+     * Create an empty collection always (by searching for a RegionId that does not exist - hack for clearing a list).
+     * Find regions and then update them for every row/column.
+     */
+    if numberOfRows > 0 then
+        if tableName == "S" then
+            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
+            tmpRegions = (getSRegions tmpRegions numberOfRows);
+            rowLookupTable.insert {Row : numberOfRows, Regions : tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "S")
+        else
+            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
+            tmpRegions = (getTRegions tmpRegions numberOfRows);
+            columnLookupTable.insert {Column : numberOfRows, Regions : tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "T")
     else ()
 )
 
 trigger preProcessRegions : () = \_ -> (
-    /* 
-     * Either make this pre process step 1 OR call it from preProcessCreateCollections when rowCounter == totalRows.
-     * Based on that call arrangeMap from either preProcessCreateCollections or here.
-     */
+    (processRegions sNumRows "S");
+    (processRegions tNumRows "T")
 )
 
 /* PHASE 2: MAP */
@@ -236,4 +290,4 @@ trigger reduceDoJoin : () = \_ -> (
 )
 
 source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
-feed master |> preProcessCreateCollections
+feed master |> preProcessTableRows
