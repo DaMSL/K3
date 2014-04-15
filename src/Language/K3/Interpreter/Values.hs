@@ -471,7 +471,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
           c <- rebuildCollection n $ Collection x y n
           s <- newEmptyMVar
           r <- return $ VCollection (s, c)
-          void . modifyMVar_ s $ const $ return r
+          void $ putMVar s r
           rt $ r))
 
     readCollectionNamespace :: ReadPrec (IO (CollectionNamespace Value))

@@ -40,7 +40,7 @@ getFile :: FileDataspace v -> String
 getFile (FileDataspace name) = name
 
 rootDataPath :: IO.FilePath
-rootDataPath = "__DATA"
+rootDataPath = "_DATA"
 
 engineDataPath :: Engine a -> IO.FilePath
 engineDataPath engine =
@@ -66,7 +66,7 @@ initDataDir = do
   engine <- M.ask
   createDataDir $ engineDataPath engine
 
--- Put these into __DATA/peerID/collection_name
+-- Put these into _DATA/peerID/collection_name
 generateCollectionFilename :: EngineM b Identifier
 generateCollectionFilename = do
     engine <- M.ask

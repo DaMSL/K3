@@ -11,8 +11,9 @@ include "Core/Builtins.k3"
 
 /* DATASETS */
 
-declare sTable : collection {firstName : string, age : int, lastName : string} @ {Collection}
-declare tTable : collection {name : string, age : int, lastName : string} @ {Collection}
+declare sTable : collection {FirstName : string, Age : int, LastName : String} @ {Collection}
+declare tTable : collection {Name : string, Age : int, LastName : string} @ {Collection}
+
 declare sNumRows : mut int = 0
 declare tNumRows : mut int = 0
 declare totalRows : int = 2
@@ -20,40 +21,110 @@ declare rowCounter : mut int = 0
 
 /* MAPPER */
 
-declare sMappers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:4001, Id : 1}, {address : 127.0.0.1:4002, Id : 2}, {address : 127.0.0.1:4003, Id : 3}, {address : 127.0.0.1:4004, Id : 4} |} @ {Collection}
-declare tMappers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:5001, Id : 1}, {address : 127.0.0.1:5002, Id : 2}, {address : 127.0.0.1:5003, Id : 3}, {address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
+declare sMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:4001, Id : 1}, {Address : 127.0.0.1:4002, Id : 2}, {Address : 127.0.0.1:4003, Id : 3}, {Address : 127.0.0.1:4004, Id : 4} |} @ {Collection}
+declare tMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:5001, Id : 1}, {Address : 127.0.0.1:5002, Id : 2}, {Address : 127.0.0.1:5003, Id : 3}, {Address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
 declare sNumMappers : int = 4
 declare tNumMappers : int = 4
+
 declare currentMapperSize : mut int = 0
-declare sMapperOutput : collection {regionId : int, output : collection {firstName : string, age : int, lastName : string} @ {Collection}} @ {Collection}
-declare tMapperOutput : collection {regionId : int, output : collection {name : string, age : int, lastName : string} @ {Collection}} @ {Collection}
+declare sMapperOutput : collection {RegionId : int, Output : collection {FirstName : string, Age : int, LastName : String} @ {Collection}} @ {Collection}
+declare tMapperOutput : collection {RegionId : int, Output : collection {Name : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 
 /* REGIONS */
 
 declare regionMaxRow : int = 10
 declare regionMaxColumn : int = 10
-declare rowLookupTable : collection {row : int, regions : collection {regionId : int} @ {Collection}} @ {Collection}
-declare columnLookupTable : collection {column : int, regions : collection {regionId : int} @ {Collection}} @ {Collection}
+declare rowLookupTable : collection {Row : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
+declare columnLookupTable : collection {Column : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
 
 /* REDUCER */
 
-declare reducers : collection {address : address, Id : int} @ {Collection} = {| address : address, Id : int | {address : 127.0.0.1:6001, Id : 1}, {address : 127.0.0.1:6002, Id : 2}, {address : 127.0.0.1:6003, Id : 3}, {address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
-declare sTuples : option mut collection {firstName : string, age : int, lastName : string} @ {Collection} = None
-declare tTuples : option mut collection {name : string, age : int, lastName : string} @ {Collection} = None
+declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
+declare sTuples : option mut collection {FirstName : string, Age : int, LastName : String} @ {Collection} = None
+declare tTuples : option mut collection {Name : string, Age : int, LastName : string} @ {Collection} = None
 
-/* PHASE 1: PRE-PROCESS 1 */
+/* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
-trigger preProcessCreateCollections : ({fromS : bool, sRow : option {firstName : string, age : int, lastName : string}, tRow : option {name : string, age : int, lastName : string}}) = \tableElement -> (
-    rowCounter = rowCounter + 1;
-    if tableElement.fromS then
-        sNumRows = sNumRows + 1;
-        sTable.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}
-    else
-        tNumRows = tNumRows + 1;
-        tTable.insert {name : tRow.firstName, age : tRow.age, lastName : tRow.lastName}
-    
-    if rowCounter == totalRows then (arrangeMap, me) <- ()
+trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        rowCounter = rowCounter + 1;
+        bind tableElement as {fromS : isItFromS, sRow : sRowElement, tRow : tRowElement} in
+        if isItFromS then
+            sNumRows = sNumRows + 1;
+            case sRowElement of 
+            {Some x -> sTable.insert {FirstName : x.FirstName, Age : x.Age, LastName : x.LastName}}
+            {None -> ()}
+        else
+            tNumRows = tNumRows + 1;
+            case tRowElement of
+            {Some x -> tTable.insert {Name : x.Name, Age : x.Age, LastName : x.LastName}}
+            {None -> ()}
+    ));
+
+    /* If all the rows have been processed, process regions. */
+    if rowCounter == totalRows then (preProcessRegions, me) <- ()
     else ()
+)
+
+/* PHASE 1: PRE-PROCESS 2 - Process Regions*/
+
+declare tmpRegions : mut collection {RegionId : int} @ {Collection}
+
+declare getSRegionsWorker : immut (collection {RegionId : int} @ {Collection} -> int -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * tmpRegionsX is just the carrier collection for RegionIds; count refers to max number of regions in a row which are added to the regionNumber iteratively.
+     * Until count > 0, keep inserting regionNumber + count as a RegionId 
+     */
+    if count > 0 then
+        tmpRegionsX.insert {RegionId : regionNumber + count};
+        (getSRegionsWorker tmpRegionsX regionNumber (count - 1))
+    else
+        tmpRegionsX
+)
+
+declare getSRegions : immut (collection {RegionId : int} @ {Collection} -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun rowNumber -> (
+    (getSRegionsWorker tmpRegionsX ((rowNumber - 1)/maxS * tNumRows/maxT) (tNumRows/maxT))
+)
+
+declare getTRegionsWorker : immut (collection {RegionId : int} @ {Collection} -> int -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * count is a multiplier to the max number of regions in a row;
+     * At every point we check if the regionNumber + thisvalue is greater than total number of regions possible and add to region list if not.
+     */
+    if (regionNumber + count*(tNumRows/maxT)) <= (sNumRows/maxS * tNumRows/maxT) then
+        tmpRegionsX.insert {RegionId : regionNumber + count*(tNumRows/maxT)};
+        (getTRegionsWorker tmpRegionsX regionNumber (count + 1))
+    else
+        tmpRegionsX
+)
+
+declare getTRegions : immut (collection {RegionId : int} @ {Collection} -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun columnNumber -> (
+    (getTRegionsWorker tmpRegionsX ((columnNumber - 1)/maxT + 1) 0)
+)
+
+declare preProcessRegionsWorker : mut (int -> string -> ()) = fun numberOfRows -> fun tableName -> (
+    /* 
+     * Process every single row from the last row to the first row; numberOfRows is just the max row count; but essentially the row number.
+     * Create an empty collection always (by searching for a RegionId that does not exist - hack for clearing a list).
+     * Find regions and then update them for every row/column.
+     */
+    if numberOfRows > 0 then
+        if tableName == "S" then
+            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
+            tmpRegions = (getSRegions tmpRegions numberOfRows);
+            rowLookupTable.insert {Row : numberOfRows, Regions : tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "S")
+        else
+            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
+            tmpRegions = (getTRegions tmpRegions numberOfRows);
+            columnLookupTable.insert {Column : numberOfRows, Regions : tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "T")
+    else ()
+)
+
+trigger preProcessRegions : () = \_ -> (
+    (processRegions sNumRows "S");
+    (processRegions tNumRows "T")
 )
 
 /* PHASE 2: MAP */
@@ -65,16 +136,19 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
      * If mapperId > r => will not get extra 1 row
      */
     if tableName == "S" then
-        let r = sNumRows % sNumMappers;
-            q = sNumRows / sNumMappers in
-            if r == 0 then q else if mapperId <= r then q + 1 else q
+        let r = sNumRows % sNumMappers in
+            let q = sNumRows / sNumMappers in
+                if r == 0 then q else if mapperId <= r then q + 1 else q
     else
-        let r = tNumRows % tNumMappers;
-            q = tNumRows / tNumMappers in
-            if r == 0 then q else if mapperId <= r then q + 1 else q
+        let r = tNumRows % tNumMappers in
+            let q = tNumRows / tNumMappers in
+                if r == 0 then q else if mapperId <= r then q + 1 else q
 )
 
-declare getRandom : immut (() -> int) = fun () -> 10
+declare getRandom : immut (string -> int) = fun tableName -> (
+    if tableName == "S" then random sNumRows
+    else random tNumRows
+)
 
 declare getLookupQuotient : immut (int -> string -> int) = fun random -> fun tableName -> (
     if tableName == "S" then
@@ -89,43 +163,59 @@ declare getLookupQuotient : immut (int -> string -> int) = fun random -> fun tab
 trigger arrangeMap : () = \_ -> (
     sTable.fold (\mapperCounter -> \row -> (
         (sendRowToMapper_s, me) <- (row, (mapperCounter % sNumMappers) + 1);
-        mapperCounter = mapperCounter + 1
+        mapperCounter + 1
     )) 0;
 
     tTable.fold (\mapperCounter -> \row -> (
         (sendRowToMapper_t, me) <- (row, (mapperCounter % tNumMappers) + 1);
-        mapperCounter = mapperCounter + 1
+        mapperCounter + 1
     )) 0
 )
 
 /* Send row to mapper */
-trigger sendRowToMapper_s : ({firstName : string, age : int, lastName : string}, int) = \x -> (
+trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperId) in (
-        let mapperInstance = sMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
-            mapperSize = (getMapperSize mapperId "S") in
-            (map_s, mapperInstance.address) <- (sRow, mapperSize)
+        let mapperSize = (getMapperSize mapperId "S") in
+            let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in
+                    case mapperInstance of 
+                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
+                    {None -> ()}
     )
 )
 
-trigger sendRowToMapper_t : ({name : string, age : int, lastName : string}, int) = \x -> (
+trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (tRow, mapperId) in (
-        let mapperInstance = tMappers.filter (\mapper -> (mapper.Id == mapperId)).peak;
-            mapperSize = (getMapperSize mapperId "T") in
-            (map_t, mapperInstance.address) <- (tRow, mapperSize)
+        let mapperSize = (getMapperSize mapperId "T") in
+            let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in
+                    case mapperInstance of
+                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
+                    {None -> ()}
     )
 )
 
-trigger map_s : ({firstName : string, age : int, lastName : string}, int) = \x -> (
+trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperSize) in (
         currentMapperSize = currentMapperSize + 1;
         randomRow = (getRandom "S");
 
         /* Lookup in the row lookup table for the random row and find all regions. */
-        let lookupRowInstance = rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S")).peak in
-            lookupRowInstance.regions.iterate (\region -> (
-                let outputInstance = sMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
-                    sMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId : region.regionId, output : outputInstance.insert {firstName : sRow.firstName, age : sRow.age, lastName : sRow.lastName}}
-            ))
+        let optLookupRow = (rowLookupTable.filter (\lookupRow -> lookupRow.row == (getLookupQuotient randomRow "S"))).peek() in
+            case optLookupRow of
+            {Some lookupRow -> (
+                lookupRow.regions.iterate (\region -> (
+                    let optOldOutput = (sMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                        case optOldOutput of
+                        {Some oldOutput -> (
+                            let newOutput = oldOutput in
+                                newOutput.output.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
+                                sMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
+                        )}
+                        {None -> ()}
+                ))
+            )}
+            {None -> ()};
 
         /* If mapper is full, then send everything to the reducer */
         if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
@@ -133,18 +223,28 @@ trigger map_s : ({firstName : string, age : int, lastName : string}, int) = \x -
     )
 )
 
-trigger map_t : ({name : string, age : int, lastName : string}, int) = \x -> (
+trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (tRow, mapperSize) in (
         currentMapperSize = currentMapperSize + 1;
         randomColumn = (getRandom "T");
 
         /* Lookup in the column lookup table for the random column and find all regions. */
-        let lookupColumnInstance = columnLookupTable.filter (\lookupColumn -> lookupColumn.row == (getLookupQuotient randomColumn "T")).peak in
-            lookupColumnInstance.regions.iterate (\region -> (
-                let outputInstance = tMapperOutput.filter (\output -> output.regionId == region.regionId).peak in
-                    tMapperOutput.update {regionId : region.regionId, output : outputInstance.output} {regionId: region.regionId} {output: outputInstance.insert {name : tRow.name, age : tRow.age, lastName : tRow.lastName}}
-            ));
-        
+        let optLookupColumn = (columnLookupTable.filter (\lookupColumn -> lookupColumn.Column == (getLookupQuotient randomColumn "T"))).peek() in
+            case optLookupColumn of
+            {Some lookupColumn -> (
+                lookupColumn.regions.iterate (\region -> (
+                    let optOldOutput = (tMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                        case optOldOutput of
+                        {Some oldOutput -> (
+                            let newOutput = oldOutput in
+                                newOutput.output.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
+                                tMapperOutput.update {RegionId : region.regionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput.Output}
+                        )}
+                        {None -> ()}
+                ))
+            )}
+            {None -> ()};
+
         /* If mapper is full, then send everything to the reducer */
         if currentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
         else ()
@@ -155,27 +255,32 @@ trigger map_t : ({name : string, age : int, lastName : string}, int) = \x -> (
 trigger sendAllToReducer : () = \_ -> (
     /* Find reducer with the same regionId as that of the mapper output. */
     sMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
-            (reduce_s, reducerInstance.address) <- (mapperOutput.output)
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peek in
+            (reduce_s, reducerInstance.Address) <- (mapperOutput.output)
     ));
     tMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peak in
-            (reduce_t, reducerInstance.address) <- (mapperOutput.output)
+        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.regionId).peek in
+            (reduce_t, reducerInstance.Address) <- (mapperOutput.output)
     ))
 )
 
-/* PHASE 3: REDUCER */
+/* 
+ * PHASE 3: REDUCER
+ * We have already divided the tuples into two different sets. So there is no need to do that in the reducer.
+ * In the reducer, we check if the two sets are valid (not None/Null) and implement the join algorithm.
+ */
 
-trigger reduce_s : (immut collection {firstName : string, age : int, lastName : string} @ {Collection}) = \coll -> (
+trigger reduce_s : (immut collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
     sTuples = coll;
     if tTuples == None then () else (reduceDoJoin, me) <- ()
 )
 
-trigger reduce_t : (immut collection {name : string, age : int, lastName : string} @ {Collection}) = \coll -> (
+trigger reduce_t : (immut collection {Name : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
     tTuples = coll;
     if sTuples == None then () else (reduceDoJoin, me) <- ()
 )
 
+/* Implement custom join algorithm here */
 trigger reduceDoJoin : () = \_ -> (
     sTuples.iterate (\sRow -> (
         tTuples.iterate (\tRow -> (
@@ -184,5 +289,5 @@ trigger reduceDoJoin : () = \_ -> (
     ))
 )
 
-source master : () = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
-feed master |> preProcessCreateCollections
+source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
+feed master |> preProcessTableRows

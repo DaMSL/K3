@@ -26,6 +26,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Runtime.Engine
 
+import Language.K3.Utils.Pretty (PrintConfig(..), defaultPrintConfig)
+
 {- Constants and simple value constructors. -}
 vunit :: Value
 vunit = VTuple []
@@ -272,54 +274,58 @@ emptyStaticEnv = emptyEnv >>= return . (, emptyAnnotationEnv)
 emptyStaticEnvIO :: IO (SEnvironment Value)
 emptyStaticEnvIO = emptyEnvIO >>= return . (, emptyAnnotationEnv)
 
+emptyStateLambda :: IEnvironment Value -> AEnvironment Value -> SEnvironment Value -> PrintConfig -> IState
+emptyStateLambda env aEnv sEnv pc = IState [] env aEnv sEnv emptyProxyStack emptyTracer pc
+
 emptyState :: Interpretation IState
-emptyState = (\env sEnv -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer)
-                <$> emptyEnv <*> emptyStaticEnv 
+emptyState = emptyStateLambda <$> emptyEnv <*> pure emptyAnnotationEnv <*> emptyStaticEnv <*> pure defaultPrintConfig
 
 emptyStateIO :: IO IState
-emptyStateIO = (\env sEnv -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer)
-                  <$> emptyEnvIO <*> emptyStaticEnvIO
+emptyStateIO = emptyStateLambda <$> emptyEnvIO <*> pure emptyAnnotationEnv <*> emptyStaticEnvIO <*> pure defaultPrintConfig
 
 annotationState :: AEnvironment Value -> Interpretation IState
 annotationState aEnv = liftIO $ annotationStateIO aEnv
 
 annotationStateIO :: AEnvironment Value -> IO IState
-annotationStateIO aEnv = (\env sEnv -> IState [] env aEnv sEnv emptyProxyStack emptyTracer)
-                            <$> emptyEnvIO <*> emptyStaticEnvIO
+annotationStateIO aEnv = emptyStateLambda <$> emptyEnvIO <*> pure aEnv <*> emptyStaticEnvIO <*> pure defaultPrintConfig
+
+annotationStatePCIO :: PrintConfig -> AEnvironment Value -> IO IState
+annotationStatePCIO pc aEnv = emptyStateLambda <$> emptyEnvIO <*> pure aEnv <*> emptyStaticEnvIO <*> pure pc
 
 staticState :: SEnvironment Value -> Interpretation IState
 staticState sEnv = liftIO $ staticStateIO sEnv
 
 staticStateIO :: SEnvironment Value -> IO IState
-staticStateIO sEnv = (\env -> IState [] env emptyAnnotationEnv sEnv emptyProxyStack emptyTracer) <$> emptyEnvIO
+staticStateIO sEnv = emptyStateLambda <$> emptyEnvIO <*> pure emptyAnnotationEnv <*> pure sEnv <*> pure defaultPrintConfig
 
 modifyStateGlobals :: (Globals -> Globals) -> IState -> IState
-modifyStateGlobals f (IState g e a s b t) = IState (f g) e a s b t
+-- modifyStateGlobals f (IState g e a s b t) = IState (f g) e a s b t
+modifyStateGlobals f st = st {getGlobals = f $ getGlobals st}
 
 modifyStateAEnv :: (AEnvironment Value -> AEnvironment Value) -> IState -> IState
-modifyStateAEnv f (IState g e a s b t) = IState g e (f a) s b t
+modifyStateAEnv f st = st {getAnnotEnv = f $ getAnnotEnv st}
 
 modifyStateProxies :: (ProxyPathStack -> ProxyPathStack) -> IState -> IState
-modifyStateProxies f (IState g e a s b t) = IState g e a s (f b) t
+modifyStateProxies f st = st {getProxyStack = f $ getProxyStack st}
 
 modifyTracer :: (ITracer -> ITracer) -> IState -> IState
-modifyTracer f (IState g e a s b t) = IState g e a s b $ f t
+modifyTracer f st = st {getTracer = f $ getTracer st}
 
 modifyStateEnv :: (IEnvironment Value -> Interpretation (IEnvironment Value)) -> IState
                -> Interpretation IState
-modifyStateEnv f (IState g e a s b t) = f e >>= \ne -> return $ IState g ne a s b t
+modifyStateEnv f st = f (getEnv st) >>= \ne -> return $ st {getEnv=ne}
 
 modifyStateEnvIO :: (IEnvironment Value -> IO (IEnvironment Value)) -> IState
                  -> IO IState
-modifyStateEnvIO f (IState g e a s b t) = f e >>= \ne -> return $ IState g ne a s b t
+modifyStateEnvIO f st = f (getEnv st) >>= \ne -> return $ st {getEnv=ne}
 
 modifyStateSEnv :: (SEnvironment Value -> Interpretation (SEnvironment Value)) -> IState
                 -> Interpretation IState
-modifyStateSEnv f (IState g e a s b t) = f s >>= \ns -> return $ IState g e a ns b t
+modifyStateSEnv f st = f (getStaticEnv st) >>= \ns -> return $ st {getStaticEnv=ns}
 
 modifyStateSEnvIO :: (SEnvironment Value -> IO (SEnvironment Value)) -> IState
                   -> IO IState
-modifyStateSEnvIO f (IState g e a s b t) = f s >>= \ns -> return $ IState g e a ns b t
+modifyStateSEnvIO f st = f (getStaticEnv st) >>= \ns -> return $ st {getStaticEnv=ns}
 
 getResultState :: IResult a -> IState
 getResultState ((_, x), _) = x

@@ -40,12 +40,22 @@ isFunction _ = False
 
 {- Pretty printing -}
 
-prettyIEnvEntry :: IEnvEntry Value -> EngineM Value String
-prettyIEnvEntry (IVal v)  = return $ pretty v
-prettyIEnvEntry (MVal mv) = liftIO (readMVar mv) >>= return . pretty
+-- Print a value, obeying the instructions in the printconfig structure
+valuePrint :: PrintConfig -> Value -> String
+valuePrint pc (VCollection (_, c)) = "VCollection (Collection {" ++ 
+    if printNamespace pc then "namespace = " ++ (show $ namespace c) ++ ", " else "" ++
+    if printDataspace pc then "dataspace = " ++ (show $ dataspace c) ++ ", " else "" ++
+    if printRealizationId pc then "realizationId = " ++ (show $ realizationId $ c) ++ ", " else "" ++
+    "})"
+valuePrint pc v@(VFunction _) = if printFunctions pc then pretty v else ""
+valuePrint _ v = pretty v
 
-prettyIEnvM :: IEnvironment Value -> EngineM Value [String]
-prettyIEnvM env = do
+prettyIEnvEntry :: PrintConfig -> IEnvEntry Value -> EngineM Value String
+prettyIEnvEntry pc (IVal v)  = return $ prettyPC pc v
+prettyIEnvEntry pc (MVal mv) = liftIO (readMVar mv) >>= return . prettyPC pc
+
+prettyIEnvM :: PrintConfig -> IEnvironment Value -> EngineM Value [String]
+prettyIEnvM pc env = do
     env_list <- liftIO $ HT.toList env
     let nWidth = maximum $ map (length . fst) env_list
         sorted_env = sortBy (compare `on` fst) env_list
@@ -53,21 +63,28 @@ prettyIEnvM env = do
     return $ concat bindings 
   where 
     prettyEnvEntries w (n, eel) = do
-      sl <- mapM prettyIEnvEntry eel
+      sl <- foldM checkAndPretty [] eel
       return . concat $ map (shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70) sl
 
     prettyName w n    = (suffixPadTo w n) ++ " => "
     suffixPadTo len n = n ++ replicate (max (len - length n) 0) ' '
     prefixPadTo len n = replicate (max (len - length n) 0) ' ' ++ n
+    -- If we have an empty string, drop this value
+    checkAndPretty acc e = do
+      str <- prettyIEnvEntry pc e
+      case str of
+        "" -> return acc
+        _  -> return $ acc++[str]
 
 prettyIStateM :: IState -> EngineM Value [String]
 prettyIStateM st = do
-  envLines <- prettyIEnvM $ getEnv st
-  return $ ["Environment:"] ++ (indent 2 $ envLines)
-        ++ ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv st)
-        ++ ["Static:"]      ++ (indent 2 $ lines $ show $ getStaticEnv st)
-        ++ ["Proxy stack:"] ++ (indent 2 $ lines $ show $ getProxyStack st)
-        ++ ["Tracing: "]    ++ (indent 2 $ lines $ show $ getTracer st)
+  let pc = getPrintConfig st
+  envLines <- prettyIEnvM pc $ getEnv st
+  return $ if printEnv pc then ["Environment:"]         ++ (indent 2 $ envLines) else []
+        ++ if printAnnotations pc then ["Annotations:"] ++ (indent 2 $ lines $ show $ getAnnotEnv st) else []
+        ++ if printStaticEnv pc then ["Static:"]        ++ (indent 2 $ lines $ show $ getStaticEnv st) else []
+        ++ if printProxyStack pc then ["Proxy stack:"]  ++ (indent 2 $ lines $ show $ getProxyStack st) else []
+        ++ if printTracer pc then ["Tracing: "]         ++ (indent 2 $ lines $ show $ getTracer st) else []
 
 prettyIResultM :: IResult Value -> EngineM Value [String]
 prettyIResultM ((res, st), _) =
@@ -84,7 +101,7 @@ showTag :: String -> [String] -> [String]
 showTag str l = [str ++ " { "] ++ (indent 2 l) ++ ["}"]
 
 showIEnvTagM :: String -> IEnvironment Value -> EngineM Value [String]
-showIEnvTagM str env = prettyIEnvM env >>= return . showTag str
+showIEnvTagM str env = prettyIEnvM defaultPrintConfig env >>= return . showTag str
 
 showIStateTagM :: String -> IState -> EngineM Value [String]
 showIStateTagM str st = prettyIStateM st >>= return . showTag str
@@ -93,7 +110,7 @@ showIResultTagM :: String -> IResult Value -> EngineM Value [String]
 showIResultTagM str r = prettyIResultM r >>= return . showTag str
 
 showIEnvM :: IEnvironment Value -> EngineM Value String
-showIEnvM e = prettyIEnvM e >>= return . boxToString
+showIEnvM e = prettyIEnvM defaultPrintConfig e >>= return . boxToString
 
 showIStateM :: IState -> EngineM Value String
 showIStateM s = prettyIStateM s >>= return . boxToString
@@ -102,8 +119,8 @@ showIResultM :: IResult Value -> EngineM Value String
 showIResultM r = prettyIResultM r >>= return . boxToString
 
 showDispatchM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
-showDispatchM addr name args r =
-    wrap' (pretty args) <$> (showIResultTagM "BEFORE" r >>= return . indent 2)
+showDispatchM addr name args r@((_,istate),_) =
+    wrap' (showPC (getPrintConfig istate) args) <$> (showIResultTagM "BEFORE" r >>= return . indent 2)
   where
     wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
                   ++ ["  Args: " ++ arg] 

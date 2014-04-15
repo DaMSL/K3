@@ -21,6 +21,8 @@ import Language.K3.Core.Common
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.FileDataspace
 
+import Language.K3.Utils.Pretty(PrintConfig)
+
 -- | K3 Values
 --   Values are pure, allowing their definition as Eq and Ord instances.
 --
@@ -222,12 +224,13 @@ data ITracer = ITracer { stackTrace   :: [(Span, UID)]
                 deriving (Eq, Read, Show)
 
 -- | Type declaration for an Interpretation's state.
-data IState = IState { getGlobals    :: Globals
-                     , getEnv        :: IEnvironment Value
-                     , getAnnotEnv   :: AEnvironment Value
-                     , getStaticEnv  :: SEnvironment Value
-                     , getProxyStack :: ProxyPathStack
-                     , getTracer     :: ITracer }
+data IState = IState { getGlobals     :: Globals
+                     , getEnv         :: IEnvironment Value
+                     , getAnnotEnv    :: AEnvironment Value
+                     , getStaticEnv   :: SEnvironment Value
+                     , getProxyStack  :: ProxyPathStack
+                     , getTracer      :: ITracer 
+                     , getPrintConfig :: PrintConfig}
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)

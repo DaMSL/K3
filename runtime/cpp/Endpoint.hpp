@@ -48,20 +48,20 @@ namespace K3
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
 
-  int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
+  static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
+  static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
-  string internalEndpointPrefix() { return string("__");  }
+  static inline string internalEndpointPrefix() { return string("__");  }
 
-  Identifier connectionId(Address& addr) {
+  static inline Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
   }
 
-  Identifier peerEndpointId(Address& addr) {
+  static inline Identifier peerEndpointId(Address& addr) {
     return internalEndpointPrefix() + "_node_" + addressAsString(addr);
   }
 
-  bool externalEndpointId(Identifier& id) {
+  static inline bool externalEndpointId(Identifier& id) {
     string pfx = internalEndpointPrefix();
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }
@@ -506,6 +506,21 @@ namespace K3
     size_t numEndpoints() {
       strict_lock<EndpointState> guard(*this);
       return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
+    }
+
+    void logEndpoints() {
+      strict_lock<EndpointState> guard(*this);
+      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << "):";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
+      {
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
+      }
+
+      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << "):";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
+      {
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
+      }
     }
 
   protected:

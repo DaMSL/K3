@@ -71,9 +71,9 @@ $(customLoggingFunctions ["RegisterGlobal"])
 --   static initializers (i.e. initializers that do not depend on runtime values),
 --   we can simply populate the static environment from the interpreter
 --   environment resulting immediately after declaration initialization.
-staticEnvironment :: K3 Declaration -> EngineM Value (SEnvironment Value)
-staticEnvironment prog = do
-  initSt  <- initState emptyAnnotationEnv prog
+staticEnvironment :: PrintConfig -> K3 Declaration -> EngineM Value (SEnvironment Value)
+staticEnvironment pc prog = do
+  initSt  <- initState pc emptyAnnotationEnv prog
   staticR <- runInterpretation' initSt (declaration prog)
   logIStateM "PRE STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
@@ -204,8 +204,8 @@ initEnvironment decl st =
     registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
 
 
-initState :: AEnvironment Value -> K3 Declaration -> EngineM Value IState
-initState aEnv prog = liftIO (annotationStateIO aEnv) >>= initEnvironment prog
+initState :: PrintConfig -> AEnvironment Value -> K3 Declaration -> EngineM Value IState
+initState pc aEnv prog = liftIO (annotationStatePCIO pc aEnv) >>= initEnvironment prog
 
 {- Program initialization and finalization via the atInit and atExit triggers -}
 initMessages :: IResult () -> EngineM Value (IResult Value)
@@ -250,9 +250,9 @@ injectBootstrap bootstrap ((Right val, st), rLog) = do
 
   where addFromBoostrap bootEnv acc n e = lookupEnvIO n bootEnv >>= flip (insertEnvIO n) acc . maybe e id
 
-initProgram :: PeerBootstrap -> SEnvironment Value -> K3 Declaration -> EngineM Value (IResult Value)
-initProgram bootstrap staticEnv prog = do
-    initSt   <- initState (snd staticEnv) prog
+initProgram :: PrintConfig -> PeerBootstrap -> SEnvironment Value -> K3 Declaration -> EngineM Value (IResult Value)
+initProgram pc bootstrap staticEnv prog = do
+    initSt   <- initState pc (snd staticEnv) prog
     staticSt <- liftIO $ modifyStateSEnvIO (const $ return staticEnv) initSt
     declR    <- runInterpretation' staticSt (declaration prog)
     bootR    <- injectBootstrap bootstrap declR
@@ -277,27 +277,27 @@ runExpression_ e = runExpression e >>= putStrLn . show
 {- Distributed program execution -}
 
 -- | Single-machine system simulation.
-runProgram :: Bool -> SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
-runProgram isPar systemEnv prog = buildStaticEnv >>= \case
+runProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
+runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
       trigs  <- return $ getTriggerIds tProg
       engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM engine $ runEngine (virtualizedProcessor sEnv) tProg
+      flip runEngineM engine $ runEngine pc (virtualizedProcessor pc sEnv) tProg
 
   where buildStaticEnv = do
           trigs <- return $ getTriggerIds tProg
           sEnv  <- emptyStaticEnvIO
           preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-          flip runEngineM preEngine $ staticEnvironment tProg
+          flip runEngineM preEngine $ staticEnvironment pc tProg
 
         tProg = labelBindAliases prog
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: Bool -> SystemEnvironment -> K3 Declaration
+runNetwork :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
            -> IO [Either EngineError (Address, Engine Value, ThreadId)]
-runNetwork isPar systemEnv prog =
+runNetwork pc isPar systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
     buildStaticEnv (getTriggerIds tProg) >>= \case
       Left err   -> return $ [Left err]
@@ -312,11 +312,11 @@ runNetwork isPar systemEnv prog =
     buildStaticEnv trigs = do
       sEnv <- emptyStaticEnvIO
       preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM preEngine $ staticEnvironment tProg
+      flip runEngineM preEngine $ staticEnvironment pc tProg
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
     fork staticEnv (addr, engine) = do
-      threadId <- flip runEngineM engine $ forkEngine (virtualizedProcessor staticEnv) tProg
+      threadId <- flip runEngineM engine $ forkEngine pc (virtualizedProcessor pc staticEnv) tProg
       return $ either Left (Right . (addr, engine,)) threadId
 
     tProg = labelBindAliases prog
@@ -342,8 +342,8 @@ runTrigger r n a = \case
 type VirtualizedMessageProcessor = 
   MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 
-virtualizedProcessor :: SEnvironment Value -> VirtualizedMessageProcessor
-virtualizedProcessor staticEnv = MessageProcessor {
+virtualizedProcessor :: PrintConfig -> SEnvironment Value -> VirtualizedMessageProcessor
+virtualizedProcessor pc staticEnv = MessageProcessor {
     initialize = initializeVP,
     process    = processVP,
     status     = statusVP,
@@ -356,7 +356,7 @@ virtualizedProcessor staticEnv = MessageProcessor {
 
     initNode node program systemEnv = do
       initEnv     <- return $ maybe [] id $ lookup node systemEnv
-      initIResult <- initProgram initEnv staticEnv program
+      initIResult <- initProgram pc initEnv staticEnv program
       logIResultM "INIT " (Just node) initIResult
       return (node, initIResult)
 
@@ -399,15 +399,15 @@ virtualizedProcessor staticEnv = MessageProcessor {
 type SingletonMessageProcessor =
   MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 
-uniProcessor :: SEnvironment Value -> SingletonMessageProcessor
-uniProcessor staticEnv = MessageProcessor {
+uniProcessor :: PrintConfig -> SEnvironment Value -> SingletonMessageProcessor
+uniProcessor pc staticEnv = MessageProcessor {
     initialize = initUP,
     process    = processUP,
     status     = statusUP,
     finalize   = finalizeUP,
     report     = reportUP
 } where
-    initUP prog = ask >>= \x -> initProgram (uniBootstrap $ deployment x) staticEnv prog
+    initUP prog = ask >>= \x -> initProgram pc (uniBootstrap $ deployment x) staticEnv prog
     uniBootstrap [] = []
     uniBootstrap ((_,is):_) = is
 
