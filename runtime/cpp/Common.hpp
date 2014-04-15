@@ -41,7 +41,7 @@ namespace K3 {
   typedef string EValue;
   typedef string IValue;
 
-  typedef int32_t fixed_int;
+  typedef uint32_t fixed_int;
 
   typedef tuple<boost::asio::ip::address, unsigned short> Address;
 
@@ -297,6 +297,7 @@ namespace K3 {
       }
 
       shared_ptr<Value> decode(const Value& v) { 
+
         // Append to buffer
         *buf_ = *buf_ + v;
         // Determine if there is a complete value in the buffer
@@ -335,7 +336,7 @@ namespace K3 {
    class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
     public:
       LengthHeaderCodec()
-        : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string())
+        : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new string()), next_size_(NULL)
       {}
 
       Value encode(const Value& s) {
@@ -350,22 +351,20 @@ namespace K3 {
         // copy into string and free buffer
         Value enc_v = string(buffer, enc_size);
         delete[] buffer;
+
         return enc_v;
       }
 
       shared_ptr<Value> decode(const Value& v) {
-        // Append v to buffer
+
+        if (v != "") {
         *buf_ = *buf_ + v;
+        }
+
         if (!next_size_) {
           // See if there is enough data in buffer to unpack a header
-          shared_ptr<fixed_int> value_size = strip_header();
-          if (value_size) {
-            next_size_ = value_size;
-            // remove the header bytes from the buffer
-            size_t header_size = sizeof(fixed_int);
-            *buf_ = buf_->substr(header_size);
-          }
-          else {
+          strip_header();
+          if (!next_size_) {
             // failure: not enough data in buffer
             return nullptr;
           }
@@ -376,9 +375,11 @@ namespace K3 {
         if (decode_ready()) {
           // Unpack next value
           const char * bytes = buf_->c_str();
-          shared_ptr<Value> result = make_shared<Value>(string(bytes, *next_size_));
+          fixed_int i = *next_size_;
+          shared_ptr<Value> result = shared_ptr<Value>(new string(bytes, i));
+
           // Setup for next round
-          *buf_ = buf_->substr(*next_size_);
+          *buf_ = buf_->substr(i);
           next_size_.reset();
           return result;
         }
@@ -400,22 +401,27 @@ namespace K3 {
         return cdec;
       };
 
-
     protected:
       bool good_;
       shared_ptr<fixed_int> next_size_;
       shared_ptr<string> buf_;
 
-      shared_ptr<fixed_int> strip_header() {
+      void strip_header() {
         Value s = *buf_;
         size_t header_size = sizeof(fixed_int);
         if (s.length() < header_size) {
           // failure: input does not contain a full header
-          return nullptr;
+          return;
         }
         const char * bytes = s.c_str();
-        fixed_int x = *bytes;
-        return make_shared<fixed_int>(x);
+        // copy the fixed_int into next_size_
+        fixed_int * n = new fixed_int();
+        memcpy(n, bytes, header_size);
+        next_size_ = shared_ptr<fixed_int>(new fixed_int(*n));
+        delete n;
+
+        // remove the header bytes from the buffer
+        *buf_ = buf_->substr(header_size);
       }
   };
 
@@ -427,6 +433,7 @@ namespace K3 {
         // Values are of the form: "(Address, Identifier, Payload)"
         // Split value into components:
         static const boost::regex value_regex("\\( *(.+) *, *(.+) *, *(.+) *\\)");
+        //logAt(trivial::trace, v);
         boost::cmatch value_match;
         if(boost::regex_match(v.c_str(), value_match, value_regex)){
           // Parse Address
@@ -459,7 +466,8 @@ namespace K3 {
       Value show_message(const Message& m) {
         ostringstream os;
         os << "(" << addressAsString(m.address()) << "," << m.id() << "," << m.contents() << ")";
-        return os.str();
+        string s = os.str();
+        return s;
       }
   };
 

@@ -396,6 +396,7 @@ namespace K3
     }
 
     void doWrite(shared_ptr<Value> v_ptr) {
+
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.

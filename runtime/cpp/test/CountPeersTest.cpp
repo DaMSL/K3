@@ -38,6 +38,7 @@ void join(shared_ptr<Engine> engine, string message_contents) {
 void register2(shared_ptr<Engine> engine, string message_contents) {
   int n = std::stoi(message_contents);
   nodeCounter += n;
+  cout << "processed #" << nodeCounter << endl;
 }
 
 // MP setup
@@ -177,6 +178,11 @@ FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3
   }
   // Fork a thread for each engine
   auto service_threads = std::shared_ptr<thread_group>(new thread_group());
+
+  int timeout = 600;
+  int i =0;
+  int desired = 3000000;
+
   shared_ptr<thread> t1 = engine1->forkEngine(mp1);
   shared_ptr<thread> t2 = engine2->forkEngine(mp2);
   shared_ptr<thread> t3 = engine3->forkEngine(mp3);
@@ -185,13 +191,11 @@ FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3
   service_threads->add_thread(t2.get());
   service_threads->add_thread(t3.get());
 
-  int timeout = 120;
-  int i =0;
-  int desired = 3000000;
   while ((K3::nodeCounter < desired) && i < timeout) {
     boost::this_thread::sleep_for( boost::chrono::seconds(1) );
     i++;
   }
+
 
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();

@@ -151,18 +151,23 @@ namespace K3
 
       void write(const string& val) { 
         // TODO revisit this (can we avoid copying the value?)
-        shared_ptr<Value> buf = make_shared<Value>(val);
-        size_t desired = buf->length();
+        shared_ptr<Value> buf = shared_ptr<Value>(new Value(val));
+        size_t desired = val.length();
+
+        mut.lock();
+        busy = true;
 
         // Write the value out to the socket
         async_write(*socket_, boost::asio::buffer(*buf,
           desired),
         [=](boost::system::error_code ec, size_t s)
         {
+          busy = false;
+          mut.unlock();
           // Capture the buffer in closure to keep its pointer count > 0
           // until this callback has been executed
           shared_ptr<Value> keep_alive = buf;
-
+          // Check for errors:
           if (ec || (s != desired)) {
             BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
               << " wrote  " << s << " out of " << desired << " bytes" << endl;
@@ -173,10 +178,12 @@ namespace K3
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
-          LogMT("NConnection"), socket_(s), connected_(false)
+          LogMT("NConnection"), socket_(s), connected_(false), busy(false)
       {}
       
       Socket socket_;
+      boost::mutex mut;
+      bool busy;
       bool connected_;
     };
   }
