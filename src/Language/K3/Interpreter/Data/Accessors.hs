@@ -333,9 +333,8 @@ getResultState ((_, x), _) = x
 getResultVal :: IResult a -> Either InterpretationError a
 getResultVal ((x, _), _) = x
 
-syncIResult :: IResult a -> IO (IResult a)
-syncIResult ((r,st),l) = modifyStateEnvIO syncEnvIO st >>= \nst -> return ((r,nst), l)
-
+syncIState :: IState -> IO IState
+syncIState st = modifyStateEnvIO syncEnvIO st 
 
 {- Interpretation Helpers -}
 

@@ -54,6 +54,9 @@ data Value
     | VRecord      (NamedMembers Value)
     | VIndirection (IIndirection, VQualifier, EntityTag)
     | VCollection  (IIndirection, Collection Value)
+      -- Collections have both a mutable indirection version which is used where structural
+      -- references are essential (e.g. self), and a cached version that is refreshed
+      -- periodically. The cached version works well with Haskell's built-in typeclasses.
     | VFunction    (IFunction, Closure Value, EntityTag)
     | VTrigger     (Identifier, Maybe IFunction, EntityTag)
 

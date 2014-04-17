@@ -325,13 +325,15 @@ runNetwork pc isPar systemEnv prog =
 {- Message processing -}
 
 runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
-runTrigger r n a = \case
+runTrigger r nm arg = \case
     (VTrigger (_, Just f, _)) -> do
-        result <- runInterpretation' (getResultState r) (f a)
-        logTriggerM defaultAddress n a result
-        return result
-    (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ n) Nothing
-    _                      -> return $ tError ("Invalid trigger or sink value for " ++ n) Nothing
+        result@((v,st),log)  <- runInterpretation' (getResultState r) (f arg)
+        -- Refresh the collection caches in our environment so we can see the full picture 
+        st' <- liftIO $ syncIState st
+        logTriggerM defaultAddress nm arg st' (Just v) "AFTER"
+        return ((v,st'),log)
+    (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ nm) Nothing
+    _                      -> return $ tError ("Invalid trigger or sink value for " ++ nm) Nothing
 
   where iError s m = mkError r $ RunTimeInterpretationError s m
         tError s m = mkError r $ RunTimeTypeError s m
@@ -363,13 +365,13 @@ virtualizedProcessor pc staticEnv = MessageProcessor {
     processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
       dispatch addr (\s -> runTrigger' s addr name args)
 
-    runTrigger' s addr n a = do
-      void $ logTriggerM addr n a s 
-      entryOpt <- liftIO $ lookupEnvIO n $ getEnv $ getResultState s
+    runTrigger' s addr nm arg = do
+      -- void $ logTriggerM addr nm arg s None
+      entryOpt <- liftIO $ lookupEnvIO nm $ getEnv $ getResultState s
       vOpt     <- liftIO $ valueOfEntryOptIO entryOpt
       case vOpt of
-        Nothing -> return (Just (), unknownTrigger s n)
-        Just ft -> fmap (Just (),) $ runTrigger s n a ft
+        Nothing -> return (Just (), unknownTrigger s nm)
+        Just ft -> fmap (Just (),) $ runTrigger s nm arg ft
 
     unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
 
@@ -423,9 +425,9 @@ uniProcessor pc staticEnv = MessageProcessor {
       maybe (return $ unknownTrigger r n) (run r n args) vOpt
 
     run r n args trig = do
-      void $ logTriggerM defaultAddress n args r
+      --void $ logTriggerM defaultAddress n args r
       result <- runTrigger r n args trig
-      void $ logTriggerM defaultAddress n args result
+      --void $ logTriggerM defaultAddress n args result
       return result
 
     unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)

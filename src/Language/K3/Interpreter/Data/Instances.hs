@@ -325,7 +325,7 @@ instance ShowPC [(Identifier, (Value, VQualifier))] where
   -- We transform into tuples for better readability if we encounter _r1_... or key,value ids
   showPC pc vs = if canTuplize vs then showPC pc $ map snd $ sort vs else showListBraces pc vs
     where
-      canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value") vs
+      canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value" || id == "i") vs
       sort vs = sortBy (compare `on` fst) vs
 
 -- Some instances are in K3/Runtime/Engine.hs because of circular inclusion

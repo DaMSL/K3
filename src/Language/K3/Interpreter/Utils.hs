@@ -118,9 +118,12 @@ showIStateM s = prettyIStateM s >>= return . boxToString
 showIResultM :: IResult Value -> EngineM Value String
 showIResultM r = prettyIResultM r >>= return . boxToString
 
-showDispatchM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value [String]
-showDispatchM addr name args r@((_,istate),_) =
-    wrap' (showPC (getPrintConfig istate) args) <$> (showIResultTagM "BEFORE" r >>= return . indent 2)
+showDispatchM :: Address -> Identifier -> Value -> IState -> Maybe (Either InterpretationError Value) -> String -> EngineM Value [String]
+showDispatchM addr name args st m_res str = 
+  -- If we have a result, show that. Otherwise show state
+  case m_res of
+    Just v  -> wrap' (showPC (getPrintConfig st) args) <$> (showIResultTagM str ((v,st),[])) >>= return . indent 2
+    Nothing -> wrap' (showPC (getPrintConfig st) args) <$> (showIStateTagM  str st) >>= return . indent 2
   where
     wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
                   ++ ["  Args: " ++ arg] 
@@ -142,10 +145,9 @@ logIResultM tag' addr r = do
     msg <- showIResultTagM (tag' ++ (maybe "" show $ addr)) r 
     void $ _notice_Dispatch $ boxToString msg
 
-logTriggerM :: Address -> Identifier -> Value -> IResult Value -> EngineM Value ()
-logTriggerM addr n args r = do
-    syncR <- liftIO $ syncIResult r
-    msg   <- showDispatchM addr n args syncR
+logTriggerM :: Address -> Identifier -> Value -> IState -> Maybe (Either InterpretationError Value) -> String -> EngineM Value ()
+logTriggerM addr n args st m_res str = do
+    msg   <- showDispatchM addr n args st m_res str
     void $ _notice_Dispatch $ boxToString msg
 
 logIStateMI :: Interpretation ()
