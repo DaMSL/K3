@@ -73,11 +73,11 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  class EndpointBuffer : public virtual LogMT {
+  class EndpointBuffer {
   public:
     typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
-    EndpointBuffer() : LogMT("Endpoint Buffer") {}
+    EndpointBuffer() {}
 
     virtual bool empty() = 0;
     virtual bool full() = 0;
@@ -102,9 +102,108 @@ namespace K3
     virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
+
+  class ScalarEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex> {
+  public:
+    typedef ScalarEPBufferMT LockB;
+
+    ScalarEPBufferMT() : EndpointBuffer(), contents(*this) {}
+    // Metadata
+    bool   empty()    {
+      strict_lock<LockB> guard(*this);
+      return !(contents.get(guard));
+    }
+    bool   full()     {
+      strict_lock<LockB> guard(*this);
+      return static_cast<bool>(contents.get(guard));
+    }
+    size_t size()     {
+      strict_lock<LockB> guard(*this);
+      return contents.get(guard) ? 1 : 0;
+    }
+    size_t capacity() { return 1; }
+
+    // Buffer Operations
+    bool push_back(shared_ptr<Value> v) {
+      strict_lock<LockB> guard(*this);
+      // Failure:
+      if (!v || (contents.get(guard))) {
+        return false;
+      }
+      // Success:
+      contents.get(guard) = v;
+      return true;
+    }
+
+    shared_ptr<Value> pop() {
+      strict_lock<LockB> guard(*this);
+      shared_ptr<Value> v;
+      if (contents.get(guard)) {
+        // Success:
+        v = contents.get(guard);
+        contents.get(guard).reset();
+      }
+      // In case of failure, v is a null pointer
+      return v;
+    }
+
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
+    {
+      strict_lock<LockB> guard(*this);
+      shared_ptr<Value> r;
+      EndpointNotification nt = EndpointNotification::NullEvent;
+
+      // Read from the buffer if possible
+      if (contents.get(guard)) {
+        r = contents.get(guard);
+        contents.get(guard).reset();
+        notify(r);
+      }
+
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if (ioh->hasRead()) {
+        shared_ptr<Value> v = ioh->doRead();
+        contents.get(guard) = v;
+      }
+
+     return r;
+    }
+
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      // pop() a value and write to the handle if possible
+      strict_lock<LockB> guard(*this);
+      if (contents.get(guard)) {
+        shared_ptr<Value> v = contents.get(guard);
+        contents.get(guard).reset();
+        ioh->doWrite(*v);
+        notify(v);
+      }
+    }
+
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      strict_lock<LockB> guard(*this);
+      bool transferred = false;
+      if(contents.get(guard)) {
+        shared_ptr<Value> v = contents.get(guard);
+        contents.get(guard).reset();
+        if (queues && cdec) {
+          Message msg = cdec->read_message(*v);
+          queues->enqueue(msg);
+          transferred = true;
+        }
+        notify(v);
+      }
+      return transferred;
+    }
+
+   protected:
+    externally_locked<shared_ptr<Value>, LockB> contents;
+  };
+
   class ScalarEPBufferST : public EndpointBuffer {
   public:
-    ScalarEPBufferST() : EndpointBuffer(), LogMT("ScalarEPBufferST") {}
+    ScalarEPBufferST() : EndpointBuffer() {}
     // Metadata
     bool   empty()    { return !contents; }
     bool   full()     { return static_cast<bool>(contents); }
@@ -183,7 +282,7 @@ namespace K3
 
   class ContainerEPBufferST : public EndpointBuffer {
   public:
-    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), LogMT("ScalarEPBufferST"), spec(s) {
+    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), spec(s) {
       contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
@@ -396,6 +495,7 @@ namespace K3
     }
 
     void doWrite(shared_ptr<Value> v_ptr) {
+
       bool success = buffer_->push_back(v_ptr);
       if ( !success ) {
         // Flush buffer, and then try to append again.
