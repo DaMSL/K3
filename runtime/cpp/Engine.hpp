@@ -579,7 +579,7 @@ namespace K3 {
         switch (b) {
           case Builtin::Stdout:
           case Builtin::Stderr:
-            buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
+            buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferMT());
             break;
           case Builtin::Stdin:
             break;
@@ -598,7 +598,7 @@ namespace K3 {
         shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
         // Add the endpoint to the given endpoint state.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferMT());
 
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
@@ -622,7 +622,7 @@ namespace K3 {
 
         // Add the endpoint.
         shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
-            new ScalarEPBufferST());
+            new ScalarEPBufferMT());
 
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
