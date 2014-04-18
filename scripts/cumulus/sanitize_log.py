@@ -37,17 +37,35 @@ def lines_of_trig(trig):
   if mobj:
     name, addr = mobj.group(1), mobj.group(2)
     if name and addr:
-      mobj = re.match(r'^Args: (\(.*\))$', trig[1])
-      args = mobj.group(1)
-      if args:
-        pairs = [("args", args)]
-        for l in trig[2:]:
-          mobj = re.match(r'^(.*) => (.*)$', l)
+      pairs = []
+      lastval = None
+      lastkey = None
+      for i, line in enumerate(trig):
+        if i == 1:
+          mobj = re.match(r'^(Args): (.*)$', trig[1])
+        else:
+          mobj = re.match(r'^(.*) => (.*)$', line)
+        if mobj:
+          if lastkey and lastval:
+            pairs.append((lastkey, lastval))
+          lastkey = mobj.group(1)
+          lastval = mobj.group(2)
+        else: # maybe a continued line?
+          mobj = re.match(r'^.. (.*)$', line)
           if mobj:
-            pairs.append((mobj.group(1), mobj.group(2)))
-        # convert pairs to lines
-        out = ['/'.join([addr, name, pair[0], pair[1]]) for pair in pairs]
-        return out
+            # grow our value
+            if lastkey and lastval:
+              lastval += mobj.group(1)
+            else:
+              raise ValueError("Continued line without first line: \n" + line)
+
+      # last members if we missed them
+      if lastkey and lastval:
+        pairs.append((lastkey, lastval))
+
+      # convert pairs to lines
+      out = ['/'.join([addr, name, pair[0], pair[1]]) for pair in pairs]
+      return out
 
 # clean a line by removing initial whitespace, \n, long whitespace
 def clean(line):
