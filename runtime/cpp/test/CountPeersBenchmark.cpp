@@ -11,7 +11,7 @@
 #include <boost/regex.hpp>
 #include <boost/thread/thread.hpp>
 
-#include <xUnit++/xUnit++.h>
+
 
 namespace K3 {
 

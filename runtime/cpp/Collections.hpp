@@ -19,50 +19,91 @@
 #include <memory>
 #include <tuple>
 
+// TODO remove nullptrs from K3::Collection constructor calls!!!
+
 namespace K3 {
-  template <template <class> class D, class E>
+  template <template <class...> class D, class E>
   class Collection: public D<E> {
     public:
-      Collection();
+      Collection(Engine * e) : D<E>(e) {};
 
       template <template <class> class F>
-      Collection(const Collection<F, E>);
+      Collection(const Collection<F, E> other) : D<E>(other)  {}
 
       template <template <class> class F>
-      Collection(Collection<F, E>&&);
+      Collection(Collection<F, E>&& other) : D<E>(other) {}
 
       // TODO: shared_ptr vs. value?
-      std::shared_ptr<E> peek();
+      std::shared_ptr<E> peek() { return D<E>::peek(); }
 
-      void insert(const E&);
-      void insert(E&&);
+      void insert(const E& elem) { D<E>::insert(elem); }
+      void insert(E&& elem) { D<E>::insert(elem); }
 
-      void erase(const E&);
+      void erase(const E& elem)  { D<E>::erase(elem); }
 
-      void update(const E&, const E&);
-      void update(const E&, E&&);
+      void update(const E& v1, const E& v2) { D<E>::update(v1,v2); }
+      void update(const E& v1, E&& v2) { D<E>::update(v1,v2); }
 
-      std::tuple<Collection<D, E>, Collection<D, E>> split();
-
-      template <template <class> class F>
-      Collection<D, E> combine(const Collection<F, E>&);
+      std::tuple<Collection<D, E>, Collection<D, E>> split() { return D<E>::split(); }
 
       template <template <class> class F>
-      Collection<D, E> combine(Collection<F, E>&&);
+      Collection<D, E> combine(const Collection<F, E>& other) {
+        return D<E>::combine(other);
+      }
+
+      template <template <class> class F>
+      Collection<D, E> combine(Collection<F, E>&& other) {
+        return D<E>::combine(other);
+      }
 
       template <class T>
-      Collection<D, T> map(std::function<T(E)>);
+      Collection<D, T> map(std::function<T(E)> f) {
+        return D<E>::map(f);
+      }
 
-      Collection<D, E> filter(std::function<bool(E)>);
+      Collection<D, E> filter(std::function<bool(E)> f) {
+        return D<E>::filter(f);
+      }
 
       template <class Z>
-      Z fold(std::function<Z(Z, E)>, Z);
+      Z fold(std::function<Z(Z, E)> f, Z init) {
+        return D<E>::fold(f, init);
+      }
 
       template <class K, class Z>
-      Collection<D, std::tuple<K, Z>> group_by(std::function<K(E)>, std::function<Z(Z, E)>, Z);
+      Collection<D, std::tuple<K, Z>> group_by(
+        std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+          // Create a map to hold partial results
+          std::map<K, Z> accs = std::map<K,Z>();
+          // lambda to apply to each element
+          std::function<void(E)> f = [&] (E elem) {
+            K key = grouper(elem);
+            if (accs.find(key) == accs.end()) {
+              accs[key] = init;
+            }
+            accs[key] = folder(accs[key], elem);
+          };
+          D<E>::iterate(f);
+          // Build Collection result
+          Collection<D, std::tuple<K,Z>> result = Collection<D,std::tuple<K,Z>>(nullptr);
+          typename std::map<K,Z>::iterator it;
+          for (it = accs.begin(); it != accs.end(); ++it) {
+            std::tuple<K,Z> tup = std::make_tuple(it->first, it->second);
+            result.insert(tup);
+          }
+         return result;
+      }
 
       template <template <class> class F, class T>
-      Collection<D, T> ext(std::function<Collection<F, T>(E)>);
+      Collection<D, T> ext(std::function<Collection<F, T>(E)> expand) {
+        Collection<D, T> result = Collection<D,T>(nullptr);
+        auto add_to_result = [&] (T elem) {result.insert(elem); };
+        auto fun = [&] (E elem) {
+          expand(elem).iterate(add_to_result);
+        };
+        D<E>::iterate(fun);
+        return result;
+      }
   };
 }
 
