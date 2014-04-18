@@ -14,7 +14,7 @@ import Language.K3.Utils.Logger.Config
 
 import Language.K3.Driver.Common
 
-import Language.K3.Utils.Pretty (Pretty(..), indent, defaultPrintConfig, PrintConfig(..), tersePrintConfig)
+import Language.K3.Utils.Pretty (Pretty(..), indent, defaultPrintConfig, PrintConfig(..), tersePrintConfig, simplePrintConfig)
 
 -- | Program Options.
 data Options = Options {
@@ -203,14 +203,30 @@ parOptions = switch (
      <> help "Run the Parallel Engine"
     )
 
+data InterpPrintVerbosity = PrintVerbose | PrintTerse | PrintTerseSimple
+
 -- | Print options for interpreter
 interpPrintOptions :: Parser PrintConfig
-interpPrintOptions = flag 
-                       tersePrintConfig
-                       defaultPrintConfig
+interpPrintOptions = choosePC <$> verbosePrintFlag <*> simplePrintFlag
+  where choosePC _ PrintTerseSimple = simplePrintConfig
+        choosePC PrintTerse _       = tersePrintConfig
+        choosePC _     _            = defaultPrintConfig
+
+        verbosePrintFlag = flag 
+                       PrintTerse
+                       PrintVerbose
                        (long "verbose"
                        <> short 'v'
                        <> help "Verbose interpreter printout")
+
+        -- | Simple logging for interpreter
+        simplePrintFlag = flag
+                            PrintVerbose
+                            PrintTerseSimple
+                            (long "simple"
+                            <> help "Use simple printing format for logging")
+                  
+
 
 -- | Printing options
 printOptions :: Parser Mode
