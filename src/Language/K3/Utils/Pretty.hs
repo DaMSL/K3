@@ -11,6 +11,7 @@ module Language.K3.Utils.Pretty (
     PrintConfig(..),
     defaultPrintConfig,
     tersePrintConfig,
+    simplePrintConfig,
     Pretty(..),
     PrettyPC(..),
     ShowPC(..),
@@ -76,16 +77,20 @@ data PrintConfig = PrintConfig {
                    , printProxyStack    :: Bool
                    , printTracer        :: Bool
                    , printQualifiers    :: Bool
+                   , printComplex       :: Bool -- Don't print with simple symbols
+                                                -- sets {}, seq [], collections {||}
                    } deriving (Eq, Read, Show)
 
 defaultPrintConfig :: PrintConfig
-defaultPrintConfig  = PrintConfig True True True True True True True True True True True
+defaultPrintConfig  = PrintConfig True True True True True True True True True True True True
 
 tersePrintConfig :: PrintConfig
 tersePrintConfig = defaultPrintConfig {printNamespace=False, 
                                        printFunctions=False,
                                        printQualifiers=False,
                                        printVerboseTypes=False}
+
+simplePrintConfig = tersePrintConfig {printComplex = False}
 
 class Pretty a where
     prettyLines :: a -> [String]

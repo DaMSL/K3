@@ -238,6 +238,9 @@ pqual = printQualifiers
 pfunc :: PrintConfig -> Bool
 pfunc = printFunctions
 
+pSimple :: PrintConfig -> Bool
+pSimple = not . printComplex
+
 printParens :: String -> String
 printParens s = '(':s++")"
 
@@ -294,25 +297,34 @@ instance ShowPC (Collection Value) where
     let ns_s = if printNamespace pc then [show ns] else []
         ds_s = if printDataspace pc then [showPC pc ds] else []
         ns_ds = concat $ intersperse ", " $ ns_s++ds_s
-        name = case cId of 
-          ""          -> "Collection"
-          _ | ptag pc -> "Collection " ++ cId
-          _           -> cId
-    in showPCTagF name ns_ds
+        (name, wrap) = case cId of 
+          ""    | pSimple pc -> ("", \x -> "{|"++x++"|}")
+          "Set" | pSimple pc -> ("", \x -> "{"++x++"}")
+          "Seq" | pSimple pc -> ("", \x -> "["++x++"]")
+          ""                 -> ("Collection ", printParens)
+          _     | ptag pc    -> ("Collection " ++ cId ++ " ", printParens)
+          _                  -> (cId ++ " ", printParens)
+    in name ++ wrap (ns_ds)
 
-showListPC :: ShowPC a => PrintConfig -> (String -> String) -> [a] -> String
-showListPC pc f vs = f $ concat $ intersperse ", " $ map (showPC pc) vs
+showListPC :: ShowPC a => PrintConfig -> (String -> String) -> String -> [a] -> String
+showListPC pc f sep vs = f $ concat $ intersperse sep $ map (showPC pc) vs
 
-showListParens pc = showListPC pc printParens
-showListBraces pc = showListPC pc printBraces
+showListParens :: ShowPC a => PrintConfig -> [a] -> String
+showListParens pc = showListPC pc printParens ", "
+showListBraces :: ShowPC a => PrintConfig -> [a] -> String
+showListBraces pc = showListPC pc printBraces ", "
+
+showContainerPC :: ShowPC a => PrintConfig -> [a] -> String
+showContainerPC pc | pSimple pc = showListPC pc id "; "
+showContainerPC pc              = showListPC pc id ", "
 
 instance ShowPC (CollectionDataspace Value) where
-  showPC pc (InMemoryDS vl) = showListParens pc vl
-  showPC pc (InMemDS (MemDS(ListMDS vl))) = showListParens pc vl
-  showPC pc (InMemDS (SeqDS(ListMDS vl))) = showListParens pc vl
-  showPC pc (InMemDS (SetDS(SetAsOrdListMDS vl))) = showListParens pc vl
-  showPC pc (InMemDS (SortedDS(BagAsOrdListMDS vl))) = showListParens pc vl
-  showPC pc x@(ExternalDS _) = show x
+  showPC pc (InMemoryDS vl)                          = showContainerPC pc vl
+  showPC pc (InMemDS (MemDS(ListMDS vl)))            = showContainerPC pc vl
+  showPC pc (InMemDS (SeqDS(ListMDS vl)))            = showContainerPC pc vl
+  showPC pc (InMemDS (SetDS(SetAsOrdListMDS vl)))    = showContainerPC pc vl
+  showPC pc (InMemDS (SortedDS(BagAsOrdListMDS vl))) = showContainerPC pc vl
+  showPC pc x@(ExternalDS _)                         = show x
 
 instance ShowPC (NamedMembers Value) where
   showPC pc m = showPC pc $ Map.toList m
@@ -323,7 +335,10 @@ instance ShowPC (Identifier, (Value, VQualifier)) where
 
 instance ShowPC [(Identifier, (Value, VQualifier))] where
   -- We transform into tuples for better readability if we encounter _r1_... or key,value ids
-  showPC pc vs = if canTuplize vs then showPC pc $ map snd $ sort vs else showListBraces pc vs
+  showPC pc vs = case vs of
+      [x] | canTuplize vs -> showPC pc $ snd x
+      _   | canTuplize vs -> showPC pc $ map snd $ sort vs
+      _                   -> showListBraces pc vs
     where
       canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value" || id == "i") vs
       sort vs = sortBy (compare `on` fst) vs
