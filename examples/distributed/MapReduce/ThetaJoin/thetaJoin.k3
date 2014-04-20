@@ -16,36 +16,41 @@ declare tTable : collection {Name : string, Age : int, LastName : string} @ {Col
 
 declare sNumRows : mut int = 0
 declare tNumRows : mut int = 0
-declare totalRows : int = 2
+declare totalRows : int = 12
 declare rowCounter : mut int = 0
 
 /* MAPPER */
 
 declare sMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:4001, Id : 1}, {Address : 127.0.0.1:4002, Id : 2}, {Address : 127.0.0.1:4003, Id : 3}, {Address : 127.0.0.1:4004, Id : 4} |} @ {Collection}
 declare tMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:5001, Id : 1}, {Address : 127.0.0.1:5002, Id : 2}, {Address : 127.0.0.1:5003, Id : 3}, {Address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
-declare sNumMappers : int = 4
-declare tNumMappers : int = 4
+declare debugSMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:3000, Id : 1} |} @ {Collection}
+declare debugTMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:3000, Id : 1} |} @ {Collection}
+
+declare sNumMappers : int = 1
+declare tNumMappers : int = 1
 
 declare currentMapperSize : mut int = 0
-declare sMapperOutput : collection {RegionId : int, Output : collection {FirstName : string, Age : int, LastName : String} @ {Collection}} @ {Collection}
+declare sCurrentMapperSize : mut int = 0
+declare tCurrentMapperSize : mut int = 0
+
+declare sMapperOutput : collection {RegionId : int, Output : collection {FirstName : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 declare tMapperOutput : collection {RegionId : int, Output : collection {Name : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
+
+declare randomRow : mut int = 0
+declare randomColumn : mut int = 0
 
 /* REGIONS */
 
-declare regionMaxRow : int = 10
-declare regionMaxColumn : int = 10
+declare maxS : int = 2
+declare maxT : int = 2
 declare rowLookupTable : collection {Row : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
 declare columnLookupTable : collection {Column : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
 
 /* REDUCER */
 
-declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
-declare sTuples : option mut collection {FirstName : string, Age : int, LastName : String} @ {Collection} = None
-declare tTuples : option mut collection {Name : string, Age : int, LastName : string} @ {Collection} = None
-
 /* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
-trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
+trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
     tableElementCollection.iterate (\tableElement -> (
         rowCounter = rowCounter + 1;
         bind tableElement as {fromS : isItFromS, sRow : sRowElement, tRow : tRowElement} in
@@ -110,7 +115,7 @@ declare preProcessRegionsWorker : mut (int -> string -> ()) = fun numberOfRows -
      */
     if numberOfRows > 0 then
         if tableName == "S" then
-            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
+            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -127);
             tmpRegions = (getSRegions tmpRegions numberOfRows);
             rowLookupTable.insert {Row : numberOfRows, Regions : tmpRegions};
             (preProcessRegionsWorker (numberOfRows - 1) "S")
@@ -123,11 +128,17 @@ declare preProcessRegionsWorker : mut (int -> string -> ()) = fun numberOfRows -
 )
 
 trigger preProcessRegions : () = \_ -> (
-    (processRegions sNumRows "S");
-    (processRegions tNumRows "T")
+    (preProcessRegionsWorker sNumRows "S");
+    (preProcessRegionsWorker tNumRows "T");
+    (arrangeMap, me) <- ()
 )
 
 /* PHASE 2: MAP */
+
+declare getRandom : immut (string -> int) = fun tableName -> (
+    if tableName == "S" then (random (sNumRows - 1) + 1)
+    else (random (tNumRows - 1) + 1)
+)
 
 declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun tableName -> (
     /*
@@ -145,20 +156,6 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
                 if r == 0 then q else if mapperId <= r then q + 1 else q
 )
 
-declare getRandom : immut (string -> int) = fun tableName -> (
-    if tableName == "S" then random sNumRows
-    else random tNumRows
-)
-
-declare getLookupQuotient : immut (int -> string -> int) = fun random -> fun tableName -> (
-    if tableName == "S" then
-        if random % regionMaxRow == 0 then random/regionMaxRow
-        else random/regionMaxRow + 1
-    else
-        if random % regionMaxColumn == 0 then random/regionMaxColumn
-        else random/regionMaxColumn + 1
-)
-
 /* Send rows from both the tables to the mappers using the sendRowToMapper_s/sendRowToMapper_t triggers */
 trigger arrangeMap : () = \_ -> (
     sTable.fold (\mapperCounter -> \row -> (
@@ -173,10 +170,11 @@ trigger arrangeMap : () = \_ -> (
 )
 
 /* Send row to mapper */
+
 trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "S") in
-            let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+            let fMappers = debugSMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of 
                     {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
@@ -187,7 +185,7 @@ trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string},
 trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (tRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "T") in
-            let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+            let fMappers = debugTMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of
                     {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
@@ -267,43 +265,12 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     )
 )
 
-/* Send output collected at all mappers to the reducers */
+/* REDUCER */
+
 trigger sendAllToReducer : () = \_ -> (
-    /* Find reducer with the same RegionId as that of the mapper output. */
-    sMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.RegionId).peek in
-            (reduce_s, reducerInstance.Address) <- (mapperOutput.output)
-    ));
-    tMapperOutput.iterate (\mapperOutput -> (
-        let reducerInstance = reducers.filter (\reducer -> reducer.Id == mapperOutput.RegionId).peek in
-            (reduce_t, reducerInstance.Address) <- (mapperOutput.output)
-    ))
+    
 )
 
-/* 
- * PHASE 3: REDUCER
- * We have already divided the tuples into two different sets. So there is no need to do that in the reducer.
- * In the reducer, we check if the two sets are valid (not None/Null) and implement the join algorithm.
- */
+source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
 
-trigger reduce_s : (immut collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
-    sTuples = coll;
-    if tTuples == None then () else (reduceDoJoin, me) <- ()
-)
-
-trigger reduce_t : (immut collection {Name : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
-    tTuples = coll;
-    if sTuples == None then () else (reduceDoJoin, me) <- ()
-)
-
-/* Implement custom join algorithm here */
-trigger reduceDoJoin : () = \_ -> (
-    sTuples.iterate (\sRow -> (
-        tTuples.iterate (\tRow -> (
-            if sRow.attribute == tRow.attribute then output (sRow, tRow) else ()
-        ))
-    ))
-)
-
-source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : String}, tRow : option {Name : string, Age : int, LastName : string}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
 feed master |> preProcessTableRows
