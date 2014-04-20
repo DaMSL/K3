@@ -48,6 +48,12 @@ declare columnLookupTable : collection {Column : int, Regions : collection {Regi
 
 /* REDUCER */
 
+declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
+declare debugReducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:4000, Id : 1} |} @ {Collection}
+
+declare sTuples : mut collection {FirstName : string, Age : int, LastName : String} @ {Collection}
+declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
+
 /* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
 trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
@@ -268,7 +274,38 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
 /* REDUCER */
 
 trigger sendAllToReducer : () = \_ -> (
-    
+    /* 
+     * For every output in the mapper outputs, send them to the appropriate reducer.
+     * Currently only relying on a single machine; but the next step would be to filter a reducer responsible for a particular.
+     * RegionId.
+    */
+    sMapperOutput.iterate (\mapperOutput -> (
+        (reduce_s, me) <- (mapperOutput.Output)
+    ));
+
+    tMapperOutput.iterate (\mapperOutput -> (
+        (reduce_t, me) <- (mapperOutput.Output)
+    ))
+)
+
+trigger reduce_s : (collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
+    sTuples = coll;
+    let tmpTTuples = tTuples.peek() in
+        case tmpTTuples of
+        {Some x -> (reduceDoJoin, me) <- ()}
+        {None -> ()}
+)
+
+trigger reduce_t : (collection {Name : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
+    tTuples = coll;
+    let tmpSTuples = tTuples.peek() in
+        case tmpSTuples of
+        {Some x -> (reduceDoJoin, me) <- ()}
+        {None -> ()}
+)
+
+trigger reduceDoJoin : () = \_ -> (
+
 )
 
 source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
