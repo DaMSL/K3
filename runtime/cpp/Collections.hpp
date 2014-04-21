@@ -20,7 +20,6 @@
 #include <tuple>
 
 #include <boost/serialization/base_object.hpp>
-// TODO remove nullptrs from K3::Collection constructor calls!!!
 
 namespace K3 {
   template <template <class...> class D, class E>
@@ -86,7 +85,7 @@ namespace K3 {
           };
           D<E>::iterate(f);
           // Build Collection result
-          Collection<D, std::tuple<K,Z>> result = Collection<D,std::tuple<K,Z>>(nullptr);
+          Collection<D, std::tuple<K,Z>> result = Collection<D,std::tuple<K,Z>>(D<E>::getEngine());
           typename std::map<K,Z>::iterator it;
           for (it = accs.begin(); it != accs.end(); ++it) {
             std::tuple<K,Z> tup = std::make_tuple(it->first, it->second);
@@ -97,7 +96,7 @@ namespace K3 {
 
       template <template <class> class F, class T>
       Collection<D, T> ext(std::function<Collection<F, T>(E)> expand) {
-        Collection<D, T> result = Collection<D,T>(nullptr);
+        Collection<D, T> result = Collection<D,T>(D<E>::getEngine());
         auto add_to_result = [&] (T elem) {result.insert(elem); };
         auto fun = [&] (E elem) {
           expand(elem).iterate(add_to_result);

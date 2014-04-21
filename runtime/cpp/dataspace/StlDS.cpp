@@ -112,15 +112,18 @@ class StlDS {
     return result;
   }
 
-protected:
+ protected:
   Container<Elem> container;
+  // In-memory Dataspaces do not keep a handle to an engine
+  Engine* getEngine() {return nullptr; }
 
-private:
+ private:
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int version) {
     ar & container;
   }
+
 };
 }
 
