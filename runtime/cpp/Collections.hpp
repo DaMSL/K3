@@ -19,6 +19,7 @@
 #include <memory>
 #include <tuple>
 
+#include <boost/serialization/base_object.hpp>
 // TODO remove nullptrs from K3::Collection constructor calls!!!
 
 namespace K3 {
@@ -104,6 +105,15 @@ namespace K3 {
         D<E>::iterate(fun);
         return result;
       }
+
+  private:
+    friend class boost::serialization::access;
+    // Serialize a collection by serializing its base-class (a dataspace)
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int version) {
+      ar & boost::serialization::base_object<D<E>>(*this);
+    }
+
   };
 }
 

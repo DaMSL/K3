@@ -34,6 +34,16 @@ namespace K3 {
         in_archive >> p;
         return make_shared<V>(p);
       }
+
+      template <typename V>
+      shared_ptr<V> unpack_with_engine(const string& s, Engine * eng) {
+        istringstream in_sstream(s);
+        boost::archive::text_iarchive in_archive(in_sstream);
+
+        V p(eng);
+        in_archive >> p;
+        return make_shared<V>(p);
+      }
   }
 }
 

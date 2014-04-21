@@ -114,5 +114,13 @@ class StlDS {
 
 protected:
   Container<Elem> container;
+
+private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
+  }
 };
 }
+
