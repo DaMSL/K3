@@ -54,6 +54,8 @@ declare debugReducers : collection {Address : address, Id : int} @ {Collection} 
 declare sTuples : mut collection {FirstName : string, Age : int, LastName : String} @ {Collection}
 declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
 
+declare jobOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
+
 /* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
 trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = \tableElementCollection -> (
@@ -289,7 +291,10 @@ trigger sendAllToReducer : () = \_ -> (
 )
 
 trigger reduce_s : (collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
+    /* These collections are reducer dependent */
     sTuples = coll;
+
+    /* If tTuples exist, then you have both tTuples and sTuples => reduce */
     let tmpTTuples = tTuples.peek() in
         case tmpTTuples of
         {Some x -> (reduceDoJoin, me) <- ()}
@@ -297,7 +302,10 @@ trigger reduce_s : (collection {FirstName : string, Age : int, LastName : string
 )
 
 trigger reduce_t : (collection {Name : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
+    /* These collections are reducer dependent */
     tTuples = coll;
+
+    /* If sTuples exist, then you have both tTuples and sTuples => reduce */
     let tmpSTuples = tTuples.peek() in
         case tmpSTuples of
         {Some x -> (reduceDoJoin, me) <- ()}
@@ -305,7 +313,12 @@ trigger reduce_t : (collection {Name : string, Age : int, LastName : string} @ {
 )
 
 trigger reduceDoJoin : () = \_ -> (
-
+    sTuples.iterate (\sRow -> (
+        tTuples.iterate (\tRow -> (
+            if sRow.LastName == tRow.LastName then jobOutput.insert {sRow : sRow, tRow : tRow}
+            else ()
+        ))
+    ))
 )
 
 source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
