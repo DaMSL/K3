@@ -609,13 +609,13 @@ namespace K3
 
     void logEndpoints() {
       strict_lock<EndpointState> guard(*this);
-      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << "):";
+      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << ") @ " << internalEndpoints << ":";
       for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
       {
         BOOST_LOG(*epsLogger) << "\t" << something.first;
       }
 
-      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << "):";
+      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << ") @ " << externalEndpoints << ":";
       for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
       {
         BOOST_LOG(*epsLogger) << "\t" << something.first;
@@ -654,6 +654,8 @@ namespace K3
     void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       strict_lock<EndpointState> guard(*this);
+      BOOST_LOG(*epsLogger) << "Erasing endpoint " << id;
+      BOOST_LOG(*epsLogger) << "From map " << epMap;
       epMap->get(guard)->erase(id);
     }
 
