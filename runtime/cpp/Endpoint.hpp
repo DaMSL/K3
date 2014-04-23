@@ -557,7 +557,7 @@ namespace K3
     }
 
     void removeEndpoint(Identifier id) {
-      if ( !externalEndpointId(id) ) {
+      if ( externalEndpointId(id) ) {
         removeEndpoint(id, externalEndpoints);
       } else {
         removeEndpoint(id, internalEndpoints);
