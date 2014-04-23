@@ -658,11 +658,11 @@ program d = do
 
 genKMain :: CPPGenM CPPGenR
 genKMain = return $ genCFunction (text "int") (text "main") [text "int", text "char**"] $ vsep [
-           genCQualify (text "__global") (genCCall (text "populate_dispatch" Nothing [])) <> semi
-           genCQualify (text "__global") (genCCall (text "processRole" Nothing [text "unit_t()"]) <> semi
-           text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
-           text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
-        ]
+        genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
+        genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
+        text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
+        text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
+    ]
 
 includes :: CPPGenM [Identifier]
 includes = return $ [
@@ -696,29 +696,28 @@ aliases = [
     ]
 
 staticGlobals :: CPPGenM CPPGenR
-staticGlobals = do
-    return $ vsep [
+staticGlobals = return $ vsep [
             text "SystemEnvironment se = defaultEnvironment()" <> semi,
             text "Engine engine = Engine(true, se, make_shared<DefaultInternalCodec>(DefaultInternalCodec()))" <> semi
         ]
 
 -- C++ Primitive Generators
-genCFunction :: CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenM CPPGenR
-genCFunction rt f args body = return $ rt <+> f <> tupled args <+> hangBrace body
+genCFunction :: CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenR
+genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
 
-genCCall :: CPPGenR -> Maybe [CPPGenR] -> [CPPGenR] -> CPPGenM CPPGenR
-genCCall f ts as = return $ f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
+genCCall :: CPPGenR -> Maybe [CPPGenR] -> [CPPGenR] -> CPPGenR
+genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
 
-genCQualify :: CPPGenR -> CPPGenR -> CPPGenM CPPGenR
-genCQualify namespace name = return $ namespace <> text "::" <> name
+genCQualify :: CPPGenR -> CPPGenR -> CPPGenR
+genCQualify namespace name = namespace <> text "::" <> name
 
-genCDecl :: CPPGenR -> CPPGenR -> Maybe CPPGenR -> CPPGenM CPPGenR
-genCDecl t n Nothing = return $ t <+> n <> semi
-genCDecl t n (Just e) = return $ t <+> n <+> equals <+> e <> semi
+genCDecl :: CPPGenR -> CPPGenR -> Maybe CPPGenR -> CPPGenR
+genCDecl t n Nothing = t <+> n <> semi
+genCDecl t n (Just e) = t <+> n <+> equals <+> e <> semi
 
-genCAssign :: CPPGenR -> CPPGenR -> CPPGenM CPPGenR
-genCAssign a b = return $ a <+> equals <+> b
+genCAssign :: CPPGenR -> CPPGenR -> CPPGenR
+genCAssign a b = a <+> equals <+> b
 
-genCType :: K3 Type -> CPPGenM CPPGenR
+-- genCType :: K3 Type -> CPPGenM CPPGenR
 
-getKType :: K3 Expression -> CPPGenM (K3 Type)
+-- getKType :: K3 Expression -> CPPGenM (K3 Type)
