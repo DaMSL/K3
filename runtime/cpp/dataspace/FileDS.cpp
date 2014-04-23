@@ -87,8 +87,6 @@ namespace K3
 
   shared_ptr<Value> peekFile(Engine * engine, const Identifier& file_id)
   {
-      BOOST_LOG(*engine);
-      BOOST_LOG(*engine) << "Starting peek";
       openCollectionFile(engine, file_id, IOMode::Read);
       if (!engine->hasRead(file_id)) {
           engine->close(file_id);

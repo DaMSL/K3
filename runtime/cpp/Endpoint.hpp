@@ -654,8 +654,6 @@ namespace K3
     void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       strict_lock<EndpointState> guard(*this);
-      BOOST_LOG(*epsLogger) << "Erasing endpoint " << id;
-      BOOST_LOG(*epsLogger) << "From map " << epMap;
       epMap->get(guard)->erase(id);
     }
 
