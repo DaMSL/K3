@@ -43,7 +43,7 @@ declare randomColumn : mut int = 0
 
 declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
 
-declare sTuples : mut collection {FirstName : string, Age : int, LastName : String} @ {Collection}
+declare sTuples : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
 declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
 
 /* REGIONS */
@@ -176,7 +176,7 @@ trigger arrangeMap : () = \_ -> (
     )) 0;
 
     tTable.fold (\mapperCounter -> \row -> (
-        (sendRowToMapper_t, me) <- (row, (mapperCounter % sNumMappers) + 1);
+        (sendRowToMapper_t, me) <- (row, (mapperCounter % tNumMappers) + 1);
         mapperCounter + 1
     )) 0
 )
