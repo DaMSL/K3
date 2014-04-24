@@ -336,5 +336,5 @@ instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpreta
   insertKV ds key value = embedKey key value >>= insertDS ds
 
   replaceKV ds k v = do
-    _ <- removeKV ds k vunit
-    insertKV ds k v
+    ds' <- removeKV ds k vunit
+    insertKV ds' k v
