@@ -159,6 +159,12 @@ namespace K3
         // If the loop is already running, just add the message to the queue
         mut.lock();
         if (busy) {
+          while(buffer_->size() > 1000) {
+            logAt(trivial::trace, "Too many messages on outgoing queue: waiting...");
+            mut.unlock();
+	    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+            mut.lock();
+          }
           buffer_->push(val);
         }
         // Otherwise, start the loop

@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
  }
  int num_messages = std::atoi(argv[1]);
 // int message_lens [] = {16, 512, 1024, 1024*128, 1024*256, 1024*512,  1024*1024};
- int message_lens [] = {200};
+ int message_lens [] = {1024*1024};
  int num_sizes = sizeof(message_lens) / sizeof(message_lens[0]);
  std::ofstream outfile;
  outfile.open("benchmarks.txt");
