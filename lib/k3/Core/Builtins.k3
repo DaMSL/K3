@@ -51,5 +51,11 @@ declare get_max_int : () -> int
 // Sql data -> integer
 declare parse_sql_date : string -> int
 
+// Print to the screen
+declare print : string -> unit
+
+// Show a value
+declare show : forall a. a -> string
+
 // Error (exceptional state)
 declare error : forall a. () -> a

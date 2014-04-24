@@ -662,10 +662,10 @@ global n t@(details -> (TCollection, _, _)) eOpt = elemE n >>= \case
     verifyInitialCollection comboId = \case
       v@(VCollection (_, Collection _ _ cId)) -> 
           if comboId == cId then entryOfValueT (t @~ isTQualified) v >>= insertE n
-                            else collInitError
+                            else collInitError comboId cId
       _ -> collValError
 
-    collInitError = throwE . RunTimeTypeError $ "Invalid annotations on collection initializer for " ++ n
+    collInitError c c' = throwE . RunTimeTypeError $ "Invalid annotations on collection initializer for " ++ n ++ ": " ++ c ++ " and " ++ c'
     collValError  = throwE . RunTimeTypeError $ "Invalid collection value " ++ n
 
 -- | Instantiate all other globals in the interpretation environment.
