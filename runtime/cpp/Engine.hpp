@@ -727,6 +727,8 @@ namespace K3 {
           r = make_shared<FileHandle>(codec, make_shared<file_sink>(path), StreamHandle::Output());
           break;
         case IOMode::Append:
+          r = make_shared<FileHandle>(codec, make_shared<file_sink>(path, std::ios::app), StreamHandle::Output());
+          break;
         case IOMode::ReadWrite:
           string errorMsg = "Unsupported open mode for file handle";
           logAt(trivial::error, errorMsg);
