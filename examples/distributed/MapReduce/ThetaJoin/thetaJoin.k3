@@ -11,52 +11,49 @@ include "Core/Builtins.k3"
 
 /* DATASETS */
 
-declare sTable : collection {FirstName : string, Age : int, LastName : String} @ {Collection}
+declare sTable : collection {FirstName : string, Age : int, LastName : string} @ {Collection}
 declare tTable : collection {Name : string, Age : int, LastName : string} @ {Collection}
-
 declare sNumRows : mut int = 0
 declare tNumRows : mut int = 0
 declare totalRows : int = 12
 declare rowCounter : mut int = 0
 
+/* MASTER */
+
+declare master : address = 127.0.0.1:40000
+
 /* MAPPER */
 
 declare sMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:4001, Id : 1}, {Address : 127.0.0.1:4002, Id : 2}, {Address : 127.0.0.1:4003, Id : 3}, {Address : 127.0.0.1:4004, Id : 4} |} @ {Collection}
 declare tMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:5001, Id : 1}, {Address : 127.0.0.1:5002, Id : 2}, {Address : 127.0.0.1:5003, Id : 3}, {Address : 127.0.0.1:5004, Id : 4} |} @ {Collection}
-declare debugSMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:3000, Id : 1} |} @ {Collection}
-declare debugTMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:3000, Id : 1} |} @ {Collection}
 
-declare sNumMappers : int = 1
-declare tNumMappers : int = 1
-
-declare currentMapperSize : mut int = 0
+declare sNumMappers : int = 4
+declare tNumMappers : int = 4
 declare sCurrentMapperSize : mut int = 0
 declare tCurrentMapperSize : mut int = 0
 
+declare currentMapperSize : mut int = 0
 declare sMapperOutput : collection {RegionId : int, Output : collection {FirstName : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 declare tMapperOutput : collection {RegionId : int, Output : collection {Name : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 
 declare randomRow : mut int = 0
 declare randomColumn : mut int = 0
 
-/* MASTER */
+/* REDUCER */
 
-declare master : address = 127.0.0.1:3000
+declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
+
+declare sTuples : mut collection {FirstName : string, Age : int, LastName : String} @ {Collection}
+declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
 
 /* REGIONS */
 
 declare maxS : int = 2
 declare maxT : int = 2
-declare rowLookupTable : collection {Row : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
-declare columnLookupTable : collection {Column : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
+declare rowLookupTable : mut collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}
+declare columnLookupTable : mut collection {Column : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
 
-/* REDUCER */
-
-declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
-declare debugReducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:4000, Id : 1} |} @ {Collection}
-
-declare sTuples : mut collection {FirstName : string, Age : int, LastName : String} @ {Collection}
-declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
+/* OUTPUT */
 
 declare jobOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
@@ -147,6 +144,8 @@ trigger preProcessRegions : () = \_ -> (
 
 /* PHASE 2: MAP */
 
+/* PHASE 2: MAP */
+
 declare getRandom : immut (string -> int) = fun tableName -> (
     if tableName == "S" then (random (sNumRows - 1) + 1)
     else (random (tNumRows - 1) + 1)
@@ -169,6 +168,7 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
 )
 
 /* Send rows from both the tables to the mappers using the sendRowToMapper_s/sendRowToMapper_t triggers */
+
 trigger arrangeMap : () = \_ -> (
     sTable.fold (\mapperCounter -> \row -> (
         (sendRowToMapper_s, me) <- (row, (mapperCounter % sNumMappers) + 1);
@@ -176,20 +176,24 @@ trigger arrangeMap : () = \_ -> (
     )) 0;
 
     tTable.fold (\mapperCounter -> \row -> (
-        (sendRowToMapper_t, me) <- (row, (mapperCounter % tNumMappers) + 1);
+        (sendRowToMapper_t, me) <- (row, (mapperCounter % sNumMappers) + 1);
         mapperCounter + 1
     )) 0
 )
 
-/* Send row to mapper */
+/*
+ * Feedback:
+ * 1. Not sure if this is the right approach to send the rows to different mappers one by one -> network congestion.
+ * 2. Create rowOutputForMapper collection to collect mapper rows for each mapper.
+ */
 
 trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (sRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "S") in
-            let fMappers = debugSMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+            let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of 
-                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
+                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize, sNumRows, rowLookupTable)}
                     {None -> ()}
     )
 )
@@ -197,21 +201,33 @@ trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string},
 trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
     bind x as (tRow, mapperId) in (
         let mapperSize = (getMapperSize mapperId "T") in
-            let fMappers = debugTMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+            let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of
-                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
+                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize, tNumRows, columnLookupTable)}
                     {None -> ()}
     )
 )
 
-declare tmpMapperOutputCollection : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
+/* Implement Mapper Functionality */
 
-trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
-    bind x as (sRow, mapperSize) in (
+declare sTmpMapperOutputCollection : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
+declare tTmpMapperOutputCollection : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
+
+/* Debug Variables */
+
+declare randoms : collection {rval : int} @ {Collection}
+declare dsrows : collection {srow : {FirstName : string, Age : int, LastName : string}} @ {Collection}
+declare dtrows : collection {trow : {Name : string, Age : int, LastName : string}} @ {Collection}
+
+trigger map_s : ({FirstName : string, Age : int, LastName : string}, int, int, collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}) = \x -> (
+    bind x as (sRow, mapperSize, localSNumRows, localRowLookupTable) in (
         sCurrentMapperSize = sCurrentMapperSize + 1;
+        sNumRows = localSNumRows;
+        rowLookupTable = localRowLookupTable;
         randomRow = (getRandom "S");
-
+        randoms.insert {rval : randomRow};
+        dsrows.insert {srow : sRow};
         /*
          * Find the specific row in the lookup table.
          * Lookuo all the regions associated to that row.
@@ -230,9 +246,9 @@ trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -
                                 sMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput}
                         )}
                         {None -> (
-                            tmpMapperOutputCollection = tmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
-                            tmpMapperOutputCollection.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
-                            sMapperOutput.insert {RegionId : region.RegionId, Output : tmpMapperOutputCollection}
+                            sTmpMapperOutputCollection = sTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
+                            sTmpMapperOutputCollection.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
+                            sMapperOutput.insert {RegionId : region.RegionId, Output : sTmpMapperOutputCollection}
                         )}
                 ))
             )}
@@ -242,11 +258,14 @@ trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -
     )
 )
 
-trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
-    bind x as (tRow, mapperSize) in (
+trigger map_t : ({Name : string, Age : int, LastName : string}, int, int, collection {Column : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}) = \x -> (
+    bind x as (tRow, mapperSize, localTNumRows, localColumnLookupTable) in (
         tCurrentMapperSize = tCurrentMapperSize + 1;
+        tNumRows = localTNumRows;
+        columnLookupTable = localColumnLookupTable;
         randomColumn = (getRandom "T");
-
+        randoms.insert {rval : randomColumn};
+        dtrows.insert {trow : tRow};
         /*
          * Find the specific column in the lookup table.
          * Lookuo all the regions associated to that column.
@@ -265,9 +284,9 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
                                 tMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput}
                         )}
                         {None -> (
-                            tmpMapperOutputCollection = tmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
-                            tmpMapperOutputCollection.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
-                            tMapperOutput.insert {RegionId : region.RegionId, Output : tmpMapperOutputCollection}
+                            tTmpMapperOutputCollection = tTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
+                            tTmpMapperOutputCollection.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
+                            tMapperOutput.insert {RegionId : region.RegionId, Output : tTmpMapperOutputCollection}
                         )}
                 ))
             )}
