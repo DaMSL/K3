@@ -26,6 +26,7 @@ namespace K3
     IOHandle(shared_ptr<Codec> cdec) : LogMT("IOHandle"), codec(cdec) {}
 
     virtual bool isInput() = 0;
+    virtual bool isOutput() = 0;
     virtual bool hasRead() = 0;
     virtual shared_ptr<Value> doRead() = 0;
 
@@ -157,7 +158,10 @@ namespace K3
       outImpl = shared_ptr<OStreamHandle>(new OStreamHandle(cdec, sink));
     }
 
-    bool isInput() { return isInput_; } 
+    bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
+    // There are slightly bigger problems with the entire StreamHandle class
+    // that makes it difficult to have one that does both input and output
 
     bool hasRead()  { 
       bool r = false;
@@ -221,6 +225,7 @@ namespace K3
     {}
 
     bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
     bool builtin () { return true; }
     bool file() { return false; }
 
@@ -278,6 +283,7 @@ namespace K3
     {}
 
     bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
       return false;

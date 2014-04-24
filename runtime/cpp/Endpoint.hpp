@@ -516,6 +516,8 @@ namespace K3
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.
     void close() {
+      if( handle_->isOutput() )
+        flushBuffer();
       EndpointNotification nt = (handle_->builtin() || handle_->file())?
         EndpointNotification::FileClose : EndpointNotification::SocketClose;
 
