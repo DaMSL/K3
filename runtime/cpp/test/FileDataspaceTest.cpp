@@ -309,23 +309,17 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
     bool success = false;
     try {
        success = testFunc(engine);
-       //assert(success == true);
        xUnitpp::Assert.Equal(success, true);
     }
     catch (std::exception& e)
     {
         std::cerr << e.what() << "\n";
-        //assert(false);
         xUnitpp::Assert.Fail() << e.what();
     }
 }
 
 #define MAKE_TEST(name, function, ds) \
     FACT(name) { callTest(function<ds>); }
-//#define MAKE_TEST(name, function, ds) \
-//    std::cout << "****\n" << name << "\n"; \
-//    callTest(function<ds>);
-
 
 //SUITE("List Dataspace") {
 //    MAKE_TEST( "EmptyPeek", emptyPeek, ListDataspace)
@@ -363,8 +357,5 @@ SUITE("File Dataspace")
     MAKE_TEST( "Combine Test", testCombine, K3::FileDS)
     MAKE_TEST( "Combine with Self Test", testCombineSelf, K3::FileDS)
     MAKE_TEST( "Split Test", testSplit, K3::FileDS)
-}
     //MAKE_TEST( "Insert inside map", insertInsideMap, K3::FileDS)
-
-//MAKE_TEST_GROUP("List Dataspace", ListDataspace)
-//MAKE_TEST_GROUP("File Dataspace", K3::FileDS)
+}
