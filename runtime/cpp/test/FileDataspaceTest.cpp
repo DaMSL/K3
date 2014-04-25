@@ -1,6 +1,6 @@
 #include <algorithm>
 
-//#include "xUnit++/xUnit++.h"
+#include "xUnit++/xUnit++.h"
 
 #include <dataspace/FileDS.hpp>
 
@@ -240,7 +240,6 @@ std::shared_ptr<std::tuple<DS, DS>> split_findAndRemoveElement(std::shared_ptr<s
             return std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         }
         else {
-            throw ElementNotFoundException(cur_val);
             return MaybePair(nullptr);
         }
     }
@@ -310,21 +309,22 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
     bool success = false;
     try {
        success = testFunc(engine);
-       assert(success == true);
-       //xUnitpp::Assert.Equal(success, true);
+       //assert(success == true);
+       xUnitpp::Assert.Equal(success, true);
     }
-    catch( std::exception& e)
+    catch (std::exception& e)
     {
-        std::cerr << e.what();
-        assert(false);
-        //xUnitpp::Assert.Fail() << e.what();
+        std::cerr << e.what() << "\n";
+        //assert(false);
+        xUnitpp::Assert.Fail() << e.what();
     }
 }
 
-//#define MAKE_TEST(name, function, ds) \
-//    FACT(name) { callTest(function<ds>); }
 #define MAKE_TEST(name, function, ds) \
-    callTest(function<ds>);
+    FACT(name) { callTest(function<ds>); }
+//#define MAKE_TEST(name, function, ds) \
+//    std::cout << "****\n" << name << "\n"; \
+//    callTest(function<ds>);
 
 
 //SUITE("List Dataspace") {
@@ -346,26 +346,25 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
 //    MAKE_TEST( "Insert inside map", insertInsideMap, ListDataspace)
 //}
 
-//SUITE("File Dataspace") {
-int main()
+SUITE("File Dataspace")
 {
-    //MAKE_TEST( "EmptyPeek", emptyPeek, K3::FileDS)
-    //MAKE_TEST( "Fold on Empty List Test", testEmptyFold, K3::FileDS)
+    MAKE_TEST( "EmptyPeek", emptyPeek, K3::FileDS)
+    MAKE_TEST( "Fold on Empty List Test", testEmptyFold, K3::FileDS)
     MAKE_TEST( "Peek Test", testPeek, K3::FileDS)
-    //MAKE_TEST( "Insert Test", testInsert, K3::FileDS)
-    //MAKE_TEST( "Delete Test", testDelete, K3::FileDS)
-    //MAKE_TEST( "Delete of missing element Test", testMissingDelete, K3::FileDS)
-    //MAKE_TEST( "Update Test", testUpdate, K3::FileDS)
-    //MAKE_TEST( "Update Multiple Test", testUpdateMultiple, K3::FileDS)
-    //MAKE_TEST( "Update missing element Test", testUpdateMissing, K3::FileDS)
-    //MAKE_TEST( "Fold Test", testFold, K3::FileDS)
-    //MAKE_TEST( "Map Test", testMap, K3::FileDS)
-    //MAKE_TEST( "Filter Test", testFilter, K3::FileDS)
-    //MAKE_TEST( "Combine Test", testCombine, K3::FileDS)
-    //MAKE_TEST( "Combine with Self Test", testCombineSelf, K3::FileDS)
-    //MAKE_TEST( "Split Test", testSplit, K3::FileDS)
-    //MAKE_TEST( "Insert inside map", insertInsideMap, K3::FileDS)
+    MAKE_TEST( "Insert Test", testInsert, K3::FileDS)
+    MAKE_TEST( "Delete Test", testDelete, K3::FileDS)
+    MAKE_TEST( "Delete of missing element Test", testMissingDelete, K3::FileDS)
+    MAKE_TEST( "Update Test", testUpdate, K3::FileDS)
+    MAKE_TEST( "Update Multiple Test", testUpdateMultiple, K3::FileDS)
+    MAKE_TEST( "Update missing element Test", testUpdateMissing, K3::FileDS)
+    MAKE_TEST( "Fold Test", testFold, K3::FileDS)
+    MAKE_TEST( "Map Test", testMap, K3::FileDS)
+    MAKE_TEST( "Filter Test", testFilter, K3::FileDS)
+    MAKE_TEST( "Combine Test", testCombine, K3::FileDS)
+    MAKE_TEST( "Combine with Self Test", testCombineSelf, K3::FileDS)
+    MAKE_TEST( "Split Test", testSplit, K3::FileDS)
 }
+    //MAKE_TEST( "Insert inside map", insertInsideMap, K3::FileDS)
 
 //MAKE_TEST_GROUP("List Dataspace", ListDataspace)
 //MAKE_TEST_GROUP("File Dataspace", K3::FileDS)
