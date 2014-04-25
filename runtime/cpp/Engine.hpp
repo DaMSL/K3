@@ -603,11 +603,7 @@ namespace K3 {
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
 
-        BOOST_LOG(*this) << "before adding the endpoint" << id;
-        endpoints->logEndpoints();
         endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
-        BOOST_LOG(*this) << "after adding the endpoint";
-        endpoints->logEndpoints();
 
         // TODO: Prime buffers as needed with a read/refresh.
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
@@ -657,12 +653,8 @@ namespace K3 {
         ep->close();
       }
 
-      BOOST_LOG(*this) << "about to remove endpoint " << eid;
-      endpoints->logEndpoints();
       // Remove the endpoint
       endpoints->removeEndpoint(eid);
-      BOOST_LOG(*this) << "just removed it";
-      endpoints->logEndpoints();
     }
 
     // Creates and registers a listener instance for the given address and network endpoint.
@@ -735,6 +727,8 @@ namespace K3 {
           r = make_shared<FileHandle>(codec, make_shared<file_sink>(path), StreamHandle::Output());
           break;
         case IOMode::Append:
+          r = make_shared<FileHandle>(codec, make_shared<file_sink>(path, std::ios::app), StreamHandle::Output());
+          break;
         case IOMode::ReadWrite:
           string errorMsg = "Unsupported open mode for file handle";
           logAt(trivial::error, errorMsg);

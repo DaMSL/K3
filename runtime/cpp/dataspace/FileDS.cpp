@@ -87,8 +87,6 @@ namespace K3
 
   shared_ptr<Value> peekFile(Engine * engine, const Identifier& file_id)
   {
-      BOOST_LOG(*engine);
-      BOOST_LOG(*engine) << "Starting peek";
       openCollectionFile(engine, file_id, IOMode::Read);
       if (!engine->hasRead(file_id)) {
           engine->close(file_id);
@@ -174,7 +172,7 @@ namespace K3
                       return found;
                   }
               }, false, file_id);
-      if (did_update)
+      if (!did_update)
           engine->doWriteExternal(new_id, new_val);
       engine->close(new_id);
       boost::filesystem::rename(new_id, file_id);

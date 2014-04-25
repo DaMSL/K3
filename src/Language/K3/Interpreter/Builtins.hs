@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- | K3 builtin and standard library function interpretation
 module Language.K3.Interpreter.Builtins where
@@ -24,6 +25,12 @@ import Language.K3.Interpreter.Collection
 import Language.K3.Runtime.Engine
 import Language.K3.Runtime.Dataspace
 
+-- For the log function
+import Language.K3.Utils.Pretty
+import Language.K3.Utils.Logger
+
+$(loggingFunctions)
+$(customLoggingFunctions ["Function"])
 
 {- Built-in functions -}
 
@@ -148,6 +155,19 @@ genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
         toInt _           = throwE $ RunTimeInterpretationError "Bad sql date format"
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
+
+-- Show values
+genBuiltin "show" _ = vfun $ \x -> do
+    st <- get
+    return $ VString $ showPC (getPrintConfig st) x
+
+-- Log to the screen
+genBuiltin "print" _ = vfun logString
+  where logString (VString s) = do
+              -- liftIO $ putStrLn s 
+              _notice_Function s
+              return $ VTuple []
+        logString x           = throwE $ RunTimeTypeError ("In 'print': Expected a string but received " ++ show x)
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 

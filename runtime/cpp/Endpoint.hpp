@@ -176,7 +176,7 @@ namespace K3
       if (contents.get(guard)) {
         shared_ptr<Value> v = contents.get(guard);
         contents.get(guard).reset();
-        ioh->doWrite(*v);
+        ioh->doWrite(v);
         notify(v);
       }
     }
@@ -257,7 +257,7 @@ namespace K3
       // pop() a value and write to the handle if possible
       if (!this->empty()) {
         shared_ptr<Value> v = this->pop();
-        ioh->doWrite(*v);
+        ioh->doWrite(v);
         notify(v);
       }
     }
@@ -348,7 +348,7 @@ namespace K3
         for (int i=0; i < n; i++) {
           if (force && empty()) { return; }
           shared_ptr<Value> v = this->pop();
-          ioh->doWrite(*v);
+          ioh->doWrite(v);
           notify(v);
         }
       }
@@ -516,6 +516,8 @@ namespace K3
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.
     void close() {
+      if( handle_->isOutput() )
+        flushBuffer();
       EndpointNotification nt = (handle_->builtin() || handle_->file())?
         EndpointNotification::FileClose : EndpointNotification::SocketClose;
 
@@ -557,7 +559,7 @@ namespace K3
     }
 
     void removeEndpoint(Identifier id) {
-      if ( !externalEndpointId(id) ) {
+      if ( externalEndpointId(id) ) {
         removeEndpoint(id, externalEndpoints);
       } else {
         removeEndpoint(id, internalEndpoints);
@@ -609,13 +611,13 @@ namespace K3
 
     void logEndpoints() {
       strict_lock<EndpointState> guard(*this);
-      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << "):";
+      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << ") @ " << internalEndpoints << ":";
       for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
       {
         BOOST_LOG(*epsLogger) << "\t" << something.first;
       }
 
-      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << "):";
+      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << ") @ " << externalEndpoints << ":";
       for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
       {
         BOOST_LOG(*epsLogger) << "\t" << something.first;

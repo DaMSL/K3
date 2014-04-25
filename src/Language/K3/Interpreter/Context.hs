@@ -324,19 +324,19 @@ runNetwork pc isPar systemEnv prog =
 
 {- Message processing -}
 
-runTrigger :: IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
-runTrigger r nm arg = \case
+runTrigger :: Address -> IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
+runTrigger addr result nm arg = \case
     (VTrigger (_, Just f, _)) -> do
-        result@((v,st),log)  <- runInterpretation' (getResultState r) (f arg)
+        result@((v,st),log)  <- runInterpretation' (getResultState result) (f arg)
         -- Refresh the collection caches in our environment so we can see the full picture 
         st' <- liftIO $ syncIState st
-        logTriggerM defaultAddress nm arg st' (Just v) "AFTER"
+        logTriggerM addr nm arg st' (Just v) "AFTER"
         return ((v,st'),log)
     (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ nm) Nothing
     _                      -> return $ tError ("Invalid trigger or sink value for " ++ nm) Nothing
 
-  where iError s m = mkError r $ RunTimeInterpretationError s m
-        tError s m = mkError r $ RunTimeTypeError s m
+  where iError s m = mkError result $ RunTimeInterpretationError s m
+        tError s m = mkError result $ RunTimeTypeError s m
         mkError ((_,st), ilog) v = ((Left v, st), ilog)
 
 
@@ -371,7 +371,7 @@ virtualizedProcessor pc staticEnv = MessageProcessor {
       vOpt     <- liftIO $ valueOfEntryOptIO entryOpt
       case vOpt of
         Nothing -> return (Just (), unknownTrigger s nm)
-        Just ft -> fmap (Just (),) $ runTrigger s nm arg ft
+        Just ft -> fmap (Just (),) $ runTrigger addr s nm arg ft
 
     unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
 
@@ -426,7 +426,7 @@ uniProcessor pc staticEnv = MessageProcessor {
 
     run r n args trig = do
       --void $ logTriggerM defaultAddress n args r
-      result <- runTrigger r n args trig
+      result <- runTrigger defaultAddress r n args trig
       --void $ logTriggerM defaultAddress n args result
       return result
 

@@ -18,4 +18,5 @@ isPrimitiveSubtype t1 t2 = case (t1,t2) of
   (SAddress,SAddress) -> True
   (SInt,SNumber) -> True
   (SReal,SNumber) -> True
+  (SInt, SReal) -> True -- XXX: Is this the right way to do things?
   _ -> False

@@ -17,6 +17,7 @@ namespace K3 {
 
 std::string localhost = "127.0.0.1";
 Address peer1;
+Address peer2;
 Address rendezvous;
 
 int nodeCounter(0);
@@ -68,6 +69,9 @@ shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
 }
 
 void runReceiver(int num_messages) {
+
+
+  K3::peer1 = K3::make_address(K3::localhost, 40000);
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
@@ -102,7 +106,7 @@ void runSender(int num_messages, int message_len) {
   using boost::thread_group;
   using std::shared_ptr;
   // Create peers
-  K3::peer1 = K3::make_address("", 40000);
+  K3::peer1 = K3::make_address(K3::localhost, 40000);
   K3::peer2 = K3::make_address(K3::localhost, 40001);
   K3::rendezvous = K3::peer1;
   // Create engines
@@ -114,14 +118,14 @@ void runSender(int num_messages, int message_len) {
   for (int i = 0; i < num_messages; i++) {
     engine2->send(m2);
   }
-  engine2->runEngine();
+  engine2->runEngine(mp2);
 
 }
 
 int main(int argc, char** argv) {
 
  if (argc < 3) {
-  std::cout << "usage: " << argv[0] << " num_messages" << " sender|receiver" std::endl;
+  std::cout << "usage: " << argv[0] << " num_messages" << " sender|receiver" << std::endl;
   return -1;
  }
 
@@ -131,7 +135,6 @@ int main(int argc, char** argv) {
  std::string mode = argv[2];
  if (mode == "receiver") {
    runReceiver(num_messages);
-
  } 
  else {
    runSender(num_messages, 10);

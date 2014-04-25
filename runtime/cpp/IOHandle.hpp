@@ -26,11 +26,12 @@ namespace K3
     IOHandle(shared_ptr<Codec> cdec) : LogMT("IOHandle"), codec(cdec) {}
 
     virtual bool isInput() = 0;
+    virtual bool isOutput() = 0;
     virtual bool hasRead() = 0;
     virtual shared_ptr<Value> doRead() = 0;
 
     virtual bool hasWrite() = 0;
-    virtual void doWrite(Value& v) = 0;
+    virtual void doWrite(shared_ptr<Value> v) = 0;
 
     virtual void close() = 0;
 
@@ -92,7 +93,7 @@ namespace K3
       return false;
     }
     
-    void doWrite(string& data) {
+    void doWrite(shared_ptr<Value> data) {
       BOOST_LOG(*this) << "Invalid write operation on input handle";
     }
 
@@ -128,7 +129,7 @@ namespace K3
 
     bool hasWrite() { return output? output->good() : false; }
     
-    void doWrite(string& data) { if ( output ) { (*output) << codec->encode(data); } }
+    void doWrite(shared_ptr<Value> data ) { if ( output ) { (*output) << codec->encode(*data); } }
   
     void close() { if ( output ) { output.reset(); } }
 
@@ -157,7 +158,10 @@ namespace K3
       outImpl = shared_ptr<OStreamHandle>(new OStreamHandle(cdec, sink));
     }
 
-    bool isInput() { return isInput_; } 
+    bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
+    // There are slightly bigger problems with the entire StreamHandle class
+    // that makes it difficult to have one that does both input and output
 
     bool hasRead()  { 
       bool r = false;
@@ -182,7 +186,7 @@ namespace K3
       return data;      
     }
 
-    void doWrite(Value& v) {
+    void doWrite(shared_ptr<Value>  v) {
       if ( outImpl) {
         outImpl->doWrite(v);
       }
@@ -221,6 +225,7 @@ namespace K3
     {}
 
     bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
     bool builtin () { return true; }
     bool file() { return false; }
 
@@ -278,6 +283,7 @@ namespace K3
     {}
 
     bool isInput() { return isInput_; }
+    bool isOutput() { return !isInput_; }
     bool hasRead()  { 
       BOOST_LOG(*this) << "Invalid hasRead on NetworkHandle";
       return false;
@@ -296,10 +302,11 @@ namespace K3
       return shared_ptr<Value>();
     }
 
-    void doWrite(Value& v) {
+    void doWrite(shared_ptr<Value>  v) {
       if ( connection && this->codec ) {
-        string data = this->codec->encode(v);
-        connection->write(data);
+        string data = this->codec->encode(*v);
+        shared_ptr<Value> s = make_shared<Value>(data);
+        connection->write(s);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
     }
