@@ -102,10 +102,8 @@ namespace K3
 
       public:
       FileDS(Engine * eng)
-          : engine(eng), file_id(generateCollectionFilename(eng))
-      {
-        emptyFile(eng);
-      }
+          : engine(eng), file_id(emptyFile(eng))
+      { }
 
       template<typename Iterator>
       FileDS(Engine * eng, Iterator start, Iterator finish)
