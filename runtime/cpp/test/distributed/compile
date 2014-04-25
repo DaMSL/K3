@@ -1,0 +1,6 @@
+clang++ CollectionsTest.cpp -std=c++11 -shared -o test.so -g \
+-I .. -I /usr/local/Cellar/boost/1.55.0/include/ -I./xunit/xUnit++ \
+-L/usr/local/Cellar/boost/1.55.0/lib/ \
+-lboost_system-mt -lboost_regex-mt -lboost_serialization-mt -lboost_thread-mt \
+-DBOOST_LOG_DYN_LINK  -lboost_chrono-mt -lboost_log_setup-mt -lboost_log-mt \
+-L./xunit/bin/xUnit++ -lxUnit++.Debug 

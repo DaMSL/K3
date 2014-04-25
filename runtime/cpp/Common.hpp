@@ -457,7 +457,7 @@ namespace K3 {
           Value payload = value_match[3];
           return Message(a,m,payload);
          }
-        else {
+        else { 
           throw CodecException("Invalid Format for Value:" + v);
         }
 

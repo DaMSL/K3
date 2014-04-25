@@ -213,7 +213,7 @@ namespace K3 {
         bool local_address = isDeployedNode(*deployment, addr);
         bool shortCircuit =  local_address || simulation();
         Message msg(addr, triggerId, v);
-
+   
         if ( shortCircuit ) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
