@@ -57,7 +57,7 @@ declare columnLookupTable : mut collection {Column : int, Regions : collection {
 
 /* OUTPUT */
 
-declare jobOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
+declare output : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
 /* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
@@ -362,17 +362,24 @@ trigger reduce_t : (collection {Name : string, Age : int, LastName : string} @ {
         else ()
 )
 
-trigger reduceDoJoin : () = \_ -> (
+declare reducerOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
+trigger reduceDoJoin : () = \_ -> (
+    sTuples.iterate (\sRow -> (
+        tTuples.iterate (\tRow -> (
+            if sRow.Age == tRow.Age then reducerOutput.insert {sRow : sRow, tRow : tRow}
+            else ()
+        ))
+    ));
+
+    (accumulateOutput, master) <- (reducerOutput)
 )
 
 /* PHASE 4: ACCUMULATE OUTPUT */
 
-declare output : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
-
-trigger reducerAccumulator : (collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}) = \reducerOutput -> (
-    reducerOutput.iterate (\reducerOutputInstance -> (
-        output.insert {sRow : reducerOutputInstance.sRow, tRow : reducerOutputInstance.tRow}
+trigger accumulateOutput : (collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}) = \reducerOutput -> (
+    reducerOutput.iterate (\outputRecord -> (
+        output.insert {sRow : outputRecord.sRow, tRow : outputRecord.tRow}
     ))
 )
 
