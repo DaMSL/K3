@@ -19,6 +19,7 @@
 #include <memory>
 #include <tuple>
 
+#include <Engine.hpp>
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
@@ -44,31 +45,33 @@ namespace K3 {
       void update(const E& v1, const E& v2) { D<E>::update(v1,v2); }
       void update(const E& v1, E&& v2) { D<E>::update(v1,v2); }
 
+      // TODO fix return type 
       std::tuple<Collection<D, E>, Collection<D, E>> split() { return D<E>::split(); }
 
-      template <template <class> class F>
-      Collection<D, E> combine(const Collection<F, E>& other) {
-        return D<E>::combine(other);
-      }
+      // inherit:
+      //template <template <class> class F>
+      //Collection<D, E> combine(const Collection<F, E>& other) {
+      //  return D<E>::combine(other);
+      //}
 
-      template <template <class> class F>
-      Collection<D, E> combine(Collection<F, E>&& other) {
-        return D<E>::combine(other);
-      }
+      //template <template <class> class F>
+      //Collection<D, E> combine(Collection<F, E>&& other) {
+      //  return D<E>::combine(other);
+      //}
 
-      template <class T>
-      Collection<D, T> map(std::function<T(E)> f) {
-        return D<E>::map(f);
-      }
-
-      Collection<D, E> filter(std::function<bool(E)> f) {
-        return D<E>::filter(f);
-      }
-
-      template <class Z>
-      Z fold(std::function<Z(Z, E)> f, Z init) {
-        return D<E>::fold(f, init);
-      }
+      //template <class T>
+      //Collection<D, T> map(std::function<T(E)> f) {
+      //  return D<E>::map(f);
+      //}
+      //
+      //Collection<D, E> filter(std::function<bool(E)> f) {
+      //  return D<E>::filter(f);
+      //} 
+   
+      //template <class Z>
+      //Z fold(std::function<Z(Z, E)> f, Z init) {
+      //  return D<E>::fold(f, init);
+      //}
 
       template <class K, class Z>
       Collection<D, std::tuple<K, Z>> group_by(
