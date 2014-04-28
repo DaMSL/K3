@@ -70,7 +70,7 @@ shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
 }
 
 void runReceiver(int num_messages) {
-  K3::peer1 = K3::make_address("192.168.0.11", 3000);
+  K3::peer1 = K3::make_address("0.0.0.0", 3000);
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
