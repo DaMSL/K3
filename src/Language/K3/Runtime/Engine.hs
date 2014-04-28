@@ -164,13 +164,13 @@ instance ShowPC a => ShowPC (InternalMessage a) where
   showPC pc (addr, id, v) = "("++show addr++", "++show id++", "++showPC pc v++")"
 
 instance ShowPC a => ShowPC [InternalMessage a] where
-  showPC pc vl = "(" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ ")"
+  showPC pc vl = "[" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ "]"
 
 instance (Show b, ShowPC a) => ShowPC (b, [InternalMessage a]) where
   showPC pc (s, v) = show s++", "++showPC pc v
 
 instance (Show b, ShowPC a) => ShowPC [(b, [InternalMessage a])] where
-  showPC pc vl = "(" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ ")"
+  showPC pc vl = "[" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ "]"
   
 -- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration

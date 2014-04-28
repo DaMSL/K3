@@ -176,7 +176,7 @@ namespace K3
       if (contents.get(guard)) {
         shared_ptr<Value> v = contents.get(guard);
         contents.get(guard).reset();
-        ioh->doWrite(*v);
+        ioh->doWrite(v);
         notify(v);
       }
     }
@@ -257,7 +257,7 @@ namespace K3
       // pop() a value and write to the handle if possible
       if (!this->empty()) {
         shared_ptr<Value> v = this->pop();
-        ioh->doWrite(*v);
+        ioh->doWrite(v);
         notify(v);
       }
     }
@@ -348,7 +348,7 @@ namespace K3
         for (int i=0; i < n; i++) {
           if (force && empty()) { return; }
           shared_ptr<Value> v = this->pop();
-          ioh->doWrite(*v);
+          ioh->doWrite(v);
           notify(v);
         }
       }

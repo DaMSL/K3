@@ -158,7 +158,7 @@ FACT("Collection send network mode") {
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
 
-  service_threads->join_all();
+ t service_threads->join_all();
   service_threads->remove_thread(t1.get());
   service_threads->remove_thread(t2.get());
 

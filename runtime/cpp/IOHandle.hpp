@@ -31,7 +31,7 @@ namespace K3
     virtual shared_ptr<Value> doRead() = 0;
 
     virtual bool hasWrite() = 0;
-    virtual void doWrite(Value& v) = 0;
+    virtual void doWrite(shared_ptr<Value> v) = 0;
 
     virtual void close() = 0;
 
@@ -93,7 +93,7 @@ namespace K3
       return false;
     }
     
-    void doWrite(string& data) {
+    void doWrite(shared_ptr<Value> data) {
       BOOST_LOG(*this) << "Invalid write operation on input handle";
     }
 
@@ -129,7 +129,7 @@ namespace K3
 
     bool hasWrite() { return output? output->good() : false; }
     
-    void doWrite(string& data) { if ( output ) { (*output) << codec->encode(data); } }
+    void doWrite(shared_ptr<Value> data ) { if ( output ) { (*output) << codec->encode(*data); } }
   
     void close() { if ( output ) { output.reset(); } }
 
@@ -186,7 +186,7 @@ namespace K3
       return data;      
     }
 
-    void doWrite(Value& v) {
+    void doWrite(shared_ptr<Value>  v) {
       if ( outImpl) {
         outImpl->doWrite(v);
       }
@@ -302,10 +302,11 @@ namespace K3
       return shared_ptr<Value>();
     }
 
-    void doWrite(Value& v) {
+    void doWrite(shared_ptr<Value>  v) {
       if ( connection && this->codec ) {
-        string data = this->codec->encode(v);
-        connection->write(data);
+        string data = this->codec->encode(*v);
+        shared_ptr<Value> s = make_shared<Value>(data);
+        connection->write(s);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }
     }

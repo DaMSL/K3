@@ -1,5 +1,5 @@
 /*
- * theta-join.k3
+ * thetaJoin.k3
  *
  * Created by Kartik Thapar on 02/19/2014 at 12:21:03
  * Copyright (c) 2014 Kartik Thapar. All rights reserved.
@@ -36,15 +36,17 @@ declare currentMapperSize : mut int = 0
 declare sMapperOutput : collection {RegionId : int, Output : collection {FirstName : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 declare tMapperOutput : collection {RegionId : int, Output : collection {Name : string, Age : int, LastName : string} @ {Collection}} @ {Collection}
 
-declare randomRow : mut int = 0
-declare randomColumn : mut int = 0
+declare _randomRow : mut int = 0
+declare _randomColumn : mut int = 0
 
 /* REDUCER */
 
-declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4} |} @ {Collection}
+/* Number of Reducers is equal to the total of Regions in the grid */
+declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : 127.0.0.1:6001, Id : 1}, {Address : 127.0.0.1:6002, Id : 2}, {Address : 127.0.0.1:6003, Id : 3}, {Address : 127.0.0.1:6004, Id : 4}, {Address : 127.0.0.1:6005, Id : 5}, {Address : 127.0.0.1:6006, Id : 6}, {Address : 127.0.0.1:6007, Id : 7}, {Address : 127.0.0.1:6008, Id : 8}, {Address : 127.0.0.1:6009, Id : 9} |} @ {Collection}
+declare numReducers : int = 9
 
-declare sTuples : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
-declare tTuples : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
+declare sTuples : collection {FirstName : string, Age : int, LastName : string} @ {Collection}
+declare tTuples : collection {Name : string, Age : int, LastName : string} @ {Collection}
 
 /* REGIONS */
 
@@ -55,7 +57,7 @@ declare columnLookupTable : mut collection {Column : int, Regions : collection {
 
 /* OUTPUT */
 
-declare jobOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
+declare output : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
 /* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
 
@@ -82,7 +84,7 @@ trigger preProcessTableRows : (collection {fromS : bool, sRow : option {FirstNam
 
 /* PHASE 1: PRE-PROCESS 2 - Process Regions*/
 
-declare tmpRegions : mut collection {RegionId : int} @ {Collection}
+declare _tmpRegions : mut collection {RegionId : int} @ {Collection}
 
 declare getSRegionsWorker : immut (collection {RegionId : int} @ {Collection} -> int -> int -> collection {RegionId : int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
     /* 
@@ -124,14 +126,14 @@ declare preProcessRegionsWorker : mut (int -> string -> ()) = fun numberOfRows -
      */
     if numberOfRows > 0 then
         if tableName == "S" then
-            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -127);
-            tmpRegions = (getSRegions tmpRegions numberOfRows);
-            rowLookupTable.insert {Row : numberOfRows, Regions : tmpRegions};
+            _tmpRegions = _tmpRegions.filter (\region -> region.RegionId == -127);
+            _tmpRegions = (getSRegions _tmpRegions numberOfRows);
+            rowLookupTable.insert {Row : numberOfRows, Regions : _tmpRegions};
             (preProcessRegionsWorker (numberOfRows - 1) "S")
         else
-            tmpRegions = tmpRegions.filter (\region -> region.RegionId == -1);
-            tmpRegions = (getTRegions tmpRegions numberOfRows);
-            columnLookupTable.insert {Column : numberOfRows, Regions : tmpRegions};
+            _tmpRegions = _tmpRegions.filter (\region -> region.RegionId == -1);
+            _tmpRegions = (getTRegions _tmpRegions numberOfRows);
+            columnLookupTable.insert {Column : numberOfRows, Regions : _tmpRegions};
             (preProcessRegionsWorker (numberOfRows - 1) "T")
     else ()
 )
@@ -141,8 +143,6 @@ trigger preProcessRegions : () = \_ -> (
     (preProcessRegionsWorker tNumRows "T");
     (arrangeMap, me) <- ()
 )
-
-/* PHASE 2: MAP */
 
 /* PHASE 2: MAP */
 
@@ -167,16 +167,33 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
                 if r == 0 then q else if mapperId <= r then q + 1 else q
 )
 
-/* Send rows from both the tables to the mappers using the sendRowToMapper_s/sendRowToMapper_t triggers */
+trigger understandData : (collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, collection {Column : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, int, int) = \data -> (
+    bind data as (_rowLookupTable, _columnLookupTable, _sNumRows, _tNumRows) in (
+        rowLookupTable = _rowLookupTable;
+        columnLookupTable = _columnLookupTable;
+        sNumRows = _sNumRows;
+        tNumRows = _tNumRows
+    )
+)
 
 trigger arrangeMap : () = \_ -> (
+    /* Copy data to other mappers */
+    sMappers.iterate (\mapper -> (
+        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, sNumRows, tNumRows)
+    ));
+
+    tMappers.iterate (\mapper -> (
+        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, sNumRows, tNumRows)
+    ));
+
+    /* Send rows to specific mappers */
     sTable.fold (\mapperCounter -> \row -> (
         (sendRowToMapper_s, me) <- (row, (mapperCounter % sNumMappers) + 1);
         mapperCounter + 1
     )) 0;
 
     tTable.fold (\mapperCounter -> \row -> (
-        (sendRowToMapper_t, me) <- (row, (mapperCounter % tNumMappers) + 1);
+        (sendRowToMapper_t, me) <- (row, (mapperCounter % sNumMappers) + 1);
         mapperCounter + 1
     )) 0
 )
@@ -193,7 +210,7 @@ trigger sendRowToMapper_s : ({FirstName : string, Age : int, LastName : string},
             let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of 
-                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize, sNumRows, rowLookupTable)}
+                    {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
                     {None -> ()}
     )
 )
@@ -204,37 +221,35 @@ trigger sendRowToMapper_t : ({Name : string, Age : int, LastName : string}, int)
             let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
                 let mapperInstance = fMappers.peek() in
                     case mapperInstance of
-                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize, tNumRows, columnLookupTable)}
+                    {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
                     {None -> ()}
     )
 )
 
 /* Implement Mapper Functionality */
 
-declare sTmpMapperOutputCollection : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
-declare tTmpMapperOutputCollection : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
+declare _sTmpMapperOutputCollection : mut collection {FirstName : string, Age : int, LastName : string} @ {Collection}
+declare _tTmpMapperOutputCollection : mut collection {Name : string, Age : int, LastName : string} @ {Collection}
 
 /* Debug Variables */
 
-declare randoms : collection {rval : int} @ {Collection}
-declare dsrows : collection {srow : {FirstName : string, Age : int, LastName : string}} @ {Collection}
-declare dtrows : collection {trow : {Name : string, Age : int, LastName : string}} @ {Collection}
+declare _randoms : collection {rval : int} @ {Collection}
+declare _dsrows : collection {srow : {FirstName : string, Age : int, LastName : string}} @ {Collection}
+declare _dtrows : collection {trow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
-trigger map_s : ({FirstName : string, Age : int, LastName : string}, int, int, collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}) = \x -> (
-    bind x as (sRow, mapperSize, localSNumRows, localRowLookupTable) in (
+trigger map_s : ({FirstName : string, Age : int, LastName : string}, int) = \x -> (
+    bind x as (sRow, mapperSize) in (
         sCurrentMapperSize = sCurrentMapperSize + 1;
-        sNumRows = localSNumRows;
-        rowLookupTable = localRowLookupTable;
-        randomRow = (getRandom "S");
-        randoms.insert {rval : randomRow};
-        dsrows.insert {srow : sRow};
+        _randomRow = (getRandom "S");
+        _randoms.insert {rval : _randomRow};
+        _dsrows.insert {srow : sRow};
         /*
          * Find the specific row in the lookup table.
          * Lookuo all the regions associated to that row.
          * Find the mapper output associated with that region using the RegionId field.
          * Create a new output if output is None; otherwise, insert the row in the existing output and update collection.
          */
-        let optLookupRow = (rowLookupTable.filter (\lookupRow -> lookupRow.Row == randomRow)).peek() in
+        let optLookupRow = (rowLookupTable.filter (\lookupRow -> lookupRow.Row == _randomRow)).peek() in
             case optLookupRow of
             {Some lookupRow -> (
                 lookupRow.Regions.iterate (\region -> (
@@ -246,33 +261,33 @@ trigger map_s : ({FirstName : string, Age : int, LastName : string}, int, int, c
                                 sMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput}
                         )}
                         {None -> (
-                            sTmpMapperOutputCollection = sTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
-                            sTmpMapperOutputCollection.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
-                            sMapperOutput.insert {RegionId : region.RegionId, Output : sTmpMapperOutputCollection}
+                            _sTmpMapperOutputCollection = _sTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
+                            _sTmpMapperOutputCollection.insert {FirstName : sRow.FirstName, Age : sRow.Age, LastName : sRow.LastName};
+                            sMapperOutput.insert {RegionId : region.RegionId, Output : _sTmpMapperOutputCollection}
                         )}
                 ))
             )}
             {None -> ()};
+
+        /* After computing on mapperSize amount of rows, we then send the data to the reudcers */
         if sCurrentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
         else ()
     )
 )
 
-trigger map_t : ({Name : string, Age : int, LastName : string}, int, int, collection {Column : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}) = \x -> (
-    bind x as (tRow, mapperSize, localTNumRows, localColumnLookupTable) in (
+trigger map_t : ({Name : string, Age : int, LastName : string}, int) = \x -> (
+    bind x as (tRow, mapperSize) in (
         tCurrentMapperSize = tCurrentMapperSize + 1;
-        tNumRows = localTNumRows;
-        columnLookupTable = localColumnLookupTable;
-        randomColumn = (getRandom "T");
-        randoms.insert {rval : randomColumn};
-        dtrows.insert {trow : tRow};
+        _randomColumn = (getRandom "T");
+        _randoms.insert {rval : _randomColumn};
+        _dtrows.insert {trow : tRow};
         /*
          * Find the specific column in the lookup table.
          * Lookuo all the regions associated to that column.
          * Find the mapper output associated with that region using the RegionId field.
          * Create a new output if output is None; otherwise, insert the column(row) in the existing output and update collection.
          */
-        let optLookupColumn = (columnLookupTable.filter (\lookupColumn -> lookupColumn.Column == randomColumn)).peek() in
+        let optLookupColumn = (columnLookupTable.filter (\lookupColumn -> lookupColumn.Column == _randomColumn)).peek() in
             case optLookupColumn of
             {Some lookupColumn -> (
                 lookupColumn.Regions.iterate (\region -> (
@@ -284,13 +299,15 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int, int, collec
                                 tMapperOutput.update {RegionId : region.RegionId, Output : oldOutput.Output} {RegionId : region.RegionId, Output : newOutput}
                         )}
                         {None -> (
-                            tTmpMapperOutputCollection = tTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
-                            tTmpMapperOutputCollection.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
-                            tMapperOutput.insert {RegionId : region.RegionId, Output : tTmpMapperOutputCollection}
+                            _tTmpMapperOutputCollection = _tTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Age == -1);
+                            _tTmpMapperOutputCollection.insert {Name : tRow.Name, Age : tRow.Age, LastName : tRow.LastName};
+                            tMapperOutput.insert {RegionId : region.RegionId, Output : _tTmpMapperOutputCollection}
                         )}
                 ))
             )}
             {None -> ()};
+
+        /* After computing on mapperSize amount of rows, we then send the data to the reudcers */
         if tCurrentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
         else ()
     )
@@ -298,63 +315,71 @@ trigger map_t : ({Name : string, Age : int, LastName : string}, int, int, collec
 
 /* PHASE 3: REDUCER */
 
-trigger sendAllToReducer : () = \_ -> (
-    /* 
-     * For every output in the mapper outputs, send them to the appropriate reducer.
-     * Currently only relying on a single machine; but the next step would be to filter a reducer responsible for a particular.
-     * RegionId.
-    */
-    sMapperOutput.iterate (\mapperOutput -> (
-        (reduce_s, me) <- (mapperOutput.Output)
-    ));
+declare _sEmptyCollection : collection {FirstName : string, Age : int, LastName : string} @ {Collection}
+declare _tEmptyCollection : collection {Name : string, Age : int, LastName : string} @ {Collection}
 
-    tMapperOutput.iterate (\mapperOutput -> (
-        (reduce_t, me) <- (mapperOutput.Output)
+trigger sendAllToReducer : () = \_ -> (
+    /*
+     * 1. This method is called by every mapper once : (sendAllToReducer, me) <- (). Therefore every mapper sends something to all reducers.
+     * 2. For every reducer, check if the mapper has some output for it. If so, send the output; else send () data.
+     */
+    reducers.iterate (\reducer -> (
+        let mapperOutputCorrespondingToReducer = (sMapperOutput.filter (\mapperOutput -> mapperOutput.RegionId == reducer.Id)).peek() in
+            case mapperOutputCorrespondingToReducer of
+            {Some mapperOutput -> (reduce_s, reducer.Address) <- mapperOutput.Output}
+            {None -> (reduce_s, reducer.Address) <- _sEmptyCollection};
+
+        let mapperOutputCorrespondingToReducer = (tMapperOutput.filter (\mapperOutput -> mapperOutput.RegionId == reducer.Id)).peek() in
+            case mapperOutputCorrespondingToReducer of
+            {Some mapperOutput -> (reduce_t, reducer.Address) <- mapperOutput.Output}
+            {None -> (reduce_t, reducer.Address) <- _tEmptyCollection}
     ))
+
 )
 
-trigger reduce_s : (collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
-    /* These collections are reducer dependent */
-    sTuples = coll;
+declare _sMapperReceiveCounter : mut int = 0
+declare _tMapperReceiveCounter : mut int = 0
 
-    /* If tTuples exist, then you have both tTuples and sTuples => reduce */
-    let tmpTTuples = tTuples.peek() in
-        case tmpTTuples of
-        {Some x -> (reduceDoJoin, me) <- ()}
-        {None -> ()}
+trigger reduce_s : (collection {FirstName : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
+    _sMapperReceiveCounter = _sMapperReceiveCounter + 1;
+    coll.iterate (\row -> (
+        sTuples.insert {FirstName : row.FirstName, Age : row.Age, LastName : row.LastName}
+    ));
+    let totalMappers = sNumMappers + tNumMappers in
+        if (_sMapperReceiveCounter == totalMappers and _tMapperReceiveCounter == totalMappers) then
+            (reduceDoJoin, me) <- ()
+        else ()
 )
 
 trigger reduce_t : (collection {Name : string, Age : int, LastName : string} @ {Collection}) = \coll -> (
-    /* These collections are reducer dependent */
-    tTuples = coll;
-
-    /* If sTuples exist, then you have both tTuples and sTuples => reduce */
-    let tmpSTuples = tTuples.peek() in
-        case tmpSTuples of
-        {Some x -> (reduceDoJoin, me) <- ()}
-        {None -> ()}
+    _tMapperReceiveCounter = _tMapperReceiveCounter + 1;
+    coll.iterate (\row -> (
+        tTuples.insert {Name : row.Name, Age : row.Age, LastName : row.LastName}
+    ));
+    let totalMappers = sNumMappers + tNumMappers in
+        if (_sMapperReceiveCounter == totalMappers and _tMapperReceiveCounter == totalMappers) then
+            (reduceDoJoin, me) <- ()
+        else ()
 )
+
+declare reducerOutput : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
 
 trigger reduceDoJoin : () = \_ -> (
     sTuples.iterate (\sRow -> (
         tTuples.iterate (\tRow -> (
-            if sRow.Age == tRow.Age then jobOutput.insert {sRow : sRow, tRow : tRow}
+            if sRow.Age == tRow.Age then reducerOutput.insert {sRow : sRow, tRow : tRow}
             else ()
         ))
     ));
 
-    /* After receiving the output, send the jobOutput to the master node to accumulate into the final output */
-    (reducerAccumulator, master) <- jobOutput
-
+    (accumulateOutput, master) <- (reducerOutput)
 )
 
 /* PHASE 4: ACCUMULATE OUTPUT */
 
-declare output : collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}
-
-trigger reducerAccumulator : (collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}) = \reducerOutput -> (
-    reducerOutput.iterate (\reducerOutputInstance -> (
-        output.insert {sRow : reducerOutputInstance.sRow, tRow : reducerOutputInstance.tRow}
+trigger accumulateOutput : (collection {sRow : {FirstName : string, Age : int, LastName : string}, tRow : {Name : string, Age : int, LastName : string}} @ {Collection}) = \reducerOutput -> (
+    reducerOutput.iterate (\outputRecord -> (
+        output.insert {sRow : outputRecord.sRow, tRow : outputRecord.tRow}
     ))
 )
 

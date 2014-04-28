@@ -56,7 +56,7 @@ namespace K3
 
     virtual Socket socket() = 0;
     virtual void close() = 0;
-    virtual void write(const string&) = 0;
+    virtual void write(shared_ptr<Value> ) = 0;
 
     // TODO
     //virtual bool has_write() = 0;
@@ -154,11 +154,17 @@ namespace K3
 
       void close() { if ( socket_ ) { socket_->close(); } }
 
-      void write(const string& val) { 
+      void write(shared_ptr<Value>  val) { 
         // TODO switch to scoped locks
         // If the loop is already running, just add the message to the queue
         mut.lock();
         if (busy) {
+          while(buffer_->size() > 1000) {
+            logAt(trivial::trace, "Too many messages on outgoing queue: waiting...");
+            mut.unlock();
+	    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+            mut.lock();
+          }
           buffer_->push(val);
         }
         // Otherwise, start the loop
@@ -169,17 +175,16 @@ namespace K3
         mut.unlock();
       }
 
-      void async_write_loop(const string& val) {
-        shared_ptr<Value> buf = shared_ptr<Value>(new Value(val));
-        size_t desired = val.length();
+      void async_write_loop(shared_ptr<Value> val) {
+        size_t desired = val->length();
         // Write the value out to the socket
-        async_write(*socket_, boost::asio::buffer(*buf,
+        async_write(*socket_, boost::asio::buffer(*val,
           desired),
         [=](boost::system::error_code ec, size_t s)
         {
           // Capture the buffer in closure to keep its pointer count > 0
           // until this callback has been executed
-          shared_ptr<Value> keep_alive = buf;
+          shared_ptr<Value> keep_alive = val;
           // Check for errors:
           if (ec || (s != desired)) {
             BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
@@ -194,7 +199,7 @@ namespace K3
           }
           // Otherwise, pop the next value and recurse
           else {
-            Value newval = buffer_->front();
+            shared_ptr<Value> newval = buffer_->front();
             buffer_->pop();
             async_write_loop(newval);
           }
@@ -205,12 +210,13 @@ namespace K3
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
-          LogMT("NConnection"), socket_(s), connected_(false), busy(false), buffer_(new std::queue<Value>())
+          LogMT("NConnection"), socket_(s), connected_(false), busy(false), 
+          buffer_(new std::queue<shared_ptr<Value>>())
       {}
       // use mutex to operate on queues and busy atomically
       boost::mutex mut;
       bool busy;
-      shared_ptr<std::queue<Value>> buffer_;
+      shared_ptr<std::queue<shared_ptr<Value>>> buffer_;
       Socket socket_;
       bool connected_;
     };
