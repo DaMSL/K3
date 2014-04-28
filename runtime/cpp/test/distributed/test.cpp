@@ -96,7 +96,7 @@ void runReceiver(int num_messages) {
   service_threads->remove_thread(t1.get());
 }
 
-void runSender(int num_messages, int message_len, string rendez) {
+void runSender(int num_messages, int message_len, std::string rendez) {
   K3::message = "";
   for (int i=0; i< message_len; i++) {
     K3::message += "a";
