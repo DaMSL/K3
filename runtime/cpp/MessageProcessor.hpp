@@ -1,47 +1,55 @@
 #ifndef K3_RUNTIME_MESSAGEPROC_H
 #define K3_RUNTIME_MESSAGEPROC_H
 
-#include <k3/runtime/Dispatch.hpp>
+#include <Dispatch.hpp>
 
 namespace K3
 {
   //-------------------
   // Message processor
 
-  enum class MPStatus = { Continue, Error, Done };
+  enum class LoopStatus { Continue, Error, Done };
 
-  template <typename Error, typename Result>
-  class MPStatus {
-      public:
-          MPStatus tag;
-          Error error;
-          Result result;
-  }
+  // template <typename Error, typename Result>
+  // class MPStatus {
+    // public:
+      // LoopStatus tag;
+      // Error error;
+      // Result result;
+  // };
 
-  template<typename Environment, typename Value>
   class MessageProcessor {
-  public:
-    MessageProcessor(Environment e): env(e), _status(MPStatus::Continue) {}
-    virtual void initialize() {}
-    virtual void finalize() {}
-    virtual void MPStatus process(Message<Value> msg) = 0;
-    MPStatus status() { return _status };
+    public:
+      MessageProcessor(): _status(LoopStatus::Continue) {}
+      virtual void initialize() {}
+      virtual void finalize() {}
+      virtual LoopStatus process(Message msg) = 0;
+      LoopStatus status() { return _status; };
+    private:
+      LoopStatus _status;
+  };
 
-    Environment env;
-    MPStatus _status;
+  using MPStatus = LoopStatus;
 
+  using NativeMessageProcessor = MessageProcessor;
+
+  template <class E>
+  class VirtualizedMessageProcessor: public MessageProcessor {
+    public:
+      VirtualizedMessageProcessor(E e): MessageProcessor(), env(e) {}
+    private:
+      E env;
   };
 
   // Message Processor used by generated code. Processing is done by dispatch messages using a
   // generated table of triggers. The trigger wrapper functions perform the deserialization of the
   // message payload themeselves.
-  template <typename Value>
-  class DispatchMessageProcessor : public MessageProcessor {
-  public:
-    DispatchMessageProcessor(TriggerDispatch td): table(td) {}
+  class DispatchMessageProcessor : public NativeMessageProcessor {
+    public:
+      DispatchMessageProcessor(TriggerDispatch td): table(td) {}
 
-    MPStatus process(Message<Value> msg) {
-
+      LoopStatus process(Message msg)
+      {
         TriggerWrapper tw;
 
         // Look the trigger up in the dispatch table, error out if not present.
@@ -57,10 +65,13 @@ namespace K3
         // Message was processed, signal the engine to continue.
         // TODO: Propagate trigger errors to engine, K3 error semantics?
         return LoopStatus::Continue;
-    }
-  private:
-    TriggerDispatch table;
-  }
+      }
+
+    private:
+      TriggerDispatch table;
+    };
 }
+
+
 
 #endif

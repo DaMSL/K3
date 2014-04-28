@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Utils.Pretty.Syntax (
@@ -82,11 +83,16 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
   where
     withSubDecls d = vsep C.<$> ((:) C.<$> d <*> subDecls cs)
 
-    declG = globalDecl C.<$> qualifierAndType t
+    declG = globalDecl C.<$> declGType
                          <*> optionalPrinter qualifierAndExpr eOpt
 
-    globalDecl (qualT, t') eqeOpt = 
-      hang 2 $ text "declare" <+> text n <+> colon <+> qualT <+> (align t') <+> initializer eqeOpt <> line
+    declGType = case tag t of 
+      TForall _ -> (Nothing,) C.<$> typ t
+      _         -> (\(q,dt) -> (Just q, dt)) C.<$> qualifierAndType t
+
+    globalDecl (qualTOpt, t') eqeOpt = 
+      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') ((<+>) (align t')) qualTOpt
+                                         <+> initializer eqeOpt <> line
     
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
 
@@ -140,14 +146,6 @@ decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
 
 decl' _ = throwSP "Invalid declaration"
 
-
-typeVarDecl :: TypeVarDecl -> SyntaxPrinter
-typeVarDecl (TypeVarDecl i mlbtExpr mubtExpr) = do
-  lb <- if isNothing mlbtExpr then return empty else
-          liftM (<+> text "=<") $ typ (fromJust mlbtExpr)
-  ub <- if isNothing mubtExpr then return empty else
-          liftM (text "<=" <+>) $ typ (fromJust mubtExpr)
-  return $ lb <+> text i <+> ub
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d
@@ -282,6 +280,7 @@ binary op e e' =
     OSub -> infixOp "-" 
     OMul -> infixOp "*" 
     ODiv -> infixOp "/" 
+    OMod -> infixOp "%"
     OAnd -> infixOp "&&"
     OOr  -> infixOp "||"
     OEqu -> infixOp "=="
@@ -368,10 +367,12 @@ typ' (tag -> TBuiltIn TContent)   = return $ keyword "content"
 typ' (tag -> TBuiltIn THorizon)   = return $ keyword "horizon"
 typ' (tag -> TBuiltIn TStructure) = return $ keyword "structure"
 
-typ' (tag -> TForall _)      = throwSP "TForall syntax not supported"
-typ' (tag -> TDeclaredVar _) = throwSP "TDeclaredVar syntax not supported"
+typ' (details -> (TForall tvd, [x], _)) = polymorphicType C.<$> mapM typeVarDecl tvd <*> typ x
+typ' (tag -> TForall _) = throwSP "Invalid forall type"
 
-typ' _ = throwSP "Cannot generate type syntax"
+typ' (tag -> TDeclaredVar n) = return $ keyword n
+
+typ' _ = throwSP "Invalid type syntax"
 
 qualifierAndType :: K3 Type -> Printer (Doc, Doc)
 qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
@@ -382,6 +383,14 @@ tQualifier anns = qualifier isTQualified tqSyntax anns
     tqSyntax TImmutable = return $ text "immut"
     tqSyntax TMutable   = return $ text "mut"
     tqSyntax _          = throwSP "Invalid type qualifier"
+
+typeVarDecl :: TypeVarDecl -> SyntaxPrinter
+typeVarDecl (TypeVarDecl i mlbtExpr mubtExpr) = do
+  lb <- if isNothing mlbtExpr then return empty else
+          liftM (<+> text "=<") $ typ (fromJust mlbtExpr)
+  ub <- if isNothing mubtExpr then return empty else
+          liftM (text "<=" <+>) $ typ (fromJust mubtExpr)
+  return $ lb <+> text i <+> ub
 
 
 -- | Literals pretty printing
@@ -463,6 +472,9 @@ funType arg ret = parens $ arg </> text "->" <+> ret
 triggerType :: Doc -> Doc
 triggerType t = text "trigger" <+> t
 
+polymorphicType :: [Doc] -> Doc -> Doc
+polymorphicType [] t    = t
+polymorphicType tvars t = text "forall" <+> (foldl1 (<+>) tvars) <+> dot <+> t
 
 someExpr :: Doc -> Doc -> Doc
 someExpr qual e = text "Some" <+> qual <+> e
@@ -580,9 +592,6 @@ keyword s = text s
 
 commaBrace :: [Doc] -> Doc
 commaBrace = encloseSep lbrace rbrace comma
-
-details :: K3 a -> (a, [K3 a], [Annotation a])
-details n = (tag n, children n, annotations n)
 
 matchAnnotation :: (Eq (Annotation a))
                 => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]

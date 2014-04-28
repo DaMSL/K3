@@ -1,0 +1,39 @@
+include "Annotation/Containers/Interfaces/Sorted.k3"
+
+annotation SortedList given type a, b 
+{
+  // Interfaces provided.
+  provides Collection
+  provides Sorted
+
+  // Implementations provided.
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  provides lifted peek   : () -> option content
+  provides lifted find   : (content -> bool) -> option content
+  provides lifted member : (content -> bool) -> bool
+
+  provides lifted combine : self -> self
+  provides lifted split   : self -> (self, self)
+
+  provides lifted iterate : (content -> ()) -> ()
+  provides lifted map     : (content -> a) -> collection {elem : a} @ { Collection }
+  provides lifted filter  : (content -> bool) -> self
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+  provides lifted sort    : (content -> content -> int) -> collection content @ { Seq }
+
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ { Collection }
+
+  provides lifted ext     : (content -> collection {elem : a} @ { Collection })
+                             -> collection {elem : a} @ { Collection }
+                             -> collection {elem : a} @ { Collection }
+
+  provides lifted min         : () -> option content
+  provides lifted max         : () -> option content
+  provides lifted lowerBound  : content -> option content
+  provides lifted upperBound  : content -> option content
+  provides lifted slice       : content -> (content -> self)
+}

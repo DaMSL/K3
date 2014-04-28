@@ -5,13 +5,14 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include <boost/thread/mutex.hpp>
 #include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
-#include <boost/thread/shared_lock_guard.hpp>
-#include <boost/thread/shared_mutex.hpp>
-#include <k3/runtime/cpp/Common.hpp>
-#include <k3/runtime/cpp/Network.hpp>
-#include <k3/runtime/cpp/IOHandle.hpp>
+
+#include <Common.hpp>
+#include <Network.hpp>
+#include <IOHandle.hpp>
+#include <Queue.hpp>
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.
@@ -21,31 +22,46 @@ namespace K3
   using namespace std;
   using namespace boost;
 
-  using std::shared_ptr;
-  using boost::mutex;
+  using mutex = boost::mutex;
+  using std::bind;
 
   typedef tuple<int, int> BufferSpec;
 
-  enum class EndpointNotification { NullEvent, FileData, FileClose, SocketAccept, SocketData, SocketClose };
+  enum class EndpointNotification {
+    NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose
+  };
 
-  template<typename Value, typename EventValue> class Endpoint;
-  template<typename Value, typename EventValue> using EndpointMap
-      = map<Identifier, shared_ptr<Endpoint<Value, EventValue> > >;
+  class BufferException : public runtime_error {
+  public:
+    BufferException( const string& msg ) : runtime_error(msg) {}
+    BufferException( const char* msg ) : runtime_error(msg) {}
+  };
 
-  int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
+  class EndpointException : public runtime_error {
+  public:
+    EndpointException( const string& msg ) : runtime_error(msg) {}
+    EndpointException( const char* msg ) : runtime_error(msg) {}
+  };
 
-  string internalEndpointPrefix() { return string("__");  }
-  
-  Identifier connectionId(Address& addr) {
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+
+  class Endpoint;
+  typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
+
+  static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
+  static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
+
+  static inline string internalEndpointPrefix() { return string("__");  }
+
+  static inline Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
   }
 
-  Identifier peerEndpointId(Address& addr) {
+  static inline Identifier peerEndpointId(Address& addr) {
     return internalEndpointPrefix() + "_node_" + addressAsString(addr);
   }
 
-  bool externalEndpointId(Identifier& id) {
+  static inline bool externalEndpointId(Identifier& id) {
     string pfx = internalEndpointPrefix();
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }
@@ -57,9 +73,9 @@ namespace K3
   // BufferContents datatype inline in the EndpointBuffer class. This is due
   // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
 
-  template<typename Value>
   class EndpointBuffer {
   public:
+    typedef std::function<void(shared_ptr<Value>)> NotifyFn;
 
     EndpointBuffer() {}
 
@@ -68,435 +84,350 @@ namespace K3
     virtual size_t size() = 0;
     virtual size_t capacity() = 0;
 
-    // Appends to this buffer, returning the value if the append fails.
-    virtual shared_ptr<Value> append(shared_ptr<Value> v) = 0;
+    // Appends to this buffer, returning if the append succeeds.
+    virtual bool push_back(shared_ptr<Value> v) = 0;
 
-    // Transfers from this buffer into the given queues.
-    virtual void enqueue(shared_ptr<MessageQueues<Value> > queues) = 0;
+    // Maybe Removes a value from the buffer and returns it
+    virtual shared_ptr<Value> pop() = 0;
 
-    // TODO
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    virtual EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) = 0;
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    virtual tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh) = 0;
-  };
+    // Attempt to pull a value from the provided IOHandle
+    // into the buffer. Returns a Maybe Value
+    virtual shared_ptr<Value> refresh(shared_ptr<IOHandle>, NotifyFn) = 0;
 
-  template<typename Value>
-  class ScalarEPBufferST : public EndpointBuffer<Value>
-  {
-  public:
-    typedef Value BufferContents;
+    // Flush the contents of the buffer out to the provided IOHandle
+    virtual void flush(shared_ptr<IOHandle>, NotifyFn) = 0;
 
-    ScalarEPBufferST() {}
-
-    bool empty() { return !contents; }
-    bool full() { return contents; }
-    size_t size() { return contents? 1 : 0; }
-    size_t capacity () { return 1; }
-
-    shared_ptr<Value> append(shared_ptr<Value> v) {
-      shared_ptr<Value> r;
-      if ( !contents ) { contents = v; }
-      else { r = v; }
-      return r;
-    }
-
-    // TODO: Value vs Message<Value> 
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
-      if ( contents ) { 
-        queues->enqueue(*contents);
-        contents.reset();
-      }
-    }
-
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      if ( contents ) {
-        ioh->doWrite(*contents);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }
-      return nt;
-    }
-
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      shared_ptr<Value> r;
-
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents ) { r = contents; }
-      if ( v ) {
-        contents = v;
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);
-    }
-
-  protected:
-    shared_ptr<BufferContents> contents;
+    // Transfer the contents of the buffer into provided MessageQueues
+    // Using the provided InternalCodec to convert from Value to Message
+    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
   };
 
 
-  template<typename Value>
-  class ScalarEPBufferMT : public EndpointBuffer<Value>, public basic_lockable_adapter<mutex>
-  {
+  class ScalarEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex> {
   public:
     typedef ScalarEPBufferMT LockB;
-    typedef Value BufferContents;
 
-    ScalarEPBufferMT() : contents(*this) {}
-
-    bool empty() { strict_lock<LockB> guard(*this); return !(contents.get(guard)); }
-    bool full() { strict_lock<LockB> guard(*this); return contents.get(guard); }
-    size_t size() { strict_lock<LockB> guard(*this); return contents.get(guard)? 1 : 0; }
-    size_t capacity () { return 1; }
-
-
-    shared_ptr<Value> append(shared_ptr<Value> v)
-    {
+    ScalarEPBufferMT() : EndpointBuffer(), contents(*this) {}
+    // Metadata
+    bool   empty()    {
       strict_lock<LockB> guard(*this);
-      shared_ptr<Value> r;
-      if ( !contents.get(guard) ) { contents.get(guard) = v; }
-      else { r = v; }
-      return r;
+      return !(contents.get(guard));
+    }
+    bool   full()     {
+      strict_lock<LockB> guard(*this);
+      return static_cast<bool>(contents.get(guard));
+    }
+    size_t size()     {
+      strict_lock<LockB> guard(*this);
+      return contents.get(guard) ? 1 : 0;
+    }
+    size_t capacity() { return 1; }
+
+    // Buffer Operations
+    bool push_back(shared_ptr<Value> v) {
+      strict_lock<LockB> guard(*this);
+      // Failure:
+      if (!v || (contents.get(guard))) {
+        return false;
+      }
+      // Success:
+      contents.get(guard) = v;
+      return true;
     }
 
-    // TODO: Value vs Message<Value> 
-    void enqueue(shared_ptr<MessageQueues<Value> > queues)
-    {
+    shared_ptr<Value> pop() {
       strict_lock<LockB> guard(*this);
-      if ( contents.get(guard) ) { 
-        queues->enqueue(*contents);
+      shared_ptr<Value> v;
+      if (contents.get(guard)) {
+        // Success:
+        v = contents.get(guard);
         contents.get(guard).reset();
       }
+      // In case of failure, v is a null pointer
+      return v;
     }
 
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh)
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       strict_lock<LockB> guard(*this);
-      EndpointNotification nt = EndpointNotification::NullEvent;
-
-      if ( contents.get(guard) ) {
-        ioh->doWrite(*(contents.get(guard)));
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }
-      return nt;
-    }
-
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
-    {
-      strict_lock<LockB> guard(*this);
-      EndpointNotification nt = EndpointNotification::NullEvent;
       shared_ptr<Value> r;
+      EndpointNotification nt = EndpointNotification::NullEvent;
 
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents.get(guard) ) { r = contents.get(guard); }
-      if ( v ) {
+      // Read from the buffer if possible
+      if (contents.get(guard)) {
+        r = contents.get(guard);
+        contents.get(guard).reset();
+        notify(r);
+      }
+
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if (ioh->hasRead()) {
+        shared_ptr<Value> v = ioh->doRead();
         contents.get(guard) = v;
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);
+      }
+
+     return r;
     }
 
-  protected:
-    externally_locked<shared_ptr<Value>, ScalarEPBufferMT> contents;
-  };
-
-
-  template<typename Value>
-  class ContainerEPBufferST : public EndpointBuffer<Value>
-  {
-  public:
-    typedef list<Value> BufferContents;
-
-    ContainerEPBufferST(BufferSpec s) : spec(s)
-    {
-      contents = shared_ptr<BufferContents>(new BufferContents());
-    }
-
-    bool empty() { return contents? contents->empty() : true; }
-    size_t size() { return contents? contents->size() : 0; }
-
-    bool full() { 
-      if ( !contents ) { return false; }
-      int s = bufferMaxSize(spec);
-      return s <= 0? false : contents->size() == s; 
-    }
-    
-    size_t capacity() { 
-      if ( !contents ) { return 0; }
-      int s = bufferMaxSize(spec);
-      return s <= 0 ? contents->max_size() : s;
-    }
-
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(shared_ptr<Value> v) {
-      shared_ptr<Value> r;
-      if ( contents ) {
-        if ( this->full() ) { r = v; }
-        else { contents->push_back(v); }
-      } else { r = v; }
-      return r;
-    }
-
-    // TODO: Value vs Message<Value>
-    // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
-      if ( contents ) {
-        for (auto v : *contents) { queues->enqueue(v); }
-        contents->clear();
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      // pop() a value and write to the handle if possible
+      strict_lock<LockB> guard(*this);
+      if (contents.get(guard)) {
+        shared_ptr<Value> v = contents.get(guard);
+        contents.get(guard).reset();
+        ioh->doWrite(v);
+        notify(v);
       }
     }
 
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) 
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      strict_lock<LockB> guard(*this);
+      bool transferred = false;
+      if(contents.get(guard)) {
+        shared_ptr<Value> v = contents.get(guard);
+        contents.get(guard).reset();
+        if (queues && cdec) {
+          Message msg = cdec->read_message(*v);
+          queues->enqueue(msg);
+          transferred = true;
+        }
+        notify(v);
+      }
+      return transferred;
+    }
+
+   protected:
+    externally_locked<shared_ptr<Value>, LockB> contents;
+  };
+
+  class ScalarEPBufferST : public EndpointBuffer {
+  public:
+    ScalarEPBufferST() : EndpointBuffer() {}
+    // Metadata
+    bool   empty()    { return !contents; }
+    bool   full()     { return static_cast<bool>(contents); }
+    size_t size()     { return contents ? 1 : 0; }
+    size_t capacity() { return 1; }
+
+    // Buffer Operations
+    bool push_back(shared_ptr<Value> v) {
+      // Failure:
+      if (!v || this->full()) {
+        return false;
+      }
+      // Success:
+      contents = v;
+      return true;
+    }
+
+    shared_ptr<Value> pop() {
+      shared_ptr<Value> v;
+      if (!this->empty()) {
+        // Success:
+        v = contents;
+        contents = shared_ptr<Value>();
+      }
+      // In case of failure, v is a null pointer
+      return v;
+    }
+
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
+      shared_ptr<Value> r;
       EndpointNotification nt = EndpointNotification::NullEvent;
-      if ( contents && batchAvailable() ) {
-        bool written = false;
-        for (int i = batchSize(); i > 0; --i) {
-          ioh->doWrite(contents->pop_front());
-          written = true;
-        }
-        if ( written ) {
-          nt = (ioh->builtin() || ioh->file())?
-                  EndpointNotification::FileData : EndpointNotification::SocketData;
-        }
+
+      // Read from the buffer if possible
+      if (!(this->empty())) {
+        r = this->pop();
+        notify(r);
       }
-      return nt;
-    }
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
-    {
-      EndpointNotification nt;
-      shared_ptr<Value> r;
 
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents && !empty() ) { r = contents->pop_front(); }
-      if ( v ) {
-        append(v);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);      
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer
+      if (ioh->hasRead()) {
+        shared_ptr<Value> v = ioh->doRead();
+        this->push_back(v);
+      }
+
+     return r;
     }
 
-  protected:
-    BufferSpec spec;
-    shared_ptr<list<Value> > contents;
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      // pop() a value and write to the handle if possible
+      if (!this->empty()) {
+        shared_ptr<Value> v = this->pop();
+        ioh->doWrite(v);
+        notify(v);
+      }
+    }
 
-    int batchSize () { int r = bufferMaxSize(spec); return r <= 0? 1 : r; }
-    bool batchAvailable() { return contents? contents->size() >= batchSize() : false; }
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      bool transferred = false;
+      if(!this->empty()) {
+        shared_ptr<Value> v = this->pop();
+        if (queues && cdec) {
+          Message msg = cdec->read_message(*v);
+          queues->enqueue(msg);
+          transferred = true;
+        }
+        notify(v);
+      }
+      return transferred;
+    }
 
+   protected:
+    shared_ptr<Value> contents;
   };
 
-  // This is form of buffer used in the C++ listener since we must use thread-safe buffers.
-  // This is because we may have multiple threads handling a connection (e.g., with Boost Asio's io_service).
-  template<typename Value>
-  class ContainerEPBufferMT : public EndpointBuffer<Value>,
-                              public basic_lockable_adapter<mutex>
-  {
+  class ContainerEPBufferST : public EndpointBuffer {
   public:
-    typedef basic_lockable_adapter<mutex> bclockable;
-    typedef ContainerEPBufferMT LockB;
-
-    typedef list<Value> BufferContents;
-    typedef externally_locked<shared_ptr<BufferContents>, ContainerEPBufferMT>
-              ConcurrentBufferContents;
-    
-    ContainerEPBufferMT(BufferSpec s) : bclockable(), spec(s) {
-      shared_ptr<BufferContents> cb = shared_ptr<BufferContents>(new BufferContents());
-      contents = shared_ptr<BufferContents>(new ConcurrentBufferContents(*this, cb));
+    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), spec(s) {
+      contents = shared_ptr<list<Value>>(new list<Value>());
     }
 
-    bool empty() { 
-      strict_lock<LockB> guard(*this);
-      return empty(guard);
-    }
-
-    bool full() {
-      strict_lock<LockB> guard(*this);
-      return full(guard);
-    }
-
-    size_t size() {
-      strict_lock<LockB> guard(*this);
-      size_t s = 0;
-      if ( contents ) { s = contents->get(guard)->size(); }
-      return s;
-    }
-    
+    bool   empty() { return contents? contents->empty() : true; }
+    bool   full()  { return size() >= bufferMaxSize(spec); }
+    size_t size()  { return empty()? 0 : contents->size(); }
     size_t capacity() {
-      strict_lock<LockB> guard(*this);
-      bool r = false;
-      if ( contents ) {
-        int s = bufferMaxSize(spec);
-        r = s <= 0 ? contents->max_size() : s;
+      if (!contents) {
+        return 0;
+      }
+      int s = bufferMaxSize(spec);
+      return s <= 0? contents->max_size() : s;
+    }
+
+    bool push_back(shared_ptr<Value> v) {
+      // Failure if contents is null or full
+      if (!v || !contents || full()) {
+        return false;
+      }
+
+      // Success
+      contents->push_back(*v);
+      return true;
+    }
+
+    shared_ptr<Value> pop() {
+      shared_ptr<Value> v;
+      if (!empty()) {
+        v = make_shared<Value>(contents->front());
+        contents->pop_front();
+      }
+      return v;
+    }
+
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      shared_ptr<Value> r;
+
+      // Read from the buffer if possible
+      if (!(this->empty())) {
+        r = this->pop();
+        notify(r);
+      }
+
+      // If there is more data in the underlying IOHandle
+      // use it to populate the buffer. try to batch
+      int n = batchSize();
+      for(int i=0; !full() && ioh->hasRead() && i < n; i++) {
+        shared_ptr<Value> v = ioh->doRead();
+        this->push_back(v);
       }
       return r;
     }
 
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(shared_ptr<Value> v) {      
-      strict_lock<LockB> guard(*this);
-      return append(guard, v);
+    // Default flush: do not force, wait for batch
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
+      flush(ioh,notify,false);
     }
 
-    // TODO: Value vs Message<Value>
-    // Transfers from this buffer into the given queues.
-    void enqueue(shared_ptr<MessageQueues<Value> > queues) {
-      strict_lock<LockB> guard(*this);
-      if ( contents ) {
-        for (auto v : *(contents->get(guard))) { queues->enqueue(v); }
-        contents->get(guard)->clear();
-      }
-    }
-
-    // Writes the content of this buffer to the given IO handle. 
-    // Returns a notification if the write is successfully performed.
-    EndpointNotification flush(shared_ptr<IOHandle<Value> > ioh) 
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      strict_lock<LockB> guard(*this);
-      
-      if ( contents && batchAvailable(guard) ) {
-        bool written = false;
-        for (int i = batchSize(); i > 0; --i) {
-          ioh->doWrite(contents->get(guard)->pop_front());
-          written = true;
-        }
-        if ( written ) {
-          nt = (ioh->builtin() || ioh->file())?
-                  EndpointNotification::FileData : EndpointNotification::SocketData;
+    // flush overloaded with force flag to ignore batching semantics
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force) {
+      while (batchAvailable() || force) {
+        int n = batchSize();
+        for (int i=0; i < n; i++) {
+          if (force && empty()) { return; }
+          shared_ptr<Value> v = this->pop();
+          ioh->doWrite(v);
+          notify(v);
         }
       }
-      return nt;
-    }
-    
-    // Refresh this buffer by reading a value from the IO handle.
-    // If the buffer is full, a value is returned. Also, a notification
-    // is returned if the read is successfully performed.
-    tuple<shared_ptr<Value>, EndpointNotification>
-    refresh(shared_ptr<IOHandle<Value> > ioh)
-    {
-      EndpointNotification nt = EndpointNotification::NullEvent;
-      shared_ptr<Value> r;
-      strict_lock<LockB> guard(*this);
-
-      shared_ptr<Value> v = ioh->doRead();
-      if ( contents && !empty(guard) ) { r = contents->get(guard)->pop_front(); }
-      if ( v ) {
-        append(guard, v);
-        nt = (ioh->builtin() || ioh->file())?
-                EndpointNotification::FileData : EndpointNotification::SocketData;
-      }      
-      return make_tuple(r, nt);      
     }
 
-  protected:
+    // Default transfer: do not force, wait for batch
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
+      return transfer(queues,cdec,notify,false);
+    }
+
+    // transfer overloaded with force flag to ignore batching semantics
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force) {
+      // Transfer as many full batches as possible
+      bool transferred = false;
+      while (batchAvailable() || force) {
+        int n = batchSize();
+        for (int i=0; i < n; i++) {
+          if (force && empty()) { return transferred; }
+          shared_ptr<Value> v = this->pop();
+          if (queues && cdec) {
+            Message msg = cdec->read_message(*v);
+            queues->enqueue(msg);
+            transferred = true;
+          }
+          notify(v);
+        }
+      }
+      return transferred;
+    }
+
+   protected:
+    shared_ptr<list<Value>> contents;
     BufferSpec spec;
-    shared_ptr<ConcurrentBufferContents> contents;
 
-    int batchSize () { int r = bufferMaxSize(spec); return r <= 0? 1 : r; }
-    bool batchAvailable(strict_lock<LockB>& guard) { return contents->get(guard)->size() >= batchSize(); }
-
-    bool empty(strict_lock<LockB>& guard) {
-      bool r = true;
-      if ( contents ) { r = contents->get(guard)->empty(); }
-      return r;
-    }
-
-    bool full(strict_lock<LockB>& guard) {
-      bool r = false;
-      if ( contents ) { 
-        int s = bufferMaxSize(spec);
-        r = s <= 0? false : contents->get(guard)->size() == batchSize(); 
-      }
-      return r;
-    }
-
-    // Appends to this buffer, returning the value if the append fails.
-    shared_ptr<Value> append(strict_lock<LockB>& guard, shared_ptr<Value> v)
-    {
-      shared_ptr<Value> r;
-      if ( contents ) {
-        if ( this->full(guard) ) { r = v; }
-        else { contents->push_back(v); }
-      }
-      return r;        
-    }
-
+    int batchSize() { int r = bufferMaxSize(spec); return r <=0? 1 : r;}
+    bool batchAvailable() { return contents? contents->size() >= batchSize(): false;}
   };
-
 
   //----------------------------
   // I/O event notifications.
 
-  template<typename Value>
-  class EndpointBindings : public LogMT
-  {
+  class EndpointBindings : public LogMT {
   public:
-    // TODO: value or value ref? Synchronize with Engine.hpp
-    typedef std::function<void(Address,Identifier,Value)> SendFunctionPtr;
 
-    typedef list<Message<Value> > Subscribers;
-    typedef map<EndpointNotification, shared_ptr<Subscribers> > Subscriptions;
+    typedef list<tuple<Address, Identifier>> Subscribers;
+    typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, shared_ptr<Message<Value> > subscriber)
-    {
-      if ( subscriber ) {
-        shared_ptr<Subscribers> s = eventSubscriptions[nt];
-        if ( !s ) { 
-          s = shared_ptr<Subscribers>(new Subscribers());
-          eventSubscriptions[nt] = s;
-        }
-
-        s->push_back(*subscriber);
+    void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
+      shared_ptr<Subscribers> s = eventSubscriptions[nt];
+      if (!s) {
+        s = shared_ptr<Subscribers>(new Subscribers());
+        eventSubscriptions[nt] = s;
       }
-      else { logAt(boost::log::trivial::error, "Invalid subscriber in notification registration"); } 
+
+      s->push_back(make_tuple(sub_addr, sub_id));
     }
-    
-    void detachNotifier(EndpointNotification nt, Identifier subId, Address subAddr)
-    {
+
+    void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) { 
+        if (s) {
           s->remove_if(
-            [&subId, &subAddr](const Message<Value>& m){
-              return m.id() == subId && m.address() == subAddr;
+            [&sub_id, &sub_addr](const tuple<Address, Identifier>& t){
+              return get<0>(t) == sub_addr && get<1>(t) == sub_id;
             });
         }
       }
     }
 
-    void notifyEvent(EndpointNotification nt)
-    {
+    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload) {
       auto it = eventSubscriptions.find(nt);
-      if ( it != eventSubscriptions.end() ) {
+      if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
-        if ( s ) {
-          for (const Message<Value>& sub : *s) {
-            sendFn(sub.id(), sub.address(), sub.contents());
+        if (s) {
+          for (tuple<Address, Identifier> t : *s) {
+            sendFn(get<0>(t), get<1>(t), payload);
           }
         }
       }
@@ -506,188 +437,244 @@ namespace K3
     SendFunctionPtr sendFn;
     Subscriptions eventSubscriptions;
   };
-  
-
 
   //---------------------------------
   // Endpoints and their containers.
 
-  template<typename Value, typename EventValue>
   class Endpoint
   {
   public:
-    Endpoint(shared_ptr<IOHandle<Value> > ioh,
-             shared_ptr<EndpointBuffer<Value> > buf,
-             shared_ptr<EndpointBindings<EventValue> > subs)
+    Endpoint(shared_ptr<IOHandle> ioh,
+             shared_ptr<EndpointBuffer> buf,
+             shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
-    {}
+    {
+      if (handle_->isInput()) {
+        refreshBuffer();
+      }
+    }
 
-    shared_ptr<IOHandle<Value> > handle() { return handle_; }
-    shared_ptr<EndpointBuffer<Value> > buffer() { return buffer_; }
-    shared_ptr<EndpointBindings<EventValue> > subscribers() { return subscribers_; }
+    shared_ptr<IOHandle> handle() { return handle_; }
+    shared_ptr<EndpointBuffer> buffer() { return buffer_; }
+    shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
-    // An endpoint can be read if the handle can be read and the buffer isn't empty.
+    void notify_subscribers(shared_ptr<Value> v) {
+      EndpointNotification nt =
+        (handle_->builtin() || handle_->file())?
+          EndpointNotification::FileData : EndpointNotification::SocketData;
+      subscribers_->notifyEvent(nt, v);
+    }
+
+    // An endpoint can be read if the handle can be read or the buffer isn't empty.
     bool hasRead() {
-        return handle_->hasRead() && !buffer_->empty();
+        return handle_->hasRead() || !buffer_->empty();
     }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
     bool hasWrite() {
-        return handle_->hasWrite() && !buffer_->full();
+      return handle_->hasWrite() && !buffer_->full();
+    }
+
+    shared_ptr<Value> refreshBuffer() {
+      return buffer_->refresh(handle_,
+        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+    }
+
+    void flushBuffer() {
+      return buffer_->flush(handle_,
+        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     shared_ptr<Value> doRead() {
-        // Refresh the buffer, getting back a read value, and an endpoint notification.
-        tuple<shared_ptr<Value>, EndpointNotification> readResult = buffer_->refresh();
-
-        // Notify those subscribers who need to be notified of the event.
-        subscribers_->notifyEvent(get<1>(readResult));
-
-        // Return the read result.
-        return get<0>(readResult);
+      return refreshBuffer();
     }
 
     void doWrite(Value& v) {
-        shared_ptr<Value> result = buffer_->append(v);
-
-        if (result) {
-            // TODO: Append failed, flush?
-        } else {
-            // TODO: Success, now what?
-        }
-
-        return;
+      doWrite(make_shared<Value>(v));
+      return;
     }
+
+    void doWrite(shared_ptr<Value> v_ptr) {
+
+      bool success = buffer_->push_back(v_ptr);
+      if ( !success ) {
+        // Flush buffer, and then try to append again.
+        flushBuffer();
+
+        // Try to append again, and if this still fails, throw a buffering exception.
+        success = buffer_->push_back(v_ptr);
+      }
+
+      if ( ! success ) { throw BufferException("Failed to buffer value during endpoint write."); }
+    }
+
+    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec) {
+      buffer_->push_back(val);
+      return buffer_->transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+    }
+
+    // Closes the endpoint's IOHandle, while also notifying subscribers
+    // of the close event.
+    void close() {
+      if( handle_->isOutput() )
+        flushBuffer();
+      EndpointNotification nt = (handle_->builtin() || handle_->file())?
+        EndpointNotification::FileClose : EndpointNotification::SocketClose;
+
+      subscribers_->notifyEvent(nt, nullptr);
+      handle_->close();
+    };
 
   protected:
-    shared_ptr<IOHandle<Value> > handle_;
-    shared_ptr<EndpointBuffer<Value> > buffer_;
-    shared_ptr<EndpointBindings<EventValue> > subscribers_;
+    shared_ptr<IOHandle> handle_;
+    shared_ptr<EndpointBuffer> buffer_;
+    shared_ptr<EndpointBindings> subscribers_;
   };
 
-  template<typename Value>
-  class EndpointState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
+
+  class EndpointState : public basic_lockable_adapter<mutex>
   {
   public:
-    typedef shared_lockable_adapter<shared_mutex> eplockable;
-    
-    template<typename EndpointValue> using ConcurrentEndpointMap =
-      externally_locked<shared_ptr<EndpointMap<EndpointValue, Value> >, EndpointState>;
-    
-    template<typename EndpointValue>
-    using EndpointDetails = tuple<shared_ptr<IOHandle<EndpointValue> >, 
-                                  shared_ptr<EndpointBuffer<EndpointValue> >,
-                                  shared_ptr<EndpointBindings<Value> > >;
+    typedef basic_lockable_adapter<mutex> eplockable;
 
-    EndpointState() 
-      : eplockable(), LogMT("EndpointState"),
-        internalEndpoints(emptyEndpointMap<Message<Value> >()),
-        externalEndpoints(emptyEndpointMap<Value>())
+    using ConcurrentEndpointMap =
+      externally_locked<shared_ptr<EndpointMap>,EndpointState>;
+
+    using EndpointDetails = tuple<shared_ptr<IOHandle>,
+                                 shared_ptr<EndpointBuffer>,
+                                 shared_ptr<EndpointBindings> >;
+
+    EndpointState()
+      : eplockable(), epsLogger(new LogMT("EndpointState")),
+        internalEndpoints(emptyEndpointMap()),
+        externalEndpoints(emptyEndpointMap())
     {}
 
-    void addEndpoint(Identifier id, EndpointDetails<Message<Value> > details) {
-      if ( !externalEndpointId(id) ) { 
-        addEndpoint(id, details, internalEndpoints); 
-      } else { 
-        string errorMsg = "Invalid internal endpoint identifier";
-        logAt(trivial::error, errorMsg);
-        throw runtime_error(errorMsg);
-      }
-    }
-
-    void addEndpoint(Identifier id, EndpointDetails<Value> details) {
+    void addEndpoint(Identifier id, EndpointDetails details) {
       if ( externalEndpointId(id) ) {
         addEndpoint(id, details, externalEndpoints);
       } else {
-        string errorMsg = "Invalid external endpoint identifier";
-        logAt(trivial::error, errorMsg);
-        throw runtime_error(errorMsg);
+        addEndpoint(id, details, internalEndpoints);
       }
     }
 
-    void removeEndpoint(Identifier id) { 
-      if ( !externalEndpointId(id) ) { 
-        removeEndpoint<Value>(id, externalEndpoints);
-      } else { 
-        removeEndpoint<Message<Value> >(id, internalEndpoints);
+    void removeEndpoint(Identifier id) {
+      if ( externalEndpointId(id) ) {
+        removeEndpoint(id, externalEndpoints);
+      } else {
+        removeEndpoint(id, internalEndpoints);
       }
     }
 
-    // TODO: endpoint id validation.
-    shared_ptr<Endpoint<Message<Value>, Value> > getInternalEndpoint(Identifier id) {
-      return getEndpoint<Message<Value> >(id, internalEndpoints);
+    void clearEndpoints() {
+      clearEndpoints(internalEndpoints);
+      clearEndpoints(externalEndpoints);
+      return;
     }
 
-    shared_ptr<Endpoint<Value, Value> > getExternalEndpoint(Identifier id) {
-      return getEndpoint<Value>(id, externalEndpoints);
+    void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
+      list<Identifier> endpoint_names;
+ 
+      strict_lock<EndpointState> guard(*this);
+ 
+      for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
+        endpoint_names.push_back(p.first);
+      }
+ 
+      for (Identifier i: endpoint_names) {
+        removeEndpoint(i);
+      }
+ 
+      return;
+    }
+
+    shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
+      if ( externalEndpointId(id) ) {
+        epsLogger->logAt(trivial::error, "Invalid request for internal endpoint: "+id);
+        return shared_ptr<Endpoint>();
+      }
+      return getEndpoint(id, internalEndpoints);
+    }
+
+    shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
+      if ( !externalEndpointId(id) ) {
+        epsLogger->logAt(trivial::error, "Invalid request for external endpoint: "+id);
+        return shared_ptr<Endpoint>();
+      }
+      return getEndpoint(id, externalEndpoints);
     }
 
     size_t numEndpoints() {
-      shared_lock_guard<EndpointState> guard(*this);
+      strict_lock<EndpointState> guard(*this);
       return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
     }
 
-  protected:
-    shared_ptr<ConcurrentEndpointMap<Message<Value> > > internalEndpoints;
-    shared_ptr<ConcurrentEndpointMap<Value> >           externalEndpoints;
-
-    template<typename EndpointValue>
-    shared_ptr<ConcurrentEndpointMap<EndpointValue> > 
-    emptyEndpointMap()
-    {
-      shared_ptr<EndpointMap<EndpointValue, Value> > m =
-        shared_ptr<EndpointMap<EndpointValue, Value> >(
-          new EndpointMap<EndpointValue, Value>());
-
-      return shared_ptr<ConcurrentEndpointMap<EndpointValue> >(
-              new ConcurrentEndpointMap<EndpointValue>(*this, m));
-    }
-
-
-    template<typename EndpointValue>
-    void addEndpoint(Identifier id, EndpointDetails<EndpointValue> details,
-                     shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
-    {
+    void logEndpoints() {
       strict_lock<EndpointState> guard(*this);
-      auto lb = epMap->get(guard)->lower_bound(id);
-      if ( lb == epMap->get(guard)->end() || id != lb->first )
+      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << ") @ " << internalEndpoints << ":";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
       {
-        shared_ptr<Endpoint<EndpointValue, Value> > ep =
-          shared_ptr<Endpoint<EndpointValue, Value> >(
-            new Endpoint<EndpointValue, Value>(get<0>(details), get<1>(details), get<2>(details)));
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
+      }
 
-        epMap->get(guard)->insert(lb, make_pair(id, ep));
-      } else {
-        BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << id;
+      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << ") @ " << externalEndpoints << ":";
+      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
+      {
+        BOOST_LOG(*epsLogger) << "\t" << something.first;
       }
     }
 
-    template<typename EndpointValue>
-    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+  protected:
+    shared_ptr<LogMT> epsLogger;
+    shared_ptr<ConcurrentEndpointMap> internalEndpoints;
+    shared_ptr<ConcurrentEndpointMap> externalEndpoints;
+
+    shared_ptr<ConcurrentEndpointMap> emptyEndpointMap()
+    {
+      shared_ptr<EndpointMap> m = shared_ptr<EndpointMap>(new EndpointMap());
+      return shared_ptr<ConcurrentEndpointMap>(new ConcurrentEndpointMap(*this, m));
+    }
+
+
+    void addEndpoint(Identifier id, EndpointDetails details,
+                     shared_ptr<ConcurrentEndpointMap> epMap)
+    {
+      strict_lock<EndpointState> guard(*this);
+      auto lb = epMap->get(guard)->lower_bound(id);
+
+      if ( lb == epMap->get(guard)->end() || id != lb->first )
+      {
+        shared_ptr<Endpoint> ep =
+          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
+ 
+        epMap->get(guard)->insert(lb, make_pair(id, ep));
+      } else if ( epsLogger ) {
+        BOOST_LOG(*epsLogger) << "Invalid attempt to add a duplicate endpoint for " << id;
+      }
+    }
+
+    void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       strict_lock<EndpointState> guard(*this);
       epMap->get(guard)->erase(id);
     }
 
-    template<typename EndpointValue>
-    shared_ptr<Endpoint<EndpointValue, Value> > 
-    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap<EndpointValue> > epMap)
+    shared_ptr<Endpoint>
+    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      shared_lock_guard<EndpointState> guard(*this);
-      shared_ptr<Endpoint<EndpointValue, Value> > r;
+      strict_lock<EndpointState> guard(*this);
+      shared_ptr<Endpoint> r;
       auto it = epMap->get(guard)->find(id);
       if ( it != epMap->get(guard)->end() ) { r = it->second; }
       return r;
     }
-
   };
 
 
-  //-------------------------------------
-  // Connections and their containers.
+  ////-------------------------------------
+  //// Connections and their containers.
 
-  class ConnectionState : public shared_lockable_adapter<shared_mutex>,
-                          public virtual LogMT
+  class ConnectionState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
   {
   protected:
     // Connection maps are not thread-safe themselves, but are only
@@ -695,13 +682,10 @@ namespace K3
     class ConnectionMap : public virtual LogMT {
     public:
       ConnectionMap() : LogMT("ConnectionMap") {}
-      
-      ConnectionMap(shared_ptr<Net::NContext> ctxt)
-        : LogMT("ConnectionMap"), context_(ctxt)
-      {}
 
-      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c)
-      {
+      ConnectionMap(shared_ptr<Net::NContext> ctxt): LogMT("ConnectionMap"), context_(ctxt) {}
+
+      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c) {
         bool r = false;
         auto lb = cache.lower_bound(addr);
         if ( lb == cache.end() || addr != lb->first ) {
@@ -722,21 +706,21 @@ namespace K3
         if ( !r ) { BOOST_LOG(*this) << "No connection found for " << addressAsString(addr); }
         return r;
       }
-
+ 
       void removeConnection(Address& addr) { cache.erase(addr); }
-
+ 
       void clearConnections() { cache.clear(); }
-
+ 
       size_t size() { return cache.size(); }
-
+ 
     protected:
       shared_ptr<Net::NContext> context_;
       map<Address, shared_ptr<Net::NConnection> > cache;
-    };
+   };
 
   public:
     typedef shared_lockable_adapter<shared_mutex> shlockable;
-    
+
     typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
               ConcurrentConnectionMap;
 
@@ -772,10 +756,10 @@ namespace K3
       strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap =
         internal? internalConnections : externalConnections;
-
+ 
       shared_ptr<Net::NConnection> conn =
         shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
-      
+ 
       return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
     }
 
@@ -789,7 +773,7 @@ namespace K3
         BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
       }
     }
-    
+
     void removeConnection(Address addr, bool internal)
     {
       strict_lock<ConnectionState> guard(*this);
@@ -798,7 +782,7 @@ namespace K3
         cMap->get(guard)->removeConnection(addr);
       } else {
         BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-      }      
+      }
     }
 
     // TODO: Ideally, this should be a shared lock.
@@ -811,7 +795,7 @@ namespace K3
     }
 
     // TODO: Ideally, this should be a shared lock.
-    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal) 
+    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
     {
       strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
@@ -819,18 +803,18 @@ namespace K3
     }
 
     // TODO
-    virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;    
-    virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
+    // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;
+    // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
 
     void clearConnections() {
       strict_lock<ConnectionState> guard(*this);
       if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
       if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
     }
-    
+
     void clearConnections(bool internal) {
       strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap = 
+      shared_ptr<ConcurrentConnectionMap> cMap =
         internal ? internalConnections : externalConnections;
       if ( cMap ) { cMap->get(guard)->clearConnections(); }
     };
@@ -852,8 +836,8 @@ namespace K3
       return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this));
     }
 
-    shared_ptr<ConcurrentConnectionMap> 
-    emptyConnectionMap(shared_ptr<Net::NContext> ctxt) 
+    shared_ptr<ConcurrentConnectionMap>
+    emptyConnectionMap(shared_ptr<Net::NContext> ctxt)
     {
       shared_ptr<ConnectionMap> mp(new ConnectionMap(ctxt));
       return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));
@@ -888,6 +872,7 @@ namespace K3
       return r;
     }
   };
-}
+};
 
 #endif
+// vim: set sw=2 ts=2 sts=2:

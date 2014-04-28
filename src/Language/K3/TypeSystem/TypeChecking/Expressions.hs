@@ -183,8 +183,11 @@ deriveExpression aEnv env expr = do
           (qa,cs) <- deriveQualifiedExpression aEnv env qexpr'
           let qt = generalize env qa cs
           let env' = Map.insert (TEnvIdentifier i) qt env
+          let prettyMapEntry (i,qt) = prettyLines i %+ [" -> "] %+ prettyLines qt
+          _debug $ boxToString $ ["Expression "] %+ prettyLines u %+ [" generates environment: "] %+
+                    vconcats (map prettyMapEntry $ Map.toList env')
           (a,cs') <- deriveUnqualifiedExpression aEnv env' expr'
-          return (a,cs')
+          return (a,cs' `csUnion` cs)
         EAssign i -> do
           expr' <- assert1Child expr
           (a,cs) <- deriveUnqualifiedExpression aEnv env expr'
@@ -284,6 +287,7 @@ deriveExpression aEnv env expr = do
         BinOpSubtract -> return arithConstraints
         BinOpMultiply -> return arithConstraints
         BinOpDivide -> return arithConstraints
+        BinOpModulo -> return arithConstraints
         BinOpEquals -> return [ a1 <: a2, a2 <: a1, SBool <: a0 ]
         BinOpLess -> return arithCompConstraints
         BinOpLessEq -> return arithCompConstraints

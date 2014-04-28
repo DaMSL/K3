@@ -122,8 +122,29 @@ data instance Annotation Type
     | TSyntax SyntaxAnnotation
   deriving (Eq, Read, Show)
 
+instance HasUID (Annotation Type) where
+  getUID (TUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Type) where
+  getSpan (TSpan s) = Just s
+  getSpan _         = Nothing
+
 instance Pretty (K3 Type) where
     prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
+    
+    prettyLines (Node (TForall tvdecls :@: as) ts) =
+        let ds = case tvdecls of 
+                  []     -> []
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
+        in ["TForall " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
+    
+    prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
+        let ds = case tvdecls of 
+                  []     -> []
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
+        in ["TExternallyBound " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
+
     prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
 
 instance Pretty TypeVarDecl where

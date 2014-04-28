@@ -233,7 +233,7 @@ nextUID = withUID UID
 {- Language definition constants -}
 k3Operators :: [[Char]]
 k3Operators = [
-    "+", "-", "*", "/",
+    "+", "-", "*", "/", "%",
     "==", "!=", "<>", "<", ">", ">=", "<=", ";"
   ]
 
@@ -442,7 +442,8 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
 annotationMember = 
-  memberError $ mkMember <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+  memberError $ mkMember <$> polarity <*> (
+    comment *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment)
   where 
         liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
                                   <*> qualifiedTypeExpr <*> optional equateExpr
@@ -552,7 +553,7 @@ tRecord = typeExprError "record" $ ( TUID # ) $
 
 tCollection :: TypeParser
 tCollection = cErr $ TUID #
-                 mkCollectionType <$> (keyword "collection" *> tRecord)
+                 mkCollectionType <$> (keyword "collection" *> choice [tRecord, tDeclared])
                                   <*> (option [] (symbol "@" *> tAnnotations))
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
@@ -595,10 +596,10 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 eTerm :: ExpressionParser
 eTerm = do
   e <- EUID # (ESpan <-> rawTerm)
-  mi <- optional (spanned eProject)
+  mi <- many (spanned eProject)
   case mi of
-    Nothing -> return e
-    Just (i, sp) -> EUID # (return $ (EC.project i e) @+ ESpan sp)
+    [] -> return e
+    l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l 
   where
     rawTerm = (//) attachComment <$> comment <*> 
       choice [ (try eAssign),
@@ -823,7 +824,7 @@ mkUnOpK x = unaryParseOp x keyword
 nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
 nonSeqOpTable =
   [   map mkUnOp   [("-",   ONeg)],
-      map mkBinOp  [("*",   OMul), ("/",  ODiv)],
+      map mkBinOp  [("*",   OMul), ("/",  ODiv), ("%",  OMod)],
       map mkBinOp  [("+",   OAdd), ("-",  OSub)],
       map mkBinOp  [("++",  OConcat)],
       map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],

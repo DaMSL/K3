@@ -3,6 +3,7 @@
 
 #include <ios>
 #include <memory>
+#include <queue>
 #include <system_error>
 #include <tuple>
 #include <boost/asio.hpp>
@@ -13,15 +14,20 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 #include <nanomsg/tcp.h>
-#include <k3/runtime/cpp/Common.hpp>
+
+#include <Common.hpp>
+
+class EndpointBuffer;
 
 namespace K3
 {
   using namespace std;
-  using namespace boost;
 
   using namespace boost::iostreams;
   using namespace boost::asio;
+
+  using boost::thread_group;
+  using std::bind;
 
   //-------------------------------------------------
   // Abstract base classes for low-level networking.
@@ -36,20 +42,24 @@ namespace K3
     virtual void close() = 0;
   };
 
-  template<typename NContext, typename Device, typename Socket>
-  class NConnection : public stream<Device>, public virtual LogMT
+  template<typename NContext, typename Socket>
+  class NConnection : public virtual LogMT
   {
   public:
     NConnection(const string& logId, shared_ptr<NContext> ctxt, Socket s)
-      : stream<Device>(s), LogMT(logId)
+      : LogMT(logId)
     {}
     
     NConnection(const char* logId, shared_ptr<NContext> ctxt, Socket s)
-      : stream<Device>(s), LogMT(logId)
+      : LogMT(logId)
     {}
 
     virtual Socket socket() = 0;
     virtual void close() = 0;
+    virtual void write(shared_ptr<Value> ) = 0;
+
+    // TODO
+    //virtual bool has_write() = 0;
   };
 
 
@@ -57,69 +67,24 @@ namespace K3
   // Boost ASIO low-level networking implementation.
 
   namespace Asio
-  {
-    class AsioDeviceException : public ios_base::failure {
-    public:
-      AsioDeviceException(const string& msg) : ios_base::failure(msg) {}
-      
-      AsioDeviceException(const string& msg, const error_code& ec)
-        : ios_base::failure(msg, ec)
-      {}
-    };
-
-    class AsioDevice
-    {
-    public:
-      typedef char char_type;
-      typedef bidirectional_device_tag category;
-
-      AsioDevice(shared_ptr<ip::tcp::socket> s) : socket(s) {}
-
-      streamsize read(char* s, streamsize n) 
-      {
-        boost::system::error_code ec;
-        std::size_t rval = socket->read_some(boost::asio::buffer(s, n), ec);
-        if (!ec) { return rval; }
-        else if (ec == boost::asio::error::eof) { return -1; }
-        else { 
-          throw AsioDeviceException(ec.message(), 
-                  make_error_code(static_cast<errc>(ec.value())));
-        }
-      }
-      
-      streamsize write(const char* s, streamsize n)
-      {
-        boost::system::error_code ec;
-        std::size_t rval = socket->write_some(boost::asio::buffer(s, n), ec);
-        if (!ec) { return rval; }
-        else if (ec == boost::asio::error::eof) { return -1; }
-        else {
-          throw AsioDeviceException(ec.message(),
-                  make_error_code(static_cast<errc>(ec.value())));
-        }
-      }
-
-    protected:
-      shared_ptr<ip::tcp::socket> socket;
-    };
-
+  { 
     // Boost implementation of a network context.
     class NContext
     {
     public:
-      NContext(Address addr) {
+      NContext() {
         service = shared_ptr<io_service>(new io_service());
         service_threads = shared_ptr<thread_group>(new thread_group());
       }
 
-      NContext(Address addr, size_t concurrency) {
+      NContext(size_t concurrency) {
         service = shared_ptr<io_service>(new io_service(concurrency));
         service_threads = shared_ptr<thread_group>(new thread_group());
       }
 
       NContext(shared_ptr<io_service> ios) : service(ios) {}
 
-      void operator()() { if ( service ) { service->run(); } }
+      void operator()() { if ( service ) { service->run();} }
 
       shared_ptr<io_service> service;
       shared_ptr<thread_group> service_threads;
@@ -151,25 +116,33 @@ namespace K3
     };
 
     // Low-level connection class. This is a wrapper around a Boost tcp socket.
-    class NConnection : public ::K3::NConnection<NContext, AsioDevice, shared_ptr<ip::tcp::socket> >
+    class NConnection : public ::K3::NConnection<NContext, shared_ptr<ip::tcp::socket> >
     {
     public:
       typedef shared_ptr<ip::tcp::socket> Socket;
 
+      // null ptr for EndpointBuffer
       NConnection(shared_ptr<NContext> ctxt)
         : NConnection(ctxt, Socket(new ip::tcp::socket(*(ctxt->service))))
       {}
 
+      // null ptr for EndpointBuffer
       NConnection(shared_ptr<NContext> ctxt, Address addr)
         : NConnection(ctxt, Socket(new ip::tcp::socket(*(ctxt->service))))
       {
         if ( ctxt ) {
           if ( socket_ ) {
             ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
-            shared_ptr<LogMT> logger(static_cast<LogMT*>(this));
             socket_->async_connect(ep,
-              [=,&addr] (const boost::system::error_code& error) { 
-                BOOST_LOG(*logger) << "connected to " << ::K3::addressAsString(addr);
+              [=] (const boost::system::error_code& error) {
+                if (!error) {
+                  connected_ = true;
+                  //logAt(warning, "connected");
+                  BOOST_LOG(*this) << "Connected! ";
+
+                } else {
+                  BOOST_LOG(*this) << "Connect error: " << error.message();
+                }
               } );
           } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
         } else { logAt(warning, "Invalid network context in constructing an NConnection"); }
@@ -177,15 +150,75 @@ namespace K3
 
       Socket socket() { return socket_; }
 
+      bool connected() { return connected_; }
+
       void close() { if ( socket_ ) { socket_->close(); } }
+
+      void write(shared_ptr<Value>  val) { 
+        // TODO switch to scoped locks
+        // If the loop is already running, just add the message to the queue
+        mut.lock();
+        if (busy) {
+          while(buffer_->size() > 1000) {
+            logAt(trivial::trace, "Too many messages on outgoing queue: waiting...");
+            mut.unlock();
+	    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+            mut.lock();
+          }
+          buffer_->push(val);
+        }
+        // Otherwise, start the loop
+        else {
+          busy = true;
+          async_write_loop(val);
+        }
+        mut.unlock();
+      }
+
+      void async_write_loop(shared_ptr<Value> val) {
+        size_t desired = val->length();
+        // Write the value out to the socket
+        async_write(*socket_, boost::asio::buffer(*val,
+          desired),
+        [=](boost::system::error_code ec, size_t s)
+        {
+          // Capture the buffer in closure to keep its pointer count > 0
+          // until this callback has been executed
+          shared_ptr<Value> keep_alive = val;
+          // Check for errors:
+          if (ec || (s != desired)) {
+            BOOST_LOG(*(static_cast<LogMT*>(this))) << "Error on write: " << ec.message()
+              << " wrote  " << s << " out of " << desired << " bytes" << endl;
+          }
+
+          // Determine loop status:
+          mut.lock();
+          // If the buffer is empty, terminate the loop for now.
+          if (buffer_->empty()) {
+            busy = false;
+          }
+          // Otherwise, pop the next value and recurse
+          else {
+            shared_ptr<Value> newval = buffer_->front();
+            buffer_->pop();
+            async_write_loop(newval);
+          }
+          mut.unlock();
+        });
+      }
 
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
-        : ::K3::NConnection<NContext, AsioDevice, Socket>("NConnection", ctxt, s),
-          LogMT("NConnection"), socket_(s)
+        : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
+          LogMT("NConnection"), socket_(s), connected_(false), busy(false), 
+          buffer_(new std::queue<shared_ptr<Value>>())
       {}
-      
+      // use mutex to operate on queues and busy atomically
+      boost::mutex mut;
+      bool busy;
+      shared_ptr<std::queue<shared_ptr<Value>>> buffer_;
       Socket socket_;
+      bool connected_;
     };
   }
 
@@ -197,49 +230,6 @@ namespace K3
 
   namespace Nanomsg
   {
-    class NanomsgDeviceException : public ios_base::failure {
-    public:
-      NanomsgDeviceException(const string& msg) : ios_base::failure(msg) {}
-      
-      NanomsgDeviceException(const string& msg, const error_code& ec)
-        : ios_base::failure(msg, ec)
-      {}
-    };
-
-    class NanomsgDevice
-    {
-    public:
-      typedef char char_type;
-      typedef bidirectional_device_tag category;
-
-      NanomsgDevice(int s) : socket(s) {}
-
-      streamsize read(char* s, streamsize n) 
-      {
-        int rDone = nn_recv(socket, s, n, 0);
-        if ( rDone < 0 ) {
-          int err = nn_errno();
-          string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(errStr, make_error_code(static_cast<errc>(err)));
-        }
-        return rDone;
-      }
-      
-      streamsize write(const char* s, streamsize n)
-      {
-        int wDone = nn_send(socket, s, n, 0);
-        if ( wDone < 0 ) {
-          int err = nn_errno();
-          string errStr(nn_strerror(err));
-          throw NanomsgDeviceException(errStr, make_error_code(static_cast<errc>(err)));
-        }
-        return wDone;
-      }
-
-    protected:
-      int socket;
-    };
-
     class NContext {
     public:
       NContext() {
@@ -247,7 +237,9 @@ namespace K3
       }
 
       // K3 Nanomsg endpoints use the TCP transport.
-      string urlOfAddress(Address addr) { return string("tcp://") + addressAsString(addr); }
+      string urlOfAddress(Address addr) { 
+        return string("tcp://") + addressAsString(addr);
+      }
 
       shared_ptr<thread_group> listenerThreads;
     };
@@ -290,7 +282,7 @@ namespace K3
       int socket_;
     };
 
-    class NConnection : public ::K3::NConnection<NContext, NanomsgDevice, int>
+    class NConnection : public ::K3::NConnection<NContext, int>
     {
     public:
       typedef int Socket;
@@ -325,9 +317,20 @@ namespace K3
         } 
       }
 
+      void write(const string& val) {
+        size_t n = val.length();
+        int wDone = nn_send(socket_, &val, n, 0);
+        if ( wDone < 0 ) {
+          int err = nn_errno();
+          string errStr(nn_strerror(err));
+          logAt(trivial::error, string("Failed to write to socket: " + errStr));
+        }
+        return;
+      }
+
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
-        : ::K3::NConnection<NContext, NanomsgDevice, Socket>("NConnection", ctxt, s),
+        : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
           LogMT("NConnection"), socket_(s)
       {
         if ( socket_ < 0 ) {
@@ -344,7 +347,7 @@ namespace K3
   //-----------------------------------------
   // Low-level networking library selection.
 
-  namespace Net = K3::Nanomsg;
+  namespace Net = K3::Asio;
 }
 
 #endif

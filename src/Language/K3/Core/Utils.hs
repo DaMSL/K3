@@ -13,11 +13,13 @@ module Language.K3.Core.Utils
 , check6Children
 , check7Children
 , check8Children
+, prependToRole
 ) where
 
 import Control.Applicative
 import Data.Tree
 
+import Language.K3.Core.Declaration
 import Language.K3.Core.Annotation
 import Language.Haskell.TH
 
@@ -50,3 +52,8 @@ $(
   in
   concat <$> mapM mkCheckChildren [0::Int .. 8]
  )
+
+-- Prepend declarations to the beginning of a role
+prependToRole :: K3 Declaration -> [K3 Declaration] -> K3 Declaration
+prependToRole (Node r@(DRole _ :@: _) sub) ds = Node r (ds++sub)
+prependToRole _ _ = error "Expected a role"

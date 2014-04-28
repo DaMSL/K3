@@ -45,6 +45,14 @@ data instance Annotation Literal
     | LType (K3 Type)
   deriving (Eq, Read, Show)
 
+instance HasUID (Annotation Literal) where
+  getUID (LUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Literal) where
+  getSpan (LSpan s) = Just s
+  getSpan _         = Nothing
+
 instance Pretty (K3 Literal) where
     prettyLines (Node (LTuple :@: as) []) = ["LUnit" ++ drawAnnotations as]
     

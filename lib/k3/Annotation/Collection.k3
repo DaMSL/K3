@@ -10,7 +10,7 @@ annotation Collection given type a, b {
 
   provides lifted iterate : (content -> ()) -> ()
 
-  provides lifted map     : (content -> a) -> collection { elem : a } @ {Collection}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
   provides lifted filter  : (content -> bool) -> self
 
@@ -19,6 +19,8 @@ annotation Collection given type a, b {
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {Collection}
 
-  provides lifted ext     : (content -> collection { elem : a } @ {Collection}) 
-                             -> collection { elem : a } @ {Collection}
+  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
+                             -> collection {elem : a} @ {Collection}
+                             -> collection {elem : a} @ {Collection}
+
 }

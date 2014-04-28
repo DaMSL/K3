@@ -1,0 +1,6 @@
+annotation Accessors
+{
+  requires lifted peek   : () -> option content
+  requires lifted find   : (content -> bool) -> option content
+  requires lifted member : (content -> bool) -> bool
+}

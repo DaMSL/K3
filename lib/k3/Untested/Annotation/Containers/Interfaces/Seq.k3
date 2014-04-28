@@ -1,0 +1,8 @@
+include "Annotation/Containers/Interfaces/Array.k3"
+include "Annotation/Containers/Interfaces/Extendible.k3"
+
+annotation Seq
+{
+  requires Array
+  requires Extendible
+}

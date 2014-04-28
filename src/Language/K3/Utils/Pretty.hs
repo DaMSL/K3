@@ -4,10 +4,17 @@
 -- | Pretty Printing for K3 Trees.
 module Language.K3.Utils.Pretty (
     pretty,
+    prettyPC,
     boxToString,
     removeTrailingWhitespace,
 
+    PrintConfig(..),
+    defaultPrintConfig,
+    tersePrintConfig,
+    simplePrintConfig,
     Pretty(..),
+    PrettyPC(..),
+    ShowPC(..),
 
     drawSubTrees,
     drawAnnotations,
@@ -42,6 +49,10 @@ import Data.Char
 pretty :: Pretty a => a -> String
 pretty = boxToString . prettyLines
 
+-- Print according to a printConfig
+prettyPC :: PrettyPC a => PrintConfig -> a -> String
+prettyPC pc a = boxToString $ prettyLinesPC pc a
+
 boxToString :: [String] -> String
 boxToString = unlines . map removeTrailingWhitespace
 
@@ -53,8 +64,47 @@ removeTrailingWhitespace s = case s of
             then []
             else c:s''
 
+-- Configuration for the kind of printing we want to do
+data PrintConfig = PrintConfig { 
+                     printVerboseTypes  :: Bool
+                   , printEnv           :: Bool
+                   , printNamespace     :: Bool
+                   , printDataspace     :: Bool
+                   , printRealizationId :: Bool
+                   , printFunctions     :: Bool
+                   , printAnnotations   :: Bool
+                   , printStaticEnv     :: Bool
+                   , printProxyStack    :: Bool
+                   , printTracer        :: Bool
+                   , printQualifiers    :: Bool
+                   , printComplex       :: Bool -- Don't print with simple symbols
+                                                -- sets {}, seq [], collections {||}
+                   } deriving (Eq, Read, Show)
+
+defaultPrintConfig :: PrintConfig
+defaultPrintConfig  = PrintConfig True True True True True True True True True True True True
+
+tersePrintConfig :: PrintConfig
+tersePrintConfig = defaultPrintConfig {printNamespace=False, 
+                                       printFunctions=False,
+                                       printQualifiers=False,
+                                       printVerboseTypes=False}
+
+simplePrintConfig = tersePrintConfig {printComplex = False}
+
 class Pretty a where
     prettyLines :: a -> [String]
+
+-- Pretty printing as directed by a PrintConfig data structure
+class Pretty a => PrettyPC a where
+    prettyLinesPC :: PrintConfig -> a -> [String]
+
+-- | Class to handle Show with a PrintConfig
+class Show a => ShowPC a where
+  showPC :: PrintConfig -> a -> String
+
+-- | A Show class that handles PrintConfig
+
 
 drawSubTrees :: Pretty a => [a] -> [String]
 drawSubTrees [] = []
@@ -74,7 +124,7 @@ nonTerminalShift :: Pretty a => a -> [String]
 nonTerminalShift = shift "+- " "|  " . prettyLines
 
 wrap :: Int -> String -> [String]
-wrap n str 
+wrap n str
    | length str <= n = [str]
    | otherwise       = [take n str] ++ wrap n (drop n str)
 
@@ -83,7 +133,7 @@ indent n = let s = replicate n ' ' in shift s s
 
 hconcatTop :: [String] -> [String] -> [String]
 hconcatTop = hconcat (++[""])
-  
+ 
 hconcatBottom :: [String] -> [String] -> [String]
 hconcatBottom = hconcat ([""]++)
   

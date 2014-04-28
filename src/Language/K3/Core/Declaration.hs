@@ -71,6 +71,14 @@ data UnorderedConflict
     | UWW (Annotation Expression) (Annotation Expression)
   deriving (Eq, Read, Show)
 
+instance HasUID (Annotation Declaration) where
+  getUID (DUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Declaration) where
+  getSpan (DSpan s) = Just s
+  getSpan _         = Nothing
+
 instance Pretty (K3 Declaration) where
     prettyLines (Node (DGlobal i t me :@: as) ds) =
         ["DGlobal " ++ i ++ drawAnnotations as, "|"]

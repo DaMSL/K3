@@ -69,7 +69,7 @@ instance Monoid TypecheckResult where
 --  the result will contain only @Just@ values.
 typecheck :: TAliasEnv -- ^The environment defining existing type bindings.
           -> TNormEnv -- ^The environment defining existing bindings.
-            -> TGlobalQuantEnv -- ^The polymorphism bounding info bindings.
+          -> TGlobalQuantEnv -- ^The polymorphism bounding info bindings.
           -> K3 Declaration -- ^The top-level AST to check.
           -> (Seq TypeError, TypecheckResult)
 typecheck aEnv env rEnv decl =

@@ -373,6 +373,7 @@ data BinaryOperator
   | BinOpSubtract
   | BinOpMultiply
   | BinOpDivide
+  | BinOpModulo
   | BinOpEquals
   | BinOpGreater
   | BinOpLess
@@ -390,6 +391,7 @@ instance Pretty BinaryOperator where
       BinOpSubtract -> "-"
       BinOpMultiply -> "*"
       BinOpDivide -> "/"
+      BinOpModulo -> "%"
       BinOpEquals -> "=="
       BinOpGreater -> ">"
       BinOpLess -> "<"

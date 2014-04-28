@@ -4,6 +4,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeSynonymInstances #-} -- For showPC
+{-# LANGUAGE FlexibleInstances #-} -- For showPC
 
 -- | A message processing runtime for the K3 interpreter
 -- TODO: 
@@ -157,9 +159,22 @@ import Language.K3.Utils.Logger
 $(loggingFunctions)
 $(customLoggingFunctions ["EngineSteps"])
 
+-- These can't be in Instances because of cyclical import
+instance ShowPC a => ShowPC (InternalMessage a) where
+  showPC pc (addr, id, v) = "("++show addr++", "++show id++", "++showPC pc v++")"
 
+instance ShowPC a => ShowPC [InternalMessage a] where
+  showPC pc vl = "[" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ "]"
+
+instance (Show b, ShowPC a) => ShowPC (b, [InternalMessage a]) where
+  showPC pc (s, v) = show s++", "++showPC pc v
+
+instance (Show b, ShowPC a) => ShowPC [(b, [InternalMessage a])] where
+  showPC pc vl = "[" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ "]"
+  
 -- | The engine data type, storing all engine components.
 data Engine a = Engine { config          :: EngineConfiguration
+                       , valueFormat     :: WireDesc a
                        , internalFormat  :: WireDesc (InternalMessage a)
                        , control         :: EngineControl
                        , deployment      :: SystemEnvironment
@@ -167,9 +182,17 @@ data Engine a = Engine { config          :: EngineConfiguration
                        , workers         :: Workers
                        , listeners       :: Listeners
                        , endpoints       :: EEndpointState a
-                       , connections     :: EConnectionState }
+                       , connections     :: EConnectionState
+                       , collectionCount :: MVar Int }
 
-data EngineError = EngineError String deriving (Eq, Read, Show)
+-- | Engine Error Type. 
+-- TODO: We may want to log more information than a message string
+data EngineError = EndpointError     {message :: String} 
+                 | ConnectionError   {message :: String} 
+                 | HandleError       {message :: String}
+                 | MessagesError     {message :: String}
+                 | EngineError       {message :: String}  
+                 deriving (Eq, Read, Show)
 
 instance Pretty EngineError where
     prettyLines e = [show e]
@@ -243,7 +266,7 @@ data Terminate = Off | FinishOne | FinishAll
 
 data LoopStatus res err = Result res | Error err | MessagesDone res
 
--- | Each backend provides must provide a message processor which can handle the initialization of
+-- | Each backend provider must provide a message processor which can handle the initialization of
 -- the message queues and the dispatch of individual messages to the corresponding triggers.
 data MessageProcessor prog msg res err = MessageProcessor {
     -- | Initialization of the execution environment.
@@ -334,7 +357,7 @@ data Builtin = Stdin | Stdout | Stderr deriving (Eq, Show, Read)
 
 data IOHandle a
   = BuiltinH (WireDesc a) SIO.Handle Builtin
-  | FileH    (WireDesc a) SIO.Handle
+  | FileH    (WireDesc a) SIO.Handle -- TODO bool about temporaries
   | SocketH  (WireDesc a) (Either NEndpoint NConnection)
 
 data BufferSpec = BufferSpec { maxSize :: Int, batchSize :: Int }
@@ -519,7 +542,7 @@ defaultControl = EngineControl <$> newMVar Off <*> newMVar 0 <*> newEmptyMVar <*
 --   This is initialized with an empty internal connections map
 --   to ensure it cannot send internal messages.
 simulationEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
-simulationEngine trigs isPar systemEnv (internalizeWD -> internalWD)  = do
+simulationEngine trigs isPar systemEnv wd@(internalizeWD -> internalWD)  = do
   config'         <- return $ configureWithAddress $ head $ deployedNodes systemEnv
   ctrl            <- defaultControl
   workers'        <- if isPar
@@ -533,13 +556,14 @@ simulationEngine trigs isPar systemEnv (internalizeWD -> internalWD)  = do
                        ([x],_) -> singleQSingleW (deployedNodes systemEnv) trigs
                        (_, False)  -> peerQSingleW (deployedNodes systemEnv) trigs
                        _  -> peerQPeerW (deployedNodes systemEnv) trigs
-  return $ Engine config' internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState
+  colCount        <- newMVar 0
+  return $ Engine config' wd internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState colCount
 
 -- | Network engine constructor.
 --   This is initialized with listening endpoints for each given peer as well
 --   as internal and external connection anchor endpoints for messaging.
 networkEngine :: [Identifier] -> Bool -> SystemEnvironment -> WireDesc a -> IO (Engine a)
-networkEngine trigs isPar systemEnv (internalizeWD -> internalWD) = do
+networkEngine trigs isPar systemEnv wd@(internalizeWD -> internalWD) = do
   config'       <- return $ configureWithAddress $ head peers
   ctrl          <- defaultControl
   workers'        <- if isPar
@@ -553,7 +577,8 @@ networkEngine trigs isPar systemEnv (internalizeWD -> internalWD) = do
   qconfig       <- if isPar
                    then peerQPeerW (deployedNodes systemEnv) trigs
                    else peerQSingleW (deployedNodes systemEnv) trigs
-  engine        <- return $ Engine config' internalWD ctrl systemEnv qconfig workers' listnrs endpoints' connState
+  colCount     <- newMVar 0
+  engine        <- return $ Engine config' wd internalWD ctrl systemEnv qconfig workers' listnrs endpoints' connState colCount
 
   -- TODO: Verify correctness.
   void $ runEngineM startNetwork engine
@@ -727,9 +752,9 @@ processMessage mp pr = do
         nextResult <- process mp m pr
         return $ either Error Result (status mp nextResult)
 
-runMessages :: (Pretty r, Pretty e, Show a)
-            => MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
-runMessages mp status' = ask >>= \engine -> status' >>= \case
+runMessages :: (Pretty r, Pretty e, ShowPC a)
+            => PrintConfig -> MessageProcessor p a r e -> EngineM a (LoopStatus r e) -> EngineM a ()
+runMessages pc mp status' = ask >>= \engine -> status' >>= \case
     Result r       -> do
         -- check if the engine is flagged to terminate after finishing one message
         t <- terminate True
@@ -742,12 +767,12 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
           -- The last worker to terminate does engine cleanup
           if n == 0
           then shutdownEngine r
-          else die s r (control engine)
+          else die s (Right r) (control engine)
         else do
           -- Continue with Loop
           debugStep
-          runMessages mp (processMessage mp r)
-    Error e        -> decLiveWorkers >> die "Error:" e (control engine)
+          runMessages pc mp (processMessage mp r)
+    Error e        -> decLiveWorkers >> err "Error:" e (control engine)
     MessagesDone r -> terminate False >>= \case
         True -> do
             s <- return $ "Worker Terminated After Empty Queue"
@@ -756,7 +781,7 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
             -- The last worker to terminate does engine cleanup
             if n == 0 
             then shutdownEngine r
-            else die s r (control engine)
+            else die s (Right r) (control engine)
 
         _    -> do
             decAwakeWorkers
@@ -770,18 +795,22 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
             waitForMessage myId
             -- Record wakeup and recurse:
             incAwakeWorkers
-            runMessages mp (processMessage mp r)
+            runMessages pc mp (processMessage mp r)
   where
     debugStep = do
-      q <- prettyQueues
+      q <- prettyQueues pc
       logStep $ boxToString $ ["", "EVENT LOOP {"] ++ indent 2 q ++ ["}"]
+    
+    err msg r cntrl = do
+      die msg (Left r) cntrl
+      throwEngineError $ MessagesError $ msg ++ (pretty r) 
 
-    die msg r cntrl = do
-        logStep $ boxToString $ ["", msg] ++ prettyLines r
+    die msg errOrResult cntrl = do
+        void $ report mp $ errOrResult
         logStep $ "Finished."
 
-    logStep s = void $ _notice_EngineSteps $ s
-    
+    logStep s = void $ _notice_EngineSteps s
+
     -- TODO: verify thread safety 
     isShutdownTime :: EngineM a Bool
     isShutdownTime = do
@@ -804,13 +833,13 @@ runMessages mp status' = ask >>= \engine -> status' >>= \case
       engine <- ask
       -- Finalize MP and output result
       fr     <- finalize mp r
-      die "Last Worker Terminated:" fr (control engine)
+      die "Last Worker Terminated:" (Right fr) (control engine)
       -- Cleanup and signal the engine's waitV
       cleanupEngine
       void $ liftIO $ tryPutMVar (waitV $ control engine) ()
      
-runEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ()
-runEngine mp p = do
+runEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ()
+runEngine pc mp p = do
     engine <- ask
     result <- initialize mp p
     case workers engine of 
@@ -821,19 +850,19 @@ runEngine mp p = do
         configWorkers [myId] qGroups
         incLiveWorkers
         incAwakeWorkers
-        runMessages mp (return . either Error Result $ status mp result)
+        runMessages pc mp (return . either Error Result $ status mp result)
       
       Multithreaded workers_mv -> do 
         engine  <- ask
         qGroups <- liftIO $ readMVar $ queueGroups $ queueConfig engine
-        threads <- mapM (const $ forkWorker mp result) qGroups
+        threads <- mapM (const $ forkWorker pc mp result) qGroups
         configWorkers threads qGroups
         waitForEngine
       
-      Multiprocess _ -> error "Unsupported engine mode: Multiprocess" 
+      Multiprocess _ -> throwEngineError $ EngineError "Unsupported engine mode: Multiprocess" 
 
-forkWorker :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> r -> EngineM a ThreadId
-forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
+forkWorker :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> r -> EngineM a ThreadId
+forkWorker pc mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
   where 
    runWorker engine = do
      runEngineM doWork engine
@@ -841,7 +870,7 @@ forkWorker mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker eng
    doWork = do
      incLiveWorkers
      incAwakeWorkers
-     (runMessages mp (return . either Error Result $ status mp result)) 
+     (runMessages pc mp (return . either Error Result $ status mp result)) 
 
 configWorkers :: [ThreadId] -> [[QueueId]] -> EngineM a ()
 configWorkers threads qgroups = do
@@ -860,8 +889,8 @@ configWorkers threads qgroups = do
   mr_kvs  <- liftIO $ mapM (\tid -> newEmptySV >>= return . ((,) tid) ) threads
   liftIO $ putMVar mrmv (H.fromList mr_kvs)
 
-forkEngine :: (Pretty r, Pretty e, Show a) => MessageProcessor p a r e -> p -> EngineM a ThreadId
-forkEngine mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine mp p) engine
+forkEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ThreadId
+forkEngine pc mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine pc mp p) engine
 
 waitForEngine :: EngineM a ()
 waitForEngine = ask >>= liftIO . readMVar . waitV . control
@@ -887,16 +916,16 @@ terminateEngine afterOne = do
 
 -- Forcefully kill the engine's threads
 killEngine :: EngineM a ()
-killEngine = ask >>= \engine -> liftIO $ case workers engine of 
+killEngine = ask >>= \engine -> case workers engine of 
   Uniprocess tmv -> do
-    withMVar tmv killThread
-    void $ tryPutMVar (waitV $ control engine) ()
+    liftIO $ withMVar tmv killThread
+    void $ liftIO $ tryPutMVar (waitV $ control engine) ()
   
   Multithreaded tsmv -> do
-    withMVar tsmv (mapM_ killThread)
-    void $ tryPutMVar (waitV $ control engine) ()
+    liftIO $ withMVar tsmv (mapM_ killThread)
+    void $ liftIO $ tryPutMVar (waitV $ control engine) ()
    
-  Multiprocess _ -> error "unsupported engine mode: multiprocess"
+  Multiprocess _ -> throwEngineError $ EngineError "unsupported engine mode: multiprocess"
 
 cleanupEngine :: EngineM a ()
 cleanupEngine = do
@@ -954,9 +983,9 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
                     l  -> return (b, l ++ [PropagatedError mg])
 
     summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
-    endpointError s = close (name ls) >> (liftIO $ putStrLn s) -- TODO: close vs closeInternal
+    endpointError s = close (name ls) >> (throwEngineError $ EndpointError s) -- TODO: close vs closeInternal
 
-runNEndpoint ls _ = error $ "Invalid endpoint for network source " ++ (name ls)
+runNEndpoint ls _ = throwEngineError $ EndpointError $ "Invalid endpoint for network source " ++ (name ls)
 
 {- Message passing -}
 
@@ -1026,7 +1055,7 @@ send addr n arg = do
         then enqueue (queueConfig engine) addr n arg
         else trySend (connectionRetries $ config engine)
   where
-    trySend 0 = send' (connectionId addr) $ error $ "Failed to connect to " ++ show addr
+    trySend 0 = send' (connectionId addr) $ throwEngineError $ ConnectionError $ "Failed to connect to " ++ show addr
     trySend i = send' (connectionId addr) $ trySend $ i - 1
 
     send' eid retryF = do
@@ -1036,7 +1065,7 @@ send addr n arg = do
             Nothing -> openSocketInternal eid addr "w" >> retryF
 
     write eid (Just True) = doWriteInternal eid (addr, n, arg)
-    write _ _             = error $ "No write available to " ++ show addr
+    write _ _             = throwEngineError $ ConnectionError  $ "No write available to " ++ show addr
 
 {- Module API implementation -}
 
@@ -1207,7 +1236,7 @@ genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ())
 
     overflowError =
       genericClose n endpoints'
-        >> (liftIO $ putStrLn "Endpoint buffer overflow (doWrite)")
+        >> (throwEngineError $ EndpointError "Endpoint buffer overflow (doWrite)")
 
 
 {- External endpoint methods -}
@@ -1217,9 +1246,15 @@ genericDoWrite n arg endpoints' = getEndpoint n endpoints' >>= maybe (return ())
 openBuiltin :: Identifier -> Identifier -> WireDesc a -> EngineM a ()
 openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoints . endpoints
 
+-- | Open a file endpoint.
+-- Takes a name for the endpoint, the path to the file, a wire description, a thingy,
+-- an IO mode, and returns a monadic thingy?
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
+-- |Takes: a name for the socket, the target address, the wire description of data written to the socket,
+-- (Maybe (K3 Type)? what is this?), and the file mode (r,w,a, etc.).
+-- Returns something?
 openSocket :: Identifier -> Address -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
 openSocket eid addr wd tOpt mode = do
     engine <- ask
@@ -1228,9 +1263,11 @@ openSocket eid addr wd tOpt mode = do
     let lst = ListenerState eid (networkDoneV ctl) externalListenerProcessor
     genericOpenSocket eid addr wd tOpt mode lst eep
 
+-- |Closes the external endpoint identified by the first argument
 close :: String -> EngineM a ()
 close n = ask >>= genericClose n . externalEndpoints . endpoints
 
+-- TODO Nothing from Maybe Bool should get rolled into EngineError
 hasRead :: Identifier -> EngineM a (Maybe Bool)
 hasRead n = ask >>= genericHasRead n . externalEndpoints . endpoints
 
@@ -1253,8 +1290,8 @@ openBuiltinInternal eid bid = do
     let iep = internalEndpoints $ endpoints engine
     genericOpenBuiltin eid bid ife iep
 
-openFileInternal :: Identifier -> String -> String -> EngineM a ()
-openFileInternal eid path mode = do
+openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> EngineM a ()
+openFileInternal eid path mode f = do
     engine <- ask
     let ife = internalFormat engine
     let iep = internalEndpoints $ endpoints engine
@@ -1312,13 +1349,13 @@ openSocketHandle addr wd mode conns =
   case mode of
     SIO.ReadMode      -> incoming
     SIO.WriteMode     -> outgoing
-    SIO.AppendMode    -> error "Unsupported network handle mode"
-    SIO.ReadWriteMode -> error "Unsupported network handle mode"
+    SIO.AppendMode    -> throwEngineError $ HandleError  "Unsupported network handle mode"
+    SIO.ReadWriteMode -> throwEngineError $ HandleError  "Unsupported network handle mode"
 
   where incoming = newEndpoint addr >>= return . (>>= return . SocketH wd . Left)
         outgoing = case conns of
           Just c  -> getEstablishedConnection addr c >>= return . (>>= return . SocketH wd . Right)
-          Nothing -> error "Invalid outgoing network connection map"
+          Nothing -> throwEngineError $ ConnectionError "Invalid outgoing network connection map"
 
 -- | Close an external.
 closeHandle :: IOHandle a -> EngineM b ()
@@ -1328,7 +1365,7 @@ closeHandle (networkSource -> Just (_,ep)) = closeEndpoint ep
 closeHandle (networkSink   -> Just (_,_))  = return ()
   -- TODO: above, reference count aggregated outgoing connections for garbage collection
 
-closeHandle _ = error "Invalid IOHandle argument for closeHandle"
+closeHandle _ = throwEngineError $ HandleError "Invalid IOHandle argument for closeHandle"
 
 -- | Read a single payload from an external.
 readHandle :: IOHandle a -> IO (Maybe a)
@@ -1672,14 +1709,14 @@ modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return
 
 {- Pretty printing helpers -}
 
-showMessageQueues :: Show a => QueueConfiguration a -> EngineM a String
-showMessageQueues qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . show
+showMessageQueues :: ShowPC a => PrintConfig -> QueueConfiguration a -> EngineM a String
+showMessageQueues pc qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . showPC pc . H.toList
 
-showEngine :: Show a => EngineM a String
-showEngine = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues)
+showEngine :: ShowPC a => PrintConfig -> EngineM a String
+showEngine pc = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues pc)
 
-prettyQueues :: Show a => EngineM a [String]
-prettyQueues = ask >>= showMessageQueues . queueConfig >>= return . (["Queues: "]++) . (:[])
+prettyQueues :: ShowPC a => PrintConfig -> EngineM a [String]
+prettyQueues pc = ask >>= showMessageQueues pc . queueConfig >>= return . (["Queues: "]++) . (:[])
 
 
 {- Instance definitions -}

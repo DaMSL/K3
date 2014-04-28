@@ -34,7 +34,6 @@ data Expression
     | ECaseOf     Identifier
     | EBindAs     Binder
     | EIfThenElse
-    | ERange
     | EAddress
     | ESelf
     | EImperative ImperativeExpression
@@ -69,6 +68,7 @@ data Operator
     | OSub
     | OMul
     | ODiv
+    | OMod
     | ONeg
     | OEqu
     | ONeq
@@ -112,6 +112,14 @@ data instance Annotation Expression
     | EWrite Identifier UID
     | EConflict Conflict
   deriving (Eq, Read, Show)
+
+instance HasUID (Annotation Expression) where
+  getUID (EUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Expression) where
+  getSpan (ESpan s) = Just s
+  getSpan _         = Nothing
 
 -- | Data Conflicts
 --   TODO: move to Language.K3.Core.Annotation.Analysis

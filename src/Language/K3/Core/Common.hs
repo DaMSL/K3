@@ -22,9 +22,13 @@ module Language.K3.Core.Common (
     iread,
 
     addAssoc,
+    insertAssoc,
     removeAssoc,
     replaceAssoc,
-    modifyAssoc
+    modifyAssoc,
+
+    HasUID(..),
+    HasSpan(..)
 ) where
 
 import Control.Concurrent.MVar
@@ -44,7 +48,7 @@ type Identifier = String
 
 
 -- | Address implementation
-data Address = Address (String, Int) deriving (Eq)
+data Address = Address (String, Int) deriving (Eq, Ord)
 
 defaultAddress :: Address
 defaultAddress = Address ("127.0.0.1", 40000)
@@ -83,18 +87,29 @@ prefixSpan i (Span n l1 c1 l2 c2) = Span n l1 (c1-i) l2 c2
 prefixSpan _ s = s
 
 -- | Associative lists
+
+-- | Adds an association at the head of the list, allowing for duplicates.
 addAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 addAssoc l a b = (a,b):l
 
+-- | Adds an association only if it does not already exist in the list.
+insertAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
+insertAssoc l a b = maybe (addAssoc l a b) (const l) $ lookup a l
+
+-- | Removes all associations matching the given key from the list.
 removeAssoc :: Eq a => [(a,b)] -> a -> [(a,b)]
 removeAssoc l a = filter ((a /=) . fst) l
 
+-- | Replaces all associations matching the given key, with a single new association.
 replaceAssoc :: Eq a => [(a,b)] -> a -> b -> [(a,b)]
 replaceAssoc l a b = addAssoc (removeAssoc l a) a b
 
-modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c,b)) -> (c, [(a,b)])
-modifyAssoc l k f = (r, replaceAssoc l k nv)
-  where (r, nv) = f $ lookup k l
+-- | Applies a modifier to the first occurrence of the key, replacing all associations
+--   with the result of the modifier.
+modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c, Maybe b)) -> (c, [(a,b)])
+modifyAssoc l k f = case f $ lookup k l of
+  (r, Nothing) -> (r, l)
+  (r, Just nv) -> (r, replaceAssoc l k nv)
 
 
 {- Instance implementations -}
@@ -169,3 +184,10 @@ instance (IRead a) => IRead (MVar a) where
         "MVar" -> ireadPrec >>= return . (>>= newMVar)
         _ -> TRP.pfail
     )
+
+class HasUID a where
+  getUID :: a -> Maybe UID
+
+class HasSpan a where
+  getSpan :: a -> Maybe Span
+

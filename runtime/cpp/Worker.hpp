@@ -2,12 +2,11 @@
 #define K3_RUNTIME_WORKER_H
 
 #include <list>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 namespace K3 {
 
   using namespace std;
-  using namespace boost;
 
   //------------
   // Workers
@@ -22,11 +21,25 @@ namespace K3 {
 
     virtual void run() = 0;
   };
-
   class InlinePool : public WorkerPool {
   public:
     void run() {}
-  
+    // Set the ID of the single worker
+    void setId(WorkerId x) {
+      if (!uniProcessor) {
+        uniProcessor = make_shared<WorkerId>(x); 
+      } else { 
+        *uniProcessor = x;
+      }
+    }
+    // Get the ID of the single worker, or -1 if it is not yet initialized
+    WorkerId getId() { 
+      if (!uniProcessor) {
+        return -1;
+      } else {
+        return *uniProcessor;
+      }
+    }
   protected:
     shared_ptr<WorkerId> uniProcessor;
   };

@@ -372,6 +372,8 @@ instance Monoid DelayedIntersection where
       special DNumber DReal = Just DReal
       special DInt DNumber = Just DInt
       special DNumber DInt = Just DInt
+      special DInt DReal = Just DInt
+      special DReal DInt = Just DReal
       special _ _ = Nothing
 
 -- |An implementation of intersection over a list of delayed types.  Note that
@@ -399,6 +401,8 @@ instance Monoid DelayedUnion where
       special DNumber DReal = Just DNumber
       special DInt DNumber = Just DNumber
       special DNumber DInt = Just DNumber
+      special DInt DReal = Just DReal
+      special DReal DInt = Just DReal
       special _ _ = Nothing
 
 -- |A routine which generalizes over the monoidal implementations of both

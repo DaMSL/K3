@@ -17,6 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
+import Data.Maybe (isJust)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -33,6 +34,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
+
+import qualified Language.K3.Codegen.Imperative as I
 
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
@@ -66,6 +69,10 @@ data CPPGenS = CPPGenS {
         -- | Forward declarations for constructs as a result of cyclic scope.
         forwards :: CPPGenR,
 
+        -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
+        -- supplied ahead-of-time, due to cyclic scoping.
+        globals  :: [Identifier],
+
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
         recordMap :: M.Map Identifier [(Identifier, K3 Type)],
@@ -82,11 +89,16 @@ data CPPGenS = CPPGenS {
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
+
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty empty [] M.empty M.empty S.empty S.empty BoostSerialization
+
+-- | Copy state elements from the imperative transformation to CPP code generation.
+transitionCPPGenS :: I.ImperativeS -> CPPGenS
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is }
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -151,6 +163,7 @@ binarySymbol OAdd = return $ text "+"
 binarySymbol OSub = return $ text "-"
 binarySymbol OMul = return $ text "*"
 binarySymbol ODiv = return $ text "/"
+binarySymbol OMod = return $ text "%" -- TODO: type based selection of % vs fmod
 binarySymbol OEqu = return $ text "=="
 binarySymbol ONeq = return $ text "!="
 binarySymbol OLth = return $ text "<"
@@ -204,6 +217,7 @@ cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 cType (tag -> TAddress) = return $ text "Address"
 
 -- TODO: Are these all the cases that need to be handled?
+cType (tag -> TNumber) = return $ text "double"
 cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 -- TODO: This isn't really C++ specific.
@@ -228,7 +242,7 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
 
 -- TODO: As with cType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
-    Nothing -> return $ text "Collection" <+> text i
+    Nothing -> return $ text "Collection" <+> text i <> semi
     Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
 cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
 
@@ -238,7 +252,13 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Just ac -> cType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
 
 inline (tag -> EConstant c) = (empty,) <$> constant c
-inline (tag -> EVariable v) = return (empty, text v)
+
+-- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
+-- dereferenced.
+inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
+        then (empty, text "*" <> text v)
+        else (empty, text v)
+
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- canonicalType c
@@ -266,6 +286,17 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
+inline e@(tag &&& children -> (ELambda arg, [body])) = do
+    (ta, _) <- canonicalType e >>= \case
+        (tag &&& children -> (TFunction, [ta, tr])) -> do
+            ta' <- cType ta
+            tr' <- cType tr
+            return (ta', tr')
+        _ -> throwE $ CPPGenE "Invalid Function Form"
+    exc <- globals <$> get
+    let fvs = L.delete arg $ freeVariables body
+    body' <- reify RReturn body
+    return (empty, list (map text $ fvs L.\\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
     case f of
@@ -273,12 +304,20 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
         (tag -> EProject _) -> do
             (pe, pv) <- inline f
             return (ae PL.<//> pe, pv <> parens av)
+        (tag -> ELambda _) -> do
+            (fe, fv) <- inline f
+            return (ae PL.<//> fe, fv <> parens av)
         _ -> throwE $ CPPGenE $ "Invalid Function Form " ++ show f
 inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a])), v])) = do
     (te, tv) <- inline t
     (ae, av) <- inline a
     (ve, vv) <- inline v
-    return (te PL.<//> ae PL.<//> ve , text "engine.send" <> tupled [av, tv, vv])
+    argType <- canonicalType v >>= cType
+    let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
+    return (
+            vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
+            text "unit_t()"
+        )
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
@@ -331,18 +370,46 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
-        (tag -> EVariable v) -> return (empty, text v)
+        (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
             return (ae', text g')
-    ee <- reify r e
-    return $ (ae PL.<$>) . hangBrace . (PL.<$> ee) $ case b of
-        BIndirection i -> text i <+> equals <+> text "*" <> g <> semi
-        BTuple is -> vsep
-            [text i <+> equals <+> text "get" <> angles (int x) <> parens g <> semi | (i, x) <- zip is [0..]]
-        BRecord iis -> vsep
-            [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+
+    ta <- canonicalType a
+
+    bindInit <- case b of
+            BIndirection i -> do
+                let (tag &&& children -> (TIndirection, [ti])) = ta
+                di <- cDecl ti i
+                return $ di PL.<$> (text i <+> equals <+> text "*" <> g <> semi)
+            BTuple is -> do
+                let (tag &&& children -> (TTuple, ts)) = ta
+                ds <- zipWithM cDecl ts is
+                return $ vsep ds PL.<$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
+            BRecord iis -> return $ vsep
+                [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+
+    let bindWriteback = case b of
+            BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
+            BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
+            BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
+
+    (bindBody, k) <- case r of
+        RReturn -> do
+            g' <- genSym
+            te <- canonicalType e
+            de <- cDecl te g'
+            re <- reify (RName g') e
+            return (de PL.<$> re, Just g')
+        _ -> (,Nothing) <$> reify r e
+
+    let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
+
+    return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
+    where
+    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i <> semi
+    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -352,11 +419,12 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
 
 reify r e = do
     (effects, value) <- inline e
-    return $ effects PL.<//> case r of
-        RForget -> empty
-        RName k -> text k <+> equals <+> value <> semi
-        RReturn -> text "return" <+> value <> semi
-        RSplice f -> f [value] <> semi
+    reification <- case r of
+        RForget -> return empty
+        RName k -> return $ text k <+> equals <+> value <> semi
+        RReturn -> return $ text "return" <+> value <> semi
+        RSplice f -> return $ f [value] <> semi
+    return $ effects PL.<//> reification
 
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
@@ -414,10 +482,9 @@ triggerWrapper i t = do
     tmpDecl <- cDecl t "arg"
     tmpType <- cType t
     let triggerDispatch = text i <> parens (text "arg") <> semi
-    let unpackCall = text "arg" <+> equals <+> text "engine.valueFormat->unpack"
-            <> angles tmpType <> parens (text "msg")
-    return $ text "void" <+> text i <> text "_dispatch" <> parens (text "string msg")
-        <+> hangBrace (vsep [
+    let unpackCall = text "arg" <+> equals <+> text "*" <> genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
+    return $ genCFunction (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
+            vsep [
                 tmpDecl,
                 unpackCall,
                 triggerDispatch,
@@ -429,9 +496,7 @@ generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ text "void" <+> text "populate_dispatch" <> parens empty <+> hangBrace (
-            vsep dispatchStatements
-        )
+    return $ genCFunction (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
     genDispatch tName = return $
         text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
@@ -447,7 +512,15 @@ hangBrace d = text "{" PL.<$$> indent 4 d PL.<$$> text "}"
 
 templateLine :: [Doc] -> Doc
 templateLine [] = empty
-templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "typename" <+> td | td <- ts])
+templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "class" <+> td | td <- ts])
+
+genCBoostSerialize :: [Identifier] -> CPPGenR
+genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
+  where
+    serializeTemplateLine = templateLine [(text "archive")]
+    serializeMethod = genCFunction (text "void") (text "serialize") [(text "archive _archive")] serializeBody
+    serializeBody = vsep $ map serializeMember dataDecls
+    serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
 -- | An Annotation Combination Composite should contain the following:
 --  - Inlined implementations for all provided methods.
@@ -469,11 +542,8 @@ composite className ans = do
     let (dataDecls, methDecls) = L.partition isDataDecl positives
 
     -- Generate a serialization method based on engine preferences.
-    serializationDefn <- do
-        -- Filter all data members from positives.
-        -- Generate serialize function.
-        -- Add all members to archive.
-        return empty
+    serializationDefn <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
     constructors' <- sequence constructors
 
@@ -546,7 +616,11 @@ annMemDecl (MAnnotation _ i _) = return $ text i
 record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
-    return $ text "struct" <+> text rName <+> hangBrace members <> semi
+    sD <- serializeDefn
+    return $ text "struct" <+> text rName <+> hangBrace (members PL.<$$> sD) <> semi
+  where
+    serializeDefn = serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i (tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
@@ -566,22 +640,32 @@ definition i t Nothing = cDecl t i
 --  - Generate namespace use directives.
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
-    globals' <- globals
+    staticGlobals' <- staticGlobals
     program' <- declaration d
+    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
+    genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
+    main <- genKMain
     return $ vsep $ punctuate line [
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
-            globals',
-            program'
+            staticGlobals',
+            program',
+            main
         ]
   where
-    genIncludes = [text "#include" <+> dquotes (text f) | f <- includes]
-    genNamespaces = [text "using namespace" <+> (text n) <> semi | n <- namespaces]
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
-includes :: [Identifier]
-includes = [
+genKMain :: CPPGenM CPPGenR
+genKMain = return $ genCFunction (text "int") (text "main") [text "int", text "char**"] $ vsep [
+        genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
+        genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
+        text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
+        text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
+    ]
+
+includes :: CPPGenM [Identifier]
+includes = return $ [
         -- Standard Library
         "memory",
         "sstream",
@@ -591,18 +675,49 @@ includes = [
         "boost/archive/text_iarchive.hpp",
 
         -- K3 Runtime
-        "runtime/cpp/Collections.hpp",
-        "runtime/cpp/Dispatch.hpp"
+        "Collections.hpp",
+        "Common.hpp",
+        "Dispatch.hpp",
+        "Engine.hpp",
+        "MessageProcessor.hpp",
+        "Serialization.hpp"
     ]
 
-namespaces :: [Identifier]
-namespaces = ["std", "K3"]
+namespaces :: CPPGenM [Identifier]
+namespaces = do
+    serializationNamespace <- serializationMethod <$> get >>= \case
+        BoostSerialization -> return $ "K3::BoostSerializer"
+        _ -> throwE $ CPPGenE $ "Unknown Serialization Namespace"
+    return ["std", "K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
         ("unit_t", "struct {}")
     ]
 
-globals :: CPPGenM CPPGenR
-globals = do
-    return $ text "Engine engine" <> semi
+staticGlobals :: CPPGenM CPPGenR
+staticGlobals = return $ vsep [
+            text "SystemEnvironment se = defaultEnvironment()" <> semi,
+            text "Engine engine = Engine(true, se, make_shared<DefaultInternalCodec>(DefaultInternalCodec()))" <> semi
+        ]
+
+-- C++ Primitive Generators
+genCFunction :: CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenR
+genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
+
+genCCall :: CPPGenR -> Maybe [CPPGenR] -> [CPPGenR] -> CPPGenR
+genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
+
+genCQualify :: CPPGenR -> CPPGenR -> CPPGenR
+genCQualify namespace name = namespace <> text "::" <> name
+
+genCDecl :: CPPGenR -> CPPGenR -> Maybe CPPGenR -> CPPGenR
+genCDecl t n Nothing = t <+> n <> semi
+genCDecl t n (Just e) = t <+> n <+> equals <+> e <> semi
+
+genCAssign :: CPPGenR -> CPPGenR -> CPPGenR
+genCAssign a b = a <+> equals <+> b
+
+-- genCType :: K3 Type -> CPPGenM CPPGenR
+
+-- getKType :: K3 Expression -> CPPGenM (K3 Type)

@@ -227,9 +227,8 @@ closeReprs dict = do
         do
           let (i,pol) = Set.findMin unproc
           (repr',_,_) <- 
-              fromMaybe <$> typeError (UnboundTypeEnvironmentIdentifier s $
-                                          TEnvIdentifier i)
-                        <*> return (Map.lookup i current)
+              maybe (typeError (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)) 
+                    return $ Map.lookup i current
           let repr'' = case pol of
                           Positive -> repr'
                           Negative -> negatize repr'

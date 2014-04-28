@@ -1,0 +1,34 @@
+annotation Sorted given type a, b {
+  provides lifted peek    : () -> option content
+
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  provides lifted combine : self -> self
+  provides lifted split   : self -> (self, self)
+
+  provides lifted iterate : (content -> ()) -> ()
+
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+
+  provides lifted filter  : (content -> bool) -> self
+
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {Collection}
+
+  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
+                             -> collection {elem : a} @ {Collection}
+
+  provides lifted min         : () -> option content
+
+  provides lifted max         : () -> option content
+
+  provides lifted lowerBound  : content -> option content
+
+  provides lifted upperBound  : content -> option content
+
+  provides lifted slice       : content -> (content -> self)
+}
