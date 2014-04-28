@@ -21,6 +21,7 @@ Address peer2;
 Address rendezvous;
 
 int nodeCounter(0);
+int numSent(0);
 string message;
 
 using std::cout;
@@ -71,7 +72,7 @@ shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
 void runReceiver(int num_messages) {
 
 
-  K3::peer1 = K3::make_address(K3::localhost, 40000);
+  K3::peer1 = K3::make_address("192.168.0.11", 3000);
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
@@ -106,8 +107,8 @@ void runSender(int num_messages, int message_len) {
   using boost::thread_group;
   using std::shared_ptr;
   // Create peers
-  K3::peer1 = K3::make_address(K3::localhost, 40000);
-  K3::peer2 = K3::make_address(K3::localhost, 40001);
+  K3::peer1 = K3::make_address("192.168.0.11", 3000);
+  K3::peer2 = K3::make_address(K3::localhost, 3000);
   K3::rendezvous = K3::peer1;
   // Create engines
   auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
