@@ -46,10 +46,8 @@ RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
 #ENV PATH /k3/core/runtime/cpp/test:$PATH
 
 # Install GHC and cabal
-RUN apt-get install -y happy
-RUN apt-get install -y zlib1g-dev
-RUN apt-get install -y ghc
-RUN apt-get install -y cabal-install
+RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
+RUN apt-get install -y happy ghc cabal-install
 RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
@@ -68,8 +66,9 @@ WORKDIR /k3/driver
 RUN cabal sandbox init
 RUN cabal sandbox add-source /k3/core
 RUN cabal install --only-dependencies --disable-documentation
-#RUN cabal configure
-#RUN cabal build
+RUN cabal install K3-Core --reinstall --enable-library-profiling --disable-documentation
+RUN cabal configure --enable-executable-profiling
+RUN cabal build
 
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
