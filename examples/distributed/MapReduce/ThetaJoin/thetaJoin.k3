@@ -25,7 +25,7 @@ declare master : address = 127.0.0.1:40000
 /* MAPPER */
 
 declare sMappers : mut collection {Address : address, Id : int} @ {Collection}
-declare tMappers : collection {Address : address, Id : int} @ {Collection}
+declare tMappers : mut collection {Address : address, Id : int} @ {Collection}
 
 declare sNumMappers : int = 4
 declare tNumMappers : int = 4
@@ -181,7 +181,8 @@ trigger arrangeMap : () = \_ -> (
     /*
      * Copy data to other mappers
      * Sending lookup tables and a list of reducers to each mapper as output needs to be routed to all reducers irrespective of the data;
-     * also the reducers are created on fly using a script; therefore sending a collection of reducer addresses seems ideal. */
+     * also the reducers are created on fly using a script; therefore sending a collection of reducer addresses seems ideal. 
+     */
 
     sMappers.iterate (\mapper -> (
         (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows)
