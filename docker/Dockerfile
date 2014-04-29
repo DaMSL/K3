@@ -36,6 +36,10 @@ RUN mkdir /k3
 RUN mkdir /k3/core
 RUN git clone https://github.com/DaMSL/K3-Core.git /k3/core
 
+# Clone K3-Driver from Git
+RUN mkdir /k3/driver
+RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
+
 ## Move a compile script over to the docker image
 #RUN mv /k3/core/runtime/cpp/test/compile2 /k3/core/runtime/cpp/test/distributed/compile2
 ##
@@ -54,10 +58,18 @@ ENV PATH /.cabal/bin/:$PATH
 WORKDIR /k3/core
 RUN rm -rf /.ghc
 RUN cabal sandbox init
-RUN cabal install --only-dependencies
+RUN cabal install --only-dependencies --disable-documentation
 #RUN cabal configure
 #RUN cabal build
 #RUN cabal install
+
+### Build K3-Driver
+WORKDIR /k3/driver
+RUN cabal sandbox init
+RUN cabal sandbox add-source /k3/core
+RUN cabal install --only-dependencies --disable-documentation
+#RUN cabal configure
+#RUN cabal build
 
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
