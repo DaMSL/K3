@@ -275,14 +275,18 @@ data MessageProcessor prog msg res err = MessageProcessor {
     -- | Process a single message.
     process    :: (Address, Identifier, msg) -> res -> EngineM msg res,
 
-    -- | Query the status of the message processor.
-    status     :: res -> Either err res,
-
     -- | Clean up the execution environment.
     finalize   :: res -> EngineM msg res,
 
+    -- | Query the status of the message processor.
+    status     :: res -> Either err res,
+
     -- | Generate an execution report
-    report     :: Either err res -> EngineM msg ()
+    report     :: Either err res -> EngineM msg (),
+
+    -- | A copy of the latest result produced by the message processor.
+    --   This should be maintained by the initialize, process, and finalize methods.
+    snapshot   :: MVar res
 }
 
 {- Engine components -}
