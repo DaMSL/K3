@@ -22,11 +22,13 @@ import qualified Language.K3.Core.Constructor.Type as T
 
 import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
+import Language.K3.Interpreter.Utils
+import Language.K3.Utils.Pretty
 
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 
-type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId)]
+type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)]
 
 setDefaultRole :: K3 Declaration -> String -> String -> K3 Declaration
 setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDefault
@@ -68,9 +70,10 @@ runConsole prompt networkStatus = do
                                       False -> return ()
 
   where runCmd :: String -> [String] -> InputT IO Bool
-        runCmd "quit"  _ = stop
-        runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus     >> continue
-        runCmd "wait"  _ = mapM_ (wrapError waitForNodes) networkStatus     >> stop
+        runCmd "quit"  _ = mapM_ (wrapError finishNode)   networkStatus >> stop
+        runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
+        runCmd "envs"  _ = mapM_ (wrapError outputEnv)    networkStatus >> continue
+        runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNodes) networkStatus >> stop
         runCmd _ _       = stop
 
         continue = return True
@@ -78,11 +81,29 @@ runConsole prompt networkStatus = do
 
         wrapError statusF = either (\err -> outputStrLn $ message err) statusF
         
-        outputStatus (addr, _, threadid) =
-          outputStrLn $ "Node " ++ show addr ++ " running on thread " ++ show threadid
+        nodeAction addr str = outputStrLn $ "[" ++ show addr ++ "] " ++ str
+        
+        nodeEnv egnSt =
+          void $ outputStr $ boxToString $ indent 2 $ either ((:[]) . message) id $ egnSt
+        
+        withEngine addr msg engine m f = do
+          nodeAction addr msg
+          egnSt <- liftIO $ runEngineM m engine
+          f egnSt          
 
-        waitForNodes (addr, engine, _) = do
+        outputStatus (addr, _, threadid, _) = nodeAction addr $ "running on thread " ++ show threadid
+
+        outputEnv (_, engine, _, msgProc) = do
+          mpRes <- liftIO $ readMVar $ snapshot msgProc
+          flip mapM_ mpRes $
+            \(addr, r) -> withEngine addr "env" engine (prettyIResultM r) nodeEnv
+
+        finishNode (addr, engine, _, _) = do
+          withEngine addr "stopping" engine (terminateEngine True) $ wrapError return
+
+        waitForNodes (addr, engine, _, _) = do
           void $ outputStrLn $ "Waiting for node " ++ show addr
           void $ liftIO $ readMVar (waitV $ control engine)
           void $ outputStrLn $ "Node " ++ show addr ++ " finished."
 
+        interruptibleWait action = handle (\Interrupt -> continue) $ withInterrupt $ action
