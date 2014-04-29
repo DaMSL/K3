@@ -24,18 +24,8 @@ declare master : address = 127.0.0.1:40000
 
 /* MAPPER */
 
-declare smnode1 : address = 127.0.0.1:4010
-declare smnode2 : address = 127.0.0.1:4020
-declare smnode3 : address = 127.0.0.1:4030
-declare smnode4 : address = 127.0.0.1:4040
-
-declare tmnode1 : address = 127.0.0.1:5010
-declare tmnode2 : address = 127.0.0.1:5020
-declare tmnode3 : address = 127.0.0.1:5030
-declare tmnode4 : address = 127.0.0.1:5040
-
-declare sMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : smnode1, Id : 1}, {Address : smnode2, Id : 2}, {Address : smnode3, Id : 3}, {Address : smnode4, Id : 4} |} @ {Collection}
-declare tMappers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : tmnode1, Id : 1}, {Address : tmnode2, Id : 2}, {Address : tmnode3, Id : 3}, {Address : tmnode4, Id : 4} |} @ {Collection}
+declare sMappers : mut collection {Address : address, Id : int} @ {Collection}
+declare tMappers : mut collection {Address : address, Id : int} @ {Collection}
 
 declare sNumMappers : int = 4
 declare tNumMappers : int = 4
@@ -51,18 +41,8 @@ declare _randomColumn : mut int = 0
 
 /* REDUCER */
 
-declare rnode1 : address = 127.0.0.1:6010
-declare rnode2 : address = 127.0.0.1:6020
-declare rnode3 : address = 127.0.0.1:6030
-declare rnode4 : address = 127.0.0.1:6040
-declare rnode5 : address = 127.0.0.1:6050
-declare rnode6 : address = 127.0.0.1:6060
-declare rnode7 : address = 127.0.0.1:6070
-declare rnode8 : address = 127.0.0.1:6080
-declare rnode9 : address = 127.0.0.1:6090
-
 /* Number of Reducers is equal to the total of Regions in the grid */
-declare reducers : collection {Address : address, Id : int} @ {Collection} = {| Address : address, Id : int | {Address : rnode1, Id : 1}, {Address : rnode2, Id : 2}, {Address : rnode3, Id : 3}, {Address : rnode4, Id : 4}, {Address : rnode5, Id : 5}, {Address : rnode6, Id : 6}, {Address : rnode7, Id : 7}, {Address : rnode8, Id : 8}, {Address : rnode9, Id : 9} |} @ {Collection}
+declare reducers : mut collection {Address : address, Id : int} @ {Collection}
 declare numReducers : int = 9
 
 declare sTuples : collection {FirstName : string, Age : int, LastName : string} @ {Collection}
@@ -187,23 +167,29 @@ declare getMapperSize : immut (int -> string -> int) = fun mapperId -> fun table
                 if r == 0 then q else if mapperId <= r then q + 1 else q
 )
 
-trigger understandData : (collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, collection {Column : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, int, int) = \data -> (
-    bind data as (_rowLookupTable, _columnLookupTable, _sNumRows, _tNumRows) in (
+trigger understandData : (collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, collection {Column : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}, collection {Address : address, Id : int} @ {Collection}, int, int) = \data -> (
+    bind data as (_rowLookupTable, _columnLookupTable, _reducers, _sNumRows, _tNumRows) in (
         rowLookupTable = _rowLookupTable;
         columnLookupTable = _columnLookupTable;
+        reducers = _reducers;
         sNumRows = _sNumRows;
         tNumRows = _tNumRows
     )
 )
 
 trigger arrangeMap : () = \_ -> (
-    /* Copy data to other mappers */
+    /*
+     * Copy data to other mappers
+     * Sending lookup tables and a list of reducers to each mapper as output needs to be routed to all reducers irrespective of the data;
+     * also the reducers are created on fly using a script; therefore sending a collection of reducer addresses seems ideal. 
+     */
+
     sMappers.iterate (\mapper -> (
-        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, sNumRows, tNumRows)
+        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows)
     ));
 
     tMappers.iterate (\mapper -> (
-        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, sNumRows, tNumRows)
+        (understandData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows)
     ));
 
     /* Send rows to specific mappers */
