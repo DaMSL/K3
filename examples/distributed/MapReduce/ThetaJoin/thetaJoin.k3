@@ -43,15 +43,14 @@ declare _randomColumn : mut int = 0
 
 /* Number of Reducers is equal to the total of Regions in the grid */
 declare reducers : mut collection {Address : address, Id : int} @ {Collection}
-declare numReducers : int = 9
 
 declare sTuples : collection {FirstName : string, Age : int, LastName : string} @ {Collection}
 declare tTuples : collection {Name : string, Age : int, LastName : string} @ {Collection}
 
 /* REGIONS */
 
-declare maxS : int = 2
-declare maxT : int = 2
+declare maxS : mut int = 2
+declare maxT : mut int = 2
 declare rowLookupTable : mut collection {Row : int, Regions : mut collection {RegionId : int} @ {Collection}} @ {Collection}
 declare columnLookupTable : mut collection {Column : int, Regions : collection {RegionId : int} @ {Collection}} @ {Collection}
 

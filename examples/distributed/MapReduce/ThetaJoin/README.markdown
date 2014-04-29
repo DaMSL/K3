@@ -8,6 +8,17 @@ To run the thetaJoin program, first generate the K3 program using a topology fil
 
 Run the generated program code in `.../K3/driver/`. Prefix with `cabal run -- k3 -I ../core/lib/` (if not aliased already).
 
+Following options are configurable:
+
+- masterNodeAddress: The node address at which the master node runs.
+- role: The role for the master node.
+- sMappers: Collection of type {Address : address, Id : int} for a list of S table mappers.
+- tMappers: Collection of type {Address : address, Id : int} for a list of T table mappers.
+- reducers: Collection of type {Address : address, Id : int} for a list of reducers.
+- ports: All the peers (currently this option exists as the script does not parse the mapper/reducer collections; in future this will go!).
+- maxS: Region height (No defaults).
+- maxT: Region width (No defaults).
+
 ## Old Version (without topology)
 
 To run previous versions without any topology file (see previous commits), use:

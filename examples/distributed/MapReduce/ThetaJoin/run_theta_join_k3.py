@@ -32,13 +32,14 @@ def simulateK3(topologyFile):
 
         # reading program execution info
         body = csv.reader(csvfile, delimiter=',', quotechar='~').next()
-        (master, role, sMappers, tMappers, reducers, peers) = [body[i] for i in range(0,6)]
+        (master, role, sMappers, tMappers, reducers, peers, maxS, maxT) = [body[i] for i in range(0,8)]
         peers = peers.split(",")
 
         peerCommand = " ".join(["-p %s" % (peer) for peer in peers])
 
         # create K3 program
-        command = "k3 interpret -b -p %s:role=%s:sMappers=%s:tMappers=%s:reducers=%s %s %s" % (master, role, sMappers, tMappers, reducers, peerCommand, programPath)
+        command = "k3 interpret -b -p %s:role=%s:sMappers=%s:tMappers=%s:reducers=%s:maxS=%s:maxT=%s %s %s" \
+            % (master, role, sMappers, tMappers, reducers, maxS, maxT, peerCommand, programPath)
         print command
 
 def networkK3(topologyFile):
