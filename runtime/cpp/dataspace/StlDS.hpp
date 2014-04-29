@@ -28,6 +28,8 @@ class StlDS {
 
   StlDS(const StlDS& other) : container(other.container) {}
 
+  StlDS(Container<Elem>& con) : container(con) {}
+
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<Elem> peek() const {
@@ -65,7 +67,7 @@ class StlDS {
 
   template<typename NewElem>
   StlDS<NewElem, Container> map(std::function<NewElem(Elem)> f) {
-    StlDS<NewElem, Container> result = StlDS<NewElem, Container>(nullptr);
+    StlDS<NewElem, Container> result = StlDS<NewElem, Container>(getEngine());
     for (Elem e : container) {
       NewElem new_e = f(e);
       result.insert(new_e);
@@ -78,7 +80,7 @@ class StlDS {
   }
 
   StlDS filter(std::function<bool(Elem)> predicate) {
-    StlDS<Elem, Container> result = StlDS<Elem, Container>();
+    StlDS<Elem, Container> result = StlDS<Elem, Container>(getEngine());
     for (Elem e : container) {
       if (predicate(e)) {
         result.insert(e);
@@ -111,9 +113,11 @@ class StlDS {
     }
     return result;
   }
-
+ Container<Elem> getContainer() { return container; }
  protected:
   Container<Elem> container;
+
+
   // In-memory Dataspaces do not keep a handle to an engine
   Engine* getEngine() {return nullptr; }
 

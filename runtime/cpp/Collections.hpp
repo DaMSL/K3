@@ -20,6 +20,9 @@
 #include <tuple>
 
 #include <Engine.hpp>
+#include <dataspace/StlDS.hpp>
+#include <dataspace/SetDS.hpp>
+#include <dataspace/ListDS.hpp>
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
@@ -34,6 +37,8 @@ namespace K3 {
       template <template <class> class F>
       Collection(Collection<F, E>&& other) : D<E>(other) {}
 
+      Collection(D<E> other) : D<E>(other) {}
+
       // TODO: shared_ptr vs. value?
       std::shared_ptr<E> peek() { return D<E>::peek(); }
 
@@ -45,33 +50,31 @@ namespace K3 {
       void update(const E& v1, const E& v2) { D<E>::update(v1,v2); }
       void update(const E& v1, E&& v2) { D<E>::update(v1,v2); }
 
-      // TODO fix return type 
-      std::tuple<Collection<D, E>, Collection<D, E>> split() { return D<E>::split(); }
+      std::tuple<Collection<D, E>, Collection<D, E>> split() {
+        auto tup = D<E>::split();
+        D<E> ds1 = get<0>(tup);
+        D<E> ds2 = get<1>(tup);
+        return std::make_tuple(Collection<D,E>(ds1), Collection<D,E>(ds2));
+      }
 
-      // inherit:
-      //template <template <class> class F>
-      //Collection<D, E> combine(const Collection<F, E>& other) {
-      //  return D<E>::combine(other);
-      //}
+      template <template <class> class F>
+      Collection<D, E> combine(const Collection<F, E>& other) {
+       return Collection<D,E>(D<E>::combine(other));
+      }
 
-      //template <template <class> class F>
-      //Collection<D, E> combine(Collection<F, E>&& other) {
-      //  return D<E>::combine(other);
-      //}
+      template <class T>
+      Collection<D, T> map(std::function<T(E)> f) {
+       return Collection<D,T>(D<E>::map(f));
+      }
 
-      //template <class T>
-      //Collection<D, T> map(std::function<T(E)> f) {
-      //  return D<E>::map(f);
-      //}
-      //
-      //Collection<D, E> filter(std::function<bool(E)> f) {
-      //  return D<E>::filter(f);
-      //} 
+      Collection<D, E> filter(std::function<bool(E)> f) {
+       return Collection<D,E>(D<E>::filter(f));
+      }
    
-      //template <class Z>
-      //Z fold(std::function<Z(Z, E)> f, Z init) {
-      //  return D<E>::fold(f, init);
-      //}
+      template <class Z>
+      Z fold(std::function<Z(Z, E)> f, Z init) {
+       return D<E>::fold(f, init);
+      }
 
       template <class K, class Z>
       Collection<D, std::tuple<K, Z>> group_by(
@@ -115,6 +118,108 @@ namespace K3 {
     void serialize(Archive &ar, const unsigned int version) {
       ar & boost::serialization::base_object<D<E>>(*this);
     }
+
+  };
+
+  template <typename E>
+  // TODO: make this more generic? ie a SeqDS interface
+  class Seq : public Collection<ListDS, E> {
+    typedef Collection<ListDS, E> super;
+     public:
+      Seq(Engine * e) : super(e) {};
+
+      Seq(const Seq<E>& other) : super(other)  {}
+
+      //Seq(const Seq<E>&& other) : super(other) {}
+
+      Seq(super other) : super(other) {}
+
+      // Convert from Collection<ListDS, E> to Seq<E>
+      std::tuple<Seq<E>, Seq<E>> split() {
+        auto tup = super::split();
+        super ds1 = get<0>(tup);
+        super ds2 = get<1>(tup);
+        return std::make_tuple(Seq<E>(ds1), Seq<E>(ds2));
+      }
+
+      Seq<E> combine(const Seq<E>& other) {
+       return Seq<E>(super::combine(other));
+      }
+
+      template <class T>
+      Seq<T> map(std::function<T(E)> f) {
+       return Seq<T>(super::map(f));
+      }
+
+      Seq<E> filter(std::function<bool(E)> f) {
+       return Seq<E>(super::filter(f));
+      }
+
+      Seq<E> sort(std::function<int(E,E)> f) {
+        super s = super(ListDS<E>::sort(f));
+        return Seq<E>(s);
+
+      }
+  };
+
+  template <typename E>
+  // TODO: make this more generic? ie a SetDS interface
+  class Set : public Collection<SetDS, E> {
+    typedef Collection<SetDS, E> super;
+    typedef SetDS<E> dataspace;
+     public:
+      Set(Engine * e) : super(e) {};
+
+      Set(const Set<E>& other) : super(other)  {}
+
+      //Seq(const Seq<E>&& other) : super(other) {}
+
+      Set(super other) : super(other) {}
+
+      // Convert from Collection<ListDS, E> to Set<E>
+      std::tuple<Set<E>, Set<E>> split() {
+        auto tup = super::split();
+        super ds1 = get<0>(tup);
+        super ds2 = get<1>(tup);
+        return std::make_tuple(Set<E>(ds1), Set<E>(ds2));
+      }
+
+      Set<E> combine(const Set<E>& other) {
+       return Set<E>(super::combine(other));
+      }
+
+      template <class T>
+      Set<T> map(std::function<T(E)> f) {
+       return Set<T>(super::map(f));
+      }
+
+      Set<E> filter(std::function<bool(E)> f) {
+       return Set<E>(super::filter(f));
+      }
+
+      bool member(E e) {
+        return dataspace::member(e);
+      }
+
+      bool isSubsetOf(SetDS<E> other) {
+        return dataspace::isSubsetOf(other);
+      }
+
+      // TODO union is a reserved word
+      Set union1(Set<E> other) {
+        super s = super(dataspace::union1(other));
+        return Set<E>(s);
+      }
+
+      Set intersect(Set<E> other) {
+        super s = super(dataspace::intersect(other));
+        return Set<E>(s);
+      }
+
+      Set difference(Set<E> other) {
+        super s = super(dataspace::difference(other));
+        return Set<E>(s);
+      }
 
   };
 }
