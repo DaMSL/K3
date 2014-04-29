@@ -48,14 +48,15 @@ if __name__ == '__main__':
     s = t = r = None
     try:
         arguments = docopt.docopt(__doc__)
-        s = arguments['--simulation']
-        n = arguments['--network']
+        simulationMode = arguments['--simulation']
+        networkMode = arguments['--network']
         topologyFile = arguments['<topologyFile>']
     except docopt.DocoptExit as e:
         print e.message
         exit()
 
-    if s or (not t):
+    # if simulation mode required or network mode not specified, run in simulation mode
+    if simulationMode or (not networkMode):
         simulateK3(topologyFile) 
     else :
         networkK3(topologyFile)
