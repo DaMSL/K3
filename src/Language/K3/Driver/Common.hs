@@ -9,6 +9,10 @@ import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+{- Constants -}
+defaultPrompt :: String
+defaultPrompt = "k3> "
+
 {- Defaults -}
 defaultOutLanguage :: String
 defaultOutLanguage = "haskell"
