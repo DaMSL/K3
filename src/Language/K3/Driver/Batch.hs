@@ -63,15 +63,18 @@ runConsole prompt networkStatus = do
         let (cmd,args) = case splitOneOf " \t" s of
                           []  -> ("", [])
                           h:t -> (h,t)
-        in runCommand cmd args >>= \case
+        in runCmd cmd args >>= \case
                                       True  -> runConsole prompt networkStatus
                                       False -> return ()
 
-  where runCommand :: String -> [String] -> InputT IO Bool
-        runCommand "quit"  _ = return False
-        runCommand "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> return True
-        runCommand "wait"  _ = mapM_ (wrapError waitForNodes) networkStatus >> return False
-        runCommand _ _       = return False
+  where runCmd :: String -> [String] -> InputT IO Bool
+        runCmd "quit"  _ = stop
+        runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus     >> continue
+        runCmd "wait"  _ = mapM_ (wrapError waitForNodes) networkStatus     >> stop
+        runCmd _ _       = stop
+
+        continue = return True
+        stop     = return False
 
         wrapError statusF = either (\err -> outputStrLn $ message err) statusF
         
