@@ -66,8 +66,9 @@ WORKDIR /k3/driver
 RUN cabal sandbox init
 RUN cabal sandbox add-source /k3/core
 RUN cabal install --only-dependencies --disable-documentation
-#RUN cabal configure
-#RUN cabal build
+RUN cabal install K3-Core --reinstall --ghc-options="-DDEBUG" --disable-documentation
+RUN cabal configure
+RUN cabal build
 
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009

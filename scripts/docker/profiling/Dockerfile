@@ -47,7 +47,7 @@ RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
 
 # Install GHC and cabal
 RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
-RUN apt-get install -y happy ghc cabal-install
+RUN apt-get install -y happy ghc ghc-prof cabal-install
 RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
@@ -75,11 +75,3 @@ EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
 
 # Install Vim
 RUN apt-get install -y vim
-
-ADD . /k3/core/runtime/cpp/test
-RUN mkdir /k3/core/runtime/cpp/test/distributed
-RUN mv /k3/core/runtime/cpp/test/compile2 /k3/core/runtime/cpp/test/distributed/compile2
-RUN mv /k3/core/runtime/cpp/test/startup /k3/core/startup
-RUN chmod +x /k3/core/startup
-WORKDIR /k3/core
-CMD ["/bin/bash","startup"]
