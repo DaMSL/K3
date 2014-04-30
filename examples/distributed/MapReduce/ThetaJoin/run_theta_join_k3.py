@@ -22,7 +22,7 @@ Options:
 import docopt
 import csv
 
-def simulateK3(topologyFile):
+def createK3Command(topology, mode):
     with open(topologyFile, 'rb') as csvfile:
         # reading program path header in file
         programPath = csvfile.readline().replace("\n","")
@@ -37,13 +37,22 @@ def simulateK3(topologyFile):
 
         peerCommand = " ".join(["-p %s" % (peer) for peer in peers])
 
-        # create K3 program
-        command = "k3 interpret -b -p %s:role=%s:sMappers=%s:tMappers=%s:reducers=%s:maxS=%s:maxT=%s %s %s" \
-            % (master, role, sMappers, tMappers, reducers, maxS, maxT, peerCommand, programPath)
-        print command
+        # create and print K3 program
+        if mode == "simulation-mode":
+            command = "k3 interpret -b -p %s:role=%s:sMappers=%s:tMappers=%s:reducers=%s:maxS=%s:maxT=%s %s %s" \
+                % (master, role, sMappers, tMappers, reducers, maxS, maxT, peerCommand, programPath)
+        else:
+            command = "k3 interpret -b -n -p %s:role=%s:sMappers=%s:tMappers=%s:reducers=%s:maxS=%s:maxT=%s %s %s" \
+                % (master, role, sMappers, tMappers, reducers, maxS, maxT, peerCommand, programPath)
+        return command
+
+def simulateK3(topologyFile):
+    # create and print K3 program
+    print createK3Command(topologyFile, "simulation-mode")
 
 def networkK3(topologyFile):
-    pass
+    # create and print K3 program
+    print createK3Command(topologyFile, "network-mode")
 
 if __name__ == '__main__':
     s = t = r = None
