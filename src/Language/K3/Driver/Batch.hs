@@ -70,10 +70,10 @@ runConsole prompt networkStatus = do
                                       False -> return ()
 
   where runCmd :: String -> [String] -> InputT IO Bool
-        runCmd "quit"  _ = mapM_ (wrapError finishNode)   networkStatus >> stop
+        runCmd "quit"  _ = mapM_ (wrapError (\st -> finishNode st >> waitForNode st)) networkStatus >> stop
         runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
-        runCmd "envs"  _ = mapM_ (wrapError outputEnv)    networkStatus >> continue
-        runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNodes) networkStatus >> stop
+        runCmd "envs"  _ = mapM_ (wrapError outputEnv) networkStatus >> continue
+        runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNode) networkStatus >> stop
         runCmd _ _       = stop
 
         continue = return True
@@ -99,11 +99,11 @@ runConsole prompt networkStatus = do
             \(addr, r) -> withEngine addr "env" engine (prettyIResultM r) nodeEnv
 
         finishNode (addr, engine, _, _) = do
-          withEngine addr "stopping" engine (terminateEngine True) $ wrapError return
+          withEngine addr "Shutting down" engine (terminateEngine True) $ wrapError return
 
-        waitForNodes (addr, engine, _, _) = do
-          void $ outputStrLn $ "Waiting for node " ++ show addr
+        waitForNode (addr, engine, _, _) = do
+          nodeAction addr "Waiting for graceful completion"
           void $ liftIO $ readMVar (waitV $ control engine)
-          void $ outputStrLn $ "Node " ++ show addr ++ " finished."
+          nodeAction addr " finished."
 
         interruptibleWait action = handle (\Interrupt -> continue) $ withInterrupt $ action
