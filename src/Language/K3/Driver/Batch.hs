@@ -52,12 +52,13 @@ runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel printConf) addPreload
                       void $ either (\err -> putStrLn $ message err) return pStatus
                    else do
                       nodeStatuses <- runNetwork printConf parallel (sysEnv interpOpts) q'
-                      runInputT defaultSettings $ runConsole defaultPrompt nodeStatuses
+                      runInputT defaultSettings $ networkConsole defaultPrompt nodeStatuses
 
 runBatch _ _ _ = error "Invalid batch processing mode"
 
-runConsole :: String -> NetworkStatus -> InputT IO ()
-runConsole prompt networkStatus = do
+
+networkConsole :: String -> NetworkStatus -> InputT IO ()
+networkConsole prompt networkStatus = do
     userInput <- getInputLine prompt
     case userInput of
       Nothing -> return ()
@@ -66,44 +67,48 @@ runConsole prompt networkStatus = do
                           []  -> ("", [])
                           h:t -> (h,t)
         in runCmd cmd args >>= \case
-                                      True  -> runConsole prompt networkStatus
-                                      False -> return ()
+                                  True  -> rcr
+                                  False -> return ()
 
-  where runCmd :: String -> [String] -> InputT IO Bool
-        runCmd "quit"  _ = mapM_ (wrapError (\st -> finishNode st >> waitForNode st)) networkStatus >> stop
-        runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
-        runCmd "envs"  _ = mapM_ (wrapError outputEnv) networkStatus >> continue
-        runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNode) networkStatus >> stop
-        runCmd _ _       = stop
+  where 
+    rcr = networkConsole prompt networkStatus
 
-        continue = return True
-        stop     = return False
+    runCmd :: String -> [String] -> InputT IO Bool
+    runCmd "quit"  _ = mapM_ (wrapError (\st -> finishNode st >> waitForNode st)) networkStatus >> stop
+    runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
+    runCmd "envs"  _ = mapM_ (wrapError outputEnv) networkStatus >> continue
+    runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNode) networkStatus >> stop
+    runCmd _ _       = stop
 
-        wrapError statusF = either (\err -> outputStrLn $ message err) statusF
-        
-        nodeAction addr str = outputStrLn $ "[" ++ show addr ++ "] " ++ str
-        
-        nodeEnv egnSt =
-          void $ outputStr $ boxToString $ indent 2 $ either ((:[]) . message) id $ egnSt
-        
-        withEngine addr msg engine m f = do
-          nodeAction addr msg
-          egnSt <- liftIO $ runEngineM m engine
-          f egnSt          
+    continue = return True
+    stop     = return False
 
-        outputStatus (addr, _, threadid, _) = nodeAction addr $ "running on thread " ++ show threadid
+    wrapError statusF = either (\err -> outputStrLn $ message err) statusF
+    
+    nodeAction addr threadId str =
+      outputStrLn $ "[" ++ show addr ++ "~" ++ show threadId ++ "] " ++ str
+    
+    nodeEnv egnSt =
+      void $ outputStr $ boxToString $ indent 2 $ either ((:[]) . message) id $ egnSt
+    
+    withEngine addr threadId msg engine m f = do
+      nodeAction addr threadId msg
+      egnSt <- liftIO $ runEngineM m engine
+      f egnSt          
 
-        outputEnv (_, engine, _, msgProc) = do
-          mpRes <- liftIO $ readMVar $ snapshot msgProc
-          flip mapM_ mpRes $
-            \(addr, r) -> withEngine addr "env" engine (prettyIResultM r) nodeEnv
+    outputStatus (addr, _, threadId, _) = nodeAction addr threadId "Running"
 
-        finishNode (addr, engine, _, _) = do
-          withEngine addr "Shutting down" engine (terminateEngine True) $ wrapError return
+    outputEnv (_, engine, threadId, msgProc) = do
+      mpRes <- liftIO $ readMVar $ snapshot msgProc
+      flip mapM_ mpRes $
+        \(addr, r) -> withEngine addr threadId "Environment" engine (prettyIResultM r) nodeEnv
 
-        waitForNode (addr, engine, _, _) = do
-          nodeAction addr "Waiting for graceful completion"
-          void $ liftIO $ readMVar (waitV $ control engine)
-          nodeAction addr " finished."
+    finishNode (addr, engine, threadId, _) = do
+      withEngine addr threadId "Shutting down" engine (terminateEngine True) $ wrapError return
 
-        interruptibleWait action = handle (\Interrupt -> continue) $ withInterrupt $ action
+    waitForNode (addr, engine, threadId, _) = do
+      nodeAction addr threadId "Waiting for graceful completion"
+      void $ liftIO $ readMVar (waitV $ control engine)
+      nodeAction addr threadId "Finished."
+
+    interruptibleWait action = handle (\Interrupt -> continue) $ withInterrupt $ action
