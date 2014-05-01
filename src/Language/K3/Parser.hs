@@ -332,8 +332,8 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
 
-parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includePaths s = do
+parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3 includeOverride includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   fileContents  <- mapM readFile subFiles >>= return . (++ [s])
@@ -343,10 +343,10 @@ parseK3 includePaths s = do
     parseAndCompose src (p, asTopLevel) =
       parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
         ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || includeOverride)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel || includeOverride)
     programError = Left "Invalid program, expected top-level role."
 
 
