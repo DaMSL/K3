@@ -19,7 +19,7 @@ import Language.K3.Driver.Typecheck (prettyTCErrors)
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> IO ()
 compile opts copts = do
-    program <- parseK3Input (includes $ paths opts) (input opts)
+    program <- parseK3Input (asIs opts) (includes $ paths opts) (input opts)
     case program of
         Left e -> putStrLn $ "Parse Error: " ++ e
         Right d -> do

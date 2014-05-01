@@ -22,7 +22,8 @@ data Options = Options {
         inform    :: InfoSpec,
         paths     :: PathOptions,
         input     :: FilePath,
-        preLoad   :: [FilePath] -- files to load before input
+        preLoad   :: [FilePath], -- files to load before input
+        asIs      :: Bool
     }
   deriving (Eq, Read, Show)
 
@@ -320,11 +321,17 @@ inputOptions = commaSep1 <$> argument str (
             sep_fn c (x:xs, False) = ((c:x):xs, False)
             sep_fn c (xs, True)    = ([c]:xs, False)
 
+asIsOption :: Parser Bool
+asIsOption = switch (
+    short 'a' <>
+    long "as-is" <>
+    help "Parse As-Is, without running the program builder." <>
+    value False)
+
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = mkOptions <$> modeOptions <*> informOptions
-                         <*> pathOptions <*> inputOptions 
-    where mkOptions m i p is = Options m i p (last is) (take (length is - 1) is)
+programOptions = mkOptions <$> modeOptions <*> informOptions <*> pathOptions <*> inputOptions <*> asIsOption
+    where mkOptions m i p is b = Options m i p (last is) (take (length is - 1) is) b
 
 {- Instance definitions -}
 

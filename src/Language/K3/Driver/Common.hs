@@ -31,10 +31,10 @@ openFileOrStdIn :: String -> IO Handle
 openFileOrStdIn "-" = return stdin
 openFileOrStdIn f = openFile f ReadMode
 
-parseK3Input :: [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
-parseK3Input searchPaths path = do
+parseK3Input :: Bool -> [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
+parseK3Input includeOverride searchPaths path = do
     h <- openFileOrStdIn path
-    parseK3 searchPaths =<< hGetContents h
+    parseK3 includeOverride searchPaths =<< hGetContents h
 
 prettySysEnv :: SystemEnvironment -> [String]
 prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
@@ -44,4 +44,3 @@ prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
     prettyPair w (a,b)        = [a ++ replicate (w - length a) ' ' ++ " => " 
                                    ++ (either (const "<syntax error>") id $ literalS b)]
     maxNameLength l           = maximum $ map (length . fst) l
-

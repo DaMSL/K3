@@ -48,7 +48,7 @@ dispatch op = do
 
     Typecheck   -> k3Program >>= either parseError (typecheck . addPreloadVals)
     Analyze   a -> analyzer a
-  
+
   where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
           "cpp" -> CPPC.compile op cOpts
@@ -63,20 +63,20 @@ dispatch op = do
         printProgram        = either syntaxError putStrLn . programS
 
         analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
-        analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)   
-        analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)   
+        analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)
+        analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)
         analyzer ProxyPaths   = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
-        
+
         analyzer AnnotationProvidesGraph = k3Program >>= either parseError (putStrLn . show . providesGraph)
         analyzer FlatAnnotations         = k3Program >>= either parseError (putStrLn . show . flattenAnnotations)
- 
-        k3Program      = parseK3Input (includes $ paths op) (input op)
+
+        k3Program      = parseK3Input (asIs op) (includes $ paths op) (input op)
         parseError s   = putStrLn $ "Could not parse input: " ++ s
         syntaxError s  = putStrLn $ "Could not print program: " ++ s
 
         parsePreloads :: String -> IO (K3 Declaration)
         parsePreloads file = do
-          p <- parseK3Input (includes $ paths op) file
+          p <- parseK3Input False (includes $ paths op) file
           case p of
             Left e  -> error e
             Right q -> return q

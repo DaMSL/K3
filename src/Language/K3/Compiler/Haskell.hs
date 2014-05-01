@@ -20,7 +20,7 @@ import Language.K3.Driver.Typecheck
 compile :: Options -> CompileOptions -> IO ()
 compile opts (CompileOptions _ name outOpt buildOpt) = 
   do
-    prog <- parseK3Input (includes $ paths opts) (input opts)
+    prog <- parseK3Input (asIs opts) (includes $ paths opts) (input opts)
     case prog of 
       Left e  -> parseError e
       Right p ->
