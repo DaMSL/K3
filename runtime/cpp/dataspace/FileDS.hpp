@@ -125,15 +125,15 @@ namespace K3
         return peekFile(engine, file_id);
       }
 
-      void insert_basic(const E& v)
+      void insert(const E& v)
       {
         file_id = insertFile(engine, file_id, v);
       }
-      void delete_first(const E& v)
+      void erase(const E& v)
       {
         file_id = deleteFile(engine, file_id, v);
       }
-      void update_first(const E& v, const E& v2)
+      void update(const E& v, const E& v2)
       {
         file_id = updateFile(engine, v, v2, file_id);
       }

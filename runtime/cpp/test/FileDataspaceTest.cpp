@@ -47,7 +47,7 @@ std::shared_ptr<DS> findAndRemoveElement(std::shared_ptr<DS> ds, const K3::Value
         return std::shared_ptr<DS>(nullptr);
     else {
         if (containsDS(*ds, val)) {
-            ds->delete_first(val);
+            ds->erase(val);
             return ds;
         }
         else
@@ -111,7 +111,7 @@ bool testInsert(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get());
     for( K3::Value val : test_lst )
-        test_ds.insert_basic(val);
+        test_ds.insert(val);
     return compareDataspaceToList(test_ds, test_lst);
 }
 
@@ -119,8 +119,8 @@ template<typename DS>
 bool testDelete(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
-    test_ds.delete_first("3");
-    test_ds.delete_first("4");
+    test_ds.erase("3");
+    test_ds.erase("4");
     std::vector<K3::Value> deleted_lst({"1", "2", "4", "100"});
     return compareDataspaceToList(test_ds, deleted_lst);
 }
@@ -129,7 +129,7 @@ template<typename DS>
 bool testMissingDelete(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
-    test_ds.delete_first("5");
+    test_ds.erase("5");
     return compareDataspaceToList(test_ds, test_lst);
 }
 
@@ -137,7 +137,7 @@ template<typename DS>
 bool testUpdate(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
-    test_ds.update_first("1", "4");
+    test_ds.update("1", "4");
     std::vector<K3::Value> updated_answer({"4", "2", "3", "4", "4", "100"});
     return compareDataspaceToList(test_ds, updated_answer);
 }
@@ -146,7 +146,7 @@ template<typename DS>
 bool testUpdateMultiple(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
-    test_ds.update_first("4", "5");
+    test_ds.update("4", "5");
     std::vector<K3::Value> updated_answer({"1", "2", "3", "5", "4", "100"});
     return compareDataspaceToList(test_ds, updated_answer);
 }
@@ -155,7 +155,7 @@ template<typename DS>
 bool testUpdateMissing(std::shared_ptr<K3::Engine> engine)
 {
     DS test_ds(engine.get(), begin(test_lst), end(test_lst));
-    test_ds.update_first("40", "5");
+    test_ds.update("40", "5");
     std::vector<K3::Value> updated_answer({"1", "2", "3", "4", "4", "100", "5"});
     return compareDataspaceToList(test_ds, updated_answer);
 }
@@ -229,13 +229,13 @@ std::shared_ptr<std::tuple<DS, DS>> split_findAndRemoveElement(std::shared_ptr<s
         DS& left = std::get<0>(*maybeTuple);
         DS& right = std::get<1>(*maybeTuple);
         if (containsDS(left, cur_val)) {
-            left.delete_first(cur_val);
+            left.erase(cur_val);
             // TODO copying everywhere!
             // this copies the DS into the tuple, then the tuple is copied into the new target of the shared_ptr
             return std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         }
         else if (containsDS(right, cur_val)) {
-            right.delete_first(cur_val);
+            right.erase(cur_val);
             // TODO see above
             return std::make_shared<std::tuple<DS, DS>>(std::make_tuple(left, right));
         }
@@ -284,7 +284,7 @@ bool testSplit(std::shared_ptr<K3::Engine> engine)
 //{
 //    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
 //    DS result_ds = outer_ds.map([&outer_ds, &v, &v4](K3::Value cur_val) {
-//            outer_ds.insert_basic("256");
+//            outer_ds.insert("256");
 //            return "4";
 //            });
 //    return true;
