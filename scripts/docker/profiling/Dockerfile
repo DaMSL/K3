@@ -56,7 +56,7 @@ ENV PATH /.cabal/bin/:$PATH
 WORKDIR /k3/core
 RUN rm -rf /.ghc
 RUN cabal sandbox init
-RUN cabal install --only-dependencies --disable-documentation
+#RUN cabal install --only-dependencies --disable-documentation
 #RUN cabal configure
 #RUN cabal build
 #RUN cabal install
@@ -65,9 +65,9 @@ RUN cabal install --only-dependencies --disable-documentation
 WORKDIR /k3/driver
 RUN cabal sandbox init
 RUN cabal sandbox add-source /k3/core
-RUN cabal install --only-dependencies --disable-documentation
-RUN cabal install K3-Core --reinstall --enable-library-profiling --disable-documentation
-RUN cabal configure --enable-executable-profiling
+RUN cabal install --only-dependencies --enable-library-profiling --disable-documentation
+RUN cabal install K3-Core --reinstall --enable-library-profiling --ghc-options="-prof -fprof-auto -osuf=p_o -hisuf=p_hi" --disable-documentation
+RUN cabal configure --enable-library-profiling --enable-executable-profiling --ghc-options="-prof -fprof-auto -osuf=p_o -hisuf=p_hi"
 RUN cabal build
 
 # Expose Ports
@@ -75,3 +75,4 @@ EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
 
 # Install Vim
 RUN apt-get install -y vim
+
