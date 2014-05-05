@@ -235,6 +235,7 @@ namespace K3
 
       public:
       typedef T Elem;
+
       FileDS(Engine * eng)
           : engine(eng), file_id(emptyFile(eng))
       { }
@@ -246,6 +247,10 @@ namespace K3
 
       FileDS(const FileDS& other)
           : engine(other.engine), file_id(copyFile(other.engine, other.file_id))
+      { }
+
+      FileDS(FileDS && other)
+          : engine(std::move(other.engine)), file_id(std::move(other.file_id))
       { }
 
     private:
@@ -311,6 +316,16 @@ namespace K3
         return FileDS(engine,
                 combineFile<Elem>(engine, file_id, other.file_id)
                 );
+      }
+
+      FileDS& operator=(const FileDS& other)
+      {
+          file_id = copyFile(engine, other.file_id);
+      }
+
+      FileDS& operator=(FileDS && other)
+      {
+          file_id = std::move(other.file_id);
       }
   };
 };
