@@ -51,6 +51,9 @@ fromTypecheckResult result = do
         , let Just (lb, ub) = M.lookup (S.findMin u) bm
         ]
 
+-- | Given a constraint set and a set of UIDs of variables to care about, narrow the constraint set
+-- down to only those variables, and reduce the constraints on those variables to only other
+-- variables in the set.
 narrowAndReduce :: M.Map UID AnyTVar -> M.Map UVar (S.Set Constraint)
                 -> M.Map (S.Set UID) (S.Set (S.Set UID, S.Set UID))
 narrowAndReduce tVarMap cm = M.fromList
@@ -64,9 +67,12 @@ narrowAndReduce tVarMap cm = M.fromList
     reverseMap :: M.Map AnyTVar (S.Set UID)
     reverseMap = collapseReverseMap tVarMap
 
+    -- | A generic map reversal function -- Turn a map from keys to values into a map from sets of
+    -- values sharing a common key, to that common key.
     collapseReverseMap :: (Ord k, Ord v) => M.Map k v -> M.Map v (S.Set k)
     collapseReverseMap = M.fromListWith S.union . map (fmap S.singleton . swap) . M.toList
 
+    -- | Turn a constraint into a pair of UID sets. Nothing for constraints we don't care about.
     sanitizeIntermediateConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
     sanitizeIntermediateConstraint (IntermediateConstraint (CRight u) (CRight v))
         | Just uUID <- M.lookup (someVar u) reverseMap
