@@ -140,7 +140,7 @@ data TVarOrigin (a :: TVarQualification)
       --  annotation type at a given node UID.
   | TVarAnnotationDeclaredParamOrigin UID Identifier
       -- ^Type variable was declared on an annotation and constructed during
-     --  type decision.  The UID identifies the annotation; the identifier
+      --  type decision.  The UID identifies the annotation; the identifier
       --  names the declared type variable.
   | TVarQuasiFreshOrigin AnyTVar TVarQuasiFreshIndex
       -- ^Type variable was created as a quasi-fresh variable.
