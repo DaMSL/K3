@@ -10,6 +10,7 @@
 -- such that the manifest types still satisfy their constraints.
 module Language.K3.TypeSystem.Manifestation.Graph where
 
+import Data.Functor
 import Data.Maybe
 import Data.Tuple (swap)
 
@@ -34,34 +35,36 @@ type ManifestGraph = G.Graph (S.Set UID) (BoundType, K3 Type, K3 Type)
 --
 -- This involves creating a sanitized version of the constraint set (containing only source
 -- variables) and turning constraints into edges.
-fromTypecheckResult :: TypecheckResult -> Maybe (M.Map UID (S.Set (UID, UID)))
-fromTypecheckResult result = case tcExprTypes result of
-    Nothing -> Nothing
-    Just (tVarMap, constraintSet) -> Just $ narrowAndReduce tVarMap (indexBoundingConstraintsByUVar constraintSet)
+fromTypecheckResult :: TypecheckResult -> Maybe (G.Graph (S.Set UID) (S.Set UID))
+fromTypecheckResult result = consolidateGraph <$> tcExprTypes result
+  where
+    consolidateGraph (tvm, cs) = constructGraph $ narrowAndReduce tvm (indexBoundingConstraintsByUVar cs)
+    constructGraph m = G.fromVerticesEdges (zip (M.keys m) (M.keys m)) (S.toList $ S.unions $ M.elems m)
 
-narrowAndReduce :: M.Map UID AnyTVar -> M.Map UVar (S.Set Constraint) -> M.Map UID (S.Set (UID, UID))
+narrowAndReduce :: M.Map UID AnyTVar -> M.Map UVar (S.Set Constraint)
+                -> M.Map (S.Set UID) (S.Set (S.Set UID, S.Set UID))
 narrowAndReduce tVarMap cm = M.fromList
-            [ (t, ncs)
-            | (t, SomeUVar tv) <- M.toList tVarMap
-            , let (Just wcs) = M.lookup tv cm
+            [ (uset, ncs)
+            | (atvar, uset) <- M.toList reverseMap
+            , let (Just wcs) = M.lookup (fromJust $ onlyUVar atvar) cm
             , let ncs = S.fromList . catMaybes $ map sanitizeIntermediateConstraint (S.toList wcs)
-            -- , let mcs = S.map (translatePair (reverseMap tVarMap) . intermediateConstraintToPair) ncs
             ]
   where
     -- | A reverse mapping, from basic IDs to UIDs, for all the UIDs we care about.
-    basicIDMap :: M.Map Int UID
-    basicIDMap = M.fromList [(tvarIdNum (anyTVarId t), uid) | (uid, t) <- M.toList tVarMap]
+    reverseMap :: M.Map AnyTVar (S.Set UID)
+    reverseMap = collapseReverseMap tVarMap
+
+    collapseReverseMap :: (Ord k, Ord v) => M.Map k v -> M.Map v (S.Set k)
+    collapseReverseMap = M.fromListWith S.union . map (fmap S.singleton . swap) . M.toList
 
     translatePair :: M.Map Int Int -> (Int, Int) -> (Int, Int)
     translatePair m (i, j) = (fromJust $ M.lookup i m, fromJust $ M.lookup j m)
 
-    sanitizeIntermediateConstraint :: Constraint -> Maybe (UID, UID)
+    sanitizeIntermediateConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
     sanitizeIntermediateConstraint (IntermediateConstraint (CRight u) (CRight v))
-        | Just uUID <- M.lookup ubid basicIDMap, Just vUID <- M.lookup vbid basicIDMap = Just (uUID, vUID)
+        | Just uUID <- M.lookup (someVar u) reverseMap
+        , Just vUID <- M.lookup (someVar v) reverseMap = Just (uUID, vUID)
         | otherwise = Nothing
-      where
-        ubid = tvarIdNum $ tvarId u
-        vbid = tvarIdNum $ tvarId v
     sanitizeIntermediateConstraint _ = Nothing
 
     intermediateConstraintToPair :: Constraint -> (Int, Int)
