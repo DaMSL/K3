@@ -601,17 +601,22 @@ eTerm = do
     [] -> return e
     l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l
   where
-    rawTerm = (//) attachComment <$> comment <*>
-      choice [ (try eAssign),
-               (try eAddress),
-               eLiterals,
-               eLambda,
-               eCondition,
-               eLet,
-               eCase,
-               eBind,
-               eSelf  ]
+    rawTerm = wrapInComments $
+        choice [ (try eAssign),
+                 (try eAddress),
+                 eLiterals,
+                 eLambda,
+                 eCondition,
+                 eLet,
+                 eCase,
+                 eBind,
+                 eSelf ]
+
     eProject = dot *> identifier
+
+    wrapInComments p = 
+      (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment <*> p <*> comment
+
     attachComment e cmt = e @+ (ESyntax cmt)
 
 
