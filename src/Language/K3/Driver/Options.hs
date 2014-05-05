@@ -278,8 +278,8 @@ informOptions = InfoSpec <$> loggingOptions <*> verbosityOptions
 loggingOptions :: Parser LoggerOptions
 loggingOptions = many $ option (
                        long "log"
-                    <> help "Logging directive"
-                    <> metavar "LOG_INSTRUCTION"
+                    <> help "Enable logging on TAG"
+                    <> metavar "TAG"
                     <> eitherReader parseInstruction
                  )
 
