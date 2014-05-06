@@ -83,6 +83,12 @@ def main():
       s += f.read()
     with open(args.k3_file, 'r') as f:
       s += f.read()
+    data_file = file_no_ext + '.csv'
+    new_data_file = os.path.join(file_dir, data_file)
+    # add path to data file
+    old = r'file "{data_file}" k3'.format(**locals())
+    new = r'file "{new_data_file}" k3'.format(**locals())
+    s = re.sub(old, new, s)
     with open('temp.k3', 'w') as f:
       f.write(s)
     file_s = 'temp.k3'
