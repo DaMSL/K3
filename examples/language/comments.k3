@@ -1,4 +1,4 @@
-// Comments are C, Java style.
+// Comments are C/Java style.
 /* This is a multi-line comment. */
 declare x : int = 5
 
@@ -15,6 +15,7 @@ trigger t : int = // Comment before trigger definition.
   y = v;
   /* Comment for the next statement */
   y = y + x
+  /* Post-comment for the above statement */
 )
 
 source s1 : int = value 100

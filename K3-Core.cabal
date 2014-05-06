@@ -150,6 +150,7 @@ library
         Language.K3.TypeSystem.Data.Types,
         Language.K3.TypeSystem.Simplification.GarbageCollection,
         Language.K3.TypeSystem.Manifestation,
+        Language.K3.TypeSystem.Manifestation.Graph,
         Language.K3.TypeSystem.Manifestation.Monad,
         Language.K3.TypeSystem.Manifestation.Data,
         Language.K3.TypeSystem.Data.PrimitiveSubtyping,

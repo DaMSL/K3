@@ -31,7 +31,7 @@ data Constraint
   | PolyinstantiationLineageConstraint QVar QVar
   | OpaqueBoundConstraint OpaqueVar TypeOrVar TypeOrVar
   deriving (Eq, Ord, Show)
-  
+
 instance Pretty Constraint where
   prettyLines c =
     case c of
@@ -48,4 +48,3 @@ instance Pretty Constraint where
           prettyLines ub %+ [")"]
     where
       binPretty x y = prettyLines x %+ ["<:"] %+ prettyLines y
-  

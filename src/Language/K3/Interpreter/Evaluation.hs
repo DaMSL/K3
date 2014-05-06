@@ -41,7 +41,7 @@ import Language.K3.Interpreter.Builtins
 import Language.K3.Runtime.Engine
 
 import Language.K3.Utils.Logger
-import Language.K3.Utils.Pretty (defaultPrintConfig)
+import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
@@ -257,7 +257,7 @@ binary OApp = \f x -> do
 
   case f' of
       VFunction (b, cl, _) -> withClosure cl $ b x'
-      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
+      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on:\n" ++ pretty f
 
   where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> freshenValue r
 

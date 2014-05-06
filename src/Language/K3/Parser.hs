@@ -78,7 +78,7 @@ myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
 {- Type synonyms for parser return types -}
 {-| Parser environment type.
     This includes two scoped frames, one for source metadata, and another as a
-    list of K3 program entry points as role-qualified sources that can be consumed.    
+    list of K3 program entry points as role-qualified sources that can be consumed.
 -}
 
 -- endpoint name => endpoint spec, bound triggers, qualified name, initializer expression
@@ -86,7 +86,7 @@ type EndpointInfo      = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K
 type EndpointsBQG      = [(Identifier, EndpointInfo)]
 
 -- role name, default name
-type DefaultEntries    = [(Identifier, Identifier)] 
+type DefaultEntries    = [(Identifier, Identifier)]
 
 type EnvironmentFrame  = (EndpointsBQG, DefaultEntries)
 type ParserEnvironment = [EnvironmentFrame]
@@ -136,7 +136,7 @@ exprError x = parseError "expression" x
 
 
 {- Span and UID helpers -}
-emptySpan :: Span 
+emptySpan :: Span
 emptySpan = Span "<dummy>" 0 0 0 0
 
 -- | Span computation.
@@ -284,8 +284,8 @@ mkComment :: Bool -> P.SourcePos -> String -> P.SourcePos -> SyntaxAnnotation
 mkComment multi start contents end = SourceComment multi (mkSpan start end) contents
 
 multiComment :: K3Parser SyntaxAnnotation
-multiComment = (mkComment True 
-                 <$> PP.getPosition 
+multiComment = (mkComment True
+                 <$> PP.getPosition
                  <*> (symbol "/*" *> manyTill anyChar (try $ symbol "*/") <* spaces)
                  <*> PP.getPosition) <?> "multi-line comment"
 
@@ -332,8 +332,8 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
 
-parseK3 :: [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includePaths s = do
+parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3 includeOverride includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   fileContents  <- mapM readFile subFiles >>= return . (++ [s])
@@ -343,10 +343,10 @@ parseK3 includePaths s = do
     parseAndCompose src (p, asTopLevel) =
       parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
         ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False)
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || includeOverride)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel || includeOverride)
     programError = Left "Invalid program, expected top-level role."
 
 
@@ -357,7 +357,7 @@ program :: Bool -> DeclParser
 program asInclude = DSpan <-> (rule >>= selfContainedProgram)
   where rule = mkProgram <$> endBy1 (roleBody "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
-        
+
         selfContainedProgram d = if asInclude then return d else (mkEntryPoints d >>= mkBuiltins)
         mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
@@ -367,11 +367,11 @@ roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
   where rule = some declaration >>= return . concat
         pushBindings = modifyEnvironment_ addFrame
         popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
-        
+
 
 {- Declarations -}
 declaration :: K3Parser [K3 Declaration]
-declaration = (//) attachComment <$> comment <*> 
+declaration = (//) attachComment <$> comment <*>
               choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
 
   where singleDecls  = (:[]) <$> (DUID # choice [dGlobal, dTrigger, dRole, dAnnotation])
@@ -392,12 +392,12 @@ dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
   where rule x = x <* colon <*> typeExpr <*> equateExpr
 
 dEndpoint :: String -> String -> Bool -> K3Parser [K3 Declaration]
-dEndpoint kind name isSource = 
+dEndpoint kind name isSource =
   attachFirst (DSpan <->) =<< (namedIdentifier kind name $ join . rule . (mkEndpoint <$>))
   where rule x      = ruleError =<< (x <*> (colon *> typeExpr) <*> (symbol "=" *> (endpoint isSource)))
         ruleError x = either unexpected pure x
 
-        (typeCstr, stateModifier) = 
+        (typeCstr, stateModifier) =
           (if isSource then TC.source else TC.sink, trackEndpoint)
 
         mkEndpoint n t endpointCstr = either Left (Right . mkDecls n t) $ endpointCstr n t
@@ -423,7 +423,7 @@ dFeed = track $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identif
         bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
         mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         track p             = (trackBindings =<<) $ declError "feed" $ p
-        
+
 dRole :: DeclParser
 dRole = chainedNamedBraceDecl n n roleBody DC.role
   where n = "role"
@@ -441,19 +441,19 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
-annotationMember = 
+annotationMember =
   memberError $ mkMember <$> polarity <*> (
     comment *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment)
-  where 
+  where
         liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
                                   <*> qualifiedTypeExpr <*> optional equateExpr
-        
+
         subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
-        
+
         mkMember p (Left (Just _,  n, qte, eOpt, uid)) = Lifted p n qte (propagateQualifier qte eOpt) uid
         mkMember p (Left (Nothing, n, qte, eOpt, uid)) = Attribute p n qte (propagateQualifier qte eOpt) uid
         mkMember p (Right (n, uid))                    = MAnnotation p n uid
-        
+
         mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
         mkSub n uid              = Right (n, uid)
 
@@ -489,12 +489,12 @@ typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
 typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*>
-                  option Nothing (Just <$ symbol "<=" <*> typeExpr) 
-    
+                  option Nothing (Just <$ symbol "<=" <*> typeExpr)
+
 
 {- Parenthesized version of qualified types.
 qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = typeExprError "qualified" $ 
+qualifiedTypeExpr = typeExprError "qualified" $
   choice [parens $ qualifiedTypeExpr
          , flip (@+) <$> typeQualifier <*> typeExpr]
 -}
@@ -505,7 +505,7 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 
 {- Type terms -}
 tTerm :: TypeParser
-tTerm = TSpan <-> (//) attachComment <$> comment 
+tTerm = TSpan <-> (//) attachComment <$> comment
               <*> choice [ tPrimitive, tOption, tIndirection,
                            tTupleOrNested, tRecord, tCollection,
                            tBuiltIn, tDeclared ]
@@ -540,8 +540,8 @@ tTupleOrNested :: TypeParser
 tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), parens $ tupErr tTuple]
   where unit             = typeExprError "unit" $ symbol "(" *> symbol ")" >> return (TC.unit)
         tTuple           = mkTypeTuple <$> qualifiedTypeExpr <* comma <*> commaSep1 qualifiedTypeExpr
-        mkTypeTuple t tl = TC.tuple $ t:tl     
-        
+        mkTypeTuple t tl = TC.tuple $ t:tl
+
         clean t          = stripAnnot isTSpan $ stripAnnot isTUID t
         stripAnnot f t   = maybe t (t @-) $ t @~ f
         nestErr          = typeExprError "nested"
@@ -585,7 +585,7 @@ qualifiedExpr = exprError "qualified" $ flip (@+) <$> (option EImmutable exprQua
 
 exprQualifier :: K3Parser (Annotation Expression)
 exprQualifier = suffixError "expression" "qualifier" $
-      keyword "immut" *> return EImmutable 
+      keyword "immut" *> return EImmutable
   <|> keyword "mut"   *> return EMutable
 
 exprNoneQualifier :: K3Parser NoneMutability
@@ -599,25 +599,30 @@ eTerm = do
   mi <- many (spanned eProject)
   case mi of
     [] -> return e
-    l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l 
+    l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l
   where
-    rawTerm = (//) attachComment <$> comment <*> 
-      choice [ (try eAssign),
-               (try eAddress),
-               eLiterals,
-               eLambda,
-               eCondition,
-               eLet,
-               eCase,
-               eBind,
-               eSelf  ]
+    rawTerm = wrapInComments $
+        choice [ (try eAssign),
+                 (try eAddress),
+                 eLiterals,
+                 eLambda,
+                 eCondition,
+                 eLet,
+                 eCase,
+                 eBind,
+                 eSelf ]
+
     eProject = dot *> identifier
+
+    wrapInComments p = 
+      (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment <*> p <*> comment
+
     attachComment e cmt = e @+ (ESyntax cmt)
 
 
 {- Expression literals -}
 eLiterals :: ExpressionParser
-eLiterals = choice [ 
+eLiterals = choice [
     try eCollection,
     eTerminal,
     eOption,
@@ -666,7 +671,7 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
         eTupleOrSend  = do
                           elements <- parens $ commaSep1 qualifiedExpr
                           msuffix <- optional sendSuffix
-                          mkTupOrSend elements msuffix        
+                          mkTupOrSend elements msuffix
         sendSuffix    = symbol "<-" *> nonSeqExpr
 
         mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
@@ -681,8 +686,8 @@ eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
-  where mkEmpty e a = foldl (@+) e a 
-        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord) 
+  where mkEmpty e a = foldl (@+) e a
+        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord)
 
 eLambda :: ExpressionParser
 eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
@@ -703,12 +708,12 @@ eAssign :: ExpressionParser
 eAssign = exprError "assign" $ mkAssign <$> sepBy1 identifier dot <*> equateNSExpr
   where mkAssign [] _  = error "Invalid identifier list"
         mkAssign [n] e = EC.assign n e
-        mkAssign l e   = 
+        mkAssign l e   =
           let syms     = snd $ foldl pairSym (0::Int,[]) l
               wSyms    = zip (init syms) (tail syms)
               bindSyms = ((\((_,pn), (s,n)) -> (s,pn,n)) $ head wSyms)
                           : (map (\((ps,_),(s,n)) -> (s,ps,n)) . tail $ wSyms)
-          in 
+          in
           foldr (\(sym, prevSym, x) e' ->
                     EC.bindAs (EC.variable prevSym) (BRecord [(x, sym)]) e')
                 (EC.assign ((\(x,_,_) -> x) $ last bindSyms) e) bindSyms
@@ -726,7 +731,7 @@ eCase = exprError "case" $ mkCase <$> ((nsPrefix "case") <* keyword "of")
         mkCase e (x, s) n = EC.caseOf e x s n
 
 eBind :: ExpressionParser
-eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind") 
+eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind")
                                      <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
 
 eBinder :: BinderParser
@@ -754,15 +759,15 @@ eCollection :: ExpressionParser
 eCollection = exprError "collection" $
               mkCollection <$> braces (choice [try singleField, multiField])
                            <*> (option [] (symbol "@" *> eAnnotations))
-  where 
+  where
         singleField =     (symbol "|" *> idQType <* symbol "|")
                       >>= mkSingletonRecord (commaSep1 expr <* symbol "|")
-        
+
         multiField  = (\a b c -> ((a:b), c))
                           <$> (symbol "|" *> idQType <* comma)
                           <*> commaSep1 idQType
                           <*> (symbol "|" *> commaSep1 expr <* symbol "|")
-        
+
         mkCollection (tyl, el) a = EC.letIn cId (emptyC tyl a) $ EC.binop OSeq (mkInserts el) cVar
 
         mkInserts el = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) (tail el)
@@ -776,7 +781,7 @@ eCollection = exprError "collection" $
 eAnnotations :: K3Parser [Annotation Expression]
 eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
   where mkEAnnotation x = EAnnotation x
-  
+
 
 {- Operators -}
 uidTagBinOp :: K3Parser (a -> b -> K3 Expression)
@@ -859,7 +864,7 @@ iArrowS s = symbol s *> identifier <* symbol "->"
 {- Literal values -}
 
 literal :: LiteralParser
-literal = parseError "literal" "k3" $ choice [ 
+literal = parseError "literal" "k3" $ choice [
     try (lCollection),
     try (lAddress),
     lTerminal,
@@ -874,7 +879,7 @@ qualifiedLiteral = litError "qualified" $ flip (@+) <$> (option LImmutable litQu
 
 litQualifier :: K3Parser (Annotation Literal)
 litQualifier = suffixError "literal" "qualifier" $
-      keyword "immut" *> return LImmutable 
+      keyword "immut" *> return LImmutable
   <|> keyword "mut"   *> return LMutable
 
 lTerminal :: LiteralParser
@@ -915,22 +920,22 @@ lRecord = litError "record" $ LC.record <$> braces idQLitList
 
 lEmpty :: LiteralParser
 lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
-  where mkEmpty l a = foldl (@+) l a 
-        typedEmpty = LC.empty <$> (keyword "empty" *> tRecord) 
+  where mkEmpty l a = foldl (@+) l a
+        typedEmpty = LC.empty <$> (keyword "empty" *> tRecord)
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
               mkCollection <$> braces (choice [try singleField, multiField])
                            <*> (option [] (symbol "@" *> lAnnotations))
-  where 
+  where
     singleField =     (symbol "|" *> idQType <* symbol "|")
                   >>= mkSingletonRecord (commaSep1 literal <* symbol "|")
-        
+
     multiField  = (\a b c -> ((a:b), c))
                     <$> (symbol "|" *> idQType <* comma)
                     <*> commaSep1 idQType
                     <*> (symbol "|" *> commaSep1 literal <* symbol "|")
-        
+
     mkCollection (tyl, el) a = foldl (@+) ((LC.collection (TC.record tyl) el) @+ LImmutable) a
 
     mkSingletonRecord p (n,t) =
@@ -1101,7 +1106,7 @@ trackEndpoint eSpec d
   | DGlobal n t eOpt <- tag d, TSink <- tag t   = track False n eOpt >> return d
   | otherwise = return d
 
-  where 
+  where
     track isSource n eOpt = modifyEnvironmentF_ $ addEndpointGoExpr isSource n eOpt
 
     addEndpointGoExpr isSource n eOpt (safePopFrame -> ((fs,fd), env)) =
@@ -1123,23 +1128,23 @@ trackDefault n = modifyEnvironment_ $ updateState
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
 postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
-postProcessRole n (dl, frame) = 
+postProcessRole n (dl, frame) =
   modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints frame
-  
+
   where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
         attachSource s         = bindSource $ sourceBindings s
-        
+
         annotateEndpoint _ [] = []
         annotateEndpoint s (d:drest)
           | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
           | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
           | otherwise = d:drest
 
-        syntaxAnnotation en s = 
+        syntaxAnnotation en s =
           lookup en s
             >>= (\(enSpec,bindingsOpt,_,_) -> return (enSpec, maybe [] id bindingsOpt))
             >>= return . DSyntax . uncurry EndpointDeclaration
-        
+
         ensureQualified poppedFrame (safePopFrame -> (frame', env)) =
           case validateDefaults poppedFrame of
             (_, [])     -> Right $ (qualifyRole' poppedFrame frame'):env
@@ -1154,15 +1159,15 @@ postProcessRole n (dl, frame) =
         qualifyDefaults = map $ uncurry $ flip (,) . prefix' "." n
 
         qualifyError frame' failed = "Frame: " ++ show frame' ++ "\nFailed: " ++ show failed
-        
-        prefix' sep x z = if x == "" then z else x ++ sep ++ z
-        
 
--- | Adds UIDs to nodes that do not already have one. 
+        prefix' sep x z = if x == "" then z else x ++ sep ++ z
+
+
+-- | Adds UIDs to nodes that do not already have one.
 --   This ensures every AST node has a UID after parsing, including builtins.
 ensureUIDs :: K3 Declaration -> K3Parser (K3 Declaration)
 ensureUIDs p = traverse (parserWithUID . annotateDecl) p
-  where 
+  where
         annotateDecl d@(dt :@: _) uid =
           case dt of
             DGlobal n t eOpt -> do
@@ -1186,7 +1191,7 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
           let d' = tg :@: as in
           return $ unlessAnnotated (any isDUID) d' (d' @+ (DUID $ UID uid))
 
-        annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns) 
+        annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns)
         annotateExpr = traverse (\e -> parserWithUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
         annotateType = traverse (\t -> parserWithUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
 
@@ -1218,7 +1223,7 @@ buildExpressionParser operators simpleExpr
               prefixOp   = choice prefix'  <?> ""
               postfixOp  = choice postfix' <?> ""
 
-              -- Note: parsers-0.10 does not employ a 'try' parser here. 
+              -- Note: parsers-0.10 does not employ a 'try' parser here.
               ambiguous assoc op = try $ op *> empty <?> ("ambiguous use of a " ++ assoc ++ "-associative operator")
 
               ambiguousRight    = ambiguous "right" rassocOp

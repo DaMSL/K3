@@ -6,6 +6,10 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Interpreter.Context (
+  NetworkPeer,
+  VirtualizedMessageProcessor,
+  SingletonMessageProcessor,
+
   runInterpretation,
 
   runExpression,
@@ -281,9 +285,10 @@ runProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration -> IO (
 runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
-      trigs  <- return $ getTriggerIds tProg
-      engine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      flip runEngineM engine $ runEngine pc (virtualizedProcessor pc sEnv) tProg
+      trigs   <- return $ getTriggerIds tProg
+      engine  <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
+      msgProc <- virtualizedProcessor pc sEnv
+      flip runEngineM engine $ runEngine pc msgProc tProg
 
   where buildStaticEnv = do
           trigs <- return $ getTriggerIds tProg
@@ -293,10 +298,14 @@ runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
 
         tProg = labelBindAliases prog
 
+
+-- | Network peer information for a K3 engine running in network mode.
+type NetworkPeer = (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)
+
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
 runNetwork :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
-           -> IO [Either EngineError (Address, Engine Value, ThreadId)]
+           -> IO [Either EngineError NetworkPeer]
 runNetwork pc isPar systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
     buildStaticEnv (getTriggerIds tProg) >>= \case
@@ -316,8 +325,9 @@ runNetwork pc isPar systemEnv prog =
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
     fork staticEnv (addr, engine) = do
-      threadId <- flip runEngineM engine $ forkEngine pc (virtualizedProcessor pc staticEnv) tProg
-      return $ either Left (Right . (addr, engine,)) threadId
+      msgProc  <- virtualizedProcessor pc staticEnv
+      threadId <- flip runEngineM engine $ forkEngine pc msgProc tProg
+      return $ either Left (\tid -> Right (addr, engine, tid, msgProc)) threadId
 
     tProg = labelBindAliases prog
 
@@ -344,17 +354,23 @@ runTrigger addr result nm arg = \case
 type VirtualizedMessageProcessor = 
   MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 
-virtualizedProcessor :: PrintConfig -> SEnvironment Value -> VirtualizedMessageProcessor
-virtualizedProcessor pc staticEnv = MessageProcessor {
-    initialize = initializeVP,
-    process    = processVP,
-    status     = statusVP,
-    finalize   = finalizeVP,
-    report     = reportVP
-} where
-    initializeVP program = do
+virtualizedProcessor :: PrintConfig -> SEnvironment Value -> IO VirtualizedMessageProcessor
+virtualizedProcessor pc staticEnv = do
+    snapshotMV <- newEmptyMVar
+    return $ MessageProcessor {
+      initialize = initializeVP snapshotMV,
+      process    = processVP snapshotMV,
+      finalize   = finalizeVP snapshotMV,
+      status     = statusVP,
+      report     = reportVP,
+      snapshot   = snapshotMV
+    }
+  where
+    initializeVP snapshotMV program = do
       engine <- ask
-      sequence [initNode node program (deployment engine) | node <- nodes engine]
+      res    <- sequence [initNode node program (deployment engine) | node <- nodes engine]
+      void $ liftIO $ putMVar snapshotMV res
+      return res
 
     initNode node program systemEnv = do
       initEnv     <- return $ maybe [] id $ lookup node systemEnv
@@ -362,8 +378,11 @@ virtualizedProcessor pc staticEnv = MessageProcessor {
       logIResultM "INIT " (Just node) initIResult
       return (node, initIResult)
 
-    processVP (addr, name, args) ps = fmap snd $ flip runDispatchT ps $ do
-      dispatch addr (\s -> runTrigger' s addr name args)
+    processVP snapshotMV (addr, name, args) ps = do
+      res <- fmap snd $ runDispatchT (dispatch addr (\s -> runTrigger' s addr name args)) ps
+      void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
+      return res
+              
 
     runTrigger' s addr nm arg = do
       -- void $ logTriggerM addr nm arg s None
@@ -383,7 +402,10 @@ virtualizedProcessor pc staticEnv = MessageProcessor {
 
     sStatus (node, res) = either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
 
-    finalizeVP = mapM sFinalize
+    finalizeVP snapshotMV ps = do
+      res <- mapM sFinalize ps
+      void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
+      return res
 
     sFinalize (node, res) = do
       res' <- either (const $ return res) (const $ finalMessages $ getResultState res) $ getResultVal res
@@ -401,28 +423,41 @@ virtualizedProcessor pc staticEnv = MessageProcessor {
 type SingletonMessageProcessor =
   MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 
-uniProcessor :: PrintConfig -> SEnvironment Value -> SingletonMessageProcessor
-uniProcessor pc staticEnv = MessageProcessor {
-    initialize = initUP,
-    process    = processUP,
-    status     = statusUP,
-    finalize   = finalizeUP,
-    report     = reportUP
-} where
-    initUP prog = ask >>= \x -> initProgram pc (uniBootstrap $ deployment x) staticEnv prog
+uniProcessor :: PrintConfig -> SEnvironment Value -> IO SingletonMessageProcessor
+uniProcessor pc staticEnv = do
+    snapshotMV <- newEmptyMVar
+    return $ MessageProcessor {
+      initialize = initUP snapshotMV,
+      process    = processUP snapshotMV,
+      finalize   = finalizeUP snapshotMV,
+      status     = statusUP,
+      report     = reportUP,
+      snapshot   = snapshotMV
+    }
+  where
+    initUP snapshotMV prog = do
+      egn <- ask
+      res <- initProgram pc (uniBootstrap $ deployment egn) staticEnv prog
+      void $ liftIO $ putMVar snapshotMV res
+      return res
+
     uniBootstrap [] = []
     uniBootstrap ((_,is):_) = is
 
-    statusUP res   = either (\_ -> Left res) (\_ -> Right res) $ getResultVal res
-    finalizeUP res = either (\_ -> return res) (\_ -> finalMessages $ getResultState res) $ getResultVal res
+    finalizeUP snapshotMV res = do
+      void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
+      either (\_ -> return res) (\_ -> finalMessages $ getResultState res) $ getResultVal res
 
+    statusUP res         = either (const $ Left res) (const $ Right res) $ getResultVal res
     reportUP (Left err)  = showIResultM err >>= liftIO . putStr
     reportUP (Right res) = showIResultM res >>= liftIO . putStr
 
-    processUP (_, n, args) r = do
+    processUP snapshotMV (_, n, args) r = do
       entryOpt <- liftIO $ lookupEnvIO n $ getEnv $ getResultState r
       vOpt     <- liftIO $ valueOfEntryOptIO entryOpt
-      maybe (return $ unknownTrigger r n) (run r n args) vOpt
+      res      <- maybe (return $ unknownTrigger r n) (run r n args) vOpt
+      void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
+      return res
 
     run r n args trig = do
       --void $ logTriggerM defaultAddress n args r
