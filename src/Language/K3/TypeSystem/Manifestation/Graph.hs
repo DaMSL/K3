@@ -85,5 +85,14 @@ narrowAndReduce tVarMap cm = M.fromList
 
 -- | Compute the preferred bound type for each variable occurring in a constraint set, based on its
 -- appearance in positions of positive and negative polarities.
-deducePolarity :: S.Set Constraint -> M.Map AnyTVar BoundType
-deducePolarity s = M.empty
+deducePolarity :: S.Set (AnyTVar, ShallowType) -> S.Set (AnyTVar, ShallowType)
+deducePolarity s = S.filter (uncurry isFunctionBound) s
+  where
+    isFunctionBound :: AnyTVar -> ShallowType -> Bool
+    isFunctionBound (SomeUVar _) (SFunction _ _) = True
+    isFunctionBound _ _ = False
+
+data Variance
+    = Covariant AnyTVar
+    | Contravariant AnyTVar
+  deriving (Eq, Ord, Show)
