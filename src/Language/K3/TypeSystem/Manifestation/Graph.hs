@@ -43,7 +43,7 @@ fromTypecheckResult result = do
 
     let narrowedConstraintMap = narrowAndReduce tVarMap (indexBoundingConstraintsByUVar constraintSet)
     let consolidatedVertices = attachPayload boundsMap narrowedConstraintMap
-    let consolidatedEdges = S.toList . S.unions $ M.elems narrowedConstraintMap
+    let consolidatedEdges = map swap . S.toList . S.unions $ M.elems narrowedConstraintMap
 
     return $ G.fromVerticesEdges consolidatedVertices consolidatedEdges
   where
@@ -63,7 +63,7 @@ narrowAndReduce tVarMap cm = M.fromList
         [ (uset, ncs)
         | (atvar, uset) <- M.toList reverseMap
         , let (Just wcs) = M.lookup (fromJust $ onlyUVar atvar) cm
-        , let ncs = S.fromList . catMaybes $ map sanitizeIntermediateConstraint (S.toList wcs)
+        , let ncs = S.fromList . catMaybes $ map sanitizeConstraint (S.toList wcs)
         ]
   where
     -- | A reverse mapping, from basic IDs to UIDs, for all the UIDs we care about.
@@ -76,9 +76,14 @@ narrowAndReduce tVarMap cm = M.fromList
     collapseReverseMap = M.fromListWith S.union . map (fmap S.singleton . swap) . M.toList
 
     -- | Turn a constraint into a pair of UID sets. Nothing for constraints we don't care about.
-    sanitizeIntermediateConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
-    sanitizeIntermediateConstraint (IntermediateConstraint (CRight u) (CRight v))
+    sanitizeConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
+    sanitizeConstraint (IntermediateConstraint (CRight u) (CRight v))
         | Just uUID <- M.lookup (someVar u) reverseMap
         , Just vUID <- M.lookup (someVar v) reverseMap = Just (uUID, vUID)
         | otherwise = Nothing
-    sanitizeIntermediateConstraint _ = Nothing
+    sanitizeConstraint _ = Nothing
+
+-- | Compute the preferred bound type for each variable occurring in a constraint set, based on its
+-- appearance in positions of positive and negative polarities.
+deducePolarity :: S.Set Constraint -> M.Map AnyTVar BoundType
+deducePolarity s = M.empty
