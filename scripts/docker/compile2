@@ -1,5 +1,0 @@
-clang++ test.cpp -std=c++11 -o test.out -g \
--I /software/nanomsg/include \
--I ../.. -L/usr/lib/x86_64-linux-gnu/ \
--lpthread -lboost_system -lboost_regex -lboost_serialization -lboost_thread \
--DBOOST_LOG_DYN_LINK -lboost_chrono -lboost_log_setup -lboost_log
