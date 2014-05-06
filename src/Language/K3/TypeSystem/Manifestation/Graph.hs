@@ -28,6 +28,8 @@ import Language.K3.TypeSystem.Data.Types
 import Language.K3.TypeSystem.Data.ConstraintSet
 import Language.K3.TypeSystem.Manifestation.Data
 
+-- | A graph containing a set of equivalent type variables at each vertex, and an edge from
+-- supertypes to subtypes.
 type ManifestGraph = G.Graph (S.Set UID) (BoundType, K3 Type, K3 Type)
 
 -- | Construct a ManifestGraph from the result of typechecking.
@@ -45,6 +47,7 @@ fromTypecheckResult result = do
 
     return $ G.fromVerticesEdges consolidatedVertices consolidatedEdges
   where
+    -- | Construct the payload for each set of equivalent type variables.
     attachPayload bm ncm =
         [ (u, (LowerBound, lb, ub))
         | u <- M.keys ncm
