@@ -284,9 +284,26 @@ bool testSplit(std::shared_ptr<K3::Engine> engine)
 //bool insertInsideMap(std::shared_ptr<K3::Engine> engine)
 //{
 //    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
-//    DS result_ds = outer_ds.map([&outer_ds, &v, &v4](typename DS::Elem cur_val) {
-//            outer_ds.insert("256");
-//            return "4";
+//    DS result_ds = outer_ds.template map([&outer_ds, &v, &v4](typename DS::Elem cur_val) {
+//            outer_ds.insert(256);
+//            return 4;
+//            });
+//    return true;
+//}
+//bool insertInsideIterate(std::shared_ptr<K3::Engine> engine)
+//{
+//    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
+//    DS result_ds = outer_ds.iterate([&outer_ds, &v, &v4](typename DS::Elem cur_val) {
+//            outer_ds.insert(256);
+//            });
+//    return true;
+//}
+//bool insertInsideFilter(std::shared_ptr<K3::Engine> engine)
+//{
+//    DS outer_ds(engine.get(), begin(test_lst), end(test_lst));
+//    DS result_ds = outer_ds.iterate([&outer_ds, &v, &v4](typename DS::Elem cur_val) {
+//            outer_ds.insert(256);
+//            return true
 //            });
 //    return true;
 //}
@@ -342,6 +359,8 @@ void callTest(std::function<bool(std::shared_ptr<K3::Engine>)> testFunc)
 //    MAKE_TEST( "Combine with Self Test", testCombineSelf, ListDataspace)
 //    MAKE_TEST( "Split Test", testSplit, ListDataspace)
 //    MAKE_TEST( "Insert inside map", insertInsideMap, ListDataspace)
+//    MAKE_TEST( "Insert inside iterate", insertInsideIterate, ListDataspace)
+//    MAKE_TEST( "Insert inside filter", insertInsideFilter, ListDataspace)
 //}
 
 //SUITE("File Dataspace")
