@@ -93,9 +93,11 @@ deducePolarity bounds = assignUnionFind sinkBounds unionFind
     getOccurs :: Ord a => a -> S.Set (S.Set a) -> S.Set (S.Set a)
     getOccurs x = S.filter (S.member x)
 
+    -- | Collapse a set of subsets into a single subset.
     collapseSet :: Ord a => S.Set (S.Set a) -> S.Set (S.Set a) -> S.Set (S.Set a)
     collapseSet s ss = S.insert (flatten ss) $ S.difference s ss
 
+    -- | Add a single function constraint to the union find, merging sets as necessary.
     addToUnionFind :: S.Set (S.Set Variance) -> (AnyTVar, ShallowType) -> S.Set (S.Set Variance)
     addToUnionFind s (t, SFunction u v) = collapseSet union $ collapseSet counion s
       where
@@ -111,6 +113,7 @@ deducePolarity bounds = assignUnionFind sinkBounds unionFind
             ]
     addToUnionFind s _ = s
 
+    -- | Deeply propagate a set of assignments through a union-find data structure.
     assignUnionFind :: M.Map AnyTVar BoundType -> S.Set (S.Set Variance) -> M.Map AnyTVar BoundType
     assignUnionFind m s
         | S.null s = m
@@ -119,6 +122,7 @@ deducePolarity bounds = assignUnionFind sinkBounds unionFind
         (m', s') = M.foldlWithKey' propagateAssignments (M.empty, s) m
         m'' = assignUnionFind m' s'
 
+    -- | Shalowly propagate a set of assignments one step through a union find data structure.
     propagateAssignments :: (M.Map AnyTVar BoundType, S.Set (S.Set Variance)) -> AnyTVar -> BoundType
                          -> (M.Map AnyTVar BoundType, S.Set (S.Set Variance))
     propagateAssignments (m, s) t b = (M.union m newAssignments, S.difference s (S.union positive negative))
@@ -138,19 +142,23 @@ deducePolarity bounds = assignUnionFind sinkBounds unionFind
             , let q = S.findMin (getVar v)
             ]
 
+    -- | Alter a bound type depending on a variance position.
     flipFromVariance :: Variance -> BoundType -> BoundType
     flipFromVariance (Invariant k) _ = k
     flipFromVariance (Covariant t) b = b
     flipFromVariance (Contravariant t) b = flipBoundType b
 
+    -- | Compute the union find of a set of constraints.
     unionFind :: S.Set (S.Set Variance)
     unionFind = S.foldl' addToUnionFind S.empty bounds
 
+    -- | Get the variable corresponding to a variance.
     getVar :: Variance -> S.Set AnyTVar
     getVar (Invariant _) = S.empty
     getVar (Covariant t) = S.singleton t
     getVar (Contravariant t) = S.singleton t
 
+    -- | Compute the intial bounds to boostrap the assignment process.
     sinkBounds :: M.Map AnyTVar BoundType
     sinkBounds = M.fromList [(v, LowerBound) | v <- S.toList sinkVars]
 
@@ -176,9 +184,11 @@ data Variance
     | Contravariant AnyTVar
   deriving (Eq, Ord, Show)
 
+-- | Union a set of sets.
 flatten :: Ord a => S.Set (S.Set a) -> S.Set a
 flatten = S.unions . S.toList
 
+-- | Complement for bound types.
 flipBoundType :: BoundType -> BoundType
 flipBoundType LowerBound = UpperBound
 flipBoundType UpperBound = LowerBound
