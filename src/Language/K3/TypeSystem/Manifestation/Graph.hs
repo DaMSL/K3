@@ -10,7 +10,10 @@
 -- such that the manifest types still satisfy their constraints.
 module Language.K3.TypeSystem.Manifestation.Graph where
 
+import Control.Applicative
+
 import Data.Function
+import Data.Functor.Identity
 import Data.Maybe
 import Data.Tuple (swap)
 
@@ -65,6 +68,22 @@ fromTypecheckResult result = do
     andBoundType [] = UpperBound
     andBoundType (LowerBound:_) = LowerBound
     andBoundType (_:bs) = andBoundType bs
+
+decideManifestation :: ManifestGraph -> M.Map (S.Set UID) (K3 Type)
+decideManifestation g = propagateChoice g (G.topologicalSort g)
+  where
+    propagateChoice :: ManifestGraph -> [S.Set UID] -> M.Map (S.Set UID) (K3 Type)
+    propagateChoice g [] = M.empty
+    propagateChoice g (i:is) = M.insert i currentBound $ propagateChoice restrict is
+      where
+        currentPolarity = let (p, lb, ub) = G.vertex g i in p
+        currentBound = let (p, lb, ub) = G.vertex g i in if p == UpperBound then ub else lb
+        restrict = runIdentity $ G.traverseWithKey traverseF g
+        traverseF k (bt, lb, rb)
+            | k == i = pure (bt, lb, rb)
+            | k `elem` G.successors g i && currentPolarity == UpperBound = pure (bt, lb, rb)
+            | k `elem` G.successors g i && currentPolarity == LowerBound = pure (bt, lb, currentBound)
+            | otherwise = pure (bt, lb, rb)
 
 -- | Given a constraint set and a set of UIDs of variables to care about, narrow the constraint set
 -- down to only those variables, and reduce the constraints on those variables to only other
