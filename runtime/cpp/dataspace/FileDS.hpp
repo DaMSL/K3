@@ -338,6 +338,7 @@ namespace K3
       FileDS& operator=(FileDS && other)
       {
           file_id = std::move(other.file_id);
+          return *this;
       }
   };
 };
