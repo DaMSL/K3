@@ -40,11 +40,6 @@ RUN git clone https://github.com/DaMSL/K3-Core.git /k3/core
 RUN mkdir /k3/driver
 RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
 
-## Move a compile script over to the docker image
-#RUN mv /k3/core/runtime/cpp/test/compile2 /k3/core/runtime/cpp/test/distributed/compile2
-##
-#ENV PATH /k3/core/runtime/cpp/test:$PATH
-
 # Install GHC and cabal
 RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
 RUN apt-get install -y happy ghc cabal-install
@@ -52,16 +47,12 @@ RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
-### Build K3-Core
+### Build K3
 WORKDIR /k3/core
 RUN rm -rf /.ghc
 RUN cabal sandbox init
 RUN cabal install --only-dependencies --disable-documentation
-#RUN cabal configure
-#RUN cabal build
-#RUN cabal install
 
-### Build K3-Driver
 WORKDIR /k3/driver
 RUN cabal sandbox init
 RUN cabal sandbox add-source /k3/core
@@ -76,3 +67,5 @@ EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
 # Install Vim
 RUN apt-get install -y vim
 
+ADD ../pull-run.sh /
+RUN chmod +x /pull-run.sh
