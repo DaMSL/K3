@@ -14,7 +14,7 @@ Usage:
 
 Options:
     -h --help           Show this screen.
-    -s --simulation     Create K3 command for simulation mode
+    -s --simulation     Create K3 command for simulation mode [DEFAULT]
     -n --network        Create K3 command for network mode
     -t --topology       Topology file
 """
@@ -55,7 +55,7 @@ def networkK3(topologyFile):
     print createK3Command(topologyFile, "network-mode")
 
 if __name__ == '__main__':
-    s = t = r = None
+    simulationMode = networkMode = topologyFile = None
     try:
         arguments = docopt.docopt(__doc__)
         simulationMode = arguments['--simulation']

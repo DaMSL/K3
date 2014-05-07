@@ -4,44 +4,42 @@
 #include <tuple>
 #include <vector>
 
+#include <boost/filesystem.hpp>
+
 #include <Common.hpp>
 #include <Engine.hpp>
+#include <Serialization.hpp>
 
 namespace K3
 {
   using namespace std;
-
-  template<typename T>
-  string toString(const T& not_string)
-  {
-    ostringstream strm;
-    strm << not_string;
-    return strm.str();
-  }
-
-  template<>
-  string toString(const Address& not_string);
-
-  template<typename T>
-  T fromString(string str)
-  {
-    istringstream strm(str);
-    T not_string;
-    strm >> not_string;
-    return not_string;
-  }
 
   string generateCollectionFilename(Engine * engine);
   string openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
   Identifier openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
   Identifier emptyFile(Engine * engine);
 
-  template<typename AccumT>
-  AccumT foldOpenFile(Engine * engine, std::function<AccumT(AccumT, Value)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+  template<typename T>
+  shared_ptr<T> readExternal(Engine * engine, const Identifier& file_id)
+  {
+      shared_ptr<Value> str = engine->doReadExternal(file_id);
+      if (str)
+          return BoostSerializer::unpack<T>(*str);
+      else
+          return shared_ptr<T>(nullptr);
+  }
+  template<typename T>
+  void writeExternal(Engine * engine, const Identifier& file_id, const T& val)
+  {
+      engine->doWriteExternal(file_id, BoostSerializer::pack(val));
+  }
+
+  template<typename Elem, typename AccumT>
+  AccumT foldOpenFile(Engine * engine, std::function<AccumT(AccumT, Elem)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
   {
     while (engine->hasRead(file_id))
     {
-      shared_ptr<Value> cur_val = engine->doReadExternal(file_id);
+      shared_ptr<Elem> cur_val = readExternal<Elem>(engine, file_id);
       if (cur_val)
         initial_accumulator = accumulation(initial_accumulator, *cur_val);
       else
@@ -50,16 +48,14 @@ namespace K3
     return initial_accumulator;
   }
 
-  template<typename AccumT>
-  AccumT foldFile(Engine * engine, std::function<AccumT(AccumT, Value)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+  template<typename Elem, typename AccumT>
+  AccumT foldFile(Engine * engine, std::function<AccumT(AccumT, Elem)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
   {
     openCollectionFile(engine, file_id, IOMode::Read);
-    AccumT result = foldOpenFile<AccumT>(engine, accumulation, initial_accumulator, file_id);
+    AccumT result = foldOpenFile<Elem, AccumT>(engine, accumulation, initial_accumulator, file_id);
     engine->close(file_id);
     return result;
   }
-
-  string copyFile(Engine * engine, const string& old_id);
 
   template<typename Iterator>
   Identifier initialFile(Engine* engine, Iterator start, Iterator finish)
@@ -68,39 +64,190 @@ namespace K3
     openCollectionFile(engine, new_id, IOMode::Write);
     for (Iterator iter = start; iter != finish; ++iter )
     {
-        engine->doWriteExternal(new_id, *iter);
+        engine->doWriteExternal(new_id, BoostSerializer::pack(*iter));
     }
     engine->close(new_id);
     return new_id;
   }
 
 
-  shared_ptr<Value> peekFile(Engine * engine, const Identifier& file_id);
+  template<typename Elem>
+  shared_ptr<Elem> peekFile(Engine * engine, const Identifier& file_id)
+  {
+      openCollectionFile(engine, file_id, IOMode::Read);
+      if (!engine->hasRead(file_id)) {
+          engine->close(file_id);
+          return shared_ptr<Elem>(nullptr);
+      }
+      shared_ptr<Elem> result = readExternal<Elem>(engine, file_id);
+      engine->close(file_id);
+      return result;
+  }
 
-  Identifier mapFile(Engine * engine, std::function<Value(Value)> function, const Identifier& file_ds);
-  void mapFile_(Engine * engine, std::function<void(Value)> function, const Identifier& file_id);
+  template<typename Elem>
+  static void iterateOpenFile(Engine * engine, std::function<void(Elem)> f, const Identifier& file_id)
+  {
+      while (engine->hasRead(file_id))
+      {
+          shared_ptr<Elem> cur_val = readExternal<Elem>(engine, file_id);
+          if (cur_val)
+            f(*cur_val);
+      }
+  }
+  template<typename Elem>
+  void iterateFile_noCopy(Engine * engine, std::function<void(Elem)> function, const Identifier& file_id)
+  {
+      openCollectionFile(engine, file_id, IOMode::Read);
+      iterateOpenFile(engine, function, file_id);
+      engine->close(file_id);
+  }
 
-  Identifier filterFile(Engine * engine, std::function<bool(Value)> predicate, const Identifier& old_id);
+  template<typename Elem>
+  Identifier copyFile(Engine * engine, const Identifier& old_id)
+  {
+      Identifier new_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, new_id, IOMode::Write);
+      iterateFile_noCopy<Elem>(engine,
+              [engine, &new_id](Elem v) {
+                  writeExternal(engine, new_id, v);
+              }, old_id);
+      engine->close(new_id);
+      return new_id;
+  }
 
-  Identifier insertFile(Engine * engine, const Identifier& old_id, const Value& v);
+  template<typename Elem, typename Output>
+  Identifier mapFile(Engine * engine, std::function<Output(Elem)> function, const Identifier& file_ds)
+  {
+      Identifier tmp_ds = copyFile<Elem>(engine, file_ds);
+      Identifier new_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, new_id, IOMode::Write);
+      iterateFile_noCopy<Elem>(engine,
+              [engine, &new_id, &function](Elem val) {
+                  writeExternal(engine, new_id, function(val));
+              }, tmp_ds);
+      engine->close(new_id);
+      return new_id;
+  }
+  template<typename Elem>
+  void mapFile_(Engine * engine, std::function<void(Elem)> function, const Identifier& file_ds)
+  {
+      Identifier tmp_ds = copyFile<Elem>(engine, file_ds);
+      iterateFile_noCopy<Elem>(engine, [engine, &function](Elem val) {
+                  function(val);
+              }, tmp_ds);
+  }
 
-  Identifier deleteFile(Engine * engine, const Identifier& old_id, const Value& v);
+  template<typename Elem>
+  Identifier filterFile(Engine * engine, std::function<bool(Elem)> predicate, const Identifier& old_ds)
+  {
+      Identifier tmp_ds = copyFile<Elem>(engine, old_ds);
+      Identifier new_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, new_id, IOMode::Write);
+      iterateFile_noCopy<Elem>(engine,
+              [engine, &new_id, &predicate](Elem val) {
+                  if (predicate(val))
+                      writeExternal(engine, new_id, val);
+              }, tmp_ds);
+      engine->close(new_id);
+      return new_id;
+  }
 
-  Identifier updateFile(Engine * engine, const Value& old_val, const Value& new_val, const Identifier& file_id);
+  template<typename Elem>
+  Identifier insertFile(Engine * engine, const Identifier& old_id, const Elem& v)
+  {
+      openCollectionFile(engine, old_id, IOMode::Append);
+      writeExternal(engine, old_id, v);
+      engine->close(old_id);
+      return old_id;
+  }
 
-  Identifier combineFile(Engine * engine, const Identifier& self, const Identifier& values);
+  template<typename Elem>
+  Identifier eraseFile(Engine * engine, const Identifier& old_id, const Elem& v)
+  {
+      Identifier deleted_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, deleted_id, IOMode::Write);
+      foldFile<Elem, bool>(engine,
+              [engine, &deleted_id, v](bool found, Elem val) {
+                  if (!found && val == v)
+                      return true;
+                  else {
+                      writeExternal(engine, deleted_id, val);
+                      return found;
+                  }
+              }, false, old_id);
+      engine->close(deleted_id);
+      boost::filesystem::rename(deleted_id, old_id);
+      return old_id;
+  }
 
-  tuple<Identifier, Identifier> splitFile(Engine * engine, const Identifier& file_id);
+  template<typename Elem>
+  Identifier updateFile(Engine * engine, const Elem& old_val, const Elem& new_val, const Identifier& file_id)
+  {
+      Identifier new_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, new_id, IOMode::Write);
+      bool did_update = foldFile<Elem, bool>(engine,
+              [engine, &new_id, old_val, new_val](bool found, Elem val) {
+                  if (!found && val == old_val) {
+                      writeExternal(engine, new_id, new_val);
+                      return true;
+                  }
+                  else {
+                      writeExternal(engine, new_id, val);
+                      return found;
+                  }
+              }, false, file_id);
+      if (!did_update)
+          writeExternal(engine, new_id, new_val);
+      engine->close(new_id);
+      boost::filesystem::rename(new_id, file_id);
+      return file_id;
+  }
 
-  typedef Value E;
+  template<typename Elem>
+  Identifier combineFile(Engine * engine, const Identifier& self, const Identifier& values)
+  {
+      // TODO Can I get away without unpacking and packing the values again here?
+      Identifier new_id = copyFile<Elem>(engine, self);
+      openCollectionFile(engine, new_id, IOMode::Append);
+      iterateFile_noCopy<Elem>(engine,
+              [engine, &new_id](Elem v) {
+                  writeExternal(engine, new_id, v);
+              }, values);
+      engine->close(new_id);
+      return new_id;
+  }
 
+  template<typename Elem>
+  tuple<Identifier, Identifier> splitFile(Engine * engine, const Identifier& file_id)
+  {
+      Identifier left = openCollectionFile(engine, generateCollectionFilename(engine), IOMode::Write);
+      Identifier right = openCollectionFile(engine, generateCollectionFilename(engine), IOMode::Write);
+      foldFile<Elem, bool>(engine,
+              [engine, &left, &right](bool use_left_file, Elem cur_val) {
+                  if (use_left_file) {
+                      writeExternal(engine, left, cur_val);
+                      return false;
+                  }
+                  else {
+                      writeExternal(engine, right, cur_val);
+                      return true;
+                  }
+              }, true, file_id);
+      engine->close(left);
+      engine->close(right);
+      return make_tuple(left, right);
+  }
+
+  template<typename T>
   class FileDS
   {
-    protected:
+      protected:
       Engine * engine;
-      Identifier file_id;
 
       public:
+      Identifier file_id;
+      typedef T Elem;
+
       FileDS(Engine * eng)
           : engine(eng), file_id(emptyFile(eng))
       { }
@@ -111,7 +258,11 @@ namespace K3
       { }
 
       FileDS(const FileDS& other)
-          : engine(other.engine), file_id(copyFile(other.engine, other.file_id))
+          : engine(other.engine), file_id(copyFile<Elem>(other.engine, other.file_id))
+      { }
+
+      FileDS(FileDS && other)
+          : engine(std::move(other.engine)), file_id(std::move(other.file_id))
       { }
 
     private:
@@ -120,45 +271,44 @@ namespace K3
       { }
 
     public:
-      shared_ptr<E> peek() const
+      shared_ptr<Elem> peek() const
       {
-        return peekFile(engine, file_id);
+        return peekFile<Elem>(engine, file_id);
       }
 
-      void insert_basic(const E& v)
+      void insert(const Elem& v)
       {
         file_id = insertFile(engine, file_id, v);
       }
-      void delete_first(const E& v)
+      void erase(const Elem& v)
       {
-        file_id = deleteFile(engine, file_id, v);
+        file_id = eraseFile(engine, file_id, v);
       }
-      void update_first(const E& v, const E& v2)
+      void update(const Elem& v, const Elem& v2)
       {
         file_id = updateFile(engine, v, v2, file_id);
       }
 
-      template<typename Z>
-      Z fold(std::function<Z(Z, E)> accum, Z initial_accumulator)
+      template<typename Accum>
+      Accum fold(std::function<Accum(Accum, Elem)> accum, Accum initial_accumulator)
       {
-        return foldFile<Z>(engine, accum, initial_accumulator, file_id);
+        return foldFile<Elem, Accum>(engine, accum, initial_accumulator, file_id);
       }
 
-      //template<typename T>
-      typedef Value T;
-      FileDS map(std::function<T(E)> func)
+      template<typename Result>
+      FileDS map(std::function<Result(Elem)> func)
       {
         return FileDS(engine,
-                mapFile(engine, func, file_id)
+                mapFile<Elem, Result>(engine, func, file_id)
                 );
       }
 
-      void iterate(std::function<void(E)> func)
+      void iterate(std::function<void(Elem)> func)
       {
         mapFile_(engine, func, file_id);
       }
 
-      FileDS filter(std::function<bool(E)> predicate)
+      FileDS filter(std::function<bool(Elem)> predicate)
       {
         return FileDS(engine,
                 filterFile(engine, predicate, file_id)
@@ -167,7 +317,7 @@ namespace K3
 
       tuple< FileDS, FileDS > split()
       {
-        tuple<Identifier, Identifier> halves = splitFile(engine, file_id);
+        tuple<Identifier, Identifier> halves = splitFile<Elem>(engine, file_id);
         return make_tuple(
                 FileDS(engine, get<0>(halves)),
                 FileDS(engine, get<1>(halves))
@@ -176,8 +326,19 @@ namespace K3
       FileDS combine(FileDS other)
       {
         return FileDS(engine,
-                combineFile(engine, file_id, other.file_id)
+                combineFile<Elem>(engine, file_id, other.file_id)
                 );
+      }
+
+      FileDS& operator=(const FileDS& other)
+      {
+          file_id = copyFile<Elem>(engine, other.file_id);
+      }
+
+      FileDS& operator=(FileDS && other)
+      {
+          file_id = std::move(other.file_id);
+          return *this;
       }
   };
 };

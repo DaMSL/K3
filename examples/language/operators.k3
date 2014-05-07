@@ -9,7 +9,7 @@ declare y : mut bool   = false
 declare z : mut string = ""
 
 trigger t : () = \_ -> (
-    x = -5 * 4 + 1 - 3;
+    x = -5 * (27 / 3 % 5) + 1 - 3;
     y = (10 < 5 or not 2 > 3 and 1 <= 1) and true and not false or false;
     z = "foo " ++ "bar"
   )

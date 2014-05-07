@@ -1,0 +1,101 @@
+declare a : mut int = 0
+declare b : mut bool = false
+declare c : mut bool = true
+declare d : mut string = ""
+declare e : mut string = ""
+
+declare assign_captured1    : mut int = 0
+declare assign_captured2    : mut int = 0
+declare assign_mut_captured : mut int = 0
+declare assign_captured_ind : mut int = 0
+
+declare assign_bound_captured_ind    : mut int = 0
+declare assign_bound_captured_tfield : mut int = 0
+declare assign_bound_captured_rfield : mut int = 0
+
+declare assign_bound_captured_shared : mut int = 0
+declare assign_intermediate          : mut int = 0
+
+trigger t : () = \_ -> (
+  // Lambda declaration
+  let times2 = \i -> i * 2 in
+  
+  // Lambda application, single argument
+  a = times2 7; 
+
+  // Lambda application, multiple arguments
+  let is_pythagorean = \x -> \y -> \z -> x * x + y * y == z * z in
+  b = is_pythagorean 9 40 41;
+  c = is_pythagorean 6 7 8;
+
+  // Currying
+  let f_prefix = \prefix -> \y -> prefix ++ y in
+  let prefix_foo = f_prefix "foo " in
+  d = prefix_foo "bar";
+  e = prefix_foo "baz";
+
+  // Capture immutable and mutable value
+  let m =     { _1: 10,     _2: "k3" } in
+  let n =     { _1: mut 5,  _2: "3k" } in
+  let p = mut { _1: mut -1, _2: "3m" } in
+  
+  let f_capture_immut  = \x -> assign_captured1 = x + m._1 in
+  	// m is captured in closure above.
+  	// Globals, such as assign_captured1 are not captured.
+
+  let f_capture_immut2 = \x -> n._1 = x + n._1 in
+  	// n is captured privately (i.e., in isolated form) in the closure since it is immutable.
+  	// Thus, any updates to mutable subcomponents do not violate referential transparency.
+
+  let f_capture_mut    = \x -> p._1 = p._1 - x in
+  	// p is captured in shared form (i.e., by reference) since it is mutable.
+  	// Thus, any updates in the function are visible in p's usage scope.
+  
+  f_capture_immut  10;
+  f_capture_immut2 10;
+  f_capture_mut    10;
+  assign_captured2    = n._1;  // This should be 5.
+  assign_mut_captured = p._1;  // This should be -11.
+
+  // Capture indirection
+  let a_ind = ind mut 5 in
+  let f_capture_ind = \x -> bind a_ind as ind y in y = y + x in
+    f_capture_ind 10;
+    bind a_ind as ind z in assign_captured_ind = z;   // assign_captured_ind should be 15.
+
+  // Capture bindings from bind-as and case-of
+  let a2_ind = ind mut 17 in
+  let a3_ind = ind 19     in
+  
+  let a_tup  = (mut 23, mut 29) in
+  let a2_tup = (31, 41)         in
+  
+  let a_rec  = { _1: mut 43, _2: 47 } in
+  let a2_rec = { _1: 53,     _2: 59 } in
+
+  let f_capture_bound_ind    = bind a2_ind as ind y       in \x -> x + y in
+  let f_capture_bound_tfield = bind a_tup as (m,n)        in \x -> x + m + n in
+  let f_capture_bound_rfield = bind a_rec as {_1:m, _2:n} in \x -> x + m + n in
+  
+  assign_bound_captured_ind    = f_capture_bound_ind 3;     // Answer is 20.
+  assign_bound_captured_tfield = f_capture_bound_tfield 8;  // Answer is 60.
+  assign_bound_captured_rfield = f_capture_bound_rfield 10; // Answer is 100.
+  
+  // Shared capture from bindings.
+  // Mutable bindings that are captured by multiple functions are shared;
+  // that is any updates by either function to the shared binding are mutually visible.
+  // Below, any updates to the binding 'm' by either of the two functions is visible to the other.
+
+  let f_capture_shared = 
+    bind a_rec as {_1:m, _2:n} in 
+      ( \x -> (m = x + m + n; assign_bound_captured_shared = m),
+        \y -> (m = y + m + n; assign_bound_captured_shared = m) )
+  in
+  bind f_capture_shared as (f_capture_shared1, f_capture_shared2) in
+    f_capture_shared1 5;
+    assign_intermediate = assign_bound_captured_shared;  // Answer is 95.
+    f_capture_shared2 8                                  // assign_bound_captured_shared is 150.
+  )
+
+source s1 : () = value ()
+feed s1 |> t

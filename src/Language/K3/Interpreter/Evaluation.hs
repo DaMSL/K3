@@ -41,7 +41,7 @@ import Language.K3.Interpreter.Builtins
 import Language.K3.Runtime.Engine
 
 import Language.K3.Utils.Logger
-import Language.K3.Utils.Pretty (defaultPrintConfig)
+import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
@@ -257,7 +257,7 @@ binary OApp = \f x -> do
 
   case f' of
       VFunction (b, cl, _) -> withClosure cl $ b x'
-      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
+      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on:\n" ++ pretty f
 
   where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> freshenValue r
 
@@ -537,6 +537,7 @@ expression e_ = traceExpression $ do
     -- TODO: For now, all bindings are added in mutable fashion. This should be extracted from
     -- the type inferred for the bind target expression.
     expr (details -> (EBindAs b, [e, f], _)) = withProxyFrame $ do
+      pc <- getPrintConfig <$> get
       bv <- expression e
       bp <- getProxyPath >>= \case
         Just ((Named n):t)     -> return $ (Named n):t
@@ -567,7 +568,7 @@ expression e_ = traceExpression $ do
             
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
 
-        _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
+        (b, v) -> throwE $ RunTimeTypeError $ "Bind Mis-Match: value is " ++ showPC (pc {convertToTuples=False}) v ++ " but bind is " ++ show b
 
       where 
         bindAndRefresh bp bv mems = do
