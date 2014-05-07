@@ -23,6 +23,7 @@
 #include <dataspace/StlDS.hpp>
 #include <dataspace/SetDS.hpp>
 #include <dataspace/ListDS.hpp>
+#include <dataspace/SortedDS.hpp>
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
@@ -130,8 +131,6 @@ namespace K3 {
 
       Seq(const Seq<E>& other) : super(other)  {}
 
-      //Seq(const Seq<E>&& other) : super(other) {}
-
       Seq(super other) : super(other) {}
 
       // Convert from Collection<ListDS, E> to Seq<E>
@@ -171,8 +170,6 @@ namespace K3 {
       Set(Engine * e) : super(e) {};
 
       Set(const Set<E>& other) : super(other)  {}
-
-      //Seq(const Seq<E>&& other) : super(other) {}
 
       Set(super other) : super(other) {}
 
@@ -219,6 +216,53 @@ namespace K3 {
       Set difference(Set<E> other) {
         super s = super(dataspace::difference(other));
         return Set<E>(s);
+      }
+
+  };
+
+  template <typename E>
+  class Sorted : public Collection<SortedDS, E> {
+    typedef Collection<SortedDS, E> super;
+    typedef SortedDS<E> dataspace;
+     public:
+      Sorted(Engine * e) : super(e) {};
+
+      Sorted(const Sorted<E>& other) : super(other)  {}
+
+      Sorted(super other) : super(other) {}
+
+      // Convert from Collection<ListDS, E> to Sorted<E>
+      std::tuple<Sorted<E>, Sorted<E>> split() {
+        auto tup = super::split();
+        super ds1 = get<0>(tup);
+        super ds2 = get<1>(tup);
+        return std::make_tuple(Sorted<E>(ds1), Sorted<E>(ds2));
+      }
+
+      Sorted<E> combine(const Sorted<E>& other) {
+       return Sorted<E>(super::combine(other));
+      }
+
+      template <class T>
+      Sorted<T> map(std::function<T(E)> f) {
+       return Sorted<T>(super::map(f));
+      }
+
+      Sorted<E> filter(std::function<bool(E)> f) {
+       return Sorted<E>(super::filter(f));
+      }
+
+      shared_ptr<E> min() { return dataspace::min(); }
+
+      shared_ptr<E> max() { return dataspace::max(); }
+
+      shared_ptr<E> lowerBound(E a) { return dataspace::lowerBound(a); }
+
+      shared_ptr<E> upperBound(E a) { return dataspace::lowerBound(a); }
+
+      Sorted<E> slice(E a, E b) {
+        super s = super(dataspace::slice(a,b));
+        return Sorted<E>(s);
       }
 
   };
