@@ -340,5 +340,13 @@ namespace K3
           file_id = std::move(other.file_id);
           return *this;
       }
+
+    private:
+      friend class boost::serialization::access;
+      template<class Archive>
+      void serialize(Archive& ar, unsigned int /*version*/)
+      {
+          ar & file_id;
+      }
   };
 };
