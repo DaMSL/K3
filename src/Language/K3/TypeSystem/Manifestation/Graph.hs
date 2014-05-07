@@ -42,18 +42,29 @@ fromTypecheckResult result = do
     (tVarMap, constraintSet) <- tcExprTypes result
     boundsMap <- tcExprBounds result
 
+    lowerFunctionBounds <- fmap (S.map swap) $ M.lookup () $ indexAllTypesLowerBoundingAnyVars constraintSet
+    upperFunctionBounds <- M.lookup () $ indexAllTypesUpperBoundingAnyVars constraintSet
+
+    let polarityMap = deducePolarity (S.union lowerFunctionBounds upperFunctionBounds)
+
     let narrowedConstraintMap = narrowAndReduce tVarMap (indexBoundingConstraintsByUVar constraintSet)
-    let consolidatedVertices = attachPayload boundsMap narrowedConstraintMap
+    let consolidatedVertices = attachPayload polarityMap tVarMap boundsMap narrowedConstraintMap
     let consolidatedEdges = map swap . S.toList . S.unions $ M.elems narrowedConstraintMap
 
     return $ G.fromVerticesEdges consolidatedVertices consolidatedEdges
   where
     -- | Construct the payload for each set of equivalent type variables.
-    attachPayload bm ncm =
-        [ (u, (LowerBound, lb, ub))
+    attachPayload pm tvm bm ncm =
+        [ (u, (p, lb, ub))
         | u <- M.keys ncm
+        , let p = andBoundType $ catMaybes $ map (\k -> M.lookup k tvm >>= \k' -> M.lookup k' pm) $ S.toList u
         , let Just (lb, ub) = M.lookup (S.findMin u) bm
         ]
+
+    andBoundType :: [BoundType] -> BoundType
+    andBoundType [] = UpperBound
+    andBoundType (LowerBound:_) = LowerBound
+    andBoundType (_:bs) = andBoundType bs
 
 -- | Given a constraint set and a set of UIDs of variables to care about, narrow the constraint set
 -- down to only those variables, and reduce the constraints on those variables to only other
