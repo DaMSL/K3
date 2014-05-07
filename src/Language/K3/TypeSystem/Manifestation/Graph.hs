@@ -10,6 +10,7 @@
 -- such that the manifest types still satisfy their constraints.
 module Language.K3.TypeSystem.Manifestation.Graph where
 
+import Data.Function
 import Data.Maybe
 import Data.Tuple (swap)
 
@@ -85,16 +86,99 @@ narrowAndReduce tVarMap cm = M.fromList
 
 -- | Compute the preferred bound type for each variable occurring in a constraint set, based on its
 -- appearance in positions of positive and negative polarities.
-deducePolarity :: S.Set (AnyTVar, ShallowType) -> S.Set (Variance, Variance)
-deducePolarity = S.unions . S.toList . S.map (uncurry functionClause)
+deducePolarity :: S.Set (AnyTVar, ShallowType) -> M.Map AnyTVar BoundType
+deducePolarity bounds = assignUnionFind sinkBounds unionFind
   where
-    functionClause :: AnyTVar -> ShallowType -> S.Set (Variance, Variance)
-    functionClause x (SFunction y z) =
-        S.fromList [(Covariant x, Contravariant $ someVar y), (Covariant x, Covariant $ someVar z)]
-    functionClause _ _ = S.empty
+    -- | Get all subsets containing the given element.
+    getOccurs :: Ord a => a -> S.Set (S.Set a) -> S.Set (S.Set a)
+    getOccurs x = S.filter (S.member x)
 
+    collapseSet :: Ord a => S.Set (S.Set a) -> S.Set (S.Set a) -> S.Set (S.Set a)
+    collapseSet s ss = S.insert (flatten ss) $ S.difference s ss
+
+    addToUnionFind :: S.Set (S.Set Variance) -> (AnyTVar, ShallowType) -> S.Set (S.Set Variance)
+    addToUnionFind s (t, SFunction u v) = collapseSet union $ collapseSet counion s
+      where
+        union = S.unions [
+                S.singleton $ S.fromList [Covariant t, Contravariant $ someVar u],
+                getOccurs (Covariant t) s,
+                getOccurs (Contravariant $ someVar u) s
+            ]
+        counion = S.unions [
+                S.singleton $ S.fromList [Covariant t, Covariant $ someVar v],
+                getOccurs (Covariant t) s,
+                getOccurs (Covariant $ someVar v) s
+            ]
+    addToUnionFind s _ = s
+
+    assignUnionFind :: M.Map AnyTVar BoundType -> S.Set (S.Set Variance) -> M.Map AnyTVar BoundType
+    assignUnionFind m s
+        | S.null s = m
+        | otherwise = M.union m m''
+      where
+        (m', s') = M.foldlWithKey' propagateAssignments (M.empty, s) m
+        m'' = assignUnionFind m' s'
+
+    propagateAssignments :: (M.Map AnyTVar BoundType, S.Set (S.Set Variance)) -> AnyTVar -> BoundType
+                         -> (M.Map AnyTVar BoundType, S.Set (S.Set Variance))
+    propagateAssignments (m, s) t b = (M.union m newAssignments, S.difference s (S.union positive negative))
+      where
+        positive = getOccurs (Covariant t) s
+        negative = getOccurs (Contravariant t) s
+
+        newAssignments = M.fromList $
+            [ (q, flipFromVariance v b)
+            | v <- S.toList (flatten positive)
+            , S.null $ getVar v
+            , let q = S.findMin (getVar v)
+            ] ++
+            [ (q, flipFromVariance v (flipBoundType b))
+            | v <- S.toList (flatten negative)
+            , S.null  $ getVar v
+            , let q = S.findMin (getVar v)
+            ]
+
+    flipFromVariance :: Variance -> BoundType -> BoundType
+    flipFromVariance (Invariant k) _ = k
+    flipFromVariance (Covariant t) b = b
+    flipFromVariance (Contravariant t) b = flipBoundType b
+
+    unionFind :: S.Set (S.Set Variance)
+    unionFind = S.foldl' addToUnionFind S.empty bounds
+
+    getVar :: Variance -> S.Set AnyTVar
+    getVar (Invariant _) = S.empty
+    getVar (Covariant t) = S.singleton t
+    getVar (Contravariant t) = S.singleton t
+
+    sinkBounds :: M.Map AnyTVar BoundType
+    sinkBounds = M.fromList [(v, LowerBound) | v <- S.toList sinkVars]
+
+    -- | Sink variables are type variables which represent functions, but are themselves not used as
+    -- an argument or return type of a function. We generally want these to be positive.
+    sinkVars :: S.Set AnyTVar
+    sinkVars = S.difference functionVars subFunctionVars
+
+    functionVars :: S.Set AnyTVar
+    functionVars = S.map fst bounds
+
+    subFunctionVars :: S.Set AnyTVar
+    subFunctionVars = flatten $ S.map (getBoundVars . snd) bounds
+
+    getBoundVars :: ShallowType -> S.Set AnyTVar
+    getBoundVars (SFunction x y) = S.fromList $ map someVar [x, y]
+    getBoundVars _ = S.empty
+
+-- TODO: Do I need Invariant?
 data Variance
     = Invariant BoundType
     | Covariant AnyTVar
     | Contravariant AnyTVar
   deriving (Eq, Ord, Show)
+
+flatten :: Ord a => S.Set (S.Set a) -> S.Set a
+flatten = S.unions . S.toList
+
+flipBoundType :: BoundType -> BoundType
+flipBoundType LowerBound = UpperBound
+flipBoundType UpperBound = LowerBound
