@@ -44,35 +44,34 @@ dispatch op = do
   case mode op of
     Compile   c -> compile c
     Interpret i -> interpret i addPreloadVals
-    Print     p -> printer k3Program (printOutput p) addPreloadVals
+    Print     p -> printer   (plainPrint     p) (printMode p) addPreloadVals
+    Typecheck t -> k3Program (plainTypecheck t) (typecheck . addPreloadVals)
+    Analyze   a -> analyzer  (plainAnalysis  a) (analyzeMode a)
 
-    Typecheck   -> k3Program >>= either parseError (typecheck . addPreloadVals)
-    Analyze   a -> analyzer a
-
-  where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
+  where compile cOpts@(CompileOptions lang _ _ _ _ _) = case map toLower lang of
           "haskell" -> HaskellC.compile op cOpts
-          "cpp" -> CPPC.compile op cOpts
+          "cpp"     -> CPPC.compile op cOpts
           _         -> error $ lang ++ " compilation not supported."
 
         -- addF is a function adding code to the main program
         interpret im@(Batch {}) addF = runBatch op im addF
         interpret Interactive   _    = error "Interactive Mode is not yet implemented."
 
-        printer parse PrintAST addF    = parse >>= either parseError (putStrLn . pretty . addF)
-        printer parse PrintSyntax addF = parse >>= either parseError (printProgram . addF)
-        printProgram        = either syntaxError putStrLn . programS
+        printer plain PrintAST    addF = k3Program plain (putStrLn . pretty . addF)
+        printer plain PrintSyntax addF = k3Program plain (printProgram . addF)
+        printProgram = either syntaxError putStrLn . programS
 
-        analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
-        analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)
-        analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)
-        analyzer ProxyPaths   = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
+        analyzer plain Conflicts    = k3Program plain (putStrLn . pretty . getAllConflicts)
+        analyzer plain Tasks        = k3Program plain (putStrLn . pretty . getAllTasks)
+        analyzer plain ProgramTasks = k3Program plain (putStrLn . show . getProgramTasks)
+        analyzer plain ProxyPaths   = k3Program plain (putStrLn . pretty  . labelBindAliases)
 
-        analyzer AnnotationProvidesGraph = k3Program >>= either parseError (putStrLn . show . providesGraph)
-        analyzer FlatAnnotations         = k3Program >>= either parseError (putStrLn . show . flattenAnnotations)
+        analyzer plain AnnotationProvidesGraph = k3Program plain (putStrLn . show . providesGraph)
+        analyzer plain FlatAnnotations         = k3Program plain (putStrLn . show . flattenAnnotations)
 
-        k3Program      = parseK3Input (asIs op) (includes $ paths op) (input op)
-        parseError s   = putStrLn $ "Could not parse input: " ++ s
-        syntaxError s  = putStrLn $ "Could not print program: " ++ s
+        k3Program plain f = parseK3Input plain (includes $ paths op) (input op) >>= either parseError f
+        parseError s      = putStrLn $ "Could not parse input: " ++ s
+        syntaxError s     = putStrLn $ "Could not print program: " ++ s
 
         parsePreloads :: String -> IO (K3 Declaration)
         parsePreloads file = do
