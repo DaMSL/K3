@@ -24,6 +24,7 @@ executable k3
         mtl,
         optparse-applicative >= 0.7.0.2,
         readline,
+        shake,
         split,
         transformers,
         ansi-wl-pprint,

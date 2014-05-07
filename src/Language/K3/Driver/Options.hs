@@ -3,7 +3,6 @@ module Language.K3.Driver.Options where
 
 import Control.Applicative
 import Options.Applicative
-import Options.Applicative.Types
 
 import System.FilePath
 import System.Log
@@ -14,7 +13,10 @@ import Language.K3.Utils.Logger.Config
 
 import Language.K3.Driver.Common
 
-import Language.K3.Utils.Pretty (Pretty(..), indent, defaultPrintConfig, PrintConfig(..), tersePrintConfig, simplePrintConfig)
+import Language.K3.Utils.Pretty (
+    Pretty(..), PrintConfig(..),
+    indent, defaultPrintConfig, tersePrintConfig, simplePrintConfig
+  )
 
 -- | Program Options.
 data Options = Options {
@@ -22,8 +24,7 @@ data Options = Options {
         inform    :: InfoSpec,
         paths     :: PathOptions,
         input     :: FilePath,
-        preLoad   :: [FilePath], -- files to load before input
-        asIs      :: Bool
+        preLoad   :: [FilePath] -- files to load before input
     }
   deriving (Eq, Read, Show)
 
@@ -32,40 +33,55 @@ data Mode
     = Compile   CompileOptions
     | Interpret InterpretOptions
     | Print     PrintOptions
-    | Typecheck
+    | Typecheck TypecheckOptions
     | Analyze   AnalyzeOptions
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
-data CompileOptions = CompileOptions { outLanguage :: String
-                                     , programName :: String
-                                     , outputFile  :: Maybe FilePath
-                                     , buildDir    :: Maybe FilePath }
-                        deriving (Eq, Read, Show)
+data CompileOptions
+    = CompileOptions { outLanguage  :: String
+                     , programName  :: String
+                     , outputFile   :: Maybe FilePath
+                     , buildDir     :: Maybe FilePath
+                     , plainCompile :: Bool 
+                     , ccCmd        :: CPPCompiler }
+  deriving (Eq, Read, Show)
+
+data CPPCompiler = GCC | Clang deriving (Eq, Read, Show)
 
 -- | Interpretation options.
 data InterpretOptions
-    = Batch { network :: Bool
-            , sysEnv :: SystemEnvironment
-            , asExpr :: Bool
-            , isPar  :: Bool
+    = Batch { network     :: Bool
+            , sysEnv      :: SystemEnvironment
+            , asExpr      :: Bool
+            , isPar       :: Bool
             , printConfig :: PrintConfig}
     | Interactive
   deriving (Eq, Read, Show)
 
 -- | Pretty-printing options.
-data PrintOutput
+data PrintOptions
+    = PrintOptions { printMode  :: PrintMode
+                   , plainPrint :: Bool }
+  deriving (Eq, Read, Show)
+
+data PrintMode
     = PrintAST
     | PrintSyntax
   deriving (Eq, Read, Show)
 
-data PrintOptions
-    = PrintOptions { printOutput :: PrintOutput }
+-- | Typechecking options
+data TypecheckOptions 
+    = TypecheckOptions { plainTypecheck :: Bool }
   deriving (Eq, Read, Show)
-
 
 -- | Analyze Options.
 data AnalyzeOptions
+    = AnalyzeOptions { plainAnalysis :: Bool
+                     , analyzeMode   :: AnalyzeMode }
+  deriving (Eq, Read, Show)
+
+data AnalyzeMode
     = Conflicts
     | Tasks
     | ProgramTasks
@@ -94,11 +110,14 @@ data Verbosity
     | LoudV
   deriving (Enum, Eq, Read, Show)
 
--- | Deprecated?
-data Peer = Peer { peerHost :: String
-                 , peerPort :: Int
-                 , peerVals :: [(String, String)] }
-              deriving (Eq, Read, Show)
+
+-- | Options common to multiple modes, but undesirable at the top-level.
+plainProgramOpt :: Parser Bool
+plainProgramOpt = switch (
+       long "plain"
+    <> help "Process a plain program, without running the program builder."
+    <> value False )
+
 
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
@@ -106,7 +125,7 @@ modeOptions = subparser (
          command "compile"   (info compileOptions   $ progDesc compileDesc)
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "print"     (info printOptions     $ progDesc printDesc)
-      <> command "typecheck" (info typeOptions      $ progDesc typeDesc)
+      <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
       <> command "analyze"   (info analyzeOptions   $ progDesc analyzeDesc)
     )
   where compileDesc   = "Compile a K3 binary"
@@ -115,12 +134,16 @@ modeOptions = subparser (
         typeDesc      = "Typecheck a K3 program"
         analyzeDesc   = "Analyze a K3 program"
 
-        typeOptions = NilP $ Just Typecheck
 
 -- | Compiler options
 compileOptions :: Parser Mode
-compileOptions = mkCompile <$> outLanguageOpt <*> progNameOpt <*> outputFileOpt <*> buildDirOpt
-  where mkCompile l n o b = Compile $ CompileOptions l n o b 
+compileOptions = mkCompile <$> outLanguageOpt
+                           <*> progNameOpt 
+                           <*> outputFileOpt
+                           <*> buildDirOpt
+                           <*> plainProgramOpt
+                           <*> ccCmdOpt
+  where mkCompile l n o b p c = Compile $ CompileOptions l n o b p c
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -160,26 +183,24 @@ buildDirOpt = validatePath <$> option (
   where validatePath Nothing  = Nothing
         validatePath (Just p) = if isValid p then Just p else Nothing
 
+ccCmdOpt :: Parser CPPCompiler
+ccCmdOpt = gccFlag <|> clangFlag
+
+gccFlag :: Parser CPPCompiler
+gccFlag = flag' GCC (
+        long "gcc"
+     <> help "Use the g++ toolchain for C++ compilation"
+    )
+
+clangFlag :: Parser CPPCompiler
+clangFlag = flag' Clang (
+        long "clang"
+     <> help "Use the clang++ and LLVM toolchain for C++ compilation"
+    )
 
 -- | Interpretation options.
 interpretOptions :: Parser Mode
 interpretOptions = Interpret <$> (batchOptions <|> interactiveOptions)
-
--- | Options for Batch Mode.
-batchOptions :: Parser InterpretOptions
-batchOptions = flag' Batch (
-            short 'b'
-         <> long "batch"
-         <> help "Run in Batch Mode (default)"
-        ) *> pure Batch <*> networkOptions <*> sysEnvOptions <*> elvlOptions <*> parOptions <*> interpPrintOptions
-
--- | Expression-Level flag.
-elvlOptions :: Parser Bool
-elvlOptions = switch (
-        short 'e'
-     <> long "expression"
-     <> help "Run in top-level expression mode."
-    )
 
 -- | Options for Interactive Mode.
 interactiveOptions :: Parser InterpretOptions
@@ -189,17 +210,38 @@ interactiveOptions = flag' Interactive (
      <> help "Run in Interactive Mode"
     )
 
+-- | Options for Batch Mode.
+batchOptions :: Parser InterpretOptions
+batchOptions = flag' Batch (
+            short 'b'
+         <> long "batch"
+         <> help "Run in Batch Mode (default)"
+        ) *> batchOpts
+  where batchOpts = pure Batch <*> networkOpt
+                               <*> sysEnvOptions
+                               <*> elvlOpt
+                               <*> parOpt
+                               <*> printConfigOpt
+
+-- | Expression-Level flag.
+elvlOpt :: Parser Bool
+elvlOpt = switch (
+        short 'e'
+     <> long "expression"
+     <> help "Run in top-level expression mode."
+    )
+
 -- | Network mode flag.
-networkOptions :: Parser Bool
-networkOptions = switch (
+networkOpt :: Parser Bool
+networkOpt = switch (
 	short 'n'
      <> long "network"
      <> help "Run in Network Mode"
     )
 
 -- | Parallel mode flag.
-parOptions :: Parser Bool
-parOptions = switch (
+parOpt :: Parser Bool
+parOpt = switch (
         long "parallel"
      <> help "Run the Parallel Engine"
     )
@@ -207,8 +249,8 @@ parOptions = switch (
 data InterpPrintVerbosity = PrintVerbose | PrintTerse | PrintTerseSimple
 
 -- | Print options for interpreter
-interpPrintOptions :: Parser PrintConfig
-interpPrintOptions = choosePC <$> verbosePrintFlag <*> simplePrintFlag
+printConfigOpt :: Parser PrintConfig
+printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
   where choosePC _ PrintTerseSimple = simplePrintConfig
         choosePC PrintTerse _       = tersePrintConfig
         choosePC _     _            = defaultPrintConfig
@@ -231,48 +273,64 @@ interpPrintOptions = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 -- | Printing options
 printOptions :: Parser Mode
-printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt)
-  where mkPrint o = Print $ PrintOptions o
+printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt) <*> plainProgramOpt
+  where mkPrint m p = Print $ PrintOptions m p
 
-astPrintOpt :: Parser PrintOutput
+astPrintOpt :: Parser PrintMode
 astPrintOpt = flag' PrintAST (   long "ast"
                               <> help "Print AST output" )
 
-syntaxPrintOpt :: Parser PrintOutput
+syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
+
+-- | Typecheck options
+typecheckOptions :: Parser Mode
+typecheckOptions = Typecheck <$> TypecheckOptions <$> plainProgramOpt
+
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (    conflictsOpt <|> tasksOpt   <|> programTasksOpt <|> proxyPathsOpt
-                              <|> annProvOpt   <|> flatAnnOpt )
+analyzeOptions = Analyze <$> (AnalyzeOptions <$> plainProgramOpt
+                                             <*> analysisMode)
 
-conflictsOpt :: Parser AnalyzeOptions
+analysisMode :: Parser AnalyzeMode
+analysisMode =    conflictsOpt 
+              <|> tasksOpt
+              <|> programTasksOpt
+              <|> proxyPathsOpt
+              <|> annProvOpt
+              <|> flatAnnOpt
+
+conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
                                 <> help "Print Conflicting Data Accesses for a K3 Program" )
 
-tasksOpt :: Parser AnalyzeOptions
+tasksOpt :: Parser AnalyzeMode
 tasksOpt = flag' Tasks (   long "tasks"
                         <> help "Split Triggers into smaller tasks for parallelization" )
 
-programTasksOpt :: Parser AnalyzeOptions
+programTasksOpt :: Parser AnalyzeMode
 programTasksOpt = flag' ProgramTasks (   long "programtasks"
                                       <> help "Find program-level tasks to be run in parallel " )
 
-proxyPathsOpt :: Parser AnalyzeOptions
+proxyPathsOpt :: Parser AnalyzeMode
 proxyPathsOpt = flag' ProxyPaths (   long "proxypaths"
                                   <> help "Print bind paths for bind expressions" )
 
-annProvOpt :: Parser AnalyzeOptions
+annProvOpt :: Parser AnalyzeMode
 annProvOpt = flag' AnnotationProvidesGraph (   long "provides-graph"
                                             <> help "Print bind paths for bind expressions" )
 
-flatAnnOpt :: Parser AnalyzeOptions
+flatAnnOpt :: Parser AnalyzeMode
 flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
                                     <> help "Print bind paths for bind expressions" )
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
 informOptions = InfoSpec <$> loggingOptions <*> verbosityOptions
+
+
+{- Top-level options -}
 
 -- | Logging options.
 loggingOptions :: Parser LoggerOptions
@@ -309,29 +367,17 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
         | otherwise = n
 
 inputOptions :: Parser [FilePath]
-inputOptions = commaSep1 <$> argument str (
+inputOptions = fileOrStdin <$> (many $ argument str (
         metavar "FILES"
-     <> help "Initial source declarations to be loaded into the environment."
-     <> value "-"
-    )
-      -- Separate a word list by commas
-      where commaSep1 l  = fst $ foldr sep_fn ([[]], False) l
-            sep_fn ',' (x, _)    = (x, True)
-            sep_fn c ([], False)   = ([[c]], False)
-            sep_fn c (x:xs, False) = ((c:x):xs, False)
-            sep_fn c (xs, True)    = ([c]:xs, False)
-
-asIsOption :: Parser Bool
-asIsOption = switch (
-    short 'a' <>
-    long "as-is" <>
-    help "Parse As-Is, without running the program builder." <>
-    value False)
+     <> help "K3 program files."
+    ) )
+  where fileOrStdin [] = ["-"]
+        fileOrStdin x  = x
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = mkOptions <$> modeOptions <*> informOptions <*> pathOptions <*> inputOptions <*> asIsOption
-    where mkOptions m i p is b = Options m i p (last is) (take (length is - 1) is) b
+programOptions = mkOptions <$> modeOptions <*> informOptions <*> pathOptions <*> inputOptions
+    where mkOptions m i p is = Options m i p (last is) (take (length is - 1) is)
 
 {- Instance definitions -}
 
@@ -339,7 +385,7 @@ instance Pretty Mode where
   prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts] 
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
-  prettyLines Typecheck         = ["Typecheck"]
+  prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
