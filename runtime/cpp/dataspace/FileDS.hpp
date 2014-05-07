@@ -1,3 +1,6 @@
+#ifndef K3_RUNTIME_DATASPACE_FILEDS_H
+#define K3_RUNTIME_DATASPACE_FILEDS_H
+
 #include <algorithm>
 #include <functional>
 #include <string>
@@ -350,3 +353,5 @@ namespace K3
       }
   };
 };
+
+#endif // K3_RUNTIME_DATASPACE_FILEDS_H

@@ -1,3 +1,6 @@
+#ifndef K3_RUNTIME_DATASPACE_STLDS_H
+#define K3_RUNTIME_DATASPACE_STLDS_H
+
 #include <algorithm>
 #include <iostream>
 #include <set>
@@ -131,3 +134,4 @@ class StlDS {
 };
 }
 
+#endif // K3_RUNTIME_DATASPACE_STLDS_H
