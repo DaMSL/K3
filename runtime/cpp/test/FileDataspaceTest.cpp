@@ -51,37 +51,28 @@ class ExtraElementsException : public std::runtime_error
 };
 
 template<typename DS>
-std::shared_ptr<DS> findAndRemoveElement(std::shared_ptr<DS> ds, const typename DS::Elem& val)
+DS findAndRemoveElement(DS ds, const typename DS::Elem& val)
 {
-    if (!ds)
-        return std::shared_ptr<DS>(nullptr);
-    else {
-        if (containsDS(*ds, val)) {
-            ds->erase(val);
-            return ds;
-        }
-        else
-            throw ElementNotFoundException<DS>(val);
+    if (containsDS(ds, val)) {
+        ds.erase(val);
     }
+    else
+        throw ElementNotFoundException<DS>(val);
+    return ds;
 }
 
 template<typename DS>
 bool compareDataspaceToList(DS dataspace, std::vector<typename DS::Elem> l)
 {
-    std::shared_ptr<DS> ds_ptr = std::make_shared<DS>(dataspace);
-    std::shared_ptr<DS> result = std::accumulate(begin(l), end(l), ds_ptr,
-            [](std::shared_ptr<DS> ds, typename DS::Elem cur_val) {
-                return findAndRemoveElement(ds, cur_val);
-            });
-    if (result) {
-        auto s = sizeDS(*result);
-        if (s == 0)
-            return true;
-        else
-            throw ExtraElementsException(s);
+    for (typename DS::Elem cur_val : l)
+    {
+        dataspace = findAndRemoveElement(dataspace, cur_val);
     }
+    auto s = sizeDS(dataspace);
+    if (s == 0)
+        return true;
     else
-        return false;
+        throw ExtraElementsException(s);
 }
 
 template<typename DS>
@@ -279,8 +270,8 @@ bool testSplit(std::shared_ptr<K3::Engine> engine)
             return false;
         }
         else {
-            const DS& l = std::get<0>(*remainders);
-            const DS& r = std::get<1>(*remainders);
+            DS& l = std::get<0>(*remainders);
+            DS& r = std::get<1>(*remainders);
             return (sizeDS(l) == 0 && sizeDS(r) == 0);
         }
     }
