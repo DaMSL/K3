@@ -63,15 +63,4 @@ namespace K3
       return file_id;
   }
 
-  Identifier copyFile(Engine * engine, const Identifier& old_id)
-  {
-      Identifier new_id = generateCollectionFilename(engine);
-      openCollectionFile(engine, new_id, IOMode::Write);
-      iterateFile_noCopy<Value>(engine,
-              [engine, &new_id](Value v) {
-                  writeExternal(engine, new_id, v);
-              }, old_id);
-      engine->close(new_id);
-      return new_id;
-  }
 }

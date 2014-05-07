@@ -33,6 +33,7 @@ namespace K3
   {
       engine->doWriteExternal(file_id, BoostSerializer::pack(val));
   }
+
   template<typename Elem, typename AccumT>
   AccumT foldOpenFile(Engine * engine, std::function<AccumT(AccumT, Elem)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
   {
@@ -55,8 +56,6 @@ namespace K3
     engine->close(file_id);
     return result;
   }
-
-  string copyFile(Engine * engine, const string& old_id);
 
   template<typename Iterator>
   Identifier initialFile(Engine* engine, Iterator start, Iterator finish)
@@ -103,10 +102,23 @@ namespace K3
       engine->close(file_id);
   }
 
+  template<typename Elem>
+  Identifier copyFile(Engine * engine, const Identifier& old_id)
+  {
+      Identifier new_id = generateCollectionFilename(engine);
+      openCollectionFile(engine, new_id, IOMode::Write);
+      iterateFile_noCopy<Elem>(engine,
+              [engine, &new_id](Elem v) {
+                  writeExternal(engine, new_id, v);
+              }, old_id);
+      engine->close(new_id);
+      return new_id;
+  }
+
   template<typename Elem, typename Output>
   Identifier mapFile(Engine * engine, std::function<Output(Elem)> function, const Identifier& file_ds)
   {
-      Identifier tmp_ds = copyFile(engine, file_ds);
+      Identifier tmp_ds = copyFile<Elem>(engine, file_ds);
       Identifier new_id = generateCollectionFilename(engine);
       openCollectionFile(engine, new_id, IOMode::Write);
       iterateFile_noCopy<Elem>(engine,
@@ -119,7 +131,7 @@ namespace K3
   template<typename Elem>
   void mapFile_(Engine * engine, std::function<void(Elem)> function, const Identifier& file_ds)
   {
-      Identifier tmp_ds = copyFile(engine, file_ds);
+      Identifier tmp_ds = copyFile<Elem>(engine, file_ds);
       iterateFile_noCopy<Elem>(engine, [engine, &function](Elem val) {
                   function(val);
               }, tmp_ds);
@@ -128,7 +140,7 @@ namespace K3
   template<typename Elem>
   Identifier filterFile(Engine * engine, std::function<bool(Elem)> predicate, const Identifier& old_ds)
   {
-      Identifier tmp_ds = copyFile(engine, old_ds);
+      Identifier tmp_ds = copyFile<Elem>(engine, old_ds);
       Identifier new_id = generateCollectionFilename(engine);
       openCollectionFile(engine, new_id, IOMode::Write);
       iterateFile_noCopy<Elem>(engine,
@@ -195,7 +207,7 @@ namespace K3
   Identifier combineFile(Engine * engine, const Identifier& self, const Identifier& values)
   {
       // TODO Can I get away without unpacking and packing the values again here?
-      Identifier new_id = copyFile(engine, self);
+      Identifier new_id = copyFile<Elem>(engine, self);
       openCollectionFile(engine, new_id, IOMode::Append);
       iterateFile_noCopy<Elem>(engine,
               [engine, &new_id](Elem v) {
@@ -231,9 +243,9 @@ namespace K3
   {
       protected:
       Engine * engine;
-      Identifier file_id;
 
       public:
+      Identifier file_id;
       typedef T Elem;
 
       FileDS(Engine * eng)
@@ -246,7 +258,7 @@ namespace K3
       { }
 
       FileDS(const FileDS& other)
-          : engine(other.engine), file_id(copyFile(other.engine, other.file_id))
+          : engine(other.engine), file_id(copyFile<Elem>(other.engine, other.file_id))
       { }
 
       FileDS(FileDS && other)
@@ -320,7 +332,7 @@ namespace K3
 
       FileDS& operator=(const FileDS& other)
       {
-          file_id = copyFile(engine, other.file_id);
+          file_id = copyFile<Elem>(engine, other.file_id);
       }
 
       FileDS& operator=(FileDS && other)
