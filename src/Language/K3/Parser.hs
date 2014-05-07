@@ -296,7 +296,7 @@ singleComment = (mkComment False
                  <*> PP.getPosition) <?> "single line comment"
 
 comment :: K3Parser [SyntaxAnnotation]
-comment = many (choice [try multiComment, singleComment])
+comment = many (choice [try multiComment, try singleComment])
 
 -- | Helper to attach comment annotations
 (//) :: (a -> SyntaxAnnotation -> a) -> [SyntaxAnnotation] -> a -> a

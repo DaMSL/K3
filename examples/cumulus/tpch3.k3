@@ -17046,6 +17046,6 @@ _r8_:real, _r9_:string, _r10_:string, _r11_:int, _r12_:int, _r13_:int,
 _r14_:string, _r15_:string, _r16_:string }, _r4_:option {
 _r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:int, _r6_:string, _r7_:string,
 _r8_:int, _r9_:string }
-} = file "tpch.csv" k3
+} = file "tpch3.csv" k3
 feed s1 |> switch_main
 

@@ -79,10 +79,11 @@ data PrintConfig = PrintConfig {
                    , printQualifiers    :: Bool
                    , printComplex       :: Bool -- Don't print with simple symbols
                                                 -- sets {}, seq [], collections {||}
+                   , convertToTuples    :: Bool -- Convert i, _r1..._rn, key, val records to tuples
                    } deriving (Eq, Read, Show)
 
 defaultPrintConfig :: PrintConfig
-defaultPrintConfig  = PrintConfig True True True True True True True True True True True True
+defaultPrintConfig  = PrintConfig True True True True True True True True True True True True True
 
 tersePrintConfig :: PrintConfig
 tersePrintConfig = defaultPrintConfig {printNamespace=False, 

@@ -28,6 +28,8 @@ import Language.K3.TypeSystem.Data.Types
 import Language.K3.TypeSystem.Data.ConstraintSet
 import Language.K3.TypeSystem.Manifestation.Data
 
+-- | A graph containing a set of equivalent type variables at each vertex, and an edge from
+-- supertypes to subtypes.
 type ManifestGraph = G.Graph (S.Set UID) (BoundType, K3 Type, K3 Type)
 
 -- | Construct a ManifestGraph from the result of typechecking.
@@ -41,35 +43,58 @@ fromTypecheckResult result = do
 
     let narrowedConstraintMap = narrowAndReduce tVarMap (indexBoundingConstraintsByUVar constraintSet)
     let consolidatedVertices = attachPayload boundsMap narrowedConstraintMap
-    let consolidatedEdges = S.toList . S.unions $ M.elems narrowedConstraintMap
+    let consolidatedEdges = map swap . S.toList . S.unions $ M.elems narrowedConstraintMap
 
     return $ G.fromVerticesEdges consolidatedVertices consolidatedEdges
   where
+    -- | Construct the payload for each set of equivalent type variables.
     attachPayload bm ncm =
         [ (u, (LowerBound, lb, ub))
         | u <- M.keys ncm
         , let Just (lb, ub) = M.lookup (S.findMin u) bm
         ]
 
+-- | Given a constraint set and a set of UIDs of variables to care about, narrow the constraint set
+-- down to only those variables, and reduce the constraints on those variables to only other
+-- variables in the set.
 narrowAndReduce :: M.Map UID AnyTVar -> M.Map UVar (S.Set Constraint)
                 -> M.Map (S.Set UID) (S.Set (S.Set UID, S.Set UID))
 narrowAndReduce tVarMap cm = M.fromList
         [ (uset, ncs)
         | (atvar, uset) <- M.toList reverseMap
         , let (Just wcs) = M.lookup (fromJust $ onlyUVar atvar) cm
-        , let ncs = S.fromList . catMaybes $ map sanitizeIntermediateConstraint (S.toList wcs)
+        , let ncs = S.fromList . catMaybes $ map sanitizeConstraint (S.toList wcs)
         ]
   where
     -- | A reverse mapping, from basic IDs to UIDs, for all the UIDs we care about.
     reverseMap :: M.Map AnyTVar (S.Set UID)
     reverseMap = collapseReverseMap tVarMap
 
+    -- | A generic map reversal function -- Turn a map from keys to values into a map from sets of
+    -- values sharing a common key, to that common key.
     collapseReverseMap :: (Ord k, Ord v) => M.Map k v -> M.Map v (S.Set k)
     collapseReverseMap = M.fromListWith S.union . map (fmap S.singleton . swap) . M.toList
 
-    sanitizeIntermediateConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
-    sanitizeIntermediateConstraint (IntermediateConstraint (CRight u) (CRight v))
+    -- | Turn a constraint into a pair of UID sets. Nothing for constraints we don't care about.
+    sanitizeConstraint :: Constraint -> Maybe (S.Set UID, S.Set UID)
+    sanitizeConstraint (IntermediateConstraint (CRight u) (CRight v))
         | Just uUID <- M.lookup (someVar u) reverseMap
         , Just vUID <- M.lookup (someVar v) reverseMap = Just (uUID, vUID)
         | otherwise = Nothing
-    sanitizeIntermediateConstraint _ = Nothing
+    sanitizeConstraint _ = Nothing
+
+-- | Compute the preferred bound type for each variable occurring in a constraint set, based on its
+-- appearance in positions of positive and negative polarities.
+deducePolarity :: S.Set (AnyTVar, ShallowType) -> S.Set (Variance, Variance)
+deducePolarity = S.unions . S.toList . S.map (uncurry functionClause)
+  where
+    functionClause :: AnyTVar -> ShallowType -> S.Set (Variance, Variance)
+    functionClause x (SFunction y z) =
+        S.fromList [(Covariant x, Contravariant $ someVar y), (Covariant x, Covariant $ someVar z)]
+    functionClause _ _ = S.empty
+
+data Variance
+    = Invariant BoundType
+    | Covariant AnyTVar
+    | Contravariant AnyTVar
+  deriving (Eq, Ord, Show)
