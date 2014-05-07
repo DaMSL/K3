@@ -2,7 +2,7 @@
 #include <Engine.hpp>
 #include <Dispatch.hpp>
 #include <MessageProcessor.hpp>
-#include <dataspace/StlDS.cpp>
+#include <dataspace/StlDS.hpp>
 #include <Serialization.hpp>
 #include <Collections.hpp>
 
@@ -32,13 +32,6 @@ using std::endl;
 using std::bind;
 using std::string;
 using std::shared_ptr;
-
-// List Dataspace class
-template <typename Elem> 
-class ListDS : public K3::StlDS<Elem, std::set>{
-    public:
-        ListDS(K3::Engine * e) : K3::StlDS<Elem,std::set>(e) {}  
-};
 
 // Int collections
 typedef K3::Collection<ListDS,int> int_c;
@@ -158,7 +151,7 @@ FACT("Collection send network mode") {
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();
 
- t service_threads->join_all();
+  service_threads->join_all();
   service_threads->remove_thread(t1.get());
   service_threads->remove_thread(t2.get());
 
