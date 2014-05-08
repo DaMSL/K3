@@ -524,7 +524,7 @@ expression e_ = traceExpression $ do
             insertE i entry
             sV <- expression s
             void $ lookupVQ i >>= \case
-              (iV, MemMut) -> replaceProxyPath pp targetV iV (\_ newPathV -> return newPathV) 
+              (iV, MemMut) -> replaceProxyPath pp targetV (VOption (Just iV, MemMut)) (\_ newPathV -> return newPathV)
               _            -> return () -- Skip writeback for immutable values.
             removeE i sV
 
@@ -568,7 +568,10 @@ expression e_ = traceExpression $ do
             
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
 
-        (b, v) -> throwE $ RunTimeTypeError $ "Bind Mis-Match: value is " ++ showPC (pc {convertToTuples=False}) v ++ " but bind is " ++ show b
+        (binder, binderV) ->
+          throwE $ RunTimeTypeError $
+            "Bind Mis-Match: value is " ++ showPC (pc {convertToTuples=False}) binderV
+                                        ++ " but bind is " ++ show binder
 
       where 
         bindAndRefresh bp bv mems = do
