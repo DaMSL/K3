@@ -4,7 +4,8 @@
 --   This is used by the interpreter to ensure consistent modification
 --   of alias variables following the interpretation of a bind expression.
 module Language.K3.Transform.Interpreter.BindAlias (
-  labelBindAliases
+    labelBindAliases
+  , labelBindAliasesExpr
 )
 where
 
@@ -31,12 +32,12 @@ labelBindAliases prog = snd $ labelDecl 0 prog
     labelDecl :: Int -> K3 Declaration -> (Int, K3 Declaration)
     labelDecl cnt d@(tag &&& children -> (DGlobal n t eOpt, ch)) = 
       withDeclChildren cnt ch (\(ncnt,nch) -> 
-        let (ncnt2, neOpt) = maybe (ncnt, Nothing) (fmap Just . labelExpr ncnt) eOpt
+        let (ncnt2, neOpt) = maybe (ncnt, Nothing) (fmap Just . labelBindAliasesExpr ncnt) eOpt
         in (ncnt2, Node (DGlobal n t neOpt :@: annotations d) nch))
 
     labelDecl cnt d@(tag &&& children -> (DTrigger n t e, ch)) =
       withDeclChildren cnt ch (\(ncnt,nch) ->
-        let (ncnt2, ne) = labelExpr ncnt e
+        let (ncnt2, ne) = labelBindAliasesExpr ncnt e
         in (ncnt2, Node (DTrigger n t ne :@: annotations d) nch))
 
     labelDecl cnt d@(tag &&& children -> (DAnnotation n tVars annMems, ch)) =
@@ -48,21 +49,22 @@ labelBindAliases prog = snd $ labelDecl 0 prog
 
     labelAnnMem :: Int -> AnnMemDecl -> (Int, AnnMemDecl)
     labelAnnMem cnt (Lifted p n t eOpt uid) =
-      let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelExpr cnt) eOpt
+      let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
       in (ncnt, Lifted p n t neOpt uid)
     
     labelAnnMem cnt (Attribute p n t eOpt uid) =
-      let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelExpr cnt) eOpt
+      let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
       in (ncnt, Attribute p n t neOpt uid)
 
     labelAnnMem cnt annMem = (cnt, annMem)
 
-    labelProxyPath (i, e) = annotateAliases i (exprUIDs $ extractReturns e) e
-      where exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
-            asUID (EUID x) = [x]
-            asUID _        = []
+    threadCnt f cnt acc c = acc++[f (maxCnt cnt $ map fst acc) c]
+    maxCnt i l            = if l == [] then i else last l
 
-    labelExpr :: Int -> K3 Expression -> (Int, K3 Expression)
+
+labelBindAliasesExpr :: Int -> K3 Expression -> (Int, K3 Expression)
+labelBindAliasesExpr counter expr = labelExpr counter expr
+  where 
     labelExpr cnt e@(tag &&& children -> (EBindAs b, [s, t])) =
       (ncnt2, Node (EBindAs b :@: annotations e) [ns, nt])
       where (ncnt, ns)     = labelProxyPath $ labelExpr cnt s
@@ -77,7 +79,12 @@ labelBindAliases prog = snd $ labelDecl 0 prog
     -- Recur through all other operations.
     labelExpr cnt (Node t cs) =
       (\(x,y) -> (maxCnt cnt x, Node t y)) $ unzip $ foldl (threadCnt labelExpr cnt) [] cs
-        
+    
+    labelProxyPath (i, e) = annotateAliases i (exprUIDs $ extractReturns e) e
+      where exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
+            asUID (EUID x) = [x]
+            asUID _        = []
+
     threadCnt f cnt acc c = acc++[f (maxCnt cnt $ map fst acc) c]
     maxCnt i l          = if l == [] then i else last l
 
