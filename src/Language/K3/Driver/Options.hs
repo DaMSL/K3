@@ -20,11 +20,12 @@ import Language.K3.Utils.Pretty (
 
 -- | Program Options.
 data Options = Options {
-        mode      :: Mode,
-        inform    :: InfoSpec,
-        paths     :: PathOptions,
-        input     :: FilePath,
-        preLoad   :: [FilePath] -- files to load before input
+      mode      :: Mode
+    , inform    :: InfoSpec
+    , paths     :: PathOptions
+    , input     :: FilePath
+    , preLoad   :: [FilePath] -- files to load before input
+    , noFeed    :: Bool 
     }
   deriving (Eq, Read, Show)
 
@@ -43,7 +44,6 @@ data CompileOptions
                      , programName  :: String
                      , outputFile   :: Maybe FilePath
                      , buildDir     :: Maybe FilePath
-                     , plainCompile :: Bool 
                      , ccCmd        :: CPPCompiler }
   deriving (Eq, Read, Show)
 
@@ -61,8 +61,7 @@ data InterpretOptions
 
 -- | Pretty-printing options.
 data PrintOptions
-    = PrintOptions { printMode  :: PrintMode
-                   , plainPrint :: Bool }
+    = PrintOptions { printMode  :: PrintMode }
   deriving (Eq, Read, Show)
 
 data PrintMode
@@ -72,13 +71,12 @@ data PrintMode
 
 -- | Typechecking options
 data TypecheckOptions 
-    = TypecheckOptions { plainTypecheck :: Bool }
+    = TypecheckOptions
   deriving (Eq, Read, Show)
 
 -- | Analyze Options.
 data AnalyzeOptions
-    = AnalyzeOptions { plainAnalysis :: Bool
-                     , analyzeMode   :: AnalyzeMode }
+    = AnalyzeOptions { analyzeMode :: AnalyzeMode }
   deriving (Eq, Read, Show)
 
 data AnalyzeMode
@@ -111,14 +109,6 @@ data Verbosity
   deriving (Enum, Eq, Read, Show)
 
 
--- | Options common to multiple modes, but undesirable at the top-level.
-plainProgramOpt :: Parser Bool
-plainProgramOpt = switch (
-       long "plain"
-    <> help "Process a plain program, without running the program builder."
-    <> value False )
-
-
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
 modeOptions = subparser (
@@ -141,9 +131,8 @@ compileOptions = mkCompile <$> outLanguageOpt
                            <*> progNameOpt 
                            <*> outputFileOpt
                            <*> buildDirOpt
-                           <*> plainProgramOpt
                            <*> ccCmdOpt
-  where mkCompile l n o b p c = Compile $ CompileOptions l n o b p c
+  where mkCompile l n o b c = Compile $ CompileOptions l n o b c
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -273,8 +262,8 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 -- | Printing options
 printOptions :: Parser Mode
-printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt) <*> plainProgramOpt
-  where mkPrint m p = Print $ PrintOptions m p
+printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt)
+  where mkPrint m = Print $ PrintOptions m
 
 astPrintOpt :: Parser PrintMode
 astPrintOpt = flag' PrintAST (   long "ast"
@@ -286,12 +275,11 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
 
 -- | Typecheck options
 typecheckOptions :: Parser Mode
-typecheckOptions = Typecheck <$> TypecheckOptions <$> plainProgramOpt
+typecheckOptions = pure $ Typecheck TypecheckOptions
 
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (AnalyzeOptions <$> plainProgramOpt
-                                             <*> analysisMode)
+analyzeOptions = Analyze . AnalyzeOptions <$> analysisMode
 
 analysisMode :: Parser AnalyzeMode
 analysisMode =    conflictsOpt 
@@ -366,6 +354,12 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
         | n > 2 = 2
         | otherwise = n
 
+noFeedOpt :: Parser Bool
+noFeedOpt = switch (
+       long "nofeed"
+    <> help "Process a program, ignoring data feeds."
+    <> value False )
+
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
         metavar "FILES"
@@ -376,8 +370,12 @@ inputOptions = fileOrStdin <$> (many $ argument str (
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = mkOptions <$> modeOptions <*> informOptions <*> pathOptions <*> inputOptions
-    where mkOptions m i p is = Options m i p (last is) (take (length is - 1) is)
+programOptions = mkOptions <$> modeOptions
+                           <*> informOptions
+                           <*> pathOptions
+                           <*> noFeedOpt
+                           <*> inputOptions
+    where mkOptions m i p nf is = Options m i p (last is) (take (length is - 1) is) nf
 
 {- Instance definitions -}
 

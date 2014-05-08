@@ -22,7 +22,6 @@ import Language.K3.TypeSystem (typecheckProgram)
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
@@ -43,10 +42,6 @@ outputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath
 outputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
     Just path -> Right $ (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
-
-parseStage :: CompilerStage () (K3 Declaration)
-parseStage opts copts _ = prefixError "Parse error:" $
-  parseK3Input (plainCompile copts) (includes $ paths opts) (input opts)
 
 typecheckStage :: CompilerStage (K3 Declaration) (K3 Declaration)
 typecheckStage _ _ prog = prefixError "Type error:" $ return $
@@ -75,10 +70,9 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
       writeFile file (displayS (renderPretty 1.0 100 doc) "")
 
 -- Generate C++ code for a given K3 program.
-cppSourceStage :: Options -> CompileOptions -> IO (Either String FilePath)
-cppSourceStage opts copts = do
-    parseStatus <- parseStage opts copts ()
-    tcStatus    <- continue parseStatus $ typecheckStage opts copts
+cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String FilePath)
+cppSourceStage opts copts prog = do
+    tcStatus    <- typecheckStage opts copts prog
     cgStatus    <- continue tcStatus $ cppCodegenStage opts copts
     continue cgStatus $ const $ return outFile
 
@@ -106,8 +100,8 @@ cppBinaryStage _ copts sourceFile = prefixError "Binary compilation error:" $
                   Clang -> "clang++"
 
 -- Generate C++ code for a given K3 program.
-compile :: Options -> CompileOptions -> IO ()
-compile opts copts = do
-    sourceStatus <- cppSourceStage opts copts
+compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
+compile opts copts prog = do
+    sourceStatus <- cppSourceStage opts copts prog
     binStatus    <- continue sourceStatus $ cppBinaryStage opts copts
     finalize (const $ "Created binary file: " ++ (programName copts)) binStatus

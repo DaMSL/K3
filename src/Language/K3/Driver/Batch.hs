@@ -9,6 +9,7 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
 
+import Data.List
 import Data.List.Split
 import System.Console.Haskeline
 
@@ -40,18 +41,14 @@ setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDe
 
 setDefaultRole d _ _ = d
 
-runBatch :: Options -> InterpretOptions -> (K3 Declaration -> K3 Declaration) -> IO ()
-runBatch progOpts interpOpts@(Batch asNetwork _ _ parallel printConf) addPreloadVals = do
-    p <- parseK3Input False (includes $ paths progOpts) (input progOpts)
-    case p of
-        Left e  -> putStrLn e
-        Right q -> let q' = addPreloadVals q in
-                   if not asNetwork then do
-                      pStatus <- runProgram printConf parallel (sysEnv interpOpts) q'
-                      void $ either (\err -> putStrLn $ message err) return pStatus
-                   else do
-                      nodeStatuses <- runNetwork printConf parallel (sysEnv interpOpts) q'
-                      runInputT defaultSettings $ networkConsole defaultPrompt nodeStatuses
+runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
+runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf) prog =
+   if not asNetwork then do
+      pStatus <- runProgram printConf parallel (sysEnv interpOpts) prog
+      void $ either (\err -> putStrLn $ message err) return pStatus
+   else do
+      nodeStatuses <- runNetwork printConf parallel (sysEnv interpOpts) prog
+      runInputT defaultSettings $ networkConsole defaultPrompt nodeStatuses
 
 runBatch _ _ _ = error "Invalid batch processing mode"
 
@@ -77,7 +74,7 @@ networkConsole prompt networkStatus = do
     runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
     runCmd "envs"  _ = mapM_ (wrapError outputEnv) networkStatus >> continue
     runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNode) networkStatus >> stop
-    runCmd _ _       = stop
+    runCmd cmd args  = (outputStrLn $ "Invalid command: " ++ (intercalate " " $ cmd:args)) >> continue
 
     continue = return True
     stop     = return False
