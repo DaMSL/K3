@@ -337,11 +337,12 @@ runNetwork pc isPar systemEnv prog =
 runTrigger :: Address -> IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
 runTrigger addr result nm arg = \case
     (VTrigger (_, Just f, _)) -> do
-        result@((v,st),log)  <- runInterpretation' (getResultState result) (f arg)
-        -- Refresh the collection caches in our environment so we can see the full picture 
-        st' <- liftIO $ syncIState st
+        -- Interpret the trigger function and refresh any cached collections in the environment.
+        ((v,st),lg) <- runInterpretation' (getResultState result) (f arg)
+        st'         <- liftIO $ syncIState st
         logTriggerM addr nm arg st' (Just v) "AFTER"
-        return ((v,st'),log)
+        return ((v,st'),lg)
+    
     (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ nm) Nothing
     _                      -> return $ tError ("Invalid trigger or sink value for " ++ nm) Nothing
 

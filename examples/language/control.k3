@@ -20,6 +20,8 @@ declare case_writeback         : mut option mut int = Some mut 5
 declare dynamic_case_valid     : mut option bool    = None immut
 declare fun_case_valid         : mut option bool    = None immut
 
+declare assign_nested_bind : mut int = 0
+
 trigger t : int = \x -> (
   // Let-in and if-then-else expressions.
   (let g = \i -> 2 * i in
@@ -29,9 +31,9 @@ trigger t : int = \x -> (
 
   // Bind-as, including variants with and without write-back.
   // Indirection
-  bind a as ind y in (
+  (bind a as ind y in (
     y = x
-  );
+  ));
 
   // Tuple
   bind b as (u,v) in (
@@ -54,28 +56,29 @@ trigger t : int = \x -> (
   d.d_b.db_d = x;
 
   // Dynamic bind source
-  (bind (if true then a else a2) as ind y in (
+  bind (if true then a else a2) as ind y in (
     y = x
-  )); // Leaves a as ind x
+  ); // Leaves a as ind x
 
   // Function-derived indirection as bind source
-  (bind f() as ind z in (
+  bind f() as ind z in (
     z = 200
-  )); // Leaves a as ind 200
+  ); // Leaves a as ind 200
 
   // Function-derived value as bind source  
-  (bind g() as (m, n) in (
+  bind g() as (m, n) in (
     m = 576;
     n = true
-  )); // Leaves b unchanged
+  ); // Leaves b unchanged
 
   // Nested bind-as
-  /*
-  (bind (bind a as ind y in ind 1) as ind z in (
-    z = (bind a as ind u in 3)
-  )); // Leaves a as ind 3
-  */
+  (bind (bind a as ind y in a) as ind z in (
+    z = (bind a as ind u in x + u)
+  )); // Leaves a as ind 200
   
+  // Stash indirection value for testing.
+  bind a as ind a_binding in assign_nested_bind = a_binding;
+
   // Case-of, including variants with and without write-back.
   case test_case_valid of 
     { Some j -> assign_in_case_valid = j }
@@ -97,10 +100,10 @@ trigger t : int = \x -> (
   // Function-derived value as case-of source
   case h () of 
     { Some j -> fun_case_valid = Some true  }
-    { None   -> fun_case_valid = Some false }
+    { None   -> fun_case_valid = Some false };
 
-  /*
-  // Nested case-of 
+  // Nested case-of
+  // Leaves test_nested_case_inner as Some 110 
   case 
     (case test_nested_case_inner of
        { Some j -> test_nested_case_inner }
@@ -108,10 +111,9 @@ trigger t : int = \x -> (
   of
     { Some k -> 
         k = case test_nested_case_inner of
-              { Some l -> l }
-              { None   -> x } }
+              { Some l -> l + x }
+              { None   -> x     } }
     { None -> () }
-  */
 
   )
 

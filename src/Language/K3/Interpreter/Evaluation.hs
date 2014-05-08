@@ -21,7 +21,7 @@ import Data.List
 import Data.Maybe
 import Data.Word (Word8)
 
--- import Debug.Trace
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
@@ -318,9 +318,6 @@ expression e_ = traceExpression $ do
     isBindAliasAnnotation (EAnalysis (BindAliasExtension _)) = True
     isBindAliasAnnotation _                                  = False
 
-    withProxyFrame :: Interpretation a -> Interpretation a
-    withProxyFrame eval = pushProxyFrame >> eval >>= \r -> popProxyFrame >> return r
-
     refreshEntry :: Identifier -> IEnvEntry Value -> Value -> Interpretation ()
     refreshEntry n (IVal _) v  = replaceE n (IVal v)
     refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
@@ -341,7 +338,7 @@ expression e_ = traceExpression $ do
                 liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
               _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
 
-        _ -> return () -- Skip writeback to an immutable value.
+        (iV, _) -> return () -- Skip writeback to an immutable value.
 
     refreshBindings (BTuple ts) proxyPath bindV =
       mapM lookupVQ ts >>= \vqs ->
@@ -490,7 +487,8 @@ expression e_ = traceExpression $ do
       entry <- lookupE i
       case entry of 
         MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const $ return v) >> return v
-        IVal _  -> throwE $ RunTimeInterpretationError "Invalid assignment to an immutable value"
+        IVal _  -> throwE $ RunTimeInterpretationError 
+                          $ "Invalid assignment to an immutable variable: " ++ i
 
     expr (details -> (EAssign _, _, _)) = throwE $ RunTimeTypeError "Invalid Assignment"
 
@@ -511,7 +509,8 @@ expression e_ = traceExpression $ do
 
     -- | Interpretation of Case-Matches.
     -- Case expressions behave like bind-as, i.e., w/ isolated bindings and writeback
-    expr (details -> (ECaseOf i, [e, s, n], _)) = withProxyFrame $ do
+    expr (details -> (ECaseOf i, [e, s, n], _)) = do
+        void $ pushProxyFrame
         targetV <- expression e
         case targetV of 
           VOption (Just v, q) -> do
@@ -520,6 +519,7 @@ expression e_ = traceExpression $ do
               Just ((Temporary pn):t) -> return $ (Temporary pn):t
               _ -> throwE $ RunTimeTypeError "Invalid proxy path in case-of expression"
 
+            void $ popProxyFrame
             entry <- entryOfValueQ v q
             insertE i entry
             sV <- expression s
@@ -528,7 +528,7 @@ expression e_ = traceExpression $ do
               _            -> return () -- Skip writeback for immutable values.
             removeE i sV
 
-          VOption (Nothing, _) -> expression n
+          VOption (Nothing, _) -> popProxyFrame >> expression n
           _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
     
     expr (details -> (ECaseOf _, _, _)) = throwE $ RunTimeTypeError "Invalid Case-Match"
@@ -536,7 +536,8 @@ expression e_ = traceExpression $ do
     -- | Interpretation of Binding.
     -- TODO: For now, all bindings are added in mutable fashion. This should be extracted from
     -- the type inferred for the bind target expression.
-    expr (details -> (EBindAs b, [e, f], _)) = withProxyFrame $ do
+    expr (details -> (EBindAs b, [e, f], _)) = do
+      void $ pushProxyFrame
       pc <- getPrintConfig <$> get
       bv <- expression e
       bp <- getProxyPath >>= \case
@@ -544,12 +545,13 @@ expression e_ = traceExpression $ do
         Just ((Temporary n):t) -> return $ (Temporary n):t
         _ -> throwE $ RunTimeTypeError "Invalid bind path in bind-as expression"
 
+      void $ popProxyFrame
       case (b, bv) of
         (BIndirection i, VIndirection (r,q,_)) -> do
           entry <- liftIO (readMVar r) >>= flip entryOfValueQ q
-          void $ insertE i entry
-          fV <- expression f
-          void $ refreshBindings b bp bv
+          void  $  insertE i entry
+          fV    <- expression f
+          void  $  refreshBindings b bp bv
           removeE i fV
 
         (BTuple ts, VTuple vs) -> do
@@ -576,8 +578,8 @@ expression e_ = traceExpression $ do
       where 
         bindAndRefresh bp bv mems = do
           bindings <- bindMembers mems
-          fV <- expression f
-          void $ refreshBindings b bp bv
+          fV       <- expression f
+          void     $  refreshBindings b bp bv
           unbindMembers bindings >> return fV
 
         joinByKeys joinF keys l r =

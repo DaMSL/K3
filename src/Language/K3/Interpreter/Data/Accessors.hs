@@ -26,7 +26,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Runtime.Engine
 
-import Language.K3.Utils.Pretty (PrintConfig(..), defaultPrintConfig)
+import Language.K3.Utils.Pretty
 
 {- Constants and simple value constructors. -}
 vunit :: Value
@@ -458,15 +458,17 @@ appendAlias :: ProxyStep -> Interpretation ()
 appendAlias n = modifyProxyStack_ pushProxyAlias
   where pushProxyAlias [] = return []
         pushProxyAlias ps = case last ps of
-          Nothing -> return $ init ps ++ [Just [n]]
-          Just _  -> throwE $ RunTimeInterpretationError "Duplicate bind alias"
+          Nothing   -> return $ init ps ++ [Just [n]]
+          Just path -> throwE $ RunTimeInterpretationError
+                              $ "Duplicate bind alias: " ++ pretty n ++ ", " ++ pretty path
 
 appendAliasExtension :: Identifier -> Interpretation ()
 appendAliasExtension n = modifyProxyStack_ pushProxyAliasExtension
   where pushProxyAliasExtension [] = return []
         pushProxyAliasExtension ps = case last ps of
           Just proxypath -> return $ init ps ++ [Just $ proxypath++[RecordField n]]
-          Nothing       -> throwE $ RunTimeInterpretationError "No bind alias found for extension"
+          Nothing       -> throwE $ RunTimeInterpretationError
+                                  $ "No bind alias found for extension: " ++ n
 
 -- | Tracing helpers
 pushTraceUID :: (Span, UID) -> Interpretation ()
