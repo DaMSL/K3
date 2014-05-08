@@ -60,7 +60,8 @@ data InterpretOptions
             , sysEnv      :: SystemEnvironment
             , asExpr      :: Bool
             , isPar       :: Bool
-            , printConfig :: PrintConfig}
+            , printConfig :: PrintConfig
+            , noConsole   :: Bool }
     | Interactive
   deriving (Eq, Read, Show)
 
@@ -242,6 +243,7 @@ batchOptions = flag' Batch (
                                <*> elvlOpt
                                <*> parOpt
                                <*> printConfigOpt
+                               <*> consoleOpt
 
 -- | Expression-Level flag.
 elvlOpt :: Parser Bool
@@ -264,6 +266,13 @@ parOpt :: Parser Bool
 parOpt = switch (
         long "parallel"
      <> help "Run the Parallel Engine"
+    )
+
+consoleOpt :: Parser Bool
+consoleOpt = switch (
+         long "console"
+      <> help "Toggle the interpreter console"
+      <> value True
     )
 
 data InterpPrintVerbosity = PrintVerbose | PrintTerse | PrintTerseSimple
@@ -418,12 +427,13 @@ instance Pretty Mode where
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr par printOpts) =
+  prettyLines (Batch net env expr par printOpts console) =
     ["Batch"] ++ (indent 3 $ ["Network: " ++ show net]
                           ++ prettySysEnv env 
                           ++ ["Expression: " ++ show expr]
-                          ++ ["Parallel: " ++ show par]
-                          ++ ["Print: " ++ show printOpts])
+                          ++ ["Parallel: "   ++ show par]
+                          ++ ["Print: "      ++ show printOpts]
+                          ++ ["Console: "    ++ show console])
   
   prettyLines v = [show v]
 
