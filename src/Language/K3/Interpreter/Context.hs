@@ -30,8 +30,7 @@ module Language.K3.Interpreter.Context (
 ) where
 
 import Control.Arrow hiding ( (+++) )
-import Control.Concurrent (ThreadId)
-import Control.Concurrent.MVar
+import Control.Concurrent
 import Control.Monad.Reader
 
 import Data.Function
@@ -280,15 +279,20 @@ runExpression_ e = runExpression e >>= putStrLn . show
 
 {- Distributed program execution -}
 
+-- | Network peer information for a K3 engine running in network mode.
+type NetworkPeer = (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)
+
 -- | Single-machine system simulation.
-runProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration -> IO (Either EngineError ())
+runProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
+           -> IO (Either EngineError [NetworkPeer])
 runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
     Left err   -> return $ Left err
     Right sEnv -> do
       trigs   <- return $ getTriggerIds tProg
       engine  <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
       msgProc <- virtualizedProcessor pc sEnv
-      flip runEngineM engine $ runEngine pc msgProc tProg
+      eStatus <- runEngineM (runEngine pc msgProc tProg) engine
+      either (return . Left) (const $ peerStatuses engine msgProc) eStatus
 
   where buildStaticEnv = do
           trigs <- return $ getTriggerIds tProg
@@ -298,9 +302,11 @@ runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
 
         tProg = labelBindAliases prog
 
+        peerStatuses engine msgProc = do
+          tid     <- myThreadId
+          lastRes <- readMVar (snapshot msgProc)
+          return . Right $ map (\(addr, _) -> (addr, engine, tid, msgProc)) lastRes
 
--- | Network peer information for a K3 engine running in network mode.
-type NetworkPeer = (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
