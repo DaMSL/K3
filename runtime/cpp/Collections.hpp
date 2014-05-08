@@ -44,7 +44,7 @@ namespace K3 {
       std::shared_ptr<E> peek() { return D<E>::peek(); }
 
       void insert(const E& elem) { D<E>::insert(elem); }
-      void insert(E&& elem) { D<E>::insert(elem); }
+      //void insert(E&& elem) { D<E>::insert(elem); }
 
       void erase(const E& elem)  { D<E>::erase(elem); }
 
@@ -159,6 +159,19 @@ namespace K3 {
         return Seq<E>(s);
 
       }
+
+      template <class K, class Z>
+      Seq<std::tuple<K, Z>> group_by 
+      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+        Collection<ListDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        return Seq<std::tuple<K,Z>>(s);
+      }
+
+      template <class T>
+      Seq<T> ext(std::function<Collection<ListDS, T>(E)> expand) {
+        Collection<ListDS, T> result = super::ext(expand);
+        return Seq<T>(result);
+      }
   };
 
   template <typename E>
@@ -192,6 +205,19 @@ namespace K3 {
 
       Set<E> filter(std::function<bool(E)> f) {
        return Set<E>(super::filter(f));
+      }
+
+      template <class K, class Z>
+      Set<std::tuple<K, Z>> group_by 
+      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+        Collection<SetDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        return Set<std::tuple<K,Z>>(s);
+      }
+
+      template <class T>
+      Set<T> ext(std::function<Collection<SetDS, T>(E)> expand) {
+        Collection<SetDS, T> result = super::ext(expand);
+        return Set<T>(result);
       }
 
       bool member(E e) {
@@ -250,6 +276,19 @@ namespace K3 {
 
       Sorted<E> filter(std::function<bool(E)> f) {
        return Sorted<E>(super::filter(f));
+      }
+
+      template <class K, class Z>
+      Sorted<std::tuple<K, Z>> group_by 
+      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+        Collection<SortedDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        return Sorted<std::tuple<K,Z>>(s);
+      }
+
+      template <class T>
+      Sorted<T> ext(std::function<Collection<SortedDS, T>(E)> expand) {
+        Collection<SortedDS, T> result = super::ext(expand);
+        return Sorted<T>(result);
       }
 
       shared_ptr<E> min() { return dataspace::min(); }

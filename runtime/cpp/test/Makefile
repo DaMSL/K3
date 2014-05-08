@@ -7,8 +7,8 @@ K3IN = ../
 BOOSTIN = /usr/local/Cellar/boost/1.55.0/include/
 BOOSTLIB = /usr/local/Cellar/boost/1.55.0/lib/
 
-XUNITIN = ./xunit/xUnit++/
-XUNITLIB = ./xunit/bin/xUnit++/
+XUNITIN = /Users/joshwheeler/software/xunit/xUnit++/
+XUNITLIB = /Users/joshwheeler/software/xunit/bin/xUnit++/
 
 CPPFLAGS = -std=c++11	\
 	   -I$(K3IN)	\

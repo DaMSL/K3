@@ -2,31 +2,31 @@
 
 namespace K3 {
 template <typename Elem>
-class SetDS : public StlDS<Elem, std::set> {
+class SetDS : public StlDS<Elem, std::unordered_set> {
   // Iterator Types
-  typedef typename std::set<Elem>::iterator iterator_type;
-  typedef typename std::set<Elem>::const_iterator const_iterator_type;
+  typedef typename std::unordered_set<Elem>::iterator iterator_type;
+  typedef typename std::unordered_set<Elem>::const_iterator const_iterator_type;
 
   public:
-    SetDS(Engine * eng) : StlDS<Elem, std::set>(eng) {}
+    SetDS(Engine * eng) : StlDS<Elem, std::unordered_set>(eng) {}
     
     template<typename Iterator>
     SetDS(Engine * eng, Iterator start, Iterator finish)
-        : StlDS<Elem,std::set>(eng,start,finish) {}
+        : StlDS<Elem,std::unordered_set>(eng,start,finish) {}
 
-    SetDS(const SetDS& other) : StlDS<Elem,std::set>(other) {}
+    SetDS(const SetDS& other) : StlDS<Elem,std::unordered_set>(other) {}
 
-    SetDS(StlDS<Elem,std::set> other) : StlDS<Elem,std::set>(other) {}
+    SetDS(StlDS<Elem,std::unordered_set> other) : StlDS<Elem,std::unordered_set>(other) {}
 
 
-    SetDS(std::set<Elem> container) : StlDS<Elem, std::set>(container) {}
+    SetDS(std::unordered_set<Elem> container) : StlDS<Elem, std::unordered_set>(container) {}
 
-    typedef StlDS<Elem, std::set> super;
+    typedef StlDS<Elem, std::unordered_set> super;
 
      // Need to convert from StlDS to SetDS
     template<typename NewElem>
     SetDS<NewElem> map(std::function<NewElem(Elem)> f) {
-      StlDS<NewElem, std::set> s = super::map(f);
+      StlDS<NewElem, std::unordered_set> s = super::map(f);
       return SetDS<NewElem>(s);
     }
 

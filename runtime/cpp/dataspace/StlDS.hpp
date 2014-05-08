@@ -51,13 +51,15 @@ class StlDS {
   void erase(const Elem& v) {
     iterator_type it;
     it = std::find(container.begin(), container.end(), v);
-    container.erase(it);
+    if (it != container.end()) {
+      container.erase(it);
+    }
   }
 
   void update(const Elem& v, const Elem& v2) {
     iterator_type it;
     it = std::find(container.begin(), container.end(), v);
-    container.emplace(it, v2);
+    container.insert(it, v2);
     container.erase(it);
   }
 
