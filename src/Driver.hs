@@ -20,66 +20,71 @@ import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
+
 import qualified Language.K3.Compiler.Haskell as HaskellC
-import qualified Language.K3.Compiler.CPP as CPPC
-import qualified Language.K3.Core.Utils as CoreUtils
+import qualified Language.K3.Compiler.CPP     as CPPC
+import qualified Language.K3.Core.Utils       as CoreUtils
 
 import qualified Data.List as L
 
 -- | Mode Dispatch.
 dispatch :: Options -> IO ()
-dispatch op = do
-  putStrLn $ "Mode: "      ++ pretty (mode op)
-  putStrLn $ "Verbosity: " ++ show (verbosity $ inform op)
-  putStrLn $ "Input: "     ++ show (input op)
+dispatch opts = do
+  putStrLn $ "Mode: "      ++ pretty (mode opts)
+  putStrLn $ "Verbosity: " ++ show (verbosity $ inform opts)
+  putStrLn $ "Input: "     ++ show (input opts)
 
-  void $ mapM_ configureByInstruction $ logging $ inform op
+  void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  -- Load files for any global variables
-  preLoadVals <- mapM parsePreloads $ preLoad op
-  putStrLn $ "Pre:" ++ concat (L.intersperse ", " (preLoad op))
-  let addPreloadVals role = CoreUtils.prependToRole role preLoadVals
+  withK3Program $ \prog ->
+    case mode opts of
+      Compile   c -> compile c prog
+      Interpret i -> interpret i prog
+      Print     p -> printer (printMode p) prog
+      Typecheck _ -> typecheck prog
+      Analyze   a -> analyzer (analyzeMode a) prog
 
-  case mode op of
-    Compile   c -> compile c
-    Interpret i -> interpret i addPreloadVals
-    Print     p -> printer k3Program (printOutput p) addPreloadVals
 
-    Typecheck   -> k3Program >>= either parseError (typecheck . addPreloadVals)
-    Analyze   a -> analyzer a
+  where
+    withK3Program f = do
+      parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
+      either parseError (\parsedProg -> prepend parsedProg >>= f) parseResult
+    
+    compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
+      "haskell" -> HaskellC.compile opts cOpts
+      "cpp"     -> CPPC.compile opts cOpts
+      _         -> error $ lang ++ " compilation not supported."
 
-  where compile cOpts@(CompileOptions lang _ _ _) = case map toLower lang of
-          "haskell" -> HaskellC.compile op cOpts
-          "cpp" -> CPPC.compile op cOpts
-          _         -> error $ lang ++ " compilation not supported."
+    -- addF is a function adding code to the main program
+    interpret im@(Batch {}) = runBatch opts im
+    interpret Interactive   = const $ error "Interactive Mode is not yet implemented."
 
-        -- addF is a function adding code to the main program
-        interpret im@(Batch {}) addF = runBatch op im addF
-        interpret Interactive   _    = error "Interactive Mode is not yet implemented."
+    printer PrintAST    = putStrLn . pretty
+    printer PrintSyntax = either syntaxError putStrLn . programS
 
-        printer parse PrintAST addF    = parse >>= either parseError (putStrLn . pretty . addF)
-        printer parse PrintSyntax addF = parse >>= either parseError (printProgram . addF)
-        printProgram        = either syntaxError putStrLn . programS
+    analyzer Conflicts               = putStrLn . pretty . getAllConflicts
+    analyzer Tasks                   = putStrLn . pretty . getAllTasks
+    analyzer ProgramTasks            = putStrLn . show   . getProgramTasks
+    analyzer ProxyPaths              = putStrLn . pretty . labelBindAliases
+    analyzer AnnotationProvidesGraph = putStrLn . show   . providesGraph
+    analyzer FlatAnnotations         = putStrLn . show   . flattenAnnotations 
 
-        analyzer Conflicts    = k3Program >>= either parseError (putStrLn . pretty . getAllConflicts)
-        analyzer Tasks        = k3Program >>= either parseError (putStrLn . pretty . getAllTasks)
-        analyzer ProgramTasks = k3Program >>= either parseError (putStrLn . show . getProgramTasks)
-        analyzer ProxyPaths   = k3Program >>= either parseError (putStrLn . pretty  . labelBindAliases)
+    parseError    s = putStrLn $ "Could not parse input: " ++ s
+    syntaxError   s = putStrLn $ "Could not print program: " ++ s
 
-        analyzer AnnotationProvidesGraph = k3Program >>= either parseError (putStrLn . show . providesGraph)
-        analyzer FlatAnnotations         = k3Program >>= either parseError (putStrLn . show . flattenAnnotations)
+    -- Load files for any global variables
+    prepend prog = do
+      putStrLn $ "Pre:" ++ concat (L.intersperse ", " $ preLoad opts)
+      preloadDecls <- mapM parsePreloads $ preLoad opts
+      return $ CoreUtils.prependToRole prog preloadDecls
 
-        k3Program      = parseK3Input (asIs op) (includes $ paths op) (input op)
-        parseError s   = putStrLn $ "Could not parse input: " ++ s
-        syntaxError s  = putStrLn $ "Could not print program: " ++ s
-
-        parsePreloads :: String -> IO (K3 Declaration)
-        parsePreloads file = do
-          p <- parseK3Input False (includes $ paths op) file
-          case p of
-            Left e  -> error e
-            Right q -> return q
+    parsePreloads :: String -> IO (K3 Declaration)
+    parsePreloads file = do
+      p <- parseK3Input False (includes $ paths opts) file
+      case p of
+        Left e  -> error e
+        Right q -> return q
 
 -- | Top-Level.
 main :: IO ()

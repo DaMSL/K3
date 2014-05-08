@@ -1,0 +1,23 @@
+#!/bin/sh
+# Filename:     /etc/dhcp/dhclient-exit-hooks.d/vdocker-routes
+# Purpose:      Used by dhclient-script to set configure static routes for Docker
+#
+
+
+# Do not update hostname for virtual machine IP assignments
+if [ "$interface" != "vdocker0" ]
+then
+    return
+fi
+
+
+if [ "$reason" != BOUND ] && [ "$reason" != RENEW ] \
+   && [ "$reason" != REBIND ] && [ "$reason" != REBOOT ]
+then
+    return
+fi
+
+echo dhclient-exit-hooks.d/routes: Operation = $reason
+route del -net 192.168.0.0 netmask 255.255.0.0 dev vdocker0
+route add -net 192.168.1.0 netmask 255.255.255.0 dev vdocker0
+echo dhclient-exit-hooks.d/routes: Refreshed routes.

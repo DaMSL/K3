@@ -10,34 +10,29 @@ import Distribution.Version
 import System.Directory
 import System.FilePath
 
+import Language.K3.Core.Annotation
+import Language.K3.Core.Declaration
+
 import qualified Language.K3.Codegen.Haskell as CG
 import Language.K3.TypeSystem
 
-import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
-compile :: Options -> CompileOptions -> IO ()
-compile opts (CompileOptions _ name outOpt buildOpt) = 
-  do
-    prog <- parseK3Input (asIs opts) (includes $ paths opts) (input opts)
-    case prog of 
-      Left e  -> parseError e
-      Right p ->
-
-        let (errs, _, typedP) = typecheckProgram p in
-        if Seq.null errs then 
-          let source = mkSource name typedP in
-          case source of 
-            Left e' -> compileError e'
-            Right s -> case (outOpt, buildOpt) of
-                          (Just outP, Just buildP) -> doStages outP buildP s
-                          (_,_)                    -> outputError
-          
-        else putStrLn $ prettyTCErrors typedP errs
+compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
+compile _ (CompileOptions _ name outOpt buildOpt _ _ _) prog =
+    let (errs, _, typedP) = typecheckProgram prog in
+    if Seq.null errs then 
+      let source = mkSource name typedP in
+      case source of 
+        Left e' -> compileError e'
+        Right s -> case (outOpt, buildOpt) of
+                      (Just outP, Just buildP) -> doStages outP buildP s
+                      (_,_)                    -> outputError
+      
+    else putStrLn $ prettyTCErrors typedP errs
 
   where
-    parseError s   = putStrLn $ "Could not parse input: " ++ s
     compileError s = putStrLn $ "Could not generate code: " ++ s
     outputError    = putStrLn $ "No valid output file or build directory"
 
