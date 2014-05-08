@@ -16,10 +16,21 @@ declare option_mut  : mut option mut int = Some mut 0
      The outer mut indicates the option can be replaced wholesale.
   */
 
+declare none_mut    : mut option mut int = None mut
+  /* 'None' option values also require a mutability qualifer to indicate
+     the properties of their contents. Our type system ensures that options
+     with mutable contents never flow into options with immutable contents,
+     thus enabling explicit comparison of options with mutable content.
+  */
+
+// Tuple and record fields can be mutable, both in the type and expression grammar.
 declare tuple_mut   : (mut int, int)     = (mut 0, 1)
 declare record_mut  : {m:mut int, n:int} = {m:mut 0, n:1}
 
-// Global functions must be immutable
+// Global functions must be immutable.
+// To support recursion, global variables are in scope in their initializers, and
+// mutable functions would allow us to change the definition of the function
+// during its body's execution. We take a simpler model of recursion, and disallow this.
 declare times2 : int -> int = \x -> x + x
 
 // Variable declaration for exemplifying dynamic functions.
@@ -49,7 +60,7 @@ trigger t : () = \_ -> (
     in
     f r; // Sets record_mut.m to 5
 
-    // Mutable functions
+    // Mutable function objects
 
     // K3 can encode objects as records, and we can mutate these records during execution.
     // However since let expressions are not recursive, we have to do it outside the body's scope.
