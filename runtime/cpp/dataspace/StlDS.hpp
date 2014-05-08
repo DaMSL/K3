@@ -45,7 +45,7 @@ class StlDS {
   }
 
   void insert(const Elem& v) {
-    container.insert(v);
+    container.insert(container.end(),v);
   }
 
   void erase(const Elem& v) {
