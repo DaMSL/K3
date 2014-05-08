@@ -72,7 +72,7 @@ shared_ptr<Endpoint> write_to_listener(shared_ptr<NContext> context) {
 
   for (int i =0; i < 15; i++) {
     Value val = "(127.0.0.1:40000, trig1, message_" + std::to_string(i) + ")";
-    net_handle.doWrite(val);
+    net_handle.doWrite(make_shared<string>(val));
     // Run the io_service to execute the async write listeners
   }
   (*context)();

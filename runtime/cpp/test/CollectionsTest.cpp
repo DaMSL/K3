@@ -5,6 +5,7 @@
 #include <dataspace/StlDS.hpp>
 #include <Serialization.hpp>
 #include <Collections.hpp>
+#include <test/TestUtils.hpp>
 
 #include <functional>
 #include <iostream>
@@ -22,11 +23,6 @@
 
 namespace K3 {
 
-std::string localhost = "127.0.0.1";
-Address peer1;
-Address peer2;
-Address rendezvous;
-
 using std::cout;
 using std::endl;
 using std::bind;
@@ -39,48 +35,30 @@ int_c sent = int_c(nullptr);
 shared_ptr<int_c> received = shared_ptr<int_c>(new int_c(nullptr));
 
 // "Trigger" Declarations
-// Build a collection and send it to the "register" trigger
-void join(shared_ptr<Engine> engine, string message_contents) {
+// Build a collection and send it to the "receiveCollection" trigger
+void sendCollection(shared_ptr<Engine> engine, string message_contents) {
   K3::Collection<ListDS, int> c = K3::Collection<ListDS, int>(nullptr);
   for (int i =0; i < 100; i++) {
     c.insert(i);
   }
 
   std::string s = K3::BoostSerializer::pack(c);
-  Message m = Message(rendezvous, "register", s);
+  Message m = Message(K3::rendezvous, "receiveCollection", s);
   engine->send(m);
   sent = c;
 }
 
 // Unpack the collection and store it globally
-void register2(shared_ptr<Engine> engine, string message_contents) {
+void receiveCollection(shared_ptr<Engine> engine, string message_contents) {
   std::shared_ptr<int_c> p = K3::BoostSerializer::unpack_with_engine<int_c>(message_contents, nullptr);
   received = p;
-  
 }
 
-// MP setup
 TriggerDispatch buildTable(shared_ptr<Engine> engine) {
   TriggerDispatch table = TriggerDispatch();
-  table["join"] = bind(&K3::join, engine, std::placeholders::_1);
-  table["register"] = bind(&K3::register2, engine, std::placeholders::_1);
+  table["sendCollection"] = bind(&K3::sendCollection, engine, std::placeholders::_1);
+  table["receiveCollection"] = bind(&K3::receiveCollection, engine, std::placeholders::_1);
   return table;
-}
-
-shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
-  auto table = buildTable(engine);
-  shared_ptr<MessageProcessor> mp = make_shared<DispatchMessageProcessor>(DispatchMessageProcessor(table));
-  return mp;
-}
-
-// Engine setup
-shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
-  // Configure engine components
-  shared_ptr<InternalCodec> i_cdec = make_shared<LengthHeaderInternalCodec>(LengthHeaderInternalCodec());
-
-  // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec);
-  return make_shared<Engine>(engine);
 }
 
 }
@@ -95,7 +73,7 @@ FACT("Collection Send simulation mode") {
   K3::SystemEnvironment s_env = K3::defaultEnvironment(peers);
 
   auto engine = K3::buildEngine(true, s_env);
-  auto mp = K3::buildMP(engine);
+  auto mp = K3::buildMP(engine, buildTable(engine));
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
   engine->send(m2);
 
@@ -126,8 +104,8 @@ FACT("Collection send network mode") {
   auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer1));
   auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
   // Create MPs
-  auto mp1 = K3::buildMP(engine1);
-  auto mp2 = K3::buildMP(engine2);
+  auto mp1 = K3::buildMP(engine1, buildTable(engine1));
+  auto mp2 = K3::buildMP(engine2, countPeersTable(engine2));
   // Create initial messages (source)
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
 

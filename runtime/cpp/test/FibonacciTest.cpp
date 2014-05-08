@@ -2,6 +2,7 @@
 #include <Engine.hpp>
 #include <Dispatch.hpp>
 #include <MessageProcessor.hpp>
+#include <test/TestUtils.hpp>
 
 #include <functional>
 #include <iostream>
@@ -72,30 +73,13 @@ TriggerDispatch buildTable(shared_ptr<Engine> engine) {
   return table;
 }
 
-shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
-  auto table = buildTable(engine);
-  shared_ptr<MessageProcessor> mp = make_shared<DispatchMessageProcessor>(DispatchMessageProcessor(table));
-  return mp;
-}
-
-// Engine setup
-shared_ptr<Engine> buildEngine() {
-  // Configure engine components
-  bool simulation = true;
-  SystemEnvironment s_env = defaultEnvironment();
-  shared_ptr<InternalCodec> i_cdec = make_shared<DefaultInternalCodec>(DefaultInternalCodec());
-
-  // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec);
-  return make_shared<Engine>(engine);
-}
-
 }
 
 FACT("The 6th fibonacci number = 8") {
   std::string num = "6";
-  auto engine = K3::buildEngine();
-  auto mp = K3::buildMP(engine);
+  auto addr = K3::defaultAddress;
+  auto engine = K3::buildEngine(true, K3::defaultEnvironment(addr));
+  auto mp = K3::buildMP(engine, K3::buildTable(engine));
   K3::Message m = K3::Message(K3::defaultAddress, "start", num);
   engine->send(m);
 

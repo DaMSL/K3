@@ -1,9 +1,31 @@
 CC       = clang
 CXX      = clang++
 RM       = rm -f
-CPPFLAGS = -I../
-LDFLAGS  = 
-LDLIBS   = 
+
+K3IN = ../
+
+BOOSTIN = /usr/local/Cellar/boost/1.55.0/include/
+BOOSTLIB = /usr/local/Cellar/boost/1.55.0/lib/
+
+XUNITIN = ./xunit/xUnit++/
+XUNITLIB = ./xunit/bin/xUnit++/
+
+CPPFLAGS = -std=c++11	\
+	   -I$(K3IN)	\
+	   -I$(BOOSTIN)	\
+	   -I$(XUNITIN) \
+	   -DBOOST_LOG_DYN_LINK
+
+LDFLAGS   = -L$(BOOSTLIB) -L$(XUNITLIB)
+LDLIBS  = -lboost_system-mt		\
+		-lboost_filesystem-mt		\
+		-lboost_regex-mt		\
+		-lboost_serialization-mt	\
+		-lboost_thread-mt		\
+		-lboost_chrono-mt		\
+		-lboost_log_setup-mt		\
+		-lboost_log-mt			\
+		-lxUnit++.Debug
 
 SOURCES = IOTests.cpp           \
 		  ListenerTest.cpp      \
@@ -18,11 +40,11 @@ BINARES = $(OBJECTS:.o=)
 all: $(OBJECTS) $(BINARIES)
 
 %: %.o
-	$(CXX) -o $@ $< $(LDFLAGS) $(LDLIBS)
+	$(CXX) -shared -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 %.o: %.cpp
 	$(CXX) $(CPPFLAGS) -c -o $@ $<
 
 clean:
-    $(RM) $(OBJECTS) $(BINARIES)
+	$(RM) $(OBJECTS) $(BINARIES)
 

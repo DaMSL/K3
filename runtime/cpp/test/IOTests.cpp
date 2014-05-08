@@ -1,11 +1,16 @@
+#include <IOHandle.hpp>
+#include <Endpoint.hpp>
+#include <Engine.hpp>
+#include <test/TestUtils.hpp>
+
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <memory>
-#include <IOHandle.hpp>
-#include <Endpoint.hpp>
+
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/device/file.hpp>
+
 #include <xUnit++/xUnit++.h>
 
 namespace K3 {
@@ -13,29 +18,12 @@ namespace K3 {
 // Utils
 void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 
-// Test Utils
-template <class R>
-tuple<int,string> readFile(K3::shared_ptr<R> r) {
-  // Read the file line-by-line
-  int count = 0;
-  ostringstream os;
-  while (r->hasRead()) {
-    shared_ptr<string> val = r->doRead();
-    if ( val ) {
-      count += 1;
-      os << *val;
-    }
-  }
-  string actual = os.str();
-  return make_tuple(count,actual);
-}
-
 shared_ptr<FileHandle> createReadFileHandle(string path) {
   // Setup a K3 Codec 
   shared_ptr<DelimiterCodec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
   auto x = StreamHandle::Input();
   // Create a file source
-  shared_ptr<file_source> fs = shared_ptr<file_source>(new file_source(path)); 
+  shared_ptr<file_source> fs = shared_ptr<file_source>(new file_source(path));
   // Construct File Handle
   shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
   return f;
@@ -85,10 +73,10 @@ FACT("File handle writes file by line")
   string s2 = "2";
   string s3 = "3";
 
-  f->doWrite(s0);
-  f->doWrite(s1);
-  f->doWrite(s2);
-  f->doWrite(s3); 
+  f->doWrite(make_shared<string>(s0));
+  f->doWrite(make_shared<string>(s1));
+  f->doWrite(make_shared<string>(s2));
+  f->doWrite(make_shared<string>(s3));
   f->close();
   shared_ptr<FileHandle> f2 = createReadFileHandle(path);
 
