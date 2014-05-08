@@ -18,6 +18,7 @@ import Language.K3.Parser
 import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
 import Language.K3.Interpreter.Utils
+import Language.K3.Transform.Interpreter.BindAlias
 import Language.K3.Utils.Pretty
 
 type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)]
@@ -59,7 +60,7 @@ console prompt networkStatus = do
       Nothing -> outputStrLn "No engine found for interpretation" >> continue
       Just (addr, threadId, egn, st) ->
         do
-          eStatus <- liftIO $ runInterpretation egn st $ expression e
+          eStatus <- liftIO $ runInterpretation egn st $ expression $ snd $ labelBindAliasesExpr 0 e
           wrapError (outputValue threadId egn . (addr,)) eStatus
           continue
 
