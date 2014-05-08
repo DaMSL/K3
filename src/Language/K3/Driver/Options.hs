@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 -- | Options for the K3 Driver
 module Language.K3.Driver.Options where
 
@@ -44,7 +46,10 @@ data CompileOptions
                      , programName  :: String
                      , outputFile   :: Maybe FilePath
                      , buildDir     :: Maybe FilePath
-                     , ccCmd        :: CPPCompiler }
+                     , ccCmd        :: CPPCompiler
+                     , includeDirs  :: [FilePath]
+                     , libraryOpts  :: [(Bool, FilePath)] -- linker dirs or library files
+                     }
   deriving (Eq, Read, Show)
 
 data CPPCompiler = GCC | Clang deriving (Eq, Read, Show)
@@ -132,7 +137,9 @@ compileOptions = mkCompile <$> outLanguageOpt
                            <*> outputFileOpt
                            <*> buildDirOpt
                            <*> ccCmdOpt
-  where mkCompile l n o b c = Compile $ CompileOptions l n o b c
+                           <*> many includeOpt
+                           <*> many libraryOpt
+  where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -186,6 +193,30 @@ clangFlag = flag' Clang (
         long "clang"
      <> help "Use the clang++ and LLVM toolchain for C++ compilation"
     )
+
+includeOpt :: Parser FilePath
+includeOpt = strOption (
+                long "CI"
+             <> help "Specifies a C++ compiler include directory."
+             <> metavar "DIRECTORY"
+           )
+
+libraryOpt :: Parser (Bool, FilePath)
+libraryOpt = linkerDirOpt <|> libraryFileOpt
+
+linkerDirOpt :: Parser (Bool, FilePath)
+linkerDirOpt = (True,) <$> strOption (
+                  long "CL"
+               <> help "Specifies a C++ linker directory."
+               <> metavar "DIRECTORY"
+             )
+
+libraryFileOpt :: Parser (Bool, FilePath)
+libraryFileOpt = (False,) <$> strOption (
+                    long "Cl"
+                 <> help "Specifies a C++ library file."
+                 <> metavar "FILE"
+               )
 
 -- | Interpretation options.
 interpretOptions :: Parser Mode

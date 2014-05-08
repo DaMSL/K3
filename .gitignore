@@ -4,3 +4,4 @@ tmp
 .project
 
 __build
+__build.database

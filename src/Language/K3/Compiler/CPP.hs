@@ -8,7 +8,6 @@ import System.FilePath (joinPath, replaceExtension, takeBaseName)
 import qualified Data.Sequence as S
 
 import Development.Shake
-import Development.Shake.Command 
 import Development.Shake.FilePath hiding ( joinPath, replaceExtension, takeBaseName )
 import Development.Shake.Util
 
@@ -70,34 +69,44 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
       writeFile file (displayS (renderPretty 1.0 100 doc) "")
 
 -- Generate C++ code for a given K3 program.
-cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String FilePath)
+cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String [FilePath])
 cppSourceStage opts copts prog = do
     tcStatus    <- typecheckStage opts copts prog
     cgStatus    <- continue tcStatus $ cppCodegenStage opts copts
     continue cgStatus $ const $ return outFile
 
-  where outFile = either Left (Right . snd) $ outputFilePath "cpp" opts copts
+  where outFile = either Left (\(f,_) -> Right [f]) $ outputFilePath "cpp" opts copts
 
-cppBinaryStage :: Options -> CompileOptions -> FilePath -> IO (Either String ())
-cppBinaryStage _ copts sourceFile = prefixError "Binary compilation error:" $ 
+cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String ())
+cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $ 
   case buildDir copts of
     Nothing   -> return $ Left "No build directory specified."
     Just path -> binary path >>= return . Right
 
   where binary bDir =
           shake shakeOptions{shakeFiles = bDir} $ do
-              want [bDir </> pName <.> exe]
+            want [bDir </> pName <.> exe]
 
-              phony "clean" $ do
-                removeFilesAfter bDir ["//*"]
+            phony "clean" $ do
+              removeFilesAfter bDir ["//*"]
 
-              bDir </> pName <.> exe *> \out -> do
-                cmd "echo \"" [cc] ["-o"] [out] [sourceFile] "\""
+            bDir </> pName <.> exe *> \out -> do
+              let objects = [bDir </> src -<.> "o" | src <- sourceFiles]
+              need objects
+              cmd cc ["-o"] [out] objects incDirs libFlags
 
-        pName = programName copts
-        cc    = case ccCmd copts of
-                  GCC   -> "g++"
-                  Clang -> "clang++"
+            bDir ++ "//*.o" *> \out -> do
+              let source = dropDirectory1 $ out -<.> "cpp"
+              let deps   = out -<.> "m"
+              () <- cmd cc ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
+              needMakefileDependencies deps
+
+        pName    = programName copts
+        incDirs  = map ("-I"++) $ includeDirs copts
+        libFlags = map (\(b,p) -> (if b then "-L" else "-l") ++ p) $ libraryOpts copts
+        cc       = case ccCmd copts of
+                    GCC   -> "g++"
+                    Clang -> "clang++"
 
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
