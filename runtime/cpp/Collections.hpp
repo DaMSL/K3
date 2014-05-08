@@ -44,7 +44,7 @@ namespace K3 {
       std::shared_ptr<E> peek() { return D<E>::peek(); }
 
       void insert(const E& elem) { D<E>::insert(elem); }
-      //void insert(E&& elem) { D<E>::insert(elem); }
+      void insert(E&& elem) { D<E>::insert(elem); }
 
       void erase(const E& elem)  { D<E>::erase(elem); }
 
