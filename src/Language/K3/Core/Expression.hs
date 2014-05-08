@@ -151,12 +151,15 @@ drawExprAnnotations as =
   let (typeAnns, anns) = partition isEType as
       prettyTypeAnns   = case typeAnns of
                           []    -> []
-                          [l,u] -> drawETypeAnnotation l %+ indent 2 (drawETypeAnnotation u)
+                          [t, l, u] -> drawETypeAnnotation t
+                                        %+ indent 2 (drawETypeAnnotation l
+                                        %+ indent 2 (drawETypeAnnotation u))
                           _     -> error "Invalid type bound annotations"
   in (drawAnnotations anns, prettyTypeAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
+        drawETypeAnnotation (EType   t) = ["EType   "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
 
@@ -180,6 +183,7 @@ isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
 isEType :: Annotation Expression -> Bool
+isEType (EType   _) = True
 isEType (ETypeLB _) = True
 isEType (ETypeUB _) = True
 isEType _           = False

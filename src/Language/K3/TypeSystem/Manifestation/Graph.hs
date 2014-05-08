@@ -25,11 +25,12 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
-import Language.K3.TypeSystem
 import Language.K3.TypeSystem.Data.Constraints
 import Language.K3.TypeSystem.Data.Coproduct
 import Language.K3.TypeSystem.Data.Types
 import Language.K3.TypeSystem.Data.ConstraintSet
+import Language.K3.TypeSystem.Data.Result
+
 import Language.K3.TypeSystem.Manifestation.Data
 
 -- | A graph containing a set of equivalent type variables at each vertex, and an edge from

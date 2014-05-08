@@ -162,9 +162,10 @@ library
         Language.K3.TypeSystem.Data.Environments.Type,
         Language.K3.TypeSystem.Data.Constraints,
         Language.K3.TypeSystem.Data.ConstraintSet.Queries
+        Language.K3.TypeSystem.Data.Result
 
     ghc-options: -Wall
-    other-modules: 
+    other-modules:
                    Language.K3.Utils.Pretty.Common,
                    Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
                    Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
