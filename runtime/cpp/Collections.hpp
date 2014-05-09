@@ -40,6 +40,11 @@ namespace K3 {
 
       Collection(D<E> other) : D<E>(other) {}
 
+      template<class Iterator>
+      Collection(Engine * e, Iterator start, Iterator finish)
+        : D<E>(e, start, finish)
+      { }
+
       std::shared_ptr<E> peek() { return D<E>::peek(); }
 
       void insert(const E& elem) { D<E>::insert(elem); }
@@ -132,6 +137,11 @@ namespace K3 {
 
       Seq(Super other) : Super(other) {}
 
+      template<class Iterator>
+      Seq(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
+
       // Convert from Collection<ListDS, E> to Seq<E>
       std::tuple<Seq<E>, Seq<E>> split() {
         auto tup = Super::split();
@@ -184,6 +194,11 @@ namespace K3 {
       Set(const Set<E>& other) : Super(other)  {}
 
       Set(Super other) : Super(other) {}
+
+      template<class Iterator>
+      Set(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
 
       // Convert from Collection<ListDS, E> to Set<E>
       std::tuple<Set<E>, Set<E>> split() {
@@ -256,6 +271,11 @@ namespace K3 {
 
       Sorted(Super other) : Super(other) {}
 
+      template<class Iterator>
+      Sorted(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
+
       // Convert from Collection<ListDS, E> to Sorted<E>
       std::tuple<Sorted<E>, Sorted<E>> split() {
         auto tup = Super::split();
@@ -316,7 +336,12 @@ namespace K3 {
       ExternalCollection(const ExternalCollection<E>& other) : Super(other)  {}
 
       ExternalCollection(const Super& other) : Super(other) {}
-      ExternalCollection(Super&& other) : Super(std::move(other)) {}
+      ExternalCollection(Super other) : Super(other) {}
+
+      template<class Iterator>
+      ExternalCollection(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
 
       // Convert from Collection<ListDS, E> to Set<E>
       std::tuple<Set<E>, Set<E>> split() {
