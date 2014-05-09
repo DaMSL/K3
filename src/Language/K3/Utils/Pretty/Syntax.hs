@@ -70,9 +70,7 @@ program = runSyntaxPrinter . decl
 
 -- | Declaration syntax printing.
 decl :: K3 Declaration -> SyntaxPrinter
-decl d@(details -> (_,_,anns)) = case commentD anns of
-  Just doc -> (doc <+>) C.<$> decl' d
-  Nothing  -> decl' d
+decl d@(details -> (_,_,anns)) = attachComments (commentD anns) $ decl' d
 
 decl' :: K3 Declaration -> SyntaxPrinter
 decl' (details -> (DGlobal n t eOpt, cs, anns)) =
@@ -199,9 +197,7 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
-expr e@(details -> (_,_,anns)) = case commentE anns of
-  Just doc -> (doc <+>) C.<$> expr' e
-  _        -> expr' e
+expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ expr' e
 
 expr' :: K3 Expression -> SyntaxPrinter
 expr' (details -> (EConstant c, _, anns)) =
@@ -320,9 +316,7 @@ exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
 typ :: K3 Type -> SyntaxPrinter
-typ t@(details -> (_,_,anns)) = case commentT anns of 
-  Just doc -> (doc <+>) C.<$> typ' t
-  Nothing  -> typ' t
+typ t@(details -> (_,_,anns)) = attachComments (commentT anns) $ typ' t
 
 typ' :: K3 Type -> SyntaxPrinter
 typ' (tag -> TBool)       = return $ text "bool"
@@ -395,9 +389,7 @@ typeVarDecl (TypeVarDecl i mlbtExpr mubtExpr) = do
 
 -- | Literals pretty printing
 literal :: K3 Literal -> SyntaxPrinter
-literal l@(details -> (_,_,anns)) = case commentL anns of
-  Just doc -> (doc <+>) C.<$> literal' l
-  _        -> literal' l
+literal l@(details -> (_,_,anns)) = attachComments (commentL anns) $ literal' l
 
 literal' :: K3 Literal -> SyntaxPrinter
 literal' (tag -> LBool b)   = return . text $ if b then "true" else "false"
@@ -553,37 +545,45 @@ addressLiteral h p = h <> colon <> p
 
 
 {- Source comments -}
-comment :: SyntaxAnnotation -> Maybe Doc
-comment (SourceComment multi _ contents) = Just (string $ prefix ++ contents ++ suffix)
+comment :: SyntaxAnnotation -> Maybe (Doc, Bool)
+comment (SourceComment post multi _ contents) = Just (string $ prefix ++ contents ++ suffix, post)
   where prefix = if multi then "/* " else "// "
         suffix = if multi then "*/" else "\n"
 
 comment _ = Nothing
 
-annotatedComments :: [Annotation a] -> (Annotation a -> Maybe SyntaxAnnotation) -> Maybe Doc
-annotatedComments anns extractF = if null docs then Nothing else Just $ (vcat $ map group docs) <> line
-  where docs = mapMaybe (\x -> extractF x >>= comment) anns
+annotatedComments :: [Annotation a] -> (Annotation a -> Maybe SyntaxAnnotation)
+                  -> (Maybe Doc, Maybe Doc)
+annotatedComments anns extractF =
+  let (post, pre) = partition snd docs in (mk pre, mk post)
+  where mk d = if null d then Nothing else Just $ (vcat $ map (group . fst) d) <> line
+        docs = mapMaybe (\x -> extractF x >>= comment) anns
 
-commentD :: [Annotation Declaration] -> Maybe Doc
+commentD :: [Annotation Declaration] -> (Maybe Doc, Maybe Doc)
 commentD anns = annotatedComments anns extractSyntax
   where extractSyntax (DSyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentE :: [Annotation Expression] -> Maybe Doc
+commentE :: [Annotation Expression] -> (Maybe Doc, Maybe Doc)
 commentE anns = annotatedComments anns extractSyntax
   where extractSyntax (ESyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentL :: [Annotation Literal] -> Maybe Doc
+commentL :: [Annotation Literal] -> (Maybe Doc, Maybe Doc)
 commentL anns = annotatedComments anns extractSyntax
   where extractSyntax (LSyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentT :: [Annotation Type] -> Maybe Doc
+commentT :: [Annotation Type] -> (Maybe Doc, Maybe Doc)
 commentT anns = annotatedComments anns extractSyntax
   where extractSyntax (TSyntax x) = Just x
         extractSyntax _ = Nothing
 
+attachComments :: (Maybe Doc, Maybe Doc) -> SyntaxPrinter -> SyntaxPrinter
+attachComments (Nothing, Nothing)    body = body
+attachComments (Just pre, Nothing)   body = (pre <+>)  C.<$> body
+attachComments (Nothing, Just post)  body = (<+> post) C.<$> body
+attachComments (Just pre, Just post) body = (\doc -> pre <+> doc <+> post) C.<$> body
 
 {- Helpers -}
 

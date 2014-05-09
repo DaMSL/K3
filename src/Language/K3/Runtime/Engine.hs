@@ -842,7 +842,8 @@ runMessages pc mp status' = ask >>= \engine -> status' >>= \case
       cleanupEngine
       void $ liftIO $ tryPutMVar (waitV $ control engine) ()
      
-runEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ()
+runEngine :: (Pretty r, Pretty e, ShowPC a)
+          => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ()
 runEngine pc mp p = do
     engine <- ask
     result <- initialize mp p
@@ -865,7 +866,8 @@ runEngine pc mp p = do
       
       Multiprocess _ -> throwEngineError $ EngineError "Unsupported engine mode: Multiprocess" 
 
-forkWorker :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> r -> EngineM a ThreadId
+forkWorker :: (Pretty r, Pretty e, ShowPC a)
+           => PrintConfig -> MessageProcessor p a r e -> r -> EngineM a ThreadId
 forkWorker pc mp result = ask >>= \engine -> liftIO . forkIO $ void $ runWorker engine
   where 
    runWorker engine = do
@@ -893,7 +895,8 @@ configWorkers threads qgroups = do
   mr_kvs  <- liftIO $ mapM (\tid -> newEmptySV >>= return . ((,) tid) ) threads
   liftIO $ putMVar mrmv (H.fromList mr_kvs)
 
-forkEngine :: (Pretty r, Pretty e, ShowPC a) => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ThreadId
+forkEngine :: (Pretty r, Pretty e, ShowPC a)
+           => PrintConfig -> MessageProcessor p a r e -> p -> EngineM a ThreadId
 forkEngine pc mp p = ask >>= \engine -> liftIO . forkIO $ void $ runEngineM (runEngine pc mp p) engine
 
 waitForEngine :: EngineM a ()
@@ -972,9 +975,10 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
         (Just b, []) -> (processor ls) ls b ep >>= \buf -> runNEndpoint ls (Endpoint h (Just buf) subs)
         (_, errors)  -> endpointError $ summarize errors
 
-    bufferMsg msg = case buffer ep of
-                      Just b  -> liftIO (foldM safeAppend (b, []) msg) >>= (\(x,y) -> return (Just x, y))
-                      Nothing -> return (Nothing, [InvalidBuffer])
+    bufferMsg msg =
+      case buffer ep of
+        Just b  -> liftIO (foldM safeAppend (b, []) msg) >>= (\(x,y) -> return (Just x, y))
+        Nothing -> return (Nothing, [InvalidBuffer])
     
     unpackMsg = unpackWith wd . BS.unpack
 
@@ -986,10 +990,13 @@ runNEndpoint ls ep@(Endpoint h@(networkSource -> Just(wd,llep)) _ subs) = do
                             (nb, Just m)  -> return (nb, [OverflowError m])
                     l  -> return (b, l ++ [PropagatedError mg])
 
-    summarize l = "Endpoint message errors (runNEndpoint " ++ (name ls) ++ ", " ++ show (length l) ++ " messages)"
-    endpointError s = close (name ls) >> (throwEngineError $ EndpointError s) -- TODO: close vs closeInternal
+    summarize l     = "Endpoint message errors (runNEndpoint " ++ (name ls)
+                        ++ ", " ++ show (length l) ++ " messages)"
+    endpointError s = close (name ls) >> (throwEngineError $ EndpointError s)
+                        -- ^ TODO: close vs closeInternal
 
-runNEndpoint ls _ = throwEngineError $ EndpointError $ "Invalid endpoint for network source " ++ (name ls)
+runNEndpoint ls _ = throwEngineError $ EndpointError
+                      $ "Invalid endpoint for network source " ++ (name ls)
 
 {- Message passing -}
 
@@ -1254,7 +1261,8 @@ openBuiltin eid bid wd = ask >>= genericOpenBuiltin eid bid wd . externalEndpoin
 -- Takes a name for the endpoint, the path to the file, a wire description, a thingy,
 -- an IO mode, and returns a monadic thingy?
 openFile :: Identifier -> String -> WireDesc a -> Maybe (K3 Type) -> String -> EngineM a ()
-openFile eid path wd tOpt mode = ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
+openFile eid path wd tOpt mode =
+  ask >>= genericOpenFile eid path wd tOpt mode . externalEndpoints . endpoints
 
 -- |Takes: a name for the socket, the target address, the wire description of data written to the socket,
 -- (Maybe (K3 Type)? what is this?), and the file mode (r,w,a, etc.).
@@ -1425,7 +1433,8 @@ emptyEndpoints = newMVar (H.fromList [])
 
 addEndpoint :: Identifier -> (IOHandle a, Maybe (EndpointBuffer a), EndpointBindings b) -> EEndpoints a b
     -> EngineM b (Endpoint a b)
-addEndpoint n (h,b,s) eps = liftIO $ modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
+addEndpoint n (h,b,s) eps =
+    liftIO $ modifyMVar eps (rebuild Endpoint {handle=h, buffer=b, subscribers=s})
   where rebuild e m = return (H.insert n e m, e)
 
 removeEndpoint :: Identifier -> EEndpoints a b -> EngineM b ()
@@ -1533,7 +1542,8 @@ notifySubscribers :: EndpointNotification -> EndpointBindings a -> EngineM a ()
 notifySubscribers nt subs = mapM_ (notify . snd) $ filter ((nt == ) . fst) subs
   where notify (addr, tid, msg) = send addr tid msg
 
-modifySubscribers :: Identifier -> (Endpoint a b -> EndpointBindings b) -> EEndpoints a b -> EngineM b Bool
+modifySubscribers :: Identifier -> (Endpoint a b -> EndpointBindings b) -> EEndpoints a b
+                  -> EngineM b Bool
 modifySubscribers eid f eps = getEndpoint eid eps >>= maybe (return False) updateSub
   where updateSub e = (addEndpoint eid (nep e $ f e) eps) >> return True
         nep e subs = (handle e, buffer e, subs)
@@ -1588,12 +1598,14 @@ wrapEBuffer f = \case
   Exclusive c -> return $ f c
   Shared mvc -> readMVar mvc >>= return . f
 
-modifyEBuffer :: (BufferContents b -> IO (BufferContents b, a)) -> EndpointBuffer b -> IO (EndpointBuffer b, a)
+modifyEBuffer :: (BufferContents b -> IO (BufferContents b, a)) -> EndpointBuffer b
+              -> IO (EndpointBuffer b, a)
 modifyEBuffer f = \case
   Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
   Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
 
-modifyEBuffer_ :: (BufferContents a -> IO (BufferContents a)) -> EndpointBuffer a -> IO (EndpointBuffer a)
+modifyEBuffer_ :: (BufferContents a -> IO (BufferContents a)) -> EndpointBuffer a
+               -> IO (EndpointBuffer a)
 modifyEBuffer_ f b = modifyEBuffer (\c -> f c >>= return . (,())) b >>= return . fst
 
 emptyEBContents :: BufferContents a -> Bool
@@ -1714,7 +1726,8 @@ modifyEBuffer'_ f b = modifyEBuffer' (\c -> f c >>= return . (,())) b >>= return
 {- Pretty printing helpers -}
 
 showMessageQueues :: ShowPC a => PrintConfig -> QueueConfiguration a -> EngineM a String
-showMessageQueues pc qconfig = liftIO (readMVar (queueIdToQueue qconfig))  >>= return . showPC pc . H.toList
+showMessageQueues pc qconfig =
+  liftIO (readMVar (queueIdToQueue qconfig)) >>= return . showPC pc . H.toList
 
 showEngine :: ShowPC a => PrintConfig -> EngineM a String
 showEngine pc = return . unlines =<< ((++) <$> (ask >>= return . (:[]) . show) <*> prettyQueues pc)

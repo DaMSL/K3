@@ -280,23 +280,23 @@ keyword = reserve k3Idents
 
 {- Comments -}
 
-mkComment :: Bool -> P.SourcePos -> String -> P.SourcePos -> SyntaxAnnotation
-mkComment multi start contents end = SourceComment multi (mkSpan start end) contents
+mkComment :: Bool -> Bool -> P.SourcePos -> String -> P.SourcePos -> SyntaxAnnotation
+mkComment post multi start contents end = SourceComment post multi (mkSpan start end) contents
 
-multiComment :: K3Parser SyntaxAnnotation
-multiComment = (mkComment True
-                 <$> PP.getPosition
-                 <*> (symbol "/*" *> manyTill anyChar (try $ symbol "*/") <* spaces)
-                 <*> PP.getPosition) <?> "multi-line comment"
+multiComment :: Bool -> K3Parser SyntaxAnnotation
+multiComment post = (mkComment post True
+                     <$> PP.getPosition
+                     <*> (symbol "/*" *> manyTill anyChar (try $ symbol "*/") <* spaces)
+                     <*> PP.getPosition) <?> "multi-line comment"
 
-singleComment :: K3Parser SyntaxAnnotation
-singleComment = (mkComment False
-                 <$> PP.getPosition
-                 <*> (symbol "//" *> manyTill anyChar (try newline) <* spaces)
-                 <*> PP.getPosition) <?> "single line comment"
+singleComment :: Bool -> K3Parser SyntaxAnnotation
+singleComment post = (mkComment post False
+                      <$> PP.getPosition
+                      <*> (symbol "//" *> manyTill anyChar (try newline) <* spaces)
+                      <*> PP.getPosition) <?> "single line comment"
 
-comment :: K3Parser [SyntaxAnnotation]
-comment = many (choice [try multiComment, try singleComment])
+comment :: Bool -> K3Parser [SyntaxAnnotation]
+comment post = many (choice [try $ multiComment post, try $ singleComment post])
 
 -- | Helper to attach comment annotations
 (//) :: (a -> SyntaxAnnotation -> a) -> [SyntaxAnnotation] -> a -> a
@@ -371,7 +371,7 @@ roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
 
 {- Declarations -}
 declaration :: K3Parser [K3 Declaration]
-declaration = (//) attachComment <$> comment <*>
+declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
 
   where singleDecls  = (:[]) <$> (DUID # choice [dGlobal, dTrigger, dRole, dAnnotation])
@@ -443,7 +443,7 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 annotationMember :: K3Parser AnnMemDecl
 annotationMember =
   memberError $ mkMember <$> polarity <*> (
-    comment *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment)
+    comment False *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment True)
   where
         liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
                                   <*> qualifiedTypeExpr <*> optional equateExpr
@@ -505,7 +505,7 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 
 {- Type terms -}
 tTerm :: TypeParser
-tTerm = TSpan <-> (//) attachComment <$> comment
+tTerm = TSpan <-> (//) attachComment <$> comment False
               <*> choice [ tPrimitive, tOption, tIndirection,
                            tTupleOrNested, tRecord, tCollection,
                            tBuiltIn, tDeclared ]
@@ -615,7 +615,7 @@ eTerm = do
     eProject = dot *> identifier
 
     wrapInComments p = 
-      (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment <*> p <*> comment
+      (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment False <*> p <*> comment True
 
     attachComment e cmt = e @+ (ESyntax cmt)
 

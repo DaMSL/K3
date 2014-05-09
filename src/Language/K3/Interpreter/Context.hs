@@ -15,8 +15,11 @@ module Language.K3.Interpreter.Context (
   runExpression,
   runExpression_,
 
-  runNetwork,
+  prepareProgram,
   runProgram,
+  
+  prepareNetwork,
+  runNetwork,
 
   emptyState,
   getResultVal,
@@ -211,9 +214,9 @@ initState :: PrintConfig -> AEnvironment Value -> K3 Declaration -> EngineM Valu
 initState pc aEnv prog = liftIO (annotationStatePCIO pc aEnv) >>= initEnvironment prog
 
 {- Program initialization and finalization via the atInit and atExit triggers -}
-initMessages :: IResult () -> EngineM Value (IResult Value)
-initMessages ((Left err, s), ilog) = return ((Left err, s), ilog)
-initMessages ((Right _, st), ilog) = do
+atInitTrigger :: IResult () -> EngineM Value (IResult Value)
+atInitTrigger ((Left err, s), ilog) = return ((Left err, s), ilog)
+atInitTrigger ((Right _, st), ilog) = do
     vOpt <- liftIO (lookupEnvIO "atInit" (getEnv st) >>= valueOfEntryOptIO)
     case vOpt of
       Just (VFunction (f, _, _)) -> runInterpretation' st (f vunit)
@@ -221,8 +224,8 @@ initMessages ((Right _, st), ilog) = do
   where 
     unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger" Nothing
 
-finalMessages :: IState -> EngineM Value (IResult Value)
-finalMessages st = do
+atExitTrigger :: IState -> EngineM Value (IResult Value)
+atExitTrigger st = do
     atExitVOpt <- liftIO (lookupEnvIO "atExit" (getEnv st) >>= valueOfEntryOptIO)
     runInterpretation' st $ maybe unknownTrigger runFinal atExitVOpt
   
@@ -259,7 +262,7 @@ initProgram pc bootstrap staticEnv prog = do
     staticSt <- liftIO $ modifyStateSEnvIO (const $ return staticEnv) initSt
     declR    <- runInterpretation' staticSt (declaration prog)
     bootR    <- injectBootstrap bootstrap declR
-    initMessages bootR
+    atInitTrigger bootR
 
 
 {- Standalone (i.e., single peer) evaluation -}
@@ -279,30 +282,42 @@ runExpression_ e = runExpression e >>= putStrLn . show
 
 {- Distributed program execution -}
 
+-- | Programs prepared for execution as a simulation.
+type PreparedProgram = (K3 Declaration, Engine Value, VirtualizedMessageProcessor)
+
+-- | Programs prepared for execution as virtualized network peers.
+type PreparedNetwork = (K3 Declaration, [(Address, Engine Value, VirtualizedMessageProcessor)])
+
 -- | Network peer information for a K3 engine running in network mode.
 type NetworkPeer = (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)
 
 -- | Single-machine system simulation.
-runProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
-           -> IO (Either EngineError [NetworkPeer])
-runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
-    Left err   -> return $ Left err
-    Right sEnv -> do
-      trigs   <- return $ getTriggerIds tProg
-      engine  <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
-      msgProc <- virtualizedProcessor pc sEnv
-      eStatus <- runEngineM (runEngine pc msgProc tProg) engine
-      either (return . Left) (const $ peerStatuses engine msgProc) eStatus
+prepareProgram :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
+               -> IO (Either EngineError PreparedProgram)
+prepareProgram pc isPar systemEnv prog =
+    buildStaticEnv >>= \case
+      Left err   -> return $ Left err
+      Right sEnv -> do
+        trigs   <- return $ getTriggerIds tProg
+        engine  <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
+        msgProc <- virtualizedProcessor pc sEnv
+        return $ Right (tProg, engine, msgProc)
 
   where buildStaticEnv = do
-          trigs <- return $ getTriggerIds tProg
-          sEnv  <- emptyStaticEnvIO
+          trigs     <- return $ getTriggerIds tProg
+          sEnv      <- emptyStaticEnvIO
           preEngine <- simulationEngine trigs isPar systemEnv $ syntaxValueWD sEnv
           flip runEngineM preEngine $ staticEnvironment pc tProg
 
         tProg = labelBindAliases prog
 
-        peerStatuses engine msgProc = do
+
+runProgram :: PrintConfig -> PreparedProgram -> IO (Either EngineError [NetworkPeer])
+runProgram pc (prog, engine, msgProc) = do
+    eStatus <- runEngineM (runEngine pc msgProc prog) engine
+    either (return . Left) (const $ peerStatuses) eStatus
+
+  where peerStatuses = do
           tid     <- myThreadId
           lastRes <- readMVar (snapshot msgProc)
           return . Right $ map (\(addr, _) -> (addr, engine, tid, msgProc)) lastRes
@@ -310,18 +325,19 @@ runProgram pc isPar systemEnv prog = buildStaticEnv >>= \case
 
 -- | Single-machine network deployment.
 --   Takes a system deployment and forks a network engine for each peer.
-runNetwork :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
-           -> IO [Either EngineError NetworkPeer]
-runNetwork pc isPar systemEnv prog =
+
+prepareNetwork :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
+               -> IO (Either EngineError PreparedNetwork)
+prepareNetwork pc isPar systemEnv prog =
   let nodeBootstraps = map (:[]) systemEnv in 
     buildStaticEnv (getTriggerIds tProg) >>= \case
-      Left err   -> return $ [Left err]
+      Left err   -> return $ Left err
       Right sEnv -> do
-        trigs         <- return $ getTriggerIds tProg
-        engines       <- mapM (flip (networkEngine trigs isPar) $ syntaxValueWD sEnv) nodeBootstraps
-        namedEngines  <- return . map pairWithAddress $ zip engines nodeBootstraps
-        engineThreads <- mapM (fork sEnv) namedEngines
-        return engineThreads
+        trigs        <- return $ getTriggerIds tProg
+        engines      <- mapM (flip (networkEngine trigs isPar) $ syntaxValueWD sEnv) nodeBootstraps
+        namedEngines <- return . map pairWithAddress $ zip engines nodeBootstraps
+        peers        <- mapM (preparePeer sEnv) namedEngines
+        return $ Right (tProg, peers)
 
   where
     buildStaticEnv trigs = do
@@ -330,17 +346,24 @@ runNetwork pc isPar systemEnv prog =
       flip runEngineM preEngine $ staticEnvironment pc tProg
 
     pairWithAddress (engine, bootstrap) = (fst . head $ bootstrap, engine)
-    fork staticEnv (addr, engine) = do
-      msgProc  <- virtualizedProcessor pc staticEnv
-      threadId <- flip runEngineM engine $ forkEngine pc msgProc tProg
-      return $ either Left (\tid -> Right (addr, engine, tid, msgProc)) threadId
+
+    preparePeer staticEnv (addr, engine) =
+      virtualizedProcessor pc staticEnv >>= return . (addr, engine,)
 
     tProg = labelBindAliases prog
 
 
+runNetwork :: PrintConfig -> PreparedNetwork -> IO [Either EngineError NetworkPeer]
+runNetwork pc (prog, peers) = mapM fork peers
+  where fork (addr, engine, msgProc) = do
+          threadId <- flip runEngineM engine $ forkEngine pc msgProc prog
+          return $ either Left (\tid -> Right (addr, engine, tid, msgProc)) threadId
+
+
 {- Message processing -}
 
-runTrigger :: Address -> IResult Value -> Identifier -> Value -> Value -> EngineM Value (IResult Value)
+runTrigger :: Address -> IResult Value -> Identifier -> Value -> Value
+           -> EngineM Value (IResult Value)
 runTrigger addr result nm arg = \case
     (VTrigger (_, Just f, _)) -> do
         -- Interpret the trigger function and refresh any cached collections in the environment.
@@ -386,20 +409,20 @@ virtualizedProcessor pc staticEnv = do
       return (node, initIResult)
 
     processVP snapshotMV (addr, name, args) ps = do
-      res <- fmap snd $ runDispatchT (dispatch addr (\s -> runTrigger' s addr name args)) ps
+      res <- fmap snd $ runDispatchT (dispatch addr (\s -> runPeerTrigger s addr name args)) ps
       void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
       return res
-              
 
-    runTrigger' s addr nm arg = do
-      -- void $ logTriggerM addr nm arg s None
+    runPeerTrigger s addr nm arg = do
+      -- void $ logTriggerM addr nm arg s None "BEFORE"
       entryOpt <- liftIO $ lookupEnvIO nm $ getEnv $ getResultState s
       vOpt     <- liftIO $ valueOfEntryOptIO entryOpt
       case vOpt of
         Nothing -> return (Just (), unknownTrigger s nm)
         Just ft -> fmap (Just (),) $ runTrigger addr s nm arg ft
 
-    unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
+    unknownTrigger ((_,st), ilog) n =
+      ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
 
     -- TODO: Fix status computation to use rest of list.
     statusVP [] = Left []
@@ -407,7 +430,8 @@ virtualizedProcessor pc staticEnv = do
         Left _ -> Left is
         Right _ -> Right is
 
-    sStatus (node, res) = either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
+    sStatus (node, res) =
+      either (const $ Left (node, res)) (const $ Right (node, res)) $ getResultVal res
 
     finalizeVP snapshotMV ps = do
       res <- mapM sFinalize ps
@@ -415,7 +439,8 @@ virtualizedProcessor pc staticEnv = do
       return res
 
     sFinalize (node, res) = do
-      res' <- either (const $ return res) (const $ finalMessages $ getResultState res) $ getResultVal res
+      let (st, val) = (getResultState res, getResultVal res)
+      res' <- either (const $ return res) (const $ atExitTrigger st) val
       return (node, res')
 
     reportVP (Left err)  = mapM_ reportNodeIResult err
@@ -453,7 +478,7 @@ uniProcessor pc staticEnv = do
 
     finalizeUP snapshotMV res = do
       void $ liftIO $ modifyMVar_ snapshotMV $ const $ return res
-      either (\_ -> return res) (\_ -> finalMessages $ getResultState res) $ getResultVal res
+      either (\_ -> return res) (\_ -> atExitTrigger $ getResultState res) $ getResultVal res
 
     statusUP res         = either (const $ Left res) (const $ Right res) $ getResultVal res
     reportUP (Left err)  = showIResultM err >>= liftIO . putStr
@@ -467,9 +492,9 @@ uniProcessor pc staticEnv = do
       return res
 
     run r n args trig = do
-      --void $ logTriggerM defaultAddress n args r
+      void   $  logTriggerM defaultAddress n args (getResultState r) Nothing "BEFORE"
       result <- runTrigger defaultAddress r n args trig
-      --void $ logTriggerM defaultAddress n args result
+      void   $  logTriggerM defaultAddress n args (getResultState result) (Just $ getResultVal result) "AFTER"
       return result
 
     unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
