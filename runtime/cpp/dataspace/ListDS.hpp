@@ -1,8 +1,13 @@
+#ifndef K3_RUNTIME_DATASPACE_LISTDS_H
+#define K3_RUNTIME_DATASPACE_LISTDS_H
+
 #include <algorithm>
 #include <functional>
 #include <string>
 #include <tuple>
 #include <vector>
+
+#include <dataspace/StlDS.hpp>
 
 namespace K3
 {
@@ -60,4 +65,4 @@ namespace K3
   };
 }
 
-
+#endif // K3_RUNTIME_DATASPACE_LISTDS_H

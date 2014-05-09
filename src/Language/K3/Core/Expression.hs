@@ -53,7 +53,7 @@ data Constant
     | CNone    NoneMutability
     | CEmpty   (K3 Type)
   deriving (Eq, Read, Show)
-  
+
 -- |Mutability modes for @CNone@.  These are kept distinct from the expression
 --  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
 --  place to put each @mut@ without overlapping.
@@ -102,8 +102,9 @@ data instance Annotation Expression
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
 
-    -- TODO: the remainder of these should be pushed into 
+    -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
+    | EType (K3 Type)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
     | EImplementationType Identifier
@@ -127,17 +128,17 @@ data Conflict
     = RW [(Annotation Expression)] (Annotation Expression)
     | WR (Annotation Expression) [(Annotation Expression)]
     | WW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Read, Show) 
+  deriving (Eq, Read, Show)
 
 instance Pretty (K3 Expression) where
-    prettyLines (Node (ETuple :@: as) []) = 
+    prettyLines (Node (ETuple :@: as) []) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
       in ["EUnit" ++ annStr] ++ (shift "`- " "   " tAnnStrs)
-    
+
     prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
       in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " tAnnStrs) ++ ["|"] ++ prettyLines t
-    
+
     prettyLines (Node (t :@: as) es) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
           shiftedTAnns       = if null es then (shift "`- " "   " tAnnStrs)
@@ -146,16 +147,19 @@ instance Pretty (K3 Expression) where
       [show t ++ annStr] ++ shiftedTAnns ++ drawSubTrees es
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
-drawExprAnnotations as = 
+drawExprAnnotations as =
   let (typeAnns, anns) = partition isEType as
       prettyTypeAnns   = case typeAnns of
                           []    -> []
-                          [l,u] -> drawETypeAnnotation l %+ indent 2 (drawETypeAnnotation u)
+                          [t, l, u] -> drawETypeAnnotation t
+                                        %+ indent 2 (drawETypeAnnotation l
+                                        %+ indent 2 (drawETypeAnnotation u))
                           _     -> error "Invalid type bound annotations"
   in (drawAnnotations anns, prettyTypeAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
+        drawETypeAnnotation (EType   t) = ["EType   "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
 
@@ -179,6 +183,7 @@ isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
 isEType :: Annotation Expression -> Bool
+isEType (EType   _) = True
 isEType (ETypeLB _) = True
 isEType (ETypeUB _) = True
 isEType _           = False
@@ -191,10 +196,10 @@ namedEAnnotations anns = map extractId $ filter isEAnnotation anns
 
 {- Expression utilities -}
 
--- | Retrieves all free variables in an expression. 
+-- | Retrieves all free variables in an expression.
 freeVariables :: K3 Expression -> [Identifier]
 freeVariables = foldMapTree extractVariable []
-  where 
+  where
     extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
     extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs b)   = filter (`notElem` bindingVariables b) $ concat chAcc

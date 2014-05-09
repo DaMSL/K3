@@ -31,6 +31,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Manifestation
+import Language.K3.TypeSystem.Manifestation.Graph
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 import Language.K3.TypeSystem.Sanity
 import Language.K3.TypeSystem.Simplification
@@ -40,27 +41,6 @@ import Language.K3.TypeSystem.TypeDecision.Monad
 import Language.K3.Utils.Logger
 
 $(loggingFunctions)
-
--- |Describes a typechecking result.  Each value in the record is a @Maybe@
---  value so that a partial @TypecheckResult@ can be generated even if an error
---  occurs during typechecking.  @tcAEnv@ is the decided alias environment;
---  @tcEnv@ is the decided type environment.  @tcExprTypes@ is a mapping from
---  subexpression UID to a type and representative constraint set.
-data TypecheckResult
-  = TypecheckResult
-      { tcAEnv :: Maybe TAliasEnv
-      , tcEnv :: Maybe TNormEnv
-      , tcREnv :: Maybe TGlobalQuantEnv
-      , tcExprTypes :: Maybe (Map UID AnyTVar, ConstraintSet)
-      , tcExprBounds :: Maybe (Map UID (K3 Type, K3 Type))
-      }
-  deriving (Eq, Show)
-
-instance Monoid TypecheckResult where
-  mempty = TypecheckResult Nothing Nothing Nothing Nothing Nothing
-  mappend (TypecheckResult a b c d e) (TypecheckResult a' b' c' d' e') =
-    TypecheckResult (a `mappend` a') (b `mappend` b') (c `mappend` c')
-      (d `mappend` d') (e `mappend` e')
 
 -- |The top level of typechecking in K3.  This routine accepts a role
 --  declaration and typechecks it.  The result is a pair between the
@@ -179,14 +159,23 @@ doTypecheck aEnv env rEnv ast = do
 -- |Driver wrapper function for typechecking
 -- NOTE: this function should not be used once a module system is in place
 typecheckProgram :: K3 Declaration -> (Seq TypeError, TypecheckResult, K3 Declaration)
-typecheckProgram p = 
-  let (errs, result) = typecheck Map.empty Map.empty Map.empty p
-  in (errs, result, case tcExprBounds result of
-        Nothing     -> p
-        Just bounds -> annotateProgramTypes p bounds)
+typecheckProgram p = (errors, result, fromMaybe p typedP)
+  where
+    (errors, result) = typecheck Map.empty Map.empty Map.empty p
+    typedP = do
+        bounds <- tcExprBounds result
+        manifestGraph <- fromTypecheckResult result
+        let manifestedTypes = decideManifestation manifestGraph
+        let flattenedMap  = Map.fromList
+                [ (u, (t, lb, ub))
+                | (s, t) <- Map.toList manifestedTypes
+                , u <- Set.toList s
+                , let Just (lb, ub) = Map.lookup u bounds
+                ]
+        return $ annotateProgramTypes p flattenedMap
 
 -- | Attaches type bounds as expression annotations to a program.
-annotateProgramTypes :: K3 Declaration -> Map UID (K3 Type, K3 Type) -> K3 Declaration
+annotateProgramTypes :: K3 Declaration -> Map UID (K3 Type, K3 Type, K3 Type) -> K3 Declaration
 annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
   where
     annotateDecl (dt :@: anns) = return . (:@: anns) $ case dt of
@@ -194,20 +183,19 @@ annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
       DTrigger n t e         -> DTrigger n t . runIdentity $ traverse annotateExpr e
       DAnnotation n tis mems -> DAnnotation n tis $ map annotateAnnMem mems
       _ -> dt
-    
-    annotateExpr e@(_ :@: anns) = return $ case partition isEType anns of
-      ([], rest) -> maybe e (\(lb,ub) -> (e @+ ETypeLB lb) @+ ETypeUB ub) $ 
-                      Map.lookup (getEUID rest) typeBounds
 
+    annotateExpr e@(_ :@: anns) = return $ case partition isEType anns of
+      ([], rest) -> maybe e (\(t, lb,ub) -> e @+ EType t @+ ETypeLB lb @+ ETypeUB ub) $
+                      Map.lookup (getEUID rest) typeBounds
       (_,_)      -> e
 
     annotateAnnMem (Lifted p' n t me uid) =
       flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
-    
+
     annotateAnnMem (Attribute p' n t me uid) =
       flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
-    
-    annotateAnnMem x = x    
+
+    annotateAnnMem x = x
 
     getEUID anns = case filter isEUID anns of
       [EUID uid] -> uid

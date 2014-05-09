@@ -181,7 +181,7 @@ someVar :: TVar a -> AnyTVar
 someVar a = case a of
   QTVar{} -> SomeQVar a
   UTVar{} -> SomeUVar a
-  
+
 anyTVarId :: AnyTVar -> TVarID
 anyTVarId sa = case sa of
   SomeQVar qa -> tvarId qa
@@ -209,7 +209,7 @@ data ShallowType
   | SBottom
   | SOpaque OpaqueVar
   deriving (Eq, Ord, Show)
-  
+
 instance Pretty ShallowType where
   prettyLines t = case t of
     SFunction a a' -> prettyLines a %+ ["->"] %+ prettyLines a'
@@ -267,7 +267,7 @@ instance Pretty TQual where
 instance Pretty (Set TQual) where
   prettyLines qs =
     ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList qs) %+ ["}"]
-  
+
 -- |A set of all qualifiers.
 allQuals :: Set TQual
 allQuals = Set.fromList [TMut, TImmut]
@@ -315,7 +315,7 @@ instance (Pretty c) => Pretty (AnnType c) where
       prettyMap m = sequenceBoxes maxWidth "," $
                       map prettyElem $ Map.toList m
       prettyElem (k,v) = prettyLines k %+ ["→"] %+ prettyLines v
-  
+
 -- |Annotation body types.  The type parameter dictates the type of constraint
 --  set used in the member types.
 data AnnBodyType c
@@ -384,7 +384,7 @@ data BinaryOperator
   | BinOpApply
   | BinOpSend
   deriving (Eq, Ord, Read, Show)
-  
+
 instance Pretty BinaryOperator where
   prettyLines op = (case op of
       BinOpAdd -> "+"
@@ -402,7 +402,7 @@ instance Pretty BinaryOperator where
       BinOpApply -> ""
       BinOpSend -> "<-"
     ):[]
-  
+
 -- |A data type representing some form of operator.
 data AnyOperator
   = SomeBinaryOperator BinaryOperator
