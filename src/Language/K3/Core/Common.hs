@@ -6,6 +6,7 @@
 module Language.K3.Core.Common (
     Identifier,
     UID(..),
+    NoneMutability(..),
 
     Address(..),
     defaultAddress,
@@ -65,6 +66,14 @@ data Span
 
 -- | Unique identifiers for AST nodes.
 data UID = UID Int deriving (Eq, Ord, Read, Show)
+
+-- |Mutability modes for @CNone@.  These are kept distinct from the expression
+--  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
+--  place to put each @mut@ without overlapping.
+data NoneMutability
+    = NoneMut
+    | NoneImmut
+  deriving (Eq, Read, Show)
 
 -- | Endpoint types.
 data EndpointSpec

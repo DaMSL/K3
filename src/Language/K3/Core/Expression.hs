@@ -54,14 +54,6 @@ data Constant
     | CEmpty   (K3 Type)
   deriving (Eq, Read, Show)
 
--- |Mutability modes for @CNone@.  These are kept distinct from the expression
---  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
---  place to put each @mut@ without overlapping.
-data NoneMutability
-    = NoneMut
-    | NoneImmut
-  deriving (Eq, Read, Show)
-
 -- | Operators (unary and binary).
 data Operator
     = OAdd
