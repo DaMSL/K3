@@ -117,7 +117,7 @@ manifestType csIn =
         performLookup' var =
           runManifestM bt dict $ declareOpaques $ manifestTypeFrom $
               substitutionLookup var substs
-    
+
     computeBoundDictionary :: ConstraintSet -> BoundDictionary
     computeBoundDictionary cs =
       let bd = mconcat $ map constraintToBounds $ csToList cs in
@@ -182,15 +182,15 @@ manifestType csIn =
                       (Map.fromList $ map ((,STop) . (,UpperBound)) qas)
                       (Map.fromList $ map ((,SBottom) . (,LowerBound)) qas)
                  }
-    
+
     simplificationConfig :: SimplificationConfig
     simplificationConfig = SimplificationConfig { preserveVars = Set.empty }
-    
+
     doSimplify :: (ConstraintSet -> SimplifyM ConstraintSet)
                -> ConstraintSet -> Writer SimplificationResult ConstraintSet
     doSimplify simplifier cs =
       runConfigSimplifyM simplificationConfig $ simplifier cs
-    
+
     firstSimplifier :: ConstraintSet -> SimplifyM ConstraintSet
     firstSimplifier =
       simplifyByConstraintEquivalenceUnification >=>
@@ -344,7 +344,7 @@ declareOpaques xM = do
     bindOpaque (oa,i) = do
       dict <- askDictionary
       let tov_L = _fromJustD $ Map.lookup (oa, LowerBound) $ ovarRangeDict dict
-      let tov_U = _fromJustD $ Map.lookup (oa, UpperBound) $ ovarRangeDict dict 
+      let tov_U = _fromJustD $ Map.lookup (oa, UpperBound) $ ovarRangeDict dict
       typL <- manifestFromTypeOrVar LowerBound tov_L
       typU <- manifestFromTypeOrVar UpperBound tov_U
       return $ TypeVarDecl i (Just typL) (Just typU)
