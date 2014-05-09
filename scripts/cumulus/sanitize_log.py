@@ -5,6 +5,8 @@ import re
 import sys
 from os.path import basename
 
+import clean_log_hash
+
 # focus on the region we care about in the log file
 def reduce_region(lines):
   out = []
@@ -81,18 +83,20 @@ def clean(line):
   line = re.sub(r'^ ', '', line)
   return line
 
-def main(log_name, filename):
+def main(options, filename):
   with open(filename, "r") as f:
     if f:
       lines = f.readlines()
       lines = [clean(l) for l in lines]
       lines = reduce_region(lines)
       trigs = group_triggers(lines)
-      trigs = [lines_of_trig(log_name, i, t) for i, t in enumerate(trigs, start=1)]
+      trigs = [lines_of_trig(options.log_name, i, t) for i, t in enumerate(trigs, start=1)]
       out = []
       for t in trigs:
         out += t
       out = '\n'.join(out)
+      if options.unhash:
+        out = clean_log_hash.unhash(out)
       print(out)
     else:
       print("File {filename} not found".format(**locals()))
@@ -102,9 +106,11 @@ if __name__ == '__main__':
   parser = OptionParser(usage=usage)
   parser.add_option("-n", "--name", type="string", dest="log_name",
                     default="log", help="Specify desired name of log (for comparing different logs)")
+  parser.add_option("-s", "--unhash", action='store_true', dest="unhash",
+                    default=False, help="Clarify the log by removing timestamp hashes")
   (options, args) = parser.parse_args()
   if args:
-    main(options.log_name, args[0])
+    main(options, args[0])
   else:
     print usage
 

@@ -102,7 +102,7 @@ def main():
   print_sys(cmd)
 
   # Create a clean log file
-  cmd = 'K3-Driver/scripts/cumulus/sanitize_log.py {log_file} > {file_no_ext}_clean.log'.format(**locals())
+  cmd = 'K3-Driver/scripts/cumulus/sanitize_log.py --unhash {log_file} > {file_no_ext}_clean.log'.format(**locals())
   print_sys(cmd)
 
 if __name__=='__main__':
