@@ -39,7 +39,7 @@ shared_ptr<int_c> received = shared_ptr<int_c>(new int_c(nullptr));
 
 // "Trigger" Declarations
 // Build a collection and send it to the "receiveCollection" trigger
-void sendCollection(shared_ptr<Engine> engine, string message_contents) {
+void sendCollection(shared_ptr<Engine> engine, string) {
   K3::Collection<ListDS, int> c = K3::Collection<ListDS, int>(nullptr);
   for (int i =0; i < 100; i++) {
     c.insert(i);
@@ -53,7 +53,7 @@ void sendCollection(shared_ptr<Engine> engine, string message_contents) {
 
 // Unpack the collection and store it globally
 void receiveCollection(shared_ptr<Engine> engine, string message_contents) {
-  std::shared_ptr<int_c> p = K3::BoostSerializer::unpack_with_engine<int_c>(message_contents, nullptr);
+  std::shared_ptr<int_c> p = K3::BoostSerializer::unpack_with_engine<int_c>(message_contents, engine.get());
   received = p;
 }
 
@@ -66,7 +66,7 @@ TriggerDispatch buildTable(shared_ptr<Engine> engine) {
 
 }
 
-FACT("Collection Send simulation mode") { 
+FACT("Collection Send simulation mode") {
   K3::received = std::shared_ptr<K3::int_c>(new K3::int_c(nullptr));
   K3::peer1 = K3::make_address(K3::localhost, 3000);
   K3::peer2 = K3::make_address(K3::localhost, 3001);
@@ -86,7 +86,7 @@ FACT("Collection Send simulation mode") {
   std::shared_ptr<int> i;
 
   // Check that the received collection is equal to the sent collection
-  while (i = K3::sent.peek()) {
+  while ((i = K3::sent.peek())) {
     std::shared_ptr<int> i2 = K3::received->peek();
     Assert.Equal(*i, *i2);
     K3::received->erase(*i);
@@ -140,7 +140,7 @@ FACT("Collection send network mode") {
 
   // Check that the received collection is equal to the sent collection
   std::shared_ptr<int> i;
-  while (i = K3::sent.peek()) {
+  while ((i = K3::sent.peek())) {
     std::shared_ptr<int> i2 = K3::received->peek();
     Assert.Equal(*i, *i2);
     K3::received->erase(*i);
@@ -342,7 +342,7 @@ FACT("Collection Map") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Collection<K3::ListDS,bool> c2 = c.map(isEven);
+  K3::Collection<K3::ListDS,bool> c2 = c.template map<bool>(isEven);
   Assert.Equal(false, *(c2.peek()));
   c2.erase(false);
   Assert.Equal(true, *(c2.peek()));
@@ -354,7 +354,7 @@ FACT("Seq Map") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Seq<bool> c2 = c.map(isEven);
+  K3::Seq<bool> c2 = c.template map<bool>(isEven);
   Assert.Equal(false, *(c2.peek()));
   c2.erase(false);
   Assert.Equal(true, *(c2.peek()));
@@ -367,7 +367,7 @@ FACT("Set Map") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Set<bool> c2 = c.map(isEven);
+  K3::Set<bool> c2 = c.template map<bool>(isEven);
   Assert.Equal(true, c2.member(false));
   c2.erase(false);
   Assert.Equal(true, *(c2.peek()));
@@ -379,7 +379,7 @@ FACT("Sorted Map") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Sorted<bool> c2 = c.map(isEven);
+  K3::Sorted<bool> c2 = c.template map<bool>(isEven);
   Assert.Equal(false, *(c2.peek()));
   c2.erase(false);
   c2.erase(false);
@@ -482,7 +482,7 @@ FACT("Collection Group By") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Collection<K3::ListDS, std::tuple<bool,int>> c2 = c.group_by(isEven,summer,0);
+  K3::Collection<K3::ListDS, std::tuple<bool,int>> c2 = c.template group_by<bool, int>(isEven,summer,0);
   auto tup = *(c2.peek());
   Assert.Equal(4, std::get<1>(tup));
   c2.erase(tup);
@@ -496,7 +496,7 @@ FACT("Seq Group By") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Seq<std::tuple<bool,int>> c2 = c.group_by(isEven,summer,0);
+  K3::Seq<std::tuple<bool,int>> c2 = c.template group_by<bool, int>(isEven,summer,0);
   auto tup = *(c2.peek());
   Assert.Equal(4, std::get<1>(tup));
   c2.erase(tup);
@@ -521,7 +521,7 @@ FACT("Sorted Group By") {
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Sorted<std::tuple<bool,int>> c2 = c.group_by(isEven,summer,0);
+  K3::Sorted<std::tuple<bool,int>> c2 = c.template group_by<bool, int>(isEven,summer,0);
   auto tup = *(c2.peek());
   Assert.Equal(4, std::get<1>(tup));
   c2.erase(tup);
@@ -531,19 +531,19 @@ FACT("Sorted Group By") {
 
 //TODO nullptr! need a handle to the engine
 template <template <class> class DS>
-K3::Collection<DS,int> expand(int x ) { 
+K3::Collection<DS,int> expand(int x ) {
   K3::Collection<DS, int> result = K3::Collection<DS, int>(nullptr);
   for (int i = 0;i < x; i++) {
     result.insert(i);
   }
   return result;
-}; 
+}
 
 FACT("Collection Ext") {
   K3::Collection<K3::ListDS, int> c = K3::Collection<K3::ListDS, int>(nullptr);
   c.insert(1);
   c.insert(2);
-  K3::Collection<K3::ListDS, int> c2 = c.ext(expand<K3::ListDS>);
+  K3::Collection<K3::ListDS, int> c2 = c.template ext<K3::ListDS, int>(expand<K3::ListDS>);
   Assert.Equal(0, *(c2.peek()));
   c2.erase(0);
   Assert.Equal(0, *(c2.peek()));
@@ -556,7 +556,7 @@ FACT("Seq Ext") {
   K3::Seq<int> c = K3::Seq<int>(nullptr);
   c.insert(1);
   c.insert(2);
-  K3::Seq<int> c2 = c.ext(expand<K3::ListDS>);
+  K3::Seq<int> c2 = c.template ext<int>(expand<K3::ListDS>);
   Assert.Equal(0, *(c2.peek()));
   c2.erase(0);
   Assert.Equal(0, *(c2.peek()));
@@ -568,7 +568,7 @@ FACT("Set Ext") {
   K3::Set<int> c = K3::Set<int>(nullptr);
   c.insert(1);
   c.insert(2);
-  K3::Set<int> c2 = c.ext(expand<K3::SetDS>);
+  K3::Set<int> c2 = c.template ext<int>(expand<K3::SetDS>);
   Assert.Equal(0, *(c2.peek()));
   c2.erase(0);
   Assert.Equal(1, *(c2.peek()));
@@ -578,7 +578,7 @@ FACT("Sorted Ext") {
   K3::Sorted<int> c = K3::Sorted<int>(nullptr);
   c.insert(1);
   c.insert(2);
-  K3::Sorted<int> c2 = c.ext(expand<K3::SortedDS>);
+  K3::Sorted<int> c2 = c.template ext<int>(expand<K3::SortedDS>);
   Assert.Equal(0, *(c2.peek()));
   c2.erase(0);
   Assert.Equal(0, *(c2.peek()));
