@@ -586,3 +586,157 @@ FACT("Sorted Ext") {
   Assert.Equal(1, *(c2.peek()));
 }
 
+int comp(int a, int b) { return a - b; };
+
+FACT("Seq Sort") {
+  K3::Seq<int> c = K3::Seq<int>(nullptr);
+  c.insert(4);
+  c.insert(2);
+  c.insert(3);
+  c.insert(1);
+
+  K3::Seq<int> c2 = c.sort(comp);
+  Assert.Equal(1, *(c2.peek()));
+  c2.erase(1);
+  Assert.Equal(2, *(c2.peek()));
+  c2.erase(2);
+  Assert.Equal(3, *(c2.peek()));
+  c2.erase(3);
+  Assert.Equal(4, *(c2.peek()));
+}
+
+FACT("Set Subset") {
+  K3::Set<int> c = K3::Set<int>(nullptr);
+  c.insert(3);
+  c.insert(1);
+  K3::Set<int> c2 = K3::Set<int>(nullptr);
+  c2.insert(1);
+  c2.insert(2);
+  c2.insert(3);
+  c2.insert(4);
+  Assert.Equal(true, c.isSubsetOf(c));
+  Assert.Equal(true, c.isSubsetOf(c2));
+  Assert.Equal(true, c.isSubsetOf(c2));
+  Assert.Equal(false, c2.isSubsetOf(c));
+}
+
+FACT("Set Union") {
+  K3::Set<int> c = K3::Set<int>(nullptr);
+  c.insert(3);
+  c.insert(1);
+  K3::Set<int> c2 = K3::Set<int>(nullptr);
+  c2.insert(2);
+  c2.insert(4);
+
+  K3::Set<int> c3 = c.union1(c2);
+  Assert.Equal(true, c3.member(1));
+  Assert.Equal(true, c3.member(2));
+  Assert.Equal(true, c3.member(3));
+  Assert.Equal(true, c3.member(4));
+  c3.erase(1);
+  c3.erase(2);
+  c3.erase(3);
+  c3.erase(4);
+  Assert.Equal(nullptr, c3.peek());
+  Assert.Equal(true, c.member(1));
+  Assert.Equal(true, c.member(3));
+  Assert.Equal(false, c.member(2));
+  Assert.Equal(false, c.member(4));
+  Assert.Equal(true, c2.member(2));
+  Assert.Equal(true, c2.member(4));
+  Assert.Equal(false, c2.member(1));
+  Assert.Equal(false, c2.member(3));
+
+}
+
+FACT("Set Intersect") {
+  K3::Set<int> c = K3::Set<int>(nullptr);
+  c.insert(3);
+  c.insert(1);
+  K3::Set<int> c2 = K3::Set<int>(nullptr);
+  c2.insert(2);
+  c2.insert(4);
+
+  K3::Set<int> c3 = c.intersect(c2);
+  Assert.Equal(nullptr, c3.peek());
+  c.insert(2);
+  c3 = c.intersect(c2);
+  Assert.Equal(true, c3.member(2));
+  c3.erase(2);
+  Assert.Equal(nullptr, c3.peek());
+  c.insert(4);
+  c3 = c2.intersect(c);
+  Assert.Equal(true, c3.member(4));
+}
+
+FACT("Set Difference") {
+  K3::Set<int> c = K3::Set<int>(nullptr);
+  c.insert(3);
+  c.insert(1);
+  K3::Set<int> c2 = K3::Set<int>(nullptr);
+  c2.insert(2);
+  c2.insert(4);
+  K3::Set<int> c3 = c.difference(c2);
+  Assert.Equal(true, c3.isSubsetOf(c));
+  Assert.Equal(true, c.isSubsetOf(c3));
+  c2.insert(1);
+  c3 = c.difference(c2);
+  Assert.Equal(true, c3.member(3));
+  c3.erase(3);
+  Assert.Equal(nullptr, c3.peek());
+}
+
+FACT("Sorted Min Max") {
+  K3::Sorted<int> c = K3::Sorted<int>(nullptr);
+  Assert.Equal(nullptr, c.min());
+  Assert.Equal(nullptr, c.max());
+  c.insert(2);
+  c.insert(0);
+  c.insert(3);
+  c.insert(4);
+  c.insert(1);
+  Assert.Equal(0, *(c.min()));
+  Assert.Equal(4, *(c.max()));
+}
+
+FACT("Sorted Bounds") {
+  K3::Sorted<int> c = K3::Sorted<int>(nullptr);
+  Assert.Equal(nullptr, c.lowerBound(1));
+  Assert.Equal(nullptr, c.upperBound(1));
+  c.insert(2);
+  c.insert(0);
+  c.insert(3);
+  c.insert(4);
+  c.insert(1);
+  Assert.Equal(0, *(c.lowerBound(-1)));
+  Assert.Equal(0, *(c.lowerBound(0)));
+  Assert.Equal(1, *(c.lowerBound(1)));
+  Assert.Equal(2, *(c.upperBound(1)));
+  Assert.Equal(0, *(c.upperBound(-1)));
+}
+
+FACT("Sorted Slice") {
+  K3::Sorted<int> c = K3::Sorted<int>(nullptr);
+  c.insert(2);
+  c.insert(0);
+  c.insert(3);
+  c.insert(4);
+  c.insert(1);
+  auto c2 = c.slice(-10,-5);
+  Assert.Equal(nullptr, c2.peek());
+  c2 = c.slice(-1,0);
+  Assert.Equal(0, *(c2.peek()));
+  c2.erase(0);
+  Assert.Equal(nullptr, c2.peek());
+  c2 = c.slice(0,0);
+  Assert.Equal(0, *(c2.peek()));
+  c2.erase(0);
+  Assert.Equal(nullptr, c2.peek());
+  c2 = c.slice(3,10);
+  Assert.Equal(3, *(c2.peek()));
+  c2.erase(3);
+  Assert.Equal(4, *(c2.peek()));
+  c2.erase(4);
+  Assert.Equal(nullptr, c2.peek());
+}
+

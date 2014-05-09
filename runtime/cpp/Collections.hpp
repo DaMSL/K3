@@ -164,12 +164,6 @@ namespace K3 {
        return Seq<E>(Super::filter(f));
       }
 
-      Seq<E> sort(std::function<int(E,E)> f) {
-        Super s = Super(ListDS<E>::sort(f));
-        return Seq<E>(s);
-
-      }
-
       template <class K, class Z>
       Seq<std::tuple<K, Z>> group_by 
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
@@ -182,6 +176,12 @@ namespace K3 {
         Collection<ListDS, T> result = Super::ext(expand);
         return Seq<T>(result);
       }
+
+      Seq<E> sort(std::function<int(E,E)> f) {
+        Super s = Super(ListDS<E>::sort(f));
+        return Seq<E>(s);
+      }
+
   };
 
   template <typename E>
@@ -317,7 +317,7 @@ namespace K3 {
 
       shared_ptr<E> lowerBound(E a) { return dataspace::lowerBound(a); }
 
-      shared_ptr<E> upperBound(E a) { return dataspace::lowerBound(a); }
+      shared_ptr<E> upperBound(E a) { return dataspace::upperBound(a); }
 
       Sorted<E> slice(E a, E b) {
         Super s = Super(dataspace::slice(a,b));
