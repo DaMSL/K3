@@ -22,9 +22,10 @@ import Language.K3.Transform.Interpreter.BindAlias
 import Language.K3.Utils.Pretty
 
 type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)]
+type ConsoleRunner = (EngineError -> InputT IO ()) -> (NetworkStatus -> InputT IO ()) -> InputT IO ()
 
-console :: String -> NetworkStatus -> InputT IO ()
-console prompt networkStatus = do
+console :: String -> ConsoleRunner -> NetworkStatus -> InputT IO ()
+console prompt consoleRunner networkStatus = do
     userInput <- getInputLine prompt
     case userInput of
       Nothing      -> return ()
@@ -52,7 +53,10 @@ console prompt networkStatus = do
 
     loop :: InputT IO Bool -> InputT IO ()
     loop action = action >>= \case 
-      True  -> console prompt networkStatus
+      True  ->  -- TODO: rerunning a program/network is broken until we reset the engine's
+                -- control datastructures. For now, we just rerun with the same network state.
+                -- consoleRunner (outputStrLn . message) (console prompt consoleRunner)
+                console prompt consoleRunner networkStatus
       False -> return ()
 
     runExpr :: K3 Expression -> InputT IO Bool

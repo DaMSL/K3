@@ -5,7 +5,7 @@
 module Language.K3.Driver.Batch where
 
 import Control.Arrow
-
+import Control.Monad.IO.Class
 import System.Console.Haskeline
 
 import Language.K3.Core.Annotation
@@ -35,17 +35,21 @@ setDefaultRole d _ _ = d
 
 runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
 runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
-   if not asNetwork then do
-      pStatus <- runProgram printConf parallel (sysEnv interpOpts) prog
-      either (\err -> putStrLn $ message err)
-             (\ns -> if consoleOn then runConsole $ map Right ns else return ())
-             pStatus
-   else do
-      nodeStatuses <- runNetwork printConf parallel (sysEnv interpOpts) prog
-      if consoleOn then runConsole nodeStatuses else return ()
+   if not asNetwork then prepareAndRun prepareProgram runProgram (map Right)
+                    else prepareAndRun prepareNetwork (\pc pn -> runNetwork pc pn >>= return . Right) id
+  where 
+    prepareAndRun prepareF runF statusF = do
+      prepared <- prepareF printConf parallel (sysEnv interpOpts) prog
+      either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared
 
-  where runConsole = runInputT defaultSettings . console defaultPrompt 
+    loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
+
+    runOnce runF statusF prepared errorF continueF = do
+      runStatus <- liftIO $ runF printConf prepared
+      either errorF (continueF . statusF) runStatus
+
+    runConsole rcrF ns = if consoleOn then console defaultPrompt rcrF ns else return ()
+    engineError        = putStrLn . message
+    cEngineError       = outputStrLn . message
 
 runBatch _ _ _ = error "Invalid batch processing mode"
-
-
