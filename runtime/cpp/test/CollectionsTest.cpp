@@ -334,7 +334,7 @@ FACT("Sorted Split/Combine") {
   Assert.Equal(4, *(c2.peek()));
 }
 
-std::function<bool(int)> isEven = [] (int x) { return (x % 2) == 0; };
+bool isEven(int x) { return (x % 2) == 0; };
 
 FACT("Collection Map") {
   K3::Collection<K3::ListDS,int> c = K3::Collection<K3::ListDS,int>(nullptr);
@@ -434,7 +434,7 @@ FACT("Sorted Filter") {
   Assert.Equal(4, *(c2.peek()));
 }
 
-std::function<int(int,int)> summer = [] (int acc, int x) { return acc+x; };
+int summer(int acc, int x) { return acc+x; };
 
 FACT("Collection Fold") {
   K3::int_c c = K3::int_c(nullptr);
@@ -531,7 +531,7 @@ FACT("Sorted Group By") {
 
 //TODO nullptr! need a handle to the engine
 template <template <class> class DS>
-std::function<K3::Collection<DS,int>(int)> expand = [] (int x ) { 
+K3::Collection<DS,int> expand(int x ) { 
   K3::Collection<DS, int> result = K3::Collection<DS, int>(nullptr);
   for (int i = 0;i < x; i++) {
     result.insert(i);
