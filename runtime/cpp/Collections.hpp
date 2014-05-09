@@ -30,7 +30,7 @@ namespace K3 {
   template <template <class...> class D, class E>
   class Collection: public D<E> {
     public:
-      Collection(Engine * e) : D<E>(e) {};
+      Collection(Engine * e) : D<E>(e) {}
 
       template <template <class> class F>
       Collection(const Collection<F, E> other) : D<E>(other)  {}
@@ -40,7 +40,6 @@ namespace K3 {
 
       Collection(D<E> other) : D<E>(other) {}
 
-      // TODO: shared_ptr vs. value?
       std::shared_ptr<E> peek() { return D<E>::peek(); }
 
       void insert(const E& elem) { D<E>::insert(elem); }
@@ -125,37 +124,37 @@ namespace K3 {
   template <typename E>
   // TODO: make this more generic? ie a SeqDS interface
   class Seq : public Collection<ListDS, E> {
-    typedef Collection<ListDS, E> super;
+    typedef Collection<ListDS, E> Super;
      public:
-      Seq(Engine * e) : super(e) {};
+      Seq(Engine * e) : Super(e) {};
 
-      Seq(const Seq<E>& other) : super(other)  {}
+      Seq(const Seq<E>& other) : Super(other)  {}
 
-      Seq(super other) : super(other) {}
+      Seq(Super other) : Super(other) {}
 
       // Convert from Collection<ListDS, E> to Seq<E>
       std::tuple<Seq<E>, Seq<E>> split() {
-        auto tup = super::split();
-        super ds1 = get<0>(tup);
-        super ds2 = get<1>(tup);
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
         return std::make_tuple(Seq<E>(ds1), Seq<E>(ds2));
       }
 
       Seq<E> combine(const Seq<E>& other) {
-       return Seq<E>(super::combine(other));
+       return Seq<E>(Super::combine(other));
       }
 
       template <class T>
       Seq<T> map(std::function<T(E)> f) {
-       return Seq<T>(super::map(f));
+       return Seq<T>(Super::map(f));
       }
 
       Seq<E> filter(std::function<bool(E)> f) {
-       return Seq<E>(super::filter(f));
+       return Seq<E>(Super::filter(f));
       }
 
       Seq<E> sort(std::function<int(E,E)> f) {
-        super s = super(ListDS<E>::sort(f));
+        Super s = Super(ListDS<E>::sort(f));
         return Seq<E>(s);
 
       }
@@ -163,13 +162,13 @@ namespace K3 {
       template <class K, class Z>
       Seq<std::tuple<K, Z>> group_by 
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
-        Collection<ListDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        Collection<ListDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Seq<std::tuple<K,Z>>(s);
       }
 
       template <class T>
       Seq<T> ext(std::function<Collection<ListDS, T>(E)> expand) {
-        Collection<ListDS, T> result = super::ext(expand);
+        Collection<ListDS, T> result = Super::ext(expand);
         return Seq<T>(result);
       }
   };
@@ -177,46 +176,46 @@ namespace K3 {
   template <typename E>
   // TODO: make this more generic? ie a SetDS interface
   class Set : public Collection<SetDS, E> {
-    typedef Collection<SetDS, E> super;
+    typedef Collection<SetDS, E> Super;
     typedef SetDS<E> dataspace;
      public:
-      Set(Engine * e) : super(e) {};
+      Set(Engine * e) : Super(e) {};
 
-      Set(const Set<E>& other) : super(other)  {}
+      Set(const Set<E>& other) : Super(other)  {}
 
-      Set(super other) : super(other) {}
+      Set(Super other) : Super(other) {}
 
       // Convert from Collection<ListDS, E> to Set<E>
       std::tuple<Set<E>, Set<E>> split() {
-        auto tup = super::split();
-        super ds1 = get<0>(tup);
-        super ds2 = get<1>(tup);
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
         return std::make_tuple(Set<E>(ds1), Set<E>(ds2));
       }
 
       Set<E> combine(const Set<E>& other) {
-       return Set<E>(super::combine(other));
+       return Set<E>(Super::combine(other));
       }
 
       template <class T>
       Set<T> map(std::function<T(E)> f) {
-       return Set<T>(super::map(f));
+       return Set<T>(Super::map(f));
       }
 
       Set<E> filter(std::function<bool(E)> f) {
-       return Set<E>(super::filter(f));
+       return Set<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Set<std::tuple<K, Z>> group_by 
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
-        Collection<SetDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        Collection<SetDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Set<std::tuple<K,Z>>(s);
       }
 
       template <class T>
       Set<T> ext(std::function<Collection<SetDS, T>(E)> expand) {
-        Collection<SetDS, T> result = super::ext(expand);
+        Collection<SetDS, T> result = Super::ext(expand);
         return Set<T>(result);
       }
 
@@ -230,17 +229,17 @@ namespace K3 {
 
       // TODO union is a reserved word
       Set union1(Set<E> other) {
-        super s = super(dataspace::union1(other));
+        Super s = Super(dataspace::union1(other));
         return Set<E>(s);
       }
 
       Set intersect(Set<E> other) {
-        super s = super(dataspace::intersect(other));
+        Super s = Super(dataspace::intersect(other));
         return Set<E>(s);
       }
 
       Set difference(Set<E> other) {
-        super s = super(dataspace::difference(other));
+        Super s = Super(dataspace::difference(other));
         return Set<E>(s);
       }
 
@@ -248,46 +247,46 @@ namespace K3 {
 
   template <typename E>
   class Sorted : public Collection<SortedDS, E> {
-    typedef Collection<SortedDS, E> super;
+    typedef Collection<SortedDS, E> Super;
     typedef SortedDS<E> dataspace;
      public:
-      Sorted(Engine * e) : super(e) {};
+      Sorted(Engine * e) : Super(e) {};
 
-      Sorted(const Sorted<E>& other) : super(other)  {}
+      Sorted(const Sorted<E>& other) : Super(other)  {}
 
-      Sorted(super other) : super(other) {}
+      Sorted(Super other) : Super(other) {}
 
       // Convert from Collection<ListDS, E> to Sorted<E>
       std::tuple<Sorted<E>, Sorted<E>> split() {
-        auto tup = super::split();
-        super ds1 = get<0>(tup);
-        super ds2 = get<1>(tup);
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
         return std::make_tuple(Sorted<E>(ds1), Sorted<E>(ds2));
       }
 
       Sorted<E> combine(const Sorted<E>& other) {
-       return Sorted<E>(super::combine(other));
+       return Sorted<E>(Super::combine(other));
       }
 
       template <class T>
       Sorted<T> map(std::function<T(E)> f) {
-       return Sorted<T>(super::map(f));
+       return Sorted<T>(Super::map(f));
       }
 
       Sorted<E> filter(std::function<bool(E)> f) {
-       return Sorted<E>(super::filter(f));
+       return Sorted<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Sorted<std::tuple<K, Z>> group_by 
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
-        Collection<SortedDS, std::tuple<K,Z>> s = super::group_by(grouper,folder,init);
+        Collection<SortedDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Sorted<std::tuple<K,Z>>(s);
       }
 
       template <class T>
       Sorted<T> ext(std::function<Collection<SortedDS, T>(E)> expand) {
-        Collection<SortedDS, T> result = super::ext(expand);
+        Collection<SortedDS, T> result = Super::ext(expand);
         return Sorted<T>(result);
       }
 
@@ -300,10 +299,58 @@ namespace K3 {
       shared_ptr<E> upperBound(E a) { return dataspace::lowerBound(a); }
 
       Sorted<E> slice(E a, E b) {
-        super s = super(dataspace::slice(a,b));
+        Super s = Super(dataspace::slice(a,b));
         return Sorted<E>(s);
       }
 
+  };
+
+  template <typename E>
+  // TODO: make this more generic? ie an ExternalDS interface
+  class ExternalCollection : public Collection<FileDS, E> {
+    typedef Collection<FileDS, E> Super;
+    typedef FileDS<E> Dataspace;
+     public:
+      ExternalCollection(Engine * e) : Super(e) {};
+
+      ExternalCollection(const ExternalCollection<E>& other) : Super(other)  {}
+
+      ExternalCollection(const Super& other) : Super(other) {}
+      ExternalCollection(Super&& other) : Super(std::move(other)) {}
+
+      // Convert from Collection<ListDS, E> to Set<E>
+      std::tuple<Set<E>, Set<E>> split() {
+        auto tup = Super::split();
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
+        return std::make_tuple(ExternalCollection<E>(ds1), ExternalCollection<E>(ds2));
+      }
+
+      ExternalCollection<E> combine(const ExternalCollection<E>& other) {
+       return ExternalCollection<E>(Super::combine(other));
+      }
+
+      template <class T>
+      ExternalCollection<T> map(std::function<T(E)> f) {
+       return ExternalCollection<T>(Super::map(f));
+      }
+
+      ExternalCollection<E> filter(std::function<bool(E)> f) {
+       return ExternalCollection<E>(Super::filter(f));
+      }
+
+      template <class K, class Z>
+      ExternalCollection<std::tuple<K, Z>> group_by 
+            (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+        Collection<FileDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
+        return ExternalCollection<std::tuple<K,Z>>(s);
+      }
+
+      template <class T>
+      ExternalCollection<T> ext(std::function<Collection<SetDS, T>(E)> expand) {
+        Collection<SetDS, T> result = Super::ext(expand);
+        return ExternalCollection<T>(result);
+      }
   };
 }
 
