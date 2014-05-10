@@ -272,7 +272,6 @@ consoleOpt :: Parser Bool
 consoleOpt = switch (
          long "console"
       <> help "Toggle the interpreter console"
-      <> value True
     )
 
 data InterpPrintVerbosity = PrintVerbose | PrintTerse | PrintTerseSimple
@@ -397,8 +396,7 @@ verbosityOptions = toEnum . roundVerbosity <$> option (
 noFeedOpt :: Parser Bool
 noFeedOpt = switch (
        long "nofeed"
-    <> help "Process a program, ignoring data feeds."
-    <> value False )
+    <> help "Process a program, ignoring data feeds." )
 
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
