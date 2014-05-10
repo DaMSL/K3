@@ -48,13 +48,13 @@ labelBindAliases prog = snd $ labelDecl 0 prog
     labelDecl cnt (Node t ch) = withDeclChildren cnt ch (\(ncnt,nch) -> (ncnt, Node t nch))
 
     labelAnnMem :: Int -> AnnMemDecl -> (Int, AnnMemDecl)
-    labelAnnMem cnt (Lifted p n t eOpt uid) =
+    labelAnnMem cnt (Lifted p n t eOpt memAnns) =
       let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
-      in (ncnt, Lifted p n t neOpt uid)
+      in (ncnt, (Lifted p n t neOpt memAnns))
     
-    labelAnnMem cnt (Attribute p n t eOpt uid) =
+    labelAnnMem cnt (Attribute p n t eOpt memAnns) =
       let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
-      in (ncnt, Attribute p n t neOpt uid)
+      in (ncnt, (Attribute p n t neOpt memAnns))
 
     labelAnnMem cnt annMem = (cnt, annMem)
 

@@ -122,15 +122,16 @@ decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
       <+> cat (punctuate comma tsps)
       <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
   where
-    memberDecl (Lifted pol i t eOpt _) =
+    -- TODO: generate syntax for member property annotations.
+    memberDecl (Lifted pol i t eOpt memAnns) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
                                 <*> optionalPrinter qualifierAndExpr eOpt
     
-    memberDecl (Attribute pol i t eOpt _) =
+    memberDecl (Attribute pol i t eOpt memAnns) =
       attrDecl pol "" i C.<$> qualifierAndType t
                           <*> optionalPrinter qualifierAndExpr eOpt
     
-    memberDecl (MAnnotation pol i _) =
+    memberDecl (MAnnotation pol i memAnns) =
       return $ polarity pol <+> text "annotation" <+> text i
 
     attrDecl pol kw j (qualT, t') eqeOpt = 

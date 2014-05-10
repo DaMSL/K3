@@ -449,23 +449,31 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
-annotationMember =
-  memberError $ mkMember <$> polarity <*> (
-    comment False *> (choice $ map uidOver [liftedOrAttribute, subAnnotation]) <* comment True)
+annotationMember = memberError $ mkMember <$> (wrapInComments rule)
   where
-        liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
-                                  <*> qualifiedTypeExpr <*> optional equateExpr
+    rule = (,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+    
+    liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
+                              <*> qualifiedTypeExpr <*> optional equateExpr
 
-        subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
+    subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
 
-        mkMember p (Left (Just _,  n, qte, eOpt, uid)) = Lifted p n qte (propagateQualifier qte eOpt) uid
-        mkMember p (Left (Nothing, n, qte, eOpt, uid)) = Attribute p n qte (propagateQualifier qte eOpt) uid
-        mkMember p (Right (n, uid))                    = MAnnotation p n uid
+    mkMember ((p, Left (Just _,  n, qte, eOpt, uid)), cmts) =
+      attachMemAnnots uid cmts $ Lifted p n qte (propagateQualifier qte eOpt)
 
-        mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
-        mkSub n uid              = Right (n, uid)
+    mkMember ((p, Left (Nothing, n, qte, eOpt, uid)), cmts) =
+      attachMemAnnots uid cmts $ Attribute p n qte (propagateQualifier qte eOpt)
+    
+    mkMember ((p, Right (n, uid)), cmts) =
+      attachMemAnnots uid cmts $ MAnnotation p n
 
-        memberError = parseError "annotation" "member"
+    mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
+    mkSub n uid              = Right (n, uid)
+
+    attachMemAnnots uid cmts memCtor = memCtor $ (DUID uid):(map DSyntax cmts)
+    wrapInComments p = (\a b c -> (b, a ++ c)) <$> comment False <*> p <*> comment True
+
+    memberError = parseError "annotation" "member"
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,

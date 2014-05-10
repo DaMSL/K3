@@ -44,7 +44,18 @@ module Language.K3.Utils.Pretty (
 
 import Data.Char
 
--- TODO: Maybe we want a type alias TextBox for [String]?  Or even a newtype?
+-- | Data types that can be prettily printed.
+class Pretty a where
+    prettyLines :: a -> [String]
+
+-- | Pretty printing as directed by a PrintConfig data structure
+class Pretty a => PrettyPC a where
+    prettyLinesPC :: PrintConfig -> a -> [String]
+
+-- | Class to handle Show with a PrintConfig
+class Show a => ShowPC a where
+  showPC :: PrintConfig -> a -> String
+
 
 pretty :: Pretty a => a -> String
 pretty = boxToString . prettyLines
@@ -53,6 +64,7 @@ pretty = boxToString . prettyLines
 prettyPC :: PrettyPC a => PrintConfig -> a -> String
 prettyPC pc a = boxToString $ prettyLinesPC pc a
 
+-- TODO: Maybe we want a type alias TextBox for [String]?  Or even a newtype?
 boxToString :: [String] -> String
 boxToString = unlines . map removeTrailingWhitespace
 
@@ -91,20 +103,8 @@ tersePrintConfig = defaultPrintConfig {printNamespace=False,
                                        printQualifiers=False,
                                        printVerboseTypes=False}
 
+simplePrintConfig :: PrintConfig
 simplePrintConfig = tersePrintConfig {printComplex = False}
-
-class Pretty a where
-    prettyLines :: a -> [String]
-
--- Pretty printing as directed by a PrintConfig data structure
-class Pretty a => PrettyPC a where
-    prettyLinesPC :: PrintConfig -> a -> [String]
-
--- | Class to handle Show with a PrintConfig
-class Show a => ShowPC a where
-  showPC :: PrintConfig -> a -> String
-
--- | A Show class that handles PrintConfig
 
 
 drawSubTrees :: Pretty a => [a] -> [String]

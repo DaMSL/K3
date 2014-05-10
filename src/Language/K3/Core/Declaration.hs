@@ -46,13 +46,13 @@ data Declaration
 data AnnMemDecl
     = Lifted      Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
-                  UID
+                  [Annotation Declaration]
     
     | Attribute   Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
-                  UID
+                  [Annotation Declaration]
     
-    | MAnnotation Polarity Identifier UID
+    | MAnnotation Polarity Identifier [Annotation Declaration]
   deriving (Eq, Read, Show)  
 
 -- | Annotation member polarities
@@ -97,7 +97,8 @@ instance Pretty (K3 Declaration) where
             [] -> terminalShift e
             _  -> nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
     
-    prettyLines (Node (DRole i :@: as) ds) = ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
+    prettyLines (Node (DRole i :@: as) ds) =
+        ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
     
     prettyLines (Node (DAnnotation i vdecls members :@: as) ds) =
         ["DAnnotation " ++ i
@@ -112,27 +113,26 @@ instance Pretty (K3 Declaration) where
       where
         drawAnnotationMembers []  = []
         drawAnnotationMembers [x] = terminalShift x
-        drawAnnotationMembers x   =
-            concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
-            ++ terminalShift (last x)
+        drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x) 
+                                      ++ terminalShift (last x)
 
     prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
 
 instance Pretty AnnMemDecl where
-  prettyLines (Lifted      pol n t eOpt uid) =
-    ["Lifted " ++ unwords [show pol, n, show uid], "|"]
+  prettyLines (Lifted      pol n t eOpt anns) =
+    ["Lifted " ++ unwords [show pol, n, show anns], "|"]
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
   
-  prettyLines (Attribute   pol n t eOpt uid) =
-    ["Attribute " ++ unwords [show pol, n, show uid], "|"]
+  prettyLines (Attribute   pol n t eOpt anns) =
+    ["Attribute " ++ unwords [show pol, n, show anns], "|"]
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
   
-  prettyLines (MAnnotation pol n uid) =
-    ["MAnnotation " ++ unwords [show pol, n, show uid]]
+  prettyLines (MAnnotation pol n anns) =
+    ["MAnnotation " ++ unwords [show pol, n, show anns]]
 
 
 {- Declaration annotation predicates -}

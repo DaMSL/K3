@@ -1223,12 +1223,13 @@ annotation n vdecls memberDecls =
 -- TODO: handle member mutability qualifier
 -- TODO: distinguish lifted and regular attributes.
 -- TODO: use default values for attributes specified without initializers.
-annotationMember :: Identifier -> AnnMemDecl -> CodeGeneration (Maybe (Identifier, HS.Type, Maybe HS.Exp))
+annotationMember :: Identifier -> AnnMemDecl
+                 -> CodeGeneration (Maybe (Identifier, HS.Type, Maybe HS.Exp))
 annotationMember annId = \case
   Lifted    Provides n t (Just e) _   -> memberSpec n t e
   Attribute Provides n t (Just e) _   -> memberSpec n t e
-  Lifted    Provides n t Nothing  uid -> builtinLiftedAttribute annId n t uid >>= return . Just
-  Attribute Provides n t Nothing  uid -> builtinAttribute annId n t uid >>= return . Just
+  Lifted    Provides n t Nothing  _   -> builtinLiftedAttribute annId n t >>= return . Just
+  Attribute Provides n t Nothing  _   -> builtinAttribute annId n t >>= return . Just
   _                                   -> return Nothing
   where memberSpec n t e = do
           e' <- expression' e
@@ -1326,30 +1327,30 @@ channelMethod x =
 
 
 
-builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
-builtinLiftedAttribute "Collection" "peek" t _ = typ' t >>= \t' -> 
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
+builtinLiftedAttribute "Collection" "peek" t = typ' t >>= \t' -> 
   return ("peek",   t', Just
     [hs| (\() -> liftIO (readMVar self) >>= return . head . getData) |])
 
-builtinLiftedAttribute "Collection" "insert" t _ = typ' t >>= \t' -> 
+builtinLiftedAttribute "Collection" "insert" t = typ' t >>= \t' -> 
   return ("insert", t', Just
     [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData (++[x]))) |])
 
-builtinLiftedAttribute "Collection" "delete" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "delete" t = typ' t >>= \t' ->
   return ("delete", t', Just
     [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData $ delete x)) |])
 
-builtinLiftedAttribute "Collection" "update" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "update" t = typ' t >>= \t' ->
   return ("update", t', Just
     [hs| (\x y -> liftIO $ modifyMVar_ self (return . modifyData (\l -> (delete x l)++[y]))) |])
 
-builtinLiftedAttribute "Collection" "combine" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "combine" t = typ' t >>= \t' ->
   return ("combine", t', Just $
     [hs| (\c' -> liftIO . newMVar =<< 
          ((\x y -> copyWithData x (getData x ++ getData y))
            <$> liftIO (readMVar self) <*> liftIO (readMVar c'))) |])
 
-builtinLiftedAttribute "Collection" "split" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "split" t = typ' t >>= \t' ->
   return ("split", t', Just $
     [hs| (\() -> liftIO (readMVar self) >>=
          (\r -> let l = getData r
@@ -1361,25 +1362,25 @@ builtinLiftedAttribute "Collection" "split" t _ = typ' t >>= \t' ->
 -- TODO: these implementations assume the transformer function is in the EngineM monad.
 -- Lambda implementations do not guarantee this (blindly using ensureActionE on lambdas
 -- is not ideal for non-transformer function application).
-builtinLiftedAttribute "Collection" "iterate" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "iterate" t = typ' t >>= \t' ->
   return ("iterate", t', Just [hs| (\f -> liftIO (readMVar self) >>= mapM_ f . getData) |])
 
-builtinLiftedAttribute "Collection" "map" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "map" t = typ' t >>= \t' ->
   return ("map", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>=
          (\r -> mapM f (getData r) >>= (liftIO . newMVar $ copyWithData r))) |])
 
-builtinLiftedAttribute "Collection" "filter" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "filter" t = typ' t >>= \t' ->
   return ("filter", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>= 
          (\r -> filterM f (getData r) >>= (liftIO . newMVar $ copyWithData r))) |])
 
-builtinLiftedAttribute "Collection" "fold" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "fold" t = typ' t >>= \t' ->
   return ("fold", t', Just $ 
     [hs| (\f accInit -> liftIO (readMVar self) >>= foldM f accInit . getData) |])
 
 -- TODO: key-value record construction for resulting collection
-builtinLiftedAttribute "Collection" "groupBy" t _ = typ' t >>= \t' -> 
+builtinLiftedAttribute "Collection" "groupBy" t = typ' t >>= \t' -> 
   return ("groupBy", t', Just $
     [hs| (\gb f accInit -> 
             liftIO (readMVar self) >>=
@@ -1388,16 +1389,16 @@ builtinLiftedAttribute "Collection" "groupBy" t _ = typ' t >>= \t' ->
                          M.empty . getData
                    >>= liftIO . newMVar . copyWithData r . M.toList)) |])
 
-builtinLiftedAttribute "Collection" "ext" t _ = typ' t >>= \t' ->
+builtinLiftedAttribute "Collection" "ext" t = typ' t >>= \t' ->
   return ("ext", t', Just $
     [hs| (\f -> liftIO (readMVar self) >>= 
          (\r -> mapM f . getData >>= liftIO . newMVar . copyWithData r . concat)) |])
 
-builtinLiftedAttribute _ _ _ _ = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
+builtinLiftedAttribute _ _ _ = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
 
 
-builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
-builtinAttribute _ _ _ _ = throwCG $ CodeGenerationError "Builtin attributes not implemented"
+builtinAttribute :: Identifier -> Identifier -> K3 Type -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
+builtinAttribute _ _ _ = throwCG $ CodeGenerationError "Builtin attributes not implemented"
 
 
 {- Top-level functions -}

@@ -338,7 +338,7 @@ expression e_ = traceExpression $ do
                 liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
               _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
 
-        (iV, _) -> return () -- Skip writeback to an immutable value.
+        (_, _) -> return () -- Skip writeback to an immutable value.
 
     refreshBindings (BTuple ts) proxyPath bindV =
       mapM lookupVQ ts >>= \vqs ->
@@ -732,13 +732,13 @@ annotation n _ memberDecls = tryLookupADef n >>= \case
     (attrFuns, attrs)             = ((False, isFunction), (False, not . isFunction))
 
 
-annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl 
+annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl
                  -> Interpretation (Maybe (Identifier, (Value, VQualifier)))
 annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
-  (True,  Lifted    Provides n t (Just e) _)   | matchF t -> initializeMember n t e
-  (False, Attribute Provides n t (Just e) _)   | matchF t -> initializeMember n t e
-  (True,  Lifted    Provides n t Nothing  uid) | matchF t -> builtinLiftedAttribute annId n t uid >>= return . builtinQual t
-  (False, Attribute Provides n t Nothing  uid) | matchF t -> builtinAttribute annId n t uid >>= return . builtinQual t
+  (True,  Lifted    Provides n t (Just e) _) | matchF t -> initializeMember n t e
+  (False, Attribute Provides n t (Just e) _) | matchF t -> initializeMember n t e
+  (True,  Lifted    Provides n t Nothing  _) | matchF t -> builtinLiftedAttribute annId n t >>= return . builtinQual t
+  (False, Attribute Provides n t Nothing  _) | matchF t -> builtinAttribute annId n t >>= return . builtinQual t
   _ -> return Nothing
   
   where initializeMember n t e = expression e >>= \v -> return . Just $ (n, (v, memberQual t))

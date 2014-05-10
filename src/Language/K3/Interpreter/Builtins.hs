@@ -212,9 +212,9 @@ modifyCollection cmv f = do
  - these can handle in memory vs external
  - other functions here use this api
  -}
-builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
-                          -> Interpretation (Maybe (Identifier, Value))
-builtinLiftedAttribute annId n _ _ =
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type
+                       -> Interpretation (Maybe (Identifier, Value))
+builtinLiftedAttribute annId n _ =
   let wrap f = f >>= \x -> return $ Just (n, x) in
   if annId `elem` dataspaceAnnotationIds then case n of
     "peek"        -> wrap peekFn
@@ -475,7 +475,7 @@ builtinLiftedAttribute annId n _ _ =
     funArgError       fnName = throwE $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
     typeMismatchError fnName = throwE $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
 
-builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
+builtinAttribute :: Identifier -> Identifier -> K3 Type
                  -> Interpretation (Maybe (Identifier, Value))
-builtinAttribute _ n _ _ = providesError "attribute" n
+builtinAttribute _ n _ = providesError "attribute" n
 

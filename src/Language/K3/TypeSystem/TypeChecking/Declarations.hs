@@ -341,32 +341,33 @@ deriveDeclaration aEnv env decl =
 -- |A function to derive a type for an annotation member.
 deriveAnnotationMember :: ( Map Identifier MorphismArity
                           , Map Identifier MorphismArity )
-                       -> TAliasEnv -- ^The relevant type alias environment.
-                       -> TNormEnv -- ^The relevant type environment.
+                       -> TAliasEnv  -- ^The relevant type alias environment.
+                       -> TNormEnv   -- ^The relevant type environment.
                        -> AnnMemDecl -- ^The member to typecheck.
                        -> TypecheckM (NormalAnnBodyType, ConstraintSet)
 deriveAnnotationMember (ars1,ars2) aEnv env decl = do
   _debug $ boxToString $ ["Deriving type for annotation member: "] %$
                             indent 2 (prettyLines decl)
-  (b,cs) <-
+  declUid <- uidOfAnnMem decl
+  (b,cs)  <-
       case decl of
       
-        Lifted pol i _ mexpr u ->
+        Lifted pol i _ mexpr _ ->
           let constr x = AnnBodyType [x] [] in
-          deriveMember ars1 pol i mexpr u constr
-          
-        Attribute pol i _ mexpr u ->
+          deriveMember ars1 pol i mexpr declUid constr 
+
+        Attribute pol i _ mexpr _ ->
           let constr x = AnnBodyType [] [x] in
-          deriveMember ars2 pol i mexpr u constr
-          
-        MAnnotation pol i u -> do
+          deriveMember ars2 pol i mexpr declUid constr
+
+        MAnnotation pol i _ -> do
           p <- mconcat <$>
             mapM (\ei -> Map.singleton ei <$> lookupSpecialVar ei)
               [TEnvIdContent, TEnvIdFinal, TEnvIdSelf]
-          mann <- envRequire (UnboundTypeEnvironmentIdentifier u $
+          mann <- envRequire (UnboundTypeEnvironmentIdentifier declUid $
                                   TEnvIdentifier i) (TEnvIdentifier i) aEnv
           ann <- case mann of
-                    QuantAlias _ -> typecheckError (NonAnnotationAlias u
+                    QuantAlias _ -> typecheckError (NonAnnotationAlias declUid
                                                       $ TEnvIdentifier i)
                     AnnAlias ann -> return ann
           let (AnnType p' b cs) = instantiateAnnotation p ann
@@ -380,6 +381,7 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
                             AnnMemType i' Negative ar qa cs' in
                       AnnBodyType (map negatize m1) (map negatize m2)
           return (b', cs)
+
   _debug $ boxToString $ ["Derived type for annotation member: "] %$
                             indent 2 (
                               ["Member: "] %$

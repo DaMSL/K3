@@ -189,11 +189,11 @@ annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
                       Map.lookup (getEUID rest) typeBounds
       (_,_)      -> e
 
-    annotateAnnMem (Lifted p' n t me uid) =
-      flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
+    annotateAnnMem (Lifted p' n t me memAnns) =
+      (\nme -> Lifted p' n t nme memAnns) $ (runIdentity . traverse annotateExpr) <$> me
 
-    annotateAnnMem (Attribute p' n t me uid) =
-      flip (Lifted p' n t) uid $ (runIdentity . traverse annotateExpr) <$> me
+    annotateAnnMem (Attribute p' n t me memAnns) =
+      (\nme -> Attribute p' n t nme memAnns) $ (runIdentity . traverse annotateExpr) <$> me
 
     annotateAnnMem x = x
 

@@ -2,6 +2,7 @@
 
 module Language.K3.TypeSystem.Utils.K3Tree
 ( uidOf
+, uidOfAnnMem
 
 , assert0Children
 , assert1Child
@@ -51,6 +52,18 @@ uidOf tree =
   if length uids /= 1
     then internalTypeError $ uidError tree
     else return $ head uids
+
+uidOfAnnMem :: (Monad m, TypeErrorI m) => AnnMemDecl -> m UID
+uidOfAnnMem mem = case mem of
+    Lifted _ _ _ _ anns    -> extractUID anns
+    Attribute _ _ _ _ anns -> extractUID anns
+    MAnnotation _ _ anns   -> extractUID anns
+  where 
+    extractUID anns =  
+      let uids = mapMaybe (\a -> case a of { DUID u -> Just u; _ -> Nothing }) anns in
+      if length uids == 1 then return $ head uids
+                          else internalTypeError $ InvalidUIDsInAnnMemDecl mem
+
 
 -- * Generated routines
 
