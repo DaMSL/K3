@@ -18,7 +18,7 @@ import Language.K3.Parser
 import Language.K3.Runtime.Engine
 import Language.K3.Interpreter
 import Language.K3.Interpreter.Utils
-import Language.K3.Transform.Interpreter.BindAlias
+import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Utils.Pretty
 
 type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)]

@@ -12,9 +12,9 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
-import Language.K3.Transform.Conflicts
-import Language.K3.Transform.Interpreter.BindAlias
-import Language.K3.Transform.AnnotationGraph
+import Language.K3.Analysis.Conflicts
+import Language.K3.Analysis.Interpreter.BindAlias
+import Language.K3.Analysis.AnnotationGraph
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
