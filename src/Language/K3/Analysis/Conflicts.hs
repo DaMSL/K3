@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Transform.Conflicts (getAllConflicts,getAllTasks,getProgramTasks,getNewProgram) where
+module Language.K3.Analysis.Conflicts (getAllConflicts,getAllTasks,getProgramTasks,getNewProgram) where
 
 import Control.Arrow hiding ( (+++) )
 import Data.List hiding (transpose)

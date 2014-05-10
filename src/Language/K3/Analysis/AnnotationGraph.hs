@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | A program analysis to construct a directed graph of annotation provisions.
-module Language.K3.Transform.AnnotationGraph where
+module Language.K3.Analysis.AnnotationGraph where
 
 import Data.Graph.Wrapper ( Graph )
 import qualified Data.Graph.Wrapper as G 

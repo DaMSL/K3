@@ -59,8 +59,8 @@ import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
-import Language.K3.Transform.Interpreter.BindAlias ( labelBindAliases )
-import Language.K3.Transform.AnnotationGraph
+import Language.K3.Analysis.Interpreter.BindAlias ( labelBindAliases )
+import Language.K3.Analysis.AnnotationGraph
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger

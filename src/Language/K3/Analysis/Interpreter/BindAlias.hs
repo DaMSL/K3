@@ -3,7 +3,7 @@
 -- | Alias analysis for bind expressions.
 --   This is used by the interpreter to ensure consistent modification
 --   of alias variables following the interpretation of a bind expression.
-module Language.K3.Transform.Interpreter.BindAlias (
+module Language.K3.Analysis.Interpreter.BindAlias (
     labelBindAliases
   , labelBindAliasesExpr
 )
