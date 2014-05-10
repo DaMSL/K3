@@ -37,6 +37,7 @@ import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.List
+import Data.Maybe
 import Data.String
 import Data.Traversable hiding ( mapM )
 
@@ -449,28 +450,34 @@ dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
-annotationMember = memberError $ mkMember <$> (wrapInComments rule)
+annotationMember = memberError $ mkMember <$> annotatedRule
   where
-    rule = (,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+    rule          = (,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+    annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
     
-    liftedOrAttribute = mkLA  <$> optional (keyword "lifted") <*> identifier <* colon
-                              <*> qualifiedTypeExpr <*> optional equateExpr
+    liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
+                              <*> identifier <* colon
+                              <*> qualifiedTypeExpr 
+                              <*> optionalProperties dProperties
+                              <*> optional equateExpr
 
     subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
 
-    mkMember ((p, Left (Just _,  n, qte, eOpt, uid)), cmts) =
-      attachMemAnnots uid cmts $ Lifted p n qte (propagateQualifier qte eOpt)
+    mkMember ((((p, Left (Just _,  n, qte, eOpt, ifxProps, uid)), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (concat $ catMaybes [props, ifxProps])
+        $ Lifted p n qte (propagateQualifier qte eOpt)
 
-    mkMember ((p, Left (Nothing, n, qte, eOpt, uid)), cmts) =
-      attachMemAnnots uid cmts $ Attribute p n qte (propagateQualifier qte eOpt)
-    
-    mkMember ((p, Right (n, uid)), cmts) =
-      attachMemAnnots uid cmts $ MAnnotation p n
+    mkMember ((((p, Left (Nothing, n, qte, eOpt, ifxProps, uid)), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (concat $ catMaybes [props, ifxProps])
+        $ Attribute p n qte (propagateQualifier qte eOpt)
 
-    mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
-    mkSub n uid              = Right (n, uid)
+    mkMember ((((p, Right (n, uid)), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props) $ MAnnotation p n
 
-    attachMemAnnots uid cmts memCtor = memCtor $ (DUID uid):(map DSyntax cmts)
+    mkLA kOpt n qte props eOpt uid = Left (kOpt, n, qte, eOpt, props, uid)
+    mkSub n uid                    = Right (n, uid)
+
+    attachMemAnnots uid spn cmts props memCtor = memCtor $ (DUID uid):(DSpan spn):(props ++ map DSyntax cmts)    
     wrapInComments p = (\a b c -> (b, a ++ c)) <$> comment False <*> p <*> comment True
 
     memberError = parseError "annotation" "member"
