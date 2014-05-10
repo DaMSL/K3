@@ -37,7 +37,6 @@ import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.List
-import Data.Maybe
 import Data.String
 import Data.Traversable hiding ( mapM )
 
@@ -390,11 +389,8 @@ declaration = (//) attachComment <$> comment False <*>
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where
-    rule x = x <* colon <*> polymorphicTypeExpr
-                        <*> optionalProperties dProperties
-                        <*> (optional equateExpr)
-    mkGlobal n qte Nothing eOpt      = DC.global n qte (propagateQualifier qte eOpt)
-    mkGlobal n qte (Just props) eOpt = (flip $ foldl (@+)) props $ DC.global n qte (propagateQualifier qte eOpt)
+    rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateExpr)
+    mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -458,24 +454,23 @@ annotationMember = memberError $ mkMember <$> annotatedRule
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
                               <*> identifier <* colon
                               <*> qualifiedTypeExpr 
-                              <*> optionalProperties dProperties
                               <*> optional equateExpr
 
     subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
 
-    mkMember ((((p, Left (Just _,  n, qte, eOpt, ifxProps, uid)), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (concat $ catMaybes [props, ifxProps])
+    mkMember ((((p, Left (Just _,  n, qte, eOpt, uid)), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props)
         $ Lifted p n qte (propagateQualifier qte eOpt)
 
-    mkMember ((((p, Left (Nothing, n, qte, eOpt, ifxProps, uid)), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (concat $ catMaybes [props, ifxProps])
+    mkMember ((((p, Left (Nothing, n, qte, eOpt, uid)), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props)
         $ Attribute p n qte (propagateQualifier qte eOpt)
 
     mkMember ((((p, Right (n, uid)), props), spn), cmts) =
       attachMemAnnots uid spn cmts (maybe [] id props) $ MAnnotation p n
 
-    mkLA kOpt n qte props eOpt uid = Left (kOpt, n, qte, eOpt, props, uid)
-    mkSub n uid                    = Right (n, uid)
+    mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
+    mkSub n uid              = Right (n, uid)
 
     attachMemAnnots uid spn cmts props memCtor = memCtor $ (DUID uid):(DSpan spn):(props ++ map DSyntax cmts)    
     wrapInComments p = (\a b c -> (b, a ++ c)) <$> comment False <*> p <*> comment True
