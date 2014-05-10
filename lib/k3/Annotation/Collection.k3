@@ -5,20 +5,29 @@ annotation Collection given type a, b {
   provides lifted delete  : content -> ()
   provides lifted update  : content -> (content -> ())
 
+  @:Transformer
   provides lifted combine : self -> self
+
+  @:Transformer
   provides lifted split   : self -> (self, self)
 
+  @:Transformer
   provides lifted iterate : (content -> ()) -> ()
 
+  @:Transformer
   provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
+  @:Transformer
   provides lifted filter  : (content -> bool) -> self
 
+  @:Transformer
   provides lifted fold    : (a -> (content -> a)) -> a -> a
 
+  @:Transformer
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {Collection}
 
+  @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})
                              -> collection {elem : a} @ {Collection}
                              -> collection {elem : a} @ {Collection}
