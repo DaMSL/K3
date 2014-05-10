@@ -314,7 +314,7 @@ runK3Parser :: K3Parser a -> String -> Either P.ParseError a
 runK3Parser p s = P.runParser p emptyParserState "" s
 
 maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (const Nothing) Just $ runK3Parser p s
+maybeParser p s = either (const Nothing) Just $ runK3Parser (head <$> endBy1 p eof) s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
@@ -326,7 +326,7 @@ parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
 
 parseDeclaration :: String -> Maybe (K3 Declaration)
-parseDeclaration s = either (const Nothing) mkRole $ runK3Parser declaration s
+parseDeclaration s = either (const Nothing) mkRole $ runK3Parser (head <$> endBy1 declaration eof) s
   where mkRole l = Just $ DC.role defaultRoleName l
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
@@ -374,9 +374,13 @@ declaration :: K3Parser [K3 Declaration]
 declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
 
-  where singleDecls  = (:[]) <$> (DUID # choice [dGlobal, dTrigger, dRole, dAnnotation])
-        multiDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
-        sugaredDecls = choice [dSelector, dFeed]
+  where k3Decls     = choice [dGlobal, dTrigger, dRole, dAnnotation]
+        edgeDecls   = choice [dSource, dSink]
+        driverDecls = choice [dSelector, dFeed]
+
+        singleDecls  = (:[]) <$> (DUID # withProperties True dProperties k3Decls)
+        multiDecls   = mapM ((DUID #) . return) =<< edgeDecls
+        sugaredDecls = driverDecls
         ignores      = pInclude >> return ()
 
         attachComment [] _      = []
@@ -384,8 +388,12 @@ declaration = (//) attachComment <$> comment False <*>
 
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
-  where rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateExpr)
-        mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
+  where
+    rule x = x <* colon <*> polymorphicTypeExpr
+                        <*> optionalProperties dProperties
+                        <*> (optional equateExpr)
+    mkGlobal n qte Nothing eOpt      = DC.global n qte (propagateQualifier qte eOpt)
+    mkGlobal n qte (Just props) eOpt = (flip $ foldl (@+)) props $ DC.global n qte (propagateQualifier qte eOpt)
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -554,7 +562,7 @@ tRecord = typeExprError "record" $ ( TUID # ) $
 tCollection :: TypeParser
 tCollection = cErr $ TUID #
                  mkCollectionType <$> (keyword "collection" *> choice [tRecord, tDeclared])
-                                  <*> (option [] (symbol "@" *> tAnnotations))
+                                  <*> withAnnotations tAnnotations
   where mkCollectionType t a = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
 
@@ -575,7 +583,8 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 {- Expressions -}
 
 expr :: ExpressionParser
-expr = parseError "expression" "k3" $ buildExpressionParser fullOpTable eApp
+expr = parseError "expression" "k3" 
+        $ withProperties False eProperties $ buildExpressionParser fullOpTable eApp
 
 nonSeqExpr :: ExpressionParser
 nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
@@ -595,13 +604,13 @@ exprNoneQualifier = suffixError "expression" "option qualifier" $
 
 eTerm :: ExpressionParser
 eTerm = do
-  e <- EUID # (ESpan <-> rawTerm)
+  e  <- EUID # (ESpan <-> rawTerm)
   mi <- many (spanned eProject)
   case mi of
     [] -> return e
     l  -> foldM (\accE (i, sp) -> EUID # (return $ (EC.project i accE) @+ ESpan sp)) e l
   where
-    rawTerm = wrapInComments $
+    rawTerm = wrapInComments $ withProperties False eProperties $
         choice [ (try eAssign),
                  (try eAddress),
                  eLiterals,
@@ -685,7 +694,7 @@ eRecord :: ExpressionParser
 eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
-eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> eAnnotations))
+eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> withAnnotations eAnnotations
   where mkEmpty e a = foldl (@+) e a
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord)
 
@@ -758,7 +767,7 @@ eSelf = exprError "self" $ keyword "self" >> return EC.self
 eCollection :: ExpressionParser
 eCollection = exprError "collection" $
               mkCollection <$> braces (choice [try singleField, multiField])
-                           <*> (option [] (symbol "@" *> eAnnotations))
+                           <*> withAnnotations eAnnotations
   where
         singleField =     (symbol "|" *> idQType <* symbol "|")
                       >>= mkSingletonRecord (commaSep1 expr <* symbol "|")
@@ -778,12 +787,39 @@ eCollection = exprError "collection" $
         mkSingletonRecord p (n,t) =
           p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,) . (@+ EImmutable))
 
+
+{- Attachments -}
+withAnnotations :: K3Parser [Annotation a] -> K3Parser [Annotation a]
+withAnnotations p = option [] (symbol "@" *> p)
+
 eAnnotations :: K3Parser [Annotation Expression]
-eAnnotations = braces $ commaSep1 (mkEAnnotation <$> identifier)
-  where mkEAnnotation x = EAnnotation x
+eAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = EAnnotation <$> identifier
+
+withProperties :: (Eq (Annotation a))
+               =>  Bool -> K3Parser [Annotation a] -> K3Parser (K3 a) -> K3Parser (K3 a)
+withProperties asPrefix prop tree =
+    if asPrefix then (flip propertize) <$> optionalProperties prop <*> tree
+                else propertize <$> tree <*> optionalProperties prop
+  where propertize a (Just b) = foldl (@+) a b
+        propertize a Nothing  = a
+
+optionalProperties :: K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
+optionalProperties p = optional (symbol "@:" *> p)
+
+properties :: (Identifier -> Maybe (K3 Literal) -> Annotation a) -> K3Parser [Annotation a]
+properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = ctor <$> identifier <*> optional literal
+
+dProperties :: K3Parser [Annotation Declaration]
+dProperties = properties DProperty
+
+eProperties :: K3Parser [Annotation Expression]
+eProperties = properties EProperty
 
 
 {- Operators -}
+
 uidTagBinOp :: K3Parser (a -> b -> K3 Expression)
             -> K3Parser (a -> b -> K3 Expression)
 uidTagBinOp mg = (\g uid x y -> g x y @+ EUID uid) <$> mg <*> nextUID
@@ -919,14 +955,14 @@ lRecord :: LiteralParser
 lRecord = litError "record" $ LC.record <$> braces idQLitList
 
 lEmpty :: LiteralParser
-lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> (option [] (symbol "@" *> lAnnotations))
+lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> withAnnotations lAnnotations
   where mkEmpty l a = foldl (@+) l a
         typedEmpty = LC.empty <$> (keyword "empty" *> tRecord)
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
               mkCollection <$> braces (choice [try singleField, multiField])
-                           <*> (option [] (symbol "@" *> lAnnotations))
+                           <*> withAnnotations lAnnotations
   where
     singleField =     (symbol "|" *> idQType <* symbol "|")
                   >>= mkSingletonRecord (commaSep1 literal <* symbol "|")

@@ -15,6 +15,7 @@ import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
 
 import Language.K3.Utils.Pretty
 
@@ -91,6 +92,7 @@ data instance Annotation Expression
     | EMutable
     | EImmutable
     | EAnnotation Identifier
+    | EProperty   Identifier (Maybe (K3 Literal))
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
 

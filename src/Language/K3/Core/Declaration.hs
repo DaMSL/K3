@@ -24,6 +24,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import Language.K3.Utils.Pretty
@@ -59,10 +60,11 @@ data Polarity = Provides | Requires deriving (Eq, Read, Show)
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
-    = DSpan   Span
-    | DUID    UID
-    | DSyntax SyntaxAnnotation
-    | DConflict UnorderedConflict
+    = DSpan     Span
+    | DUID      UID
+    | DProperty Identifier (Maybe (K3 Literal))
+    | DSyntax   SyntaxAnnotation
+    | DConflict UnorderedConflict  -- TODO: organize into categories.
   deriving (Eq, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
