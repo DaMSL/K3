@@ -14,6 +14,10 @@ include "Core/Builtins.k3"
  * SELECT pageURL, pageRank FROM rankings WHERE pageRank > X 
  */
 
+/*
+ *Required Inputs: totalRows, pageRankThreshold, numberOfPeers.
+ */
+
 /* Dataset */
 
 declare dataInput : collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}
@@ -80,9 +84,9 @@ trigger understandData : (int, int) = \x -> (
 
 trigger processData : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \row -> (
     currentSize = currentSize + 1;
-    if row.pageRank > pageRankThreshold then
+    (if row.pageRank > pageRankThreshold then
         nodeDataOutput.insert {pageURL : row.pageURL, pageRank : row.pageRank}
-    else ();
+    else ());
     
     /* After all rows are processed, send output to master. */
     if currentSize == nodeSize then (gatherDataAtMaster, master) <- (nodeDataOutput)
