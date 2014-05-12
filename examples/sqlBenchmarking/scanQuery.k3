@@ -26,7 +26,7 @@ declare pageRankThreshold : mut int
 
 declare master : address = 127.0.0.1:40000
 
-trigger preProcessTableRows : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \tableElementCollection -> (
+trigger processTableRows : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \tableElementCollection -> (
     tableElementCollection.iterate (\tableElement -> (
         if tableElement.pageRank > pageRankThreshold then
             table.insert {pageURL : tableElement.pageURL, pageRank : tableElement.pageRank}
@@ -36,4 +36,4 @@ trigger preProcessTableRows : (collection {pageURL : string, pageRank : int, avg
 
 source tableSource : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/rankings.txt" k3
 
-feed tableSource |> preProcessTableRows
+feed tableSource |> processTableRows
