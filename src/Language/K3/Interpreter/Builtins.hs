@@ -9,6 +9,7 @@ module Language.K3.Interpreter.Builtins where
 
 import Control.Concurrent.MVar
 import Control.Monad.State
+import Control.Applicative
 import Data.List
 import System.Random
 
@@ -31,6 +32,16 @@ import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 $(customLoggingFunctions ["Function"])
+
+-- Parse a date in SQL format
+parseDate :: String -> Maybe Int
+parseDate s = toInt $ foldr readChar [""] s
+  where readChar _   []   = []
+        readChar '-' xs   = "":xs
+        readChar n (x:xs) = (n:x):xs
+        toInt [y,m,d]     = Just $ (read y)*10000 + (read m)*100 + (read d)
+        toInt _           = Nothing
+
 
 {- Built-in functions -}
 
@@ -145,14 +156,11 @@ genBuiltin "real_of_int" _ = vfun $ \x -> case x of
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
 -- Parse an SQL date string and convert to integer
-genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
-  parseString s >>= toInt >>= return . VInt
-  where parseString s = foldM readChar [0] s
-        readChar xs '-'   = return $ 0:xs
-        readChar (x:xs) n = return $ (x*10 + read [n]):xs
-        readChar _ _      = throwE $ RunTimeInterpretationError "Bad sql date string"
-        toInt [y,m,d]     = return $ y*10000 + m*100 + d
-        toInt _           = throwE $ RunTimeInterpretationError "Bad sql date format"
+genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
+  v <- parseDate <$> pure s
+  case v of
+    Just i  -> return $ VInt i
+    Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
@@ -470,7 +478,7 @@ builtinLiftedAttribute annId n _ =
     collectionError = throwE $ RunTimeTypeError "Invalid collection"
     filterValError  = throwE $ RunTimeTypeError "Invalid filter function result"
     curryFnError    = throwE $ RunTimeTypeError "Invalid curried function"
-    extError        = throwE $ RunTimeTypeError "Invalid function argument for ext"
+    extError        = throwE $ RunTimeTypeError "Invalid collection argument for ext"
 
     funArgError       fnName = throwE $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
     typeMismatchError fnName = throwE $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName

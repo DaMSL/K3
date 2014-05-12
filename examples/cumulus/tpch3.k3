@@ -287,8 +287,8 @@ declare add_delta_to_QUERY3 : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
-                        ORDERS_ORDERKEY and _r4_ == ORDERS_SHIPPRIORITY) * _r3_
-                        == ORDERS_ORDERDATE))).fold
+                        ORDERS_ORDERKEY and _r4_ == ORDERS_SHIPPRIORITY) and
+                        _r3_ == ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -331,7 +331,7 @@ declare add_delta_to_QUERY3 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -367,7 +367,7 @@ declare add_delta_to_QUERY3_mLINEITEM1 : {
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
                         QUERY3_mLINEITEMLINEITEM_ORDERKEY and _r4_ ==
-                        ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -411,7 +411,7 @@ declare add_delta_to_QUERY3_mLINEITEM1 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -446,8 +446,9 @@ declare add_delta_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -496,7 +497,7 @@ declare add_delta_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -728,8 +729,9 @@ declare add_delta_to_QUERY3_mCUSTOMER2 : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -779,7 +781,7 @@ declare add_delta_to_QUERY3_mCUSTOMER2 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -816,8 +818,9 @@ declare add_delta_to_QUERY3_mCUSTOMER4 : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -867,7 +870,7 @@ declare add_delta_to_QUERY3_mCUSTOMER4 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -901,7 +904,7 @@ declare cond_add_delta_to_QUERY3 : {
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                             _r5_:_r5_} in ((_r1_ == vid and _r4_ ==
-              ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE) * _r2_ ==
+              ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE) and _r2_ ==
               ORDERS_ORDERKEY)) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -922,7 +925,7 @@ declare cond_add_delta_to_QUERY3 : {
                         ((\_b1_ -> 
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                         _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
-                          ORDERS_ORDERKEY and _r4_ == ORDERS_SHIPPRIORITY) *
+                          ORDERS_ORDERKEY and _r4_ == ORDERS_SHIPPRIORITY) and
                           _r3_ == ORDERS_ORDERDATE))).fold
                         ((\_b2_ ->
                         bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
@@ -969,7 +972,7 @@ declare cond_add_delta_to_QUERY3 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -1002,7 +1005,7 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1 : {
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                             _r5_:_r5_} in ((_r1_ == vid and _r4_ ==
-              ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE) * _r2_ ==
+              ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE) and _r2_ ==
               QUERY3_mLINEITEMLINEITEM_ORDERKEY)) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -1024,7 +1027,7 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1 : {
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                         _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
                           QUERY3_mLINEITEMLINEITEM_ORDERKEY and _r4_ ==
-                          ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                          ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE))).fold
                         ((\_b2_ ->
                         bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                           bind _b5_ as {_r1_:map_vid, _r2_:__map_0,
@@ -1070,7 +1073,7 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -1103,8 +1106,8 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                             _r5_:_r5_, _r6_:_r6_} in (((_r1_ == vid and _r5_ ==
-              ORDERS_CUSTKEY) * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
-              ORDERS_ORDERDATE) * _r2_ == ORDERS_ORDERKEY)) in
+              ORDERS_CUSTKEY) and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+              ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
             _r4_:int, _r5_:int, _r6_:int } @ { Set }
@@ -1125,7 +1128,7 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                         _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
                           ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
-                          * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
+                          and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
                           ORDERS_ORDERDATE))).fold
                         ((\_b2_ ->
                         bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
@@ -1177,7 +1180,7 @@ declare cond_add_delta_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1454,8 +1457,8 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER2 : {
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                             _r5_:_r5_, _r6_:_r6_} in (((_r1_ == vid and _r5_ ==
-              ORDERS_CUSTKEY) * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
-              ORDERS_ORDERDATE) * _r2_ == ORDERS_ORDERKEY)) in
+              ORDERS_CUSTKEY) and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+              ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
             _r4_:int, _r5_:int, _r6_:real } @ { Set }
@@ -1476,7 +1479,7 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER2 : {
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                         _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
                           ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
-                          * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
+                          and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
                           ORDERS_ORDERDATE))).fold
                         ((\_b2_ ->
                         bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
@@ -1528,7 +1531,7 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER2 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1563,8 +1566,8 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER4 : {
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                             _r5_:_r5_, _r6_:_r6_} in (((_r1_ == vid and _r5_ ==
-              ORDERS_CUSTKEY) * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
-              ORDERS_ORDERDATE) * _r2_ == ORDERS_ORDERKEY)) in
+              ORDERS_CUSTKEY) and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+              ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in
           if lhs_slice != empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
             _r4_:int, _r5_:int, _r6_:real } @ { Set }
@@ -1585,7 +1588,7 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER4 : {
                           bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                         _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
                           ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
-                          * _r4_ == ORDERS_SHIPPRIORITY) * _r3_ ==
+                          and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
                           ORDERS_ORDERDATE))).fold
                         ((\_b2_ ->
                         bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
@@ -1637,7 +1640,7 @@ declare cond_add_delta_to_QUERY3_mCUSTOMER4 : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1674,8 +1677,9 @@ declare add_delta_to_map_QUERY3_mCUSTOMER2_s0_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1725,7 +1729,7 @@ declare add_delta_to_map_QUERY3_mCUSTOMER2_s0_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1762,8 +1766,9 @@ declare add_delta_to_map_QUERY3_mCUSTOMER4_s0_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1813,7 +1818,7 @@ declare add_delta_to_map_QUERY3_mCUSTOMER4_s0_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1850,8 +1855,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s1_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1900,7 +1906,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s1_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -1937,8 +1943,9 @@ declare add_delta_to_map_QUERY3_mCUSTOMER2_s3_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -1988,7 +1995,7 @@ declare add_delta_to_map_QUERY3_mCUSTOMER2_s3_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -2025,8 +2032,9 @@ declare add_delta_to_map_QUERY3_mCUSTOMER4_s3_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -2076,7 +2084,7 @@ declare add_delta_to_map_QUERY3_mCUSTOMER4_s3_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -2113,8 +2121,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s4_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -2163,7 +2172,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s4_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -2981,7 +2990,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_s16_buf : {
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
                         QUERY3_mLINEITEMLINEITEM_ORDERKEY and _r4_ ==
-                        ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3025,7 +3034,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_s16_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -3060,8 +3069,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s19_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3110,7 +3120,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s19_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -3147,8 +3157,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s20_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3197,7 +3208,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s20_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -3235,7 +3246,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_s21_buf : {
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_} in (_r2_ ==
                         QUERY3_mLINEITEMLINEITEM_ORDERKEY and _r4_ ==
-                        ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ORDERS_SHIPPRIORITY) and _r3_ == ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3279,7 +3290,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_s21_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_} in (_r2_ == __arg_0 and _r4_ ==
-               __arg_2) * _r3_ == __arg_1))).filter
+               __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_val} in vid > min_vid))).map
@@ -3314,8 +3325,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s24_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3364,7 +3376,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s24_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -3401,8 +3413,9 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s25_buf : {
                       ((\_b1_ -> 
                         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_,
                                       _r4_:_r4_, _r5_:_r5_, _r6_:_r6_} in 
-                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY) *
-                        _r4_ == ORDERS_SHIPPRIORITY) * _r3_ == ORDERS_ORDERDATE))).fold
+                        ((_r2_ == ORDERS_ORDERKEY and _r5_ == ORDERS_CUSTKEY)
+                        and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
+                        ORDERS_ORDERDATE))).fold
                       ((\_b2_ ->
                       bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
                         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
@@ -3451,7 +3464,7 @@ declare add_delta_to_map_QUERY3_mLINEITEM1_mCUSTOMER2_s25_buf : {
              ((\_b1_ -> 
                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_,
                              _r5_:_r5_, _r6_:_r6_} in ((_r2_ == __arg_0 and
-               _r5_ == __arg_3) * _r4_ == __arg_2) * _r3_ == __arg_1))).filter
+               _r5_ == __arg_3) and _r4_ == __arg_2) and _r3_ == __arg_1))).filter
              ((\_b1_ -> 
                bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
                              _r4_:__map_2, _r5_:__map_3, _r6_:__map_val} in vid
@@ -4688,7 +4701,8 @@ declare replicas : collection {i:int} @ { Set } = {|i:int| 8|} @ { Set }
 
 declare set_replicas : int -> () = (\n -> 
     replicas.update
-      (case (replicas.peek ()) of { Some x -> x } { None -> error () }) {i:n})
+      ({i:case (replicas.peek ()) of { Some x -> x.i } { None -> error () }})
+      {i:n})
 
 declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = (\_b1_ ->
   
@@ -4720,7 +4734,7 @@ declare remove_node : { _r1_:address, _r2_:string, _r3_:string } -> () =
     let nodes_to_delete = node_ring.filter
       ((\_b1_ -> 
         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in (_r1_ ==
-        addr and _r3_ == name) * _r2_ == _role_)) in
+        addr and _r3_ == name) and _r2_ == _role_)) in
     nodes_to_delete.iterate ((\x ->  node_ring.delete x)))
 
 declare get_ring_node : { key:int, value:int } -> address = (\_b1_ -> 
@@ -4864,9 +4878,10 @@ declare route_to_QUERY3 : { _r1_:option int, _r2_:option int, _r3_:option int
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -4986,9 +5001,10 @@ declare route_to_QUERY3_mLINEITEM1 : {
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5128,9 +5144,10 @@ declare route_to_QUERY3_mLINEITEM1_mCUSTOMER2 : {
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5209,9 +5226,10 @@ declare route_to_QUERY3_mORDERS1 :
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5290,9 +5308,10 @@ declare route_to_QUERY3_mORDERS3 :
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5371,9 +5390,10 @@ declare route_to_QUERY3_mORDERS6 :
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5513,9 +5533,10 @@ declare route_to_QUERY3_mCUSTOMER2 : {
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -5655,9 +5676,10 @@ declare route_to_QUERY3_mCUSTOMER4 : {
                 else
                   prev_cart_prod.map
                     ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in rest_tup.combine
-                      ({| key:int, value:int |
-                      {key:i, value:domain_element}|} @ { Seq })))))
+                      bind _b1_ as {i:rest_tup} in 
+                      {i:rest_tup.combine
+                       ({| key:int, value:int |
+                       {key:i, value:domain_element}|} @ { Seq })}))))
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
@@ -6259,8 +6281,8 @@ _r7_:string, _r8_:string
                                           _r8_:CUSTOMER_MKTSEGMENT,
                                           _r9_:CUSTOMER_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -6737,8 +6759,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:real } @ { Set }
         then
@@ -6749,8 +6771,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mCUSTOMER2_s0_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -6816,8 +6838,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:real } @ { Set }
         then
@@ -6828,8 +6850,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mCUSTOMER4_s0_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -6895,8 +6917,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -6907,8 +6929,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s1_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -7403,8 +7425,8 @@ _r7_:string, _r8_:string
                                           _r8_:CUSTOMER_MKTSEGMENT,
                                           _r9_:CUSTOMER_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -7881,8 +7903,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:real } @ { Set }
         then
@@ -7893,8 +7915,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mCUSTOMER2_s3_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -7960,8 +7982,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:real } @ { Set }
         then
@@ -7972,8 +7994,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mCUSTOMER4_s3_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -8039,8 +8061,8 @@ _r10_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -8051,8 +8073,8 @@ _r10_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s4_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -8555,8 +8577,8 @@ _r8_:int, _r9_:string
                                         _r9_:ORDERS_SHIPPRIORITY,
                                         _r10_:ORDERS_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -10656,8 +10678,8 @@ _r8_:int, _r9_:string
                                         _r9_:ORDERS_SHIPPRIORITY,
                                         _r10_:ORDERS_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -12742,8 +12764,8 @@ _r14_:string, _r15_:string, _r16_:string
                                           _r16_:LINEITEM_SHIPMODE,
                                           _r17_:LINEITEM_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -13394,8 +13416,8 @@ _r18_:string
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_, _r5_:_r5_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4} in ((_r1_ == __temp_0
-            and _r4_ == __temp_3) * _r3_ == __temp_2) * _r2_ == __temp_1)) !=
-          empty {
+            and _r4_ == __temp_3) and _r3_ == __temp_2) and _r2_ == __temp_1))
+          != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int } @ { Set }
         then
@@ -13406,7 +13428,7 @@ _r18_:string
                             _r5_:_r5_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4} in ((_r1_ ==
-              __temp_0 and _r4_ == __temp_3) * _r3_ == __temp_2) * _r2_ ==
+              __temp_0 and _r4_ == __temp_3) and _r3_ == __temp_2) and _r2_ ==
               __temp_1))).peek ()) of { Some x -> x } { None -> error () })
             tuple
         else map_QUERY3_mLINEITEM1_s16_buf.insert tuple));
@@ -13490,8 +13512,8 @@ _r17_:string, _r18_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -13502,8 +13524,8 @@ _r17_:string, _r18_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s19_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -13586,8 +13608,8 @@ _r17_:string, _r18_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -13598,8 +13620,8 @@ _r17_:string, _r18_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s20_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -14270,8 +14292,8 @@ _r14_:string, _r15_:string, _r16_:string
                                           _r16_:LINEITEM_SHIPMODE,
                                           _r17_:LINEITEM_COMMENT};
       __vid_counter__.update
-        (case (__vid_counter__.peek ()) of { Some x -> x }
-        { None -> error () })
+        ({i:case (__vid_counter__.peek ()) of { Some x -> x.i }
+          { None -> error () }})
         ({i:1 + case (__vid_counter__.peek ()) of { Some x -> x.i }
           { None -> error () }})
       )
@@ -14922,8 +14944,8 @@ _r18_:string
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_, _r5_:_r5_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4} in ((_r1_ == __temp_0
-            and _r4_ == __temp_3) * _r3_ == __temp_2) * _r2_ == __temp_1)) !=
-          empty {
+            and _r4_ == __temp_3) and _r3_ == __temp_2) and _r2_ == __temp_1))
+          != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int } @ { Set }
         then
@@ -14934,7 +14956,7 @@ _r18_:string
                             _r5_:_r5_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4} in ((_r1_ ==
-              __temp_0 and _r4_ == __temp_3) * _r3_ == __temp_2) * _r2_ ==
+              __temp_0 and _r4_ == __temp_3) and _r3_ == __temp_2) and _r2_ ==
               __temp_1))).peek ()) of { Some x -> x } { None -> error () })
             tuple
         else map_QUERY3_mLINEITEM1_s21_buf.insert tuple));
@@ -15018,8 +15040,8 @@ _r17_:string, _r18_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -15030,8 +15052,8 @@ _r17_:string, _r18_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s24_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -15114,8 +15136,8 @@ _r17_:string, _r18_:string
                           _r5_:_r5_, _r6_:_r6_} in 
             bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                            _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-            (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-            _r3_ == __temp_2) * _r2_ == __temp_1)) != empty {
+            (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3) and
+            _r3_ == __temp_2) and _r2_ == __temp_1)) != empty {
           _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
           _r5_:int, _r6_:int } @ { Set }
         then
@@ -15126,8 +15148,8 @@ _r17_:string, _r18_:string
                             _r5_:_r5_, _r6_:_r6_} in 
               bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2,
                              _r4_:__temp_3, _r5_:__temp_4, _r6_:__temp_5} in 
-              (((_r1_ == __temp_0 and _r5_ == __temp_4) * _r4_ == __temp_3) *
-              _r3_ == __temp_2) * _r2_ == __temp_1))).peek ()) of
+              (((_r1_ == __temp_0 and _r5_ == __temp_4) and _r4_ == __temp_3)
+              and _r3_ == __temp_2) and _r2_ == __temp_1))).peek ()) of
             { Some x -> x } { None -> error () }) tuple
         else map_QUERY3_mLINEITEM1_mCUSTOMER2_s25_buf.insert tuple));
     if __stmt_cntrs__.filter
@@ -16937,66 +16959,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Set }
                       _r1_:corrective_vid, _r2_:vid_send_list, _r3_:tuple}))
               else ())))
 
-trigger demux_CUSTOMER : {
-_r1_:int, _r2_:string, _r3_:string, _r4_:int, _r5_:string, _r6_:real,
-_r7_:string, _r8_:string
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:CUSTOMER_CUSTKEY, _r2_:CUSTOMER_NAME,
-                  _r3_:CUSTOMER_ADDRESS, _r4_:CUSTOMER_NATIONKEY,
-                  _r5_:CUSTOMER_PHONE, _r6_:CUSTOMER_ACCTBAL,
-                  _r7_:CUSTOMER_MKTSEGMENT, _r8_:CUSTOMER_COMMENT} in 
-    (insert_CUSTOMER, me)<- {_r1_:CUSTOMER_CUSTKEY, _r2_:CUSTOMER_NAME,
-                             _r3_:CUSTOMER_ADDRESS, _r4_:CUSTOMER_NATIONKEY,
-                             _r5_:CUSTOMER_PHONE, _r6_:CUSTOMER_ACCTBAL,
-                             _r7_:CUSTOMER_MKTSEGMENT, _r8_:CUSTOMER_COMMENT})
-
-trigger demux_ORDERS : {
-_r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:string, _r6_:string,
-_r7_:string, _r8_:int, _r9_:string
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:ORDERS_ORDERKEY, _r2_:ORDERS_CUSTKEY,
-                  _r3_:ORDERS_ORDERSTATUS, _r4_:ORDERS_TOTALPRICE,
-                  _r5_:ORDERS_ORDERDATE, _r6_:ORDERS_ORDERPRIORITY,
-                  _r7_:ORDERS_CLERK, _r8_:ORDERS_SHIPPRIORITY,
-                  _r9_:ORDERS_COMMENT} in 
-    (insert_ORDERS, me)<- {_r1_:ORDERS_ORDERKEY, _r2_:ORDERS_CUSTKEY,
-                           _r3_:ORDERS_ORDERSTATUS, _r4_:ORDERS_TOTALPRICE,
-                           _r5_:parse_sql_date ORDERS_ORDERDATE,
-                           _r6_:ORDERS_ORDERPRIORITY, _r7_:ORDERS_CLERK,
-                           _r8_:ORDERS_SHIPPRIORITY, _r9_:ORDERS_COMMENT})
-
-trigger demux_LINEITEM : {
-_r1_:int, _r2_:int, _r3_:int, _r4_:int, _r5_:real, _r6_:real, _r7_:real,
-_r8_:real, _r9_:string, _r10_:string, _r11_:string, _r12_:string, _r13_:string,
-_r14_:string, _r15_:string, _r16_:string
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:LINEITEM_ORDERKEY, _r2_:LINEITEM_PARTKEY,
-                  _r3_:LINEITEM_SUPPKEY, _r4_:LINEITEM_LINENUMBER,
-                  _r5_:LINEITEM_QUANTITY, _r6_:LINEITEM_EXTENDEDPRICE,
-                  _r7_:LINEITEM_DISCOUNT, _r8_:LINEITEM_TAX,
-                  _r9_:LINEITEM_RETURNFLAG, _r10_:LINEITEM_LINESTATUS,
-                  _r11_:LINEITEM_SHIPDATE, _r12_:LINEITEM_COMMITDATE,
-                  _r13_:LINEITEM_RECEIPTDATE, _r14_:LINEITEM_SHIPINSTRUCT,
-                  _r15_:LINEITEM_SHIPMODE, _r16_:LINEITEM_COMMENT} in 
-    (insert_LINEITEM, me)<- {_r1_:LINEITEM_ORDERKEY, _r2_:LINEITEM_PARTKEY,
-                             _r3_:LINEITEM_SUPPKEY, _r4_:LINEITEM_LINENUMBER,
-                             _r5_:LINEITEM_QUANTITY,
-                             _r6_:LINEITEM_EXTENDEDPRICE,
-                             _r7_:LINEITEM_DISCOUNT, _r8_:LINEITEM_TAX,
-                             _r9_:LINEITEM_RETURNFLAG,
-                             _r10_:LINEITEM_LINESTATUS,
-                             _r11_:parse_sql_date LINEITEM_SHIPDATE,
-                             _r12_:parse_sql_date LINEITEM_COMMITDATE,
-                             _r13_:parse_sql_date LINEITEM_RECEIPTDATE,
-                             _r14_:LINEITEM_SHIPINSTRUCT,
-                             _r15_:LINEITEM_SHIPMODE, _r16_:LINEITEM_COMMENT})
-
 trigger node_dummy : int
 =
   (\x ->  ())
@@ -17006,10 +16968,10 @@ _r1_:string, _r2_:option {
 _r1_:int, _r2_:string, _r3_:string, _r4_:int, _r5_:string, _r6_:real,
 _r7_:string, _r8_:string }, _r3_:option {
 _r1_:int, _r2_:int, _r3_:int, _r4_:int, _r5_:real, _r6_:real, _r7_:real,
-_r8_:real, _r9_:string, _r10_:string, _r11_:int, _r12_:int, _r13_:int,
+_r8_:real, _r9_:string, _r10_:string, _r11_:string, _r12_:string, _r13_:string,
 _r14_:string, _r15_:string, _r16_:string }, _r4_:option {
-_r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:int, _r6_:string, _r7_:string,
-_r8_:int, _r9_:string }
+_r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:string, _r6_:string,
+_r7_:string, _r8_:int, _r9_:string }
 }
 =
   (\_b1_ -> 
@@ -17027,14 +16989,28 @@ _r8_:int, _r9_:string }
         (insert_LINEITEM, me)<- let insert_LINEITEM_args_unwrap = case insert_LINEITEM_args of
           { Some x -> x }
           { None -> error () } in
-          insert_LINEITEM_args_unwrap
+          bind insert_LINEITEM_args_unwrap as {_r1_:_a1, _r2_:_a2, _r3_:_a3,
+                                               _r4_:_a4, _r5_:_a5, _r6_:_a6,
+                                               _r7_:_a7, _r8_:_a8, _r9_:_a9,
+                                               _r10_:_a10, _r11_:_a11,
+                                               _r12_:_a12, _r13_:_a13,
+                                               _r14_:_a14, _r15_:_a15,
+                                               _r16_:_a16} in 
+          {_r1_:_a1, _r2_:_a2, _r3_:_a3, _r4_:_a4, _r5_:_a5, _r6_:_a6,
+           _r7_:_a7, _r8_:_a8, _r9_:_a9, _r10_:_a10, _r11_:parse_sql_date _a11,
+           _r12_:parse_sql_date _a12, _r13_:parse_sql_date _a13, _r14_:_a14,
+           _r15_:_a15, _r16_:_a16}
       else
         if trigger_id == "insert_ORDERS"
         then
           (insert_ORDERS, me)<- let insert_ORDERS_args_unwrap = case insert_ORDERS_args of
             { Some x -> x }
             { None -> error () } in
-            insert_ORDERS_args_unwrap
+            bind insert_ORDERS_args_unwrap as {_r1_:_a1, _r2_:_a2, _r3_:_a3,
+                                               _r4_:_a4, _r5_:_a5, _r6_:_a6,
+                                               _r7_:_a7, _r8_:_a8, _r9_:_a9} in 
+            {_r1_:_a1, _r2_:_a2, _r3_:_a3, _r4_:_a4, _r5_:parse_sql_date _a5,
+             _r6_:_a6, _r7_:_a7, _r8_:_a8, _r9_:_a9}
         else ())
 
 source s1 : {
@@ -17042,10 +17018,10 @@ _r1_:string, _r2_:option {
 _r1_:int, _r2_:string, _r3_:string, _r4_:int, _r5_:string, _r6_:real,
 _r7_:string, _r8_:string }, _r3_:option {
 _r1_:int, _r2_:int, _r3_:int, _r4_:int, _r5_:real, _r6_:real, _r7_:real,
-_r8_:real, _r9_:string, _r10_:string, _r11_:int, _r12_:int, _r13_:int,
+_r8_:real, _r9_:string, _r10_:string, _r11_:string, _r12_:string, _r13_:string,
 _r14_:string, _r15_:string, _r16_:string }, _r4_:option {
-_r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:int, _r6_:string, _r7_:string,
-_r8_:int, _r9_:string }
+_r1_:int, _r2_:int, _r3_:string, _r4_:real, _r5_:string, _r6_:string,
+_r7_:string, _r8_:int, _r9_:string }
 } = file "tpch3.csv" k3
 feed s1 |> switch_main
 
