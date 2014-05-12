@@ -39,9 +39,7 @@ def main():
   if not args.part_map:
     args.part_map = os.path.join(file_dir, file_no_ext + '_part.k3')
 
-  network_txt = ""
-  if args.use_network:
-    network_txt = "-n"
+  network_s = "-n" if args.use_network else ""
 
   #read in k3 peers file
   with open(args.peers_file, 'r') as peerfile:
@@ -98,7 +96,7 @@ def main():
   # Create command line
   log_s = '--log "debug"'
   log_file = file_no_ext + '.log'
-  cmd = 'time K3-Driver/dist/build/k3/k3 -I K3-Core/lib interpret {peer_s} -b --simple {log_s} {file_s} > {log_file} 2>&1'.format(**locals())
+  cmd = 'time K3-Driver/dist/build/k3/k3 -I K3-Core/lib interpret {network_s} {peer_s} -b --simple {log_s} {file_s} > {log_file} 2>&1'.format(**locals())
   print_sys(cmd)
 
   # Create a clean log file
