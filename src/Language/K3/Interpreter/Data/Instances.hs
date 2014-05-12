@@ -97,7 +97,7 @@ instance Ord Value where
     compare (realizationId v, namespace v, dataspace v)
             (realizationId v', namespace v', dataspace v')
 
-  compare _ _ = error "Invalid value comparison"
+  compare a b = error $ "Invalid value comparison " ++ show a ++ ", " ++ show b
 
 instance Ord EntityTag where
   compare (MemEntTag s1) (MemEntTag s2) = compare (hashStableName s1) (hashStableName s2)
