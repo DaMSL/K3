@@ -33,10 +33,14 @@ RUN apt-get install -y git
 
 # Clone K3-Core from Git
 RUN mkdir /k3
-RUN mkdir /k3/core
-RUN git clone https://github.com/DaMSL/K3-Core.git /k3/core
+RUN mkdir /k3/K3-Core
+RUN git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core
 
 # Clone K3-Driver from Git
+RUN mkdir /k3/K3-Driver
+RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
+
+# Clone K3-Mosaic from Git
 RUN mkdir /k3/driver
 RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
 
@@ -53,7 +57,7 @@ RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
 ### Build K3-Core
-WORKDIR /k3/core
+WORKDIR /k3/K3-Core
 RUN rm -rf /.ghc
 RUN cabal sandbox init
 RUN cabal install --only-dependencies --disable-documentation
@@ -62,7 +66,7 @@ RUN cabal install --only-dependencies --disable-documentation
 #RUN cabal install
 
 ### Build K3-Driver
-WORKDIR /k3/driver
+WORKDIR /k3/K3-Driver
 RUN cabal sandbox init
 RUN cabal sandbox add-source /k3/core
 RUN cabal install --only-dependencies --disable-documentation
@@ -74,4 +78,10 @@ EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
 
 # Install Vim
 RUN apt-get install -y vim
+
+# Install decent vim configuration
+RUN mkdir /.vim
+RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
+RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
+RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
 
