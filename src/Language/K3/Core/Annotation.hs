@@ -20,8 +20,10 @@ module Language.K3.Core.Annotation (
     mapTree,
     foldMapTree,
     foldTree,
-    foldRebuildTree,
     biFoldTree,
+
+    foldRebuildTree,
+    foldMapRebuildTree,
     foldIn1RebuildTree
 ) where
 
@@ -170,6 +172,15 @@ foldTree :: (Monad m) => (b -> Tree a -> m b) -> b -> Tree a -> m b
 foldTree f x n@(Node _ []) = f x n
 foldTree f x n@(Node _ ch) = foldM (foldTree f) x ch >>= flip f n
 
+-- | Joint top-down and bottom-up traversal of a tree.
+biFoldTree :: (Monad m)
+           => (td -> Tree a -> m td)
+           -> (td -> bu -> Tree a -> m bu)
+           -> td -> bu -> Tree a -> m bu
+biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \td -> buF td buAcc n
+biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) =
+  tdF tdAcc n >>= \ntd -> (foldM (biFoldTree tdF buF ntd) buAcc ch >>= flip (buF ntd) n)
+
 -- | Rebuild a tree with an accumulator and transformed children at every node.
 foldRebuildTree :: (Monad m)
                 => (b -> [Tree a] -> Tree a -> m (b, Tree a))
@@ -179,14 +190,13 @@ foldRebuildTree f x n@(Node _ ch) = foldM rebuild (x,[]) ch >>= uncurry (\a b ->
   where rebuild (acc, chAcc) c =
           foldRebuildTree f acc c >>= (\(nAcc, nc) -> return (nAcc, chAcc++[nc]))
 
--- | Joint top-down and bottom-up traversal of a tree.
-biFoldTree :: (Monad m)
-           => (td -> Tree a -> m td)
-           -> (td -> bu -> Tree a -> m bu)
-           -> td -> bu -> Tree a -> m bu
-biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \td -> buF td buAcc n
-biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) =
-  tdF tdAcc n >>= \ntd -> (foldM (biFoldTree tdF buF ntd) buAcc ch >>= flip (buF ntd) n)
+-- | Rebuild a tree with independent accumulators and transformed children at every node.
+foldMapRebuildTree :: (Monad m)
+                   => ([b] -> [Tree a] -> Tree a -> m (b, Tree a))
+                   -> b -> Tree a -> m (b, Tree a)
+foldMapRebuildTree f x n@(Node _ []) = f [x] [] n
+foldMapRebuildTree f x n@(Node _ ch) =
+    mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip 
 
 -- | Tree accumulation and reconstruction, with a priviliged first child accumulation.
 --   This function is useful for manipulating ASTs subject to bindings introduced by the first

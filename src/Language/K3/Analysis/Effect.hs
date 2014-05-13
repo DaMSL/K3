@@ -1,6 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
 
--- TODO: effect and control normalization transforms
 module Language.K3.Analysis.Effect where
 
 import Control.Arrow
@@ -343,14 +342,14 @@ analyzeMembersEffects env initMemEnv mems = foldM analyzeInit (annotationE env, 
     undefinedExternalError n = Left $ "Undefined effect for external member " ++ n
 
 ensureRealization :: EffectEnv -> [Identifier] -> Either String EffectEnv
-ensureRealization env [] = Right $ env --Left "Unannotated empty collection"
+ensureRealization env [] = Right $ env
 ensureRealization env annIds@(annotationComboId -> cid) =
   maybe (buildRealization env annIds)
         (const $ Right env)
         (Map.lookup cid $ realizations $ annotationE env)
 
 buildRealization :: EffectEnv -> [Identifier] -> Either String EffectEnv
-buildRealization env [] = Right $ env --Left "Unannotated empty collection"
+buildRealization env [] = Right $ env
 buildRealization env annIds@(annotationComboId -> cid) =
     let defns   = definitions $ annotationE env
         cDefns  = map (\n -> (n, Map.lookup n defns)) annIds
