@@ -648,7 +648,7 @@ global _ (details -> (TSink, _, _)) Nothing     = throwE $ RunTimeInterpretation
 global _ (tag -> TSource) _ = return ()
 
 -- | Functions have already been initialized as part of the program environment.
-global _ (isFunction -> True) _ = return ()
+global _ (isTFunction -> True) _ = return ()
 
 -- | Add collection declaration, generating the collection type given by the annotation
 --   combination on demand.
@@ -728,8 +728,8 @@ annotation n _ memberDecls = tryLookupADef n >>= \case
       void $ insertE memN entry
       return (insertMember memN (v,q) memAcc, insertBinding memN entry bindAcc)
 
-    (liftedAttrFuns, liftedAttrs) = ((True, isFunction), (True, not . isFunction))
-    (attrFuns, attrs)             = ((False, isFunction), (False, not . isFunction))
+    (liftedAttrFuns, liftedAttrs) = ((True, isTFunction), (True, not . isTFunction))
+    (attrFuns, attrs)             = ((False, isTFunction), (False, not . isTFunction))
 
 
 annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl

@@ -15,12 +15,17 @@ module Language.K3.Core.Annotation (
     K3,
 
     children,
+    details,
+
     mapTree,
     foldMapTree,
     foldTree,
-    details
+    foldRebuildTree,
+    biFoldTree,
+    foldIn1RebuildTree
 ) where
 
+import Control.Monad
 import Data.List (delete, find)
 import Data.Tree
 
@@ -143,22 +148,77 @@ type K3 a = Tree (a :@: [Annotation a])
 children :: Tree a -> Forest a
 children = subForest
 
-mapTree :: ([Tree a] -> Tree a -> Tree a) -> Tree a -> Tree a
-mapTree f n@(Node _ []) = f [] n
-mapTree f n@(Node _ ch) = flip f n $ map (mapTree f) ch
-
--- | Fold over a tree, recurring independently over each child.
---   The result is produced by transforming independent subresults in bottom-up fashion.
-foldMapTree :: ([b] -> Tree a -> b) -> b -> Tree a -> b
-foldMapTree f x n@(Node _ []) = f [x] n
-foldMapTree f x n@(Node _ ch) = flip f n $ map (foldMapTree f x) ch
-
--- | Fold over a tree, threading the accumulator between children.
-foldTree :: (b -> Tree a -> b) -> b -> Tree a -> b
-foldTree f x n@(Node _ []) = f x n
-foldTree f x n@(Node _ ch) = flip f n $ foldl (foldTree f) x ch
-
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details (Node (tg :@: anns) ch) = (tg, ch, anns)
 
+
+-- | Transform a tree by mapping a function over every tree node. The function
+--   is provided transformed children for every new node built.
+mapTree :: (Monad m) => ([Tree b] -> Tree a -> m (Tree b)) -> Tree a -> m (Tree b)
+mapTree f n@(Node _ []) = f [] n
+mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n 
+
+-- | Map an accumulator over a tree, recurring independently over each child.
+--   The result is produced by transforming independent subresults in bottom-up fashion.
+foldMapTree :: (Monad m) => ([b] -> Tree a -> m b) -> b -> Tree a -> m b
+foldMapTree f x n@(Node _ []) = f [x] n
+foldMapTree f x n@(Node _ ch) = mapM (foldMapTree f x) ch >>= flip f n
+
+-- | Fold over a tree, threading the accumulator between children.
+foldTree :: (Monad m) => (b -> Tree a -> m b) -> b -> Tree a -> m b
+foldTree f x n@(Node _ []) = f x n
+foldTree f x n@(Node _ ch) = foldM (foldTree f) x ch >>= flip f n
+
+-- | Rebuild a tree with an accumulator and transformed children at every node.
+foldRebuildTree :: (Monad m)
+                => (b -> [Tree a] -> Tree a -> m (b, Tree a))
+                -> b -> Tree a -> m (b, Tree a)
+foldRebuildTree f x n@(Node _ []) = f x [] n
+foldRebuildTree f x n@(Node _ ch) = foldM rebuild (x,[]) ch >>= uncurry (\a b -> f a b n) 
+  where rebuild (acc, chAcc) c =
+          foldRebuildTree f acc c >>= (\(nAcc, nc) -> return (nAcc, chAcc++[nc]))
+
+-- | Joint top-down and bottom-up traversal of a tree.
+biFoldTree :: (Monad m)
+           => (td -> Tree a -> m td)
+           -> (td -> bu -> Tree a -> m bu)
+           -> td -> bu -> Tree a -> m bu
+biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \td -> buF td buAcc n
+biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) =
+  tdF tdAcc n >>= \ntd -> (foldM (biFoldTree tdF buF ntd) buAcc ch >>= flip (buF ntd) n)
+
+-- | Tree accumulation and reconstruction, with a priviliged first child accumulation.
+--   This function is useful for manipulating ASTs subject to bindings introduced by the first
+--   child, for example with let-ins, bind-as and case-of.
+--   This function takes a pre- and post-first child traversal accumulator transformation function.
+--   The post-first-child transformation additionally returns siblings to which the accumulator
+--   should be propagated, for example case-of should not propagate bindings to the None branch.
+--   The traversal also takes a merge function to combine the running accumulator
+--   passed through siblings with those that skip accumulator propagation.
+--   Finally, the traversal takes a post-order accumulator and children transformation function.
+foldIn1RebuildTree :: (Monad m)
+                   => (b -> Tree a -> Tree a -> m b)
+                   -> (b -> Tree a -> Tree a -> m (b, [Bool]))
+                   -> (b -> b -> m b)
+                   -> (b -> [Tree a] -> Tree a -> m (b, Tree a))
+                   -> b -> Tree a -> m (b, Tree a)
+foldIn1RebuildTree _ _ _ allChF acc n@(Node _ []) = allChF acc [] n
+foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
+    nAcc                 <- preCh1F acc (head ch) n
+    (nAcc2, nc1)         <- foldIn1RebuildTree preCh1F postCh1F mergeF allChF nAcc (head ch)
+    (nAcc3, useInitAccs) <- postCh1F nAcc2 nc1 n
+    if (length useInitAccs) /= (length $ tail ch)
+      then fail "Invalid foldIn1RebuildTree accumulation"
+      else do
+        (nAcc4, nch) <- foldM rebuild (nAcc3, [nc1]) $ zip useInitAccs $ tail ch
+        allChF nAcc4 nch n
+
+  where rebuild (rAcc, chAcc) (True, c) = do
+          (nrAcc, nc) <- foldIn1RebuildTree preCh1F postCh1F mergeF allChF rAcc c
+          return (nrAcc, chAcc++[nc])
+
+        rebuild (rAcc, chAcc) (False, c) = do
+          (cAcc, nc) <- foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc c
+          nrAcc      <- mergeF rAcc cAcc
+          return (nrAcc, chAcc++[nc])

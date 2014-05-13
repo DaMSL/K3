@@ -34,6 +34,7 @@ module Language.K3.Interpreter.Context (
 
 import Control.Arrow hiding ( (+++) )
 import Control.Concurrent
+import Control.Monad.Identity
 import Control.Monad.Reader
 
 import Data.Function
@@ -133,34 +134,34 @@ staticEnvironment pc prog = do
         Just cId -> lookupACombo cId >>= return . AEnvironment d . (:r) . (cId,)
 
     declCombos :: K3 Declaration -> [[Identifier]]
-    declCombos = foldTree extractDeclCombos []
+    declCombos = runIdentity . foldTree extractDeclCombos []
 
     typeCombos :: K3 Type -> [[Identifier]]
-    typeCombos = foldTree extractTypeCombos []
+    typeCombos = runIdentity . foldTree extractTypeCombos []
 
     exprCombos :: K3 Expression -> [[Identifier]]
-    exprCombos = foldTree extractExprCombos []    
+    exprCombos = runIdentity . foldTree extractExprCombos []    
     
-    extractDeclCombos :: [[Identifier]] -> K3 Declaration -> [[Identifier]]
-    extractDeclCombos st (tag -> DGlobal _ t eOpt)     = st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
-    extractDeclCombos st (tag -> DTrigger _ t e)       = st ++ typeCombos t ++ exprCombos e
-    extractDeclCombos st (tag -> DAnnotation _ _ mems) = st ++ concatMap memCombos mems
-    extractDeclCombos st _ = st
+    extractDeclCombos :: [[Identifier]] -> K3 Declaration -> Identity [[Identifier]]
+    extractDeclCombos st (tag -> DGlobal _ t eOpt)     = return $ st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
+    extractDeclCombos st (tag -> DTrigger _ t e)       = return $ st ++ typeCombos t ++ exprCombos e
+    extractDeclCombos st (tag -> DAnnotation _ _ mems) = return $ st ++ concatMap memCombos mems
+    extractDeclCombos st _ = return st
     
-    extractTypeCombos :: [[Identifier]] -> K3 Type -> [[Identifier]]
+    extractTypeCombos :: [[Identifier]] -> K3 Type -> Identity [[Identifier]]
     extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) = 
       case namedTAnnotations tAnns of
-        []        -> c
-        namedAnns -> namedAnns:c
+        []        -> return c
+        namedAnns -> return $ namedAnns:c
     
-    extractTypeCombos c _ = c
+    extractTypeCombos c _ = return c
 
-    extractExprCombos :: [[Identifier]] -> K3 Expression -> [[Identifier]]
+    extractExprCombos :: [[Identifier]] -> K3 Expression -> Identity [[Identifier]]
     extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) = 
       case namedEAnnotations eAnns of
-        []        -> c ++ typeCombos et
-        namedAnns -> (namedAnns:c) ++ typeCombos et
-    extractExprCombos c _ = c
+        []        -> return $ c ++ typeCombos et
+        namedAnns -> return $ (namedAnns:c) ++ typeCombos et
+    extractExprCombos c _ = return c
 
     memCombos :: AnnMemDecl -> [[Identifier]]
     memCombos (Lifted _ _ t eOpt _)    = typeCombos t ++ (maybe [] exprCombos eOpt)
@@ -170,7 +171,7 @@ staticEnvironment pc prog = do
 
 initEnvironment :: K3 Declaration -> IState -> EngineM Value IState
 initEnvironment decl st =
-  let declGState  = foldTree registerDecl st decl
+  let declGState  = runIdentity $ foldTree registerDecl st decl
   in initDecl declGState decl
   where 
     initDecl st' (tag &&& children -> (DGlobal n t eOpt, ch)) = initGlobal st' n t eOpt >>= flip (foldM initDecl) ch
@@ -181,9 +182,9 @@ initEnvironment decl st =
     -- | Global initialization for cyclic dependencies.
     --   This partially initializes sinks and functions (to their defining lambda expression).
     initGlobal :: IState -> Identifier -> K3 Type -> Maybe (K3 Expression) -> EngineM Value IState
-    initGlobal st' n (tag -> TSink) _            = initTrigger st' n
-    initGlobal st' n t@(isFunction -> True) eOpt = initFunction st' n t eOpt
-    initGlobal st' _ _ _                         = return st'
+    initGlobal st' n (tag -> TSink) _             = initTrigger st' n
+    initGlobal st' n t@(isTFunction -> True) eOpt = initFunction st' n t eOpt
+    initGlobal st' _ _ _                          = return st'
 
     initTrigger st' n = initializeBinding st'
       (memEntTag Nothing >>= \tg -> insertE n $ IVal $ VTrigger (n, Nothing, tg))
@@ -204,10 +205,12 @@ initEnvironment decl st =
     registerGlobal :: Identifier -> IState -> IState
     registerGlobal n istate = modifyStateGlobals ((:) n) istate
 
-    registerDecl :: IState -> K3 Declaration -> IState
-    registerDecl st' (tag -> DGlobal n _ _)  = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
-    registerDecl st' (tag -> DTrigger n _ _) = _debugI_RegisterGlobal ("Registering global "++n) registerGlobal n st'
-    registerDecl st' _                       = _debugI_RegisterGlobal ("Skipping global registration") st'
+    registerDecl :: IState -> K3 Declaration -> Identity IState
+    registerDecl st' (tag -> DGlobal n _ _)  = debugRegDecl ("Registering global "++n)       $ registerGlobal n st'
+    registerDecl st' (tag -> DTrigger n _ _) = debugRegDecl ("Registering global "++n)       $ registerGlobal n st'
+    registerDecl st' _                       = debugRegDecl ("Skipping global registration") $ st'
+
+    debugRegDecl s a = return $ _debugI_RegisterGlobal s a
 
 
 initState :: PrintConfig -> AEnvironment Value -> K3 Declaration -> EngineM Value IState

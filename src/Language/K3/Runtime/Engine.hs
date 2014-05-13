@@ -1,11 +1,12 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE TypeSynonymInstances #-} -- For showPC
-{-# LANGUAGE FlexibleInstances #-} -- For showPC
 
 -- | A message processing runtime for the K3 interpreter
 -- TODO: 
@@ -161,7 +162,7 @@ $(customLoggingFunctions ["EngineSteps"])
 
 -- These can't be in Instances because of cyclical import
 instance ShowPC a => ShowPC (InternalMessage a) where
-  showPC pc (addr, id, v) = "("++show addr++", "++show id++", "++showPC pc v++")"
+  showPC pc (addr, n, v) = "("++show addr++", "++show n++", "++showPC pc v++")"
 
 instance ShowPC a => ShowPC [InternalMessage a] where
   showPC pc vl = "[" ++ (concat $ intersperse ", " $ map (showPC pc) vl) ++ "]"
@@ -486,7 +487,7 @@ singleQSingleW addrL idL = do
   qGroups <- newMVar $ [[defaultQueueId]] 
   wMap    <- newEmptyMVar
   -- route messages to the default queue
-  cross   <- return $ [(addr,id) | addr <- addrL, id <- idL]
+  cross   <- return $ [(addr,n) | addr <- addrL, n <- idL]
   kvs     <- return $ map (,defaultQueueId) cross
   mMap    <- newMVar $ H.fromList kvs
   return $ PerGroup qMap qGroups wMap mMap
@@ -501,7 +502,7 @@ peerQSingleW addrL idL = do
   qGroups <- newMVar $ [allQs]
   wMap    <- newEmptyMVar
   -- route each message based on the address provided
-  kvs     <- return $ [((addr,id), qName addr) | addr <- addrL, id <- idL]
+  kvs     <- return $ [((addr,n), qName addr) | addr <- addrL, n <- idL]
   mMap    <- newMVar $ H.fromList kvs
   return  $ PerGroup qMap qGroups wMap mMap
   where qName addr = show addr
@@ -516,7 +517,7 @@ peerQPeerW addrL idL = do
   qGroups <- newMVar $ map (\q -> [q]) allQs
   wMap    <- newEmptyMVar
   -- route each message based on the address provided
-  kvs     <- return $ [((addr,id), qName addr) | addr <- addrL, id <- idL]
+  kvs     <- return $ [((addr,n), qName addr) | addr <- addrL, n <- idL]
   mMap    <- newMVar $ H.fromList kvs
   return  $ PerGroup qMap qGroups wMap mMap
   where qName addr = show addr
@@ -531,10 +532,10 @@ triggerQTriggerW addrL idL = do
   qGroups <- newMVar $ map (\q -> [q]) allQs
   wMap    <- newEmptyMVar
   -- route each message based on the address,id provided
-  kvs     <- return $ [((addr,id), qName (addr,id)) | addr <- addrL, id <- idL]
+  kvs     <- return $ [((addr,n), qName (addr,n)) | addr <- addrL, n <- idL]
   mMap    <- newMVar $ H.fromList kvs
   return  $ PerGroup qMap qGroups wMap mMap
-  where qName (addr,id) = (show addr) ++ "," ++ id
+  where qName (addr,n) = (show addr) ++ "," ++ n
 
 {- EngineControl Constructors -}
 defaultControl :: IO EngineControl 
@@ -748,8 +749,8 @@ notifyMessage tid = do
 processMessage :: MessageProcessor p a r e -> r -> EngineM a (LoopStatus r e)
 processMessage mp pr = do
     engine <- ask
-    message <- dequeue $ queueConfig engine
-    maybe terminate' process' message
+    msg    <- dequeue $ queueConfig engine
+    maybe terminate' process' msg
   where
     terminate' = return $ MessagesDone pr
     process' m = do
@@ -849,7 +850,7 @@ runEngine pc mp p = do
     result <- initialize mp p
     case workers engine of 
       Uniprocess worker_mv -> do
-        engine  <- ask
+        --engine  <- ask
         myId    <- liftIO myThreadId
         qGroups <- liftIO $ readMVar (queueGroups $ queueConfig engine)
         configWorkers [myId] qGroups
@@ -858,7 +859,7 @@ runEngine pc mp p = do
         runMessages pc mp (return . either Error Result $ status mp result)
       
       Multithreaded workers_mv -> do 
-        engine  <- ask
+        --engine  <- ask
         qGroups <- liftIO $ readMVar $ queueGroups $ queueConfig engine
         threads <- mapM (const $ forkWorker pc mp result) qGroups
         configWorkers threads qGroups
@@ -1002,8 +1003,13 @@ runNEndpoint ls _ = throwEngineError $ EndpointError
 
 -- | Queue accessor
 
+mDie :: forall a. a
 mDie = error "Could not find the queueId for given message"
+
+qDie :: forall a. a
 qDie = error "Could not find the queue for given queueId"
+
+wDie :: forall a. a
 wDie = error "Could not find the queueGroup for given worker"
 
 enqueue :: QueueConfiguration a -> Address -> Identifier -> a -> EngineM a ()
@@ -1022,15 +1028,15 @@ enqueue qconfig addr n arg = do
   maybe (return ()) notifyMessage tid 
   where 
     enqueueTo qid qs = return $ H.adjust (++ [(addr,n, arg)]) qid qs
-    lookupWorker qconfig qid = do
-      wm_mv   <- return (workerIdToQueueIds qconfig)
+    lookupWorker qconf qid = do
+      wm_mv   <- return (workerIdToQueueIds qconf)
       -- enqueue is called once before workers are initialized.
       -- If worker map mvar is still empty, there is no
       -- need to wake any worker.
       is_init <- isEmptyMVar wm_mv
       if is_init 
       then return Nothing
-      else withMVar (workerIdToQueueIds qconfig) (\h -> return $ getWorker qid (H.toList h))
+      else withMVar (workerIdToQueueIds qconf) (\h -> return $ getWorker qid (H.toList h))
     getWorker queueId [] = error "failed to find the worker responsible for the given queue"
     getWorker queueId ((k,v):kvs) = if queueId `elem` v  then Just k else (getWorker queueId kvs)
 

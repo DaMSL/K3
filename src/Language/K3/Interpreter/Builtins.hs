@@ -215,37 +215,37 @@ modifyCollection cmv f = do
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type
                        -> Interpretation (Maybe (Identifier, Value))
 builtinLiftedAttribute annId n _ =
-  let wrap f = f >>= \x -> return $ Just (n, x) in
+  let wrapF f = f >>= \x -> return $ Just (n, x) in
   if annId `elem` dataspaceAnnotationIds then case n of
-    "peek"        -> wrap peekFn
-    "insert"      -> wrap insertFn
-    "delete"      -> wrap deleteFn
-    "update"      -> wrap updateFn
-    "combine"     -> wrap combineFn
-    "split"       -> wrap splitFn
-    "iterate"     -> wrap iterateFn
-    "map"         -> wrap mapFn
-    "filter"      -> wrap filterFn
-    "fold"        -> wrap foldFn
-    "groupBy"     -> wrap groupByFn
-    "ext"         -> wrap extFn
+    "peek"        -> wrapF peekFn
+    "insert"      -> wrapF insertFn
+    "delete"      -> wrapF deleteFn
+    "update"      -> wrapF updateFn
+    "combine"     -> wrapF combineFn
+    "split"       -> wrapF splitFn
+    "iterate"     -> wrapF iterateFn
+    "map"         -> wrapF mapFn
+    "filter"      -> wrapF filterFn
+    "fold"        -> wrapF foldFn
+    "groupBy"     -> wrapF groupByFn
+    "ext"         -> wrapF extFn
 
     -- Sequential collection methods
-    "sort"        -> wrap sortFn
+    "sort"        -> wrapF sortFn
 
     -- Set collection methods
-    "member"      -> wrap memberFn
-    "isSubsetOf"  -> wrap isSubsetOfFn
-    "union"       -> wrap unionFn
-    "intersect"   -> wrap intersectFn
-    "difference"  -> wrap differenceFn
+    "member"      -> wrapF memberFn
+    "isSubsetOf"  -> wrapF isSubsetOfFn
+    "union"       -> wrapF unionFn
+    "intersect"   -> wrapF intersectFn
+    "difference"  -> wrapF differenceFn
 
     -- Sorted collection methods
-    "min"         -> wrap minFn
-    "max"         -> wrap maxFn
-    "lowerBound"  -> wrap lowerBoundFn
-    "upperBound"  -> wrap upperBoundFn
-    "slice"       -> wrap sliceFn
+    "min"         -> wrapF minFn
+    "max"         -> wrapF maxFn
+    "lowerBound"  -> wrapF lowerBoundFn
+    "upperBound"  -> wrapF upperBoundFn
+    "slice"       -> wrapF sliceFn
 
     _             -> providesError "lifted attribute" n
 

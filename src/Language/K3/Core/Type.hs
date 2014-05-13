@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Types in K3.
 module Language.K3.Core.Type (
@@ -16,8 +17,11 @@ module Language.K3.Core.Type (
     isTMutable,
     isTAnnotation,
 
-    namedTAnnotations
+    namedTAnnotations,
+    isTFunction
 ) where
+
+import Control.Arrow
 
 import Data.Maybe
 import Data.Tree
@@ -187,3 +191,8 @@ namedTAnnotations anns = map extractId $ filter isTAnnotation anns
   where extractId (TAnnotation n) = n
         extractId _ = error "Invalid named annotation"
 
+-- | Matches polymorphic and monomorphic functions.
+isTFunction :: K3 Type -> Bool
+isTFunction (tag -> TFunction) = True
+isTFunction (tag &&& children -> (TForall _, [t])) = isTFunction t
+isTFunction _ = False

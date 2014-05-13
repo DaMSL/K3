@@ -176,6 +176,10 @@ isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
+isEProperty :: Annotation Expression -> Bool
+isEProperty (EProperty _ _) = True
+isEProperty _               = False
+
 isEType :: Annotation Expression -> Bool
 isEType (EType   _) = True
 isEType (ETypeLB _) = True
@@ -192,14 +196,14 @@ namedEAnnotations anns = map extractId $ filter isEAnnotation anns
 
 -- | Retrieves all free variables in an expression.
 freeVariables :: K3 Expression -> [Identifier]
-freeVariables = foldMapTree extractVariable []
+freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
   where
-    extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = filter (`notElem` bindingVariables b) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)   = let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _ = concat chAcc
+    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
+    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
+    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extractVariable chAcc _                    = return $ concat chAcc
 
 -- | Retrieves all variables introduced by a binder
 bindingVariables :: Binder -> [Identifier]
