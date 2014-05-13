@@ -1,0 +1,106 @@
+/*
+ * scanQuery_MM.k3
+ *
+ * Created by Kartik Thapar on 05/12/2014 at 08:24:46
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+/* 
+ * Example SQL Query:
+ * SELECT pageURL, pageRank FROM rankings WHERE pageRank > X 
+ */
+
+/*
+ *Required Inputs: totalRows, pageRankThreshold, numberOfPeers.
+ */
+
+/* Dataset */
+
+declare dataInput : collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}
+declare dataOutput : collection {pageURL : string, pageRank : int} @ {Collection}
+declare rowCounter : mut int = 0
+declare totalRows : mut int
+
+/* Query Variables */
+
+declare pageRankThreshold : mut int
+
+/* Peers */
+
+declare master : address = 127.0.0.1:40000
+declare numberOfPeers : mut int
+declare nodes : mut collection {Address : address, Id : int} @ {Collection}
+
+declare getNodeSize : (int -> int) = fun nodeId -> (
+    let r = totalRows % numberOfPeers in
+            let q = totalRows / numberOfPeers in
+                if r == 0 then q else if nodeId < r then q + 1 else q 
+)
+
+/* PHASE 1 : Send Rows to Different Nodes */
+
+trigger processTableRows : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \tableElementCollection -> (
+    rowCounter = rowCounter + 1;
+    tableElementCollection.iterate (\tableElement -> (
+        dataInput.insert {pageURL : tableElement.pageURL, pageRank : tableElement.pageRank, avgDuration : tableElement.avgDuration}
+    ));
+
+    /* After you are done processing the actual table input, send useful variables to other nodes. */
+    if rowCounter == totalRows then (arrangeDataForNodes, me) <- ()
+    else ()
+)
+
+trigger arrangeDataForNodes : () = \_ -> (
+    nodes.iterate (\node -> (
+        (understandData, node.Address) <- ((getNodeSize node.Id), pageRankThreshold)
+    ));
+
+    dataInput.fold (\nodeCounter -> \row -> (
+        let pNode = nodes.filter (\node -> node.Id == nodeCounter) in
+            let nodeInstance = pNode.peek() in
+                case nodeInstance of
+                {Some node -> (processData, node.Address) <- (row)}
+                {None -> ()};
+        (nodeCounter + 1) % numberOfPeers
+    )) 0
+)
+
+/* PHASE 2 : Compute on Row Data */
+
+declare nodeSize : mut int
+declare nodeDataOutput : collection {pageURL : string, pageRank : int} @ {Collection}
+declare currentSize : mut int = 0
+
+trigger understandData : (int, int) = \x -> (
+    bind x as (tNodeSize, tPageRankThreshold) in (
+        nodeSize = tNodeSize;
+        pageRankThreshold = tPageRankThreshold
+    )
+)
+
+trigger processData : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \row -> (
+    currentSize = currentSize + 1;
+    (if row.pageRank > pageRankThreshold then
+        nodeDataOutput.insert {pageURL : row.pageURL, pageRank : row.pageRank}
+    else ());
+    
+    /* After all rows are processed, send output to master. */
+    if currentSize == nodeSize then (gatherDataAtMaster, master) <- (nodeDataOutput)
+    else ()
+)
+
+/* PHASE 3 : Gather Data at Master */
+
+trigger gatherDataAtMaster : (collection {pageURL : string, pageRank : int} @ {Collection}) = \rows -> (
+    rows.iterate (\row -> (
+        dataOutput.insert {pageURL : row.pageURL, pageRank : row.pageRank}
+    ))
+)
+
+source tableSource : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/rankings.txt" k3
+
+feed tableSource |> processTableRows

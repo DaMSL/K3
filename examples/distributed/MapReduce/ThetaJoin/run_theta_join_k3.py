@@ -23,15 +23,15 @@ import docopt
 import csv
 
 def createK3Command(topology, mode):
-    with open(topologyFile, 'rb') as csvfile:
+    with open(topologyFile, 'rb') as csvFile:
         # reading program path header in file
-        programPath = csvfile.readline().replace("\n","")
+        programPath = csvFile.readline().replace("\n","")
 
         # reading description header in file
-        header = csvfile.readline().split(",")
+        header = csvFile.readline().split(",")
 
         # reading program execution info
-        body = csv.reader(csvfile, delimiter=',', quotechar='~').next()
+        body = csv.reader(csvFile, delimiter=',', quotechar='~').next()
         (master, role, sMappers, tMappers, reducers, peers, maxS, maxT) = [body[i] for i in range(0,8)]
         peers = peers.split(",")
 

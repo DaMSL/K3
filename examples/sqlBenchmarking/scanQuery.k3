@@ -1,0 +1,39 @@
+/*
+ * scanQuery.k3
+ *
+ * Created by Kartik Thapar on 05/12/2014 at 07:55:21
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+/* 
+ * Example SQL Query:
+ * SELECT pageURL, pageRank FROM rankings WHERE pageRank > X 
+ */
+
+/* Dataset */
+
+declare table : collection {pageURL : string, pageRank : int} @ {Collection}
+
+/* Query Variables */
+
+declare pageRankThreshold : mut int
+
+/* Peers */
+
+declare master : address = 127.0.0.1:40000
+
+trigger processTableRows : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        if tableElement.pageRank > pageRankThreshold then
+            table.insert {pageURL : tableElement.pageURL, pageRank : tableElement.pageRank}
+        else ()
+    ))
+)
+
+source tableSource : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/rankings.txt" k3
+
+feed tableSource |> processTableRows
