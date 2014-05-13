@@ -18,15 +18,18 @@ import Language.K3.TypeSystem.Error
 import Language.K3.Utils.Pretty
 
 
-typecheck :: K3 Declaration -> IO ()
-typecheck p =
-    let (errs, result, typedP) = typecheckProgram p in
+withTypecheckedProgram :: (K3 Declaration -> Map UID (K3 Type, K3 Type) -> IO ())
+                       -> K3 Declaration -> IO ()
+withTypecheckedProgram action prog =
+    let (errs, result, typedP) = typecheckProgram prog in
     if Seq.null errs then 
-      maybe inferenceError (putStrLn . prettyTCResult typedP) $ tcExprBounds result
+      maybe inferenceError (action typedP) $ tcExprBounds result
     else putStrLn $ prettyTCErrors typedP errs
 
   where inferenceError = putStrLn $ "Could not infer types for program."
 
+typecheck :: K3 Declaration -> IO ()
+typecheck p = withTypecheckedProgram (\tp tm -> putStrLn $ prettyTCResult tp tm) p
 
 prettyTCResult :: K3 Declaration -> Map UID (K3 Type, K3 Type) -> String
 prettyTCResult p bounds = unlines $

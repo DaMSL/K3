@@ -92,6 +92,7 @@ data AnalyzeMode
     | ProxyPaths
     | AnnotationProvidesGraph
     | FlatAnnotations
+    | Effects
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -327,6 +328,7 @@ analysisMode =    conflictsOpt
               <|> proxyPathsOpt
               <|> annProvOpt
               <|> flatAnnOpt
+              <|> effectOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -351,6 +353,10 @@ annProvOpt = flag' AnnotationProvidesGraph (   long "provides-graph"
 flatAnnOpt :: Parser AnalyzeMode
 flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
                                     <> help "Print bind paths for bind expressions" )
+
+effectOpt :: Parser AnalyzeMode
+effectOpt = flag' Effects (   long "effects"
+                           <> help "Print program effects")
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec

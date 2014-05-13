@@ -15,6 +15,7 @@ import Language.K3.Utils.Pretty.Syntax
 import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
+import Language.K3.Analysis.Effect
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -69,6 +70,9 @@ dispatch opts = do
     analyzer ProxyPaths              = putStrLn . pretty . labelBindAliases
     analyzer AnnotationProvidesGraph = putStrLn . show   . providesGraph
     analyzer FlatAnnotations         = putStrLn . show   . flattenAnnotations 
+    analyzer Effects                 = withTypecheckedProgram effectAnalysis
+
+    effectAnalysis p _ = either putStrLn (putStrLn . pretty) $ analyzeEffects p
 
     parseError    s = putStrLn $ "Could not parse input: " ++ s
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
