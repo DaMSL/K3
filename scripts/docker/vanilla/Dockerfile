@@ -41,13 +41,13 @@ RUN mkdir /k3/K3-Driver
 RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
 
 # Clone K3-Mosaic from Git
-RUN mkdir /k3/driver
-RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/driver
+RUN mkdir /k3/K3-Mosaic
+RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Mosaic
 
 ## Move a compile script over to the docker image
-#RUN mv /k3/core/runtime/cpp/test/compile2 /k3/core/runtime/cpp/test/distributed/compile2
+#RUN mv /k3/K3-Core/runtime/cpp/test/compile2 /k3/K3-Core/runtime/cpp/test/distributed/compile2
 ##
-#ENV PATH /k3/core/runtime/cpp/test:$PATH
+#ENV PATH /k3/K3-Core/runtime/cpp/test:$PATH
 
 # Install GHC and cabal
 RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
@@ -68,7 +68,7 @@ RUN cabal install --only-dependencies --disable-documentation
 ### Build K3-Driver
 WORKDIR /k3/K3-Driver
 RUN cabal sandbox init
-RUN cabal sandbox add-source /k3/core
+RUN cabal sandbox add-source /k3/K3-Core
 RUN cabal install --only-dependencies --disable-documentation
 #RUN cabal configure
 #RUN cabal build

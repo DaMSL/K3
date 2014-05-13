@@ -60,7 +60,7 @@ RUN cabal install --only-dependencies --disable-documentation
 ### Build K3-Driver
 WORKDIR /k3/K3-Driver
 RUN cabal sandbox init
-RUN cabal sandbox add-source /k3/core
+RUN cabal sandbox add-source /k3/K3-Core
 RUN cabal install --only-dependencies --disable-documentation
 RUN cabal install K3-Core --reinstall --ghc-options="-DDEBUG" --disable-documentation
 RUN cabal configure
