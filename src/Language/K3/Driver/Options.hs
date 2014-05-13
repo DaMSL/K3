@@ -93,6 +93,7 @@ data AnalyzeMode
     | AnnotationProvidesGraph
     | FlatAnnotations
     | Effects
+    | EffectNormalization
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -329,6 +330,7 @@ analysisMode =    conflictsOpt
               <|> annProvOpt
               <|> flatAnnOpt
               <|> effectOpt
+              <|> normalizationOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -357,6 +359,11 @@ flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
 effectOpt :: Parser AnalyzeMode
 effectOpt = flag' Effects (   long "effects"
                            <> help "Print program effects")
+
+normalizationOpt :: Parser AnalyzeMode
+normalizationOpt = flag' EffectNormalization
+                      (   long "normalize"
+                       <> help "Print an effect-normalized program.")
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
