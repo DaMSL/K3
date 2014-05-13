@@ -98,6 +98,7 @@ library
         Language.K3.Runtime.Literal,
         Language.K3.Runtime.Options,
         Language.K3.Transform.Alpha,
+        Language.K3.Transform.Normalization,
         Language.K3.Analysis.Conflicts,
         Language.K3.Analysis.Effect,
         Language.K3.Analysis.Interpreter.BindAlias,
