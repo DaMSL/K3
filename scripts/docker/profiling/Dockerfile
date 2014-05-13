@@ -74,6 +74,11 @@ RUN cabal install K3-Core --reinstall --enable-library-profiling --ghc-options="
 RUN cabal configure --enable-library-profiling --enable-executable-profiling --ghc-options="-prof -fprof-auto -osuf=p_o -hisuf=p_hi"
 RUN cabal build
 
+### Build K3-Mosaic
+WORKDIR /k3/K3-Mosaic
+RUN build_opt.sh
+RUN build_utils.sh
+
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
 
