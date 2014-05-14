@@ -15,10 +15,7 @@ module Language.K3.Utils.Logger.Operations
 , bracketLogM
 ) where
 
-import Control.DeepSeq
-import System.IO.Unsafe
 import System.Log
-import System.Log.Logger
 
 import Language.K3.Utils.Pretty
 
@@ -46,14 +43,14 @@ k3logI moduleName logLevel message =
 #else
 k3logI _ _ _ = id
 #endif
-  
+
 -- |A function to log a pretty-printable value along with a prefix message.
 k3logIPretty :: (Pretty a)
              => String -- ^The name of the module doing the logging.
              -> Priority -- ^The logging level.
              -> String -- ^The message prefix.
              -> a -- ^The value to use as the result of the logging expression.
-             -> a 
+             -> a
 k3logIPretty moduleName logLevel prefix value =
   k3logI moduleName logLevel (boxToString $ [prefix] %+ prettyLines value) value
 

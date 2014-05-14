@@ -308,7 +308,7 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
             (fe, fv) <- inline f
             return (ae PL.<//> fe, fv <> parens av)
         _ -> throwE $ CPPGenE $ "Invalid Function Form " ++ show f
-inline (tag &&& children -> (EOperate OSnd, [(tag &&& children -> (ETuple, [t, a])), v])) = do
+inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]), v])) = do
     (te, tv) <- inline t
     (ae, av) <- inline a
     (ve, vv) <- inline v
@@ -408,7 +408,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
 
     return $ ae PL.<$> hangBrace (bindInit PL.<$> bindBody PL.<$> bindWriteback PL.<$> bindCleanUp)
     where
-    genTupleAssign g n i = genCCall (text "get") (Just $ [int n]) [g] <+> equals <+> text i <> semi
+    genTupleAssign g n i = genCCall (text "get") (Just [int n]) [g] <+> equals <+> text i <> semi
     genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
@@ -461,7 +461,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
     let amp = annotationMap currentS
     compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
-    recordDecls <- forM (M.toList $ recordMap currentS) $ \(k, idts) -> record k idts
+    recordDecls <- forM (M.toList $ recordMap currentS) $ uncurry record
     tablePop <- generateDispatchPopulation
     tableDecl <- return $ text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
@@ -517,8 +517,8 @@ templateLine ts = text "template" <+> angles (sep $ punctuate comma [text "class
 genCBoostSerialize :: [Identifier] -> CPPGenR
 genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
   where
-    serializeTemplateLine = templateLine [(text "archive")]
-    serializeMethod = genCFunction (text "void") (text "serialize") [(text "archive _archive")] serializeBody
+    serializeTemplateLine = templateLine [text "archive"]
+    serializeMethod = genCFunction (text "void") (text "serialize") [text "archive _archive"] serializeBody
     serializeBody = vsep $ map serializeMember dataDecls
     serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
@@ -642,7 +642,7 @@ program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     staticGlobals' <- staticGlobals
     program' <- declaration d
-    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> (text n) <> semi | n <- ns]
+    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> text n <> semi | n <- ns]
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
     return $ vsep $ punctuate line [
@@ -665,7 +665,7 @@ genKMain = return $ genCFunction (text "int") (text "main") [text "int", text "c
     ]
 
 includes :: CPPGenM [Identifier]
-includes = return $ [
+includes = return [
         -- Standard Library
         "memory",
         "sstream",
@@ -686,8 +686,8 @@ includes = return $ [
 namespaces :: CPPGenM [Identifier]
 namespaces = do
     serializationNamespace <- serializationMethod <$> get >>= \case
-        BoostSerialization -> return $ "K3::BoostSerializer"
-        _ -> throwE $ CPPGenE $ "Unknown Serialization Namespace"
+        BoostSerialization -> return "K3::BoostSerializer"
+        _ -> throwE $ CPPGenE "Unknown Serialization Namespace"
     return ["std", "K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
