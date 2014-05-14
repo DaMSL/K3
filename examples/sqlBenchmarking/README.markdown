@@ -4,7 +4,7 @@ There are 4 SQL programs benchmarked @ [Amplab-Benchmark](https://amplab.cs.berk
 
 #K3-Implementations
 
-##Scan-Query
+##Scan Query
 
 Two implementations of Scan-Query have been written. `scanQuery` utilizes a single node in a network wherease `scanQuery_MM` implements on multiple nodes in a network.
 
@@ -33,3 +33,13 @@ A sample topology file can be found in `topology_scanQuery_MM.csv`.
 To generate the K3 command, execute the python script `run_k3_scanQuery_MM.py` as follows —
 
 	python run_k3_scanQuery_MM.py -t topology_scanQuery_MM.csv
+	
+##Aggregation Query
+
+###aggregationQuery.k3
+
+> Yet to implement `SUBSTR(sourceIP, 1, X)`.
+
+To run `aggregationQuery.k3` —
+
+	k3 interpret -b -p 127.0.0.1:40000:role=\"tableSource\" /Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/aggregationQuery.k3
