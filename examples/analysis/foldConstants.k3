@@ -23,7 +23,6 @@ trigger t : () = \_ -> (
         { Some j -> x = j.s * j.t }
         { None   -> x = -1 } )
       // Simplified to x = 240
-      // TODO: this case fails, more testing needed.
   )
 
 source s1 : () = value ()
