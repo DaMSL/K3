@@ -36,10 +36,11 @@ foldProgramConstants prog = mapExpression foldConstants prog
 
 -- TODO: qualifier handling during fold?
 foldConstants :: K3 Expression -> Either String (K3 Expression)
-foldConstants expr = do
-    vOrE <- foldMapTree simplifyConstants (Left $ VTuple []) expr
-    either valueAsExpression return vOrE
+foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression return
   where
+    simplifyAsFoldedExpr :: K3 Expression -> FoldedExpr
+    simplifyAsFoldedExpr e = foldMapTree simplifyConstants (Left $ VTuple []) e
+
     simplifyConstants :: [Either Value (K3 Expression)] -> K3 Expression -> FoldedExpr
     simplifyConstants _ (tag &&& annotations -> (EConstant c, anns)) = constant c anns
 
@@ -74,10 +75,7 @@ foldConstants expr = do
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
         (_, Left v2, _)             -> return $ Left v2
-        (Left v, Right bodyE, True) -> valueExprAsFolded $ do
-          nBodyE <- substituteBinding i v bodyE
-          foldConstants nBodyE
-        
+        (Left v, Right bodyE, True) -> substituteBinding i v bodyE >>= simplifyAsFoldedExpr
         (_, _, _)                   -> rebuildNode n ch
 
     -- TODO: substitute when we have read-only mutable bindings.    
@@ -85,15 +83,12 @@ foldConstants expr = do
       case (b, head ch, last ch) of
         (_, _, Left v) -> return $ Left v
         
-        (BTuple ids,  Left (VTuple vqs), Right bodyE) -> valueExprAsFolded $ do
-          nBodyE <- foldM substituteQualifiedField bodyE $ zip ids vqs
-          foldConstants nBodyE
+        (BTuple ids,  Left (VTuple vqs), Right bodyE) ->
+          (foldM substituteQualifiedField bodyE $ zip ids vqs) >>= simplifyAsFoldedExpr
         
         (BRecord ijs, Left (VRecord nvqs), Right bodyE) -> do
           subVQs <- mapM (\(s,t) -> maybe (invalidRecordBinding s) (return . (t,)) $ Map.lookup s nvqs) ijs
-          valueExprAsFolded $ do
-            nBodyE <- foldM substituteQualifiedField bodyE subVQs
-            foldConstants nBodyE
+          foldM substituteQualifiedField bodyE subVQs >>= simplifyAsFoldedExpr
 
         (_, _, _) -> rebuildNode n ch
 
@@ -115,9 +110,7 @@ foldConstants expr = do
         Left (VOption (Just v, MemImmut)) ->
           (case ch !! 1 of
             Left v2     -> return $ Left v2
-            Right someE -> valueExprAsFolded $ do
-              nSomeE <- substituteBinding i v someE
-              foldConstants nSomeE)
+            Right someE -> substituteBinding i v someE >>= simplifyAsFoldedExpr)
         
         Left (VOption (Nothing,  _)) -> return $ last ch
         Right _ -> rebuildNode n ch
@@ -148,12 +141,11 @@ foldConstants expr = do
                       -> ([Value] -> FoldedExpr) -> FoldedExpr
     withValueChildren n ch f = if all isLeft ch then f (lefts ch) else rebuildNode n ch
 
-    valueExprAsFolded :: Either String (K3 Expression) -> FoldedExpr
-    valueExprAsFolded = either Left (return . Right)
-
+    substituteQualifiedField :: K3 Expression -> (Identifier, (Value, VQualifier)) -> Either String (K3 Expression)
     substituteQualifiedField targetE (n, (v, MemImmut)) = substituteBinding n v targetE
     substituteQualifiedField targetE (_, (_, MemMut))   = return targetE
 
+    substituteBinding :: Identifier -> Value -> K3 Expression -> Either String (K3 Expression)
     substituteBinding i iV targetE = do
       iE <- valueAsExpression iV
       return $ substituteImmutBinding i iE targetE
