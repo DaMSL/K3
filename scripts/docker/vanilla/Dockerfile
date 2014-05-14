@@ -42,7 +42,7 @@ RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
 
 # Clone K3-Mosaic from Git
 RUN mkdir /k3/K3-Mosaic
-RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Mosaic
+RUN git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
 
 ## Move a compile script over to the docker image
 #RUN mv /k3/K3-Core/runtime/cpp/test/compile2 /k3/K3-Core/runtime/cpp/test/distributed/compile2
@@ -75,8 +75,8 @@ RUN cabal install --only-dependencies --disable-documentation
 
 ### Build K3-Mosaic
 WORKDIR /k3/K3-Mosaic
-RUN build_opt.sh
-RUN build_utils.sh
+RUN ./build_opt.sh
+RUN ./build_utils.sh
 
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
