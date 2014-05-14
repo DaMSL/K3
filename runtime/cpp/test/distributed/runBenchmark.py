@@ -83,8 +83,8 @@ if __name__ == "__main__":
 
   # Config
   nums = [100000]
-  lens = [100,1000]
-  trials = range(2)
+  lens = [16,64,128,256,512, 1024, 1024*256, 1024*512, 1024*1024]
+  trials = range(3)
   # Run
   for num_messages in nums:
     for message_len in lens:
