@@ -34,7 +34,6 @@ type LogicFunction      a = (Bool -> Bool -> Bool) -> a
 foldProgramConstants :: K3 Declaration -> Either String (K3 Declaration)
 foldProgramConstants prog = mapExpression foldConstants prog
 
--- TODO: qualifier handling during fold?
 foldConstants :: K3 Expression -> Either String (K3 Expression)
 foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression return
   where
@@ -65,9 +64,14 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
 
     -- | We do not process indirections as a literal constructor here, since
     --   in Haskell this requires a side effect.
-    simplifyConstants ch n@(tag -> ESome)       = applyVCtor ch n (asUnary someCtor)
-    simplifyConstants ch n@(tag -> ETuple)      = applyVCtor ch n tupleCtor
-    simplifyConstants ch n@(tag -> ERecord ids) = applyVCtor ch n (recordCtor ids)
+    simplifyConstants ch n@(tag -> ESome) =
+      applyVCtor ch n (asUnary $ someCtor $ extractQualifier $ head $ children n)
+    
+    simplifyConstants ch n@(tag -> ETuple) =
+      applyVCtor ch n (tupleCtor $ map extractQualifier $ children n)
+    
+    simplifyConstants ch n@(tag -> ERecord ids) =
+      applyVCtor ch n (recordCtor ids $ map extractQualifier $ children n)
 
     -- Binding simplification.
     -- TODO: substitute when we have read-only mutable bindings.
@@ -103,7 +107,6 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid if-then-else predicate simplification"
 
-    -- TODO: qualifiers?
     -- TODO: substitute when we have read-only mutable bindings.    
     simplifyConstants ch n@(tag -> ECaseOf i) =
       case head ch of
@@ -119,7 +122,6 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
     -- Projection simplification on a constant record.
     -- Since we do not simplify collections, VCollections cannot appear
     -- as the source of the projection expression.
-    -- TODO: qualifiers on the projected value.
     simplifyConstants ch n@(tag -> EProject i) =
         case head ch of
           Left (VRecord nvqs) -> maybe fieldError (return . Left . fst) $ Map.lookup i nvqs
@@ -150,10 +152,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
       iE <- valueAsExpression iV
       return $ substituteImmutBinding i iE targetE
 
-    -- TODO: qualifiers?
-    someCtor       v = return . Left $ VOption (Just v, MemImmut)
-    tupleCtor      l = return . Left $ VTuple  $ map (, MemImmut) l
-    recordCtor ids l = return . Left $ VRecord $ Map.fromList $ zip ids $ map (, MemImmut) l
+    someCtor        q v = return . Left $ VOption (Just v, q)
+    tupleCtor      qs l = return . Left $ VTuple  $ zip l qs
+    recordCtor ids qs l = return . Left $ VRecord $ Map.fromList $ zip ids $ zip l qs
 
     applyNum          ch n op   = withValueChildren n ch $ asBinary op
     applyCmp          ch n op   = withValueChildren n ch $ asBinary (comparison op)
@@ -177,6 +178,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
     noneQualifier :: VQualifier -> NoneMutability
     noneQualifier MemImmut = NoneImmut
     noneQualifier MemMut   = NoneMut
+
+    extractQualifier :: K3 Expression -> VQualifier
+    extractQualifier e = onQualifiedExpression e MemImmut MemMut
 
     valueAsExpression :: Value -> Either String (K3 Expression)
     valueAsExpression (VBool   v)       = Right . EC.constant $ CBool   v
