@@ -470,7 +470,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ uncurry record
     tablePop <- generateDispatchPopulation
-    tableDecl <- return $ text "TriggerDispatch" <+> text "dispatch_table" <> semi
+    let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     put defaultCPPGenS
     return $ text "namespace" <+> text n <+> hangBrace (
@@ -561,20 +561,14 @@ composite className ans = do
 
     let parentList = text "Collection"
 
-    publicDecls <- mapM annMemDecl methDecls
-    privateDecls <- mapM annMemDecl dataDecls
+    pubDecls <- mapM annMemDecl methDecls
+    prvDecls <- mapM annMemDecl dataDecls
 
     let classBody = text "class" <+> text className <> colon <+> parentList
-            <+> hangBrace (vsep $
-                    if not (null publicDecls)
-                        then [text "public:" PL.<$$> (indent 4 $ vsep $ punctuate line $
-                            constructors' ++ [serializationDefn] ++ publicDecls)]
-                        else []
-                    ++ if not (null privateDecls)
-                        then [text "private:" PL.<$$> (indent 4 $ vsep $ punctuate line privateDecls)]
-                        else []
-                )
-            <> semi
+            <+> hangBrace (text "public:"
+            PL.<$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializationDefn] ++ pubDecls)
+            PL.<$$> vsep [text "private:" PL.<$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
+            ) <> semi
 
     let classDefn = templateLine [text "CONTENT"] PL.<$$> classBody
 
