@@ -127,7 +127,7 @@ throwCG :: CodeGenerationError -> CodeGeneration a
 throwCG = Control.Monad.Trans.Either.left
 
 gensymCG :: Identifier -> CodeGeneration Identifier
-gensymCG n = state $ modifySymbolCounters $ \c -> modifyAssoc c n incrSym
+gensymCG n = lift $ state $ modifySymbolCounters $ \c -> modifyAssoc c n incrSym
   where incrSym Nothing  = (n ++ show (0::Int), Just 1)
         incrSym (Just i) = (n ++ show i, Just $ i+1)
 

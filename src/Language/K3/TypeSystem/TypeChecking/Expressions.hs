@@ -140,7 +140,7 @@ deriveExpression aEnv env expr = do
           return (a, csUnions css `csUnion` csSing (STuple qas <: a))
         ERecord ids -> do
           let duplicates = Set.fromList $ map fst $ filter ((>1) . snd) $
-                              map (head &&& length) $ groupBy (==) $ sort ids
+                              map (head &&& length) $ group $ sort ids
           unless (Set.null duplicates) $ typecheckError =<<
             DuplicateIdentifiersInRecordExpression <$> uidOf expr <*>
               return duplicates

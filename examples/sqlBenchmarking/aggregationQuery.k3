@@ -1,0 +1,29 @@
+/*
+ * aggregationQuery.k3
+ *
+ * Created by Kartik Thapar on 05/14/2014 at 10:45:16
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+declare dataOutput : collection {sourceIP : address, adRevenue : int} @ {Collection}
+
+trigger processTableRows : (collection {sourceIP : address, adRevenue : int} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        /* Check if the sourceIP exists in the collection; if it exists, update collection with new revenue; else insert as new. */
+        let tupleInstance = (dataOutput.filter (\inputTuple -> inputTuple.sourceIP == tableElement.sourceIP)).peek() in
+            case tupleInstance of
+            {Some tuple -> (
+                let newAdRevenue = tuple.adRevenue + tableElement.adRevenue in
+                    dataOutput.update {sourceIP : tuple.sourceIP, adRevenue : tuple.adRevenue} {sourceIP : tuple.sourceIP, adRevenue : newAdRevenue}
+            )}
+            {None -> dataOutput.insert {sourceIP : tableElement.sourceIP, adRevenue : tableElement.adRevenue}}
+    ))
+)
+
+source tableSource : (collection {sourceIP : address, adRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
+
+feed tableSource |> processTableRows

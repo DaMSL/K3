@@ -1,0 +1,12 @@
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3000, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3000, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3001, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3002, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3001, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3002, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3003, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3003, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3000, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3004, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3005, MemImmut), adRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{sourceIP = (127.0.0.1:3008, MemImmut), adRevenue = (100, MemImmut)}], Collection}
