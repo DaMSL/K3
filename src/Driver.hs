@@ -16,7 +16,9 @@ import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.Effect
+
 import Language.K3.Transform.Normalization
+import Language.K3.Transform.Simplification
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -72,6 +74,7 @@ dispatch opts = do
     analyzer AnnotationProvidesGraph = putStrLn . show   . providesGraph
     analyzer FlatAnnotations         = putStrLn . show   . flattenAnnotations 
     analyzer EffectNormalization     = putStrLn . pretty . normalizeProgram
+    analyzer FoldConstants           = putStrLn . either id pretty . foldProgramConstants
     analyzer Effects                 = withTypecheckedProgram effectAnalysis
 
     effectAnalysis p _ = either putStrLn (putStrLn . pretty) $ analyzeEffects p

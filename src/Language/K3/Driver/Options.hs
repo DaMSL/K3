@@ -94,6 +94,7 @@ data AnalyzeMode
     | FlatAnnotations
     | Effects
     | EffectNormalization
+    | FoldConstants
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -331,6 +332,7 @@ analysisMode =    conflictsOpt
               <|> flatAnnOpt
               <|> effectOpt
               <|> normalizationOpt
+              <|> foldConstantsOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -364,6 +366,11 @@ normalizationOpt :: Parser AnalyzeMode
 normalizationOpt = flag' EffectNormalization
                       (   long "normalize"
                        <> help "Print an effect-normalized program.")
+
+foldConstantsOpt :: Parser AnalyzeMode
+foldConstantsOpt = flag' FoldConstants
+                      (   long "fold-constants"
+                       <> help "Print a program after constant folding.")
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
