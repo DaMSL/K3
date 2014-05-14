@@ -51,6 +51,9 @@ RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
+# Install ocaml
+RUN apt-get install -y ocaml opam camlp4-extra
+
 ### Build K3-Core
 WORKDIR /k3/K3-Core
 RUN rm -rf /.ghc

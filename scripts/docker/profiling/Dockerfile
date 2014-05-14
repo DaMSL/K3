@@ -56,6 +56,9 @@ RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
+# Install ocaml
+RUN apt-get install -y ocaml opam camlp4-extra
+
 ### Build K3-Core
 WORKDIR /k3/K3-Core
 RUN rm -rf /.ghc
@@ -88,6 +91,6 @@ RUN apt-get install -y vim
 # Install decent vim configuration
 RUN mkdir /.vim
 RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
-RUN echo 'execute pathogen#infect() | syntax on | filetypt plugin indent on' > /.vimrc
+RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
 RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
 
