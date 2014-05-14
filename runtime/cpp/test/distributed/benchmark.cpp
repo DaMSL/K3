@@ -41,7 +41,9 @@ void join(shared_ptr<Engine> engine, string message_contents) {
 void register2(shared_ptr<Engine> engine, string message_contents) {
   int n = 1;
   nodeCounter += n;
-  std::cout << "Length" << message_contents.length() / (1024*1024.0) << "mB. Number:" << nodeCounter<< std::endl;
+  if (nodeCounter % (desired/100) == 0) {
+    std::cout << "received count: " << nodeCounter << "/" << desired << std::endl;
+  }
   if (nodeCounter == desired) {
     Message m = Message(sender, "finished", "()");
     engine->send(m);
