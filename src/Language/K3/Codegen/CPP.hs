@@ -17,7 +17,7 @@ import Control.Monad.Trans.Either
 import Data.Function
 import Data.Functor
 import Data.List (nub, sortBy)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, maybeToList)
 import Data.Traversable (forM)
 
 import qualified Data.List as L
@@ -127,6 +127,62 @@ data SerializationMethod
     = BoostSerialization
   deriving (Eq, Read, Show)
 
+-- C++ Primitive Generators
+
+-- | Generate a (potentially templated) C++ function definition.
+genCFunction :: Maybe [CPPGenR] -> CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenR
+genCFunction mta rt f args body = vsep $ tl ++ [rt <+> f <> tupled args <+> hangBrace body]
+  where tl = maybeToList $ genCTemplateDecl <$> mta
+
+-- | Generate a (potentially templated) C++ function call.
+genCCall :: CPPGenR -> Maybe [CPPGenR] -> [CPPGenR] -> CPPGenR
+genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
+
+-- | Generate a C++ namespace qualification.
+genCQualify :: CPPGenR -> CPPGenR -> CPPGenR
+genCQualify namespace name = namespace <> text "::" <> name
+
+-- | Generate a C++ declaration, with optional initializer.
+genCDecl :: CPPGenR -> CPPGenR -> Maybe CPPGenR -> CPPGenR
+genCDecl t n Nothing = t <+> n <> semi
+genCDecl t n (Just e) = t <+> n <+> equals <+> e <> semi
+
+-- | Generate a C++ assignment.
+genCAssign :: CPPGenR -> CPPGenR -> CPPGenR
+genCAssign a b = a <+> equals <+> b
+
+-- | Generate a template declaration from a list of template variables.
+genCTemplateDecl :: [CPPGenR] -> CPPGenR
+genCTemplateDecl ta = text "template" <+> angles (hcat $ punctuate comma [text "class" <+> a | a <- ta])
+
+genCType :: K3 Type -> CPPGenM CPPGenR
+genCType (tag -> TBool) = return (text "bool")
+genCType (tag -> TByte) = return (text "unsigned char")
+genCType (tag -> TInt) = return (text "int")
+genCType (tag -> TReal) = return (text "double")
+genCType (tag -> TString) = return (text "string")
+genCType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
+genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
+genCType (tag &&& children -> (TTuple, [])) = return (text "unit_t")
+genCType (tag &&& children -> (TTuple, ts))
+    = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM genCType ts
+genCType t@(tag -> TRecord ids) = signature t >>= \sig -> addRecord sig (zip ids (children t)) >> return (text sig)
+genCType (tag -> TDeclaredVar t) = return $ text t
+genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
+    ct <- genCType et
+    case annotationComboIdT as of
+        Nothing -> return $ text "Collection" <> angles ct
+        Just i' -> return $ text i' <> angles ct
+genCType (tag -> TAddress) = return $ text "Address"
+genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
+
+-- | Get the K3 Type of an expression. Relies on type-manifestation to have attached an EType
+-- annotation to the expression ahead of time.
+getKType :: K3 Expression -> CPPGenM (K3 Type)
+getKType e = case e @~ \case { EType _ -> True; _ -> False } of
+    Just (EType t) -> return t
+    _ -> throwE $ CPPGenE $ "Absent type at " ++ show e
+
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
 data RContext
@@ -184,72 +240,23 @@ constant (CString s) = return $ text "string" <> (parens . text $ show s)
 constant (CNone _) = return $ text "null"
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
--- | Reaization of types.
--- This utility is used in a number of places where the generated code makes use of an expression's
--- type. The most prominent place is where a temporary variable must be declared to store the result
--- of an expression, and must be of the appropriate type.
-cType :: K3 Type -> CPPGenM CPPGenR
-cType (tag -> TBool) = return $ text "bool"
-cType (tag -> TByte) = return $ text "unsigned char"
-cType (tag -> TInt) = return $ text "int"
-cType (tag -> TReal) = return $ text "double"
-cType (tag -> TString) = return $ text "string"
-cType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> cType t
-cType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> cType t
-cType (tag &&& children -> (TTuple, [])) = return $ text "unit_t"
-cType (tag &&& children -> (TTuple, ts))
-    = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM cType ts
-
--- TODO: Is a call to addRecord really needed here?
-cType t@(tag -> TRecord ids) = signature t >>= \sig -> addRecord sig (zip ids (children t)) >> return (text sig)
-cType (tag -> TDeclaredVar t) = return $ text t
-
--- TODO: Three pieces of information necessary to generate a collection type:
---  1. The list of named annotations on the collections.
---  2. The types provided to each annotation to fulfill their type variable requirements.
---  3. The content type.
-cType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
-    ct <- cType et
-    case annotationComboIdT as of
-        Nothing -> return $ text "Collection" <> angles ct
-        Just i' -> return $ text i' <> angles ct
-
-cType (tag -> TAddress) = return $ text "Address"
-
--- TODO: Are these all the cases that need to be handled?
-cType (tag -> TNumber) = return $ text "double"
-cType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
-
--- TODO: This isn't really C++ specific.
-canonicalType :: K3 Expression -> CPPGenM (K3 Type)
-canonicalType (tag -> EConstant (CEmpty t)) = return $ T.collection t
-canonicalType e = case lowerBoundType e of
-    Just x -> return x
-    Nothing -> throwE $ CPPGenE $ "Invalid Lower Bound for " ++ show e
-
--- | Get the lower bound type of an expression.
-lowerBoundType :: K3 Expression -> Maybe (K3 Type)
-lowerBoundType e = case e @~ (\case (ETypeLB _) -> True; _ -> False) of
-    Just (ETypeLB t) -> Just t
-    _ -> Nothing
-
 -- | Generate a C++ declaration for a value of a given type.
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
-    ctr <- cType tr
-    cta <- cType ta
+    ctr <- genCType tr
+    cta <- genCType ta
     return $ ctr <+> text i <> parens cta <> semi
 
--- TODO: As with cType/addRecord, is a call to addComposite really needed here?
+-- TODO: As with genCType/addRecord, is a call to addComposite really needed here?
 cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
     Nothing -> return $ text "Collection" <+> text i <> semi
-    Just _ -> addComposite (namedTAnnotations as) >> cType t >>= \ct -> return $ ct <+> text i <> semi
-cDecl t i = cType t >>= \ct -> return $ ct <+> text i <> semi
+    Just _ -> addComposite (namedTAnnotations as) >> genCType t >>= \ct -> return $ ct <+> text i <> semi
+cDecl t i = genCType t >>= \ct -> return $ ct <+> text i <> semi
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
-    Just ac -> cType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
+    Just ac -> genCType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
 
 inline (tag -> EConstant c) = (empty,) <$> constant c
 
@@ -261,8 +268,8 @@ inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> T
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
-    ct <- canonicalType c
-    t <- cType ct
+    ct <- getKType c
+    t <- genCType ct
     return (e, text "shared_ptr" <> angles t <> parens (text "new" <+> t <> parens v))
 inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
 inline (tag &&& children -> (ETuple, cs)) = do
@@ -270,7 +277,7 @@ inline (tag &&& children -> (ETuple, cs)) = do
     return (vsep es, text "make_tuple" <> tupled vs)
 inline e@(tag &&& children -> (ERecord _, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    t <- canonicalType e
+    t <- getKType e
     case t of
         (tag &&& children -> (TRecord ids, ts)) -> do
             sig <- signature t
@@ -287,10 +294,10 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae PL.<$> be, bv)
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-    (ta, _) <- canonicalType e >>= \case
+    (ta, _) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
-            ta' <- cType ta
-            tr' <- cType tr
+            ta' <- genCType ta
+            tr' <- genCType tr
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- globals <$> get
@@ -312,7 +319,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]
     (te, tv) <- inline t
     (ae, av) <- inline a
     (ve, vv) <- inline v
-    argType <- canonicalType v >>= cType
+    argType <- getKType v >>= genCType
     let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
     return (
             vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
@@ -331,7 +338,7 @@ inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty)
 
 inline e = do
     k <- genSym
-    ct <- canonicalType e
+    ct <- getKType e
     decl <- cDecl ct k
     effects <- reify (RName k) e
     return (decl PL.<//> effects, text k)
@@ -351,14 +358,14 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return $ ae PL.<$> be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
-    ct <- canonicalType e
+    ct <- getKType e
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
     return $ hangBrace $ vsep [d, ee, be]
 
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    ct <- canonicalType e
+    ct <- getKType e
     d <- cDecl (head $ children ct) x
     (ee, ev) <- inline e
     se <- reify r s
@@ -376,7 +383,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             ae' <- reify (RName g') a
             return (ae', text g')
 
-    ta <- canonicalType a
+    ta <- getKType a
 
     bindInit <- case b of
             BIndirection i -> do
@@ -398,7 +405,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (bindBody, k) <- case r of
         RReturn -> do
             g' <- genSym
-            te <- canonicalType e
+            te <- getKType e
             de <- cDecl te g'
             re <- reify (RName g') e
             return (de PL.<$> re, Just g')
@@ -435,8 +442,8 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
     newF <- cDecl t i
     modify (\s -> s { forwards = forwards s PL.<$$> newF })
     body <- reify RReturn b
-    cta <- cType ta
-    ctr <- cType tr
+    cta <- genCType ta
+    ctr <- genCType tr
     return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 
 declaration (tag -> DGlobal i t (Just e)) = do
@@ -456,7 +463,7 @@ declaration (tag -> DTrigger i t e) = do
 declaration (tag &&& children -> (DRole n, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
     currentS <- get
-    i <- cType T.unit >>= \ctu ->
+    i <- genCType T.unit >>= \ctu ->
         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
     let amp = annotationMap currentS
     compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
@@ -480,10 +487,10 @@ declaration _ = return empty
 triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
 triggerWrapper i t = do
     tmpDecl <- cDecl t "arg"
-    tmpType <- cType t
+    tmpType <- genCType t
     let triggerDispatch = text i <> parens (text "arg") <> semi
     let unpackCall = text "arg" <+> equals <+> text "*" <> genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
-    return $ genCFunction (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
+    return $ genCFunction Nothing (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
             vsep [
                 tmpDecl,
                 unpackCall,
@@ -496,7 +503,7 @@ generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ genCFunction (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
+    return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
     genDispatch tName = return $
         text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
@@ -518,7 +525,12 @@ genCBoostSerialize :: [Identifier] -> CPPGenR
 genCBoostSerialize dataDecls = serializeTemplateLine PL.<$$> serializeMethod
   where
     serializeTemplateLine = templateLine [text "archive"]
-    serializeMethod = genCFunction (text "void") (text "serialize") [text "archive _archive"] serializeBody
+    serializeMethod = genCFunction
+                          (Just [text "archive"])
+                          (text "void")
+                          (text "serialize")
+                          [text "archive _archive"]
+                          serializeBody
     serializeBody = vsep $ map serializeMember dataDecls
     serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
@@ -625,8 +637,8 @@ record rName idts = do
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
 definition i (tag &&& children -> (TFunction, [ta, tr])) (Just (tag &&& children -> (ELambda x, [b]))) = do
     body <- reify RReturn b
-    cta <- cType ta
-    ctr <- cType tr
+    cta <- genCType ta
+    ctr <- genCType tr
     return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 definition i t (Just e) = do
     newI <- reify (RName i) e
@@ -657,7 +669,7 @@ program d = do
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
 genKMain :: CPPGenM CPPGenR
-genKMain = return $ genCFunction (text "int") (text "main") [text "int", text "char**"] $ vsep [
+genKMain = return $ genCFunction Nothing (text "int") (text "main") [text "int", text "char**"] $ vsep [
         genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
         genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
         text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
@@ -687,7 +699,6 @@ namespaces :: CPPGenM [Identifier]
 namespaces = do
     serializationNamespace <- serializationMethod <$> get >>= \case
         BoostSerialization -> return "K3::BoostSerializer"
-        _ -> throwE $ CPPGenE "Unknown Serialization Namespace"
     return ["std", "K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
@@ -700,24 +711,3 @@ staticGlobals = return $ vsep [
             text "SystemEnvironment se = defaultEnvironment()" <> semi,
             text "Engine engine = Engine(true, se, make_shared<DefaultInternalCodec>(DefaultInternalCodec()))" <> semi
         ]
-
--- C++ Primitive Generators
-genCFunction :: CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenR
-genCFunction rt f args body = rt <+> f <> tupled args <+> hangBrace body
-
-genCCall :: CPPGenR -> Maybe [CPPGenR] -> [CPPGenR] -> CPPGenR
-genCCall f ts as = f <> (maybe empty $ \ts' -> angles (hcat $ punctuate comma ts')) ts <> tupled as
-
-genCQualify :: CPPGenR -> CPPGenR -> CPPGenR
-genCQualify namespace name = namespace <> text "::" <> name
-
-genCDecl :: CPPGenR -> CPPGenR -> Maybe CPPGenR -> CPPGenR
-genCDecl t n Nothing = t <+> n <> semi
-genCDecl t n (Just e) = t <+> n <+> equals <+> e <> semi
-
-genCAssign :: CPPGenR -> CPPGenR -> CPPGenR
-genCAssign a b = a <+> equals <+> b
-
--- genCType :: K3 Type -> CPPGenM CPPGenR
-
--- getKType :: K3 Expression -> CPPGenM (K3 Type)
