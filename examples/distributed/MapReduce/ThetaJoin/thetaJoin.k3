@@ -388,6 +388,6 @@ trigger accumulateOutput : (collection {sRow : {FirstName : string, Age : int, L
     ))
 )
 
-source master : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
+source tableSource : (collection {fromS : bool, sRow : option {FirstName : string, Age : int, LastName : string}, tRow : option {Name : string, Age : int, LastName : string}} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/distributed/MapReduce/ThetaJoin/tables.text" k3
 
-feed master |> preProcessTableRows
+feed tableSource |> preProcessTableRows

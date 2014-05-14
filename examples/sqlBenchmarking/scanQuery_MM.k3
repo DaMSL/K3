@@ -15,7 +15,7 @@ include "Core/Builtins.k3"
  */
 
 /*
- *Required Inputs: totalRows, pageRankThreshold, numberOfPeers.
+ * Required Inputs: totalRows, pageRankThreshold, numberOfNodes, nodes.
  */
 
 /* Dataset */
@@ -32,12 +32,13 @@ declare pageRankThreshold : mut int
 /* Peers */
 
 declare master : address = 127.0.0.1:40000
-declare numberOfPeers : mut int
+declare numberOfNodes : mut int
 declare nodes : mut collection {Address : address, Id : int} @ {Collection}
+/* Nodes are Id-ed from 0 to n - 1 where n is the number of nodes */
 
 declare getNodeSize : (int -> int) = fun nodeId -> (
-    let r = totalRows % numberOfPeers in
-            let q = totalRows / numberOfPeers in
+    let r = totalRows % numberOfNodes in
+            let q = totalRows / numberOfNodes in
                 if r == 0 then q else if nodeId < r then q + 1 else q 
 )
 
@@ -65,7 +66,7 @@ trigger arrangeDataForNodes : () = \_ -> (
                 case nodeInstance of
                 {Some node -> (processData, node.Address) <- (row)}
                 {None -> ()};
-        (nodeCounter + 1) % numberOfPeers
+        (nodeCounter + 1) % numberOfNodes
     )) 0
 )
 
