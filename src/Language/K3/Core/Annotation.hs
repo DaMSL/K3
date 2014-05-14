@@ -20,7 +20,9 @@ module Language.K3.Core.Annotation (
     mapTree,
     foldMapTree,
     foldTree,
+    
     biFoldTree,
+    biFoldMapTree,
 
     foldRebuildTree,
     foldMapRebuildTree,
@@ -173,13 +175,36 @@ foldTree f x n@(Node _ []) = f x n
 foldTree f x n@(Node _ ch) = foldM (foldTree f) x ch >>= flip f n
 
 -- | Joint top-down and bottom-up traversal of a tree.
+--   This variant threads an accumulator across all siblings, and thus all
+--   nodes in the prefix of the tree to every node.
 biFoldTree :: (Monad m)
-           => (td -> Tree a -> m td)
+           => (td -> Tree a -> m (td, [td]))
            -> (td -> bu -> Tree a -> m bu)
            -> td -> bu -> Tree a -> m bu
-biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \td -> buF td buAcc n
-biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) =
-  tdF tdAcc n >>= \ntd -> (foldM (biFoldTree tdF buF ntd) buAcc ch >>= flip (buF ntd) n)
+biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td buAcc n
+biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) = do
+  (ntd, cntd) <- tdF tdAcc n
+  if (length cntd) /= (length ch)
+    then fail "Invalid top-down accumulation in biFoldTree"
+    else do
+      nbu <- foldM (\nbuAcc (ctd, c) -> biFoldTree tdF buF ctd nbuAcc c) buAcc $ zip cntd ch
+      buF ntd nbu n
+
+-- | Join top-down and bottom-up traversal of a tree.
+--   This variant threads a bottom-up accumulator independently between siblings.
+--   Thus there is no sideways information passing (except for top-down accumulation).
+biFoldMapTree :: (Monad m)
+              => (td -> Tree a -> m (td, [td]))
+              -> (td -> [bu] -> Tree a -> m bu)
+              -> td -> bu -> Tree a -> m bu
+biFoldMapTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td [buAcc] n
+biFoldMapTree tdF buF tdAcc buAcc n@(Node _ ch) = do
+  (ntd, cntd) <- tdF tdAcc n
+  if (length cntd) /= (length ch)
+    then fail "Invalid top-down accumulation in biFoldMapTree"
+    else do
+      nbu <- mapM (\(ctd,c) -> biFoldMapTree tdF buF ctd buAcc c) $ zip cntd ch
+      buF ntd nbu n
 
 -- | Rebuild a tree with an accumulator and transformed children at every node.
 foldRebuildTree :: (Monad m)

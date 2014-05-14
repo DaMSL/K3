@@ -3,33 +3,20 @@
 -- Program normalization for effectful control expressions.
 module Language.K3.Transform.Normalization where
 
-import Control.Arrow
 import Control.Monad.Identity
-
 import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
+import Language.K3.Transform.Common
+
 normalizeProgram :: K3 Declaration -> K3 Declaration
-normalizeProgram p = runIdentity $ mapTree normalizeDecl p
-  where normalizeDecl ch (tag &&& annotations -> (DGlobal i t eOpt, anns)) = do
-          let neOpt = maybe Nothing (Just . normalizeExpr) eOpt
-          return $ Node (DGlobal i t neOpt :@: anns) ch
+normalizeProgram p = runIdentity $ mapExpression normalizeExpr p
 
-        normalizeDecl ch (tag &&& annotations -> (DTrigger i t e, anns)) = do
-          let ne = normalizeExpr e
-          return $ Node (DTrigger i t ne :@: anns) ch
-
-        normalizeDecl ch (tag &&& annotations -> (DAnnotation i tVars mems, anns)) = do
-          let nMems = normalizeAnnotationMembers mems
-          return $ Node (DAnnotation i tVars nMems :@: anns) ch
-
-        normalizeDecl ch (Node t _) = return $ Node t ch
-
-normalizeExpr :: K3 Expression -> K3 Expression
-normalizeExpr expr = uncurry rebuildBlock $ runIdentity $ foldMapRebuildTree normalize [] expr
+normalizeExpr :: K3 Expression -> Identity (K3 Expression)
+normalizeExpr expr = foldMapRebuildTree normalize [] expr >>= return . uncurry rebuildBlock 
   where
     normalize _ ch n@(tag -> EConstant c) = return $ ([], Node (EConstant c :@: annotations n) ch)
     normalize _ ch n@(tag -> EVariable i) = return $ ([], Node (EVariable i :@: annotations n) ch)
@@ -71,10 +58,3 @@ normalizeExpr expr = uncurry rebuildBlock $ runIdentity $ foldMapRebuildTree nor
 
     rebuildTailChildren acc ch = (head ch):(map (uncurry rebuildBlock) $ zip (tail acc) $ tail ch)
     rebuildBlock effects e = foldr (\(lE, anns) rE -> Node (EOperate OSeq :@: anns) [lE, rE]) e effects
-
-normalizeAnnotationMembers :: [AnnMemDecl] -> [AnnMemDecl]
-normalizeAnnotationMembers mems = map normalizeMember mems
-  where normalizeMember (Lifted    p n t eOpt anns) = Lifted      p n t (normalizeInit eOpt) anns
-        normalizeMember (Attribute p n t eOpt anns) = Attribute   p n t (normalizeInit eOpt) anns
-        normalizeMember (MAnnotation p n anns)      = MAnnotation p n anns
-        normalizeInit eOpt = maybe Nothing (Just . normalizeExpr) eOpt

@@ -23,6 +23,7 @@ import Language.K3.Interpreter.Data.Instances ()
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Runtime.Engine
 
@@ -34,6 +35,39 @@ vunit = VTuple []
 
 vfun :: IFunction -> Interpretation Value
 vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
+
+-- | Helper functions.
+onQualifiedType :: K3 Type -> a -> a -> a
+onQualifiedType t immutR mutR = case t @~ isTQualified of  
+  Just TMutable -> mutR
+  _ -> immutR
+
+onQualifiedExpression :: K3 Expression -> a -> a -> a
+onQualifiedExpression e immutR mutR = case e @~ isEQualified of  
+  Just EMutable -> mutR
+  _ -> immutR
+
+onQualifiedAnnotationsE :: [Annotation Expression] -> a -> a -> a
+onQualifiedAnnotationsE anns immutR mutR = case anns @~ isEQualified of 
+  Just EMutable -> mutR
+  _ -> immutR
+
+onQualifiedLiteral :: K3 Literal -> a -> a -> a
+onQualifiedLiteral l immutR mutR = case l @~ isLQualified of
+  Just LMutable -> mutR
+  _ -> immutR
+
+vQualOfType :: K3 Type -> VQualifier
+vQualOfType t = onQualifiedType t MemImmut MemMut
+
+vQualOfExpr :: K3 Expression -> VQualifier
+vQualOfExpr e = onQualifiedExpression e MemImmut MemMut
+
+vQualOfLit :: K3 Literal -> VQualifier
+vQualOfLit l = onQualifiedLiteral l MemImmut MemMut
+
+vQualOfAnnsE :: [Annotation Expression] -> VQualifier
+vQualOfAnnsE anns = onQualifiedAnnotationsE anns MemImmut MemMut
 
 -- | Refresh the collection's cached value from its shared (self) value.
 --   This treats the shared value as the authoritative contents.

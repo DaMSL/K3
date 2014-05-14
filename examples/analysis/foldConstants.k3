@@ -1,0 +1,30 @@
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+    x = ( if true then {a:1 + 1 * 3}.a else -1  );
+      // Simplified to x = 4
+
+    ( let i = 5
+      in x = i + 2 * 20 );
+      // Simplified to x = 45
+
+    ( bind (11, 17) as (m, n)
+      in x = m + n );
+      // Simplified to x = 28
+
+    ( case Some 23 of 
+        { Some j -> x = j + 4 * 3 }
+        { None   -> x = 29 } );
+      // Simplified to x = 35
+
+    ( case bind {a:1+2+3+4, b:1*2*3*4} as {a:m, b:n}
+           in Some {s:m, t:n} 
+      of
+        { Some j -> x = j.s * j.t }
+        { None   -> x = -1 } )
+      // Simplified to x = 240
+      // TODO: this case fails, more testing needed.
+  )
+
+source s1 : () = value ()
+feed s1 |> t
