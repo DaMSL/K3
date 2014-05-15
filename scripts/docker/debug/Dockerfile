@@ -85,6 +85,3 @@ RUN mkdir /.vim
 RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
 RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
 RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
-
-ADD ../pull-run.sh /
-RUN chmod +x /pull-run.sh
