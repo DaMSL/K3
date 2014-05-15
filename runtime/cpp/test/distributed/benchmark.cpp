@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
  K3::desired = num_messages;
 
  K3::rendezvous = K3::make_address(receiver_ip, 3000);
- K3::sender = K3::make_address(sender_ip, 3000);
+ K3::sender = K3::make_address(sender_ip, 3002);
 
  if (mode == "receiver") {
    runReceiver(num_messages);

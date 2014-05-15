@@ -21,7 +21,7 @@ def buildCommand(mode, config):
   ip_key = mode + "_ip"
   conf['ssh_ip'] = config[ip_key]
   conf['mode'] = mode
-  command = "ssh %(user)@%(ssh_ip)s %(benchmark_dir)s/benchmark %(num_messages)s %(message_len)s %(mode)s %(receiver_ip)s %(sender_ip)s" % conf
+  command = "ssh %(user)s@%(ssh_ip)s %(benchmark_dir)s/benchmark %(num_messages)s %(message_len)s %(mode)s %(receiver_ip)s %(sender_ip)s" % conf
   return command
 
 class ReceiverThread(threading.Thread):
@@ -36,7 +36,7 @@ class SenderThread(threading.Thread):
     print(command)
     subprocess.call(command, shell=True)
     # fetch results file
-    fetch = "scp %(user)@%(sender_ip)s:results.txt ." % globalconfig
+    fetch = "scp %(user)s@%(sender_ip)s:results.txt ." % globalconfig
     print(fetch)
     subprocess.call(fetch, shell=True)
     # read results
