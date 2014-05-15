@@ -89,7 +89,7 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
       _         -> (\(q,dt) -> (Just q, dt)) C.<$> qualifierAndType t
 
     globalDecl (qualTOpt, t') eqeOpt = 
-      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') ((<+>) (align t')) qualTOpt
+      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') (<+> (align t')) qualTOpt
                                          <+> initializer eqeOpt <> line
     
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
