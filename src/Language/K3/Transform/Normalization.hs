@@ -54,7 +54,7 @@ normalizeExpr expr = foldMapRebuildTree normalize [] expr >>= return . uncurry r
 
     liftAllEffects  acc ch n = return $ (concat acc, Node (tag n :@: annotations n) ch)
     liftFirstEffect acc ch n = return $ (head acc, Node (tag n :@: annotations n) $ rebuildTailChildren acc ch)
-    liftNoEffects   acc ch n = return $ ([], rebuildBlock (concat acc) $ Node (tag n :@: annotations n) ch)
+    liftNoEffects   acc ch n = return $ ([], Node (tag n :@: annotations n) $ map (uncurry rebuildBlock) $ zip acc ch)
 
     rebuildTailChildren acc ch = (head ch):(map (uncurry rebuildBlock) $ zip (tail acc) $ tail ch)
     rebuildBlock effects e = foldr (\(lE, anns) rE -> Node (EOperate OSeq :@: anns) [lE, rE]) e effects

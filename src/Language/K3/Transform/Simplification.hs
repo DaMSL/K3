@@ -19,6 +19,7 @@ import Language.K3.Core.Expression
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
+import Language.K3.Analysis.Effect
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
@@ -35,12 +36,13 @@ foldProgramConstants :: K3 Declaration -> Either String (K3 Declaration)
 foldProgramConstants prog = mapExpression foldConstants prog
 
 foldConstants :: K3 Expression -> Either String (K3 Expression)
-foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression return
+foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annotations expr) return
   where
     simplifyAsFoldedExpr :: K3 Expression -> FoldedExpr
     simplifyAsFoldedExpr e = foldMapTree simplifyConstants (Left $ VTuple []) e
 
     simplifyConstants :: [Either Value (K3 Expression)] -> K3 Expression -> FoldedExpr
+    simplifyConstants _ n@(tag -> EVariable _) = return $ Right n
     simplifyConstants _ (tag &&& annotations -> (EConstant c, anns)) = constant c anns
 
     simplifyConstants ch n@(tag -> EOperate OAdd) = applyNum ch n (numericOp (+) (+) (+))
@@ -55,6 +57,8 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
     simplifyConstants ch n@(tag -> EOperate OLeq) = applyCmp ch n (`elem` [LT, EQ])
     simplifyConstants ch n@(tag -> EOperate OGth) = applyCmp ch n (== GT)
     simplifyConstants ch n@(tag -> EOperate OGeq) = applyCmp ch n (`elem` [GT, EQ])
+
+    simplifyConstants ch n@(tag -> EOperate OConcat) = applyOp ch n (asBinary $ stringOp (++))
 
     simplifyConstants ch n@(tag -> EOperate OAnd) = applyBool ch n (&&)
     simplifyConstants ch n@(tag -> EOperate OOr)  = applyBool ch n (||)
@@ -134,10 +138,14 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either valueAsExpression retu
     -- This handles: lambda, assignment, addresses, and self expressions
     simplifyConstants ch n = rebuildNode n ch
 
+    rebuildValue :: [Annotation Expression] -> Value -> Either String (K3 Expression)
+    rebuildValue anns v = valueAsExpression v >>= return . flip (foldl (@+)) anns
+    
     rebuildNode :: K3 Expression -> [Either Value (K3 Expression)] -> FoldedExpr
-    rebuildNode n ch = do 
-      nch <- mapM (either valueAsExpression return) ch
-      return . Right $ Node (tag n :@: annotations n) nch
+    rebuildNode n ch = do
+        let chAnns = map annotations $ children n
+        nch <- mapM (\(vOrE, anns) -> either (rebuildValue anns) return vOrE) $ zip ch chAnns
+        return . Right $ Node (tag n :@: annotations n) nch
 
     withValueChildren :: K3 Expression -> [Either Value (K3 Expression)] 
                       -> ([Value] -> FoldedExpr) -> FoldedExpr
@@ -262,8 +270,60 @@ logic op a b =
     (VBool x, VBool y) -> return . Left . VBool $ op x y
     _ -> Left $ "Invalid boolean logic operands"
 
+stringOp :: (String -> String -> String) -> Value -> Value -> FoldedExpr
+stringOp op a b =
+  case (a, b) of
+    (VString s, VString t) -> return . Left . VString $ op s t
+    _ -> Left $ "Invalid string operands"
 
 
--- | TODO: Effect-aware dead code elimination
+-- | Effect-aware dead code elimination.
+--   Currently this only operates on expressions, and does not prune
+--   unused declarations from the program.
+--   Since constant folding already handles constant-based control flow
+--   simplification, the only work left for this transformation is to:
+--   i. prune unused let-in bindings and narrow bind-as expressions with record binders.
+--   ii. prune unused values (i.e., pure expressions in blocks)
+--   iii. remove unread assignments
+--   iv. dead data elimination (i.e. eliminate unncessary structure construction,
+--       such as unused tuple or record fields)
+eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
+eliminateDeadProgramCode prog = do
+  aProg <- analyzeEffects prog 
+  mapExpression eliminateDeadCode aProg
+
+eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
+eliminateDeadCode expr = mapTree pruneExpr expr
+  where
+    pruneExpr ch n@(tag -> ELetIn  i) =
+      let vars = freeVariables $ last ch in 
+      if maybe False (const $ i `notElem` vars) ((head ch) @~ ePure)  
+        then return $ last ch
+        else rebuildNode n ch
+
+    pruneExpr ch n@(tag -> EBindAs b) =
+      let vars = freeVariables $ last ch in
+      case b of 
+        BRecord ijs -> 
+          let nBinder = BRecord $ filter (\(_,j) -> j `elem` vars) ijs
+          in return $ Node (EBindAs nBinder :@: annotations n) ch
+        _ -> rebuildNode n ch
+
+    pruneExpr ch n@(tag -> ECaseOf j) = rebuildNode n ch
+
+    pruneExpr ch n@(tag -> EOperate OSeq) =
+        case (head ch) @~ ePure of
+          Nothing -> rebuildNode n ch
+          Just _  -> return $ last ch
+
+    pruneExpr ch n = rebuildNode n ch
+
+    rebuildNode n@(tag -> EConstant _) _ = return n
+    rebuildNode n@(tag -> EVariable _) _ = return n
+    rebuildNode n ch = return $ Node (tag n :@: annotations n) ch
+
+    ePure (EProperty "Pure" _) = True
+    ePure _ = False
+
 
 -- | TODO: Effect-aware common subexpression elimination.
