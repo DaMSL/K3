@@ -9,21 +9,21 @@
 include "Annotation/Collection.k3"
 include "Core/Builtins.k3"
 
-declare dataOutput : collection {sourceIP : address, adRevenue : int} @ {Collection}
+declare dataOutput : collection {SourceIP : address, AdRevenue : int} @ {Collection}
 
-trigger processTableRows : (collection {sourceIP : address, adRevenue : int} @ {Collection}) = \tableElementCollection -> (
+trigger processTableRows : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = \tableElementCollection -> (
     tableElementCollection.iterate (\tableElement -> (
-        /* Check if the sourceIP exists in the collection; if it exists, update collection with new revenue; else insert as new. */
-        let tupleInstance = (dataOutput.filter (\inputTuple -> inputTuple.sourceIP == tableElement.sourceIP)).peek() in
+        /* Check if the SourceIP exists in the collection; if it exists, update collection with new revenue; else insert as new. */
+        let tupleInstance = (dataOutput.filter (\inputTuple -> inputTuple.SourceIP == tableElement.SourceIP)).peek() in
             case tupleInstance of
             {Some tuple -> (
-                let newAdRevenue = tuple.adRevenue + tableElement.adRevenue in
-                    dataOutput.update {sourceIP : tuple.sourceIP, adRevenue : tuple.adRevenue} {sourceIP : tuple.sourceIP, adRevenue : newAdRevenue}
+                let newAdRevenue = tuple.AdRevenue + tableElement.AdRevenue in
+                    dataOutput.update {SourceIP : tuple.SourceIP, AdRevenue : tuple.AdRevenue} {SourceIP : tuple.SourceIP, AdRevenue : newAdRevenue}
             )}
-            {None -> dataOutput.insert {sourceIP : tableElement.sourceIP, adRevenue : tableElement.adRevenue}}
+            {None -> dataOutput.insert {SourceIP : tableElement.SourceIP, AdRevenue : tableElement.AdRevenue}}
     ))
 )
 
-source tableSource : (collection {sourceIP : address, adRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
+source tableSource : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
 
 feed tableSource |> processTableRows

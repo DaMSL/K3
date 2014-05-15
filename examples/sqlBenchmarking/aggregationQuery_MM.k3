@@ -1,0 +1,60 @@
+/*
+ * aggregationQuery_MM.k3
+ *
+ * Created by Kartik Thapar on 05/15/2014 at 10:03:14
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+declare nodes : mut collection {Address : address, Id : int}
+declare numberOfNodes : mut int
+
+/* PHASE 1 : Send Rows to Different Nodes */
+
+declare nodeAssignmentCounter : mut int = 0
+declare sourceIPNodeLookupTable : collection {SourceIP : address, NodeId : int} @ {Collection}
+
+declare getRandomNode : immut (() -> int) = fun _ -> (
+    (random (numberOfNodes - 1))
+)
+
+declare sendToNode : collection {SourceIP : address, AdRevenue : int} @ {Collection} -> int -> () = fun row -> fun nodeId -> (
+    let nodeInstance = (nodes.filter (\node -> node.Id == nodeId)).peek() in
+        case nodeInstance of
+        {Some node -> (aggregateAdRevenue, node.Address) <- (row)}
+        {None -> ()}
+)
+
+trigger processTableRows : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        let match = (sourceIPNodeLookupTable.filter (\tuple -> tuple.SourceIP == tableElement.SourceIP)).peek() in
+            case match of
+            {Some entry -> (sendToNode tableElement entry.NodeId)}
+            {None -> (
+                let randomNode = (getRandomNode ()) in
+                    sourceIPNodeLookupTable.insert {SourceIP : tableElement.SourceIP, NodeId : randomNode};
+                    (sendToNode tableElement randomNode)
+            )}
+    ))
+)
+
+/* PHASE 2 : Aggregate Ad Revenue */
+
+declare tmpSourceIPRevenueList : collection {SourceIP : address, AdRevenue : int} @ {Collection}
+
+trigger aggregateAdRevenue : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = \row -> (
+    let tupleInstance = (tmpSourceIPRevenueList.filter (\tuple -> tuple.SourceIP == row.SourceIP)).peek() in
+        case tupleInstance of
+        {Some tuple -> (
+            let newAdRevenue = tuple.AdRevenue + row.AdRevenue in
+                tmpSourceIPRevenueList.update {SourceIP : row.SourceIP, AdRevenue : tuple.AdRevenue} {SourceIP : row.SourceIP, AdRevenue : newAdRevenue}
+        )}
+        {None -> tmpSourceIPRevenueList.insert {SourceIP : row.SourceIP, AdRevenue : row.AdRevenue}}
+)
+
+source tableSource : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
+
+feed tableSource |> processTableRows

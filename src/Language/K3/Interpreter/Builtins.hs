@@ -136,6 +136,12 @@ genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
 -- hash :: forall a . a -> int
 genBuiltin "hash" _ = vfun $ \v -> valueHash v
 
+-- substring :: int -> string -> int
+genBuiltin "substring" _ = 
+    vfun $ \(VInt n) ->
+        vfun $ \(VString s) ->
+            return $ (VString (take n s))
+
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
   vfun $ \(VInt upper) ->
