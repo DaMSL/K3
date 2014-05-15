@@ -51,6 +51,9 @@ RUN cabal update
 RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
+# Install ocaml
+RUN apt-get install -y ocaml opam camlp4-extra
+
 ### Build K3-Core
 WORKDIR /k3/K3-Core
 RUN rm -rf /.ghc
@@ -68,8 +71,8 @@ RUN cabal build
 
 ### Build K3-Mosaic
 WORKDIR /k3/K3-Mosaic
-RUN build_opt.sh
-RUN build_utils.sh
+RUN ./build_opt.sh
+RUN ./build_utils.sh
 
 # Expose Ports
 EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
