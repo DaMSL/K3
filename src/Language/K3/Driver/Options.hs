@@ -82,7 +82,8 @@ data TypecheckOptions
 
 -- | Analyze Options.
 data AnalyzeOptions
-    = AnalyzeOptions { analyzeMode :: AnalyzeMode }
+    = AnalyzeOptions { analyzeMode       :: AnalyzeMode
+                     , analyzeOutputMode :: PrintMode   }
   deriving (Eq, Read, Show)
 
 data AnalyzeMode
@@ -95,6 +96,7 @@ data AnalyzeMode
     | Effects
     | EffectNormalization
     | FoldConstants
+    | Simplify
   deriving (Eq, Read, Show) 
 
 -- | Logging and information output options.
@@ -321,7 +323,8 @@ typecheckOptions = pure $ Typecheck TypecheckOptions
 
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze . AnalyzeOptions <$> analysisMode
+analyzeOptions = (\a b -> Analyze $ AnalyzeOptions a b)
+                  <$> analysisMode <*> ( astPrintOpt <|> syntaxPrintOpt )
 
 analysisMode :: Parser AnalyzeMode
 analysisMode =    conflictsOpt 
@@ -333,6 +336,7 @@ analysisMode =    conflictsOpt
               <|> effectOpt
               <|> normalizationOpt
               <|> foldConstantsOpt
+              <|> simplifyOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -371,6 +375,12 @@ foldConstantsOpt :: Parser AnalyzeMode
 foldConstantsOpt = flag' FoldConstants
                       (   long "fold-constants"
                        <> help "Print a program after constant folding.")
+
+simplifyOpt :: Parser AnalyzeMode
+simplifyOpt = flag' Simplify
+                (   long "simplify"
+                 <> (help $ "Print a program after running all simplification phases " ++
+                            "(i.e., constant folding, DCE, CSE, etc)" ))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec

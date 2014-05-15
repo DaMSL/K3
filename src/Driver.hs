@@ -47,7 +47,7 @@ dispatch opts = do
       Interpret i -> interpret i prog
       Print     p -> printer (printMode p) prog
       Typecheck _ -> typecheck prog
-      Analyze   a -> analyzer (analyzeMode a) prog
+      Analyze   a -> analyzer (analyzeMode a) (analyzeOutputMode a) prog
 
 
   where
@@ -67,17 +67,24 @@ dispatch opts = do
     printer PrintAST    = putStrLn . pretty
     printer PrintSyntax = either syntaxError putStrLn . programS
 
-    analyzer Conflicts               = putStrLn . pretty . getAllConflicts
-    analyzer Tasks                   = putStrLn . pretty . getAllTasks
-    analyzer ProgramTasks            = putStrLn . show   . getProgramTasks
-    analyzer ProxyPaths              = putStrLn . pretty . labelBindAliases
-    analyzer AnnotationProvidesGraph = putStrLn . show   . providesGraph
-    analyzer FlatAnnotations         = putStrLn . show   . flattenAnnotations 
-    analyzer EffectNormalization     = putStrLn . pretty . normalizeProgram
-    analyzer FoldConstants           = putStrLn . either id pretty . foldProgramConstants
-    analyzer Effects                 = withTypecheckedProgram effectAnalysis
+    analyzer Conflicts               prtMode = printer prtMode . getAllConflicts
+    analyzer Tasks                   prtMode = printer prtMode . getAllTasks
+    analyzer ProgramTasks                  _ = putStrLn . show   . getProgramTasks
+    analyzer ProxyPaths              prtMode = printer prtMode . labelBindAliases
+    analyzer AnnotationProvidesGraph       _ = putStrLn . show   . providesGraph
+    analyzer FlatAnnotations               _ = putStrLn . show   . flattenAnnotations 
+    analyzer EffectNormalization     prtMode = printer prtMode . normalizeProgram
+    analyzer FoldConstants           prtMode = printEither prtMode . foldProgramConstants
+    analyzer Effects                 prtMode = withTypecheckedProgram (effectAnalysis prtMode)
+    analyzer Simplify                prtMode = printEither prtMode .
+                                         either Left eliminateDeadProgramCode 
+                                                   . foldProgramConstants
+                                                   . normalizeProgram
 
-    effectAnalysis p _ = either putStrLn (putStrLn . pretty) $ analyzeEffects p
+    effectAnalysis prtMode p _ = either putStrLn (printer prtMode) $ analyzeEffects p
+
+    printEither PrintAST    = putStrLn . either id pretty
+    printEither PrintSyntax = either putStrLn (either syntaxError putStrLn . programS)
 
     parseError    s = putStrLn $ "Could not parse input: " ++ s
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
