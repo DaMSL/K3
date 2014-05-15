@@ -21,7 +21,7 @@ def buildCommand(mode, config):
   ip_key = mode + "_ip"
   conf['ssh_ip'] = config[ip_key]
   conf['mode'] = mode
-  command = "ssh %(ssh_ip)s %(benchmark_dir)s/benchmark %(num_messages)s %(message_len)s %(mode)s %(receiver_ip)s %(sender_ip)s" % conf
+  command = "ssh %(user)@%(ssh_ip)s %(benchmark_dir)s/benchmark %(num_messages)s %(message_len)s %(mode)s %(receiver_ip)s %(sender_ip)s" % conf
   return command
 
 class ReceiverThread(threading.Thread):
@@ -36,7 +36,7 @@ class SenderThread(threading.Thread):
     print(command)
     subprocess.call(command, shell=True)
     # fetch results file
-    fetch = "scp %(sender_ip)s:results.txt ." % globalconfig
+    fetch = "scp %(user)@%(sender_ip)s:results.txt ." % globalconfig
     print(fetch)
     subprocess.call(fetch, shell=True)
     # read results
@@ -74,12 +74,13 @@ def runExperiment(num_messages, message_len):
 
 if __name__ == "__main__":
   # Args
-  if len(sys.argv) < 4:
-    print("usage:", sys.argv[0],": receiver_ip sender_ip benchmark_dir")
+  if len(sys.argv) < 5:
+    print("usage:", sys.argv[0],": ssh_user receiver_ip sender_ip benchmark_dir")
 
-  globalconfig["receiver_ip"] = sys.argv[1]
-  globalconfig["sender_ip"] = sys.argv[2]
-  globalconfig["benchmark_dir"] = sys.argv[3]
+  globalconfig["user"] = sys.argv[1]
+  globalconfig["receiver_ip"] = sys.argv[2]
+  globalconfig["sender_ip"] = sys.argv[3]
+  globalconfig["benchmark_dir"] = sys.argv[4]
 
   # Config
   nums = [100000]
