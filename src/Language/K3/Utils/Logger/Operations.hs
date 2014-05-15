@@ -19,6 +19,12 @@ import System.Log
 
 import Language.K3.Utils.Pretty
 
+#ifdef DEBUG
+import Control.DeepSeq
+import System.IO.Unsafe
+import System.Log.Logger
+#endif
+
 {-
 WARNING: This logging module makes use of unsafePerformIO to prevent polluting
 the entire codebase with a logging monad.  As a result, it is *very* fragile
