@@ -31,7 +31,7 @@ declare pageRankThreshold : mut int
 
 /* Peers */
 
-declare master : address = 127.0.0.1:40000
+declare master : mut address
 declare numberOfNodes : mut int
 declare nodes : mut collection {Address : address, Id : int} @ {Collection}
 /* Nodes are Id-ed from 0 to n - 1 where n is the number of nodes */
