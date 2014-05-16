@@ -1,0 +1,7 @@
+/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/aggregationQuery_MM.k3
+peer,role,numberOfNodes,nodes,totalRows
+127.0.0.1:40000,\"tableSource\",4,~"{ | Address : address, Id : int | {Address : 127.0.0.1:4010, Id : 0}, {Address : 127.0.0.1:4020, Id : 1}, {Address : 127.0.0.1:4030, Id : 2}, {Address : 127.0.0.1:4040, Id : 3} | } @ {Collection}"~,14
+127.0.0.1:4010
+127.0.0.1:4020
+127.0.0.1:4030
+127.0.0.1:4040

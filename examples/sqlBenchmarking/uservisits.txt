@@ -10,3 +10,5 @@
 {CNS={}, ANS={}, InMemoryDS=[{SourceIP = (127.0.0.1:3004, MemImmut), AdRevenue = (100, MemImmut)}], Collection}
 {CNS={}, ANS={}, InMemoryDS=[{SourceIP = (127.0.0.1:3005, MemImmut), AdRevenue = (100, MemImmut)}], Collection}
 {CNS={}, ANS={}, InMemoryDS=[{SourceIP = (127.0.0.1:3008, MemImmut), AdRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{SourceIP = (127.0.0.1:3009, MemImmut), AdRevenue = (100, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{SourceIP = (127.0.0.1:3010, MemImmut), AdRevenue = (100, MemImmut)}], Collection}
