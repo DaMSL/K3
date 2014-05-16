@@ -31,6 +31,9 @@ RUN tar -xvzf nanomsg-0.3-beta.tar.gz
 RUN mkdir /software/nanomsg
 RUN ./nanomsg-0.3-beta/configure --prefix /software/nanomsg && make && make install  
 
+# Install Git
+RUN apt-get install -y git
+
 # Install Vim
 RUN apt-get install -y vim
 
@@ -39,9 +42,6 @@ RUN mkdir /.vim
 RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
 RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
 RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
-
-# Install Git
-RUN apt-get install -y git
 
 # Install ocaml
 RUN apt-get install -y ocaml opam camlp4-extra
