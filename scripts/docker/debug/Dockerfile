@@ -1,6 +1,9 @@
 # Base image is Ubuntu 14.04
 FROM ubuntu:14.04
 
+# Expose Ports
+EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
+
 # Create software directory
 RUN mkdir /software
 
@@ -28,8 +31,36 @@ RUN tar -xvzf nanomsg-0.3-beta.tar.gz
 RUN mkdir /software/nanomsg
 RUN ./nanomsg-0.3-beta/configure --prefix /software/nanomsg && make && make install  
 
+# Install Vim
+RUN apt-get install -y vim
+
+# Install decent vim configuration
+RUN mkdir /.vim
+RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
+RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
+RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
+
 # Install Git
 RUN apt-get install -y git
+
+# Install ocaml
+RUN apt-get install -y ocaml opam camlp4-extra
+
+# Install GHC and cabal
+RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
+RUN apt-get install -y happy ghc cabal-install
+RUN cabal update
+RUN cabal install cabal-install
+ENV PATH /.cabal/bin/:$PATH
+
+# Clone K3-Mosaic from Git
+RUN mkdir /k3/K3-Mosaic
+RUN git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
+
+### Build K3-Mosaic
+WORKDIR /k3/K3-Mosaic
+RUN ./build_opt.sh
+RUN ./build_utils.sh
 
 # Clone K3-Core from Git
 RUN mkdir /k3
@@ -39,20 +70,6 @@ RUN git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core
 # Clone K3-Driver from Git
 RUN mkdir /k3/K3-Driver
 RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
-
-# Clone K3-Mosaic from Git
-RUN mkdir /k3/K3-Mosaic
-RUN git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
-
-# Install GHC and cabal
-RUN apt-get install -y zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev
-RUN apt-get install -y happy ghc cabal-install
-RUN cabal update
-RUN cabal install cabal-install
-ENV PATH /.cabal/bin/:$PATH
-
-# Install ocaml
-RUN apt-get install -y ocaml opam camlp4-extra
 
 ### Build K3-Core
 WORKDIR /k3/K3-Core
@@ -68,20 +85,3 @@ RUN cabal install --only-dependencies --disable-documentation
 RUN cabal install K3-Core --reinstall --ghc-options="-DDEBUG" --disable-documentation
 RUN cabal configure
 RUN cabal build
-
-### Build K3-Mosaic
-WORKDIR /k3/K3-Mosaic
-RUN ./build_opt.sh
-RUN ./build_utils.sh
-
-# Expose Ports
-EXPOSE 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009
-
-# Install Vim
-RUN apt-get install -y vim
-
-# Install decent vim configuration
-RUN mkdir /.vim
-RUN git clone https://github.com/tpope/vim-pathogen.git /.vim
-RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /.vimrc
-RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
