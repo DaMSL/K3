@@ -9,27 +9,37 @@
 include "Annotation/Collection.k3"
 include "Core/Builtins.k3"
 
+/* 
+ * Example SQL Query:
+ * SELECT SUBSTR(SourceIP, 1, X), SUM(adRevenue) FROM uservisits GROUP BY SUBSTR(SourceIP, 1, X)
+ */
+
+/* Query Variables */
+
 declare master : mut address
-
-declare rowCounter : mut int = 0
 declare totalRows : mut int
-
 declare nodes : mut collection {Address : address, Id : int}
 declare nodeSize : mut int
 declare numberOfNodes : mut int
+declare substringEndValue : mut int
 
-declare dataInput : collection {NodeId : int, SourceIP : address, AdRevenue : int} @ {Collection}
+/* Dataset */
+
+declare dataInput : collection {NodeId : int, SourceIP : string, AdRevenue : int} @ {Collection}
 
 /* PHASE 1 : Process Table Rows */
 
-declare sourceIPNodeLookupTable : collection {SourceIP : address, NodeId : int} @ {Collection}
+/* All lookup tables and data storage store only substrings */
+declare sourceIPNodeLookupTable : collection {SourceIP : string, NodeId : int} @ {Collection}
 declare nodeSizeLookupTable : collection {NodeId : int, Size : int} @ {Collection}
 
 declare getRandomNode : immut (() -> int) = fun _ -> (
     (random (numberOfNodes - 1))
 )
 
-trigger processTableRows : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = \tableElementCollection -> (
+declare rowCounter : mut int = 0
+
+trigger processTableRows : (collection {SourceIP : string, AdRevenue : int} @ {Collection}) = \tableElementCollection -> (
     rowCounter = rowCounter + 1;
     tableElementCollection.iterate (\tableElement -> (
         /* 
@@ -42,30 +52,31 @@ trigger processTableRows : (collection {SourceIP : address, AdRevenue : int} @ {
          *  - Insert SourceIP entry in the lookup table.
          *  - Update size of node to 1 (nodeSizeEntry may or may not exist in lookup table)
          */
-        let match = (sourceIPNodeLookupTable.filter (\tuple -> tuple.SourceIP == tableElement.SourceIP)).peek() in
-            case match of
-            {Some entry -> (
-                dataInput.insert {NodeId : entry.NodeId, SourceIP : tableElement.SourceIP, AdRevenue : tableElement.AdRevenue};
-                let nodeSizeInstance = (nodeSizeLookupTable.filter (\nodeSizeEntry -> nodeSizeEntry.NodeId == entry.NodeId)).peek() in
-                    case nodeSizeInstance of
-                    {Some nodeSizeEntry -> (
-                        let newSize = nodeSizeEntry.Size + 1 in
-                            nodeSizeLookupTable.update {NodeId : entry.NodeId, Size : nodeSizeEntry.Size} {NodeId : entry.NodeId, Size : newSize}
-                    )}
-                    {None -> ()}
-            )}
-            {None -> (
-                let randomNode = (getRandomNode ()) in
-                    sourceIPNodeLookupTable.insert {SourceIP : tableElement.SourceIP, NodeId : randomNode};
-                    dataInput.insert {NodeId : randomNode, SourceIP : tableElement.SourceIP, AdRevenue : tableElement.AdRevenue};
-                    let nodeSizeInstance = (nodeSizeLookupTable.filter (\nodeSizeEntry -> nodeSizeEntry.NodeId == randomNode)).peek() in
+        let sourceIPSubstring = (substring substringEndValue tableElement.SourceIP) in
+            let match = (sourceIPNodeLookupTable.filter (\tuple -> tuple.SourceIP == sourceIPSubstring)).peek() in
+                case match of
+                {Some entry -> (
+                    dataInput.insert {NodeId : entry.NodeId, SourceIP : sourceIPSubstring, AdRevenue : tableElement.AdRevenue};
+                    let nodeSizeInstance = (nodeSizeLookupTable.filter (\nodeSizeEntry -> nodeSizeEntry.NodeId == entry.NodeId)).peek() in
                         case nodeSizeInstance of
                         {Some nodeSizeEntry -> (
                             let newSize = nodeSizeEntry.Size + 1 in
-                                nodeSizeLookupTable.update {NodeId : randomNode, Size : nodeSizeEntry.Size} {NodeId : randomNode, Size : newSize}
+                                nodeSizeLookupTable.update {NodeId : entry.NodeId, Size : nodeSizeEntry.Size} {NodeId : entry.NodeId, Size : newSize}
                         )}
-                        {None -> (nodeSizeLookupTable.insert {NodeId : randomNode, Size : 1})}
-            )}
+                        {None -> ()}
+                )}
+                {None -> (
+                    let randomNode = (getRandomNode ()) in
+                        sourceIPNodeLookupTable.insert {SourceIP : sourceIPSubstring, NodeId : randomNode};
+                        dataInput.insert {NodeId : randomNode, SourceIP : sourceIPSubstring, AdRevenue : tableElement.AdRevenue};
+                        let nodeSizeInstance = (nodeSizeLookupTable.filter (\nodeSizeEntry -> nodeSizeEntry.NodeId == randomNode)).peek() in
+                            case nodeSizeInstance of
+                            {Some nodeSizeEntry -> (
+                                let newSize = nodeSizeEntry.Size + 1 in
+                                    nodeSizeLookupTable.update {NodeId : randomNode, Size : nodeSizeEntry.Size} {NodeId : randomNode, Size : newSize}
+                            )}
+                            {None -> (nodeSizeLookupTable.insert {NodeId : randomNode, Size : 1})}
+                )}
     ));
 
     /* If we have processed all the rows, then send the rows to different nodes. */
@@ -94,16 +105,18 @@ trigger arrangeSendToMultipleNodes : () = \_ -> (
     ))
 )
 
-trigger understandData : (int) = \size -> (
-    nodeSize = size
+trigger understandData : (int) = \tSize -> (
+        nodeSize = tSize
 )
 
 /* PHASE 2 : Aggregate Ad Revenue */
 
-declare tmpSourceIPRevenueList : collection {SourceIP : address, AdRevenue : int} @ {Collection}
+declare tmpSourceIPRevenueList : collection {SourceIP : string, AdRevenue : int} @ {Collection}
 declare currentNodeSize : mut int = 0
 
-trigger aggregateAdRevenue : (address, int) = \x -> (
+declare v : collection {s : int} @ {Collection}
+
+trigger aggregateAdRevenue : (string, int) = \x -> (
     currentNodeSize = currentNodeSize + 1;
     bind x as (sourceIP, adRevenue) in (
         let tupleInstance = (tmpSourceIPRevenueList.filter (\inputTuple -> inputTuple.SourceIP == sourceIP)).peek() in
@@ -122,14 +135,14 @@ trigger aggregateAdRevenue : (address, int) = \x -> (
 
 /* PHASE 3 : Cumulate at Master */
 
-declare dataOutput : collection {SourceIP : address, AdRevenue : int} @ {Collection}
+declare dataOutput : collection {SourceIP : string, AdRevenue : int} @ {Collection}
 
-trigger aggregateAtMaster : collection {SourceIP : address, AdRevenue : int} @ {Collection} = \aggregateList -> (
+trigger aggregateAtMaster : collection {SourceIP : string, AdRevenue : int} @ {Collection} = \aggregateList -> (
     aggregateList.iterate (\tuple -> (
         dataOutput.insert {SourceIP : tuple.SourceIP, AdRevenue : tuple.AdRevenue}
     ))
 )
 
-source tableSource : (collection {SourceIP : address, AdRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
+source tableSource : (collection {SourceIP : string, AdRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
 
 feed tableSource |> processTableRows
