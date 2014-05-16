@@ -169,13 +169,17 @@ library
         Language.K3.TypeSystem.Data.Result
 
     ghc-options: -Wall
+
     other-modules:
-                   Language.K3.Utils.Pretty.Common,
-                   Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
+        Language.K3.Codegen.CPP.Types
+        Language.K3.Codegen.CPP.Common
+        Language.K3.Codegen.CPP.Primitives
+        Language.K3.Utils.Pretty.Common,
+        Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
 
 test-suite all
     type: exitcode-stdio-1.0
