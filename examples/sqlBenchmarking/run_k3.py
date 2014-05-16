@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# run_k3_scanQuery_MM.py
+# run_k3.py
 #
 # Created by Kartik Thapar on 05/13/2014 at 23:48:56
 # Copyright (c) 2014 Kartik Thapar. All rights reserved.
@@ -8,9 +8,9 @@
 
 """
 Usage: 
-    run_k3_scanQuery_MM.py -s -t <topologyFile>
-    run_k3_scanQuery_MM.py -n -t <topologyFile>
-    run_k3_scanQuery_MM.py -t <topologyFile>
+    run_k3.py -s -t <topologyFile>
+    run_k3.py -n -t <topologyFile>
+    run_k3.py -t <topologyFile>
 
 Options:
     -h --help           Show this screen.
@@ -22,6 +22,9 @@ Options:
 import docopt
 import csv
 
+k3LibPath = "/Users/kartikthapar/WorkCenter/Projects/K3/core/lib/"
+k3Path = "/Users/kartikthapar/WorkCenter/Projects/K3/driver/dist/build/k3/k3"
+
 def createK3Command(topology, mode):
     with open(topologyFile, 'rb') as csvFile:
         # reading program path header in file
@@ -30,21 +33,29 @@ def createK3Command(topology, mode):
         # reading description header in file
         header = csvFile.readline().split(",")
 
-        # reading program execution info
-        body = csv.reader(csvFile, delimiter=',', quotechar='~').next()
-        (masterNodeAddress, role, numberOfNodes, nodes, pageRankThreshold, totalRows, ports) = [body[i] for i in range(0, 7)]
-        
-        ports = ports.split(",")
-
-        portCommand = " ".join(["-p %s" % (port) for port in ports])
-
-        # create and print K3 program
+        # command
+        command = ""
         if mode == "simulation-mode":
-            command = "k3 interpret -b -p %s:role=%s:numberOfNodes=%s:nodes=%s:pageRankThreshold=%s:totalRows=%s %s %s" \
-                % (masterNodeAddress, role, numberOfNodes, nodes, pageRankThreshold, totalRows, portCommand, programPath)
+            command = "{1} -I {0} interpret -b".format(k3LibPath, k3Path)
         else:
-            command = "k3 interpret -b n -p %s:role=%s:numberOfNodes=%s:nodes=%s:pageRankThreshold=%s:totalRows=%s %s %s" \
-                % (masterNodeAddress, role, numberOfNodes, nodes, pageRankThreshold, totalRows, portCommand, programPath)
+            command = "{1} -I {0} interpret -n -b".format(k3LibPath, k3Path)
+
+        # reading program execution info
+        info = csv.reader(csvFile, delimiter=',', quotechar='~')
+
+        # every row is of type == [peer, role, ...]
+        for row in info:
+            # get peer
+            peer = row[0].replace("\n", "")
+
+            # construct k3 program parameters
+            peerString = '-p {0}'.format(peer)
+            for index in range (1, min(len(header), len(row))):
+                peerString = peerString + ':{0}={1}'.format(header[index].replace("\n",""), row[index].replace("\n",""))
+            for index in range(len(header), len(row)):
+                peerString = peerString + ':{0}'.format(row[index].replace("\n",""))
+            command = command + " " + peerString
+
         return command
 
 def simulateK3(topologyFile):
