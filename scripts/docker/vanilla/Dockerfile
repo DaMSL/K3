@@ -50,7 +50,7 @@ RUN cabal install cabal-install
 ENV PATH /.cabal/bin/:$PATH
 
 # Clone K3-Mosaic from Git
-RUN mkdir /k3/K3-Mosaic
+RUN mkdir -p /k3/K3-Mosaic
 RUN git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
 
 ### Build K3-Mosaic
@@ -59,12 +59,11 @@ RUN ./build_opt.sh
 RUN ./build_utils.sh
 
 # Clone K3-Core from Git
-RUN mkdir /k3
-RUN mkdir /k3/K3-Core
+RUN mkdir -p /k3/K3-Core
 RUN git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core
 
 # Clone K3-Driver from Git
-RUN mkdir /k3/K3-Driver
+RUN mkdir -p /k3/K3-Driver
 RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
 
 ### Build K3-Core
