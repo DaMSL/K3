@@ -56,6 +56,7 @@ def createK3Command(topology, mode):
                 peerString = peerString + ':{0}'.format(row[index].replace("\n",""))
             command = command + " " + peerString
 
+        command = command +  " " + programPath
         return command
 
 def simulateK3(topologyFile):
