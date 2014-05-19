@@ -2,6 +2,7 @@
 #include <Engine.hpp>
 #include <Dispatch.hpp>
 #include <MessageProcessor.hpp>
+#include <test/TestUtils.hpp>
 
 #include <chrono>
 #include <functional>
@@ -20,12 +21,12 @@ using std::bind;
 using std::string;
 using std::shared_ptr;
  
-Address rendezvous;
+Address receiver;
 Address sender;
 std::chrono::system_clock::time_point start, end;
 
 
-int nodeCounter(0);
+int numReceived(0);
 int numSent(0);
 int desired(0);
 bool received_all(false);
@@ -33,18 +34,18 @@ bool sent_all(false);
 string message;
 
 // "Trigger" Declarations
-void join(shared_ptr<Engine> engine, string message_contents) {
-  Message m = Message(rendezvous, "register", message);
+void send_one(shared_ptr<Engine> engine, string message_contents) {
+  Message m = Message(receiver, "receive_one", message);
   engine->send(m);
 }
 
-void register2(shared_ptr<Engine> engine, string message_contents) {
+void receive_one(shared_ptr<Engine> engine, string message_contents) {
   int n = 1;
-  nodeCounter += n;
-  if (nodeCounter % (desired/100) == 0) {
-    std::cout << "received count: " << nodeCounter << "/" << desired << std::endl;
+  numReceived += n;
+  if (numReceived % (desired/100) == 0) {
+    std::cout << "received count: " << numReceived << "/" << desired << std::endl;
   }
-  if (nodeCounter == desired) {
+  if (numReceived == desired) {
     Message m = Message(sender, "finished", "()");
     engine->send(m);
     received_all = true;
@@ -59,40 +60,23 @@ void finished(shared_ptr<Engine> engine, string message_contents) {
 // MP setup
 TriggerDispatch buildTable(shared_ptr<Engine> engine) {
   TriggerDispatch table = TriggerDispatch();
-  table["join"] = bind(&K3::join, engine, std::placeholders::_1);
-  table["register"] = bind(&K3::register2, engine, std::placeholders::_1);
+  table["send_one"] = bind(&K3::send_one, engine, std::placeholders::_1);
+  table["receive_one"] = bind(&K3::receive_one, engine, std::placeholders::_1);
   table["finished"] = bind(&K3::finished, engine, std::placeholders::_1);
   return table;
 }
-
-shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
-  auto table = buildTable(engine);
-  shared_ptr<MessageProcessor> mp = make_shared<DispatchMessageProcessor>(DispatchMessageProcessor(table));
-  return mp;
-}
-
-// Engine setup
-shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
-  // Configure engine components
-  shared_ptr<InternalCodec> i_cdec = make_shared<LengthHeaderInternalCodec>(LengthHeaderInternalCodec());
-
-  // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec);
-  return make_shared<Engine>(engine);
-}
-
 }
 
 void runReceiver(int num_messages) {
   using boost::thread;
   using boost::thread_group;
   using std::shared_ptr;
-  K3::nodeCounter = 0;
+  K3::numReceived = 0;
 
   // Create engines
-  auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::rendezvous));
+  auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::receiver));
   // Create MPs
-  auto mp1 = K3::buildMP(engine1);
+  auto mp1 = K3::buildMP(engine1, K3::buildTable(engine1));
   // Fork a thread for each engine
   auto service_threads = std::shared_ptr<thread_group>(new thread_group());
   shared_ptr<thread> t1 = engine1->forkEngine(mp1);
@@ -122,7 +106,7 @@ std::chrono::seconds runSender(int num_messages, int message_len) {
   // Create engines
   auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::sender));
   // Create MPs
-  auto mp2 = K3::buildMP(engine2);
+  auto mp2 = K3::buildMP(engine2, K3::buildTable(engine2));
   
   // Start timer
   K3::start = std::chrono::system_clock::now();
@@ -133,7 +117,7 @@ std::chrono::seconds runSender(int num_messages, int message_len) {
   service_threads->add_thread(t1.get());
   
   // Send messages
-  K3::Message m2 = K3::Message(K3::sender, "join", "()");
+  K3::Message m2 = K3::Message(K3::sender, "send_one", "()");
   for (int i = 0; i < num_messages; i++) {
     engine2->send(m2);
   }
@@ -170,7 +154,7 @@ int main(int argc, char** argv) {
 
  K3::desired = num_messages;
 
- K3::rendezvous = K3::make_address(receiver_ip, 3000);
+ K3::receiver = K3::make_address(receiver_ip, 3000);
  K3::sender = K3::make_address(sender_ip, 3002);
 
  if (mode == "receiver") {
