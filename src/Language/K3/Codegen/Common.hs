@@ -25,7 +25,7 @@ import Data.List
 {- Annotation identifiers. -}
 
 annotationComboId :: [Identifier] -> Identifier
-annotationComboId = intercalate "_"
+annotationComboId = ('_':) . intercalate "_"
 
 annotationComboIdT :: [Annotation Type] -> Maybe Identifier
 annotationComboIdT (namedTAnnotations -> [])  = Nothing
