@@ -2,6 +2,8 @@
 
 module Language.K3.Compiler.CPP (compile) where
 
+import Data.Functor
+
 import Control.Monad
 
 import System.Directory (createDirectoryIfMissing)
@@ -13,7 +15,7 @@ import Development.Shake
 import Development.Shake.FilePath hiding ( joinPath, replaceExtension, takeBaseName )
 import Development.Shake.Util
 
-import Text.PrettyPrint.ANSI.Leijen hiding ( (</>) )
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>), (<$>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -61,7 +63,7 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
     genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
 
     outputCPP (Right doc) =
-      either (return . Left) (\x -> outputDoc doc x >>= return . Right)
+      either (return . Left) (\x -> Right <$> outputDoc doc x)
         $ outputFilePath "cpp" opts copts
 
     outputCPP (Left (CPP.CPPGenE e)) = return $ Left e
@@ -83,14 +85,13 @@ cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String (
 cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
   case buildDir copts of
     Nothing   -> return $ Left "No build directory specified."
-    Just path -> binary path >>= return . Right
+    Just path -> Right <$> binary path
 
   where binary bDir =
           shake shakeOptions{shakeFiles = bDir} $ do
             want [bDir </> pName <.> exe]
 
-            phony "clean" $ do
-              removeFilesAfter bDir ["//*"]
+            phony "clean" $ removeFilesAfter bDir ["//*"]
 
             bDir </> pName <.> exe *> \out -> do
               let objects = [bDir </> src -<.> "o" | src <- sourceFiles]
@@ -117,4 +118,4 @@ compile opts copts prog = do
     sourceStatus <- cppSourceStage opts copts prog
     unless (ccCmd copts == Source) $ do
         binStatus <- continue sourceStatus $ cppBinaryStage opts copts
-        finalize (const $ "Created binary file: " ++ (programName copts)) binStatus
+        finalize (const $ "Created binary file: " ++ programName copts) binStatus
