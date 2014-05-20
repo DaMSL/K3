@@ -5,9 +5,12 @@ module Language.K3.Transform.Simplification where
 
 import Control.Arrow
 import Control.Monad
+import Control.Monad.Identity
 
 import Data.Either
 import Data.Fixed
+import Data.Function
+import Data.List
 import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
@@ -277,6 +280,41 @@ stringOp op a b =
     _ -> Left $ "Invalid string operands"
 
 
+-- | Conservative beta reduction.
+--   This reduces lambda and let bindings that are used at most once in their bodies.
+--
+--   TODO:
+--   More generally, we can use a cost model to determine this threshold based
+--   on the cost of the argument and the cost of the increased lifetime of the
+--   object given its encapsulation in a lambda.
+--   Furthermore, this only applies to direct lambda invocations, rather than
+--   on general function values (i.e., including applications through bindings
+--   and substructure). For the latter case, we must inline and defunctionalize first.
+betaReductionOnProgram :: K3 Declaration -> K3 Declaration
+betaReductionOnProgram prog = runIdentity $ mapExpression betaReduction prog
+
+betaReduction :: K3 Expression -> Identity (K3 Expression)
+betaReduction expr = mapTree reduce expr
+  where
+    reduce ch n@(tag -> ELetIn i) = reduceOnOccurrences n ch i (head ch) $ last ch
+
+    reduce ch n@(tag -> EOperate OApp) =
+      let (fn, arg) = (head ch, last ch) in
+      case tag fn of
+        ELambda i -> reduceOnOccurrences n ch i arg $ head $ children fn
+
+        _ -> rebuildNode n ch
+
+    reduce ch n = rebuildNode n ch
+
+    reduceOnOccurrences n ch i ie e =
+      let occurrences = length $ filter (== i) $ freeVariables e in 
+      if occurrences <= 1
+        then betaReduction $ substituteImmutBinding i ie e
+        else rebuildNode n ch
+
+    rebuildNode (Node t _) ch = return $ Node t ch
+
 -- | Effect-aware dead code elimination.
 --   Currently this only operates on expressions, and does not prune
 --   unused declarations from the program.
@@ -284,9 +322,15 @@ stringOp op a b =
 --   simplification, the only work left for this transformation is to:
 --   i. prune unused let-in bindings and narrow bind-as expressions with record binders.
 --   ii. prune unused values (i.e., pure expressions in blocks)
+--
+-- TODO:
 --   iii. remove unread assignments
 --   iv. dead data elimination (i.e. eliminate unncessary structure construction,
 --       such as unused tuple or record fields)
+--   v. covering control elimination, e.g.,
+--        if a then (if a then b else c) else d => if a then b else d
+--        case x of { Some j -> case x of { Some k -> l } { None -> m }} { None -> n }
+--          => case x of { Some j -> l } { None -> n }
 eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
 eliminateDeadProgramCode prog = do
   aProg <- analyzeEffects prog 
@@ -297,7 +341,7 @@ eliminateDeadCode expr = mapTree pruneExpr expr
   where
     pruneExpr ch n@(tag -> ELetIn  i) =
       let vars = freeVariables $ last ch in 
-      if maybe False (const $ i `notElem` vars) ((head ch) @~ ePure)  
+      if maybe False (const $ i `notElem` vars) $ (head ch) @~ ePure
         then return $ last ch
         else rebuildNode n ch
 
@@ -326,4 +370,203 @@ eliminateDeadCode expr = mapTree pruneExpr expr
     ePure _ = False
 
 
--- | TODO: Effect-aware common subexpression elimination.
+-- | Effect-aware common subexpression elimination.
+--
+-- Naive algorithm:
+--   build tree of candidates: each tree node captures when it is the LCA of a 
+--   common subexpression, along with the number of times that it occurs.
+--     i. propagate all subtrees up, identifying candidates as
+--        common subtrees across children (i.e., marking candidates at their LCA).
+--        All subtrees are always propagated, including whether they are a candidate
+--        locally or not. This can result in multiple nodes marked as the meet point
+--        for a candidate (i.e., the meet point for a pair vs a triple vs a quadruple).
+--     ii. stop propagation at impure nodes (this is conservative since we assume
+--         any effect impedes CSE, rather than checking whether the effect is
+--         relevant to the candidate).
+--     iii. candidates at each LCA are chosen to be the dominating candidate at that LCA;
+--          consider e1 and e2 as a common pair of expressions -- all subexpressions are
+--          also common at the same LCA. We elide considering these subexpressions as candidates
+--          but continue to propagate them upwards. This ensures that no two covering expressions
+--          are considered candidates at the same LCA (with the same frequency; they can be
+--          candidates with covered expression occurring more frequently).
+--     iv. at each node, the candidates are stored in frequency-order: [(K3 Expression, Int)]
+--     v. covered expressions must occur at least as frequently, if not more frequently than
+--        their covering expressions nearer the root of the tree.
+--     
+--   build tree of substitutions: greedy selection of what to substitute given candidate tree.
+--     i. traverse tree of candidates top-down and mark for substitution, tracking the node UID
+--        and the expression to substitute.
+--     ii. prune any occurrences of the same or covered candidates at equal or lower frequency
+--         from descendants in the candidate tree.
+--     iii. for any covered candidate at greater frequency, decrement its counter.
+--          note this means that the candidate may occur in the expression being substituted.
+--     iv. recur on children.
+--
+--   flatten substitutions
+--     i. extract a list of UIDs and expression to substitute.
+--     ii. close over substitutions
+-- 
+--   perform substitutions
+--     i. traverse tree top-down, and when encountering a UID, test and substitute.
+
+type Candidates        = [(K3 Expression, Int)]
+type CandidateTree     = Tree (UID, Candidates)
+type Substitution      = (UID, K3 Expression, Int)
+type NamedSubstitution = (UID, Identifier, K3 Expression, Int)
+
+commonProgramSubexprElim :: K3 Declaration -> Either String (K3 Declaration)
+commonProgramSubexprElim prog = mapExpression commonSubexprElim prog
+
+commonSubexprElim :: K3 Expression -> Either String (K3 Expression)
+commonSubexprElim expr = do
+    cTree <- buildCandidateTree expr
+    pTree <- pruneCandidateTree cTree
+    substituteCandidates pTree
+
+  where
+    covers :: K3 Expression -> K3 Expression -> Bool
+    covers a b = runIdentity $ (\f -> foldMapTree f False a) $ \chAcc n ->
+      if or chAcc then return $ True else return $ n == b
+
+    buildCandidateTree :: K3 Expression -> Either String CandidateTree
+    buildCandidateTree e = do
+      (cTree, _, _) <- foldMapTree buildCandidates ([], [], []) e
+      case cTree of 
+        [x] -> return x
+        _   -> Left "Invalid candidate tree"
+
+    buildCandidates :: [([CandidateTree], [K3 Expression], [K3 Expression])] -> K3 Expression
+                    -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
+    buildCandidates _ n@(tag -> EConstant _) = leafTreeAccumulator n
+    buildCandidates _ n@(tag -> EVariable _) = leafTreeAccumulator n
+    buildCandidates chAccs n@(Node t _) = flip (maybe $ uidError n) (n @~ isEUID) $ \x ->
+      case x of
+        EUID uid ->
+          let (ctCh, sExprCh, subAcc) = unzip3 chAccs
+              bindings      = case tag t of 
+                                ELambda i -> [[i]]
+                                ELetIn  i -> [[], [i]]
+                                ECaseOf j -> [[], [j], []]
+                                EBindAs b -> [[], bindingVariables b]
+                                _         -> repeat []
+              filteredCands = nub $ concatMap filterOpenCandidates $ zip bindings subAcc
+              localCands    = sortBy ((flip compare) `on` snd) $ 
+                                foldl (addCandidateIfLCA subAcc) [] filteredCands
+              candTreeNode  = Node (uid, localCands) $ concat ctCh
+              nStrippedExpr = Node (tag t :@: []) $ concat sExprCh
+          in
+          case n @~ ePure of
+            Nothing -> return $ ([candTreeNode], [nStrippedExpr], [])
+            Just _  -> return $ ([candTreeNode], [nStrippedExpr], (concat subAcc)++[nStrippedExpr])
+
+        _ -> uidError n
+
+      where 
+        filterOpenCandidates ([], cands) = cands
+        filterOpenCandidates (bindings, cands) =
+          filter (\e -> null $ freeVariables e `intersect` bindings) cands
+
+    leafTreeAccumulator :: K3 Expression
+                        -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
+    leafTreeAccumulator e = do
+      ctNode <- leafCandidateNode e
+      return $ ([ctNode], [Node (tag e :@: []) []], [])
+
+    leafCandidateNode :: K3 Expression -> Either String CandidateTree
+    leafCandidateNode e = case e @~ isEUID of
+      Just (EUID uid) -> Right $ Node (uid, []) []
+      _               -> uidError e
+
+    addCandidateIfLCA :: [[K3 Expression]] -> Candidates -> K3 Expression -> Candidates
+    addCandidateIfLCA descSubs candAcc sub =
+      let (branchCnt, totalCnt) = branchCounters sub descSubs in
+      if branchCnt <= 1 then candAcc
+                        else appendCandidate candAcc (sub, totalCnt)
+
+    appendCandidate :: Candidates -> (K3 Expression, Int) -> Candidates
+    appendCandidate acc (e, cnt) =
+      let (_, rest)         = partition (\(e2, i) -> (e `covers` e2) && cnt >= i) acc
+          (covering, rest2) = partition (\(e2, i) -> (e2 `covers` e) && i >= cnt) rest
+      in (if null covering then [(e, cnt)] else covering) ++ rest2
+
+    branchCounters sub descSubs = foldl (countInBranch sub) (0::Int,0::Int) descSubs
+    countInBranch sub (a,b) cs =
+      let i = length $ filter (== sub) cs in (if i > 0 then a+1 else a, b+i)
+
+    pruneCandidateTree :: CandidateTree -> Either String CandidateTree 
+    pruneCandidateTree = biFoldMapTree trackCandidates pruneCandidates [] (Node (UID $ -1, []) [])
+      where
+        trackCandidates :: Candidates -> CandidateTree -> Either String (Candidates, [Candidates])
+        trackCandidates candAcc (Node (_, cands) ch) = do
+          let nCandAcc = foldl appendCandidate candAcc cands
+          return (nCandAcc, replicate (length ch) nCandAcc)
+        
+        pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
+                        -> Either String CandidateTree
+        pruneCandidates candAcc ch (Node (uid, cands) _) =
+          let used = filter (`elem` candAcc) cands
+              nUid = if null used then UID $ -1 else uid
+          in return $ Node (nUid, used) ch
+
+    substituteCandidates :: CandidateTree -> Either String (K3 Expression)
+    substituteCandidates prunedTree = do
+        substitutions   <- foldMapTree concatCandidates [] prunedTree
+        ncSubstitutions <- foldSubstitutions substitutions
+        nExpr           <- foldM substituteAtUID expr ncSubstitutions
+        return nExpr
+
+      where
+        rebuildAnnNode n ch = Node (tag n :@: annotations n) ch
+
+        concatCandidates candAcc (Node (uid, cands) _) =
+          return $ (if null cands then [] else map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
+
+        foldSubstitutions :: [Substitution] -> Either String [NamedSubstitution]
+        foldSubstitutions subs = do
+          (_,namedSubs) <- foldM nameSubstitution (0::Int,[]) subs 
+          foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
+
+        nameSubstitution :: (Int, [NamedSubstitution]) -> Substitution
+                         -> Either String (Int, [NamedSubstitution])
+        nameSubstitution (cnt, acc) (uid, e, i) =
+          return (cnt+1, acc++[(uid, ("__cse"++show cnt), e, i)])
+
+        closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
+        closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2) 
+          | uid == uid2 && n == n2 = return $ (uid, n, e2, i2)
+          | e2 `covers` e          = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
+          | otherwise              = return $ (uid2, n2, e2, i2)
+
+        substituteAtUID :: K3 Expression -> NamedSubstitution -> Either String (K3 Expression)
+        substituteAtUID targetE (uid, n, e, _) = mapTree (letAtUID uid n e) targetE
+
+        letAtUID :: UID -> Identifier -> K3 Expression -> [K3 Expression] -> K3 Expression
+                 -> Either String (K3 Expression)
+        letAtUID uid cseId e ch n = case n @~ isEUID of
+          Just (EUID uid2) -> return $
+            let cseVar = EC.variable cseId in
+            if uid == uid2
+              then EC.letIn cseId e $ substituteExpr e cseVar n
+              else rebuildAnnNode n ch
+          _ -> return $ rebuildAnnNode n ch
+
+        substituteExpr :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
+        substituteExpr compareE newE targetE =
+          snd . runIdentity $ foldMapRebuildTree (stripAndSub compareE newE) EC.unit targetE
+
+        stripAndSub compareE newE chAcc ch n = do
+          (strippedE, rebuiltE) <- return $ case tag n of
+              EConstant _ -> (Node (tag n :@: []) [], Node (tag n :@: annotations n) [])
+              EVariable _ -> (Node (tag n :@: []) [], Node (tag n :@: annotations n) [])
+              _           -> (Node (tag n :@: []) chAcc, Node (tag n :@: annotations n) ch) 
+
+          return $ if strippedE == compareE
+                     then (newE, foldl (@+) newE $ annotations n)
+                     else (strippedE, rebuiltE)
+
+
+    uidError e = Left $ "No UID found on " ++ show e
+
+    ePure (EProperty "Pure" _) = True
+    ePure _ = False
+

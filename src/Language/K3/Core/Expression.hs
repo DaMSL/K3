@@ -5,6 +5,7 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Control.Monad.Identity
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
@@ -210,3 +211,13 @@ bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+
+-- | Strips all annotations from an expression.
+stripAnnotations :: K3 Expression -> K3 Expression
+stripAnnotations = runIdentity . mapTree strip
+  where strip ch n = return $ Node (tag n :@: []) ch
+
+-- | Compares two expressions for identical AST structures while ignoring annotations
+--   (such as UIDs, spans, etc.)
+compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
+compareWithoutAnnotations e1 e2 = stripAnnotations e1 == stripAnnotations e2
