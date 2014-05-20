@@ -76,12 +76,16 @@ dispatch opts = do
     analyzer EffectNormalization     prtMode = printer prtMode . normalizeProgram
     analyzer FoldConstants           prtMode = printEither prtMode . foldProgramConstants
     analyzer Effects                 prtMode = withTypecheckedProgram (effectAnalysis prtMode)
-    analyzer Simplify                prtMode = printEither prtMode .
-                                         either Left eliminateDeadProgramCode 
-                                                   . foldProgramConstants
-                                                   . normalizeProgram
+    analyzer Simplify                prtMode = printEither prtMode . simplify
 
     effectAnalysis prtMode p _ = either putStrLn (printer prtMode) $ analyzeEffects p
+
+    simplify prog = do
+      let normPrg   =  normalizeProgram prog
+      foldedPrg     <- foldProgramConstants normPrg
+      let betaPrg   =  betaReductionOnProgram foldedPrg
+      dcPrg         <- eliminateDeadProgramCode betaPrg
+      commonProgramSubexprElim dcPrg
 
     printEither PrintAST    = putStrLn . either id pretty
     printEither PrintSyntax = either putStrLn (either syntaxError putStrLn . programS)
