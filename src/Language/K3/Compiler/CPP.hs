@@ -101,7 +101,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir ++ "//*.o" *> \out -> do
               let source = dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
+              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
               needMakefileDependencies deps
 
         pName    = programName copts
