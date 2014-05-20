@@ -60,7 +60,8 @@ shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
 
   // Construct an engine
   Engine engine = Engine(simulation, s_env, i_cdec);
-  return make_shared<Engine>(engine);
+  shared_ptr<Engine> e =  make_shared<Engine>(engine);
+  return e;
 }
 
 }
