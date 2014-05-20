@@ -22,9 +22,7 @@ declare table : collection {pageURL : string, pageRank : int} @ {Collection}
 
 declare pageRankThreshold : mut int
 
-/* Peers */
-
-declare master : address = 127.0.0.1:40000
+/* PHASE 1 : Process Table Rows and Compute */
 
 trigger processTableRows : (collection {pageURL : string, pageRank : int, avgDuration : int} @ {Collection}) = \tableElementCollection -> (
     tableElementCollection.iterate (\tableElement -> (

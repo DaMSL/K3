@@ -15,7 +15,7 @@ import Control.Arrow ((&&&))
 
 import Language.K3.Core.Common
 
-import Language.K3.Core.Annotation (K3, Annotation, tag, children, annotations)
+import Language.K3.Core.Annotation (K3, tag, children)
 import Language.K3.Core.Expression (Expression, namedEAnnotations)
 import Language.K3.Core.Literal (Literal, namedLAnnotations)
 import Language.K3.Core.Type
@@ -25,7 +25,7 @@ import Data.List
 {- Annotation identifiers. -}
 
 annotationComboId :: [Identifier] -> Identifier
-annotationComboId = intercalate "_"
+annotationComboId = ('_':) . intercalate "_"
 
 annotationComboIdT :: [Annotation Type] -> Maybe Identifier
 annotationComboIdT (namedTAnnotations -> [])  = Nothing

@@ -31,6 +31,9 @@ declare randomFraction : () -> real
 // Polymorphic hash function
 declare hash : forall a . a -> int
 
+// Substring of type string[1, x]
+declare substring : int -> string -> string
+
 
 ////////////////////////
 //
