@@ -77,7 +77,7 @@ cppSourceStage opts copts prog = do
     cgStatus    <- continue tcStatus $ cppCodegenStage opts copts
     continue cgStatus $ const $ return outFile
 
-  where outFile = either Left (\(f,_) -> Right [f]) $ outputFilePath "cpp" opts copts
+  where outFile = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
 
 cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String ())
 cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
