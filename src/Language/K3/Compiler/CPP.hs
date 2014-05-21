@@ -2,6 +2,10 @@
 
 module Language.K3.Compiler.CPP (compile) where
 
+import Data.Functor
+
+import Control.Monad
+
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath, replaceExtension, takeBaseName)
 
@@ -11,7 +15,7 @@ import Development.Shake
 import Development.Shake.FilePath hiding ( joinPath, replaceExtension, takeBaseName )
 import Development.Shake.Util
 
-import Text.PrettyPrint.ANSI.Leijen hiding ( (</>) )
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>), (<$>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -30,7 +34,7 @@ continue :: Either String a -> (a -> IO (Either String b)) -> IO (Either String 
 continue e f = either (return . Left) f e
 
 finalize :: (a -> String) -> Either String a -> IO ()
-finalize f = either putStrLn (putStrLn . f) 
+finalize f = either putStrLn (putStrLn . f)
 
 prefixError :: String -> IO (Either String a) -> IO (Either String a)
 prefixError message m = m >>= \case
@@ -40,7 +44,7 @@ prefixError message m = m >>= \case
 outputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
 outputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
-    Just path -> Right $ (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
+    Just path -> Right (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
 
 typecheckStage :: CompilerStage (K3 Declaration) (K3 Declaration)
 typecheckStage _ _ prog = prefixError "Type error:" $ return $
@@ -54,12 +58,12 @@ cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
-        
+
     genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.program cppIr)
     genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
-    
+
     outputCPP (Right doc) =
-      either (return . Left) (\x -> outputDoc doc x >>= return . Right) 
+      either (return . Left) (\x -> Right <$> outputDoc doc x)
         $ outputFilePath "cpp" opts copts
 
     outputCPP (Left (CPP.CPPGenE e)) = return $ Left e
@@ -75,20 +79,19 @@ cppSourceStage opts copts prog = do
     cgStatus    <- continue tcStatus $ cppCodegenStage opts copts
     continue cgStatus $ const $ return outFile
 
-  where outFile = either Left (\(f,_) -> Right [f]) $ outputFilePath "cpp" opts copts
+  where outFile = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
 
 cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String ())
-cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $ 
+cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
   case buildDir copts of
     Nothing   -> return $ Left "No build directory specified."
-    Just path -> binary path >>= return . Right
+    Just path -> Right <$> binary path
 
   where binary bDir =
           shake shakeOptions{shakeFiles = bDir} $ do
             want [bDir </> pName <.> exe]
 
-            phony "clean" $ do
-              removeFilesAfter bDir ["//*"]
+            phony "clean" $ removeFilesAfter bDir ["//*"]
 
             bDir </> pName <.> exe *> \out -> do
               let objects = [bDir </> src -<.> "o" | src <- sourceFiles]
@@ -98,7 +101,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir ++ "//*.o" *> \out -> do
               let source = dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
+              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
               needMakefileDependencies deps
 
         pName    = programName copts
@@ -107,10 +110,12 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
         cc       = case ccCmd copts of
                     GCC   -> "g++"
                     Clang -> "clang++"
+                    Source -> "true" -- Technically unreachable.
 
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
 compile opts copts prog = do
     sourceStatus <- cppSourceStage opts copts prog
-    binStatus    <- continue sourceStatus $ cppBinaryStage opts copts
-    finalize (const $ "Created binary file: " ++ (programName copts)) binStatus
+    unless (ccCmd copts == Source) $ do
+        binStatus <- continue sourceStatus $ cppBinaryStage opts copts
+        finalize (const $ "Created binary file: " ++ programName copts) binStatus

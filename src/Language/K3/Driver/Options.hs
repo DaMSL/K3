@@ -27,7 +27,7 @@ data Options = Options {
     , paths     :: PathOptions
     , input     :: FilePath
     , preLoad   :: [FilePath] -- files to load before input
-    , noFeed    :: Bool 
+    , noFeed    :: Bool
     }
   deriving (Eq, Read, Show)
 
@@ -52,7 +52,7 @@ data CompileOptions
                      }
   deriving (Eq, Read, Show)
 
-data CPPCompiler = GCC | Clang deriving (Eq, Read, Show)
+data CPPCompiler = GCC | Clang | Source deriving (Eq, Read, Show)
 
 -- | Interpretation options.
 data InterpretOptions
@@ -76,7 +76,7 @@ data PrintMode
   deriving (Eq, Read, Show)
 
 -- | Typechecking options
-data TypecheckOptions 
+data TypecheckOptions
     = TypecheckOptions
   deriving (Eq, Read, Show)
 
@@ -97,7 +97,7 @@ data AnalyzeMode
     | EffectNormalization
     | FoldConstants
     | Simplify
-  deriving (Eq, Read, Show) 
+  deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
 data InfoSpec = InfoSpec { logging   :: LoggerOptions
@@ -139,7 +139,7 @@ modeOptions = subparser (
 -- | Compiler options
 compileOptions :: Parser Mode
 compileOptions = mkCompile <$> outLanguageOpt
-                           <*> progNameOpt 
+                           <*> progNameOpt
                            <*> outputFileOpt
                            <*> buildDirOpt
                            <*> ccCmdOpt
@@ -186,7 +186,7 @@ buildDirOpt = validatePath <$> option (
         validatePath (Just p) = if isValid p then Just p else Nothing
 
 ccCmdOpt :: Parser CPPCompiler
-ccCmdOpt = gccFlag <|> clangFlag
+ccCmdOpt = gccFlag <|> clangFlag <|> sourceFlag
 
 gccFlag :: Parser CPPCompiler
 gccFlag = flag' GCC (
@@ -199,6 +199,9 @@ clangFlag = flag' Clang (
         long "clang"
      <> help "Use the clang++ and LLVM toolchain for C++ compilation"
     )
+
+sourceFlag :: Parser CPPCompiler
+sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
@@ -288,7 +291,7 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
         choosePC PrintTerse _       = tersePrintConfig
         choosePC _     _            = defaultPrintConfig
 
-        verbosePrintFlag = flag 
+        verbosePrintFlag = flag
                        PrintTerse
                        PrintVerbose
                        (long "verbose"
@@ -301,7 +304,7 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
                             PrintTerseSimple
                             (long "simple"
                             <> help "Use simple printing format for logging")
-                  
+
 
 
 -- | Printing options
@@ -327,7 +330,7 @@ analyzeOptions = (\a b -> Analyze $ AnalyzeOptions a b)
                   <$> analysisMode <*> ( astPrintOpt <|> syntaxPrintOpt )
 
 analysisMode :: Parser AnalyzeMode
-analysisMode =    conflictsOpt 
+analysisMode =    conflictsOpt
               <|> tasksOpt
               <|> programTasksOpt
               <|> proxyPathsOpt
@@ -448,7 +451,7 @@ programOptions = mkOptions <$> modeOptions
 {- Instance definitions -}
 
 instance Pretty Mode where
-  prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts] 
+  prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts]
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
   prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]
@@ -457,11 +460,10 @@ instance Pretty Mode where
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printOpts console) =
     ["Batch"] ++ (indent 3 $ ["Network: " ++ show net]
-                          ++ prettySysEnv env 
+                          ++ prettySysEnv env
                           ++ ["Expression: " ++ show expr]
                           ++ ["Parallel: "   ++ show par]
                           ++ ["Print: "      ++ show printOpts]
                           ++ ["Console: "    ++ show console])
-  
-  prettyLines v = [show v]
 
+  prettyLines v = [show v]
