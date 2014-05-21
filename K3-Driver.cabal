@@ -11,7 +11,7 @@ executable k3
 
     main-is: Driver.hs
 
-    ghc-options: -Wall
+    ghc-options: -Wall -O2
 
     build-depends:
         base,
