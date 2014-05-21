@@ -48,14 +48,14 @@ composite className ans = do
     serializationDefn <- serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
-    let ps = punctuate comma $ map (\(fst -> p) -> text "public" <+> text p <> angles (text "CONTENT")) ras
+    let ps = punctuate comma $ map (\(fst -> p) -> text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
 
-    let classBody = text "class" <+> text className <> colon <+> hsep ps
+    let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
             <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializationDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
