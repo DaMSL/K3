@@ -7,6 +7,7 @@
 #include <Collections.hpp>
 #include <test/TestUtils.hpp>
 
+
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -30,7 +31,7 @@ using std::string;
 using std::shared_ptr;
 
 // Int collections
-typedef K3::Collection<ListDS,int> int_c;
+typedef K3::Collection<int> int_c;
 typedef K3::Seq<int> int_seq;
 typedef K3::Set<int> int_set;
 typedef K3::Sorted<int> int_sorted;
@@ -40,7 +41,7 @@ shared_ptr<int_c> received = shared_ptr<int_c>(new int_c(nullptr));
 // "Trigger" Declarations
 // Build a collection and send it to the "receiveCollection" trigger
 void sendCollection(shared_ptr<Engine> engine, string) {
-  K3::Collection<ListDS, int> c = K3::Collection<ListDS, int>(nullptr);
+  K3::Collection<int> c = K3::Collection<int>(nullptr);
   for (int i =0; i < 100; i++) {
     c.insert(i);
   }
@@ -68,8 +69,8 @@ TriggerDispatch buildTable(shared_ptr<Engine> engine) {
 
 FACT("Collection Send simulation mode") {
   K3::received = std::shared_ptr<K3::int_c>(new K3::int_c(nullptr));
-  K3::peer1 = K3::make_address(K3::localhost, 3000);
-  K3::peer2 = K3::make_address(K3::localhost, 3001);
+  K3::peer1 = K3::make_address("127.0.0.1", 3000);
+  K3::peer2 = K3::make_address("127.0.0.1", 3001);
   K3::rendezvous = K3::peer1;
   std::list<K3::Address> peers = std::list<K3::Address>();
   peers.push_back(K3::peer1);
@@ -97,29 +98,33 @@ FACT("Collection Send simulation mode") {
 }
 
 FACT("Collection send network mode") {
+
   K3::received = std::shared_ptr<K3::int_c>(new K3::int_c(nullptr));
   using std::shared_ptr;
   using boost::thread;
-  using boost::thread_group;
-  // Create peers
-  K3::peer1 = K3::make_address(K3::localhost, 3000);
-  K3::peer2 = K3::make_address(K3::localhost, 3001);
+   using boost::thread_group;
+  // // Create peers
+
+  K3::peer1 = K3::make_address("127.0.0.1", 4000);
+  K3::peer2 = K3::make_address("127.0.0.1", 4002);
   K3::rendezvous = K3::peer1;
-  // Create engines
+  // // Create engines
   auto engine1 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer1));
-  auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
+ auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
   // Create MPs
   auto mp1 = K3::buildMP(engine1, K3::buildTable(engine1));
   auto mp2 = K3::buildMP(engine2, K3::buildTable(engine2));
   // Create initial messages (source)
   K3::Message m2 = K3::Message(K3::peer2, "sendCollection", "()");
 
-  engine2->send(m2);
+ 
 
   // Fork a thread for each engine
   auto service_threads = std::shared_ptr<thread_group>(new thread_group());
   shared_ptr<thread> t1 = engine1->forkEngine(mp1);
   shared_ptr<thread> t2 = engine2->forkEngine(mp2);
+  engine2->send(m2);
+
 
   service_threads->add_thread(t1.get());
   service_threads->add_thread(t2.get());
@@ -337,12 +342,12 @@ FACT("Sorted Split/Combine") {
 bool isEven(int x) { return (x % 2) == 0; };
 
 FACT("Collection Map") {
-  K3::Collection<K3::ListDS,int> c = K3::Collection<K3::ListDS,int>(nullptr);
+  K3::Collection<int> c = K3::Collection<int>(nullptr);
   c.insert(1);
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Collection<K3::ListDS,bool> c2 = c.template map<bool>(isEven);
+  K3::Collection<bool> c2 = c.template map<bool>(isEven);
   Assert.Equal(false, *(c2.peek()));
   c2.erase(false);
   Assert.Equal(true, *(c2.peek()));
@@ -477,12 +482,12 @@ FACT("Sorted Fold") {
 }
 
 FACT("Collection Group By") {
-  K3::Collection<K3::ListDS, int> c = K3::Collection<K3::ListDS, int>(nullptr);
+  K3::Collection< int> c = K3::Collection<int>(nullptr);
   c.insert(1);
   c.insert(2);
   c.insert(3);
   c.insert(4);
-  K3::Collection<K3::ListDS, std::tuple<bool,int>> c2 = c.template group_by<bool, int>(isEven,summer,0);
+  K3::Collection<std::tuple<bool,int>> c2 = c.template group_by<bool, int>(isEven,summer,0);
   auto tup = *(c2.peek());
   Assert.Equal(4, std::get<1>(tup));
   c2.erase(tup);
@@ -531,8 +536,8 @@ FACT("Sorted Group By") {
 
 //TODO nullptr! need a handle to the engine
 template <template <class> class DS>
-K3::Collection<DS,int> expand(int x ) {
-  K3::Collection<DS, int> result = K3::Collection<DS, int>(nullptr);
+K3::BaseCollection<DS,int> expand(int x ) {
+  K3::BaseCollection<DS, int> result = K3::BaseCollection<DS, int>(nullptr);
   for (int i = 0;i < x; i++) {
     result.insert(i);
   }
@@ -540,10 +545,10 @@ K3::Collection<DS,int> expand(int x ) {
 }
 
 FACT("Collection Ext") {
-  K3::Collection<K3::ListDS, int> c = K3::Collection<K3::ListDS, int>(nullptr);
+  K3::Collection< int> c = K3::Collection< int>(nullptr);
   c.insert(1);
   c.insert(2);
-  K3::Collection<K3::ListDS, int> c2 = c.template ext<K3::ListDS, int>(expand<K3::ListDS>);
+  K3::Collection<int> c2 = c.template ext<int>(expand<K3::ListDS>);
   Assert.Equal(0, *(c2.peek()));
   c2.erase(0);
   Assert.Equal(0, *(c2.peek()));
