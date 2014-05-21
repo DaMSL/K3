@@ -79,16 +79,11 @@ composite className ans = do
 
     defaultConstructor ps = return $ text className <> parens empty <> colon <+> hsep (punctuate comma $ map (<> parens empty) ps) <+> braces empty
 
-    dataspaceConstructor ps = do
-        let dsType = text "chunk" <> angles (text "CONTENT")
-        return $ text className <> parens ( dsType <+> text "v")
-            <> colon <+> hsep (punctuate comma $ map (<> parens (text "v")) ps) <+> braces empty
-
     -- TODO: Generate copy statements for remaining data members.
     copyConstructor ps = return $ text className <> parens (text $ "const " ++ className ++ "& c") <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
 
-    constructors = [defaultConstructor, dataspaceConstructor, copyConstructor]
+    constructors = [defaultConstructor, copyConstructor]
 
 dataspaceType :: CPPGenR -> CPPGenM CPPGenR
 dataspaceType eType = return $ text "vector" <> angles eType
