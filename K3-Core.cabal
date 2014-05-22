@@ -48,7 +48,8 @@ library
         template-haskell,
         transformers,
         unordered-containers,
-        ansi-wl-pprint
+        ansi-wl-pprint,
+        clock
 
     exposed-modules:
         Language.K3.Core.Annotation,

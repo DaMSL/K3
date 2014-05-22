@@ -11,7 +11,9 @@ import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Applicative
 import Data.List
-import System.Random
+import qualified Data.Map as Map
+import qualified System.Random as Random
+import qualified System.Clock as Clock
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -127,11 +129,11 @@ genBuiltin (channelMethod -> ("Write", Just n)) _ =
 -- random :: int -> int
 genBuiltin "random" _ =
   vfun $ \x -> case x of
-    VInt upper -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+    VInt upper -> liftIO (Random.randomRIO (0::Int, upper)) >>= return . VInt
     _          -> throwE $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- randomFraction :: () -> real
-genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
+genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO Random.randomIO >>= return . VReal
 
 -- hash :: forall a . a -> int
 genBuiltin "hash" _ = vfun $ \v -> valueHash v
@@ -148,8 +150,8 @@ genBuiltin "range" _ =
     initialAnnotatedCollection "Collection"
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
--- int_of_real :: int -> real
-genBuiltin "int_of_real" _ = vfun $ \x -> case x of 
+-- truncate :: int -> real
+genBuiltin "truncate" _ = vfun $ \x -> case x of 
   VReal r   -> return $ VInt $ truncate r
   _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
@@ -161,12 +163,20 @@ genBuiltin "real_of_int" _ = vfun $ \x -> case x of
 -- get_max_int :: () -> int
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
+{- Time Related Functiosn -}
+
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
-  v <- parseDate <$> pure s
+  let v = parseDate s
   case v of
     Just i  -> return $ VInt i
     Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
+
+genBuiltin "now" _ = vfun $ \(VTuple []) -> do
+  v <- liftIO $ Clock.getTime Clock.Realtime
+  return $ VRecord $ Map.fromList $
+    [("sec", (VInt $ Clock.sec v, MemImmut)),
+     ("nsec", (VInt $ Clock.nsec v, MemImmut))]
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 

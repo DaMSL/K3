@@ -1,0 +1,8 @@
+// Functions to do with manipulation of date/time
+
+// Convert Sql date -> integer
+declare parse_sql_date : string -> int
+
+// Get current monotonic time in {sec, nsec}
+declare now : () -> {sec:int, nsec:int}
+
