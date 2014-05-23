@@ -22,9 +22,8 @@ def group_lines(lines):
   return out
 
 trig_rs = [
-    ("cond_add_delta_to.*", "cond_add_delta"),
-    ("add_delta_to_map_.*_buf", "add_delta_to_buf"),
     ("add_delta_to.*", "add_delta_to"),
+    ("frontier_.*", "frontier"),
     ("log_.*", "log"),
     ("route_to_.*", "route"),
     ("shuffle_.*", "shuffle"),
@@ -37,6 +36,7 @@ trig_rs = [
     (".*_rcv_corrective.*", "rcv_corrective"),
     (".*_do_corrective.*", "do_corrective"),
     (".*_send_correctives.*", "send_corrective")
+
   ]
 
 len_rs = len(trig_rs)

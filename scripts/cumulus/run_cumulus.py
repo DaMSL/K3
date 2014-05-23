@@ -24,7 +24,8 @@ def main():
                     default=False,       help="Use the network")
   parser.add_argument("-c", "--concat",  action='store_true', dest="concat", 
                     default=False,       help="Concatenate into one file before running")
-
+  parser.add_argument("-i", "--index", type=int, dest="peer_index",
+                    default=None, help="Specify which peer (indexed from 1) to run on the local machine")
 
   args = parser.parse_args()
 
@@ -65,6 +66,10 @@ def main():
   with open('pre.k3', 'w') as out:
     out.write(pre_s)
 
+  # Constrain the peers based on our peer index selection
+  if args.peer_index:
+    peers = [peers[args.peer_index-1]]
+    
   # Create peer_str for command
   peer_s = ""
   for peer in peers:
