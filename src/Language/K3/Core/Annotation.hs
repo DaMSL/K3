@@ -110,7 +110,7 @@ instance AContainer a => AContainer (Tree a) where
     Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
-data a :@: b = a :@: b deriving (Eq, Read, Show)
+data a :@: b = a :@: b deriving (Eq, Ord, Read, Show)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where
@@ -147,6 +147,10 @@ instance AConstruct a => AConstruct (Tree a) where
 type K3 a = Tree (a :@: [Annotation a])
 
 {- Tree utilities -}
+
+instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
+  compare a b = compare (flatten a) (flatten b)
+
 
 -- | Subtree extraction
 children :: Tree a -> Forest a

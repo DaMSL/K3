@@ -143,8 +143,8 @@ checkConsistent cs =
           (SIndirection _, _) -> False
           (STuple _, STuple _) -> True
           (STuple _, _) -> False
-          (SRecord _ _, SRecord _ _) -> True
-          (SRecord _ _, _) -> False
+          (SRecord _ _ _, SRecord _ _ _) -> True
+          (SRecord _ _ _, _) -> False
           (STop, STop) -> True
           (STop, _) -> False
           (SBottom, SBottom) -> True
@@ -159,26 +159,26 @@ checkConsistent cs =
       _ -> return ()
     checkRecordInconsistent :: ShallowType -> ShallowType -> ConsistencyCheck
     checkRecordInconsistent t1 t2 = case (t1,t2) of
-      (SRecord m1 oas1, SRecord m2 oas2) | Set.null oas1 && Set.null oas2 ->
+      (SRecord m1 oas1 _, SRecord m2 oas2 _) | Set.null oas1 && Set.null oas2 ->
         unless (Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1) $
           genErr $ UnsatisfiedRecordBound t1 t2
-      (SRecord m oas, _) -> mconcat <$> sequence (do
+      (SRecord m oas ctOpt, _) -> mconcat <$> sequence (do
         oa' <- Set.toList oas
         (_, ta_U) <- csQuery cs $ QueryOpaqueBounds oa'
         t_U <- getUpperBoundsOf cs ta_U
-        case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
+        case recordConcat [t_U, SRecord m (Set.delete oa' oas) ctOpt] of
           Left err -> return $ Left $ Seq.singleton $ UnconcatenatableRecordType
                         t1 t2 oa' ta_U err
           Right _ -> return $ Right ())
       _ -> return ()
     checkConcatenationInconsistent :: ShallowType -> ConsistencyCheck
     checkConcatenationInconsistent t = case t of
-      SRecord m oas ->
+      SRecord m oas ctOpt ->
         mconcat <$> gatherParallelErrors (do
           oa <- Set.toList oas
           (_,ta_U) <- csQuery cs $ QueryOpaqueBounds oa
           t_U <- getUpperBoundsOf cs ta_U
-          case recordConcat [SRecord m oas, t_U] of
+          case recordConcat [SRecord m oas ctOpt, t_U] of
             Left err -> return $ genErr $ ConflictingRecordConcatenation err
             Right _ -> return $ Right ()
         )

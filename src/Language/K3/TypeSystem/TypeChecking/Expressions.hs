@@ -150,7 +150,7 @@ deriveExpression aEnv env expr = do
           unless (length exprs == length ids) $
             typecheckError $ InternalError $ InvalidExpressionChildCount expr
           a <- freshTypecheckingUVar u
-          let t = SRecord (Map.fromList $ zip ids qas) Set.empty
+          let t = SRecord (Map.fromList $ zip ids qas) Set.empty Nothing
           return (a, csUnions css `csUnion` csSing (t <: a))
         ELambda i -> do
           expr' <- assert1Child expr
@@ -177,14 +177,14 @@ deriveExpression aEnv env expr = do
           a <- freshTypecheckingUVar u
           qa <- freshTypecheckingQVar u
           return (a, cs `csUnion` csFromList
-                              [ a' <: SRecord (Map.singleton i qa) Set.empty
+                              [ a' <: SRecord (Map.singleton i qa) Set.empty Nothing
                               , qa <: a ])
         ELetIn i -> do
           (qexpr',expr') <- assert2Children expr
           (qa,cs) <- deriveQualifiedExpression aEnv env qexpr'
           let qt = generalize env qa cs
           let env' = Map.insert (TEnvIdentifier i) qt env
-          let prettyMapEntry (i,qt) = prettyLines i %+ [" -> "] %+ prettyLines qt
+          let prettyMapEntry (i',qt') = prettyLines i' %+ [" -> "] %+ prettyLines qt'
           _debug $ boxToString $ ["Expression "] %+ prettyLines u %+ [" generates environment: "] %+
                     vconcats (map prettyMapEntry $ Map.toList env')
           (a,cs') <- deriveUnqualifiedExpression aEnv env' expr'
@@ -235,7 +235,7 @@ deriveExpression aEnv env expr = do
                                          , QuantType Set.empty qa csEmpty ))
                               i's qas
                          , csSing $ a1 <: SRecord (Map.fromList $ zip is qas)
-                                                  Set.empty )
+                                                  Set.empty Nothing)
           (env',cs') <- handleBinder
           (a2,cs2) <- deriveUnqualifiedExpression aEnv (envMerge env env') expr2
           return (a2, csUnions [cs1,cs2,cs'])

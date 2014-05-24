@@ -62,7 +62,7 @@ data RecordConcatenationError
 -- |Concatenates a set of concrete record types.  A @Nothing@ is produced if
 --  any of the types are not records (or top) or if the record types overlap.
 recordConcat :: [ShallowType] -> Either RecordConcatenationError ShallowType
-recordConcat = foldM concatRecs (SRecord Map.empty Set.empty) .
+recordConcat = foldM concatRecs (SRecord Map.empty Set.empty Nothing) .
                   Prelude.filter (/=STop)
   where
     -- |A function to concatenate two record types.  The first argument is the
@@ -73,17 +73,25 @@ recordConcat = foldM concatRecs (SRecord Map.empty Set.empty) .
                -> Either RecordConcatenationError ShallowType
     concatRecs t1 t2 =
       case (t1,t2) of
-        (SRecord m1 oas1, SRecord m2 oas2) ->
+        (SRecord m1 oas1 ctOpt1, SRecord m2 oas2 ctOpt2) ->
           let labelOverlap = Set.fromList (Map.keys m1) `Set.intersection`
                              Set.fromList (Map.keys m2) in
           let opaqueOverlap = oas1 `Set.intersection` oas2 in
+          let ctOpt = case (ctOpt1, ctOpt2) of
+                        (Nothing,  Nothing)  -> Nothing
+                        (Nothing,  Just ct)  -> Just ct
+                        (Just ct,  Nothing)  -> Just ct
+                        (Just ct1, Just ct2)
+                          | ct1 == ct2 -> Just ct1
+                          | otherwise  -> Nothing -- TODO: merge multiple collection type metadata
+          in
           if Set.null labelOverlap
             then
               if Set.null opaqueOverlap
-                then Right $ SRecord (m1 `Map.union` m2) (oas1 `Set.union` oas2)
+                then Right $ SRecord (m1 `Map.union` m2) (oas1 `Set.union` oas2) ctOpt
                 else Left $ RecordOpaqueOverlap opaqueOverlap
             else Left $ RecordIdentifierOverlap labelOverlap
-        (SRecord _ _, _) -> Left $ NonRecordType t2
+        (SRecord _ _ _, _) -> Left $ NonRecordType t2
         (_, _) -> Left $ NonRecordType t1
 
 -- |Calculates the upper bounds of a given @TypeOrVar@ in context of a

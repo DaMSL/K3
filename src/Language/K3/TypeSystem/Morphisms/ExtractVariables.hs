@@ -16,6 +16,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map)
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.TypeDecision.Data
@@ -65,6 +66,7 @@ $(concat <$> mapM (defineReduceEmptyInstance [t|VariableReduction|]
                 [ ''UID
                 , ''Stub
                 , ''MorphismArity
+                , ''K3
                 ]                
  )
  

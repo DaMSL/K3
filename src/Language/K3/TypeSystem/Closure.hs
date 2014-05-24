@@ -97,7 +97,7 @@ closeImmediate cs = csUnions $ do
       give [qa1 <: qa2]
     (STuple qas1, STuple qas2) | length qas1 == length qas2 ->
       give $ zipWith (<:) qas1 qas2
-    (SRecord m1 oas1, SRecord m2 oas2)
+    (SRecord m1 oas1 _, SRecord m2 oas2 _)
       | Set.null oas1 && Set.null oas2 &&
         Map.keysSet m2 `Set.isSubsetOf` Map.keysSet m1 ->
           give $ Map.elems $ Map.intersectionWith (<:) m1 m2
@@ -108,14 +108,14 @@ closeImmediate cs = csUnions $ do
 -- |Performs closure for opaque-extended records in a lower-bounding position.
 closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeLowerBoundingExtendedRecord cs = csUnions $ do
-  (SRecord m oas, t) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
+  (SRecord m oas ctOpt, t) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
   case t of
     SOpaque oa -> guard $ not $ oa `Set.member` oas
     _ -> return ()
   oa' <- Set.toList oas
   (_, ta_U) <- csQuery cs $ QueryOpaqueBounds oa'
   t_U <- getUpperBoundsOf cs ta_U
-  case recordConcat [t_U, SRecord m $ Set.delete oa' oas] of
+  case recordConcat [t_U, SRecord m (Set.delete oa' oas) ctOpt] of
     Left _ ->
       -- In this situation, there is an inherent conflict in the record type.
       -- We'll detect this in inconsistency (to keep the closure function
@@ -126,10 +126,10 @@ closeLowerBoundingExtendedRecord cs = csUnions $ do
 -- |Performs closure for opaque-extended records in an upper-bounding position.
 closeUpperBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeUpperBoundingExtendedRecord cs = csUnions $ do
-  (t,SRecord m oas) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
+  (t,SRecord m oas ctOpt) <- csQuery cs $ QueryAllTypesLowerBoundingTypes ()
   moa <- Nothing : map Just (Set.toList oas) {- Nothing adds base record -}
   case moa of
-    Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty
+    Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty ctOpt
     Just oa -> {-Opaque case -} return $ csSing $ t <: SOpaque oa
   
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
@@ -165,7 +165,7 @@ opaqueLowerBound :: ConstraintSet -> ConstraintSet
 opaqueLowerBound cs = csFromList $ do
   (oa,t) <- csQuery cs $ QueryAllOpaqueLowerBoundedConstraints ()
   guard $ SOpaque oa /= t
-  guard $ SRecord Map.empty (Set.singleton oa) /= t
+  guard $ SRecord Map.empty (Set.singleton oa) Nothing /= t
   (_,ub) <- csQuery cs $ QueryOpaqueBounds oa
   t_U <- getUpperBoundsOf cs ub
   return $ t_U <: t
@@ -175,7 +175,7 @@ opaqueUpperBound cs = csFromList $ do
   (t,oa) <- csQuery cs $ QueryAllOpaqueUpperBoundedConstraints ()
   guard $ SOpaque oa /= t
   case t of
-    SRecord _ oas -> guard $ not $ Set.member oa oas
+    SRecord _ oas _ -> guard $ not $ Set.member oa oas
     _ -> return ()
   (lb,_) <- csQuery cs $ QueryOpaqueBounds oa
   t_L <- getLowerBoundsOf cs lb
