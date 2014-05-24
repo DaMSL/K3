@@ -333,7 +333,7 @@ parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 includeOverride includePaths s = do
+parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   fileContents  <- mapM readFile subFiles >>= return . (++ [s])
@@ -343,10 +343,10 @@ parseK3 includeOverride includePaths s = do
     parseAndCompose src (p, asTopLevel) =
       parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
         ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || includeOverride)
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || noFeed)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel || includeOverride)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel || noFeed)
     programError = Left "Invalid program, expected top-level role."
 
 
@@ -354,16 +354,18 @@ parseK3 includeOverride includePaths s = do
 
 -- TODO: inline testing
 program :: Bool -> DeclParser
-program asInclude = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram <$> endBy1 (roleBody "") eof
+program noDriver = DSpan <-> (rule >>= selfContainedProgram)
+  where rule = mkProgram <$> endBy1 (roleBody noDriver "") eof
         mkProgram l = DC.role defaultRoleName $ concat l
 
-        selfContainedProgram d = if asInclude then return d else (mkEntryPoints d >>= mkBuiltins)
+        selfContainedProgram d = if noDriver then return d else (mkEntryPoints d >>= mkBuiltins)
         mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
-roleBody :: Identifier -> K3Parser [K3 Declaration]
-roleBody n = pushBindings >> rule >>= popBindings >>= postProcessRole n
+roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
+roleBody noDriver n =
+    pushBindings >> rule >>= popBindings 
+      >>= \df -> if noDriver then return $ fst df else postProcessRole n df
   where rule = some declaration >>= return . concat
         pushBindings = modifyEnvironment_ addFrame
         popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
@@ -430,7 +432,7 @@ dFeed = track $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identif
         track p             = (trackBindings =<<) $ declError "feed" $ p
 
 dRole :: DeclParser
-dRole = chainedNamedBraceDecl n n roleBody DC.role
+dRole = chainedNamedBraceDecl n n (roleBody False) DC.role
   where n = "role"
 
 dSelector :: K3Parser ()
@@ -1182,8 +1184,8 @@ postProcessRole n (dl, frame) =
 
         annotateEndpoint _ [] = []
         annotateEndpoint s (d:drest)
-          | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
-          | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) (syntaxAnnotation en s)):drest
+          | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s):drest
+          | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s):drest
           | otherwise = d:drest
 
         syntaxAnnotation en s =
