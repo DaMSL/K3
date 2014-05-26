@@ -76,7 +76,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
     i <- genCType T.unit >>= \ctu ->
         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
     let amp = annotationMap currentS
-    compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
+    compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ uncurry record
     tablePop <- generateDispatchPopulation

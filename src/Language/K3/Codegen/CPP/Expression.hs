@@ -80,18 +80,16 @@ constant (CString s) = return $ text "string" <> (parens . text $ show s)
 constant (CNone _) = return $ text "null"
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
--- | Generate a C++ declaration for a value of a given type.
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
     return $ ctr <+> text i <> parens cta <> semi
-
--- TODO: As with genCType/addRecord, is a call to addComposite really needed here?
-cDecl t@(tag &&& annotations -> (TCollection, as)) i = case annotationComboIdT as of
-    Nothing -> return $ text "Collection" <+> text i <> semi
-    Just _ -> addComposite (namedTAnnotations as) >> genCType t >>= \ct -> return $ ct <+> text i <> semi
-cDecl t i = genCType t >>= \ct -> return $ ct <+> text i <> semi
+cDecl t i = do
+    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
+    ct <- genCType t
+    ci <- return $ text i
+    return $ genCDecl ct ci Nothing
 
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
