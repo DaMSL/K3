@@ -77,13 +77,21 @@ composite className ans = do
     isDataDecl (Attribute _ _ (tag -> TFunction) _ _) = False
     isDataDecl _ = True
 
-    defaultConstructor ps = return $ text className <> parens empty <> colon <+> hsep (punctuate comma $ map (<> parens empty) ps) <+> braces empty
+    engineConstructor ps = return $
+            text className
+         <> parens empty
+         <> colon
+        <+> hsep (punctuate comma $ map (<> parens (text "&engine")) ps)
+        <+> braces empty
 
     -- TODO: Generate copy statements for remaining data members.
-    copyConstructor ps = return $ text className <> parens (text $ "const " ++ className ++ "& c") <> colon
+    copyConstructor ps = return $
+            text className
+         <> parens (text $ "const " ++ className ++ "& c")
+         <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
 
-    constructors = [defaultConstructor, copyConstructor]
+    constructors = [engineConstructor, copyConstructor]
 
 dataspaceType :: CPPGenR -> CPPGenM CPPGenR
 dataspaceType eType = return $ text "vector" <> angles eType
