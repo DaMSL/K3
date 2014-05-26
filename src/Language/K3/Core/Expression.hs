@@ -18,6 +18,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
+import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
@@ -99,7 +100,8 @@ data instance Annotation Expression
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
-    | EType (K3 Type)
+    | EType   (K3 Type)
+    | EQType  (K3 QType)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
     | EImplementationType Identifier
@@ -186,6 +188,10 @@ isEType (EType   _) = True
 isEType (ETypeLB _) = True
 isEType (ETypeUB _) = True
 isEType _           = False
+
+isEQType :: Annotation Expression -> Bool
+isEQType (EQType _) = True
+isEQType _          = False
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns

@@ -19,9 +19,11 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
+import Language.K3.Analysis.Common
 import Language.K3.Analysis.Effect
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
@@ -408,7 +410,9 @@ eliminateDeadCode expr = mapTree pruneExpr expr
 -- 
 --   perform substitutions
 --     i. traverse tree top-down, and when encountering a UID, test and substitute.
-
+-- 
+-- TODO: add UID and span annotations to the transformed code.
+--
 type Candidates        = [(K3 Expression, Int)]
 type CandidateTree     = Tree (UID, Candidates)
 type Substitution      = (UID, K3 Expression, Int)
@@ -453,7 +457,7 @@ commonSubexprElim expr = do
               localCands    = sortBy ((flip compare) `on` snd) $ 
                                 foldl (addCandidateIfLCA subAcc) [] filteredCands
               candTreeNode  = Node (uid, localCands) $ concat ctCh
-              nStrippedExpr = Node (tag t :@: []) $ concat sExprCh
+              nStrippedExpr = Node (tag t :@: (filter isEQualified $ annotations t)) $ concat sExprCh
           in
           case n @~ ePure of
             Nothing -> return $ ([candTreeNode], [nStrippedExpr], [])
@@ -470,7 +474,7 @@ commonSubexprElim expr = do
                         -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
     leafTreeAccumulator e = do
       ctNode <- leafCandidateNode e
-      return $ ([ctNode], [Node (tag e :@: []) []], [])
+      return $ ([ctNode], [Node (tag e :@: (filter isEQualified $ annotations e)) []], [])
 
     leafCandidateNode :: K3 Expression -> Either String CandidateTree
     leafCandidateNode e = case e @~ isEUID of
@@ -546,7 +550,10 @@ commonSubexprElim expr = do
           Just (EUID uid2) -> return $
             let cseVar = EC.variable cseId in
             if uid == uid2
-              then EC.letIn cseId e $ substituteExpr e cseVar n
+              then let srcE = case e @~ isEQualified of
+                                Nothing -> e @+ EImmutable
+                                Just _  -> e
+                   in EC.letIn cseId srcE $ substituteExpr e cseVar n
               else rebuildAnnNode n ch
           _ -> return $ rebuildAnnNode n ch
 
@@ -556,9 +563,9 @@ commonSubexprElim expr = do
 
         stripAndSub compareE newE chAcc ch n = do
           (strippedE, rebuiltE) <- return $ case tag n of
-              EConstant _ -> (Node (tag n :@: []) [], Node (tag n :@: annotations n) [])
-              EVariable _ -> (Node (tag n :@: []) [], Node (tag n :@: annotations n) [])
-              _           -> (Node (tag n :@: []) chAcc, Node (tag n :@: annotations n) ch) 
+              EConstant _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
+              EVariable _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
+              _           -> (Node (tag n :@: (filter isEQualified $ annotations n)) chAcc, Node (tag n :@: annotations n) ch) 
 
           return $ if strippedE == compareE
                      then (newE, foldl (@+) newE $ annotations n)
@@ -570,3 +577,157 @@ commonSubexprElim expr = do
     ePure (EProperty "Pure" _) = True
     ePure _ = False
 
+
+-- | Collection transformer fusion.
+data CollectionKindTag
+        = KArrow
+        | KCollection [Identifier]
+        | KComposite
+        | KNamedComposite [Identifier]
+        | KOpaque
+      deriving (Eq, Ord, Read, Show)
+
+type CollectionKind = Tree CollectionKindTag
+
+kindOfType :: K3 Type -> Either String CollectionKind
+kindOfType t = foldMapTree asKind (Node KOpaque []) t
+  where
+    asKind _     (opaque . tag      -> True) = return $ Node KOpaque     []
+    asKind ch    (constructor . tag -> True) = return $ Node KComposite  ch
+    asKind ch    (function . tag    -> True) = return $ Node KArrow      ch
+    asKind ch    (tag -> TRecord ids)        = return $ Node (KNamedComposite ids) ch
+    asKind ch  n@(tag -> TCollection)        = return $ Node (KCollection $ namedTAnnotations $ annotations n) ch
+    asKind [x]   (tag -> TForall _)          = return $ x
+    asKind [x]   (tag -> TMu _)              = return $ x
+    asKind _ n = Left $ "Unexpected type during kind construction: " ++ show n
+
+    opaque TBool    = True
+    opaque TByte    = True
+    opaque TInt     = True
+    opaque TReal    = True
+    opaque TNumber  = True
+    opaque TString  = True
+    opaque TAddress = True
+    opaque TBottom  = True
+    opaque TTop     = True
+    opaque TSource  = True
+    opaque TSink    = True
+    opaque TTrigger = True
+    opaque _        = False
+
+    constructor TOption      = True
+    constructor TIndirection = True
+    constructor TTuple       = True
+    constructor _            = False
+
+    function TFunction = True
+    function _         = False
+
+
+-- TODO: generalize to analyzeProgram, as a property-propagating transformer.
+-- In this transformer, each folding function returns a set of properties to attach,
+-- as well as a binding datastructure.
+analyzeProgramCollections :: K3 Declaration -> Either String (K3 Declaration)
+analyzeProgramCollections prog = do
+  (_, np) <- foldProgram addDeclKind returnPair analyzeCollections [] prog
+  return np
+  where 
+    addDeclKind acc d@(tag -> DGlobal  n t _) = kindOfType t >>= \k -> return (acc++[(n, k)], d)
+    addDeclKind acc d@(tag -> DTrigger n t _) = kindOfType t >>= \k -> return (acc++[(n, k)], d)
+    addDeclKind acc d = return (acc, d)
+    returnPair a b = return (a, b)
+
+-- TODO: use foldIn1RebuildTree
+-- TODO: add local collection bindings
+-- TODO: propagate collection constants
+analyzeCollections :: [(Identifier, CollectionKind)] -> K3 Expression
+                   -> Either String ([(Identifier, CollectionKind)], K3 Expression)
+analyzeCollections collectionBindings expr = do
+    (_, nExpr) <- biFoldMapTree pruneBinding rebuildExpr collectionBindings (leafKind, leafExpr) expr
+    return (collectionBindings, nExpr)
+  where
+    -- | TODO: We need to add new collection kind bindings in addition to pruning.
+    pruneBinding cb (tag -> ELambda i) = nextBindings cb [i] [True]
+    pruneBinding cb (tag -> ELetIn  i) = nextBindings cb [i] [False, True]
+    pruneBinding cb (tag -> ECaseOf i) = nextBindings cb [i] [False, True, False]
+    pruneBinding cb (tag -> EBindAs b) = nextBindings cb (bindingVariables b) [False, True]
+    pruneBinding cb n = return (cb, replicate (length $ children n) cb)
+
+    nextBindings cb newb useInBranch =
+      let ncb = filter (\(i,_) -> i `notElem` newb) cb
+      in return (cb, map (\use -> if use then ncb else cb) useInBranch)
+
+    rebuildExpr _ _ n@(tag -> EConstant c) =
+      case c of 
+        CNone _  -> return (Node KComposite [], n)
+                      -- ^ TODO: use type annotation to get child type and kind
+                      --   However, if the child type is a collection, we will only see this as a 
+                      --   record. How do we handle this?
+        CEmpty t -> kindOfType t >>= \k ->
+                      return (Node (KCollection $ namedEAnnotations $ annotations n) [k], n)
+        _        -> return (leafKind, n)
+    
+    rebuildExpr cb _ n@(tag -> EVariable i) =
+      case lookup i cb of
+        Nothing   -> bindingError i
+        Just kind -> rebuildNode kind n []
+
+    rebuildExpr _ ch n@(tag -> EAddress)  = rebuildNode leafKind n ch
+    rebuildExpr _ ch n@(tag -> ESome)     = rebuildNode (Node KComposite [fst $ head ch]) n ch
+    rebuildExpr _ ch n@(tag -> EIndirect) = rebuildNode (Node KComposite [fst $ head ch]) n ch
+    rebuildExpr _ ch n@(tag -> ETuple)    = rebuildNode (Node KComposite $ map fst ch) n ch
+    
+    rebuildExpr _ ch n@(tag -> ERecord ids) =
+      rebuildNode (Node (KNamedComposite ids) $ map fst ch) n ch
+
+    rebuildExpr cb ch n@(tag -> ELambda i) = do
+      fnK <- case lookup i cb of
+                Nothing   -> return $ Node KArrow [leafKind, fst $ head ch] -- TODO: error here when bindings are added during pruning.
+                Just argK -> return $ Node KArrow [argK, fst $ head ch]
+      rebuildNode fnK n ch
+
+    rebuildExpr _ ch n@(tag -> EOperate _) = rebuildNode leafKind n ch
+    
+    rebuildExpr _ ch n@(tag -> EProject i) = do
+      fieldK <- namedKind i $ fst $ head ch
+      rebuildNode fieldK n ch
+
+    rebuildExpr _ ch n@(tag -> EAssign _)   = rebuildNode leafKind n ch
+    rebuildExpr _ ch n@(tag -> ELetIn _)    = rebuildNode (fst $ ch !! 1) n ch 
+    rebuildExpr _ ch n@(tag -> EBindAs _)   = rebuildNode (fst $ ch !! 1) n ch
+    rebuildExpr _ ch n@(tag -> ECaseOf _)   = rebuildNode (fst $ ch !! 1) n ch -- TODO: unify
+    rebuildExpr _ ch n@(tag -> EIfThenElse) = rebuildNode (fst $ ch !! 1) n ch -- TODO: unify
+    rebuildExpr _ _ n = Left $ "Unknown collection kind for " ++ show n
+      -- TODO: handle self expressions
+
+    rebuildNode kind n ch = 
+      let extraAnns = if isCollectionKind kind then [EProperty "Collection" Nothing] else []
+          nAnns     = annotations n ++ extraAnns
+      in return $ (kind, Node (tag n :@: nAnns) $ map snd ch)
+
+    namedKind i k = 
+      case k of
+        Node (KNamedComposite ids) kch ->
+          maybe (namedFieldError i) return $ lookup i $ zip ids kch
+
+        Node (KCollection _) _ -> unsupportedError
+        Node k2 _              -> kindMismatchError k2
+
+    isCollectionKind (Node (KCollection _) _) = True
+    isCollectionKind _ = False
+
+    leafKind = Node KOpaque []
+    leafExpr = EC.unit
+
+    namedFieldError   i = Left $ "Unknown field in named composite kind: " ++ i
+    bindingError      i = Left $ "Unknown kind for binding: " ++ i
+    kindMismatchError k = Left $ "Invalid projection kind" ++ show k
+    unsupportedError    = Left "Collection projection kinds not yet supported."
+
+{-
+fuseProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
+fuseProgramTransformers = mapExpression fuseTransformers
+
+fuseTransformers :: K3 Expression -> Either String (K3 Expression)
+fuseTransformers = undefined
+-}
