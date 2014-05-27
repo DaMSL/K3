@@ -38,19 +38,15 @@ setDefaultRole d _ _ = d
 runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
 runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
    if not asNetwork then prepareAndRun prepareProgram runProgram (map Right)
-                    else consoleCheck
+                    else prepareAndRun prepareNetwork networkRunF id
   where 
-    consoleCheck = if consoleOn
-                   then prepareAndRun prepareNetwork (\pc pn -> runNetwork pc pn >>= return . Right) id
-                   else do
-                    prepared <- prepare prepareNetwork
-                    either engineError (\p -> runNetwork printConf p >>= mapM_ (printError printNode)) prepared
-
     prepareAndRun prepareF runF statusF = do
-      prepared <- prepare prepareF
+      prepared <- prepareF printConf parallel (sysEnv interpOpts) prog
       either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared
 
-    prepare prepareF = prepareF printConf parallel (sysEnv interpOpts) prog
+    networkRunF pc pn = runNetwork pc pn >>= waitF >>= return . Right
+
+    waitF = if consoleOn then return . id else mapM (printError printNode)
 
     loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
 
@@ -58,7 +54,7 @@ runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
       runStatus <- liftIO $ runF printConf prepared
       either errorF (continueF . statusF) runStatus
 
-    runConsole rcrF ns = console defaultPrompt rcrF ns
+    runConsole rcrF ns = if consoleOn then console defaultPrompt rcrF ns else return ()
     engineError        = putStrLn . message
     cEngineError       = outputStrLn . message
 
@@ -67,6 +63,7 @@ runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
       readMVar (waitV $ control engine)
       void $ putStrLn $ "Node " ++ show addr ++ " finished."
 
-    printError validF pStatus = either (\err -> putStrLn $ message err) validF pStatus
+    -- printError returns the provided pStatus
+    printError validF pStatus = either (\err -> (putStrLn $ message err) >> return pStatus) (\arg -> validF arg >> return pStatus) pStatus
 
 runBatch _ _ _ = error "Invalid batch processing mode"
