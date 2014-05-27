@@ -167,7 +167,7 @@ unify t1 t2 tve = unify' (tvchase tve t1) (tvchase tve t2) tve
 unify' :: K3 QType -> K3 QType -> TVEnv -> Either String TVEnv
 unify' (tag -> QTPrimitive p1) (tag -> QTPrimitive p2) tve
   | p1 == p2 = Right tve
-  | ([p1, p2] `intersect` [QTNumber, QTInt, QTReal]) == [p1,p2] = Right tve
+  | ([p1, p2] `intersect` [QTNumber, QTInt, QTReal])  == [p1,p2] = Right tve
   | otherwise = Left $ unwords ["Unification mismatch on primitives: ", show p1, "and", show p2]
 
 unify' t1@(tag -> QTCon d1) t2@(tag -> QTCon d2) tve
@@ -428,13 +428,11 @@ inferExprTypes tienv expr =
       where sndError side reason = "Invalid " ++ side ++ " send operand: " ++ reason
 
     -- | Unify operand types based on the kind of operator.
-    -- TODO: better numeric promotion?
+    -- TODO: better numeric polymorphism handling.
     inferQType _ ch n@(tag -> EOperate op) 
       | numeric op = do
             (lqt, rqt) <- unifyBinaryM tnum tnum ch numericError
-            resultqt   <- case (tag lqt, tag rqt) of
-                            (QTPrimitive QTInt, QTPrimitive QTInt) -> return $ tint
-                            (_, _) -> return $ treal
+            resultqt   <- promote lqt rqt
             return $ rebuildE n ch .+ resultqt
 
       | comparison op || logic op = do
@@ -448,8 +446,9 @@ inferExprTypes tienv expr =
       | op == ONeg = do
             chqt <- unifyUnaryM tnum ch (("Invalid unary minus operand: ") ++)
             resultqt <- case tag chqt of
-                          QTPrimitive QTInt -> return tint
-                          _ -> return treal
+                          QTPrimitive QTInt  -> return tint
+                          QTPrimitive QTReal -> return treal
+                          _ -> return tnum
             return $ rebuildE n ch .+ resultqt
 
       | op == ONot = do
@@ -458,28 +457,46 @@ inferExprTypes tienv expr =
 
       | otherwise = left $ "Invalid operation: " ++ show op
 
-      where numericError side reason = "Invalid " ++ side ++ " numeric operand: " ++ reason
-            stringError side reason = "Invalid " ++ side ++ " string operand: " ++ reason
-            boolError side reason =
-              let kind = if comparison op then "comparsion" else "logic" 
-              in unwords ["Invalid", side, kind, "operand:", reason]
+      where 
+        promote lqt rqt = return $ case (tag lqt, tag rqt) of
+          (QTPrimitive p1,  QTPrimitive p2)
+            | p1 == QTInt  && p2 == QTInt  -> tint
+            | p1 == QTReal || p2 == QTReal -> treal
+            | otherwise -> tnum
+          
+          (QTVar _, QTPrimitive p2) | p2 == QTReal -> treal
+                                    | otherwise    -> tnum
+          
+          (QTPrimitive p1, QTVar _) | p1 == QTReal -> treal
+                                    | otherwise    -> tnum
+          
+          (_, _) -> tnum
+
+        numericError side reason = "Invalid " ++ side ++ " numeric operand: " ++ reason
+        stringError side reason = "Invalid " ++ side ++ " string operand: " ++ reason
+        boolError side reason =
+          let kind = if comparison op then "comparsion" else "logic" 
+          in unwords ["Invalid", side, kind, "operand:", reason]
 
     -- First child generation has already been performed in sidewaysBinding
     inferQType _ ch n@(tag -> ELetIn _) = do
       bqt <- qTypeOf $ last ch
-      return $ rebuildE n ch .+ bqt
+      tve <- get
+      return $ rebuildE n (map (exprQtSub tve) ch) .+ bqt
     
     -- First child unification has already been performed in sidewaysBinding
     inferQType _ ch n@(tag -> EBindAs _) = do
       bqt <- qTypeOf $ last ch
-      return $ rebuildE n ch .+ bqt
+      tve <- get
+      return $ rebuildE n (map (exprQtSub tve) ch) .+ bqt
     
     -- First child unification has already been performed in sidewaysBinding
     inferQType _ ch n@(tag -> ECaseOf _) = do
       sqt   <- qTypeOf $ ch !! 1
       nqt   <- qTypeOf $ last ch
       void  $  unifyM sqt nqt (("Mismatched case-of branch types: ") ++)
-      return $ rebuildE n ch .+ sqt
+      tve <- get
+      return $ rebuildE n (map (exprQtSub tve) ch) .+ sqt
 
     inferQType _ ch n@(tag -> EIfThenElse) = do
       pqt <- qTypeOf $ head ch
@@ -487,7 +504,8 @@ inferExprTypes tienv expr =
       eqt <- qTypeOf $ last ch
       void $ unifyM pqt tbool $ (("Invalid if-then-else predicate: ") ++)
       void $ unifyM tqt eqt   $ (("Mismatched condition branches: ") ++)
-      return $ rebuildE n ch .+ tqt
+      tve <- get
+      return $ rebuildE n (map (exprQtSub tve) ch) .+ tqt
 
     inferQType _ _ n@(tag -> EAddress) = return $ n .+ taddr
 
