@@ -341,4 +341,4 @@ declareBuiltins d
         --mkRUnitFnT rt = TC.function TC.unit rt
         unitFnT       = TC.function TC.unit TC.unit
 
-        mkCollection fields = TC.collection $ TC.record $ map (qualifyT <$>) fields
+        mkCollection fields = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation "Collection"
