@@ -5,7 +5,9 @@
 module Language.K3.Driver.Batch where
 
 import Control.Arrow
+import Control.Concurrent.MVar
 import Control.Monad.IO.Class
+import Control.Monad
 import System.Console.Haskeline
 
 import Language.K3.Core.Annotation
@@ -36,11 +38,19 @@ setDefaultRole d _ _ = d
 runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
 runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
    if not asNetwork then prepareAndRun prepareProgram runProgram (map Right)
-                    else prepareAndRun prepareNetwork (\pc pn -> runNetwork pc pn >>= return . Right) id
+                    else consoleCheck
   where 
+    consoleCheck = if consoleOn
+                   then prepareAndRun prepareNetwork (\pc pn -> runNetwork pc pn >>= return . Right) id
+                   else do
+                    prepared <- prepare prepareNetwork
+                    either engineError (\p -> runNetwork printConf p >>= mapM_ (printError printNode)) prepared
+
     prepareAndRun prepareF runF statusF = do
-      prepared <- prepareF printConf parallel (sysEnv interpOpts) prog
+      prepared <- prepare prepareF
       either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared
+
+    prepare prepareF = prepareF printConf parallel (sysEnv interpOpts) prog
 
     loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
 
@@ -48,8 +58,15 @@ runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
       runStatus <- liftIO $ runF printConf prepared
       either errorF (continueF . statusF) runStatus
 
-    runConsole rcrF ns = if consoleOn then console defaultPrompt rcrF ns else return ()
+    runConsole rcrF ns = console defaultPrompt rcrF ns
     engineError        = putStrLn . message
     cEngineError       = outputStrLn . message
+
+    printNode (addr, engine, threadid,_) = do
+      void $ putStrLn $ "Waiting for node " ++ show addr ++ " running on thread " ++ show threadid
+      readMVar (waitV $ control engine)
+      void $ putStrLn $ "Node " ++ show addr ++ " finished."
+
+    printError validF pStatus = either (\err -> putStrLn $ message err) validF pStatus
 
 runBatch _ _ _ = error "Invalid batch processing mode"
