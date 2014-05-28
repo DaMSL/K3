@@ -76,7 +76,7 @@ declaration (tag &&& children -> (DRole n, cs)) = do
     i <- genCType T.unit >>= \ctu ->
         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
     let amp = annotationMap currentS
-    compositeDecls <- forM (S.toList $ composites currentS) $ \(S.toList -> als) ->
+    compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ uncurry record
     tablePop <- generateDispatchPopulation
@@ -84,7 +84,9 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 
     put defaultCPPGenS
     return $ text "namespace" <+> text n <+> hangBrace (
-        vsep $ punctuate line $ [forwards currentS]
+        vsep $ punctuate line $
+               [text "using K3::Collection;"]
+            ++ [forwards currentS]
             ++ compositeDecls
             ++ recordDecls
             ++ [subDecls, i, tableDecl, tablePop])
@@ -132,7 +134,7 @@ program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
     staticGlobals' <- staticGlobals
     program' <- declaration d
-    genNamespaces <- namespaces >>= \ns -> return [text "using namespace" <+> text n <> semi | n <- ns]
+    genNamespaces <- namespaces >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
     return $ vsep $ punctuate line [
@@ -176,8 +178,8 @@ includes = return [
 namespaces :: CPPGenM [Identifier]
 namespaces = do
     serializationNamespace <- serializationMethod <$> get >>= \case
-        BoostSerialization -> return "K3::BoostSerializer"
-    return ["std", "K3", serializationNamespace]
+        BoostSerialization -> return "namespace K3::BoostSerializer"
+    return ["namespace std", "namespace K3", serializationNamespace]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
