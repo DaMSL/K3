@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Data types for Hindley-Milner inference.
 --   We use a separate tree data type to ensure no mixing of type systems.
@@ -15,22 +16,26 @@ data QPType = QPType [QTVarId] (K3 QType)
                 deriving (Eq, Ord, Read, Show)
 
 data QType
-        = QTCon       QTData
+        = QTBottom
         | QTPrimitive QTBase
+        | QTCon       QTData
         | QTVar       QTVarId
+        | QTOperator  QTOp
         | QTTop
-        | QTBottom
       deriving (Eq, Ord, Read, Show)
 
+-- | Primitive types. 
+--   Note this class derives an enum instance which we use to determine precedence.
+--   Hence the ordering of the constructors should not be changed lightly.
 data QTBase
         = QTBool
         | QTByte
-        | QTInt
         | QTReal
+        | QTInt
         | QTString
         | QTAddress
         | QTNumber
-      deriving (Eq, Ord, Read, Show)
+      deriving (Enum, Eq, Ord, Read, Show)
 
 data QTData
         = QTFunction
@@ -43,6 +48,8 @@ data QTData
         | QTSource
         | QTSink
       deriving (Eq, Ord, Read, Show)
+
+data QTOp = QTLower deriving (Eq, Ord, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.
 data instance Annotation QType
@@ -126,8 +133,26 @@ tunit :: K3 QType
 tunit = ttup []
 
 
+-- | Operator constructors
+tlower :: [K3 QType] -> K3 QType
+tlower ch = Node (QTOperator QTLower :@: []) ch
+
+
 -- | Annotation predicates
 isQTQualified :: Annotation QType -> Bool
 isQTQualified QTImmutable = True
 isQTQualified QTMutable   = True
 isQTQualified _ = False
+
+isQTNumeric :: K3 QType -> Bool
+isQTNumeric (tag -> QTPrimitive p1) | p1 `elem` [QTInt, QTReal, QTNumber] = True
+                                    | otherwise = False
+isQTNumeric _ = False
+
+isQTVar :: K3 QType -> Bool
+isQTVar (tag -> QTVar _) = True
+isQTVar _ = False
+
+isQTLower :: K3 QType -> Bool
+isQTLower (tag -> QTOperator QTLower) = True
+isQTLower _ = False
