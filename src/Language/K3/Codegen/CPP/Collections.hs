@@ -48,14 +48,14 @@ composite className ans = do
     serializationDefn <- serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
-    let ps = punctuate comma $ map (\(fst -> p) -> text "public" <+> text p <> angles (text "CONTENT")) ras
+    let ps = punctuate comma $ map (\(fst -> p) -> text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
 
-    let classBody = text "class" <+> text className <> colon <+> hsep ps
+    let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
             <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializationDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
@@ -77,18 +77,21 @@ composite className ans = do
     isDataDecl (Attribute _ _ (tag -> TFunction) _ _) = False
     isDataDecl _ = True
 
-    defaultConstructor ps = return $ text className <> parens empty <> colon <+> hsep (punctuate comma $ map (<> parens empty) ps) <+> braces empty
-
-    dataspaceConstructor ps = do
-        let dsType = text "chunk" <> angles (text "CONTENT")
-        return $ text className <> parens ( dsType <+> text "v")
-            <> colon <+> hsep (punctuate comma $ map (<> parens (text "v")) ps) <+> braces empty
+    engineConstructor ps = return $
+            text className
+         <> parens empty
+         <> colon
+        <+> hsep (punctuate comma $ map (<> parens (text "&engine")) ps)
+        <+> braces empty
 
     -- TODO: Generate copy statements for remaining data members.
-    copyConstructor ps = return $ text className <> parens (text $ "const " ++ className ++ "& c") <> colon
+    copyConstructor ps = return $
+            text className
+         <> parens (text $ "const " ++ className ++ "& c")
+         <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
 
-    constructors = [defaultConstructor, dataspaceConstructor, copyConstructor]
+    constructors = [engineConstructor, copyConstructor]
 
 dataspaceType :: CPPGenR -> CPPGenM CPPGenR
 dataspaceType eType = return $ text "vector" <> angles eType
