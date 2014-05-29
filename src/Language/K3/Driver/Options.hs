@@ -203,6 +203,9 @@ clangFlag = flag' Clang (
 sourceFlag :: Parser CPPCompiler
 sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
 
+cppOptions :: Parser String
+cppOptions = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
+
 includeOpt :: Parser FilePath
 includeOpt = strOption (
                 long "CI"
