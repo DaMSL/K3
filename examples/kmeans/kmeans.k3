@@ -1,0 +1,114 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+// Configuration
+declare k : int = 2
+declare num_iter : int = 4
+declare loaded_points : mut int = 0
+declare num_points : int = 8
+
+// Globals
+// A point's key represents its cluster id
+// Its value represents an n-dimensional vector encoded as a collection of (dimension, value) pairs
+declare points :  mut collection { key: int, value : collection { key: int, value : float } @ { Collection } } @ { Collection }
+
+declare final_clusters : mut collection { key: int, value : float } @ { Collection }
+
+// Utils
+// Negate a vector component-wise
+declare value_negate : Function = \v1 -> (v1.map (\x-> {key: x.key, value: -1 * x.value}))
+
+// Add two vectors component-wise
+declare value_add : Function = \v1 -> (\v2 -> (
+  let combined = v1.combine v2 in
+  combined.groupBy (\x -> x.key) (\acc -> \x -> acc + x.value) 0 
+))
+
+// Subtract v2 from v1 component-wise
+declare value_sub : Function = \v1 -> (\v2 -> ( value_add v1 (value_negate v2) ))
+
+// Sompute the squared distance between two vectors
+declare value_sqdist : Function = \v1 -> (\v2 -> (
+  let diffs = value_sub v1 v2 in
+  diffs.fold (\acc -> \x -> acc + (x.value*x.value)) 0.0
+))
+
+// K-Means
+// Given a collection of labelled points, compute the centroid for each label 
+declare compute_clusters_helper : Function = \c -> \init -> (
+  // Compute the total sum and count for each label
+  let runs = c.groupBy (\p -> p.key) (\acc -> \p -> 
+    bind acc as (sum_v, count) in
+      (value_add p.value sum_v, count + 1)
+  ) (value_sub init init, 0) in
+
+  // Compute the average as sum / count for each label
+  runs.map (\p -> 
+    bind p.value as (sum_v, count) in 
+    {key: p.key, value: sum_v.map (\c -> {key: c.key, value: c.value / count})}
+  )
+)
+
+// Wrapper / (Hack for zero)
+declare compute_clusters : Function = \x -> (
+  case x.peek () of 
+    { Some j -> compute_clusters_helper x (j.value) }
+    { None   -> () }
+) 
+
+// Given a collection of cluster prototypes, assign a point to the closest one
+declare assign_point : Function = \clusters -> \point -> (
+  let dists = clusters.map (\clus -> (clus.key, value_sqdist clus.value point.value)) in
+  let min = dists.fold (\acc -> \p -> 
+    bind acc as (min_l, min_d) in (
+      bind p as (l, d) in (
+        if d < min_d 
+        then (l, d)
+        else acc
+      )
+    )
+  ) (-1, real_of_int (get_max_int ())) in
+  bind min as (label, d) in
+  {key: label, value: point.value}
+)
+
+// Assign all points to the clostest cluster prototype
+declare assign_points : Function = \clusters -> \points -> (
+  points.map (assign_point clusters)
+)
+
+// Top-Level loop and helper for k-means clustering
+declare loop_help : Function = \n -> \clusters -> \ps -> (
+  if n == 0
+  then clusters
+  else 
+    let new_points = assign_points clusters ps in
+    let new_clusters = compute_clusters new_points in
+    loop_help (n-1) new_clusters new_points
+)
+
+declare loop : Function = \n -> \ps -> (
+  let clusters = compute_clusters ps in 
+  final_clusters = loop_help n clusters ps
+)
+
+// Load each point into the points collection, then start kmeans
+trigger loadData : (collection { key:int, value : float } @ {Collection}) = \point -> (
+  // Assign the data point to a random cluster
+  let rand_key = random (k-1) in
+  points.insert {key: rand_key, value: point};
+  loaded_points = loaded_points + 1;
+  // If all data has been loaded, start kmeans clustering
+  if loaded_points == num_points
+  then (kmeans, me) <- ()
+  else ()
+)
+
+// Start k-means clustering
+trigger kmeans : () = \_ -> (
+  loop num_iter points  
+)
+
+source pointSource : (collection { key:int, value : float } @ {Collection}) = file "examples/kmeans/points.text" k3
+
+feed pointSource |> loadData
