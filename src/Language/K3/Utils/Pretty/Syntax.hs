@@ -42,13 +42,13 @@ type Printer a     = Either SyntaxError a
 type SyntaxPrinter = Printer Doc
 
 runSyntaxPrinter :: SyntaxPrinter -> Either String Doc
-runSyntaxPrinter p = either (\(SyntaxError s) -> Left s) Right p
+runSyntaxPrinter = either (\(SyntaxError s) -> Left s) Right
 
 throwSP :: String -> Printer a
 throwSP = Left . SyntaxError
 
 programS :: K3 Declaration -> Either String String
-programS p = program p >>= (\doc -> return $ displayS (renderPretty 0.8 100 doc) $ "")
+programS p = program p >>= \doc -> return $ displayS (renderPretty 0.8 100 doc) ""
 
 declS :: K3 Declaration -> Either String String
 declS d = show C.<$> runSyntaxPrinter (decl d)
@@ -77,7 +77,7 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
     case tag t of
       TSource -> withSubDecls $ endpoint' "source"
       TSink   -> withSubDecls $ endpoint' "sink"
-      _       -> withSubDecls $ declG
+      _       -> withSubDecls declG
   where
     withSubDecls d = vsep C.<$> ((:) C.<$> d <*> subDecls cs)
 
@@ -94,7 +94,7 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
 
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
 
-    initializer opt = maybe empty (\(qualE, e) -> equals <+> qualE <$> e) opt
+    initializer = maybe empty (\(qualE, e) -> equals <+> qualE <$> e)
 
 
 decl' (details -> (DTrigger n t e, cs, _)) =
@@ -102,7 +102,7 @@ decl' (details -> (DTrigger n t e, cs, _)) =
   where
     declT = triggerDecl C.<$> typ t <*> expr e
     triggerDecl t' e' =
-      hang 2 $ text "trigger" <+> text n <+> colon <+> (align t') <+> equals <$> e' <> line
+      hang 2 $ text "trigger" <+> text n <+> colon <+> align t' <+> equals <$> e' <> line
 
 
 decl' (details -> (DRole n, cs, _)) =
@@ -306,7 +306,7 @@ qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
 qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
 
 eQualifier :: [Annotation Expression] -> SyntaxPrinter
-eQualifier anns = qualifier isEQualified eqSyntax anns
+eQualifier = qualifier isEQualified eqSyntax
   where
     eqSyntax EImmutable = return $ text "immut"
     eqSyntax EMutable   = return $ text "mut"
@@ -589,25 +589,27 @@ attachComments (Just pre, Just post) body = (\doc -> pre <+> doc <+> post) C.<$>
 {- Helpers -}
 
 keyword :: String -> Doc
-keyword s = text s
+keyword = text
 
 commaBrace :: [Doc] -> Doc
 commaBrace = encloseSep lbrace rbrace comma
 
-matchAnnotation :: (Eq (Annotation a))
+matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
                 => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]
                 -> Printer b
-matchAnnotation matchF mapF anns = case filter matchF anns of
-    []            -> throwSP "No matching annotation found"
+matchAnnotation matchF mapF anns = 
+  let uidStr = maybe "" show (getUID =<< find (isJust . getUID) anns) in
+  case filter matchF anns of
+    []            -> throwSP $ "No matching annotation found at "++uidStr
     [q]           -> mapF q
     l | same l    -> mapF $ head l
-      | otherwise -> throwSP "Multiple matching annotations found"
-  where same l = 1 == (length $ nub l)
+      | otherwise -> throwSP $ "Multiple matching annotations found at "++uidStr
+  where same l = 1 == length (nub l)
 
-qualifier :: (Eq (Annotation a))
+qualifier :: (Eq (Annotation a), HasUID (Annotation a))
           => (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter) -> [Annotation a]
           -> SyntaxPrinter
 qualifier = matchAnnotation
 
 optionalPrinter :: (a -> Printer b) -> Maybe a -> Printer (Maybe b)
-optionalPrinter f opt = maybe (return Nothing) (\x -> f x >>= return . Just) opt
+optionalPrinter f = maybe (return Nothing) (\x -> f x >>= return . Just)

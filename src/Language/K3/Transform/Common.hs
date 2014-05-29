@@ -1,50 +1,24 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- Common utilities in writing program transformations.
 module Language.K3.Transform.Common where
 
 import Control.Arrow
 import Control.Monad.Identity
+import Control.Monad.State
 import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Analysis.Common
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
--- | Map a function over all expressions in the program tree.
-mapExpression :: (Monad m)
-              => (K3 Expression -> m (K3 Expression))
-              -> K3 Declaration
-              -> m (K3 Declaration)
-mapExpression exprF prog = mapTree rebuildDecl prog
-  where
-    rebuildDecl ch (tag &&& annotations -> (DGlobal i t eOpt, anns)) = do
-      neOpt <- rebuildInitializer eOpt
-      return $ Node (DGlobal i t neOpt :@: anns) ch
-
-    rebuildDecl ch (tag &&& annotations -> (DTrigger i t e, anns)) = do
-      ne <- exprF e
-      return $ Node (DTrigger i t ne :@: anns) ch
-
-    rebuildDecl ch (tag &&& annotations -> (DAnnotation i tVars mems, anns)) = do
-      nMems <- mapM rebuildAnnMem mems
-      return $ Node (DAnnotation i tVars nMems :@: anns) ch
-
-    rebuildDecl ch (Node t _) = return $ Node t ch
-
-    rebuildAnnMem (Lifted    p n t eOpt anns) =
-      rebuildInitializer eOpt >>= \neOpt -> return $ Lifted    p n t neOpt anns
-    
-    rebuildAnnMem (Attribute p n t eOpt anns) =
-      rebuildInitializer eOpt >>= \neOpt -> return $ Attribute p n t neOpt anns
-    
-    rebuildAnnMem (MAnnotation p n anns) = return $ MAnnotation p n anns
-    
-    rebuildInitializer eOpt = maybe (return Nothing) (\e -> exprF e >>= return . Just) eOpt
-
+-- | Substitute all occurrences of a variable with an expression in the specified target expression.
 substituteImmutBinding :: Identifier -> K3 Expression -> K3 Expression -> K3 Expression
 substituteImmutBinding i iExpr expr =
     runIdentity $ biFoldMapTree pruneSubs rebuild [(i, iExpr)] EC.unit expr
@@ -62,3 +36,43 @@ substituteImmutBinding i iExpr expr =
     rebuild subs _  n@(tag -> EVariable j) = return $ maybe n id $ lookup j subs
     rebuild _    _  n@(tag -> EConstant _) = return $ n
     rebuild _    ch   (Node t _)           = return $ Node t ch
+
+
+-- Renumber the uuids in a program
+renumberUids :: K3 Declaration -> K3 Declaration
+renumberUids p = evalState run 1
+  where
+    run = do 
+      -- First modify declaration annotations
+      ds  <- modifyTree (\n -> replace isDUID (DUID . UID) n) p 
+      ds' <- mapExpression replaceAll ds
+      return ds'
+
+    replaceAll d = modifyTree (\n -> replace isEUID (EUID . UID) n) d
+
+    replace matcher constructor n = do
+      i <- get
+      put (i+1)
+      return $ (stripAnnot matcher n) @+ constructor i
+
+    stripAnnot :: Eq (Annotation a) => (Annotation a -> Bool) -> K3 a -> K3 a
+    stripAnnot f t = maybe t (t @-) $ t @~ f
+
+-- Add missing spans in a program tree
+addSpans :: String -> K3 Declaration -> K3 Declaration
+addSpans spanName p = runIdentity $ do
+  ds  <- modifyTree (return . add isDSpan (DSpan $ GeneratedSpan spanName)) p 
+  mapExpression addExpr ds
+  where
+    addExpr n = modifyTree addSpanQual n
+
+    addSpanQual n = return $ 
+                      add isESpan (ESpan $ GeneratedSpan spanName) n
+                      -- add isEQualified EImmutable n
+
+    -- Don't add span if we already have it
+    add matcher anno n = maybe (n @+ anno) (const n) (n @~ matcher)
+
+-- Clean up code generation with renumbering uids and adding spans
+cleanGeneration :: String -> K3 Declaration -> K3 Declaration
+cleanGeneration spanName = (addSpans spanName) . renumberUids

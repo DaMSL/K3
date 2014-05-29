@@ -1,5 +1,7 @@
 -- | Constructors for K3 Types. This module should almost certainly be imported qualified.
 module Language.K3.Core.Constructor.Type (
+    immut,
+    mut,
     bool,
     byte,
     int,
@@ -36,6 +38,16 @@ import Language.K3.Core.Type
 
 leaf :: Type -> K3 Type
 leaf typeTag = Node (typeTag :@: []) []
+
+-- | Add mutability qualifier
+mutable :: Bool -> K3 Type -> K3 Type
+mutable b n =
+  let n' = maybe n (n @-) (n @~ isTQualified) in
+  n' @+ (if b then TMutable else TImmutable)
+
+-- | Shortcuts to the above
+mut = mutable True
+immut = mutable False
 
 -- | Boolean type.
 bool :: K3 Type

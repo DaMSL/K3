@@ -5,6 +5,7 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Control.Monad.Identity
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
@@ -17,6 +18,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
+import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
@@ -98,7 +100,8 @@ data instance Annotation Expression
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
-    | EType (K3 Type)
+    | EType   (K3 Type)
+    | EQType  (K3 QType)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
     | EImplementationType Identifier
@@ -186,6 +189,10 @@ isEType (ETypeLB _) = True
 isEType (ETypeUB _) = True
 isEType _           = False
 
+isEQType :: Annotation Expression -> Bool
+isEQType (EQType _) = True
+isEQType _          = False
+
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns
   where extractId (EAnnotation n) = n
@@ -210,3 +217,13 @@ bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+
+-- | Strips all annotations from an expression.
+stripAnnotations :: K3 Expression -> K3 Expression
+stripAnnotations = runIdentity . mapTree strip
+  where strip ch n = return $ Node (tag n :@: []) ch
+
+-- | Compares two expressions for identical AST structures while ignoring annotations
+--   (such as UIDs, spans, etc.)
+compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
+compareWithoutAnnotations e1 e2 = stripAnnotations e1 == stripAnnotations e2

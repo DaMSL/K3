@@ -11,7 +11,9 @@ import Control.Concurrent.MVar
 import Control.Monad.State
 import Control.Applicative
 import Data.List
-import System.Random
+import qualified Data.Map as Map
+import qualified System.Random as Random
+import qualified System.Clock as Clock
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -41,6 +43,31 @@ parseDate s = toInt $ foldr readChar [""] s
         readChar n (x:xs) = (n:x):xs
         toInt [y,m,d]     = Just $ (read y)*10000 + (read m)*100 + (read d)
         toInt _           = Nothing
+
+-- Time operation on record maps
+timeBinOp :: NamedMembers Value -> NamedMembers Value -> (Int -> Int -> Int) -> Interpretation (NamedMembers Value)
+timeBinOp map1 map2 op = do
+  sec1 <- secF map1
+  sec2 <- secF map2
+  nsec1 <- nsecF map1
+  nsec2 <- nsecF map2
+  let sec = sec1 `op` sec2
+      nsec = nsec1 `op` nsec2
+      (sec', nsec') = normalize sec nsec
+  return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
+  where
+      get id map = 
+        case fst $ Map.findWithDefault (VInt 0, MemImmut) id map of
+          VInt i -> return i
+          x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
+      secF map  = get "sec" map
+      nsecF map = get "nsec" map
+      normalize s ns =
+        let mega = 1000000 in
+        if ns > mega || ns < -mega then
+          let (q, r) = ns `quotRem` mega
+          in  (s + q, r)
+        else  (s, ns)
 
 
 {- Built-in functions -}
@@ -127,11 +154,11 @@ genBuiltin (channelMethod -> ("Write", Just n)) _ =
 -- random :: int -> int
 genBuiltin "random" _ =
   vfun $ \x -> case x of
-    VInt upper -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+    VInt upper -> liftIO (Random.randomRIO (0::Int, upper)) >>= return . VInt
     _          -> throwE $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- randomFraction :: () -> real
-genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
+genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO Random.randomIO >>= return . VReal
 
 -- hash :: forall a . a -> int
 genBuiltin "hash" _ = vfun $ \v -> valueHash v
@@ -148,8 +175,8 @@ genBuiltin "range" _ =
     initialAnnotatedCollection "Collection"
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
--- int_of_real :: int -> real
-genBuiltin "int_of_real" _ = vfun $ \x -> case x of 
+-- truncate :: int -> real
+genBuiltin "truncate" _ = vfun $ \x -> case x of 
   VReal r   -> return $ VInt $ truncate r
   _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
@@ -161,12 +188,26 @@ genBuiltin "real_of_int" _ = vfun $ \x -> case x of
 -- get_max_int :: () -> int
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
+{- Time Related Functions -}
+
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
-  v <- parseDate <$> pure s
+  let v = parseDate s
   case v of
     Just i  -> return $ VInt i
     Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
+
+genBuiltin "now" _ = vfun $ \(VTuple []) -> do
+  v <- liftIO $ Clock.getTime Clock.Realtime
+  return $ VRecord $ Map.fromList $
+    [("sec", (VInt $ Clock.sec v, MemImmut)),
+     ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+
+genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (+) >>= return . VRecord
+
+genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (-) >>= return . VRecord
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 

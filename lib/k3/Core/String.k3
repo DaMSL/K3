@@ -1,0 +1,4 @@
+// String functions
+
+// Substring of type string[1, x]
+declare substring : int -> string -> string

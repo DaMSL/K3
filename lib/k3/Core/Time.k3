@@ -1,0 +1,14 @@
+// Functions to do with manipulation of date/time
+
+// Convert Sql date -> integer
+declare parse_sql_date : string -> int
+
+// Get current monotonic time in {sec, nsec}
+declare now : () -> {sec:int, nsec:int}
+
+// Time addition
+declare add_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:int}
+
+// Time difference
+declare sub_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:int}
+

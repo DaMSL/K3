@@ -1,5 +1,7 @@
 -- | Constructors for K3 Expressions. This module should almost certainly be imported qualified.
 module Language.K3.Core.Constructor.Expression (
+    immut,
+    mut,
     constant,
     variable,
     some,
@@ -33,6 +35,16 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+
+-- | Add mutability qualifier
+mutable :: Bool -> K3 Expression -> K3 Expression
+mutable b n =
+  let n' = maybe n (n @-) (n @~ isEQualified) in
+  n' @+ (if b then EMutable else EImmutable)
+
+-- | Shortcuts to the above
+mut = mutable True
+immut = mutable False
 
 -- | Create a constant expression.
 constant :: Constant -> K3 Expression

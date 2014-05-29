@@ -182,7 +182,7 @@ deriveDeclaration aEnv env decl =
                   (typecheckError . InternalError .
                       HorizonTypeConstructionError decl)
                   return
-                $ recordConcat [t_h', SRecord Map.empty $ Set.singleton oa_c]
+                $ recordConcat [t_h', SRecord Map.empty (Set.singleton oa_c) Nothing]
 
       -- Build the set of constraints to connect the opaque types to their
       -- corresponding type variables.
@@ -192,7 +192,7 @@ deriveDeclaration aEnv env decl =
                           , csFromList
                              [ OpaqueBoundConstraint oa_c
                                   (CLeft $ SOpaque oa_f) $
-                                  CLeft $ SRecord Map.empty Set.empty
+                                  CLeft $ SRecord Map.empty Set.empty Nothing
                              , OpaqueBoundConstraint oa_f
                                   (CLeft SBottom) (CLeft t_h)
                              , OpaqueBoundConstraint oa_s

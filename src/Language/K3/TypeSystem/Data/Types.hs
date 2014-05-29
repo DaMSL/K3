@@ -41,7 +41,9 @@ import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data.Environments.Common
 
@@ -204,7 +206,7 @@ data ShallowType
   | SOption QVar
   | SIndirection QVar
   | STuple [QVar]
-  | SRecord (Map Identifier QVar) (Set OpaqueVar)
+  | SRecord (Map Identifier QVar) (Set OpaqueVar) (Maybe (K3 Type, [Identifier]))
   | STop
   | SBottom
   | SOpaque OpaqueVar
@@ -223,13 +225,16 @@ instance Pretty ShallowType where
     SOption qa -> ["option "] %+ prettyLines qa
     SIndirection qa -> ["ind "] %+ prettyLines qa
     STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]
-    SRecord rows oas ->
+    SRecord rows oas ctOpt ->
       let rowBox (i,qa) = [i++":"] %+ prettyLines qa in
       ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) +%
       ["}"] %+
-      if Set.null oas then [] else
+      (if Set.null oas then [] else
         ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
-                                            Set.toList oas) +% ["}"]
+                                            Set.toList oas) +% ["}"])
+      %+
+      (maybe [] (\(ct,cids) -> ["&&{"] %+ (prettyLines ct %$ cids) +% ["}"]) ctOpt)
+
     STop -> ["⊤"]
     SBottom -> ["⊥"]
     SOpaque ao -> prettyLines ao

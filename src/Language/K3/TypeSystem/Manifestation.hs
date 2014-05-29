@@ -279,7 +279,9 @@ instance Manifestable (ShallowType, Set OpaqueVar) where
         SOption qas -> TC.option <$> manifestTypeFrom qas
         SIndirection qas -> TC.indirection <$> manifestTypeFrom qas
         STuple qass -> TC.tuple <$> mapM manifestTypeFrom qass
-        SRecord m oas -> do
+        SRecord _ _ (Just (et, annIds)) ->
+          return $ foldl (\acc i -> acc @+ (TAnnotation i)) (TC.collection et) annIds
+        SRecord m oas Nothing -> do
           let (is,qass) = unzip $ Map.toList m
           typs <- mapM manifestTypeFrom qass
           if Set.null oas

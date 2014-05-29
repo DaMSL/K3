@@ -48,7 +48,8 @@ library
         template-haskell,
         transformers,
         unordered-containers,
-        ansi-wl-pprint
+        ansi-wl-pprint,
+        clock
 
     exposed-modules:
         Language.K3.Core.Annotation,
@@ -101,8 +102,12 @@ library
         Language.K3.Transform.Alpha,
         Language.K3.Transform.Normalization,
         Language.K3.Transform.Simplification,
+        Language.K3.Transform.Profiling,
+        Language.K3.Analysis.Common,
         Language.K3.Analysis.Conflicts,
         Language.K3.Analysis.Effect,
+        Language.K3.Analysis.HMTypes.DataTypes,
+        Language.K3.Analysis.HMTypes.Inference,
         Language.K3.Analysis.Interpreter.BindAlias,
         Language.K3.Analysis.AnnotationGraph,
         Language.K3.TypeSystem.Consistency,
