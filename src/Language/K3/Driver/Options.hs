@@ -26,7 +26,6 @@ data Options = Options {
     , inform    :: InfoSpec
     , paths     :: PathOptions
     , input     :: FilePath
-    , preLoad   :: [FilePath] -- files to load before input
     , noFeed    :: Bool
     }
   deriving (Eq, Read, Show)
@@ -443,8 +442,8 @@ noFeedOpt = switch (
 
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
-        metavar "FILES"
-     <> help "K3 program files."
+        metavar "FILE"
+     <> help "K3 program file."
     ) )
   where fileOrStdin [] = ["-"]
         fileOrStdin x  = x
@@ -456,7 +455,7 @@ programOptions = mkOptions <$> modeOptions
                            <*> pathOptions
                            <*> noFeedOpt
                            <*> inputOptions
-    where mkOptions m i p nf is = Options m i p (last is) (take (length is - 1) is) nf
+    where mkOptions m i p nf is = Options m i p (last is) nf
 
 {- Instance definitions -}
 

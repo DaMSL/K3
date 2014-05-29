@@ -50,12 +50,10 @@ dispatch opts = do
       Print     p -> printer (printMode p) prog
       Typecheck _ -> typecheck prog
       Analyze   a -> analyzer (analyzeMode a) (analyzeOutputMode a) prog
-
-
   where
     withK3Program f = do
       parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
-      either parseError (\parsedProg -> prepend parsedProg >>= f) parseResult
+      either parseError f parseResult
     
     compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
       "haskell" -> HaskellC.compile opts cOpts
@@ -92,18 +90,6 @@ dispatch opts = do
     parseError    s = putStrLn $ "Could not parse input: " ++ s
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
 
-    -- Load files for any global variables
-    prepend prog = do
-      putStrLn $ "Pre:" ++ concat (L.intersperse ", " $ preLoad opts)
-      preloadDecls <- mapM parsePreloads $ preLoad opts
-      return $ CoreUtils.prependToRole prog preloadDecls
-
-    parsePreloads :: String -> IO (K3 Declaration)
-    parsePreloads file = do
-      p <- parseK3Input False (includes $ paths opts) file
-      case p of
-        Left e  -> error e
-        Right q -> return q
 
 -- | Top-Level.
 main :: IO ()
