@@ -44,6 +44,31 @@ parseDate s = toInt $ foldr readChar [""] s
         toInt [y,m,d]     = Just $ (read y)*10000 + (read m)*100 + (read d)
         toInt _           = Nothing
 
+-- Time operation on record maps
+timeBinOp :: NamedMembers Value -> NamedMembers Value -> (Int -> Int -> Int) -> Interpretation (NamedMembers Value)
+timeBinOp map1 map2 op = do
+  sec1 <- secF map1
+  sec2 <- secF map2
+  nsec1 <- nsecF map1
+  nsec2 <- nsecF map2
+  let sec = sec1 `op` sec2
+      nsec = nsec1 `op` nsec2
+      (sec', nsec') = normalize sec nsec
+  return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
+  where
+      get id map = 
+        case fst $ Map.findWithDefault (VInt 0, MemImmut) id map of
+          VInt i -> return i
+          x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
+      secF map  = get "sec" map
+      nsecF map = get "nsec" map
+      normalize s ns =
+        let mega = 1000000 in
+        if ns > mega || ns < -mega then
+          let (q, r) = ns `quotRem` mega
+          in  (s + q, r)
+        else  (s, ns)
+
 
 {- Built-in functions -}
 
@@ -163,7 +188,7 @@ genBuiltin "real_of_int" _ = vfun $ \x -> case x of
 -- get_max_int :: () -> int
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
-{- Time Related Functiosn -}
+{- Time Related Functions -}
 
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
@@ -177,6 +202,12 @@ genBuiltin "now" _ = vfun $ \(VTuple []) -> do
   return $ VRecord $ Map.fromList $
     [("sec", (VInt $ Clock.sec v, MemImmut)),
      ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+
+genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (+) >>= return . VRecord
+
+genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (-) >>= return . VRecord
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
