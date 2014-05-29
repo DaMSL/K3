@@ -65,7 +65,7 @@ run opts = do
     dispatch (Typecheck _) = typecheck
     dispatch (Analyze a)   = analyzer (analyzeMode a) (analyzeOutputMode a)
 
-    compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
+    compile cOpts@(CompileOptions lang _ _ _ _ _) = case map toLower lang of
       "haskell" -> HaskellC.compile opts cOpts
       "cpp"     -> CPPC.compile opts cOpts
       _         -> error $ lang ++ " compilation not supported."

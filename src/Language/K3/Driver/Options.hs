@@ -207,7 +207,7 @@ sourceFlag :: Parser CPPCompiler
 sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
 
 cppOpt :: Parser String
-cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
+cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value ""
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
