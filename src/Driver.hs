@@ -19,6 +19,8 @@ import Language.K3.Analysis.Effect
 
 import Language.K3.Transform.Normalization
 import Language.K3.Transform.Simplification
+import Language.K3.Transform.Profiling
+import Language.K3.Transform.Common(cleanGeneration)
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -80,6 +82,7 @@ dispatch opts = do
                                          either Left eliminateDeadProgramCode 
                                                    . foldProgramConstants
                                                    . normalizeProgram
+    analyzer Profiling               prtMode = printer prtMode . (cleanGeneration "profiling") . addProfiling
 
     effectAnalysis prtMode p _ = either putStrLn (printer prtMode) $ analyzeEffects p
 

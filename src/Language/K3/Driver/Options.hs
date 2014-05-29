@@ -97,6 +97,7 @@ data AnalyzeMode
     | EffectNormalization
     | FoldConstants
     | Simplify
+    | Profiling
   deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
@@ -343,6 +344,7 @@ analysisMode =    conflictsOpt
               <|> normalizationOpt
               <|> foldConstantsOpt
               <|> simplifyOpt
+              <|> profilingOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -387,6 +389,11 @@ simplifyOpt = flag' Simplify
                 (   long "simplify"
                  <> (help $ "Print a program after running all simplification phases " ++
                             "(i.e., constant folding, DCE, CSE, etc)" ))
+
+profilingOpt :: Parser AnalyzeMode
+profilingOpt = flag' Profiling
+                (   long "profile"
+                 <> (help $ "Print a program after adding profiling points"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
