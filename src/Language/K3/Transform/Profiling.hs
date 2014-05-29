@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 
--- Program normalization for effectful control expressions.
+-- Profiling transformation code
 module Language.K3.Transform.Profiling (
   addProfiling
 ) where
@@ -43,8 +43,8 @@ globalId id = "_time_"++id
 -- Code to create a variable initialized to a timestamp of 0
 globalVar id = D.global (globalId id) typ (Just exp)
   where
-    typ = T.record [(sec, T.int), (nsec, T.int)]
-    exp = record [(sec, constant $ CInt 0), (nsec, constant $ CInt 0)]
+    typ = T.mut $ T.record [(sec, T.mut T.int), (nsec, T.mut T.int)]
+    exp = mut $ record [(sec, mut $ constant $ CInt 0), (nsec, mut $ constant $ CInt 0)]
 
 -- Wrap declarations with time expressions before and after
 wrapDecls :: K3 Declaration -> K3 Declaration
@@ -62,11 +62,11 @@ wrapCode id expr =
   let tempVar = "__timeVar"
       gTimeVar = globalId id  -- global var for this declaration
   in
-  letIn tempVar (binop OApp (variable "now") unit) $
+  letIn tempVar (immut $ binop OApp (variable "now") $ immut unit) $
     block 
       [expr,
       bindAs
-        (variable gTimeVar)
+        (immut $ variable gTimeVar)
         (BRecord [("time", "t"), ("count", "c")]) $
           block
             [assign "t" $
@@ -75,13 +75,13 @@ wrapCode id expr =
                   (variable "t")) $
                 binop OApp
                   (binop OApp (variable "sub_time")
-                    (binop OApp (variable "now") unit)) $
+                    (binop OApp (variable "now") $ immut unit)) $
                   (variable tempVar),
               -- Increment the counter
               assign "c" $
                 binop OAdd
                   (variable "c") $
-                  constant $ CInt 1]]
+                  immut $ constant $ CInt 1]]
 
 -- Transform code to have profiling code bits added 
 addProfiling :: K3 Declaration -> K3 Declaration
