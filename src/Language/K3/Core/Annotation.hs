@@ -18,6 +18,7 @@ module Language.K3.Core.Annotation (
     details,
 
     mapTree,
+    modifyTree,
     foldMapTree,
     foldTree,
     
@@ -167,6 +168,14 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 mapTree :: (Monad m) => ([Tree b] -> Tree a -> m (Tree b)) -> Tree a -> m (Tree b)
 mapTree f n@(Node _ []) = f [] n
 mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n 
+
+-- | Transform a tree by mapping a function over every tree node. 
+--   The children of a node are pre-transformed recursively
+modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
+modifyTree f n@(Node _ []) = f n
+modifyTree f   (Node x ch) = do
+   ch' <- mapM (modifyTree f) ch 
+   f (Node x ch')
 
 -- | Map an accumulator over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.
