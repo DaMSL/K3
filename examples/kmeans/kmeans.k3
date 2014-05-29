@@ -33,7 +33,6 @@ declare vector_sqdist : Function = \v1 -> (\v2 -> (
   diffs.fold (\acc -> \x -> acc + (x.value*x.value)) 0.0
 ))
 
-// K-Means
 // Given a collection of labelled points, compute the centroid for each label 
 declare compute_clusters_helper : Function = \c -> \init -> (
   // Compute the total sum and count for each label
@@ -52,7 +51,7 @@ declare compute_clusters_helper : Function = \c -> \init -> (
 // Wrapper / (Hack for zero)
 declare compute_clusters : Function = \x -> (
   case x.peek () of 
-    { Some j -> compute_clusters_helper x vector_sub j.value j.value }
+    { Some j -> compute_clusters_helper x (vector_sub j.value j.value) }
     { None   -> () }
 ) 
 
