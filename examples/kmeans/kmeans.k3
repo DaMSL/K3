@@ -12,24 +12,24 @@ declare num_points : int = 8
 // Its value represents an n-dimensional vector encoded as a collection of (dimension, value) pairs
 declare points :  mut collection { key: int, value : collection { key: int, value : float } @ { Collection } } @ { Collection }
 
-declare final_clusters : mut collection { key: int, value : float } @ { Collection }
+declare final_clusters : mut collection { key: int, value : collection { key: int, value : float } @ { Collection } } @ { Collection }
 
 // Utils
 // Negate a vector component-wise
-declare value_negate : Function = \v1 -> (v1.map (\x-> {key: x.key, value: -1 * x.value}))
+declare vector_negate : Function = \v1 -> (v1.map (\x-> {key: x.key, value: -1 * x.value}))
 
 // Add two vectors component-wise
-declare value_add : Function = \v1 -> (\v2 -> (
+declare vector_add : Function = \v1 -> (\v2 -> (
   let combined = v1.combine v2 in
   combined.groupBy (\x -> x.key) (\acc -> \x -> acc + x.value) 0 
 ))
 
 // Subtract v2 from v1 component-wise
-declare value_sub : Function = \v1 -> (\v2 -> ( value_add v1 (value_negate v2) ))
+declare vector_sub : Function = \v1 -> (\v2 -> ( vector_add v1 (vector_negate v2) ))
 
 // Sompute the squared distance between two vectors
-declare value_sqdist : Function = \v1 -> (\v2 -> (
-  let diffs = value_sub v1 v2 in
+declare vector_sqdist : Function = \v1 -> (\v2 -> (
+  let diffs = vector_sub v1 v2 in
   diffs.fold (\acc -> \x -> acc + (x.value*x.value)) 0.0
 ))
 
@@ -39,8 +39,8 @@ declare compute_clusters_helper : Function = \c -> \init -> (
   // Compute the total sum and count for each label
   let runs = c.groupBy (\p -> p.key) (\acc -> \p -> 
     bind acc as (sum_v, count) in
-      (value_add p.value sum_v, count + 1)
-  ) (value_sub init init, 0) in
+      (vector_add p.value sum_v, count + 1)
+  ) (init, 0) in
 
   // Compute the average as sum / count for each label
   runs.map (\p -> 
@@ -52,13 +52,13 @@ declare compute_clusters_helper : Function = \c -> \init -> (
 // Wrapper / (Hack for zero)
 declare compute_clusters : Function = \x -> (
   case x.peek () of 
-    { Some j -> compute_clusters_helper x (j.value) }
+    { Some j -> compute_clusters_helper x vector_sub j.value j.value }
     { None   -> () }
 ) 
 
 // Given a collection of cluster prototypes, assign a point to the closest one
 declare assign_point : Function = \clusters -> \point -> (
-  let dists = clusters.map (\clus -> (clus.key, value_sqdist clus.value point.value)) in
+  let dists = clusters.map (\clus -> (clus.key, vector_sqdist clus.value point.value)) in
   let min = dists.fold (\acc -> \p -> 
     bind acc as (min_l, min_d) in (
       bind p as (l, d) in (
@@ -72,7 +72,7 @@ declare assign_point : Function = \clusters -> \point -> (
   {key: label, value: point.value}
 )
 
-// Assign all points to the clostest cluster prototype
+// Assign all points to the closest cluster prototype
 declare assign_points : Function = \clusters -> \points -> (
   points.map (assign_point clusters)
 )
