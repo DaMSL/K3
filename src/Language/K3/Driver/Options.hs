@@ -40,15 +40,14 @@ data Mode
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
-data CompileOptions
-    = CompileOptions { outLanguage  :: String
-                     , programName  :: String
-                     , outputFile   :: Maybe FilePath
-                     , buildDir     :: Maybe FilePath
-                     , ccCmd        :: CPPCompiler
-                     , includeDirs  :: [FilePath]
-                     , libraryOpts  :: [(Bool, FilePath)] -- linker dirs or library files
-                     }
+data CompileOptions = CompileOptions
+                      { outLanguage  :: String
+                      , programName  :: String
+                      , outputFile   :: Maybe FilePath
+                      , buildDir     :: Maybe FilePath
+                      , ccCmd        :: CPPCompiler
+                      , cppOptions   :: String
+                      }
   deriving (Eq, Read, Show)
 
 data CPPCompiler = GCC | Clang | Source deriving (Eq, Read, Show)
@@ -138,14 +137,14 @@ modeOptions = subparser (
 
 -- | Compiler options
 compileOptions :: Parser Mode
-compileOptions = mkCompile <$> outLanguageOpt
-                           <*> progNameOpt
-                           <*> outputFileOpt
-                           <*> buildDirOpt
-                           <*> ccCmdOpt
-                           <*> many includeOpt
-                           <*> many libraryOpt
-  where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
+compileOptions = fmap Compile $ CompileOptions
+                            <$> outLanguageOpt
+                            <*> progNameOpt
+                            <*> outputFileOpt
+                            <*> buildDirOpt
+                            <*> ccCmdOpt
+                            <*> cppOpt
+  -- where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -203,8 +202,8 @@ clangFlag = flag' Clang (
 sourceFlag :: Parser CPPCompiler
 sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
 
-cppOptions :: Parser String
-cppOptions = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
+cppOpt :: Parser String
+cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
