@@ -55,7 +55,7 @@ dispatch opts = do
       parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
       either parseError f parseResult
     
-    compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
+    compile cOpts@(CompileOptions lang _ _ _ _ _) = case map toLower lang of
       "haskell" -> HaskellC.compile opts cOpts
       "cpp"     -> CPPC.compile opts cOpts
       _         -> error $ lang ++ " compilation not supported."

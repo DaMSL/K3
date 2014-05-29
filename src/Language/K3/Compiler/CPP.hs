@@ -96,17 +96,15 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir </> pName <.> exe *> \out -> do
               let objects = [bDir </> src -<.> "o" | src <- sourceFiles]
               need objects
-              cmd cc ["-o"] [out] objects incDirs libFlags
+              cmd cc ["-o"] [out] objects (words $ cppOptions copts)
 
             bDir ++ "//*.o" *> \out -> do
               let source = dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] incDirs
+              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (words $ cppOptions copts)
               needMakefileDependencies deps
 
         pName    = programName copts
-        incDirs  = map ("-I"++) $ includeDirs copts
-        libFlags = map (\(b,p) -> (if b then "-L" else "-l") ++ p) $ libraryOpts copts
         cc       = case ccCmd copts of
                     GCC   -> "g++"
                     Clang -> "clang++"
