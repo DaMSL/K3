@@ -27,6 +27,7 @@ data Options = Options {
     , paths     :: PathOptions
     , input     :: FilePath
     , noFeed    :: Bool
+    , transform :: [AnalyzeMode]
     }
   deriving (Eq, Read, Show)
 
@@ -134,6 +135,9 @@ modeOptions = subparser (
         typeDesc      = "Typecheck a K3 program"
         analyzeDesc   = "Analyze a K3 program"
 
+-- | Transformation options
+transformOptions :: Parser [AnalyzeMode]
+transformOptions = many (analysisMode "f")
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -329,68 +333,69 @@ typecheckOptions = pure $ Typecheck TypecheckOptions
 -- | Analyze options
 analyzeOptions :: Parser Mode
 analyzeOptions = (\a b -> Analyze $ AnalyzeOptions a b)
-                  <$> analysisMode <*> ( astPrintOpt <|> syntaxPrintOpt )
+                  <$> analysisMode "" <*> ( astPrintOpt <|> syntaxPrintOpt )
 
-analysisMode :: Parser AnalyzeMode
-analysisMode =    conflictsOpt
-              <|> tasksOpt
-              <|> programTasksOpt
-              <|> proxyPathsOpt
-              <|> annProvOpt
-              <|> flatAnnOpt
-              <|> effectOpt
-              <|> normalizationOpt
-              <|> foldConstantsOpt
-              <|> simplifyOpt
-              <|> profilingOpt
+-- Accept a precursor string
+analysisMode :: String -> Parser AnalyzeMode
+analysisMode s =    conflictsOpt s
+              <|> tasksOpt s
+              <|> programTasksOpt s
+              <|> proxyPathsOpt s
+              <|> annProvOpt s
+              <|> flatAnnOpt s
+              <|> effectOpt s
+              <|> normalizationOpt s
+              <|> foldConstantsOpt s
+              <|> simplifyOpt s
+              <|> profilingOpt s
 
-conflictsOpt :: Parser AnalyzeMode
-conflictsOpt = flag' Conflicts (   long "conflicts"
+conflictsOpt :: String -> Parser AnalyzeMode
+conflictsOpt s = flag' Conflicts (   long (s++"conflicts")
                                 <> help "Print Conflicting Data Accesses for a K3 Program" )
 
-tasksOpt :: Parser AnalyzeMode
-tasksOpt = flag' Tasks (   long "tasks"
+tasksOpt :: String -> Parser AnalyzeMode
+tasksOpt s = flag' Tasks (   long (s++"tasks")
                         <> help "Split Triggers into smaller tasks for parallelization" )
 
-programTasksOpt :: Parser AnalyzeMode
-programTasksOpt = flag' ProgramTasks (   long "programtasks"
+programTasksOpt :: String -> Parser AnalyzeMode
+programTasksOpt s = flag' ProgramTasks (   long (s++"programtasks")
                                       <> help "Find program-level tasks to be run in parallel " )
 
-proxyPathsOpt :: Parser AnalyzeMode
-proxyPathsOpt = flag' ProxyPaths (   long "proxypaths"
+proxyPathsOpt :: String -> Parser AnalyzeMode
+proxyPathsOpt s = flag' ProxyPaths (   long (s++"proxypaths")
                                   <> help "Print bind paths for bind expressions" )
 
-annProvOpt :: Parser AnalyzeMode
-annProvOpt = flag' AnnotationProvidesGraph (   long "provides-graph"
+annProvOpt :: String -> Parser AnalyzeMode
+annProvOpt s = flag' AnnotationProvidesGraph (   long (s++"provides-graph")
                                             <> help "Print bind paths for bind expressions" )
 
-flatAnnOpt :: Parser AnalyzeMode
-flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
+flatAnnOpt :: String -> Parser AnalyzeMode
+flatAnnOpt s = flag' FlatAnnotations (   long (s++"flat-annotations")
                                     <> help "Print bind paths for bind expressions" )
 
-effectOpt :: Parser AnalyzeMode
-effectOpt = flag' Effects (   long "effects"
+effectOpt :: String -> Parser AnalyzeMode
+effectOpt s = flag' Effects (   long (s++"effects")
                            <> help "Print program effects")
 
-normalizationOpt :: Parser AnalyzeMode
-normalizationOpt = flag' EffectNormalization
-                      (   long "normalize"
+normalizationOpt :: String -> Parser AnalyzeMode
+normalizationOpt s = flag' EffectNormalization
+                      (   long (s++"normalize")
                        <> help "Print an effect-normalized program.")
 
-foldConstantsOpt :: Parser AnalyzeMode
-foldConstantsOpt = flag' FoldConstants
-                      (   long "fold-constants"
+foldConstantsOpt :: String -> Parser AnalyzeMode
+foldConstantsOpt s = flag' FoldConstants
+                      (   long (s++"fold-constants")
                        <> help "Print a program after constant folding.")
 
-simplifyOpt :: Parser AnalyzeMode
-simplifyOpt = flag' Simplify
-                (   long "simplify"
+simplifyOpt :: String -> Parser AnalyzeMode
+simplifyOpt s = flag' Simplify
+                (   long (s++"simplify")
                  <> (help $ "Print a program after running all simplification phases " ++
                             "(i.e., constant folding, DCE, CSE, etc)" ))
 
-profilingOpt :: Parser AnalyzeMode
-profilingOpt = flag' Profiling
-                (   long "profile"
+profilingOpt :: String -> Parser AnalyzeMode
+profilingOpt s = flag' Profiling
+                (   long (s++"profile")
                  <> (help $ "Print a program after adding profiling points"))
 
 -- | Information printing options.
@@ -449,12 +454,13 @@ inputOptions = fileOrStdin <$> (many $ argument str (
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
-programOptions = mkOptions <$> modeOptions
+programOptions = mkOptions <$> transformOptions
+                           <*> modeOptions
                            <*> informOptions
                            <*> pathOptions
                            <*> noFeedOpt
                            <*> inputOptions
-    where mkOptions m i p nf is = Options m i p (last is) nf
+    where mkOptions tr m i p nf is = Options m i p (last is) nf tr
 
 {- Instance definitions -}
 

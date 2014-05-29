@@ -2,6 +2,7 @@
 
 import Control.Monad
 import Data.Char
+import Data.List(foldl')
 
 import Options.Applicative
 
@@ -34,8 +35,8 @@ import qualified Language.K3.Core.Utils       as CoreUtils
 import qualified Data.List as L
 
 -- | Mode Dispatch.
-dispatch :: Options -> IO ()
-dispatch opts = do
+run :: Options -> IO ()
+run opts = do
   putStrLn $ "Mode: "      ++ pretty (mode opts)
   putStrLn $ "Verbosity: " ++ show (verbosity $ inform opts)
   putStrLn $ "Input: "     ++ show (input opts)
@@ -43,19 +44,28 @@ dispatch opts = do
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  withK3Program $ \prog ->
-    case mode opts of
-      Compile   c -> compile c prog
-      Interpret i -> interpret i prog
-      Print     p -> printer (printMode p) prog
-      Typecheck _ -> typecheck prog
-      Analyze   a -> analyzer (analyzeMode a) (analyzeOutputMode a) prog
+  -- 1. Parsing
+  parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
+  case parseResult of
+    Right prog -> do
+
+      -- 2. Transforming
+      -- Loop through all of the given transformations
+      let transformed = foldl' (flip transformer) prog (transform opts)
+
+      -- 3. Mode dependent
+      dispatch (mode opts) transformed
+
+    Left error -> parseError error
+
   where
-    withK3Program f = do
-      parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
-      either parseError f parseResult
-    
-    compile cOpts@(CompileOptions lang _ _ _ _ _) = case map toLower lang of
+    dispatch (Compile c)   = compile c
+    dispatch (Interpret i) = interpret i
+    dispatch (Print p)     = printer (printMode p)
+    dispatch (Typecheck _) = typecheck
+    dispatch (Analyze a)   = analyzer (analyzeMode a) (analyzeOutputMode a)
+
+    compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
       "haskell" -> HaskellC.compile opts cOpts
       "cpp"     -> CPPC.compile opts cOpts
       _         -> error $ lang ++ " compilation not supported."
@@ -80,7 +90,11 @@ dispatch opts = do
                                          either Left eliminateDeadProgramCode 
                                                    . foldProgramConstants
                                                    . normalizeProgram
-    analyzer Profiling               prtMode = printer prtMode . (cleanGeneration "profiling") . addProfiling
+    analyzer Profiling               prtMode = printer prtMode . cleanGeneration "profiling" . addProfiling
+
+    -- Transformation functions
+    transformer Profiling = cleanGeneration "profiling" . addProfiling
+    transformer _         = error "transform not implemented"
 
     effectAnalysis prtMode p _ = either putStrLn (printer prtMode) $ analyzeEffects p
 
@@ -93,7 +107,7 @@ dispatch opts = do
 
 -- | Top-Level.
 main :: IO ()
-main = execParser options >>= dispatch
+main = execParser options >>= run
   where
     options = info (helper <*> programOptions) $ fullDesc
         <> progDesc "The K3 Compiler."
