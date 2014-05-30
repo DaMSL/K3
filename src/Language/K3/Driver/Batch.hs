@@ -5,7 +5,9 @@
 module Language.K3.Driver.Batch where
 
 import Control.Arrow
+import Control.Concurrent.MVar
 import Control.Monad.IO.Class
+import Control.Monad
 import System.Console.Haskeline
 
 import Language.K3.Core.Annotation
@@ -36,11 +38,15 @@ setDefaultRole d _ _ = d
 runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
 runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
    if not asNetwork then prepareAndRun prepareProgram runProgram (map Right)
-                    else prepareAndRun prepareNetwork (\pc pn -> runNetwork pc pn >>= return . Right) id
+                    else prepareAndRun prepareNetwork networkRunF id
   where 
     prepareAndRun prepareF runF statusF = do
       prepared <- prepareF printConf parallel (sysEnv interpOpts) prog
       either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared
+
+    networkRunF pc pn = runNetwork pc pn >>= waitF >>= return . Right
+
+    waitF = if consoleOn then return . id else mapM (printError printNode)
 
     loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
 
@@ -51,5 +57,13 @@ runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
     runConsole rcrF ns = if consoleOn then console defaultPrompt rcrF ns else return ()
     engineError        = putStrLn . message
     cEngineError       = outputStrLn . message
+
+    printNode (addr, engine, threadid,_) = do
+      void $ putStrLn $ "Waiting for node " ++ show addr ++ " running on thread " ++ show threadid
+      readMVar (waitV $ control engine)
+      void $ putStrLn $ "Node " ++ show addr ++ " finished."
+
+    -- printError returns the provided pStatus
+    printError validF pStatus = either (\err -> (putStrLn $ message err) >> return pStatus) (\arg -> validF arg >> return pStatus) pStatus
 
 runBatch _ _ _ = error "Invalid batch processing mode"

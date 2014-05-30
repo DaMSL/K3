@@ -20,7 +20,7 @@ import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
-compile _ (CompileOptions _ name outOpt buildOpt _ _ _) prog =
+compile _ (CompileOptions _ name outOpt buildOpt _ _) prog =
     let (errs, _, typedP) = typecheckProgram prog in
     if Seq.null errs then 
       let source = mkSource name typedP in

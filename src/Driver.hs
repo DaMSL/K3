@@ -19,6 +19,8 @@ import Language.K3.Analysis.Effect
 
 import Language.K3.Transform.Normalization
 import Language.K3.Transform.Simplification
+import Language.K3.Transform.Profiling
+import Language.K3.Transform.Common(cleanGeneration)
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -48,14 +50,12 @@ dispatch opts = do
       Print     p -> printer (printMode p) prog
       Typecheck _ -> typecheck prog
       Analyze   a -> analyzer (analyzeMode a) (analyzeOutputMode a) prog
-
-
   where
     withK3Program f = do
       parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
-      either parseError (\parsedProg -> prepend parsedProg >>= f) parseResult
+      either parseError f parseResult
     
-    compile cOpts@(CompileOptions lang _ _ _ _ _ _) = case map toLower lang of
+    compile cOpts@(CompileOptions lang _ _ _ _ _) = case map toLower lang of
       "haskell" -> HaskellC.compile opts cOpts
       "cpp"     -> CPPC.compile opts cOpts
       _         -> error $ lang ++ " compilation not supported."
@@ -76,7 +76,11 @@ dispatch opts = do
     analyzer EffectNormalization     prtMode = printer prtMode . normalizeProgram
     analyzer FoldConstants           prtMode = printEither prtMode . foldProgramConstants
     analyzer Effects                 prtMode = withTypecheckedProgram (effectAnalysis prtMode)
-    analyzer Simplify                prtMode = printEither prtMode . simplify
+    analyzer Simplify                prtMode = printEither prtMode .
+                                         either Left eliminateDeadProgramCode 
+                                                   . foldProgramConstants
+                                                   . normalizeProgram
+    analyzer Profiling               prtMode = printer prtMode . (cleanGeneration "profiling") . addProfiling
 
     effectAnalysis prtMode p _ = either putStrLn (printer prtMode) $ analyzeEffects p
 
@@ -92,19 +96,6 @@ dispatch opts = do
 
     parseError    s = putStrLn $ "Could not parse input: " ++ s
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
-
-    -- Load files for any global variables
-    prepend prog = do
-      putStrLn $ "Pre:" ++ concat (L.intersperse ", " $ preLoad opts)
-      preloadDecls <- mapM parsePreloads $ preLoad opts
-      return $ CoreUtils.prependToRole prog preloadDecls
-
-    parsePreloads :: String -> IO (K3 Declaration)
-    parsePreloads file = do
-      p <- parseK3Input False (includes $ paths opts) file
-      case p of
-        Left e  -> error e
-        Right q -> return q
 
 -- | Top-Level.
 main :: IO ()

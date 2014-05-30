@@ -26,7 +26,6 @@ data Options = Options {
     , inform    :: InfoSpec
     , paths     :: PathOptions
     , input     :: FilePath
-    , preLoad   :: [FilePath] -- files to load before input
     , noFeed    :: Bool
     }
   deriving (Eq, Read, Show)
@@ -41,15 +40,14 @@ data Mode
   deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
-data CompileOptions
-    = CompileOptions { outLanguage  :: String
-                     , programName  :: String
-                     , outputFile   :: Maybe FilePath
-                     , buildDir     :: Maybe FilePath
-                     , ccCmd        :: CPPCompiler
-                     , includeDirs  :: [FilePath]
-                     , libraryOpts  :: [(Bool, FilePath)] -- linker dirs or library files
-                     }
+data CompileOptions = CompileOptions
+                      { outLanguage  :: String
+                      , programName  :: String
+                      , outputFile   :: Maybe FilePath
+                      , buildDir     :: Maybe FilePath
+                      , ccCmd        :: CPPCompiler
+                      , cppOptions   :: String
+                      }
   deriving (Eq, Read, Show)
 
 data CPPCompiler = GCC | Clang | Source deriving (Eq, Read, Show)
@@ -97,6 +95,7 @@ data AnalyzeMode
     | EffectNormalization
     | FoldConstants
     | Simplify
+    | Profiling
   deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
@@ -138,14 +137,14 @@ modeOptions = subparser (
 
 -- | Compiler options
 compileOptions :: Parser Mode
-compileOptions = mkCompile <$> outLanguageOpt
-                           <*> progNameOpt
-                           <*> outputFileOpt
-                           <*> buildDirOpt
-                           <*> ccCmdOpt
-                           <*> many includeOpt
-                           <*> many libraryOpt
-  where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
+compileOptions = fmap Compile $ CompileOptions
+                            <$> outLanguageOpt
+                            <*> progNameOpt
+                            <*> outputFileOpt
+                            <*> buildDirOpt
+                            <*> ccCmdOpt
+                            <*> cppOpt
+  -- where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -202,6 +201,9 @@ clangFlag = flag' Clang (
 
 sourceFlag :: Parser CPPCompiler
 sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
+
+cppOpt :: Parser String
+cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
@@ -340,6 +342,7 @@ analysisMode =    conflictsOpt
               <|> normalizationOpt
               <|> foldConstantsOpt
               <|> simplifyOpt
+              <|> profilingOpt
 
 conflictsOpt :: Parser AnalyzeMode
 conflictsOpt = flag' Conflicts (   long "conflicts"
@@ -384,6 +387,11 @@ simplifyOpt = flag' Simplify
                 (   long "simplify"
                  <> (help $ "Print a program after running all simplification phases " ++
                             "(i.e., constant folding, DCE, CSE, etc)" ))
+
+profilingOpt :: Parser AnalyzeMode
+profilingOpt = flag' Profiling
+                (   long "profile"
+                 <> (help $ "Print a program after adding profiling points"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
@@ -433,8 +441,8 @@ noFeedOpt = switch (
 
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
-        metavar "FILES"
-     <> help "K3 program files."
+        metavar "FILE"
+     <> help "K3 program file."
     ) )
   where fileOrStdin [] = ["-"]
         fileOrStdin x  = x
@@ -446,7 +454,7 @@ programOptions = mkOptions <$> modeOptions
                            <*> pathOptions
                            <*> noFeedOpt
                            <*> inputOptions
-    where mkOptions m i p nf is = Options m i p (last is) (take (length is - 1) is) nf
+    where mkOptions m i p nf is = Options m i p (last is) nf
 
 {- Instance definitions -}
 
