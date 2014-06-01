@@ -36,25 +36,25 @@ setDefaultRole (tag &&& children -> (DRole roleName, subDecls)) targetName newDe
 setDefaultRole d _ _ = d
 
 runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
-runBatch _ interpOpts@(Batch asNetwork _ _ parallel printConf consoleOn) prog =
-   if not asNetwork then prepareAndRun prepareProgram runProgram (map Right)
+runBatch _ iOpts prog =
+   if not (network iOpts) then prepareAndRun prepareProgram runProgram (map Right)
                     else prepareAndRun prepareNetwork networkRunF id
   where 
     prepareAndRun prepareF runF statusF = do
-      prepared <- prepareF printConf parallel (sysEnv interpOpts) prog
+      prepared <- prepareF (printConfig iOpts) (isPar iOpts) (sysEnv iOpts) prog
       either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared
 
     networkRunF pc pn = runNetwork pc pn >>= waitF >>= return . Right
 
-    waitF = if consoleOn then return . id else mapM (printError printNode)
+    waitF = if (noConsole iOpts) then return . id else mapM (printError printNode)
 
     loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
 
     runOnce runF statusF prepared errorF continueF = do
-      runStatus <- liftIO $ runF printConf prepared
+      runStatus <- liftIO $ runF (printConfig iOpts) prepared
       either errorF (continueF . statusF) runStatus
 
-    runConsole rcrF ns = if consoleOn then console defaultPrompt rcrF ns else return ()
+    runConsole rcrF ns = if (noConsole iOpts) then console defaultPrompt rcrF ns else return ()
     engineError        = putStrLn . message
     cEngineError       = outputStrLn . message
 
