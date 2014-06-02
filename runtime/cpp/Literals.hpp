@@ -15,12 +15,12 @@ namespace K3 {
   using std::string;
 
   template <class iterator>
-  class literal: qi::grammar<iterator, map<string, string>()> {
+  class literal: public qi::grammar<iterator, map<string, string>()> {
    public:
     literal(): literal::base_type(start) {
-      key = qi::char_("a-zA-Z0-9_");
-      value = qi::char_("a-zA-Z0-9_");
-      assignment = key >> ':' >> value;
+      key = +qi::char_("a-zA-Z0-9_");
+      value = +qi::char_("a-zA-Z0-9_");
+      assignment = key >> '=' >> value;
       start = assignment % ';';
     }
 
