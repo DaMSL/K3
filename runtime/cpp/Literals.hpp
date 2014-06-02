@@ -15,7 +15,7 @@ namespace K3 {
   using std::string;
 
   template <class iterator>
-  class literal: public qi::grammar<iterator, map<string, string>()> {
+  class literal: public qi::grammar<iterator, map<string, string>(), qi::space_type> {
    public:
     literal(): literal::base_type(start) {
       key = +qi::char_("a-zA-Z0-9_");
@@ -27,8 +27,8 @@ namespace K3 {
    private:
     qi::rule<iterator, string()> key;
     qi::rule<iterator, string()> value;
-    qi::rule<iterator, pair<string, string>()> assignment;
-    qi::rule<iterator, map<string, string>()> start;
+    qi::rule<iterator, pair<string, string>(), qi::space_type> assignment;
+    qi::rule<iterator, map<string, string>(), qi::space_type> start;
   };
 }
 
