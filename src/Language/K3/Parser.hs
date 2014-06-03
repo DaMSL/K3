@@ -330,7 +330,7 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser (head <$> endBy
   where mkRole l = Just $ DC.role defaultRoleName l
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
-parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program False) s
+parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program True) s
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
