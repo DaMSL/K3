@@ -30,6 +30,7 @@ namespace K3 {
         | qi::raw[parse_option]
         | qi::raw[parse_tuple]
         | qi::raw[parse_record]
+        | qi::raw[parse_address]
         | key;
 
       escape = (qi::lit('\\') >> qi::char_) | qi::char_;
@@ -39,6 +40,10 @@ namespace K3 {
       parse_option = qi::string("none") | (qi::string("some") >> value);
       parse_tuple = qi::lit('(') >> qi::raw[value % ','] >> qi::lit(')');
       parse_record = qi::lit('{') >> qi::raw[(key >> ':' >> value) % ','] >> qi::lit('}');
+
+      parse_address = qi::raw['<' >> host >> ':' >> port >> '>'];
+      host = qi::raw[qi::int_ >> '.' >> qi::int_ >> '.' >> qi::int_ >> '.' >> qi::int_];
+      port = qi::raw[qi::int_];
     }
 
    private:
@@ -54,6 +59,10 @@ namespace K3 {
     qi::rule<iterator, string(), qi::space_type> parse_option;
     qi::rule<iterator, string(), qi::space_type> parse_tuple;
     qi::rule<iterator, string(), qi::space_type> parse_record;
+
+    qi::rule<iterator, string()> parse_address;
+    qi::rule<iterator, string()> host;
+    qi::rule<iterator, string()> port;
   };
 }
 
