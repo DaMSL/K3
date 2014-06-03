@@ -93,8 +93,8 @@ ttup c = tdata QTTuple c
 trec :: [(Identifier, K3 QType)] -> K3 QType
 trec idt = let (ids,ts) = unzip idt in tdata (QTRecord ids) ts
 
-tcol :: K3 QType -> [Identifier] -> K3 QType
-tcol t annIds = tdata (QTCollection annIds) [t]
+tcol :: K3 QType -> K3 QType -> K3 QType -> [Identifier] -> K3 QType
+tcol ct ft st annIds = tdata (QTCollection annIds) [ct, ft, st]
 
 ttrg :: K3 QType -> K3 QType
 ttrg t = tdata QTTrigger [t]
