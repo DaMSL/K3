@@ -53,9 +53,9 @@ sanityCheck decl =
       checkIdentifiedListForDupes amems MultipleAnnotationBindings
       where
         processMem mem = case mem of
-          Lifted _ i _ _ _ -> ([(i,mem)],[])
-          Attribute _ i _ _ _ -> ([],[(i,mem)])
-          MAnnotation {} -> ([],[])
+          Lifted _ i _ _ _    -> ([(i, mem)], [])
+          Attribute _ i _ _ _ -> ([], [(i, mem)])
+          MAnnotation {}      -> ([],[])
     checkIdentifiedListForDupes
         :: forall a.
            [(Identifier, a)]

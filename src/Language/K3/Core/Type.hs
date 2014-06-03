@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Types in K3.
 module Language.K3.Core.Type (
@@ -16,8 +17,11 @@ module Language.K3.Core.Type (
     isTMutable,
     isTAnnotation,
 
-    namedTAnnotations
+    namedTAnnotations,
+    isTFunction
 ) where
+
+import Control.Arrow
 
 import Data.Maybe
 import Data.Tree
@@ -80,7 +84,7 @@ data Type
     -- | Implementation Types. These should never be produced by the parser, nor should they be
     -- considered by the typechecker.
     | TImperative ImperativeType
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Types specific to an imperative implementation backend.
 data ImperativeType
@@ -91,7 +95,7 @@ data ImperativeType
     -- | An imperative class type. Requires the name of the class, list of superclasses, and the
     -- list of named template variables.
     | TClass Identifier [Identifier] [Identifier]
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | The built-in type references.
 data TypeBuiltIn
@@ -99,17 +103,17 @@ data TypeBuiltIn
     | TStructure
     | THorizon
     | TContent
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
   
 -- | Type variable declarations.  These consist of the identifier for the
 --   declared variable and, optionally, a type expression for the lower and
 --   upper bounds (respectively).
 data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type)) (Maybe (K3 Type))
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | The operations which may occur on a collection of opaque variables.
 data TypeVariableOperator = TyVarOpUnion | TyVarOpIntersection
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Annotations on types are the mutability qualifiers.
 data instance Annotation Type
@@ -120,7 +124,7 @@ data instance Annotation Type
     | TUID UID
     | TAnnotation Identifier
     | TSyntax SyntaxAnnotation
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Type) where
   getUID (TUID u) = Just u
@@ -187,3 +191,8 @@ namedTAnnotations anns = map extractId $ filter isTAnnotation anns
   where extractId (TAnnotation n) = n
         extractId _ = error "Invalid named annotation"
 
+-- | Matches polymorphic and monomorphic functions.
+isTFunction :: K3 Type -> Bool
+isTFunction (tag -> TFunction) = True
+isTFunction (tag &&& children -> (TForall _, [t])) = isTFunction t
+isTFunction _ = False

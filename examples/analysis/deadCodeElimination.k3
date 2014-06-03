@@ -1,0 +1,22 @@
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+    ( let i = x + 1
+      in x = 1 + 2 + 3 + 4 );
+      // Simplified to x = 10
+
+    ( bind {a:10+x, b:20, c:30} as {a:m, b:n, c:o} in 
+      5 + 1;
+      let y = 3 * 2 * 1 in y + 100;
+      x = x + m );
+      // Simplified to a bind-as with only a bound, with only 
+      // the assignment expression in its body.
+
+    (let i = (x = 5 ; x + 1)
+      in x = 1 + 2 + 3 + 5 )
+      // Since the let-in source has a side-effect, this
+      // expression should not be simplified
+  )
+
+source s1 : () = value ()
+feed s1 |> t

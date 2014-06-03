@@ -42,13 +42,13 @@ type Printer a     = Either SyntaxError a
 type SyntaxPrinter = Printer Doc
 
 runSyntaxPrinter :: SyntaxPrinter -> Either String Doc
-runSyntaxPrinter p = either (\(SyntaxError s) -> Left s) Right p
+runSyntaxPrinter = either (\(SyntaxError s) -> Left s) Right
 
 throwSP :: String -> Printer a
 throwSP = Left . SyntaxError
 
 programS :: K3 Declaration -> Either String String
-programS p = program p >>= (\doc -> return $ displayS (renderPretty 0.8 100 doc) $ "")
+programS p = program p >>= \doc -> return $ displayS (renderPretty 0.8 100 doc) ""
 
 declS :: K3 Declaration -> Either String String
 declS d = show C.<$> runSyntaxPrinter (decl d)
@@ -70,33 +70,31 @@ program = runSyntaxPrinter . decl
 
 -- | Declaration syntax printing.
 decl :: K3 Declaration -> SyntaxPrinter
-decl d@(details -> (_,_,anns)) = case commentD anns of
-  Just doc -> (doc <+>) C.<$> decl' d
-  Nothing  -> decl' d
+decl d@(details -> (_,_,anns)) = attachComments (commentD anns) $ decl' d
 
 decl' :: K3 Declaration -> SyntaxPrinter
 decl' (details -> (DGlobal n t eOpt, cs, anns)) =
-    case tag t of 
+    case tag t of
       TSource -> withSubDecls $ endpoint' "source"
       TSink   -> withSubDecls $ endpoint' "sink"
-      _       -> withSubDecls $ declG
+      _       -> withSubDecls declG
   where
     withSubDecls d = vsep C.<$> ((:) C.<$> d <*> subDecls cs)
 
     declG = globalDecl C.<$> declGType
                          <*> optionalPrinter qualifierAndExpr eOpt
 
-    declGType = case tag t of 
+    declGType = case tag t of
       TForall _ -> (Nothing,) C.<$> typ t
       _         -> (\(q,dt) -> (Just q, dt)) C.<$> qualifierAndType t
 
-    globalDecl (qualTOpt, t') eqeOpt = 
-      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') ((<+>) (align t')) qualTOpt
+    globalDecl (qualTOpt, t') eqeOpt =
+      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') (<+> (align t')) qualTOpt
                                          <+> initializer eqeOpt <> line
-    
+
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
 
-    initializer opt = maybe empty (\(qualE, e) -> equals <+> qualE <$> e) opt
+    initializer = maybe empty (\(qualE, e) -> equals <+> qualE <$> e)
 
 
 decl' (details -> (DTrigger n t e, cs, _)) =
@@ -104,10 +102,10 @@ decl' (details -> (DTrigger n t e, cs, _)) =
   where
     declT = triggerDecl C.<$> typ t <*> expr e
     triggerDecl t' e' =
-      hang 2 $ text "trigger" <+> text n <+> colon <+> (align t') <+> equals <$> e' <> line
+      hang 2 $ text "trigger" <+> text n <+> colon <+> align t' <+> equals <$> e' <> line
 
 
-decl' (details -> (DRole n, cs, _)) = 
+decl' (details -> (DRole n, cs, _)) =
   if n == "__global" then vsep     C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
                      else roleDecl C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
   where roleDecl subDecls' =
@@ -124,25 +122,26 @@ decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
       <+> cat (punctuate comma tsps)
       <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
   where
+    -- TODO: generate syntax for member property annotations.
     memberDecl (Lifted pol i t eOpt _) =
       attrDecl pol "lifted" i C.<$> qualifierAndType t
                                 <*> optionalPrinter qualifierAndExpr eOpt
-    
+
     memberDecl (Attribute pol i t eOpt _) =
       attrDecl pol "" i C.<$> qualifierAndType t
                           <*> optionalPrinter qualifierAndExpr eOpt
-    
+
     memberDecl (MAnnotation pol i _) =
       return $ polarity pol <+> text "annotation" <+> text i
 
-    attrDecl pol kw j (qualT, t') eqeOpt = 
+    attrDecl pol kw j (qualT, t') eqeOpt =
       hang 2 $ polarity pol <+> (if null kw then text j else text kw <+> text j)
                             <+> colon <+> qualT <+> (align t') <+> initializer eqeOpt
 
     polarity Provides = text "provides"
     polarity Requires = text "requires"
 
-    initializer opt = maybe empty (\(qualE, e') -> equals <+> qualE <$> e') opt 
+    initializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
 
 decl' _ = throwSP "Invalid declaration"
 
@@ -183,7 +182,7 @@ endpointBindings = matchAnnotation isDEndpointDecl bindings
         bindings _ = return $ Nothing
 
 endpoint :: String -> Identifier -> Maybe EndpointSpec -> Doc -> Maybe Doc -> Doc
-endpoint kw n specOpt t' eOpt' = case specOpt of 
+endpoint kw n specOpt t' eOpt' = case specOpt of
   Nothing                   -> common Nothing
   Just ValueEP              -> common $ maybe Nothing (Just . (text "value" <+>)) eOpt'
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
@@ -199,13 +198,11 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
-expr e@(details -> (_,_,anns)) = case commentE anns of
-  Just doc -> (doc <+>) C.<$> expr' e
-  _        -> expr' e
+expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ expr' e
 
 expr' :: K3 Expression -> SyntaxPrinter
 expr' (details -> (EConstant c, _, anns)) =
-  case c of 
+  case c of
     CBool b   -> return . text $ if b then "true" else "false"
     CInt i    -> return $ int i
     CByte w   -> return . integer $ toInteger w
@@ -217,7 +214,7 @@ expr' (details -> (EConstant c, _, anns)) =
   where
     emptyCollection annIds t =
       text "empty" <+> t <+> text "@" <+> commaBrace (map text annIds)
-        
+
     nQualifier NoneMut   = text "mut"
     nQualifier NoneImmut = text "immut"
 
@@ -274,20 +271,20 @@ unary ONot e = return $ text "not" <+> e
 unary op _   = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
 
 binary :: Operator -> Doc -> Doc -> SyntaxPrinter
-binary op e e' = 
-  case op of 
-    OAdd -> infixOp "+" 
-    OSub -> infixOp "-" 
-    OMul -> infixOp "*" 
-    ODiv -> infixOp "/" 
+binary op e e' =
+  case op of
+    OAdd -> infixOp "+"
+    OSub -> infixOp "-"
+    OMul -> infixOp "*"
+    ODiv -> infixOp "/"
     OMod -> infixOp "%"
     OAnd -> infixOp "&&"
     OOr  -> infixOp "||"
     OEqu -> infixOp "=="
     ONeq -> infixOp "/="
-    OLth -> infixOp "<" 
+    OLth -> infixOp "<"
     OLeq -> infixOp "<="
-    OGth -> infixOp ">" 
+    OGth -> infixOp ">"
     OGeq -> infixOp ">="
     OSeq -> return . align $ e <> semi <$> e'
     OApp -> return $ e <+> e'
@@ -309,8 +306,8 @@ qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
 qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
 
 eQualifier :: [Annotation Expression] -> SyntaxPrinter
-eQualifier anns = qualifier isEQualified eqSyntax anns
-  where 
+eQualifier = qualifier isEQualified eqSyntax
+  where
     eqSyntax EImmutable = return $ text "immut"
     eqSyntax EMutable   = return $ text "mut"
     eqSyntax _          = throwSP "Invalid expression qualifier"
@@ -320,9 +317,7 @@ exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
 typ :: K3 Type -> SyntaxPrinter
-typ t@(details -> (_,_,anns)) = case commentT anns of 
-  Just doc -> (doc <+>) C.<$> typ' t
-  Nothing  -> typ' t
+typ t@(details -> (_,_,anns)) = attachComments (commentT anns) $ typ' t
 
 typ' :: K3 Type -> SyntaxPrinter
 typ' (tag -> TBool)       = return $ text "bool"
@@ -379,7 +374,7 @@ qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
 
 tQualifier :: [Annotation Type] -> SyntaxPrinter
 tQualifier anns = qualifier isTQualified tqSyntax anns
-  where 
+  where
     tqSyntax TImmutable = return $ text "immut"
     tqSyntax TMutable   = return $ text "mut"
     tqSyntax _          = throwSP "Invalid type qualifier"
@@ -395,9 +390,7 @@ typeVarDecl (TypeVarDecl i mlbtExpr mubtExpr) = do
 
 -- | Literals pretty printing
 literal :: K3 Literal -> SyntaxPrinter
-literal l@(details -> (_,_,anns)) = case commentL anns of
-  Just doc -> (doc <+>) C.<$> literal' l
-  _        -> literal' l
+literal l@(details -> (_,_,anns)) = attachComments (commentL anns) $ literal' l
 
 literal' :: K3 Literal -> SyntaxPrinter
 literal' (tag -> LBool b)   = return . text $ if b then "true" else "false"
@@ -416,7 +409,7 @@ literal' (details -> (LRecord ids, ch, _)) = mapM qualifierAndLiteral ch >>= ret
 literal' (details -> (LEmpty t, [], anns)) = typ t >>= return . emptyLiteral (namedLAnnotations anns)
 
 literal' (details -> (LCollection t, elems, anns)) =
-  collectionLiteral (namedLAnnotations anns) C.<$> elemType t <*> mapM (elemVal t) elems  
+  collectionLiteral (namedLAnnotations anns) C.<$> elemType t <*> mapM (elemVal t) elems
   where elemType (details -> (TRecord [x], [y], _)) = qualifierAndType y >>= return . tSingleElem x
         elemType (details -> (TRecord ids, ch, _))  = mapM qualifierAndType ch >>= return . tMultiElem ids
         elemType _ = throwSP "Invalid collection literal element type"
@@ -429,7 +422,7 @@ literal' (details -> (LCollection t, elems, anns)) =
         tMultiElem ids qualC = cat $ punctuate comma $ map (\(a,b) -> text a <+> colon <+> b)
                             $ zip ids $ map (uncurry (<+>)) qualC
 
-literal' (details -> (LAddress, [h,p], _)) 
+literal' (details -> (LAddress, [h,p], _))
   | LString s <- tag h = literal' p >>= return . addressLiteral (text s)
   | otherwise = throwSP "Invalid address literal"
 
@@ -486,7 +479,7 @@ tupleExpr :: [(Doc, Doc)] -> Doc
 tupleExpr qualC = tupled $ map (uncurry (<+>)) qualC
 
 recordExpr :: [Identifier] -> [(Doc, Doc)] -> Doc
-recordExpr ids qualC = 
+recordExpr ids qualC =
   commaBrace $ map (\(a,b) -> text a <+> colon <+> b)
              $ zip ids $ map (uncurry (<+>)) qualC
 
@@ -553,60 +546,70 @@ addressLiteral h p = h <> colon <> p
 
 
 {- Source comments -}
-comment :: SyntaxAnnotation -> Maybe Doc
-comment (SourceComment multi _ contents) = Just (string $ prefix ++ contents ++ suffix)
+comment :: SyntaxAnnotation -> Maybe (Doc, Bool)
+comment (SourceComment post multi _ contents) = Just (string $ prefix ++ contents ++ suffix, post)
   where prefix = if multi then "/* " else "// "
         suffix = if multi then "*/" else "\n"
 
 comment _ = Nothing
 
-annotatedComments :: [Annotation a] -> (Annotation a -> Maybe SyntaxAnnotation) -> Maybe Doc
-annotatedComments anns extractF = if null docs then Nothing else Just $ (vcat $ map group docs) <> line
-  where docs = mapMaybe (\x -> extractF x >>= comment) anns
+annotatedComments :: [Annotation a] -> (Annotation a -> Maybe SyntaxAnnotation)
+                  -> (Maybe Doc, Maybe Doc)
+annotatedComments anns extractF =
+  let (post, pre) = partition snd docs in (mk pre, mk post)
+  where mk d = if null d then Nothing else Just $ (vcat $ map (group . fst) d) <> line
+        docs = mapMaybe (\x -> extractF x >>= comment) anns
 
-commentD :: [Annotation Declaration] -> Maybe Doc
+commentD :: [Annotation Declaration] -> (Maybe Doc, Maybe Doc)
 commentD anns = annotatedComments anns extractSyntax
   where extractSyntax (DSyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentE :: [Annotation Expression] -> Maybe Doc
+commentE :: [Annotation Expression] -> (Maybe Doc, Maybe Doc)
 commentE anns = annotatedComments anns extractSyntax
   where extractSyntax (ESyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentL :: [Annotation Literal] -> Maybe Doc
+commentL :: [Annotation Literal] -> (Maybe Doc, Maybe Doc)
 commentL anns = annotatedComments anns extractSyntax
   where extractSyntax (LSyntax x) = Just x
         extractSyntax _ = Nothing
 
-commentT :: [Annotation Type] -> Maybe Doc
+commentT :: [Annotation Type] -> (Maybe Doc, Maybe Doc)
 commentT anns = annotatedComments anns extractSyntax
   where extractSyntax (TSyntax x) = Just x
         extractSyntax _ = Nothing
 
+attachComments :: (Maybe Doc, Maybe Doc) -> SyntaxPrinter -> SyntaxPrinter
+attachComments (Nothing, Nothing)    body = body
+attachComments (Just pre, Nothing)   body = (pre <+>)  C.<$> body
+attachComments (Nothing, Just post)  body = (<+> post) C.<$> body
+attachComments (Just pre, Just post) body = (\doc -> pre <+> doc <+> post) C.<$> body
 
 {- Helpers -}
 
 keyword :: String -> Doc
-keyword s = text s
+keyword = text
 
 commaBrace :: [Doc] -> Doc
 commaBrace = encloseSep lbrace rbrace comma
 
-matchAnnotation :: (Eq (Annotation a))
+matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
                 => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]
                 -> Printer b
-matchAnnotation matchF mapF anns = case filter matchF anns of
-    []            -> throwSP "No matching annotation found"
+matchAnnotation matchF mapF anns = 
+  let uidStr = maybe "" show (getUID =<< find (isJust . getUID) anns) in
+  case filter matchF anns of
+    []            -> throwSP $ "No matching annotation found at "++uidStr
     [q]           -> mapF q
     l | same l    -> mapF $ head l
-      | otherwise -> throwSP "Multiple matching annotations found"
-  where same l = 1 == (length $ nub l)
+      | otherwise -> throwSP $ "Multiple matching annotations found at "++uidStr
+  where same l = 1 == length (nub l)
 
-qualifier :: (Eq (Annotation a))
+qualifier :: (Eq (Annotation a), HasUID (Annotation a))
           => (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter) -> [Annotation a]
           -> SyntaxPrinter
 qualifier = matchAnnotation
 
 optionalPrinter :: (a -> Printer b) -> Maybe a -> Printer (Maybe b)
-optionalPrinter f opt = maybe (return Nothing) (\x -> f x >>= return . Just) opt
+optionalPrinter f = maybe (return Nothing) (\x -> f x >>= return . Just)

@@ -42,14 +42,11 @@ declare range : int -> collection {i : int} @ { Collection }
 ///////////////////////
 //
 // Value conversion
-declare int_of_real : int -> real
+declare truncate : int -> real
 declare real_of_int : real -> int
 
 // Maximum Int value
 declare get_max_int : () -> int
-
-// Sql data -> integer
-declare parse_sql_date : string -> int
 
 // Print to the screen
 declare print : string -> unit

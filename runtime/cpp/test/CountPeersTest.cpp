@@ -2,6 +2,7 @@
 #include <Engine.hpp>
 #include <Dispatch.hpp>
 #include <MessageProcessor.hpp>
+#include <test/TestUtils.hpp>
 
 #include <functional>
 #include <iostream>
@@ -11,61 +12,6 @@
 #include <boost/thread/thread.hpp>
 
 #include <xUnit++/xUnit++.h>
-
-namespace K3 {
-
-std::string localhost = "127.0.0.1";
-Address peer1;
-Address peer2;
-Address peer3;
-Address rendezvous;
-
-int nodeCounter(0);
-
-using std::cout;
-using std::endl;
-using std::bind;
-using std::string;
-using std::shared_ptr;
-
-
-// "Trigger" Declarations
-void join(shared_ptr<Engine> engine, string message_contents) {
-  Message m = Message(rendezvous, "register", "1");
-  engine->send(m);
-}
-
-void register2(shared_ptr<Engine> engine, string message_contents) {
-  int n = std::stoi(message_contents);
-  nodeCounter += n;
-  cout << "processed #" << nodeCounter << endl;
-}
-
-// MP setup
-TriggerDispatch buildTable(shared_ptr<Engine> engine) {
-  TriggerDispatch table = TriggerDispatch();
-  table["join"] = bind(&K3::join, engine, std::placeholders::_1);
-  table["register"] = bind(&K3::register2, engine, std::placeholders::_1);
-  return table;
-}
-
-shared_ptr<MessageProcessor> buildMP(shared_ptr<Engine> engine) {
-  auto table = buildTable(engine);
-  shared_ptr<MessageProcessor> mp = make_shared<DispatchMessageProcessor>(DispatchMessageProcessor(table));
-  return mp;
-}
-
-// Engine setup
-shared_ptr<Engine> buildEngine(bool simulation, SystemEnvironment s_env) {
-  // Configure engine components
-  shared_ptr<InternalCodec> i_cdec = make_shared<LengthHeaderInternalCodec>(LengthHeaderInternalCodec());
-
-  // Construct an engine
-  Engine engine = Engine(simulation, s_env, i_cdec);
-  return make_shared<Engine>(engine);
-}
-
-}
 
 FACT("Simulation mode CountPeers with 3 peers should count 3") {
   K3::nodeCounter = 0;
@@ -80,7 +26,8 @@ FACT("Simulation mode CountPeers with 3 peers should count 3") {
   K3::SystemEnvironment s_env = K3::defaultEnvironment(peers);
 
   auto engine = K3::buildEngine(true, s_env);
-  auto mp = K3::buildMP(engine);
+  auto table = countPeersTable(engine);
+  auto mp = K3::buildMP(engine,table);
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
   K3::Message m3 = K3::Message(K3::peer3, "join", "()");
@@ -110,9 +57,9 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
   auto engine3 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer3));
   // Create MPs
-  auto mp1 = K3::buildMP(engine1);
-  auto mp2 = K3::buildMP(engine2);
-  auto mp3 = K3::buildMP(engine3);
+  auto mp1 = K3::buildMP(engine1,countPeersTable(engine1));
+  auto mp2 = K3::buildMP(engine2,countPeersTable(engine2));
+  auto mp3 = K3::buildMP(engine3,countPeersTable(engine3));
   // Create initial messages (source)
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
@@ -149,7 +96,7 @@ FACT("Network mode CountPeers with 3 peers should count 3") {
   Assert.Equal(desired, K3::nodeCounter);
 }
 
-FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3 million") {
+FACT("Network mode CountPeers with 100k messages per 3 peers should count 300k") {
   K3::nodeCounter = 0;
   using boost::thread;
   using boost::thread_group;
@@ -164,14 +111,14 @@ FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3
   auto engine2 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer2));
   auto engine3 = K3::buildEngine(false, K3::defaultEnvironment(K3::peer3));
   // Create MPs
-  auto mp1 = K3::buildMP(engine1);
-  auto mp2 = K3::buildMP(engine2);
-  auto mp3 = K3::buildMP(engine3);
+  auto mp1 = K3::buildMP(engine1, countPeersTable(engine1));
+  auto mp2 = K3::buildMP(engine2, countPeersTable(engine2));
+  auto mp3 = K3::buildMP(engine3, countPeersTable(engine3));
   // Create initial messages (source)
   K3::Message m1 = K3::Message(K3::peer1, "join", "()");
   K3::Message m2 = K3::Message(K3::peer2, "join", "()");
   K3::Message m3 = K3::Message(K3::peer3, "join", "()");
-  for (int i = 0; i < 1000000; i++) {
+  for (int i = 0; i < 100000; i++) {
     engine1->send(m1);
     engine2->send(m2);
     engine3->send(m3);
@@ -181,7 +128,7 @@ FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3
 
   int timeout = 600;
   int i =0;
-  int desired = 3000000;
+  int desired = 300000;
 
   shared_ptr<thread> t1 = engine1->forkEngine(mp1);
   shared_ptr<thread> t2 = engine2->forkEngine(mp2);
@@ -195,7 +142,6 @@ FACT("Network mode CountPeers with 1 million messages per 3 peers should count 3
     boost::this_thread::sleep_for( boost::chrono::seconds(1) );
     i++;
   }
-
 
   engine1->forceTerminateEngine();
   engine2->forceTerminateEngine();

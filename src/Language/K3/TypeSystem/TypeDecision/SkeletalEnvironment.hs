@@ -186,12 +186,13 @@ constructTypeForDecl ((_,lAtts,sAtts),decl) = do
     liftEither f = either (typeError . f) return
     memReprToMemType :: TParamEnv -> AnnMemRepr
                      -> TypeDecideSkelM (AnnMemType StubbedConstraintSet)
-    memReprToMemType p repr =
-      let decl' = reprMem repr in
+    memReprToMemType p repr = do
+      let decl' = reprMem repr
+      u <- uidOfAnnMem decl'
       case decl' of
-        Lifted pol i' tExpr _ s -> genMemType pol i' tExpr s
-        Attribute pol i' tExpr _ s -> genMemType pol i' tExpr s
-        MAnnotation{} ->
+        Lifted pol i' tExpr _ _    -> genMemType pol i' tExpr u
+        Attribute pol i' tExpr _ _ -> genMemType pol i' tExpr u
+        MAnnotation {} ->
           -- These should've been inlined and forgotten!
           error $ "Member annotation declaration found during skeletal " ++
                   "environment construction!"

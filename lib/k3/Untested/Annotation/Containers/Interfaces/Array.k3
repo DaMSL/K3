@@ -8,5 +8,5 @@ annotation Array
   requires Composable
   requires Transformers
   requires Accessors
-  requires InImpllaceModifiable
+  requires InPlaceModifiable
 }

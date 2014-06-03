@@ -26,6 +26,7 @@ module Language.K3.TypeSystem.TypeDecision.AnnotationInlining
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
+import Data.List
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe
@@ -58,9 +59,9 @@ $(loggingFunctions)
 --  indicates whether or not the member is "native" (e.g. was not inlined from
 --  another source).
 data AnnMemRepr = AnnMemRepr
-                    { reprMem :: AnnMemDecl
+                    { reprMem      :: AnnMemDecl
                     , typeParamCxt :: TypeParameterContext
-                    , reprNative :: Bool
+                    , reprNative   :: Bool
                     }
   deriving (Show)
   
@@ -95,13 +96,17 @@ instance Pretty AnnRepr where
       prettyAttMap m = intersperseBoxes [", "] $ map prettyEntry $ Map.toList m
       rearrange (i,pol) = (pol,i,Nothing)
       prettyEntry (_,memRepr) = prettyMem $ reprMem memRepr
-      prettyMem mem = prettyTriple $ case mem of
-                        Lifted pol i _ _ u -> (typeOfPol pol,i,Just u)
-                        Attribute pol i _ _ u -> (typeOfPol pol,i,Just u)
-                        MAnnotation pol i u -> (typeOfPol pol,i,Just u)
+      prettyMem mem =
+        prettyTriple $ case mem of
+          Lifted pol i _ _ anns    -> (typeOfPol pol,i,uidFromAnns anns)
+          Attribute pol i _ _ anns -> (typeOfPol pol,i,uidFromAnns anns)
+          MAnnotation pol i anns   -> (typeOfPol pol,i,uidFromAnns anns)
       prettyTriple (pol,i,mu) = [i ++ pStr pol ++ ": UID#" ++
         maybe "?" (\(UID u) -> show u) mu]
       pStr pol = case pol of { Positive -> "+"; Negative -> "-" }
+      uidFromAnns anns = maybe Nothing extractUID $ find isDUID anns
+      extractUID (DUID u) = Just u
+      extractUID _        = Nothing
 
 -- |A data type which tracks information about an @AnnRepr@ in addition to the
 --  @AnnRepr@ itself.
@@ -146,7 +151,8 @@ concatReprs = foldM appendRepr emptyRepr
 
 -- |Converts a single annotation into internal representation.
 convertAnnotationToRepr :: forall m. (TypeErrorI m, Monad m)
-                        => TypeParameterContext -> [AnnMemDecl] -> m AnnRepr
+                        => TypeParameterContext -> [AnnMemDecl]
+                        -> m AnnRepr
 convertAnnotationToRepr typeParams mems =
   concatReprs =<< mapM convertMemToRepr mems
   where
@@ -249,11 +255,9 @@ closeReprs dict = do
         negSet = Set.map (second $ const Negative)
         negRepr (AnnMemRepr mem tps ntv) = AnnMemRepr (negMem mem) tps ntv
         negMem mem = case mem of
-                        Lifted _ i tExpr _ s ->
-                          Lifted Requires i tExpr Nothing s
-                        Attribute _ i tExpr _ s ->
-                          Attribute Requires i tExpr Nothing s
-                        MAnnotation _ i s -> MAnnotation Requires i s
+            Lifted _ i tExpr _ anns    -> Lifted Requires i tExpr Nothing anns
+            Attribute _ i tExpr _ anns -> Attribute Requires i tExpr Nothing anns
+            MAnnotation _ i anns       -> MAnnotation Requires i anns
 
 -- |A routine which performs annotation inlining.  The input arrives in the form
 --  of a top-level K3 AST.  The result is a mapping from identifiers to

@@ -203,14 +203,17 @@ data InternalTypeError
   | UndeterminedArityForAnnotationMember AnnMemDecl Identifier
       -- ^Indicates that the type decision mechanism did not provide an aritied
       --  type for an identifier for which inference was performed.
+  | InvalidUIDsInAnnMemDecl AnnMemDecl
+      -- ^Indicates that an annotation member is either missing, or has multiple
+      --  unique identifiers associated with it.
 
 deriving instance Show InternalTypeError
 
 instance Pretty InternalTypeError where
   prettyLines e = case e of
-    InvalidUIDsInDeclaration decl -> invalidUID "declaration" decl
+    InvalidUIDsInDeclaration decl     -> invalidUID "declaration" decl
     InvalidUIDsInTypeExpression tExpr -> invalidUID "type expression" tExpr
-    InvalidUIDsInExpression expr -> invalidUID "expression" expr
+    InvalidUIDsInExpression expr      -> invalidUID "expression" expr
     _ -> splitOn "\n" $ show e
     where
       invalidUID name tree =

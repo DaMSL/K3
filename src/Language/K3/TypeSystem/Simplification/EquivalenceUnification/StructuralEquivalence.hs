@@ -188,12 +188,12 @@ instance StructEquivAlign ShallowType where
       guard $ length as == length a's
       mconcat <$> zipWithM align as a's
     (STuple _, _) -> mzero
-    (SRecord m oas, SRecord m' oas') -> do
+    (SRecord m oas _, SRecord m' oas' _) -> do
       guard $ oas == oas'
       guard $ Map.keys m == Map.keys m'
       mconcat <$> mapM (uncurry align)
                        (Map.elems $ Map.intersectionWith (,) m m')
-    (SRecord _ _, _) -> mzero
+    (SRecord _ _ _, _) -> mzero
     (STop, STop) -> success
     (STop, _) -> mzero
     (SBottom, SBottom) -> success

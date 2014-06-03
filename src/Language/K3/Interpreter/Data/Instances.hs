@@ -97,7 +97,7 @@ instance Ord Value where
     compare (realizationId v, namespace v, dataspace v)
             (realizationId v', namespace v', dataspace v')
 
-  compare _ _ = error "Invalid value comparison"
+  compare a b = error $ "Invalid value comparison " ++ show a ++ ", " ++ show b
 
 instance Ord EntityTag where
   compare (MemEntTag s1) (MemEntTag s2) = compare (hashStableName s1) (hashStableName s2)
@@ -241,6 +241,9 @@ pfunc = printFunctions
 pSimple :: PrintConfig -> Bool
 pSimple = not . printComplex
 
+pTuple :: PrintConfig -> Bool
+pTuple = convertToTuples
+
 printParens :: String -> String
 printParens s = '(':s++")"
 
@@ -336,9 +339,9 @@ instance ShowPC (Identifier, (Value, VQualifier)) where
 instance ShowPC [(Identifier, (Value, VQualifier))] where
   -- We transform into tuples for better readability if we encounter _r1_... or key,value ids
   showPC pc vs = case vs of
-      [x] | canTuplize vs -> showPC pc $ snd x
-      _   | canTuplize vs -> showPC pc $ map snd $ sort vs
-      _                   -> showListBraces pc vs
+      [x] | pTuple pc && canTuplize vs -> showPC pc $ snd x
+      _   | pTuple pc && canTuplize vs -> showPC pc $ map snd $ sort vs
+      _                                -> showListBraces pc vs
     where
       canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value" || id == "i") vs
       sort vs = sortBy (compare `on` fst) vs

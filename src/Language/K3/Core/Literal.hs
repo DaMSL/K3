@@ -12,7 +12,6 @@ import Data.Word (Word8)
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
-import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Utils.Pretty

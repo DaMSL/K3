@@ -6,7 +6,7 @@
   sets; opaque types cannot be inspected and so cannot be unioned or
   intersected.
   
-  At the completion of the @semisemiEliminateBranches@ routine, each type variable
+  At the completion of the @semiEliminateBranches@ routine, each type variable
   in the resulting constraint set will have only one /transparent/ (i.e.
   non-opaque) bound in each direction.  Performing this conversion often causes
   some loss of precision; for instance, no single lower bound can properly
@@ -28,7 +28,9 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.Traversable as Trav
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.TypeSystem.Data
 import Language.K3.TypeSystem.Manifestation.Data
 import Language.K3.TypeSystem.Monad.Iface.FreshVar
@@ -256,8 +258,9 @@ calculateBoundOfTypes bt ts =
       DOption qas -> SOption <$> calculateBoundsOfQVars qas
       DIndirection qas -> SIndirection <$> calculateBoundsOfQVars qas
       DTuple qass -> STuple <$> mapM calculateBoundsOfQVars qass
-      DRecord m oas' -> SRecord <$> Trav.mapM calculateBoundsOfQVars m
-                                <*> pure oas' -- TODO: is this handling correct?
+      DRecord m oas' ctOpt -> SRecord <$> Trav.mapM calculateBoundsOfQVars m
+                                      <*> pure oas' -- TODO: is this handling correct?
+                                      <*> pure ctOpt
       DTop -> return STop
       DBottom -> return SBottom
     Nothing -> return Nothing
@@ -288,7 +291,7 @@ data InnerDelayedType
   | DOption (Set QVar)
   | DIndirection (Set QVar)
   | DTuple [Set QVar]
-  | DRecord (Map Identifier (Set QVar)) (Set OpaqueVar)
+  | DRecord (Map Identifier (Set QVar)) (Set OpaqueVar) (Maybe (K3 Type, [Identifier]))
   | DTop
   | DBottom
   deriving (Eq, Ord, Show)
@@ -311,13 +314,16 @@ instance Pretty InnerDelayedType where
     DIndirection qas -> ["ind "] %+ normalPrettySet qas
     DTuple qass ->
       ["("] %+ intersperseBoxes [","] (map normalPrettySet qass) %+ [")"]
-    DRecord rows oas ->
+    DRecord rows oas ctOpt ->
       let rowBox (i,qas) = [i++":"] %+ normalPrettySet qas in
       ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) +%
       ["}"] %+
-      if Set.null oas then [] else
-        ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
-                                            Set.toList oas) +% ["}"]
+      (if Set.null oas then [] else
+         ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
+                                            Set.toList oas) +% ["}"])
+      %+
+      (maybe [] (\(ct,cids) -> ["&&{"] %+ (prettyLines ct %$ cids) +% ["}"]) ctOpt)
+
     DTop -> ["⊤"]
     DBottom -> ["⊥"]
 
@@ -335,7 +341,7 @@ shallowToDelayed t = case t of
   SOption qa -> f $ DOption (Set.singleton qa)
   SIndirection qa -> f $ DIndirection (Set.singleton qa)
   STuple qas -> f $ DTuple (map Set.singleton qas)
-  SRecord m oas -> f $ DRecord (Map.map Set.singleton m) oas
+  SRecord m oas ctOpt -> f $ DRecord (Map.map Set.singleton m) oas ctOpt
   STop -> f DTop
   SBottom -> f DBottom
   SOpaque oa -> DelayedType (Set.singleton oa) Nothing
@@ -504,6 +510,13 @@ delayedInnerMerge tDefaultVal fSpecCase fTop fBottom mapMerge t t'  =
       if length qass /= length qass' then tDefault else
         DTuple $ zipWith Set.union qass qass'
     (DTuple _, _) -> tDefault
-    (DRecord m oas, DRecord m' oas') ->
-      DRecord (mapMerge Set.union m m') (oas `Set.union` oas')
-    (DRecord _ _, _) -> tDefault
+    (DRecord m oas ctOpt, DRecord m' oas' ctOpt') ->
+      let nCtOpt = case (ctOpt, ctOpt') of
+                      (Nothing,  Nothing) -> Nothing
+                      (Nothing,  Just ct) -> Just ct
+                      (Just ct,  Nothing) -> Just ct
+                      (Just ct1, Just ct2) 
+                        | ct1 == ct2 -> Just ct1
+                        | otherwise  -> Nothing -- TODO: merge collection type metadata
+      in DRecord (mapMerge Set.union m m') (oas `Set.union` oas') nCtOpt
+    (DRecord _ _ _, _) -> tDefault

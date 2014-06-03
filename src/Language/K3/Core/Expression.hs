@@ -5,6 +5,7 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
+import Control.Monad.Identity
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
@@ -15,7 +16,9 @@ import Language.K3.Core.Annotation.Codegen
 import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
 
+import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
@@ -52,14 +55,6 @@ data Constant
     | CString  String
     | CNone    NoneMutability
     | CEmpty   (K3 Type)
-  deriving (Eq, Read, Show)
-  
--- |Mutability modes for @CNone@.  These are kept distinct from the expression
---  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
---  place to put each @mut@ without overlapping.
-data NoneMutability
-    = NoneMut
-    | NoneImmut
   deriving (Eq, Read, Show)
 
 -- | Operators (unary and binary).
@@ -99,11 +94,14 @@ data instance Annotation Expression
     | EMutable
     | EImmutable
     | EAnnotation Identifier
+    | EProperty   Identifier (Maybe (K3 Literal))
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
 
-    -- TODO: the remainder of these should be pushed into 
+    -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
+    | EType   (K3 Type)
+    | EQType  (K3 QType)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
     | EImplementationType Identifier
@@ -127,17 +125,17 @@ data Conflict
     = RW [(Annotation Expression)] (Annotation Expression)
     | WR (Annotation Expression) [(Annotation Expression)]
     | WW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Read, Show) 
+  deriving (Eq, Read, Show)
 
 instance Pretty (K3 Expression) where
-    prettyLines (Node (ETuple :@: as) []) = 
+    prettyLines (Node (ETuple :@: as) []) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
       in ["EUnit" ++ annStr] ++ (shift "`- " "   " tAnnStrs)
-    
+
     prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
       in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " tAnnStrs) ++ ["|"] ++ prettyLines t
-    
+
     prettyLines (Node (t :@: as) es) =
       let (annStr, tAnnStrs) = drawExprAnnotations as
           shiftedTAnns       = if null es then (shift "`- " "   " tAnnStrs)
@@ -146,16 +144,19 @@ instance Pretty (K3 Expression) where
       [show t ++ annStr] ++ shiftedTAnns ++ drawSubTrees es
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
-drawExprAnnotations as = 
+drawExprAnnotations as =
   let (typeAnns, anns) = partition isEType as
       prettyTypeAnns   = case typeAnns of
                           []    -> []
-                          [l,u] -> drawETypeAnnotation l %+ indent 2 (drawETypeAnnotation u)
+                          [t, l, u] -> drawETypeAnnotation t
+                                        %+ indent 2 (drawETypeAnnotation l
+                                        %+ indent 2 (drawETypeAnnotation u))
                           _     -> error "Invalid type bound annotations"
   in (drawAnnotations anns, prettyTypeAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
+        drawETypeAnnotation (EType   t) = ["EType   "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
 
@@ -178,10 +179,19 @@ isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
+isEProperty :: Annotation Expression -> Bool
+isEProperty (EProperty _ _) = True
+isEProperty _               = False
+
 isEType :: Annotation Expression -> Bool
+isEType (EType   _) = True
 isEType (ETypeLB _) = True
 isEType (ETypeUB _) = True
 isEType _           = False
+
+isEQType :: Annotation Expression -> Bool
+isEQType (EQType _) = True
+isEQType _          = False
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns
@@ -191,19 +201,29 @@ namedEAnnotations anns = map extractId $ filter isEAnnotation anns
 
 {- Expression utilities -}
 
--- | Retrieves all free variables in an expression. 
+-- | Retrieves all free variables in an expression.
 freeVariables :: K3 Expression -> [Identifier]
-freeVariables = foldMapTree extractVariable []
-  where 
-    extractVariable chAcc (tag -> EVariable n) = concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = filter (`notElem` bindingVariables b) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)    = filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)   = let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _ = concat chAcc
+freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
+  where
+    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
+    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
+    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extractVariable chAcc _                    = return $ concat chAcc
 
 -- | Retrieves all variables introduced by a binder
 bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+
+-- | Strips all annotations from an expression.
+stripAnnotations :: K3 Expression -> K3 Expression
+stripAnnotations = runIdentity . mapTree strip
+  where strip ch n = return $ Node (tag n :@: []) ch
+
+-- | Compares two expressions for identical AST structures while ignoring annotations
+--   (such as UIDs, spans, etc.)
+compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
+compareWithoutAnnotations e1 e2 = stripAnnotations e1 == stripAnnotations e2

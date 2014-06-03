@@ -9,8 +9,11 @@ module Language.K3.Interpreter.Builtins where
 
 import Control.Concurrent.MVar
 import Control.Monad.State
+import Control.Applicative
 import Data.List
-import System.Random
+import qualified Data.Map as Map
+import qualified System.Random as Random
+import qualified System.Clock as Clock
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -31,6 +34,41 @@ import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 $(customLoggingFunctions ["Function"])
+
+-- Parse a date in SQL format
+parseDate :: String -> Maybe Int
+parseDate s = toInt $ foldr readChar [""] s
+  where readChar _   []   = []
+        readChar '-' xs   = "":xs
+        readChar n (x:xs) = (n:x):xs
+        toInt [y,m,d]     = Just $ (read y)*10000 + (read m)*100 + (read d)
+        toInt _           = Nothing
+
+-- Time operation on record maps
+timeBinOp :: NamedMembers Value -> NamedMembers Value -> (Int -> Int -> Int) -> Interpretation (NamedMembers Value)
+timeBinOp map1 map2 op = do
+  sec1 <- secF map1
+  sec2 <- secF map2
+  nsec1 <- nsecF map1
+  nsec2 <- nsecF map2
+  let sec = sec1 `op` sec2
+      nsec = nsec1 `op` nsec2
+      (sec', nsec') = normalize sec nsec
+  return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
+  where
+      get id map = 
+        case fst $ Map.findWithDefault (VInt 0, MemImmut) id map of
+          VInt i -> return i
+          x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
+      secF map  = get "sec" map
+      nsecF map = get "nsec" map
+      normalize s ns =
+        let mega = 1000000 in
+        if ns > mega || ns < -mega then
+          let (q, r) = ns `quotRem` mega
+          in  (s + q, r)
+        else  (s, ns)
+
 
 {- Built-in functions -}
 
@@ -116,14 +154,20 @@ genBuiltin (channelMethod -> ("Write", Just n)) _ =
 -- random :: int -> int
 genBuiltin "random" _ =
   vfun $ \x -> case x of
-    VInt upper -> liftIO (randomRIO (0::Int, upper)) >>= return . VInt
+    VInt upper -> liftIO (Random.randomRIO (0::Int, upper)) >>= return . VInt
     _          -> throwE $ RunTimeInterpretationError $ "Expected int but got " ++ show x
 
 -- randomFraction :: () -> real
-genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO randomIO >>= return . VReal
+genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO Random.randomIO >>= return . VReal
 
 -- hash :: forall a . a -> int
 genBuiltin "hash" _ = vfun $ \v -> valueHash v
+
+-- substring :: int -> string -> int
+genBuiltin "substring" _ = 
+    vfun $ \(VInt n) ->
+        vfun $ \(VString s) ->
+            return $ (VString (take n s))
 
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
@@ -131,8 +175,8 @@ genBuiltin "range" _ =
     initialAnnotatedCollection "Collection"
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
--- int_of_real :: int -> real
-genBuiltin "int_of_real" _ = vfun $ \x -> case x of 
+-- truncate :: int -> real
+genBuiltin "truncate" _ = vfun $ \x -> case x of 
   VReal r   -> return $ VInt $ truncate r
   _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
@@ -144,15 +188,26 @@ genBuiltin "real_of_int" _ = vfun $ \x -> case x of
 -- get_max_int :: () -> int
 genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
+{- Time Related Functions -}
+
 -- Parse an SQL date string and convert to integer
-genBuiltin "parse_sql_date" _ = vfun $ \(VString s) ->
-  parseString s >>= toInt >>= return . VInt
-  where parseString s = foldM readChar [0] s
-        readChar xs '-'   = return $ 0:xs
-        readChar (x:xs) n = return $ (x*10 + read [n]):xs
-        readChar _ _      = throwE $ RunTimeInterpretationError "Bad sql date string"
-        toInt [y,m,d]     = return $ y*10000 + m*100 + d
-        toInt _           = throwE $ RunTimeInterpretationError "Bad sql date format"
+genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
+  let v = parseDate s
+  case v of
+    Just i  -> return $ VInt i
+    Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
+
+genBuiltin "now" _ = vfun $ \(VTuple []) -> do
+  v <- liftIO $ Clock.getTime Clock.Realtime
+  return $ VRecord $ Map.fromList $
+    [("sec", (VInt $ Clock.sec v, MemImmut)),
+     ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+
+genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (+) >>= return . VRecord
+
+genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
+  timeBinOp map1 map2 (-) >>= return . VRecord
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
@@ -212,40 +267,40 @@ modifyCollection cmv f = do
  - these can handle in memory vs external
  - other functions here use this api
  -}
-builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> UID
-                          -> Interpretation (Maybe (Identifier, Value))
-builtinLiftedAttribute annId n _ _ =
-  let wrap f = f >>= \x -> return $ Just (n, x) in
+builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type
+                       -> Interpretation (Maybe (Identifier, Value))
+builtinLiftedAttribute annId n _ =
+  let wrapF f = f >>= \x -> return $ Just (n, x) in
   if annId `elem` dataspaceAnnotationIds then case n of
-    "peek"        -> wrap peekFn
-    "insert"      -> wrap insertFn
-    "delete"      -> wrap deleteFn
-    "update"      -> wrap updateFn
-    "combine"     -> wrap combineFn
-    "split"       -> wrap splitFn
-    "iterate"     -> wrap iterateFn
-    "map"         -> wrap mapFn
-    "filter"      -> wrap filterFn
-    "fold"        -> wrap foldFn
-    "groupBy"     -> wrap groupByFn
-    "ext"         -> wrap extFn
+    "peek"        -> wrapF peekFn
+    "insert"      -> wrapF insertFn
+    "delete"      -> wrapF deleteFn
+    "update"      -> wrapF updateFn
+    "combine"     -> wrapF combineFn
+    "split"       -> wrapF splitFn
+    "iterate"     -> wrapF iterateFn
+    "map"         -> wrapF mapFn
+    "filter"      -> wrapF filterFn
+    "fold"        -> wrapF foldFn
+    "groupBy"     -> wrapF groupByFn
+    "ext"         -> wrapF extFn
 
     -- Sequential collection methods
-    "sort"        -> wrap sortFn
+    "sort"        -> wrapF sortFn
 
     -- Set collection methods
-    "member"      -> wrap memberFn
-    "isSubsetOf"  -> wrap isSubsetOfFn
-    "union"       -> wrap unionFn
-    "intersect"   -> wrap intersectFn
-    "difference"  -> wrap differenceFn
+    "member"      -> wrapF memberFn
+    "isSubsetOf"  -> wrapF isSubsetOfFn
+    "union"       -> wrapF unionFn
+    "intersect"   -> wrapF intersectFn
+    "difference"  -> wrapF differenceFn
 
     -- Sorted collection methods
-    "min"         -> wrap minFn
-    "max"         -> wrap maxFn
-    "lowerBound"  -> wrap lowerBoundFn
-    "upperBound"  -> wrap upperBoundFn
-    "slice"       -> wrap sliceFn
+    "min"         -> wrapF minFn
+    "max"         -> wrapF maxFn
+    "lowerBound"  -> wrapF lowerBoundFn
+    "upperBound"  -> wrapF upperBoundFn
+    "slice"       -> wrapF sliceFn
 
     _             -> providesError "lifted attribute" n
 
@@ -470,12 +525,12 @@ builtinLiftedAttribute annId n _ _ =
     collectionError = throwE $ RunTimeTypeError "Invalid collection"
     filterValError  = throwE $ RunTimeTypeError "Invalid filter function result"
     curryFnError    = throwE $ RunTimeTypeError "Invalid curried function"
-    extError        = throwE $ RunTimeTypeError "Invalid function argument for ext"
+    extError        = throwE $ RunTimeTypeError "Invalid collection argument for ext"
 
     funArgError       fnName = throwE $ RunTimeTypeError $ "Invalid function argument in " ++ fnName
     typeMismatchError fnName = throwE $ RunTimeTypeError $ "Mismatched collection types on " ++ fnName
 
-builtinAttribute :: Identifier -> Identifier -> K3 Type -> UID
+builtinAttribute :: Identifier -> Identifier -> K3 Type
                  -> Interpretation (Maybe (Identifier, Value))
-builtinAttribute _ n _ _ = providesError "attribute" n
+builtinAttribute _ n _ = providesError "attribute" n
 

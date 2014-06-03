@@ -1,0 +1,74 @@
+// Mutability qualifier in declaration types
+declare a :   mut int = 0
+declare b : immut int = 0
+
+// Unless indicated, the default qualifier is immut
+declare c : int = 0
+
+// Substructure mutability
+declare ind_mut     : mut ind mut int    = ind mut 0
+  /* The inner mut indicates the contents of the indirection can be changed through binding.
+     The outer mut indicates the indirection can be replaced wholesale.
+  */
+
+declare option_mut  : mut option mut int = Some mut 0
+  /* The inner mut indicates the contents of the option can be changed through binding.
+     The outer mut indicates the option can be replaced wholesale.
+  */
+
+declare none_mut    : mut option mut int = None mut
+  /* 'None' option values also require a mutability qualifer to indicate
+     the properties of their contents. Our type system ensures that options
+     with mutable contents never flow into options with immutable contents,
+     thus enabling explicit comparison of options with mutable content.
+  */
+
+// Tuple and record fields can be mutable, both in the type and expression grammar.
+declare tuple_mut   : (mut int, int)     = (mut 0, 1)
+declare record_mut  : {m:mut int, n:int} = {m:mut 0, n:1}
+
+// Global functions must be immutable.
+// To support recursion, global variables are in scope in their initializers, and
+// mutable functions would allow us to change the definition of the function
+// during its body's execution. We take a simpler model of recursion, and disallow this.
+declare times2 : int -> int = \x -> x + x
+
+// Variable declaration for exemplifying dynamic functions.
+declare dynamic_function_result : mut int = 0
+
+trigger t : () = \_ -> (
+	// Mutability qualifiers in let-in expressions.
+	let p =   mut 42 in  // A local mutable binding (same as a mutable declaration).
+    let q = immut 53 in  // A local immutable binding (same as an immutable declaration).
+    let r = 64       in  // Let expressions default to immutable bindings.
+
+    // Mutable bind-as and case-of expressions
+    // Only m below can be modified, n is immutable.
+    bind record_mut as {m:x, n:y} in
+      x = 100;
+
+    case option_mut of
+      { Some j -> j = 20 }
+      { None   -> ()     };
+    
+    // Mutable captured bindings
+
+    // Substructural bindings preserve their mutability, so we can update
+    // any bindings of record_mut.m, but not record_mut.n
+    let f = bind record_mut as {m:x}
+            in \y -> x = x + y
+    in
+    f r; // Sets record_mut.m to 5
+
+    // Mutable function objects
+
+    // K3 can encode objects as records, and we can mutate these records during execution.
+    // However since let expressions are not recursive, we have to do it outside the body's scope.
+    // Functions themselves are directly not mutable, either as globals or locals.
+    let fun_record = mut { g: \x -> x } in
+      fun_record = { g: times2 };
+      dynamic_function_result = fun_record.g 13
+  )
+
+source s1 : () = value ()
+feed s1 |> t

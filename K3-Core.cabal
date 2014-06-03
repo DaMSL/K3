@@ -48,7 +48,8 @@ library
         template-haskell,
         transformers,
         unordered-containers,
-        ansi-wl-pprint
+        ansi-wl-pprint,
+        clock
 
     exposed-modules:
         Language.K3.Core.Annotation,
@@ -97,10 +98,18 @@ library
         Language.K3.Runtime.Engine,
         Language.K3.Runtime.Literal,
         Language.K3.Runtime.Options,
+        Language.K3.Transform.Common,
         Language.K3.Transform.Alpha,
-        Language.K3.Transform.Conflicts,
-        Language.K3.Transform.Interpreter.BindAlias,
-        Language.K3.Transform.AnnotationGraph,
+        Language.K3.Transform.Normalization,
+        Language.K3.Transform.Simplification,
+        Language.K3.Transform.Profiling,
+        Language.K3.Analysis.Common,
+        Language.K3.Analysis.Conflicts,
+        Language.K3.Analysis.Effect,
+        Language.K3.Analysis.HMTypes.DataTypes,
+        Language.K3.Analysis.HMTypes.Inference,
+        Language.K3.Analysis.Interpreter.BindAlias,
+        Language.K3.Analysis.AnnotationGraph,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -150,6 +159,7 @@ library
         Language.K3.TypeSystem.Data.Types,
         Language.K3.TypeSystem.Simplification.GarbageCollection,
         Language.K3.TypeSystem.Manifestation,
+        Language.K3.TypeSystem.Manifestation.Graph,
         Language.K3.TypeSystem.Manifestation.Monad,
         Language.K3.TypeSystem.Manifestation.Data,
         Language.K3.TypeSystem.Data.PrimitiveSubtyping,
@@ -160,16 +170,23 @@ library
         Language.K3.TypeSystem.Data.Environments.Common,
         Language.K3.TypeSystem.Data.Environments.Type,
         Language.K3.TypeSystem.Data.Constraints,
-        Language.K3.TypeSystem.Data.ConstraintSet.Queries
+        Language.K3.TypeSystem.Data.ConstraintSet.Queries,
+        Language.K3.TypeSystem.Data.Result
 
-    ghc-options: -Wall
-    other-modules: 
-                   Language.K3.Utils.Pretty.Common,
-                   Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
-                   Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
+    ghc-options: -Wall -O2
+
+    other-modules:
+        Language.K3.Codegen.CPP.Collections,
+        Language.K3.Codegen.CPP.Common,
+        Language.K3.Codegen.CPP.Expression,
+        Language.K3.Codegen.CPP.Primitives,
+        Language.K3.Codegen.CPP.Types,
+        Language.K3.Utils.Pretty.Common,
+        Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
 
 test-suite all
     type: exitcode-stdio-1.0

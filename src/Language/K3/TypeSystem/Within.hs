@@ -253,12 +253,12 @@ instance WithinAlignable ShallowType where
         mconcat <$> zipWithM withinAlign qas qas'
       (STuple _, _) ->
         mzero
-      (SRecord m oas, SRecord m' oas') -> do
+      (SRecord m oas _, SRecord m' oas' _) -> do
         guard $ oas == oas'
         guard $ Map.keys m == Map.keys m'
         mconcat <$> mapM (uncurry withinAlign)
                           (Map.elems $ Map.intersectionWith (,) m m')
-      (SRecord _ _, _) ->
+      (SRecord _ _ _, _) ->
         mzero
       (STop, STop) ->
         success

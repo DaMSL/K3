@@ -303,7 +303,7 @@ deriveRecordTypeExpression aEnv u ids tExprs = do
   t <- either (typeError . RecordSignatureError u)
           return
         $ recordConcat (map (\ (i, qa) ->
-            SRecord (Map.singleton i qa) Set.empty) $ zip ids qas)
+            SRecord (Map.singleton i qa) Set.empty Nothing) $ zip ids qas)
   return (t,CSL.unions css)
 
 -- |A utility function for type derivation over collection types.  This is
@@ -338,12 +338,12 @@ deriveCollectionType mrEnv aEnv tExpr = do
       concattedAnns
   -- Ascertain the self and final types
   (a_c,a_f,a_s) <- readAnnotationSpecialParameters p
-  (t_s, cs_s) <- depolarizeOrError u ms1
+  (t_s, cs_s)   <- depolarizeOrError u ms1
   (t_f', cs_f') <- depolarizeOrError u ms2
   t_f <- either (typeError . ContentAndStructuralSchemaOverlap u)
             return $
             recordConcat [t_c, t_f']
-  let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= t_s]
+  let cs' = csUnions [a_c ~= a_c', a_f ~= t_f, a_s ~= (trackCollection tExpr' ais t_s)]
   let pessimal = csUnions <$> sequence pessimals
   return (a_s, CSL.unions [cs, cs_c, cs_f', cs_s, CSL.promote cs'], pessimal)
   where
@@ -352,7 +352,11 @@ deriveCollectionType mrEnv aEnv tExpr = do
       u <- uidOf tExpr'
       case tag tExpr' of
         TRecord ids -> deriveRecordTypeExpression aEnv u ids $ subForest tExpr'
-        _ -> typeError $ NonRecordContentSchema u tExpr' 
+        _ -> typeError $ NonRecordContentSchema u tExpr'
+    trackCollection :: K3 Type -> [Identifier] -> ShallowType -> ShallowType
+    trackCollection cType annIds (SRecord m oas Nothing) = SRecord m oas $ Just (cType, annIds)
+    trackCollection _ _ s = s
+    toAnnotationId :: Annotation Type -> Maybe Identifier
     toAnnotationId tann = case tann of
       TAnnotation i -> Just i
       _ -> Nothing

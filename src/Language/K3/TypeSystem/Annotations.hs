@@ -239,7 +239,7 @@ depolarize ms = do
   where
     depolarizeSingle :: AnnMemType c -> (ShallowType, c)
     depolarizeSingle (AnnMemType i _ _ qa cs) =
-      (SRecord (Map.singleton i qa) Set.empty, cs)
+      (SRecord (Map.singleton i qa) Set.empty Nothing, cs)
 
 -- |A convenience function to get the special type parameters from an annotation
 --  parameter environment.  If this cannot be done, a type error is raised.

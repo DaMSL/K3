@@ -5,20 +5,29 @@ annotation External given type a, b {
   provides lifted delete  : content -> ()
   provides lifted update  : content -> (content -> ())
 
+  @:Transformer
   provides lifted combine : self -> self
+
+  @:Transformer
   provides lifted split   : () -> (self, self)
 
+  @:Transformer
   provides lifted iterate : (content -> ()) -> ()
 
+  @:Transformer
   provides lifted map     : (content -> a) -> collection { elem : a } @ {External}
 
+  @:Transformer
   provides lifted filter  : (content -> bool) -> self
 
+  @:Transformer
   provides lifted fold    : (a -> (content -> a)) -> a -> a
 
+  @:Transformer
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {External}
 
+  @:Transformer
   provides lifted ext     : (content -> collection { elem : a } @ {External})
                              -> collection { elem : a } @ {External}
 }

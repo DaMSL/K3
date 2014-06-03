@@ -218,6 +218,7 @@ namespace K3 {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
           queues->enqueue(msg);
+          control->messageAvail();
         } else {
           // Get connection and send a message on it.
           Identifier eid = connectionId(addr);

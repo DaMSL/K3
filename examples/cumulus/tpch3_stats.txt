@@ -1,0 +1,17 @@
+Total lines: 14867
+cond_add_delta lines: 602, instances: 8, 4.05%
+add_delta_to_buf lines: 2080, instances: 40, 13.99%
+add_delta_to lines: 454, instances: 8, 3.05%
+log lines: 214, instances: 21, 1.44%
+route lines: 920, instances: 8, 6.19%
+shuffle lines: 520, instances: 12, 3.50%
+send_fetch lines: 882, instances: 6, 5.93%
+rcv_fetch lines: 446, instances: 6, 3.00%
+rcv_put lines: 630, instances: 6, 4.24%
+send_push lines: 852, instances: 24, 5.73%
+rcv_push lines: 1927, instances: 24, 12.96%
+do_complete lines: 1207, instances: 26, 8.12%
+rcv_corrective lines: 959, instances: 24, 6.45%
+do_corrective lines: 1080, instances: 24, 7.26%
+send_corrective lines: 1183, instances: 7, 7.96%
+Total listed: 93.87%

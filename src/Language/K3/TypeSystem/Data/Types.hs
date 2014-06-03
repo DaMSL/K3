@@ -41,7 +41,9 @@ import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data.Environments.Common
 
@@ -181,7 +183,7 @@ someVar :: TVar a -> AnyTVar
 someVar a = case a of
   QTVar{} -> SomeQVar a
   UTVar{} -> SomeUVar a
-  
+
 anyTVarId :: AnyTVar -> TVarID
 anyTVarId sa = case sa of
   SomeQVar qa -> tvarId qa
@@ -204,12 +206,12 @@ data ShallowType
   | SOption QVar
   | SIndirection QVar
   | STuple [QVar]
-  | SRecord (Map Identifier QVar) (Set OpaqueVar)
+  | SRecord (Map Identifier QVar) (Set OpaqueVar) (Maybe (K3 Type, [Identifier]))
   | STop
   | SBottom
   | SOpaque OpaqueVar
   deriving (Eq, Ord, Show)
-  
+
 instance Pretty ShallowType where
   prettyLines t = case t of
     SFunction a a' -> prettyLines a %+ ["->"] %+ prettyLines a'
@@ -223,13 +225,16 @@ instance Pretty ShallowType where
     SOption qa -> ["option "] %+ prettyLines qa
     SIndirection qa -> ["ind "] %+ prettyLines qa
     STuple qas -> ["("] %+ intersperseBoxes [","] (map prettyLines qas) %+ [")"]
-    SRecord rows oas ->
+    SRecord rows oas ctOpt ->
       let rowBox (i,qa) = [i++":"] %+ prettyLines qa in
       ["{"] %+ intersperseBoxes [","] (map rowBox $ sort $ Map.toList rows) +%
       ["}"] %+
-      if Set.null oas then [] else
+      (if Set.null oas then [] else
         ["&{"] %+ intersperseBoxes [","] (map prettyLines $ sort $
-                                            Set.toList oas) +% ["}"]
+                                            Set.toList oas) +% ["}"])
+      %+
+      (maybe [] (\(ct,cids) -> ["&&{"] %+ (prettyLines ct %$ cids) +% ["}"]) ctOpt)
+
     STop -> ["⊤"]
     SBottom -> ["⊥"]
     SOpaque ao -> prettyLines ao
@@ -267,7 +272,7 @@ instance Pretty TQual where
 instance Pretty (Set TQual) where
   prettyLines qs =
     ["{"] %+ intersperseBoxes [","] (map prettyLines $ Set.toList qs) %+ ["}"]
-  
+
 -- |A set of all qualifiers.
 allQuals :: Set TQual
 allQuals = Set.fromList [TMut, TImmut]
@@ -315,7 +320,7 @@ instance (Pretty c) => Pretty (AnnType c) where
       prettyMap m = sequenceBoxes maxWidth "," $
                       map prettyElem $ Map.toList m
       prettyElem (k,v) = prettyLines k %+ ["→"] %+ prettyLines v
-  
+
 -- |Annotation body types.  The type parameter dictates the type of constraint
 --  set used in the member types.
 data AnnBodyType c
@@ -384,7 +389,7 @@ data BinaryOperator
   | BinOpApply
   | BinOpSend
   deriving (Eq, Ord, Read, Show)
-  
+
 instance Pretty BinaryOperator where
   prettyLines op = (case op of
       BinOpAdd -> "+"
@@ -402,7 +407,7 @@ instance Pretty BinaryOperator where
       BinOpApply -> ""
       BinOpSend -> "<-"
     ):[]
-  
+
 -- |A data type representing some form of operator.
 data AnyOperator
   = SomeBinaryOperator BinaryOperator

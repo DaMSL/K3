@@ -21,7 +21,7 @@ import Data.List
 import Data.Maybe
 import Data.Word (Word8)
 
--- import Debug.Trace
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
@@ -41,42 +41,10 @@ import Language.K3.Interpreter.Builtins
 import Language.K3.Runtime.Engine
 
 import Language.K3.Utils.Logger
-import Language.K3.Utils.Pretty (defaultPrintConfig)
+import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
--- | Helper functions.
-onQualifiedType :: K3 Type -> a -> a -> a
-onQualifiedType t immutR mutR = case t @~ isTQualified of  
-  Just TMutable -> mutR
-  _ -> immutR
-
-onQualifiedExpression :: K3 Expression -> a -> a -> a
-onQualifiedExpression e immutR mutR = case e @~ isEQualified of  
-  Just EMutable -> mutR
-  _ -> immutR
-
-onQualifiedAnnotationsE :: [Annotation Expression] -> a -> a -> a
-onQualifiedAnnotationsE anns immutR mutR = case anns @~ isEQualified of 
-  Just EMutable -> mutR
-  _ -> immutR
-
-onQualifiedLiteral :: K3 Literal -> a -> a -> a
-onQualifiedLiteral l immutR mutR = case l @~ isLQualified of
-  Just LMutable -> mutR
-  _ -> immutR
-
-vQualOfType :: K3 Type -> VQualifier
-vQualOfType t = onQualifiedType t MemImmut MemMut
-
-vQualOfExpr :: K3 Expression -> VQualifier
-vQualOfExpr e = onQualifiedExpression e MemImmut MemMut
-
-vQualOfLit :: K3 Literal -> VQualifier
-vQualOfLit l = onQualifiedLiteral l MemImmut MemMut
-
-vQualOfAnnsE :: [Annotation Expression] -> VQualifier
-vQualOfAnnsE anns = onQualifiedAnnotationsE anns MemImmut MemMut
 
 -- | Monadic message passing primitive for the interpreter.
 sendE :: Address -> Identifier -> Value -> Interpretation ()
@@ -257,7 +225,7 @@ binary OApp = \f x -> do
 
   case f' of
       VFunction (b, cl, _) -> withClosure cl $ b x'
-      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on " ++ show f
+      _ -> throwE $ RunTimeTypeError $ "Invalid Function Application on:\n" ++ pretty f
 
   where withClosure cl doApp = mergeE cl >> doApp >>= \r -> pruneE cl >> freshenValue r
 
@@ -318,9 +286,6 @@ expression e_ = traceExpression $ do
     isBindAliasAnnotation (EAnalysis (BindAliasExtension _)) = True
     isBindAliasAnnotation _                                  = False
 
-    withProxyFrame :: Interpretation a -> Interpretation a
-    withProxyFrame eval = pushProxyFrame >> eval >>= \r -> popProxyFrame >> return r
-
     refreshEntry :: Identifier -> IEnvEntry Value -> Value -> Interpretation ()
     refreshEntry n (IVal _) v  = replaceE n (IVal v)
     refreshEntry _ (MVal mv) v = liftIO (modifyMVar_ mv $ const $ return v)
@@ -341,7 +306,7 @@ expression e_ = traceExpression $ do
                 liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
               _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
 
-        _ -> return () -- Skip writeback to an immutable value.
+        (_, _) -> return () -- Skip writeback to an immutable value.
 
     refreshBindings (BTuple ts) proxyPath bindV =
       mapM lookupVQ ts >>= \vqs ->
@@ -490,7 +455,8 @@ expression e_ = traceExpression $ do
       entry <- lookupE i
       case entry of 
         MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const $ return v) >> return v
-        IVal _  -> throwE $ RunTimeInterpretationError "Invalid assignment to an immutable value"
+        IVal _  -> throwE $ RunTimeInterpretationError 
+                          $ "Invalid assignment to an immutable variable: " ++ i
 
     expr (details -> (EAssign _, _, _)) = throwE $ RunTimeTypeError "Invalid Assignment"
 
@@ -511,7 +477,8 @@ expression e_ = traceExpression $ do
 
     -- | Interpretation of Case-Matches.
     -- Case expressions behave like bind-as, i.e., w/ isolated bindings and writeback
-    expr (details -> (ECaseOf i, [e, s, n], _)) = withProxyFrame $ do
+    expr (details -> (ECaseOf i, [e, s, n], _)) = do
+        void $ pushProxyFrame
         targetV <- expression e
         case targetV of 
           VOption (Just v, q) -> do
@@ -520,15 +487,16 @@ expression e_ = traceExpression $ do
               Just ((Temporary pn):t) -> return $ (Temporary pn):t
               _ -> throwE $ RunTimeTypeError "Invalid proxy path in case-of expression"
 
+            void $ popProxyFrame
             entry <- entryOfValueQ v q
             insertE i entry
             sV <- expression s
             void $ lookupVQ i >>= \case
-              (iV, MemMut) -> replaceProxyPath pp targetV iV (\_ newPathV -> return newPathV) 
+              (iV, MemMut) -> replaceProxyPath pp targetV (VOption (Just iV, MemMut)) (\_ newPathV -> return newPathV)
               _            -> return () -- Skip writeback for immutable values.
             removeE i sV
 
-          VOption (Nothing, _) -> expression n
+          VOption (Nothing, _) -> popProxyFrame >> expression n
           _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
     
     expr (details -> (ECaseOf _, _, _)) = throwE $ RunTimeTypeError "Invalid Case-Match"
@@ -536,19 +504,22 @@ expression e_ = traceExpression $ do
     -- | Interpretation of Binding.
     -- TODO: For now, all bindings are added in mutable fashion. This should be extracted from
     -- the type inferred for the bind target expression.
-    expr (details -> (EBindAs b, [e, f], _)) = withProxyFrame $ do
+    expr (details -> (EBindAs b, [e, f], _)) = do
+      void $ pushProxyFrame
+      pc <- getPrintConfig <$> get
       bv <- expression e
       bp <- getProxyPath >>= \case
         Just ((Named n):t)     -> return $ (Named n):t
         Just ((Temporary n):t) -> return $ (Temporary n):t
         _ -> throwE $ RunTimeTypeError "Invalid bind path in bind-as expression"
 
+      void $ popProxyFrame
       case (b, bv) of
         (BIndirection i, VIndirection (r,q,_)) -> do
           entry <- liftIO (readMVar r) >>= flip entryOfValueQ q
-          void $ insertE i entry
-          fV <- expression f
-          void $ refreshBindings b bp bv
+          void  $  insertE i entry
+          fV    <- expression f
+          void  $  refreshBindings b bp bv
           removeE i fV
 
         (BTuple ts, VTuple vs) -> do
@@ -567,13 +538,16 @@ expression e_ = traceExpression $ do
             
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
 
-        _ -> throwE $ RunTimeTypeError "Bind Mis-Match"
+        (binder, binderV) ->
+          throwE $ RunTimeTypeError $
+            "Bind Mis-Match: value is " ++ showPC (pc {convertToTuples=False}) binderV
+                                        ++ " but bind is " ++ show binder
 
       where 
         bindAndRefresh bp bv mems = do
           bindings <- bindMembers mems
-          fV <- expression f
-          void $ refreshBindings b bp bv
+          fV       <- expression f
+          void     $  refreshBindings b bp bv
           unbindMembers bindings >> return fV
 
         joinByKeys joinF keys l r =
@@ -642,7 +616,7 @@ global _ (details -> (TSink, _, _)) Nothing     = throwE $ RunTimeInterpretation
 global _ (tag -> TSource) _ = return ()
 
 -- | Functions have already been initialized as part of the program environment.
-global _ (isFunction -> True) _ = return ()
+global _ (isTFunction -> True) _ = return ()
 
 -- | Add collection declaration, generating the collection type given by the annotation
 --   combination on demand.
@@ -722,17 +696,17 @@ annotation n _ memberDecls = tryLookupADef n >>= \case
       void $ insertE memN entry
       return (insertMember memN (v,q) memAcc, insertBinding memN entry bindAcc)
 
-    (liftedAttrFuns, liftedAttrs) = ((True, isFunction), (True, not . isFunction))
-    (attrFuns, attrs)             = ((False, isFunction), (False, not . isFunction))
+    (liftedAttrFuns, liftedAttrs) = ((True, isTFunction), (True, not . isTFunction))
+    (attrFuns, attrs)             = ((False, isTFunction), (False, not . isTFunction))
 
 
-annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl 
+annotationMember :: Identifier -> Bool -> (K3 Type -> Bool) -> AnnMemDecl
                  -> Interpretation (Maybe (Identifier, (Value, VQualifier)))
 annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
-  (True,  Lifted    Provides n t (Just e) _)   | matchF t -> initializeMember n t e
-  (False, Attribute Provides n t (Just e) _)   | matchF t -> initializeMember n t e
-  (True,  Lifted    Provides n t Nothing  uid) | matchF t -> builtinLiftedAttribute annId n t uid >>= return . builtinQual t
-  (False, Attribute Provides n t Nothing  uid) | matchF t -> builtinAttribute annId n t uid >>= return . builtinQual t
+  (True,  Lifted    Provides n t (Just e) _) | matchF t -> initializeMember n t e
+  (False, Attribute Provides n t (Just e) _) | matchF t -> initializeMember n t e
+  (True,  Lifted    Provides n t Nothing  _) | matchF t -> builtinLiftedAttribute annId n t >>= return . builtinQual t
+  (False, Attribute Provides n t Nothing  _) | matchF t -> builtinAttribute annId n t >>= return . builtinQual t
   _ -> return Nothing
   
   where initializeMember n t e = expression e >>= \v -> return . Just $ (n, (v, memberQual t))

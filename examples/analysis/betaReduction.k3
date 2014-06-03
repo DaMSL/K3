@@ -1,0 +1,9 @@
+declare x : mut int = 0
+
+trigger t : int = \a -> (
+    let f = (\b -> b + 1)
+    in x = f a
+  )
+
+source s1 : int = value 5
+feed s1 |> t

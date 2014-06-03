@@ -2828,22 +2828,22 @@ declare route_to_ATIMESD_mT1 :
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
-      let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
-          ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
-          empty {i:address} @ { Collection } in
+      let sorted_ip_list = (empty { key:address, value:()
+        } @ { Collection }).combine
+        ((free_cart_prod.map
+            ((\_b1_ -> 
+              bind _b1_ as {i:free_bucket} in 
+              {i:get_ring_node
+                   {key:free_bucket.fold
+                          ((\acc -> (\_b3_ -> 
+                            bind _b3_ as {key:i, value:val} in acc + (val *
+                            bind case ((dim_bounds.filter
+                            ((\_b1_ -> 
+                              bind _b1_ as {key:key, value:value} in key == i))).peek
+                            ()) of { Some x -> x }
+                            { None -> error () } as {key:__1, value:__2} in 
+                            __2)))) bound_bucket, value:max_val}}))).groupBy
+           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) ()) in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -2929,22 +2929,22 @@ declare route_to_ATIMESD_mT1_mR1 : { key:option int, value:option int
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
-      let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
-          ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
-          empty {i:address} @ { Collection } in
+      let sorted_ip_list = (empty { key:address, value:()
+        } @ { Collection }).combine
+        ((free_cart_prod.map
+            ((\_b1_ -> 
+              bind _b1_ as {i:free_bucket} in 
+              {i:get_ring_node
+                   {key:free_bucket.fold
+                          ((\acc -> (\_b3_ -> 
+                            bind _b3_ as {key:i, value:val} in acc + (val *
+                            bind case ((dim_bounds.filter
+                            ((\_b1_ -> 
+                              bind _b1_ as {key:key, value:value} in key == i))).peek
+                            ()) of { Some x -> x }
+                            { None -> error () } as {key:__1, value:__2} in 
+                            __2)))) bound_bucket, value:max_val}}))).groupBy
+           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) ()) in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3010,22 +3010,22 @@ declare route_to_ATIMESD_mS1 :
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
-      let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
-          ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
-          empty {i:address} @ { Collection } in
+      let sorted_ip_list = (empty { key:address, value:()
+        } @ { Collection }).combine
+        ((free_cart_prod.map
+            ((\_b1_ -> 
+              bind _b1_ as {i:free_bucket} in 
+              {i:get_ring_node
+                   {key:free_bucket.fold
+                          ((\acc -> (\_b3_ -> 
+                            bind _b3_ as {key:i, value:val} in acc + (val *
+                            bind case ((dim_bounds.filter
+                            ((\_b1_ -> 
+                              bind _b1_ as {key:key, value:value} in key == i))).peek
+                            ()) of { Some x -> x }
+                            { None -> error () } as {key:__1, value:__2} in 
+                            __2)))) bound_bucket, value:max_val}}))).groupBy
+           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) ()) in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3091,22 +3091,22 @@ declare route_to_ATIMESD_mS2 :
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
-      let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
-          ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
-          empty {i:address} @ { Collection } in
+      let sorted_ip_list = (empty { key:address, value:()
+        } @ { Collection }).combine
+        ((free_cart_prod.map
+            ((\_b1_ -> 
+              bind _b1_ as {i:free_bucket} in 
+              {i:get_ring_node
+                   {key:free_bucket.fold
+                          ((\acc -> (\_b3_ -> 
+                            bind _b3_ as {key:i, value:val} in acc + (val *
+                            bind case ((dim_bounds.filter
+                            ((\_b1_ -> 
+                              bind _b1_ as {key:key, value:value} in key == i))).peek
+                            ()) of { Some x -> x }
+                            { None -> error () } as {key:__1, value:__2} in 
+                            __2)))) bound_bucket, value:max_val}}))).groupBy
+           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) ()) in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3172,22 +3172,22 @@ declare route_to_ATIMESD_mR1 :
               empty {i:collection { key:int, value:int
               } @ { Seq }} @ { Collection }))) empty {i:collection {
           key:int, value:int } @ { Seq }} @ { Seq } in
-      let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
-          ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ())))
-          empty {i:address} @ { Collection } in
+      let sorted_ip_list = (empty { key:address, value:()
+        } @ { Collection }).combine
+        ((free_cart_prod.map
+            ((\_b1_ -> 
+              bind _b1_ as {i:free_bucket} in 
+              {i:get_ring_node
+                   {key:free_bucket.fold
+                          ((\acc -> (\_b3_ -> 
+                            bind _b3_ as {key:i, value:val} in acc + (val *
+                            bind case ((dim_bounds.filter
+                            ((\_b1_ -> 
+                              bind _b1_ as {key:key, value:value} in key == i))).peek
+                            ()) of { Some x -> x }
+                            { None -> error () } as {key:__1, value:__2} in 
+                            __2)))) bound_bucket, value:max_val}}))).groupBy
+           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) ()) in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
@@ -3532,7 +3532,9 @@ declare filter_corrective_list : {
   key:int, value:collection { _r1_:int, _r2_:int, _r3_:int } @ { Seq }
   } @ { Seq } = (\_b1_ -> 
     bind _b1_ as {key:request_vid, value:trig_stmt_list} in 
-    let log_entries = log_read_geq request_vid in
+    let log_entries = (empty {
+      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+      } @ { Seq }).combine (log_read_geq request_vid) in
     ((log_entries.map
         ((\_b1_ -> 
           bind _b1_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 

@@ -7,7 +7,6 @@
 module Language.K3.Interpreter.Utils where
 
 import Control.Applicative
-import Control.Arrow
 import Control.Concurrent.MVar
 import Control.Monad.State
 
@@ -15,27 +14,15 @@ import Data.Function
 import Data.List
 import qualified Data.HashTable.IO as HT 
 
-import Language.K3.Core.Annotation
 import Language.K3.Core.Common
-import Language.K3.Core.Type
-
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
-
 import Language.K3.Runtime.Engine
-
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 $(customLoggingFunctions ["Dispatch", "BindPath"])
-
-{- Misc. helpers-}
--- | Matches polymorphic and monomorphic functions.
-isFunction :: K3 Type -> Bool
-isFunction (tag -> TFunction) = True
-isFunction (tag &&& children -> (TForall _, [t])) = isFunction t
-isFunction _ = False
 
 
 {- Pretty printing -}

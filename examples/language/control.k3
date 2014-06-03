@@ -1,0 +1,121 @@
+declare a  : ind mut int = ind mut 5
+declare a2 : ind mut int = ind mut 10
+declare b  : (mut int, mut bool) = (mut 7, mut false) 
+declare c  : { m : mut int, n : mut bool } = { m : mut 9, n : mut false }
+declare d  : { d_a : mut int, d_b : mut { db_c : mut int, db_d : mut int} }
+           = { d_a : mut 5, d_b : mut { db_c : mut 100, db_d : mut 1000} }
+
+declare f : () -> ind mut int         = \_ -> a
+declare g : () -> (mut int, mut bool) = \_ -> b
+declare h : () -> option int          = \_ -> Some 42
+
+declare assign_in_branch : mut int = 0
+
+declare test_case_valid        : mut option mut int = Some mut 5 
+declare test_case_none         : mut option mut int = None mut
+declare test_nested_case_inner : mut option mut int = Some mut 10
+declare assign_in_case_valid   : mut int = 0
+declare assign_in_case_none    : mut int = 0
+declare case_writeback         : mut option mut int = Some mut 5
+declare dynamic_case_valid     : mut option bool    = None immut
+declare fun_case_valid         : mut option bool    = None immut
+
+declare assign_nested_bind : mut int = 0
+
+trigger t : int = \x -> (
+  // Let-in and if-then-else expressions.
+  (let g = \i -> 2 * i in
+   let y = {a : mut 5, b : mut "foo"} in
+     if g x < y.a then assign_in_branch = 10
+                  else assign_in_branch = 20);
+
+  // Bind-as, including variants with and without write-back.
+  // Indirection
+  (bind a as ind y in (
+    y = x
+  ));
+
+  // Tuple
+  bind b as (u,v) in (
+    u = x;
+    v = true
+  );
+
+  // Record
+  bind c as {m:s,n:t} in (
+    s = x;
+    t = true
+  );
+
+  // Sub-record
+  bind c as {m:q} in (
+    q = 100
+  );
+
+  // Record component assignments are desugared to bind-as expressions.
+  d.d_b.db_d = x;
+
+  // Dynamic bind source
+  bind (if true then a else a2) as ind y in (
+    y = x
+  ); // Leaves a as ind x
+
+  // Function-derived indirection as bind source
+  bind f() as ind z in (
+    z = 200
+  ); // Leaves a as ind 200
+
+  // Function-derived value as bind source  
+  bind g() as (m, n) in (
+    m = 576;
+    n = true
+  ); // Leaves b unchanged
+
+  // Nested bind-as
+  (bind (bind a as ind y in a) as ind z in (
+    z = (bind a as ind u in x + u)
+  )); // Leaves a as ind 200
+  
+  // Stash indirection value for testing.
+  bind a as ind a_binding in assign_nested_bind = a_binding;
+
+  // Case-of, including variants with and without write-back.
+  case test_case_valid of 
+    { Some j -> assign_in_case_valid = j }
+    { None   -> () };
+
+  case test_case_none of
+    { Some j -> () }
+    { None   -> assign_in_case_none = x };
+
+  case case_writeback of
+    { Some j -> j = x }
+    { None   -> case_writeback = Some mut -1 };
+
+  // Dynamic case-of source
+  case (if true then Some mut 1000 else None mut) of
+    { Some j -> dynamic_case_valid = Some true  }
+    { None   -> dynamic_case_valid = Some false };
+  
+  // Function-derived value as case-of source
+  case h () of 
+    { Some j -> fun_case_valid = Some true  }
+    { None   -> fun_case_valid = Some false };
+
+  // Nested case-of
+  // Leaves test_nested_case_inner as Some 110 
+  case 
+    (case test_nested_case_inner of
+       { Some j -> test_nested_case_inner }
+       { None   -> None mut               })
+  of
+    { Some k -> 
+        k = case test_nested_case_inner of
+              { Some l -> l + x }
+              { None   -> x     } }
+    { None -> () }
+
+  )
+
+source s1 : int = value 100
+feed s1 |> t

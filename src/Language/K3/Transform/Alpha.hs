@@ -109,5 +109,5 @@ instance Alpha Expression where
 
     -- | Every other expression.
     alpha e = do
-        children <- mapM alpha (subForest e)
-        return $ e { subForest = children }
+        ch <- mapM alpha (subForest e)
+        return $ e { subForest = ch }

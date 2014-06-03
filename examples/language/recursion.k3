@@ -1,0 +1,42 @@
+// K3 function declarations are cyclically-scoped,
+// thus they support recursive function definitions.
+declare myRecF : int -> int = \x -> (
+    if x == 0
+      then 0
+      else x + myRecF (x - 1)
+  )
+
+// This also enables mutually recursive functions.
+declare myMutRecF : int -> int = \x -> (
+    if x == 0
+      then 0
+      else x + myMutRecG (x - 1)
+  )
+
+declare myMutRecG : int -> int = \x -> (
+    if x == 0
+      then 0
+      else x + myMutRecF (x - 1)
+  )
+
+// Alternatively one can use trigger-based recursion which will
+// involve the scheduler for asynchronous recursion.
+trigger myRecT : int = \x -> (
+    if x == 0
+      then ()
+      else (fromTriggerRec = fromTriggerRec + x;
+            (myRecT, me) <- x - 1)
+  )
+
+declare fromRec        : mut int = 0
+declare fromMutRec     : mut int = 0
+declare fromTriggerRec : mut int = 0
+
+trigger t : () = \_ -> (
+  fromRec    = myRecF 5;        // Answer is 15.
+  fromMutRec = myMutRecF 5;     // Answer is also 15.
+  (myRecT, me) <- 5             // Invoke recursive trigger.
+)
+
+source s1 : () = value ()
+feed s1 |> t
