@@ -72,7 +72,7 @@ data PrintMode
 
 -- | Typechecking options
 data TypecheckOptions
-    = TypecheckOptions
+    = TypecheckOptions {quickTypes :: Bool}
   deriving (Eq, Read, Show)
 
 -- | Analyze Options.
@@ -311,8 +311,14 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 
 -- | Typecheck options
+quickTypesOpt :: Parser Bool
+quickTypesOpt = switch (
+                       long    "quicktypes"
+                    <> value   False
+                    <> help    "Use HM Typesystem"
+                )
 typecheckOptions :: Parser Mode
-typecheckOptions = pure $ Typecheck TypecheckOptions
+typecheckOptions = Typecheck <$> (TypecheckOptions <$> quickTypesOpt)
 
 -- | Analyze options
 analyzeOptions :: Parser Mode

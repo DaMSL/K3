@@ -18,6 +18,7 @@ import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.Effect
+import Language.K3.Analysis.HMTypes.Inference
 
 import Language.K3.Transform.Normalization
 import Language.K3.Transform.Simplification
@@ -57,11 +58,14 @@ run opts = do
     dispatch :: Mode -> K3 Declaration -> IO ()
     dispatch (Compile c) p   = compile c p
     dispatch (Interpret i) p = interpret i p
-    dispatch (Typecheck _) p = case typecheck p of
+    dispatch (Typecheck t) p = case (choose_typechecker t) p of
       Left s  -> putStrLn s
       Right p -> printer PrintAST p
     dispatch (Analyze a) p   = doAnalyze (printMode a) (aoTransform a) p
 
+    choose_typechecker opts = if (quickTypes opts)
+                              then inferProgramTypes
+                              else typecheck
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
       putStrLn str
