@@ -103,6 +103,7 @@ library
         Language.K3.Transform.Normalization,
         Language.K3.Transform.Simplification,
         Language.K3.Transform.Profiling,
+        Language.K3.Transform.RemoveROBinds,
         Language.K3.Analysis.Common,
         Language.K3.Analysis.Conflicts,
         Language.K3.Analysis.Effect,

@@ -1,14 +1,22 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 -- Remove read only binds from the code
 module Language.K3.Transform.RemoveROBinds (
-  addProfiling
+  transform
 ) where
 
 import Control.Monad.Identity
 import Data.Tree
+import qualified Data.Map as Map
+import Data.Map(Map)
+import qualified Data.Set as Set
+import Data.Set(Set)
+import Data.Maybe(isJust, fromMaybe)
+import Control.Arrow(second)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
@@ -18,128 +26,130 @@ import Language.K3.Core.Constructor.Expression
 import qualified Language.K3.Core.Constructor.Type as T
 import qualified Language.K3.Core.Constructor.Declaration as D
 
--- Loop over trigger/function
-modifyExpression :: K3 Expression -> K3 Expression
-modifyExpression p = mapIn1RebuildTree pre ch1F allChF p
-  where 
-    preF acc ch1 (details -> (Bind 
-    ch1F = 
-    allChF = 
+isROBAnno (EAnalysis(ReadOnlyBind _)) = True
+isROBAnno _                                    = False
 
-setOfBinderIds :: Binder -> Set Identifier
-setOfBinderIds (BRecord idNames) = Set.fromList $ map snd idNames
+getROBval (Just (EAnalysis(ReadOnlyBind x))) = x
+getROBval _ = error "Not a ReadOnlyBind annotation"
 
--- Transform the tree based on the read-only annotations
+flipList :: [(a, b)] -> [(b, a)]
+flipList = map (\(a,b) -> (b,a))
+
+-- Entry point for the module
+-- Transform all functions and triggers: 
+transform :: K3 Declaration -> K3 Declaration
+transform ds = runIdentity $ mapTree wrap ds
+  where
+    wrap ch (details -> (DGlobal id t (Just expr@(tag -> ELambda _)), _, annos)) = 
+      return $ Node (DGlobal id t (Just $ transformExpr $ annotateROBinds expr) :@: annos) ch
+    wrap ch (details -> (DTrigger id t expr, _, annos)) =
+      return $ Node (DTrigger id t (transformExpr $ annotateROBinds expr) :@: annos) ch
+    wrap ch (Node x _) = return $ Node x ch
+
+-- Stage 1
+-- Annotate read-only binds in the tree
+annotateROBinds :: K3 Expression -> K3 Expression
+annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty e
+  where
+    -- Accumulate the tags that have a write (assignment) bottom-up
+    -- Remove ids as we encounter binds. 
+    -- Lets, cases and lambdas don't support assign anyway so ignore them
+    accumWrite :: [Set String] -> [K3 Expression] -> K3 Expression -> Identity (Set String, K3 Expression)
+    accumWrite accs ch (details -> (t@(EAssign id), _, annos)) =
+      return (Set.insert id (Set.unions accs), Node (t :@: annos) ch)
+
+    -- unhandled. Just remove/capture a binding
+    accumWrite accs ch (details -> (t@(EBindAs (BIndirection id)), _, annos)) =
+      return (Set.delete id (accs!!1), Node (t :@: annos) ch)
+
+    accumWrite accs ch (details -> (t@(EBindAs binder), _, annos)) = 
+      let ids = Set.fromList $ case binder of
+                                 BRecord idsMap -> map snd idsMap
+                                 BTuple  ids    -> ids
+
+      -- transmit the set of written ids, and annotate with the ones that aren't written to
+          node = Node (t :@: annos @+ (EAnalysis $ ReadOnlyBind $ Set.toList $ Set.difference ids $ accs!!1)) ch
+      in return (Set.difference (accs!!1) ids, node)
+
+    accumWrite accs ch (details -> (t, _, annos)) = return (Set.unions accs, Node (t :@: annos) ch)
+
+
+-- Stage 2: Go over the tree top down to send read-only binds to the statements where they're used.
+-- Stage 3 (simultaneously with 2) transform the variable accesses and the binds themselves bottom-up
+
+                   
+-- The type we send down the tree.
+--                 Variable (record label, record variable name)
+type BindMap = Map String (String, String)
+
+-- Transform the read-only binds to projections
+-- When we send the message down the tree, lets/lambdas can capture both the bind id and the variable
+-- we project from. Both need to be pruned.
 transformExpr :: K3 Expression -> K3 Expression
-transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection
+transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty e
   where
     -- For the first child, we always send the same set we already have, since the first child
     -- of a bind does not get the bind's assignment
     -- Lambda modifies its child's context
-    sendProjection acc _ (tag -> ELambda id) = Map.delete id acc
-    sendProjection acc _ _ = acc
+    sendProjection :: Map String (String, String) -> K3 Expression -> K3 Expression -> Identity BindMap
+    sendProjection acc _ (tag -> ELambda id) = return $ Map.delete id acc
+    sendProjection acc _ _ = return acc
+
+    replicateCh ch = replicate (length ch - 1)
+
+    -- The post-child function requires a tuple, so let's duplicate it
+    removeFromMap ids acc ch =
+      let m = foldr Map.delete acc ids in
+      return (m, replicateCh ch m)
 
     -- Send down a union of the current ro-set and the one found at this node (if any)
-    -- Let, case and bind only capture in the 2nd child's context only
-    ch1SendProjection acc _ (tag -> ELetIn id)  = Map.delete id acc
-    ch1SendProjection acc _ (tag -> ECaseOf id) = Map.delete id acc
+    -- Let, case and bind capture in the 2nd child's context only
+    ch1SendProjection :: Map String (String, String) -> K3 Expression -> K3 Expression -> Identity (BindMap, [BindMap])
+    ch1SendProjection acc _ (details -> (ELetIn id, ch, _))  = removeFromMap [id] acc ch
+    ch1SendProjection acc _ (details -> (ECaseOf id, ch, _)) = removeFromMap [id] acc ch
 
-    -- These binds are unhandled, and can only capture ids
-    ch1SendProjection acc _ (tag -> (EBindAs (BIndirection id))) = Map.delete id acc
-    ch1SendProjection acc _ (tag -> (EBindAs (BTuple ids))) = foldr Map.delete acc ids
+    -- These binds are unhandled for this modification, and can only capture ids
+    ch1SendProjection acc _ (details -> (EBindAs (BIndirection id), ch, _)) = removeFromMap [id] acc ch
+    ch1SendProjection acc _ (details -> (EBindAs (BTuple ids), ch, _)) = removeFromMap ids acc ch
 
-    -- bind captures some ids, and makes others read-only
-    ch1SendProjection acc _ (details -> (EBindAs (BRecord idNames), chs, annos @~ AnalysisAnnotation(ReadOnlyBind(roIds)))) =
-      let bindIds  = Map.fromList $ flipList idNames
-          flipList = map (\(a,b) -> (b,a))
-          acc'  = (acc `Map.difference` bindIds) `Map.union` roIds
-      in (acc', replicate (length chs - 1) acc') -- send to all the other children
+    ch1SendProjection acc ch (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) =
+      let roIds = getROBval $ annos @~ isROBAnno 
+          varId = case ch of
+                    (tag -> EVariable x) -> x
+                    _    -> head roIds -- pull up a fresh variable name
+          -- Create the data structure we want to transmit
+          bindIds  = Map.fromList $ map (second (,varId)) $ flipList idNames
+          roIds'   = Map.fromList $ map (\x -> (x, fromMaybe (error "Missing binds") $ Map.lookup x bindIds)) roIds
+          -- bind captures some ids, and makes others read-only
+          acc'     = (acc `Map.difference` bindIds) `Map.union` roIds'
+      in return (acc', replicateCh chs acc') -- send to all the other children
 
-    ch1SendProjection acc _ _ = acc
+    ch1SendProjection acc _ (Node _ ch) = return (acc, replicateCh ch acc)
 
-    -- Modify variable accesses that match the ids we've sent
-    handleNode acc _  (tag -> EVariable id) | id `Map.member` acc = id `Map.lookup` acc
-    handleNode acc ch (details -> (EBindAs (BRecord idNames), chs, annos @~ AnalysisAnnotation(ReadOnlyBind(roIds)))) =
+    -- Tranform variable accesses -> projections
+    handleNode :: Map String (String, String) -> [K3 Expression] -> K3 Expression -> Identity (K3 Expression)
+    handleNode acc _  (tag -> EVariable id) | id `Map.member` acc = 
+      let (proj, var) = fromMaybe (error "unexpected") $ id `Map.lookup` acc
+      in return $ immut $ project proj $ variable var
 
--- Annotate read-only binds in the tree
-annotateROBinds :: K3 Expression -> K3 Expression
-annotateROBinds e = runIdentity $ foldMapRebuildTree accumWrite Map.empty e
-  where
-    -- Accumulate the tags that have a write (assignment) bottom-up
-    -- Remove ids as we encounter different binding structures
-    accumWrite accs ch e@(tag -> EAssign id) = (Map.insert id E.unit (Map.unions accs), Node e ch)
+    -- We may need a let to replace our bind. 
+    -- If some non-RO bindings remain, we need to keep them as well
+    handleNode acc [ch1, ch2]
+      (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust $ annos @~ isROBAnno = return maybeAddLet
+      where
+        roIds = getROBval $ annos @~ isROBAnno
+        maybeAddLet = case ch1 of
+          (tag -> EVariable x) -> remainingBinds x
+          _                    -> immut $ letIn newId (immut ch1) $ remainingBinds newId
 
-    -- handle the case where we bind a variable
-    accumWrite accs (ch@(tag -> EVariable):_) e@(tag -> EBindAs(BRecord idNames)) = 
-      let idMap = Map.fromList $ map (second . toProjection) $ flipList idNames
-          toProjection projId = E.project projID ch
-          -- transmit the set of written ids, and annotate with the ones that aren't written to
-      in (Map.difference (accs!!1) ids, Node e ch :@: AnalysisAnnotation $ ReadOnlyBind $ Map.difference idMap $ accs!!1)
+        remainingBinds id = 
+          let remain = Map.toList $ Map.difference (Map.fromList $ flipList idNames) $ Map.fromList $ map (\x -> (x,"")) roIds
+          in if null remain then ch2
+             else Node (EBindAs (BRecord remain) :@: annos) [variable id, ch2]
 
-    -- handle the case where we bind an expression -- we now need to use let
+        -- A known fresh id
+        newId = head roIds
 
-    accumWrite accs ch e = (Map.unions accs, Node e ch)
-
-
-
--- Get a a list of triggers and global functions
-declMap :: K3 Declaration -> [String]
-declMap ds = runIdentity $ foldTree add [] ds
-  where
-    add :: [String] -> K3 Declaration -> Identity [String]
-    add acc (tag -> DGlobal id _ (Just e)) | isLambda e = return $ id:acc
-    add acc (tag -> DTrigger id _ _) = return $ id:acc
-    add acc _ = return $ acc
-
-isLambda :: K3 Expression -> Bool
-isLambda (tag -> ELambda _) = True
-isLambda _                  = False
-
--- Wrap declarations with time expressions before and after
-wrapDecls :: K3 Declaration -> K3 Declaration
-wrapDecls ds = runIdentity $ mapTree wrap ds
-  where
-    wrap ch (details -> (DGlobal id t (Just expr), _, annos)) | isLambda expr = 
-      return $ Node (DGlobal id t (Just $ wrapCode id expr) :@: annos) ch
-    wrap ch (details -> (DTrigger id t expr, _, annos)) =
-      return $ Node (DTrigger id t (wrapCode id expr) :@: annos) ch
-    wrap ch (Node x _) = return $ Node x ch
-
--- Wrap a specific expression before and after
-wrapCode :: String -> K3 Expression -> K3 Expression
-wrapCode id expr =
-  let tempVar = "__timeVar"
-      gTimeVar = globalId id  -- global var for this declaration
-  in
-  letIn tempVar (immut $ binop OApp (variable "now") $ immut unit) $
-    block 
-      [expr,
-      bindAs
-        (immut $ variable gTimeVar)
-        (BRecord [("time", "t"), ("count", "c")]) $
-          block
-            [assign "t" $
-              binop OApp
-                (binop OApp (variable "add_time") 
-                  (variable "t")) $
-                binop OApp
-                  (binop OApp (variable "sub_time")
-                    (binop OApp (variable "now") $ immut unit)) $
-                  (variable tempVar),
-              -- Increment the counter
-              assign "c" $
-                binop OAdd
-                  (variable "c") $
-                  immut $ constant $ CInt 1]]
-
--- Transform code to have profiling code bits added 
-addProfiling :: K3 Declaration -> K3 Declaration
-addProfiling p = appendGlobals $ wrapDecls p
-  where
-    appendGlobals decs@(details -> (DRole id, ds, annos)) = 
-      -- Get a list of declarations, and add the variables
-      let vars = map globalVar $ declMap decs
-      in Node (DRole id :@: annos) (vars++ds)
-
-    appendGlobals x = error $ "Expected role but found "++show x
+    handleNode acc ch (Node x _) = return $ Node x ch
+              
 
