@@ -14,6 +14,7 @@ import qualified Data.Set as Set
 import Data.Set(Set)
 import Data.Maybe(isJust, fromMaybe)
 import Control.Arrow(second)
+import Control.Monad.State
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
@@ -86,12 +87,14 @@ type BindMap = Map String (String, String)
 -- When we send the message down the tree, lets/lambdas can capture both the bind id and the variable
 -- we project from. Both need to be pruned.
 transformExpr :: K3 Expression -> K3 Expression
-transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty e
+transformExpr e = evalState computation 1
   where
+    computation = mapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty e
+
     -- For the first child, we always send the same set we already have, since the first child
     -- of a bind does not get the bind's assignment
     -- Lambda modifies its child's context
-    sendProjection :: Map String (String, String) -> K3 Expression -> K3 Expression -> Identity BindMap
+    sendProjection :: Monad m => BindMap -> K3 Expression -> K3 Expression -> m BindMap
     sendProjection acc _ (tag -> ELambda id) = return $ Map.delete id acc
     sendProjection acc _ _ = return acc
 
@@ -104,7 +107,7 @@ transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection ch1SendProjecti
 
     -- Send down a union of the current ro-set and the one found at this node (if any)
     -- Let, case and bind capture in the 2nd child's context only
-    ch1SendProjection :: Map String (String, String) -> K3 Expression -> K3 Expression -> Identity (BindMap, [BindMap])
+    ch1SendProjection :: BindMap -> K3 Expression -> K3 Expression -> State Int (BindMap, [BindMap])
     ch1SendProjection acc _ (details -> (ELetIn id, ch, _))  = removeFromMap [id] acc ch
     ch1SendProjection acc _ (details -> (ECaseOf id, ch, _)) = removeFromMap [id] acc ch
 
@@ -112,22 +115,22 @@ transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection ch1SendProjecti
     ch1SendProjection acc _ (details -> (EBindAs (BIndirection id), ch, _)) = removeFromMap [id] acc ch
     ch1SendProjection acc _ (details -> (EBindAs (BTuple ids), ch, _)) = removeFromMap ids acc ch
 
-    ch1SendProjection acc ch (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) =
+    ch1SendProjection acc ch (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
+      num <- get
+      put $ num + 1
       let roIds = getROBval $ annos @~ isROBAnno 
-          varId = case ch of
-                    (tag -> EVariable x) -> x
-                    _    -> head roIds -- pull up a fresh variable name
+          varId = "_rovar_"++show num  -- fresh variable name
           -- Create the data structure we want to transmit
           bindIds  = Map.fromList $ map (second (,varId)) $ flipList idNames
           roIds'   = Map.fromList $ map (\x -> (x, fromMaybe (error "Missing binds") $ Map.lookup x bindIds)) roIds
           -- bind captures some ids, and makes others read-only
           acc'     = (acc `Map.difference` bindIds) `Map.union` roIds'
-      in return (acc', replicateCh chs acc') -- send to all the other children
+      return (acc', replicateCh chs acc') -- send to all the other children
 
     ch1SendProjection acc _ (Node _ ch) = return (acc, replicateCh ch acc)
 
     -- Tranform variable accesses -> projections
-    handleNode :: Map String (String, String) -> [K3 Expression] -> K3 Expression -> Identity (K3 Expression)
+    handleNode :: Monad m => BindMap -> [K3 Expression] -> K3 Expression -> m (K3 Expression)
     handleNode acc _  (tag -> EVariable id) | id `Map.member` acc = 
       let (proj, var) = fromMaybe (error "unexpected") $ id `Map.lookup` acc
       in return $ immut $ project proj $ variable var
@@ -135,20 +138,17 @@ transformExpr e = runIdentity $ mapIn1RebuildTree sendProjection ch1SendProjecti
     -- We may need a let to replace our bind. 
     -- If some non-RO bindings remain, we need to keep them as well
     handleNode acc [ch1, ch2]
-      (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust $ annos @~ isROBAnno = return maybeAddLet
+      (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust $ annos @~ isROBAnno = return addLet
       where
         roIds = getROBval $ annos @~ isROBAnno
-        maybeAddLet = case ch1 of
-          (tag -> EVariable x) -> remainingBinds x
-          _                    -> immut $ letIn newId (immut ch1) $ remainingBinds newId
+        -- Lookup our saved newId
+        newId = maybe (error "not found") snd $ Map.lookup (head roIds) acc
+        addLet = immut $ letIn newId (immut ch1) $ remainingBinds newId
 
         remainingBinds id = 
           let remain = Map.toList $ Map.difference (Map.fromList $ flipList idNames) $ Map.fromList $ map (\x -> (x,"")) roIds
           in if null remain then ch2
              else Node (EBindAs (BRecord remain) :@: annos) [variable id, ch2]
-
-        -- A known fresh id
-        newId = head roIds
 
     handleNode acc ch (Node x _) = return $ Node x ch
               
