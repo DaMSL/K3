@@ -355,7 +355,7 @@ eliminateDeadCode expr = mapTree pruneExpr expr
           in return $ Node (EBindAs nBinder :@: annotations n) ch
         _ -> rebuildNode n ch
 
-    pruneExpr ch n@(tag -> ECaseOf j) = rebuildNode n ch
+    pruneExpr ch n@(tag -> ECaseOf _) = rebuildNode n ch
 
     pruneExpr ch n@(tag -> EOperate OSeq) =
         case (head ch) @~ ePure of

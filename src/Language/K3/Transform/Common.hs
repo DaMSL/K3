@@ -5,7 +5,6 @@
 -- Common utilities in writing program transformations.
 module Language.K3.Transform.Common where
 
-import Control.Arrow
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.Tree

@@ -5,14 +5,13 @@ module Language.K3.Transform.Profiling (
   addProfiling
 ) where
 
+import Prelude hiding (id, exp)
 import Control.Monad.Identity
 import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-
-import Language.K3.Transform.Common
 
 import Language.K3.Core.Constructor.Expression
 import qualified Language.K3.Core.Constructor.Type as T
@@ -41,6 +40,7 @@ globalId :: String -> String
 globalId id = "_time_"++id
 
 -- Code to create a variable initialized to a timestamp of 0
+globalVar :: String -> K3 Declaration
 globalVar id = D.global (globalId id) typ (Just exp)
   where
     typ = T.mut $ T.record [(sec, T.mut T.int), (nsec, T.mut T.int)]

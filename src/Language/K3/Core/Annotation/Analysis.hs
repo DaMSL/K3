@@ -4,8 +4,6 @@
 
 module Language.K3.Core.Annotation.Analysis where
 
-import Data.Map(Map)
-
 import Language.K3.Core.Common
 
 -- TODO: move ERead, EWrite, EConflict here.
@@ -19,4 +17,6 @@ data AnalysisAnnotation
   
   | ReadOnlyBind [Identifier]
     -- ^ Annotation to mark the ids that are never written to in a bind
+    --   False = used by variables which cannot access the unbound variable
+    --          due to name conflicts
   deriving (Eq, Read, Show)

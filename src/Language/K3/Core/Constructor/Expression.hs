@@ -42,7 +42,10 @@ mutable b n =
   n @+ (if b then EMutable else EImmutable)
 
 -- | Shortcuts to the above
+mut :: K3 Expression -> K3 Expression
 mut = mutable True
+
+immut :: K3 Expression -> K3 Expression
 immut = mutable False
 
 -- | Create a constant expression.
