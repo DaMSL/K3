@@ -1,11 +1,12 @@
 -- | Primary Driver for the K3 Ecosystem.
 
 import Control.Monad
-import Control.Arrow ((&&&), first)
+import Control.Arrow (first)
 import Data.Char
 import Data.List(foldl')
 
-import Options.Applicative
+import qualified Options.Applicative as Options
+import Options.Applicative((<>), (<*>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -20,9 +21,10 @@ import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
 
-import Language.K3.Transform.Normalization
-import Language.K3.Transform.Simplification
-import Language.K3.Transform.Profiling
+import qualified Language.K3.Transform.Normalization as Normalization
+import qualified Language.K3.Transform.Simplification as Simplification
+import qualified Language.K3.Transform.Profiling as Profiling
+import qualified Language.K3.Transform.RemoveROBinds as RemoveROBinds
 import Language.K3.Transform.Common(cleanGeneration)
 
 import Language.K3.Driver.Batch
@@ -32,9 +34,6 @@ import Language.K3.Driver.Typecheck
 
 import qualified Language.K3.Compiler.Haskell as HaskellC
 import qualified Language.K3.Compiler.CPP     as CPPC
-import qualified Language.K3.Core.Utils       as CoreUtils
-
-import qualified Data.List as L
 
 -- | Mode Dispatch.
 run :: Options -> IO ()
@@ -50,7 +49,7 @@ run opts = do
   parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Right prog -> dispatch (mode opts) prog
-    Left error -> parseError error
+    Left err -> parseError err
   where
     -- perform all transformations
     transform ts prog      = foldl' (flip analyzer) (prog, "") ts
@@ -60,7 +59,7 @@ run opts = do
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case (choose_typechecker t) p of
       Left s  -> putStrLn s
-      Right p -> printer PrintAST p
+      Right p' -> printer PrintAST p'
     dispatch (Analyze a) p   = doAnalyze (printMode a) (aoTransform a) p
 
     choose_typechecker opts = if (quickTypes opts)
@@ -97,10 +96,12 @@ run opts = do
     analyzer ProxyPaths x          = first labelBindAliases x
     analyzer AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
     analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
-    analyzer EffectNormalization x = first normalizeProgram x
-    analyzer FoldConstants x       = wrapEither foldProgramConstants x
+    analyzer EffectNormalization x = first Normalization.normalizeProgram x
+    analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
     analyzer Effects x             = wrapEither analyzeEffects . wrapEither typecheck $ x
-    analyzer Profiling x           = first (cleanGeneration "profiling" . addProfiling) x
+    analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
+    analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
+    analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
 
     -- If we produce a proper program, put it first. Otherwise put the original program first
     -- and add to the string
@@ -114,8 +115,8 @@ run opts = do
 
 -- | Top-Level.
 main :: IO ()
-main = execParser options >>= run
+main = Options.execParser options >>= run
   where
-    options = info (helper <*> programOptions) $ fullDesc
-        <> progDesc "The K3 Compiler."
-        <> header "The K3 Compiler."
+    options = Options.info (Options.helper <*> programOptions) $ Options.fullDesc
+        <> Options.progDesc "The K3 Compiler."
+        <> Options.header "The K3 Compiler."

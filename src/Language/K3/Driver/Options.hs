@@ -95,6 +95,7 @@ data TransformMode
     | FoldConstants
     | DeadCodeElimination
     | Profiling
+    | ReadOnlyBinds
   deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
@@ -347,6 +348,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> deadCodeElimOpt
               <|> simplifyOpt
               <|> wrap <$> profilingOpt
+              <|> wrap <$> readOnlyBindOpts 
   where
     wrap x = [x]
 
@@ -402,7 +404,12 @@ simplifyOpt = flag' [EffectNormalization, FoldConstants, DeadCodeElimination]
 profilingOpt :: Parser TransformMode
 profilingOpt = flag' Profiling
                 (   long "fprofile"
-                 <> (help $ "Print a program after adding profiling points"))
+                 <> (help $ "Add profiling points"))
+
+readOnlyBindOpts :: Parser TransformMode
+readOnlyBindOpts = flag' ReadOnlyBinds
+                (   long "frobinds"
+                 <> (help $ "Remove read-only binds"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
