@@ -107,18 +107,31 @@ namespace K3 {
     qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
   }
 
+  template <class ... Ts> void refresh(string s, tuple<Ts...>& t) {
+    list<string> v;
+    shallow<string::iterator> _shallow;
+    qi::rule<string::iterator, qi::space_type> tuple_rule = _shallow[([&v] (string s_) { v.push_back(s_); })];
+    qi::phrase_parse(begin(s), end(s), '(' >> (tuple_rule % ',') >> ')', qi::space);
+    refresh_many<tuple<Ts...>, 0, sizeof...(Ts)>()(v, t);
+  }
 
-    qi::rule<iterator, string()> parse_string;
-    qi::rule<iterator, string(), qi::space_type> parse_indirection;
-    qi::rule<iterator, string(), qi::space_type> parse_option;
-    qi::rule<iterator, string(), qi::space_type> parse_tuple;
-    qi::rule<iterator, string(), qi::space_type> parse_record;
+  template <class T, size_t i> struct refresh_many<T, i, i> {
+    void operator()(list<string>, T&) {
+      return;
+    }
+  };
 
-    qi::rule<iterator, string()> parse_address;
-    qi::rule<iterator, string()> parse_host;
-    qi::rule<iterator, string()> parse_port;
+  template <class T, size_t i, size_t n> struct refresh_many {
+    void operator()(list<string> v, T& t) {
+      if (v.empty()) {
+        return;
+      }
 
-    qi::rule<iterator, string(), qi::space_type> parse_collection;
+      refresh<typename std::tuple_element<i, T>::type>(v.front(), std::get<i>(t));
+
+      v.pop_front();
+      refresh_many<T, i + 1, n>()(v, t);
+    }
   };
 }
 
