@@ -61,18 +61,17 @@ namespace K3 {
    public:
     literal(): literal::base_type(start) {
 
-      start = binding % ';';
-      binding = key >> '=' >> value;
+      start = binding % ',';
+      binding = key >> ':' >> value;
 
       key = qi::char_("a-zA-Z_") >> *qi::char_("a-zA-Z0-9_");
-      value = shallow<iterator>();
     }
 
    private:
     qi::rule<iterator, map<string, string>(), qi::space_type> start;
     qi::rule<iterator, pair<string, string>(), qi::space_type> binding;
     qi::rule<iterator, string(), qi::space_type> key;
-    qi::rule<iterator, string(), qi::space_type> value;
+    shallow<iterator> value;
   };
 
   // Built-in type refresh specializations.
