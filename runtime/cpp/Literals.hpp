@@ -74,7 +74,39 @@ namespace K3 {
     qi::rule<iterator, string(), qi::space_type> value;
   };
 
-    qi::rule<iterator, char()> escape;
+  // Built-in type refresh overloads.
+
+  template <class T> void refresh(string, T&);
+  template <class T, size_t i, size_t n> struct refresh_many;
+
+  template <> void refresh<bool>(string s, bool& b) {
+    qi::parse(begin(s), end(s), qi::bool_[([&b] (bool b_) { b = b_; })]);
+  }
+
+  template <> void refresh<int>(string s, int& i) {
+    qi::parse(begin(s), end(s), qi::int_[([&i] (int i_) { i = i_; })]);
+  }
+
+  template <> void refresh<double>(string s, double& d) {
+    qi::parse(begin(s), end(s), qi::double_[([&d] (double d_) { d = d_; })]);
+  }
+
+  template <> void refresh<string>(string s, string& t) {
+    qi::parse(
+      begin(s), end(s),
+      ('"' >> *('\\' >> qi::char_ | qi::char_) >> '"')
+        [([&t] (std::vector<char> t_) { t = string(begin(t_), end(t_)); })]
+    );
+  }
+
+  template <class T> void refresh(string s, shared_ptr<T> p) {
+    shallow<string::iterator> _shallow;
+    qi::rule<string::iterator, qi::space_type> raw_rule = _shallow[([&p] (string s_) { refresh(s_, *p); })];
+    qi::rule<string::iterator, qi::space_type> nullptr_rule = qi::lit("none")[([&p] () { p = nullptr; })];
+    qi::rule<string::iterator, qi::space_type> someptr_rule = (qi::lit("some") | qi::lit("ind")) >> raw_rule;
+    qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
+  }
+
 
     qi::rule<iterator, string()> parse_string;
     qi::rule<iterator, string(), qi::space_type> parse_indirection;
