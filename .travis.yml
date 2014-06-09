@@ -14,6 +14,4 @@ script:
   - cabal build
 notifications:
   email:
-    - ybarnoy1@jhu.edu
-    - shyam@cs.jhu.edu
-    - yanif@cs.jhu.edu
+    - k3-developers@googlegroups.com
