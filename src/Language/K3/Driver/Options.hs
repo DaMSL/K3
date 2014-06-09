@@ -315,7 +315,6 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 quickTypesOpt :: Parser Bool
 quickTypesOpt = switch (
                        long    "quicktypes"
-                    <> value   False
                     <> help    "Use HM Typesystem"
                 )
 typecheckOptions :: Parser Mode
