@@ -1,8 +1,12 @@
 #ifndef K3_RUNTIME_LITERALS_H
 #define K3_RUNTIME_LITERALS_H
 
+#include <list>
 #include <map>
+#include <memory>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "boost/fusion/include/std_pair.hpp"
 #include "boost/spirit/include/qi.hpp"
@@ -10,43 +14,57 @@
 namespace K3 {
   namespace qi = boost::spirit::qi;
 
+  using std::list;
   using std::map;
   using std::pair;
+  using std::shared_ptr;
   using std::string;
+  using std::tuple;
+  using std::vector;
+
+  template <class iterator>
+  class shallow: public qi::grammar<iterator, qi::space_type, string()> {
+   public:
+    shallow(): shallow::base_type(start) {
+      start = qi::raw[indirection | option | angles | braces | parens | quotes | other];
+
+      indirection = qi::lit("ind") >> start;
+      option = qi::lit("none") | qi::lit("some") >> start;
+
+      angles = '<' >> *(qi::char_ - '>') >> '>';
+      braces = '{' >> *(qi::char_ - '}') >> '}';
+      parens = '(' >> *(qi::char_ - ')') >> ')';
+      quotes = '"' >> *(escape - '"') >> '"';
+      other = *(qi::char_ - ',');
+
+      escape = '\\' >> qi::char_ | qi::char_;
+    }
+
+   private:
+    qi::rule<iterator, qi::space_type, string()> start;
+
+    qi::rule<iterator, qi::space_type> indirection;
+    qi::rule<iterator, qi::space_type> option;
+
+    qi::rule<iterator, qi::space_type> angles;
+    qi::rule<iterator, qi::space_type> braces;
+    qi::rule<iterator, qi::space_type> parens;
+    qi::rule<iterator, qi::space_type> quotes;
+    qi::rule<iterator, qi::space_type> other;
+
+    qi::rule<iterator, qi::space_type> escape;
+  };
 
   template <class iterator>
   class literal: public qi::grammar<iterator, map<string, string>(), qi::space_type> {
    public:
     literal(): literal::base_type(start) {
+
       start = binding % ';';
       binding = key >> '=' >> value;
 
       key = qi::char_("a-zA-Z_") >> *qi::char_("a-zA-Z0-9_");
-      value
-        = qi::raw[qi::bool_]
-        | qi::raw[qi::double_]
-        | qi::raw[parse_string]
-        | qi::raw[parse_indirection]
-        | qi::raw[parse_option]
-        | qi::raw[parse_tuple]
-        | qi::raw[parse_record]
-        | qi::raw[parse_address]
-        | qi::raw[parse_collection]
-        | key;
-
-      escape = (qi::lit('\\') >> qi::char_) | qi::char_;
-
-      parse_string = qi::lit('"') >> *(escape - '"') >> qi::lit('"');
-      parse_indirection = qi::string("ind") >> value;
-      parse_option = qi::string("none") | (qi::string("some") >> value);
-      parse_tuple = qi::lit('(') >> qi::raw[value % ','] >> qi::lit(')');
-      parse_record = qi::lit('{') >> qi::raw[(key >> ':' >> value) % ','] >> qi::lit('}');
-
-      parse_address = qi::raw['<' >> parse_host >> ':' >> parse_port >> '>'];
-      parse_host = qi::raw[qi::int_ >> '.' >> qi::int_ >> '.' >> qi::int_ >> '.' >> qi::int_];
-      parse_port = qi::raw[qi::int_];
-
-      parse_collection = qi::raw[qi::string("{|") >> (value % ',') >> qi::string("|}")];
+      value = shallow<iterator>();
     }
 
    private:
@@ -54,6 +72,7 @@ namespace K3 {
     qi::rule<iterator, pair<string, string>(), qi::space_type> binding;
     qi::rule<iterator, string(), qi::space_type> key;
     qi::rule<iterator, string(), qi::space_type> value;
+  };
 
     qi::rule<iterator, char()> escape;
 
