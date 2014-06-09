@@ -3,8 +3,11 @@ ghc: 7.6
 script:
   - mkdir ../K3-Core
   - git clone https://github.com/DaMSL/K3-Core.git ../K3-Core
-  - cabal sandbox init
-  - cabal sandbox add-source ../K3-Core
+  - cd ../K3-Core
+  - cabal configure
+  - cabal build
+  - cabal install --disable-documentation
+  - cd ../K3-Driver
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
