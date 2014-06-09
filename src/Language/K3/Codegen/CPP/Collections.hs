@@ -117,7 +117,7 @@ record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
     sD <- serializeDefn
     let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
-    refreshDefn <- refreshOverload
+    refreshDefn <- refreshSpecialization
     return $ vsep [structDefn, refreshDefn]
   where
     oneFieldParser :: Identifier -> CPPGenM CPPGenR
@@ -152,14 +152,14 @@ record rName idts = do
       = return $ genCCall (text "qi::phrase_parse") Nothing
                  [text "begin(s)", text "end(s)", text "_record", text "qi::space"] <> semi
 
-    refreshOverload :: CPPGenM CPPGenR
-    refreshOverload = do
+    refreshSpecialization :: CPPGenM CPPGenR
+    refreshSpecialization = do
         let ids = fst $ unzip idts
         fps <- vsep <$> mapM oneFieldParser ids
         afp <- anyFieldParser ids
         lfp <- allFieldParser
         piv <- parserInvocation
-        return $ genCFunction Nothing (text "void") (text "refresh")
+        return $ genCFunction (Just []) (text "void") (text "refresh" <> angles (text rName))
                               [text "string s", text rName <> text "&" <+> text "_record"]
                               (vsep [text "shallow _shallow" <> semi, fps, afp, lfp, piv])
 
