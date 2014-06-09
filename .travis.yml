@@ -7,9 +7,11 @@ install:
   - mkdir ../K3-Driver
   - cd ../K3-Driver
   - git clone https://github.com/DaMSL/K3-Driver.git .
-  - cabal sandbox init
-  - cabal sandbox add-source ../K3-Core
 script:
+  - cabal install --only-dependencies --disable-documentation
+  - cabal configure --disable-documentation
+  - cabal build
+  - cabal install
   - cd ../K3-Driver
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
