@@ -74,7 +74,7 @@ namespace K3 {
     qi::rule<iterator, string(), qi::space_type> value;
   };
 
-  // Built-in type refresh overloads.
+  // Built-in type refresh specializations.
 
   template <class T> void refresh(string, T&);
   template <class T, size_t i, size_t n> struct refresh_many;
