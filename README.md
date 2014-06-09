@@ -1,5 +1,6 @@
 K3/driver
 =========
+https://travis-ci.org/DaMSL/K3-Driver.svg?branch=master
 
 This project contains the driver executable for the K3 programming language.
 
