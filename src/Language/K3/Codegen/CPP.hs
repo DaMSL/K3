@@ -123,9 +123,6 @@ generateDispatchPopulation = do
 genDispatchName :: Identifier -> Identifier
 genDispatchName i = i ++ "_dispatch"
 
-reserved :: [Identifier]
-reserved = ["openBuiltin"]
-
 -- Top-level program generation.
 --  - Process the __main role.
 --  - Generate include directives.
