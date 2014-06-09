@@ -140,6 +140,13 @@ namespace K3 {
       refresh_many<T, i + 1, n>()(v, t);
     }
   };
+
+  map<string, string> parse_bindings(string s) {
+    map<string, string> bindings;
+    literal<string::iterator> parser;
+    qi::phrase_parse(begin(s), end(s), parser, qi::space, bindings);
+    return bindings;
+  }
 }
 
 #endif
