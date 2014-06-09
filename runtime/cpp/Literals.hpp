@@ -15,6 +15,7 @@ namespace K3 {
   namespace qi = boost::spirit::qi;
 
   using std::list;
+  using std::make_shared;
   using std::map;
   using std::pair;
   using std::shared_ptr;
@@ -100,9 +101,15 @@ namespace K3 {
     }
   }
 
-  template <class T> void refresh(string s, shared_ptr<T> p) {
+  template <class T> void refresh(string s, shared_ptr<T>& p) {
     shallow<string::iterator> _shallow;
-    qi::rule<string::iterator, qi::space_type> raw_rule = _shallow[([&p] (string s_) { refresh(s_, *p); })];
+    qi::rule<string::iterator, qi::space_type> raw_rule = _shallow[([&p] (string s_) {
+      if (!p) {
+        p = make_shared<T>();
+      }
+
+      refresh(s_, *p);
+    })];
     qi::rule<string::iterator, qi::space_type> nullptr_rule = qi::lit("none")[([&p] () { p = nullptr; })];
     qi::rule<string::iterator, qi::space_type> someptr_rule = (qi::lit("some") | qi::lit("ind")) >> raw_rule;
     qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
