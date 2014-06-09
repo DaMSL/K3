@@ -92,11 +92,12 @@ namespace K3 {
   }
 
   template <> void refresh<string>(string s, string& t) {
-    qi::parse(
-      begin(s), end(s),
-      ('"' >> *('\\' >> qi::char_ | qi::char_) >> '"')
-        [([&t] (std::vector<char> t_) { t = string(begin(t_), end(t_)); })]
-    );
+    string t_;
+    bool result = qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), t_);
+
+    if (result) {
+      t = t_;
+    }
   }
 
   template <class T> void refresh(string s, shared_ptr<T> p) {
