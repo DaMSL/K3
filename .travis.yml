@@ -12,3 +12,8 @@ script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
+notifications:
+  email:
+    - ybarnoy1@jhu.edu
+    - shyam@cs.jhu.edu
+    - yanif@cs.jhu.edu
