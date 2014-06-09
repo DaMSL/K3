@@ -1,6 +1,7 @@
 language: haskell
 ghc: 7.6
 install:
+  - cabal install cabal-install
   - mkdir ../K3-Driver
   - git clone https://github.com/DaMSL/K3-Driver.git ../K3-Driver
   - cabal install --only-dependencies --disable-documentation
