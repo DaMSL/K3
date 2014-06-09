@@ -17,6 +17,7 @@ library
         src
 
     build-depends:
+        attoparsec < 0.12,
         base,
         bytestring,
         containers,
