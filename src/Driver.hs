@@ -57,12 +57,12 @@ run opts = do
     dispatch :: Mode -> K3 Declaration -> IO ()
     dispatch (Compile c) p   = compile c p
     dispatch (Interpret i) p = interpret i p
-    dispatch (Typecheck t) p = case (choose_typechecker t) p of
-      Left s  -> putStrLn s
+    dispatch (Typecheck t) p = case choose_typechecker t p of
+      Left s   -> putStrLn s
       Right p' -> printer PrintAST p'
     dispatch (Analyze a) p   = doAnalyze (printMode a) (aoTransform a) p
 
-    choose_typechecker opts = if (quickTypes opts)
+    choose_typechecker opts' = if quickTypes opts'
                               then inferProgramTypes
                               else typecheck
     compile cOpts prog = do

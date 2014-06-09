@@ -65,5 +65,3 @@ runBatch _ iOpts prog =
 
     -- printError returns the provided pStatus
     printError validF pStatus = either (\err -> (putStrLn $ message err) >> return pStatus) (\arg -> validF arg >> return pStatus) pStatus
-
-runBatch _ _ _ = error "Invalid batch processing mode"
