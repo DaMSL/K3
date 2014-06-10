@@ -141,13 +141,11 @@ namespace K3 {
   }
 
   template <class T, size_t i> struct refresh_many<T, i, i> {
-    void operator()(list<string>, T&) {
-      return;
-    }
+    void operator()(list<string>&, T&) {}
   };
 
   template <class T, size_t i, size_t n> struct refresh_many {
-    void operator()(list<string> v, T& t) {
+    void operator()(list<string>& v, T& t) {
       if (v.empty()) {
         return;
       }
