@@ -32,13 +32,13 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-
-import qualified Language.K3.Core.Constructor.Type as T
+import Language.K3.Core.Type
 
 type ImperativeE = ()
 
 data ImperativeS = ImperativeS {
         globals :: [Identifier],
+        refreshables :: [Identifier],
         mutables :: [Identifier]
     }
 
@@ -48,12 +48,12 @@ runImperativeM :: ImperativeM a -> ImperativeS -> (Either ImperativeE a, Imperat
 runImperativeM m s = flip runState s $ runEitherT m
 
 defaultImperativeS :: ImperativeS
-defaultImperativeS = ImperativeS { globals = [], mutables = [] }
+defaultImperativeS = ImperativeS { globals = [], refreshables = [], mutables = [] }
 
 withMutable :: Identifier -> ImperativeM a -> ImperativeM a
 withMutable i m = do
     oldS <- get
-    put $ oldS { mutables = (i:mutables oldS) }
+    put $ oldS { mutables = i : mutables oldS }
     result <- m
     newS <- get
     case mutables newS of
@@ -64,13 +64,20 @@ withMutable i m = do
 addGlobal :: Identifier -> ImperativeM ()
 addGlobal i = modify $ \s -> s { globals = i : globals s }
 
+addRefreshable :: Identifier -> ImperativeM ()
+addRefreshable i = modify $ \s -> s { refreshables  = i : refreshables s }
+
 isCachedMutable :: Identifier -> ImperativeM Bool
 isCachedMutable i = elem i . mutables <$> get
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
-declaration (Node t@(DGlobal i _ Nothing :@: _) cs) = addGlobal i >> Node t <$> mapM declaration cs
+declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
+    addGlobal i
+    when (tag y `notElem` [TFunction, TSource]) $ addRefreshable i
+    Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i
+    when (tag t `notElem` [TFunction, TSource]) $ addRefreshable i
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
