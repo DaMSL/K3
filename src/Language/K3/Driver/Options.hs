@@ -34,7 +34,6 @@ data Options = Options {
 data Mode
     = Compile   CompileOptions
     | Interpret InterpretOptions
-    | Print     PrintOptions
     | Typecheck TypecheckOptions
     | Analyze   AnalyzeOptions
   deriving (Eq, Read, Show)
@@ -47,6 +46,7 @@ data CompileOptions = CompileOptions
                       , buildDir     :: Maybe FilePath
                       , ccCmd        :: CPPCompiler
                       , cppOptions   :: String
+                      , coTransform  :: TransformOptions
                       }
   deriving (Eq, Read, Show)
 
@@ -59,13 +59,10 @@ data InterpretOptions
             , asExpr      :: Bool
             , isPar       :: Bool
             , printConfig :: PrintConfig
-            , noConsole   :: Bool }
+            , noConsole   :: Bool
+            , ioTransform :: TransformOptions
+            }
     | Interactive
-  deriving (Eq, Read, Show)
-
--- | Pretty-printing options.
-data PrintOptions
-    = PrintOptions { printMode  :: PrintMode }
   deriving (Eq, Read, Show)
 
 data PrintMode
@@ -75,16 +72,18 @@ data PrintMode
 
 -- | Typechecking options
 data TypecheckOptions
-    = TypecheckOptions
+    = TypecheckOptions {quickTypes :: Bool}
   deriving (Eq, Read, Show)
 
 -- | Analyze Options.
 data AnalyzeOptions
-    = AnalyzeOptions { analyzeMode       :: AnalyzeMode
-                     , analyzeOutputMode :: PrintMode   }
+    = AnalyzeOptions { aoTransform :: TransformOptions
+                     , printMode   :: PrintMode   }
   deriving (Eq, Read, Show)
 
-data AnalyzeMode
+type TransformOptions = [TransformMode]
+
+data TransformMode
     = Conflicts
     | Tasks
     | ProgramTasks
@@ -94,8 +93,9 @@ data AnalyzeMode
     | Effects
     | EffectNormalization
     | FoldConstants
-    | Simplify
+    | DeadCodeElimination
     | Profiling
+    | ReadOnlyBinds
   deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
@@ -124,16 +124,17 @@ modeOptions :: Parser Mode
 modeOptions = subparser (
          command "compile"   (info compileOptions   $ progDesc compileDesc)
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
-      <> command "print"     (info printOptions     $ progDesc printDesc)
       <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
       <> command "analyze"   (info analyzeOptions   $ progDesc analyzeDesc)
     )
   where compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
-        printDesc     = "Print a K3 program"
         typeDesc      = "Typecheck a K3 program"
         analyzeDesc   = "Analyze a K3 program"
 
+-- | Transformation options
+transformOptions :: Parser TransformOptions
+transformOptions = concat <$> many transformMode 
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -144,7 +145,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> buildDirOpt
                             <*> ccCmdOpt
                             <*> cppOpt
-  -- where mkCompile l n o b c incs libs = Compile $ CompileOptions l n o b c incs libs
+                            <*> transformOptions
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -203,7 +204,7 @@ sourceFlag :: Parser CPPCompiler
 sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
 
 cppOpt :: Parser String
-cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS"
+cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value ""
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
@@ -254,6 +255,7 @@ batchOptions = flag' Batch (
                                <*> parOpt
                                <*> printConfigOpt
                                <*> consoleOpt
+                               <*> transformOptions
 
 -- | Expression-Level flag.
 elvlOpt :: Parser Bool
@@ -309,10 +311,19 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 
 
--- | Printing options
-printOptions :: Parser Mode
-printOptions = mkPrint <$> (astPrintOpt <|> syntaxPrintOpt)
-  where mkPrint m = Print $ PrintOptions m
+-- | Typecheck options
+quickTypesOpt :: Parser Bool
+quickTypesOpt = switch (
+                       long    "quicktypes"
+                    <> help    "Use HM Typesystem"
+                )
+typecheckOptions :: Parser Mode
+typecheckOptions = Typecheck <$> (TypecheckOptions <$> quickTypesOpt)
+
+-- | Analyze options
+analyzeOptions :: Parser Mode
+analyzeOptions = Analyze <$> (AnalyzeOptions <$>
+    transformOptions <*> (astPrintOpt <|> syntaxPrintOpt))
 
 astPrintOpt :: Parser PrintMode
 astPrintOpt = flag' PrintAST (   long "ast"
@@ -322,76 +333,82 @@ syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
--- | Typecheck options
-typecheckOptions :: Parser Mode
-typecheckOptions = pure $ Typecheck TypecheckOptions
-
--- | Analyze options
-analyzeOptions :: Parser Mode
-analyzeOptions = (\a b -> Analyze $ AnalyzeOptions a b)
-                  <$> analysisMode <*> ( astPrintOpt <|> syntaxPrintOpt )
-
-analysisMode :: Parser AnalyzeMode
-analysisMode =    conflictsOpt
-              <|> tasksOpt
-              <|> programTasksOpt
-              <|> proxyPathsOpt
-              <|> annProvOpt
-              <|> flatAnnOpt
-              <|> effectOpt
-              <|> normalizationOpt
-              <|> foldConstantsOpt
+-- Accept a precursor string
+transformMode :: Parser [TransformMode]
+transformMode   =  wrap <$> conflictsOpt
+              <|> wrap <$> tasksOpt
+              <|> wrap <$> programTasksOpt
+              <|> wrap <$> proxyPathsOpt
+              <|> wrap <$> annProvOpt
+              <|> wrap <$> flatAnnOpt
+              <|> wrap <$> effectOpt
+              <|> wrap <$> normalizationOpt
+              <|> wrap <$> foldConstantsOpt
+              <|> wrap <$> deadCodeElimOpt
               <|> simplifyOpt
-              <|> profilingOpt
+              <|> wrap <$> profilingOpt
+              <|> wrap <$> readOnlyBindOpts 
+  where
+    wrap x = [x]
 
-conflictsOpt :: Parser AnalyzeMode
-conflictsOpt = flag' Conflicts (   long "conflicts"
+conflictsOpt :: Parser TransformMode
+conflictsOpt = flag' Conflicts (   long "fconflicts"
                                 <> help "Print Conflicting Data Accesses for a K3 Program" )
 
-tasksOpt :: Parser AnalyzeMode
-tasksOpt = flag' Tasks (   long "tasks"
+tasksOpt :: Parser TransformMode
+tasksOpt = flag' Tasks  (  long "ftasks"
                         <> help "Split Triggers into smaller tasks for parallelization" )
 
-programTasksOpt :: Parser AnalyzeMode
-programTasksOpt = flag' ProgramTasks (   long "programtasks"
+programTasksOpt :: Parser TransformMode
+programTasksOpt = flag' ProgramTasks (   long "fprogramtasks"
                                       <> help "Find program-level tasks to be run in parallel " )
 
-proxyPathsOpt :: Parser AnalyzeMode
-proxyPathsOpt = flag' ProxyPaths (   long "proxypaths"
+proxyPathsOpt :: Parser TransformMode
+proxyPathsOpt = flag' ProxyPaths (   long "fproxypaths"
                                   <> help "Print bind paths for bind expressions" )
 
-annProvOpt :: Parser AnalyzeMode
-annProvOpt = flag' AnnotationProvidesGraph (   long "provides-graph"
+annProvOpt :: Parser TransformMode
+annProvOpt = flag' AnnotationProvidesGraph (   long "fprovides-graph"
                                             <> help "Print bind paths for bind expressions" )
 
-flatAnnOpt :: Parser AnalyzeMode
-flatAnnOpt = flag' FlatAnnotations (   long "flat-annotations"
+flatAnnOpt :: Parser TransformMode
+flatAnnOpt = flag' FlatAnnotations (   long "fflat-annotations"
                                     <> help "Print bind paths for bind expressions" )
 
-effectOpt :: Parser AnalyzeMode
-effectOpt = flag' Effects (   long "effects"
+effectOpt :: Parser TransformMode
+effectOpt = flag' Effects (   long "feffects"
                            <> help "Print program effects")
 
-normalizationOpt :: Parser AnalyzeMode
+normalizationOpt :: Parser TransformMode
 normalizationOpt = flag' EffectNormalization
-                      (   long "normalize"
+                      (   long "fnormalize"
                        <> help "Print an effect-normalized program.")
 
-foldConstantsOpt :: Parser AnalyzeMode
+foldConstantsOpt :: Parser TransformMode
 foldConstantsOpt = flag' FoldConstants
-                      (   long "fold-constants"
+                      (   long "ffold-constants"
                        <> help "Print a program after constant folding.")
 
-simplifyOpt :: Parser AnalyzeMode
-simplifyOpt = flag' Simplify
-                (   long "simplify"
+deadCodeElimOpt :: Parser TransformMode
+deadCodeElimOpt = flag' DeadCodeElimination
+                      (   long "fdead-code"
+                       <> help "Print a program after dead code elimination.")
+
+simplifyOpt :: Parser [TransformMode]
+simplifyOpt = flag' [EffectNormalization, FoldConstants, DeadCodeElimination]
+                (   long "fsimplify"
                  <> (help $ "Print a program after running all simplification phases " ++
                             "(i.e., constant folding, DCE, CSE, etc)" ))
 
-profilingOpt :: Parser AnalyzeMode
+profilingOpt :: Parser TransformMode
 profilingOpt = flag' Profiling
-                (   long "profile"
-                 <> (help $ "Print a program after adding profiling points"))
+                (   long "fprofile"
+                 <> (help $ "Add profiling points"))
+
+readOnlyBindOpts :: Parser TransformMode
+readOnlyBindOpts = flag' ReadOnlyBinds
+                (   long "frobinds"
+                 <> (help $ "Remove read-only binds"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
@@ -461,17 +478,18 @@ programOptions = mkOptions <$> modeOptions
 instance Pretty Mode where
   prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts]
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
-  prettyLines (Print     pOpts) = ["Print " ++ show pOpts]
   prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]
   prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr par printOpts console) =
+  prettyLines (Batch net env expr par printConf console transform) =
     ["Batch"] ++ (indent 3 $ ["Network: " ++ show net]
                           ++ prettySysEnv env
                           ++ ["Expression: " ++ show expr]
                           ++ ["Parallel: "   ++ show par]
-                          ++ ["Print: "      ++ show printOpts]
-                          ++ ["Console: "    ++ show console])
+                          ++ ["Print: "      ++ show printConf]
+                          ++ ["Console: "    ++ show console]
+                          ++ ["Transform: "  ++ show transform]
+                 )
 
   prettyLines v = [show v]

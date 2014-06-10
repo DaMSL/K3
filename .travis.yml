@@ -1,0 +1,17 @@
+language: haskell
+ghc: 7.6
+install:
+  - cabal install cabal-install
+  - export PATH=~/.cabal/bin:$PATH
+  - cabal --version
+  - mkdir ../K3-Core
+  - git clone https://github.com/DaMSL/K3-Core.git ../K3-Core
+  - cabal sandbox init
+  - cabal sandbox add-source ../K3-Core
+script:
+  - cabal install --only-dependencies --disable-documentation
+  - cabal configure
+  - cabal build
+notifications:
+  email:
+    - k3-developers@googlegroups.com

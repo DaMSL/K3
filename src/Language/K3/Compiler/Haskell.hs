@@ -20,19 +20,21 @@ import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
-compile _ (CompileOptions _ name outOpt buildOpt _ _) prog =
-    let (errs, _, typedP) = typecheckProgram prog in
-    if Seq.null errs then 
+compile _ cOpts prog =
+    let (errs, _, typedP) = typecheckProgram prog
+    in if Seq.null errs then 
       let source = mkSource name typedP in
       case source of 
         Left e' -> compileError e'
-        Right s -> case (outOpt, buildOpt) of
+        Right s -> case (outputFile cOpts, buildDir cOpts) of
                       (Just outP, Just buildP) -> doStages outP buildP s
                       (_,_)                    -> outputError
       
     else putStrLn $ prettyTCErrors typedP errs
 
   where
+    name = programName cOpts
+
     compileError s = putStrLn $ "Could not generate code: " ++ s
     outputError    = putStrLn $ "No valid output file or build directory"
 
