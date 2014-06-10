@@ -8,11 +8,14 @@
 #include <tuple>
 #include <vector>
 
+#include "boost/asio.hpp"
 #include "boost/fusion/include/std_pair.hpp"
 #include "boost/spirit/include/qi.hpp"
 
 namespace K3 {
   namespace qi = boost::spirit::qi;
+
+  using boost::asio::ip::address;
 
   using std::list;
   using std::make_shared;
@@ -114,11 +117,26 @@ namespace K3 {
     qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
   }
 
+  template <> void refresh<address>(string s, address& a) {
+    a = address::from_string(s);
+  }
+
+  template <> void refresh<unsigned short>(string s, unsigned short& i) {
+    qi::parse(begin(s), end(s), qi::ushort_, i);
+  }
+
   template <class ... Ts> void refresh(string s, tuple<Ts...>& t) {
     list<string> v;
     shallow<string::iterator> _shallow;
-    qi::rule<string::iterator, qi::space_type> tuple_rule = _shallow[([&v] (string s_) { v.push_back(s_); })];
-    qi::phrase_parse(begin(s), end(s), '(' >> (tuple_rule % ',') >> ')', qi::space);
+
+    qi::rule<string::iterator, qi::space_type, list<string>()> tuple_rule = '(' >> (_shallow % ',') >> ')';
+
+    qi::rule<string::iterator, qi::space_type, string()> ip_rule = qi::raw[(qi::int_ % '.')];
+    qi::rule<string::iterator, qi::space_type, string()> port_rule = qi::raw[qi::int_];
+    qi::rule<string::iterator, qi::space_type, list<string>()> address_rule
+      = '<' >> ip_rule >> ':' >> port_rule >> '>';
+
+    qi::phrase_parse(begin(s), end(s), tuple_rule | address_rule, qi::space, v);
     refresh_many<tuple<Ts...>, 0, sizeof...(Ts)>()(v, t);
   }
 
