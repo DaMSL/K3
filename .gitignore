@@ -2,6 +2,7 @@ dist*
 tmp
 /.dist-buildwrapper
 .project
+env.bat
 
 __build
 __build.database
