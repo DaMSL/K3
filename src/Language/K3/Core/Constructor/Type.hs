@@ -42,8 +42,7 @@ leaf typeTag = Node (typeTag :@: []) []
 -- | Add mutability qualifier
 mutable :: Bool -> K3 Type -> K3 Type
 mutable b n =
-  let n' = maybe n (n @-) (n @~ isTQualified) in
-  n' @+ (if b then TMutable else TImmutable)
+  n @+ (if b then TMutable else TImmutable)
 
 -- | Shortcuts to the above
 mut = mutable True

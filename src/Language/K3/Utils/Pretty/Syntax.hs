@@ -172,12 +172,12 @@ isDEndpointDecl _ = False
 
 
 endpointSpec :: [Annotation Declaration] -> Printer (Maybe EndpointSpec)
-endpointSpec = matchAnnotation isDEndpointDecl spec
+endpointSpec = matchAnnotation "endpoint" isDEndpointDecl spec
   where spec (DSyntax (EndpointDeclaration s _ )) = return $ Just s
         spec _ = return $ Nothing
 
 endpointBindings :: [Annotation Declaration] -> Printer (Maybe EndpointBindings)
-endpointBindings = matchAnnotation isDEndpointDecl bindings
+endpointBindings = matchAnnotation "endpoint" isDEndpointDecl bindings
   where bindings (DSyntax (EndpointDeclaration _ b)) = return $ Just b
         bindings _ = return $ Nothing
 
@@ -306,7 +306,7 @@ qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
 qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
 
 eQualifier :: [Annotation Expression] -> SyntaxPrinter
-eQualifier = qualifier isEQualified eqSyntax
+eQualifier = qualifier "mutability" isEQualified eqSyntax
   where
     eqSyntax EImmutable = return $ text "immut"
     eqSyntax EMutable   = return $ text "mut"
@@ -373,7 +373,7 @@ qualifierAndType :: K3 Type -> Printer (Doc, Doc)
 qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
 
 tQualifier :: [Annotation Type] -> SyntaxPrinter
-tQualifier anns = qualifier isTQualified tqSyntax anns
+tQualifier anns = qualifier "mutability" isTQualified tqSyntax anns
   where
     tqSyntax TImmutable = return $ text "immut"
     tqSyntax TMutable   = return $ text "mut"
@@ -432,7 +432,7 @@ qualifierAndLiteral :: K3 Literal -> Printer(Doc, Doc)
 qualifierAndLiteral l@(annotations -> anns) = (,) C.<$> lQualifier anns <*> literal l
 
 lQualifier :: [Annotation Literal] -> SyntaxPrinter
-lQualifier anns = qualifier isLQualified lqSyntax anns
+lQualifier anns = qualifier "mutability" isLQualified lqSyntax anns
   where
     lqSyntax LImmutable = return $ text "immut"
     lqSyntax LMutable   = return $ text "mut"
@@ -595,20 +595,20 @@ commaBrace :: [Doc] -> Doc
 commaBrace = encloseSep lbrace rbrace comma
 
 matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
-                => (Annotation a -> Bool) -> (Annotation a -> Printer b) -> [Annotation a]
-                -> Printer b
-matchAnnotation matchF mapF anns = 
+                => String -> (Annotation a -> Bool) -> (Annotation a -> Printer b)
+                -> [Annotation a] -> Printer b
+matchAnnotation desc matchF mapF anns = 
   let uidStr = maybe "" show (getUID =<< find (isJust . getUID) anns) in
   case filter matchF anns of
-    []            -> throwSP $ "No matching annotation found at "++uidStr
+    []            -> throwSP $ "No matching "++desc++" annotation found at "++uidStr
     [q]           -> mapF q
     l | same l    -> mapF $ head l
-      | otherwise -> throwSP $ "Multiple matching annotations found at "++uidStr
+      | otherwise -> throwSP $ "Multiple matching "++desc++" annotations found at "++uidStr
   where same l = 1 == length (nub l)
 
 qualifier :: (Eq (Annotation a), HasUID (Annotation a))
-          => (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter) -> [Annotation a]
-          -> SyntaxPrinter
+          => String -> (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter)
+          -> [Annotation a] -> SyntaxPrinter
 qualifier = matchAnnotation
 
 optionalPrinter :: (a -> Printer b) -> Maybe a -> Printer (Maybe b)

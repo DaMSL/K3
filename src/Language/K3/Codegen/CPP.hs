@@ -82,7 +82,8 @@ declaration (tag &&& children -> (DRole n, cs)) = do
     tablePop <- generateDispatchPopulation
     let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
-    put defaultCPPGenS
+    refreshCPPGenS
+
     return $ text "namespace" <+> text n <+> hangBrace (
         vsep $ punctuate line $
                [text "using K3::Collection;"]
@@ -123,9 +124,6 @@ generateDispatchPopulation = do
 genDispatchName :: Identifier -> Identifier
 genDispatchName i = i ++ "_dispatch"
 
-reserved :: [Identifier]
-reserved = ["openBuiltin"]
-
 -- Top-level program generation.
 --  - Process the __main role.
 --  - Generate include directives.
@@ -148,13 +146,35 @@ program d = do
   where
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
+refreshmentsDecl :: CPPGenM CPPGenR
+refreshmentsDecl = do
+    let mapDecl = genCDecl
+                   (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
+                   (text "refreshments")
+                   Nothing
+    rs <- refreshables <$> get
+    mapInit <- map populateRefreshment . refreshables <$> get
+    return $ vsep $ mapDecl : mapInit
+  where
+    populateRefreshment :: Identifier -> CPPGenR
+    populateRefreshment f = text "refreshments"
+                            <> brackets (dquotes $ text f)
+                            <+> equals
+                            <+> brackets (text "&" <> text f)
+                            <+> parens (text "string s_")
+                            <+> braces (genCCall (text "refresh") Nothing [text "s_", text f] <> semi)
+                            <> semi
+
 genKMain :: CPPGenM CPPGenR
-genKMain = return $ genCFunction Nothing (text "int") (text "main") [text "int", text "char**"] $ vsep [
-        genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
-        genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
-        text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
-        text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
-    ]
+genKMain = do
+    refreshments <- refreshmentsDecl
+    return $ genCFunction Nothing (text "int") (text "main") [text "int", text "char**"] $ vsep [
+            genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
+            refreshments,
+            genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
+            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
+            text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
+        ]
 
 includes :: CPPGenM [Identifier]
 includes = return [

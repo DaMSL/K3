@@ -50,6 +50,8 @@ data CPPGenS = CPPGenS {
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [Identifier],
 
+        refreshables :: [Identifier],
+
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
         recordMap :: M.Map Identifier [(Identifier, K3 Type)],
@@ -71,11 +73,17 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty [] M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty empty [] [] M.empty M.empty S.empty S.empty BoostSerialization
+
+refreshCPPGenS :: CPPGenM ()
+refreshCPPGenS = do
+    gs <- globals <$> get
+    rs <- refreshables <$> get
+    put defaultCPPGenS { globals = gs, refreshables = rs }
 
 -- | Copy state elements from the imperative transformation to CPP code generation.
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is }
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, refreshables = I.refreshables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier

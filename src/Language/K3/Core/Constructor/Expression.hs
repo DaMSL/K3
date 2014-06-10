@@ -39,11 +39,13 @@ import Language.K3.Core.Type
 -- | Add mutability qualifier
 mutable :: Bool -> K3 Expression -> K3 Expression
 mutable b n =
-  let n' = maybe n (n @-) (n @~ isEQualified) in
-  n' @+ (if b then EMutable else EImmutable)
+  n @+ (if b then EMutable else EImmutable)
 
 -- | Shortcuts to the above
+mut :: K3 Expression -> K3 Expression
 mut = mutable True
+
+immut :: K3 Expression -> K3 Expression
 immut = mutable False
 
 -- | Create a constant expression.

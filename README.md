@@ -1,5 +1,6 @@
 K3/core
 =======
+[![Build Status](https://travis-ci.org/DaMSL/K3-Core.svg?branch=master)](https://travis-ci.org/DaMSL/K3-Core)
 
 Core definitions for the K3 programming language.
 

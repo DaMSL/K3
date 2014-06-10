@@ -207,6 +207,8 @@ biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) = do
 -- | Join top-down and bottom-up traversal of a tree.
 --   This variant threads a bottom-up accumulator independently between siblings.
 --   Thus there is no sideways information passing (except for top-down accumulation).
+--   tdF: takes the top-down accumulator and node. Returns a top-down value for post-processing
+--        at the same node, and messages for each child
 biFoldMapTree :: (Monad m)
               => (td -> Tree a -> m (td, [td]))
               -> (td -> [bu] -> Tree a -> m bu)
@@ -276,6 +278,13 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 
 -- | A mapping variant of foldIn1RebuildTree that threads a top-down accumulator
 --   while reconstructing the tree.
+-- preCh1F:  The pre-child function takes the top-down accumulator, the first child, and the node
+--           returns a new accumulator
+-- postCh1F: The post-child function takes the pre's accumulator, the processed first child, and the node.
+--           It returns an accumulator, and a list of accumulators to be sent down while recursing
+--           over the other children.
+-- allChF:   The all-child function takes the post child's single accumulator, the processed children,
+--           and the node, and returns a new tree.
 mapIn1RebuildTree :: (Monad m)
                   => (b -> Tree a -> Tree a -> m b)
                   -> (b -> Tree a -> Tree a -> m (b, [b]))

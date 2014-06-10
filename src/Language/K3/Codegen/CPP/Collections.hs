@@ -116,8 +116,53 @@ record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
     sD <- serializeDefn
-    return $ text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
+    let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
+    refreshDefn <- refreshSpecialization
+    return $ vsep [structDefn, refreshDefn]
   where
+    oneFieldParser :: Identifier -> CPPGenM CPPGenR
+    oneFieldParser i = do
+        let keyParser = text "qi::lit" <> parens (dquotes $ text i)
+        let valParser = text "_shallow"
+        let fieldParser = parens $ keyParser <+> text ">>" <+> squotes (char ':') <+> text ">>" <+> valParser
+        let actCapture = text "&_record"
+        let actArgs = text "string _string"
+        let actBody = genCCall (text "refresh") Nothing [text "_string", text "_record" <> dot <> text i] <> semi
+        let fieldAction = brackets $ parens $ brackets actCapture <+> parens actArgs <+> braces actBody
+
+        return $ genCDecl
+          (text "qi::rule<string::iterator, qi::space_type>")
+          (text "_" <> text i)
+          (Just $ fieldParser <> fieldAction)
+
+    anyFieldParser :: [Identifier] -> CPPGenM CPPGenR
+    anyFieldParser is
+      = return $ genCDecl (text "qi::rule<string::iterator, qi::space_type>")
+                 (text "_field")
+                 (Just $ cat $ punctuate (text " | ") [text "_" <> text i | i <- is])
+
+    allFieldParser :: CPPGenM CPPGenR
+    allFieldParser
+      = return $ genCDecl (text "qi::rule<string::iterator, qi::Space_type>")
+                          (text "_parser")
+                          (Just $ text "'{' >> (_field % ',') >> '}'")
+
+    parserInvocation :: CPPGenM CPPGenR
+    parserInvocation
+      = return $ genCCall (text "qi::phrase_parse") Nothing
+                 [text "begin(s)", text "end(s)", text "_record", text "qi::space"] <> semi
+
+    refreshSpecialization :: CPPGenM CPPGenR
+    refreshSpecialization = do
+        let ids = fst $ unzip idts
+        fps <- vsep <$> mapM oneFieldParser ids
+        afp <- anyFieldParser ids
+        lfp <- allFieldParser
+        piv <- parserInvocation
+        return $ genCFunction (Just []) (text "void") (text "refresh" <> angles (text rName))
+                              [text "string s", text rName <> text "&" <+> text "_record"]
+                              (vsep [text "shallow _shallow" <> semi, fps, afp, lfp, piv])
+
     serializeDefn = serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
 

@@ -2721,7 +2721,7 @@ declare remove_node : { _r1_:address, _r2_:string, _r3_:string } -> () =
 declare get_ring_node : { key:int, value:int } -> address = (\_b1_ -> 
     bind _b1_ as {key:data, value:max_val} in 
     let scaled =
-      int_of_real
+      truncate
         (real_of_int (get_max_int ()) * (real_of_int data /
         real_of_int max_val)) in
     let results =
