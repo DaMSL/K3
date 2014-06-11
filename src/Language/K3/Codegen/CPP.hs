@@ -149,7 +149,7 @@ program d = do
 refreshmentsDecl :: CPPGenM CPPGenR
 refreshmentsDecl = do
     let mapDecl = genCDecl
-                   (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
+                   (text "map" <> angles (cat $ punctuate comma [text "string", text "function<void(string)>"]))
                    (text "refreshments")
                    Nothing
     mapInit <- map populateRefreshment . refreshables <$> get
