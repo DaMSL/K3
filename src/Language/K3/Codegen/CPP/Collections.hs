@@ -150,7 +150,7 @@ record rName idts = do
     parserInvocation :: CPPGenM CPPGenR
     parserInvocation
       = return $ genCCall (text "qi::phrase_parse") Nothing
-                 [text "begin(s)", text "end(s)", text "_record", text "qi::space"] <> semi
+                 [text "begin(s)", text "end(s)", text "_parser", text "qi::space"] <> semi
 
     refreshSpecialization :: CPPGenM CPPGenR
     refreshSpecialization = do
