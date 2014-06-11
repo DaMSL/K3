@@ -17,6 +17,9 @@ namespace K3 {
 
   using boost::asio::ip::address;
 
+  using std::begin;
+  using std::end;
+  using std::function;
   using std::list;
   using std::make_shared;
   using std::map;
