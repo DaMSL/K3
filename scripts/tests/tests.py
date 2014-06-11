@@ -45,9 +45,9 @@ def find_test_files():
     failed = 0
     for dir in test_paths:
         d = os.path.join(root_path, dir)
-        for file in os.listdir(dir):
+        for file in os.listdir(d):
             if file.endswith(".k3"):
-                error = not test_file(counter, os.path.join(dir, file))
+                error = not test_file(counter, os.path.join(d, file))
                 counter += 1
                 failed += 1 if error else 0
     count = counter - 1
