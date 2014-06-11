@@ -195,6 +195,7 @@ includes = return [
         "Common.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
+        "Literals.hpp",
         "MessageProcessor.hpp",
         "Serialization.hpp"
     ]
