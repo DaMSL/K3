@@ -143,14 +143,14 @@ record rName idts = do
 
     allFieldParser :: CPPGenM CPPGenR
     allFieldParser
-      = return $ genCDecl (text "qi::rule<string::iterator, qi::Space_type>")
+      = return $ genCDecl (text "qi::rule<string::iterator, qi::space_type>")
                           (text "_parser")
                           (Just $ text "'{' >> (_field % ',') >> '}'")
 
     parserInvocation :: CPPGenM CPPGenR
     parserInvocation
       = return $ genCCall (text "qi::phrase_parse") Nothing
-                 [text "begin(s)", text "end(s)", text "_parser", text "qi::space"] <> semi
+                 [text "std::begin(s)", text "std::end(s)", text "_parser", text "qi::space"] <> semi
 
     refreshSpecialization :: CPPGenM CPPGenR
     refreshSpecialization = do
