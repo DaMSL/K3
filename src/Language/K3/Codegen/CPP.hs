@@ -167,11 +167,17 @@ refreshmentsDecl = do
 genKMain :: CPPGenM CPPGenR
 genKMain = do
     refreshments <- refreshmentsDecl
-    return $ genCFunction Nothing (text "int") (text "main") [text "int", text "char**"] $ vsep [
-            genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
+    return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
+            text "using namespace __global",
+            genCCall (text "populate_dispatch") Nothing [] <> semi,
             refreshments,
-            genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
-            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
+            genCDecl (text "string") (text "parse_arg")
+                     (Just $ genCCall (text "preprocess_argv") Nothing [text "argc", text "argv"]),
+            genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
+                     (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing [text "parse_arg"]),
+            genCCall (text "consolidate_refreshments") Nothing [text "bindings", text "refreshments"],
+            genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
+            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table);",
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
         ]
 
