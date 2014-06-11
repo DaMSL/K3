@@ -20,8 +20,6 @@
 #include <boost/log/sources/severity_channel_logger.hpp>
 #include <boost/log/sources/severity_feature.hpp>
 #include <boost/log/trivial.hpp>
-#include <boost/phoenix/core.hpp>
-#include <boost/phoenix/stl/algorithm.hpp>
 #include <boost/regex.hpp>
 
 namespace K3 {
