@@ -163,6 +163,21 @@ namespace K3 {
     qi::phrase_parse(begin(s), end(s), parser, qi::space, bindings);
     return bindings;
   }
+
+  void consolidate_refreshments(map<string, string>& m, map<string, function<void(string)>>& f) {
+    for (pair<string, string> p: m) {
+      if (f.find(p.first) != end(f)) {
+        f[p.first](p.second);
+      }
+    }
+  }
+
+  string preprocess_argv(int argc, char** argv) {
+    if (argc < 2)
+      return "";
+
+    return argv[1];
+  }
 }
 
 #endif
