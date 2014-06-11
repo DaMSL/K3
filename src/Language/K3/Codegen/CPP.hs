@@ -70,7 +70,7 @@ declaration (tag -> DTrigger i t e) = do
     w <- triggerWrapper i t
     return $ d PL.<$$> w
 
-declaration (tag &&& children -> (DRole n, cs)) = do
+declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
     currentS <- get
     i <- genCType T.unit >>= \ctu ->
@@ -84,13 +84,12 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 
     refreshCPPGenS
 
-    return $ text "namespace" <+> text n <+> hangBrace (
-        vsep $ punctuate line $
+    return $ vsep $ punctuate line $
                [text "using K3::Collection;"]
             ++ [forwards currentS]
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop])
+            ++ [subDecls, i, tableDecl, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
