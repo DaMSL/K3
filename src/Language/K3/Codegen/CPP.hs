@@ -159,7 +159,7 @@ refreshmentsDecl = do
     populateRefreshment f = text "refreshments"
                             <> brackets (dquotes $ text f)
                             <+> equals
-                            <+> brackets (text "&" <> text f)
+                            <+> brackets empty
                             <+> parens (text "string s_")
                             <+> braces (genCCall (text "refresh") Nothing [text "s_", text f] <> semi)
                             <> semi
