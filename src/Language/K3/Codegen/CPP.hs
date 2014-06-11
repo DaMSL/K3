@@ -204,7 +204,12 @@ namespaces :: CPPGenM [Identifier]
 namespaces = do
     serializationNamespace <- serializationMethod <$> get >>= \case
         BoostSerialization -> return "namespace K3::BoostSerializer"
-    return ["namespace std", "namespace K3", serializationNamespace]
+    return [
+            "namespace std",
+            "namespace K3",
+            serializationNamespace,
+            "std::begin", "std::end"
+        ]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
