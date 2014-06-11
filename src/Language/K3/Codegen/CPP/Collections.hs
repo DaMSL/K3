@@ -48,7 +48,7 @@ composite className ans = do
     serializationDefn <- serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
 
-    let ps = punctuate comma $ map (\(fst -> p) -> text p <> angles (text "CONTENT")) ras
+    let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
 
