@@ -159,9 +159,10 @@ record rName idts = do
         afp <- anyFieldParser ids
         lfp <- allFieldParser
         piv <- parserInvocation
-        return $ genCFunction (Just []) (text "void") (text "refresh" <> angles (text rName))
+        let shallowDecl = genCDecl (text "shallow<string::iterator>") (text "_shallow") Nothing
+        return $ genCFunction (Just []) (text "void") (text "K3::refresh" <> angles (text rName))
                               [text "string s", text rName <> text "&" <+> text "_record"]
-                              (vsep [text "shallow _shallow" <> semi, fps, afp, lfp, piv])
+                              (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
 
     serializeDefn = serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
