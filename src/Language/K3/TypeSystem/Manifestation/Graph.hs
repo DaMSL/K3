@@ -12,7 +12,6 @@ module Language.K3.TypeSystem.Manifestation.Graph where
 
 import Control.Applicative
 
-import Data.Function
 import Data.Functor.Identity
 import Data.Maybe
 import Data.Tuple (swap)
@@ -71,13 +70,13 @@ fromTypecheckResult result = do
     andBoundType (_:bs) = andBoundType bs
 
 decideManifestation :: ManifestGraph -> M.Map (S.Set UID) (K3 Type)
-decideManifestation g = propagateChoice g (G.topologicalSort g)
+decideManifestation g' = propagateChoice g' (G.topologicalSort g')
   where
     propagateChoice :: ManifestGraph -> [S.Set UID] -> M.Map (S.Set UID) (K3 Type)
     propagateChoice g [] = M.empty
     propagateChoice g (i:is) = M.insert i currentBound $ propagateChoice restrict is
       where
-        currentPolarity = let (p, lb, ub) = G.vertex g i in p
+        currentPolarity = let (p, _, _) = G.vertex g i in p
         currentBound = let (p, lb, ub) = G.vertex g i in if p == UpperBound then ub else lb
         restrict = runIdentity $ G.traverseWithKey traverseF g
         traverseF k (bt, lb, rb)
@@ -176,8 +175,8 @@ deducePolarity bounds = assignUnionFind sinkBounds unionFind
     -- | Alter a bound type depending on a variance position.
     flipFromVariance :: Variance -> BoundType -> BoundType
     flipFromVariance (Invariant k) _ = k
-    flipFromVariance (Covariant t) b = b
-    flipFromVariance (Contravariant t) b = flipBoundType b
+    flipFromVariance (Covariant _) b = b
+    flipFromVariance (Contravariant _) b = flipBoundType b
 
     -- | Compute the union find of a set of constraints.
     unionFind :: S.Set (S.Set Variance)

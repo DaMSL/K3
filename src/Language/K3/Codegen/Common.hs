@@ -71,4 +71,7 @@ signature (tag &&& children -> (TSource, [x]))      = signature x >>= return . (
 
 signature (tag &&& children -> (TTrigger, [x])) = signature x >>= return . ("G" ++)
 
+signature _ = error "unexpected"
+
+sanitize :: a -> a
 sanitize = id

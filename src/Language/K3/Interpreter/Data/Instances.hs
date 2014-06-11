@@ -252,17 +252,17 @@ printBraces s = '{':s++"}"
 
 instance ShowPC Value where
   showPC pc (VBool v)    | ptag pc        = "VBool "++ show v
-  showPC pc (VBool v)                     = show v
+  showPC _ (VBool v)                      = show v
   showPC pc (VByte v)    | ptag pc        = "VByte "++ show v
-  showPC pc (VByte v)                     = show v
+  showPC _ (VByte v)                      = show v
   showPC pc (VInt v)     | ptag pc        = "VInt " ++ show v
-  showPC pc (VInt v)                      = show v
+  showPC _ (VInt v)                       = show v
   showPC pc (VReal v)    | ptag pc        = "VReal " ++ show v
-  showPC pc (VReal v)                     = show v
+  showPC _ (VReal v)                      = show v
   showPC pc (VString v)  | ptag pc        = "VString " ++ show v
-  showPC pc (VString v)                   = show v
+  showPC _ (VString v)                    = show v
   showPC pc (VAddress v) | ptag pc        = "VAddress " ++ show v
-  showPC pc (VAddress v)                  = show v
+  showPC _ (VAddress v)                   = show v
   showPC pc (VOption v)  | ptag pc        = showPCTag pc "VOption" v
   showPC pc (VOption v)                   = showPC pc  v
   showPC pc (VTuple v)   | ptag pc        = showPCTag pc "VTuple" v
@@ -272,21 +272,21 @@ instance ShowPC Value where
   showPC pc (VCollection (_,c)) | ptag pc = showPCTag pc "VCollection" c
   showPC pc (VCollection (_,c))           = showPC pc c
 
-  showPC pc (VIndirection (_,q,tg))       = 
+  showPC pc (VIndirection (_,q,tg))         = 
     showPCTagF "VIndirection" $
       if printQualifiers pc then "<" ++ show q ++ ", " ++ show tg ++ ">"
       else "<" ++ show tg ++ ">"
   showPC pc (VFunction (_,_,tg)) | pfunc pc = showPCTagF "VFunction" $ "<" ++ show tg ++ ">"
-  showPC pc (VFunction (_,_,tg))          = ""
-  showPC pc (VTrigger _) | not $ pfunc pc = ""
-  showPC pc (VTrigger (_, Nothing, tg))   = showPCTagF "VTrigger" $ "<uninitialized:" ++ (show tg) ++">"
-  showPC pc (VTrigger (_, Just _, tg))    = showPCTagF "VTrigger" $ "<function:" ++ (show tg) ++ ">"
+  showPC _ (VFunction _)                    = ""
+  showPC pc (VTrigger _) | not $ pfunc pc   = ""
+  showPC _ (VTrigger (_, Nothing, tg))      = showPCTagF "VTrigger" $ "<uninitialized:" ++ (show tg) ++">"
+  showPC _ (VTrigger (_, Just _, tg))       = showPCTagF "VTrigger" $ "<function:" ++ (show tg) ++ ">"
 
 instance ShowPC (Maybe Value, VQualifier) where
-  showPC pc (Nothing, q) | pqual pc = "(None, " ++ show q ++ ")"
-  showPC pc (Nothing, _)           = "None"
-  showPC pc (Just v,  q) | pqual pc = "(Some "++showPC pc v++", " ++ show q ++ ")"
-  showPC pc (Just v,  _)           = "Some "++showPC pc v
+  showPC pc  (Nothing, q) | pqual pc = "(None, " ++ show q ++ ")"
+  showPC _  (Nothing, _)             = "None"
+  showPC pc (Just v,  q) | pqual pc  = "(Some "++showPC pc v++", " ++ show q ++ ")"
+  showPC pc (Just v,  _)             = "Some "++showPC pc v
 
 instance ShowPC (Value, VQualifier) where
   showPC pc (v,  q) | pqual pc = "("++showPC pc v++", " ++ show q ++ ")"
@@ -300,14 +300,14 @@ instance ShowPC (Collection Value) where
     let ns_s = if printNamespace pc then [show ns] else []
         ds_s = if printDataspace pc then [showPC pc ds] else []
         ns_ds = concat $ intersperse ", " $ ns_s++ds_s
-        (name, wrap) = case cId of 
+        (name, wrap') = case cId of 
           ""    | pSimple pc -> ("", \x -> "{|"++x++"|}")
           "Set" | pSimple pc -> ("", \x -> "{"++x++"}")
           "Seq" | pSimple pc -> ("", \x -> "["++x++"]")
           ""                 -> ("Collection ", printParens)
           _     | ptag pc    -> ("Collection " ++ cId ++ " ", printParens)
           _                  -> (cId ++ " ", printParens)
-    in name ++ wrap (ns_ds)
+    in name ++ wrap' (ns_ds)
 
 showListPC :: ShowPC a => PrintConfig -> (String -> String) -> String -> [a] -> String
 showListPC pc f sep vs = f $ concat $ intersperse sep $ map (showPC pc) vs
@@ -327,14 +327,14 @@ instance ShowPC (CollectionDataspace Value) where
   showPC pc (InMemDS (SeqDS(ListMDS vl)))            = showContainerPC pc vl
   showPC pc (InMemDS (SetDS(SetAsOrdListMDS vl)))    = showContainerPC pc vl
   showPC pc (InMemDS (SortedDS(BagAsOrdListMDS vl))) = showContainerPC pc vl
-  showPC pc x@(ExternalDS _)                         = show x
+  showPC _ x@(ExternalDS _)                          = show x
 
 instance ShowPC (NamedMembers Value) where
   showPC pc m = showPC pc $ Map.toList m
 
 instance ShowPC (Identifier, (Value, VQualifier)) where
-  showPC pc (id, (v, q)) | pqual pc = show id ++ " = " ++ printParens (showPC pc v ++ ", " ++ show q)
-  showPC pc (id, (v, _))           = show id ++ " = " ++ showPC pc v
+  showPC pc (nm, (v, q)) | pqual pc = show nm ++ " = " ++ printParens (showPC pc v ++ ", " ++ show q)
+  showPC pc (nm, (v, _))            = show nm ++ " = " ++ showPC pc v
 
 instance ShowPC [(Identifier, (Value, VQualifier))] where
   -- We transform into tuples for better readability if we encounter _r1_... or key,value ids
@@ -343,8 +343,8 @@ instance ShowPC [(Identifier, (Value, VQualifier))] where
       _   | pTuple pc && canTuplize vs -> showPC pc $ map snd $ sort vs
       _                                -> showListBraces pc vs
     where
-      canTuplize vs = all (\(id,_) -> take 2 id == "_r" || id == "key" || id == "value" || id == "i") vs
-      sort vs = sortBy (compare `on` fst) vs
+      canTuplize vs' = all (\(nm,_) -> take 2 nm == "_r" || nm == "key" || nm == "value" || nm == "i") vs'
+      sort vs' = sortBy (compare `on` fst) vs'
 
 -- Some instances are in K3/Runtime/Engine.hs because of circular inclusion
 

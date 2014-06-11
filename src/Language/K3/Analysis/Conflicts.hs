@@ -2,8 +2,7 @@
 
 module Language.K3.Analysis.Conflicts (getAllConflicts,getAllTasks,getProgramTasks,getNewProgram) where
 
-import Control.Arrow hiding ( (+++) )
-import Data.List hiding (transpose)
+import Data.List hiding (transpose, group)
 import Data.Map as M (Map,insert, empty,lookup,toList) 
 import Data.Graph.Wrapper
 import Data.Tree
@@ -12,9 +11,9 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common
 import Language.K3.Core.Type
-import Language.K3.Core.Constructor.Declaration as D
-import Language.K3.Core.Constructor.Expression as E
-import Language.K3.Core.Constructor.Type as T
+import qualified Language.K3.Core.Constructor.Declaration as D
+import qualified Language.K3.Core.Constructor.Expression as E
+import qualified Language.K3.Core.Constructor.Type as T
 -- TODO:
 -- 1) calling acrossTriggerConflicts after insideTriggerConflicts re-labels all inside-trigger-conflicts (no real harm, just redundant)
 -- 2) run alpha-renaming before detecting conflicts (to avoid shadowing issues)
@@ -34,7 +33,7 @@ getAllConflicts d = (acrossTriggerConflicts . labelDataAccess) d
 -- break triggers into smaller tasks (triggers) based on inside-trigger-conflicts
 getAllTasks :: K3 Declaration -> K3 Declaration
 getAllTasks d = let 
-  (trigs,newtrigs) = (getTasks . insideTriggerConflicts . labelDataAccess) d
+  (_,newtrigs) = (getTasks . insideTriggerConflicts . labelDataAccess) d
   (_,nontrigs) = triggersNonTriggers (subForest d)
   in d {subForest = nontrigs ++ newtrigs}
 
@@ -48,20 +47,14 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
   (trigs,nontrigs) = triggersNonTriggers cs
   (_, tasks) = (getTasks . insideTriggerConflicts . labelDataAccess) d
   groups = getProgramTasks d
-  gnames = map fst groups
-  tnames = map getTriggerName trigs
-  ts = map getTriggersForGroup (map snd groups)
   types = map (getGroupType trigs) (map snd groups)
   newtrigs = map (replaceTrigger groups) trigs
   dispatchers = zipWith newDispatcher groups types
   in (Node (DRole r :@: as) (newtrigs++dispatchers++tasks++nontrigs)) 
   where 
-    z :: a -> b -> (a,b)
-    z x y = (x,y)
-    
     -- Filter list of groups: keep those that contain pieces of the given trigger
     getGroupsForTrigger :: [(String,[String])] -> String -> [(String,[String])]
-    getGroupsForTrigger gs tname = filter (\(gname,group) ->
+    getGroupsForTrigger gs tname = filter (\(_,group) ->
       if True `elem` (map (isPrefixOf tname) group)
       then True
       else False
@@ -77,8 +70,8 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
       tnames = getTriggersForGroup group
       thetrigs = map (getTrigByName alltrigs) tnames
       types = map getTrigType thetrigs
-      r = T.tuple types
-      in T.tuple $ [T.string] ++ [r]
+      r' = T.tuple types
+      in T.tuple $ [T.string] ++ [r']
     
     -- filter tasks that match the provided trigger name
     getTasksForTrigger :: String -> [String] -> [String]
@@ -86,15 +79,16 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
     
     -- replace a trigger with a trigger that simply forwards messages to 'group' triggers
     replaceTrigger :: [(String,[String])] -> K3 Declaration -> K3 Declaration
-    replaceTrigger groups tr@(Node (DTrigger n t e :@: as) cs) = let
+    replaceTrigger groups tr@(Node (DTrigger n t _ :@: as') cs') = let
       mGroups = getGroupsForTrigger groups n
       gnames = map fst mGroups
       gs = map snd mGroups
       rs = map (getMessage tr) gs
       es = zipWith newSend gnames rs
-      seq = E.block es
-      l = E.lambda "x" seq
-      in (Node (DTrigger n t l :@: as) cs) 
+      seq' = E.block es
+      l = E.lambda "x" seq'
+      in (Node (DTrigger n t l :@: as') cs') 
+    replaceTrigger _ _ = error "missing trigger declaration"
       
     -- create a send expression for given destination trigger, expression
     newSend :: String -> K3 Expression -> K3 Expression
@@ -103,17 +97,18 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
     -- search for the given trigger name in the list of triggers
     getTrigByName :: [K3 Declaration] -> String -> K3 Declaration
     getTrigByName [] _ = error "Trigger not found"
-    getTrigByName (x@(Node (DTrigger n _ _ :@: as) _):xs) s 
+    getTrigByName (x@(Node (DTrigger n _ _ :@: _) _):xs) s 
       | s == n = x
       | otherwise = getTrigByName xs s 
     getTrigByName _ _ = error "Not a valid Trigger"
 
     -- build the proper tuple to send for the given trigger and list of tasks
     getMessage :: K3 Declaration -> [String] -> K3 Expression
-    getMessage (Node (DTrigger n t _ :@: _) _) group = let
+    getMessage (Node (DTrigger n _ _ :@: _) _) group = let
       tnames = getTriggersForGroup group
-      elist = map (\x -> if x == n then (variable "x") else E.unit) tnames 
+      elist = map (\x -> if x == n then (E.variable "x") else E.unit) tnames 
       in E.tuple $ [E.constant (CString n)] ++ [E.tuple elist]
+    getMessage _ _ = error "missing trigger declaration"
     
     -- return the type of the provided trigger
     getTrigType :: K3 Declaration -> K3 Type
@@ -129,19 +124,21 @@ getNewProgram d@(Node (DRole r :@: as) cs) = let
     dispatchTable gs = let
       ts = getTriggersForGroup gs
       argnames = map (\t -> t ++ "_args") ts
-      b1 = bindAs (E.variable "x") (BTuple ["tname","y"]) b2
-      b2 = bindAs (E.variable "y") (BTuple argnames) block
+      b1 = E.bindAs (E.variable "x") (BTuple ["tname","y"]) b2
+      b2 = E.bindAs (E.variable "y") (BTuple argnames) block
       block = E.block $ map (\t ->
         let
           tasks = getTasksForTrigger t gs
-          pred = E.binop OEqu (E.variable "tname") (E.constant $ CString t) 
+          pred' = E.binop OEqu (E.variable "tname") (E.constant $ CString t) 
           in E.block $ map (\task -> 
-            E.ifThenElse pred 
+            E.ifThenElse pred'
               (E.send (E.variable task) (E.variable "me") (E.variable (t++"_args"))) 
               (E.unit)
           ) tasks 
         ) ts
       in E.lambda "x" b1
+
+getNewProgram _ = error "missing expected Role"
 
 -- Build Conflict Graph for tasks, then return its connected components.
 groupTasks :: K3 Declaration -> [(String,[String])]
@@ -162,7 +159,6 @@ groupTasks d@(Node (DRole _ :@: _) cs) = let
       n = (length gs)
       nums = [1..n]
       in map (\x -> "group"++(show x)) nums
-    z :: String -> [String] -> (String, [String])
     z a b = (a,b)
     -- find edges for trigger conflict graph
     getEdges :: K3 Declaration -> [(String, [String])]
@@ -252,14 +248,14 @@ groupTasks _ = error "Expecting Role Declaration in groupTasks"
 
 -- Transform triggers into tasks (more triggers). return (oldtrigs, newtasks)
 getTasks :: K3 Declaration -> ([K3 Declaration],[K3 Declaration])
-getTasks (Node (DRole r :@: as) cs) = let 
-  (trigs,nontrigs) = triggersNonTriggers cs
-  newtrigs         = concat $ map splitTrigger trigs
+getTasks (Node (DRole _ :@: _) cs) = let 
+  (trigs, _ {-nontrigs-}) = triggersNonTriggers cs
+  newtrigs                = concat $ map splitTrigger trigs
   in (trigs, newtrigs)
   where
     splitTrigger :: K3 Declaration -> [K3 Declaration]
     splitTrigger (Node (DTrigger n t (Node (ELambda n2 :@: _) [e]) :@: _) _) = let 
-      lambdas = map (lambda n2) (splitSeq e)  
+      lambdas = map (E.lambda n2) (splitSeq e)  
       lambdas2 = map addUID lambdas
       z = zip [1..] lambdas2
       trigs = map (buildTriggerTask t n) z      
@@ -347,9 +343,11 @@ labelDataAccess _ = error "Expecting Role Declaration in Label Data Access"
 
 -- Utils 
 -- Returns True if argument is a Sequence Operation
+{-
 isSeq :: K3 Expression -> Bool
 isSeq (Node (EOperate OSeq :@: _) _) = True
 isSeq _ = False
+-}
 
 -- Get the parent trigger name for a given UID
 findParentTrig :: [K3 Declaration] -> UID -> String
@@ -371,10 +369,12 @@ hasChildUID u (Node (_ :@: as) cs) = let
   in (eID == u) || True `elem` (map (hasChildUID u) cs)
 
 -- Returns True if the given Expression has a sequence operation as a descendant
+{-
 hasChildSeq :: K3 Expression -> Bool
 hasChildSeq (Node (EOperate OSeq :@: _) _) = True
 hasChildSeq (Node (_ :@: _) cs@(_:_)) = True `elem` (map hasChildSeq cs)
 hasChildSeq (Node (_ :@: _) []) = False 
+-}
 
 addUID :: K3 Expression -> K3 Expression
 addUID e = e @+ (EUID (UID 999)) 
@@ -391,10 +391,6 @@ isTrigger :: K3 Declaration -> Bool
 isTrigger (Node (DTrigger _ _ _ :@: _) _) = True
 isTrigger _ = False
 
-getTriggerName :: K3 Declaration -> String
-getTriggerName (Node (DTrigger n _ _ :@: _) _) = n
-getTriggerName _ = error "Not a trigger"
-
 -- Filter subForest of Declarations to only Trigger Declarations 
 getTriggers :: [K3 Declaration] -> [K3 Declaration]
 getTriggers [] = []
@@ -402,9 +398,11 @@ getTriggers (x@(Node (DTrigger _ _ _ :@: _) _):rest) = x:(getTriggers rest)
 getTriggers                                  (_:rest)  = (getTriggers rest)
 
 -- Get the top level expression from a Trigger
+{-
 getTriggerExpression :: K3 Declaration -> K3 Expression
 getTriggerExpression (Node (DTrigger _ _ e :@: _) _) = e
 getTriggerExpression _                                 = error "Cannot get Trigger Expression from Non-Trigger Declaration"
+-}
 
 uidFromDataAccess :: Annotation Expression -> UID
 uidFromDataAccess (ERead _ u)  = u
@@ -429,23 +427,23 @@ hasConflict [] = False
 hasConflict ((EConflict _):_) = True
 hasConflict (_:t)             = hasConflict t
 
+{-
 hasUConflict :: [Annotation Declaration] -> Bool
 hasUConflict [] = False
 hasUConflict ((DConflict _):_) = True
 hasUConflict (_:t) = hasUConflict t
+-}
 
 uidOfAnnos :: [Annotation Expression] -> UID
 uidOfAnnos []            = error "no UID found!"
 uidOfAnnos ((EUID x):_) = x 
 uidOfAnnos (_:as)        = uidOfAnnos as
 
+{-
 globalVars :: K3 Declaration -> [String]
 globalVars (tag &&& children -> (DRole _, ch)) = foldl appendIfGlobal [] ch
 globalVars _ = error "Expecting Role Declaration in globalVars"
-
-appendIfGlobal :: [String] -> K3 Declaration  -> [String]
-appendIfGlobal lst (tag -> (DGlobal n _ _)) = n:lst
-appendIfGlobal lst _ = lst
+-}
 
 -- Utils 
 getAccesses :: [Annotation Expression] -> [Annotation Expression]

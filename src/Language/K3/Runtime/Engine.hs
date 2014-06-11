@@ -69,14 +69,15 @@ module Language.K3.Runtime.Engine (
   , showMessageQueues
   , showEngine
 
+  -- So ghc doesn't complain about unused stuff
+  , NConnection(..)
+  , NEndpoint(..)
+
 #ifdef TEST
   , LoopStatus(..)
 
   , Workers(..)
   , Listeners
-
-  , NConnection(..)
-  , NEndpoint(..)
 
   , IOHandle(..)
   , BufferSpec(..)
@@ -136,7 +137,7 @@ import Control.Monad.Trans.Either
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.HashMap.Lazy as H
-import Data.List
+import Data.List hiding (group)
 import Data.List.Split (wordsBy)
 
 import qualified System.IO as SIO
@@ -523,6 +524,7 @@ peerQPeerW addrL idL = do
   where qName addr = show addr
 
 -- Per Trigger Queues and Workers
+{-
 triggerQTriggerW :: [Address] -> [Identifier] -> IO (QueueConfiguration a)
 triggerQTriggerW addrL idL = do
   -- setup queue-per-trigger hashmap
@@ -536,6 +538,7 @@ triggerQTriggerW addrL idL = do
   mMap    <- newMVar $ H.fromList kvs
   return  $ PerGroup qMap qGroups wMap mMap
   where qName (addr,n) = (show addr) ++ "," ++ n
+-}
 
 {- EngineControl Constructors -}
 defaultControl :: IO EngineControl 
@@ -558,9 +561,9 @@ simulationEngine trigs isPar systemEnv wd@(internalizeWD -> internalWD)  = do
   externalConns   <- emptyConnectionMap . externalSendAddress . address $ config'
   connState       <- return $ EConnectionState (Nothing, externalConns)
   qconfig         <- case (deployedNodes systemEnv, isPar) of
-                       ([x],_) -> singleQSingleW (deployedNodes systemEnv) trigs
-                       (_, False)  -> peerQSingleW (deployedNodes systemEnv) trigs
-                       _  -> peerQPeerW (deployedNodes systemEnv) trigs
+                       ([_], _)   -> singleQSingleW (deployedNodes systemEnv) trigs
+                       (_, False) -> peerQSingleW (deployedNodes systemEnv) trigs
+                       _          -> peerQPeerW (deployedNodes systemEnv) trigs
   colCount        <- newMVar 0
   return $ Engine config' wd internalWD ctrl systemEnv qconfig workers' listeners' endpoints' connState colCount
 
@@ -810,7 +813,7 @@ runMessages pc mp status' = ask >>= \engine -> status' >>= \case
       die msg (Left r) cntrl
       throwEngineError $ MessagesError $ msg ++ (pretty r) 
 
-    die msg errOrResult cntrl = do
+    die _ errOrResult _ = do
         void $ report mp $ errOrResult
         logStep $ "Finished."
 
@@ -849,7 +852,7 @@ runEngine pc mp p = do
     engine <- ask
     result <- initialize mp p
     case workers engine of 
-      Uniprocess worker_mv -> do
+      Uniprocess _ -> do
         --engine  <- ask
         myId    <- liftIO myThreadId
         qGroups <- liftIO $ readMVar (queueGroups $ queueConfig engine)
@@ -858,7 +861,7 @@ runEngine pc mp p = do
         incAwakeWorkers
         runMessages pc mp (return . either Error Result $ status mp result)
       
-      Multithreaded workers_mv -> do 
+      Multithreaded _ -> do 
         --engine  <- ask
         qGroups <- liftIO $ readMVar $ queueGroups $ queueConfig engine
         threads <- mapM (const $ forkWorker pc mp result) qGroups
@@ -1037,7 +1040,7 @@ enqueue qconfig addr n arg = do
       if is_init 
       then return Nothing
       else withMVar (workerIdToQueueIds qconf) (\h -> return $ getWorker qid (H.toList h))
-    getWorker queueId [] = error "failed to find the worker responsible for the given queue"
+    getWorker _ []                = error "failed to find the worker responsible for the given queue"
     getWorker queueId ((k,v):kvs) = if queueId `elem` v  then Just k else (getWorker queueId kvs)
 
 dequeue :: QueueConfiguration a -> EngineM a (Maybe (Address, Identifier, a))
@@ -1301,6 +1304,7 @@ doWrite n arg = ask >>= genericDoWrite n arg . externalEndpoints . endpoints
 
 {- Internal endpoint methods -}
 
+{-
 openBuiltinInternal :: Identifier -> Identifier -> EngineM a ()
 openBuiltinInternal eid bid = do
     engine <- ask
@@ -1309,11 +1313,12 @@ openBuiltinInternal eid bid = do
     genericOpenBuiltin eid bid ife iep
 
 openFileInternal :: Identifier -> String -> String -> Maybe (WireDesc a) -> EngineM a ()
-openFileInternal eid path mode f = do
+openFileInternal eid path mode _ = do
     engine <- ask
     let ife = internalFormat engine
     let iep = internalEndpoints $ endpoints engine
     genericOpenFile eid path ife Nothing mode iep
+-}
 
 openSocketInternal :: Identifier -> Address -> String -> EngineM a ()
 openSocketInternal eid addr mode = do
@@ -1327,14 +1332,18 @@ openSocketInternal eid addr mode = do
 closeInternal :: String -> EngineM a ()
 closeInternal n = ask >>= genericClose n . internalEndpoints . endpoints
 
+{-
 hasReadInternal :: Identifier -> EngineM a (Maybe Bool)
 hasReadInternal n = ask >>= genericHasRead n . internalEndpoints . endpoints
+-}
 
 hasWriteInternal :: Identifier -> EngineM a (Maybe Bool)
 hasWriteInternal n = ask >>= genericHasWrite n . internalEndpoints . endpoints
 
+{-
 doReadInternal :: Identifier -> EngineM a (Maybe (InternalMessage a))
 doReadInternal n = ask >>= genericDoRead n . internalEndpoints . endpoints
+-}
 
 doWriteInternal :: Identifier -> InternalMessage a -> EngineM a ()
 doWriteInternal n arg = ask >>= genericDoWrite n arg . internalEndpoints . endpoints
@@ -1574,11 +1583,12 @@ detachNotifier_ eid nt = void $ detachNotifier eid nt
 emptySingletonBuffer :: BufferContents a
 emptySingletonBuffer = Single Nothing
 
-singletonBuffer :: a -> BufferContents a
-singletonBuffer contents = Single $ Just contents
-
 emptyBoundedBuffer :: BufferSpec -> BufferContents a
 emptyBoundedBuffer spec = Multiple [] spec
+
+#ifdef TEST
+singletonBuffer :: a -> BufferContents a
+singletonBuffer contents = Single $ Just contents
 
 boundedBuffer :: BufferSpec -> [a] -> Maybe (BufferContents a)
 boundedBuffer spec contents
@@ -1592,9 +1602,12 @@ emptyUnboundedBuffer = Multiple [] unboundedSpec
 unboundedBuffer :: [a] -> Maybe (BufferContents a)
 unboundedBuffer = boundedBuffer unboundedSpec
   where unboundedSpec = BufferSpec maxBound (batchSize $ defaultBufferSpec $ defaultConfig)
+#endif
 
+{-
 exclusive :: BufferContents a -> IO (EndpointBuffer a)
 exclusive c = return $ Exclusive c
+-}
 
 shared :: BufferContents a -> IO (EndpointBuffer a)
 shared c = newMVar c >>= return . Shared
@@ -1610,9 +1623,11 @@ modifyEBuffer f = \case
   Exclusive c -> f c >>= (\(a,b) -> return (Exclusive a, b))
   Shared mvc -> modifyMVar mvc (\c -> f c) >>= return . (Shared mvc,)
 
+{-
 modifyEBuffer_ :: (BufferContents a -> IO (BufferContents a)) -> EndpointBuffer a
                -> IO (EndpointBuffer a)
 modifyEBuffer_ f b = modifyEBuffer (\c -> f c >>= return . (,())) b >>= return . fst
+-}
 
 emptyEBContents :: BufferContents a -> Bool
 emptyEBContents (Single x)     = maybe True (\_ -> False) x
@@ -1628,6 +1643,7 @@ fullEBContents (Multiple x spec) = length x == maxSize spec
 fullEBuffer :: EndpointBuffer a -> IO Bool
 fullEBuffer = wrapEBuffer fullEBContents
 
+#ifdef TEST
 sizeEBContents :: BufferContents a -> Int
 sizeEBContents (Single x)     = maybe 0 (\_ -> 1) x
 sizeEBContents (Multiple l _) = length l
@@ -1648,6 +1664,7 @@ readEBContents (Multiple x _) = if null x then Nothing else Just $ head x
 
 readEBuffer :: EndpointBuffer a -> IO (Maybe a)
 readEBuffer = wrapEBuffer readEBContents
+#endif
 
 appendEBContents :: v -> BufferContents v -> (BufferContents v, Maybe v)
 appendEBContents v c | fullEBContents c = (c, Just v)
@@ -1665,8 +1682,10 @@ takeEBContents = \case
   Multiple [] s    -> (Multiple [] s, Nothing)
   Multiple (h:t) s -> (Multiple t s, Just h)
 
+#ifdef TEST
 takeEBuffer :: EndpointBuffer v -> IO (EndpointBuffer v, Maybe v)
 takeEBuffer = modifyEBuffer $ return . takeEBContents
+#endif
 
 flushEBContents :: IOHandle v -> BufferContents v
                 -> IO (BufferContents v, Maybe EndpointNotification)

@@ -40,8 +40,6 @@ import Control.Monad.Reader
 import Data.Function
 import Data.List
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -458,6 +456,7 @@ virtualizedProcessor pc staticEnv = do
 type SingletonMessageProcessor =
   MessageProcessor (K3 Declaration) Value (IResult Value) (IResult Value)
 
+{-
 uniProcessor :: PrintConfig -> SEnvironment Value -> IO SingletonMessageProcessor
 uniProcessor pc staticEnv = do
     snapshotMV <- newEmptyMVar
@@ -501,3 +500,4 @@ uniProcessor pc staticEnv = do
       return result
 
     unknownTrigger ((_,st), ilog) n = ((Left $ RunTimeTypeError ("Unknown trigger " ++ n) Nothing, st), ilog)
+-}

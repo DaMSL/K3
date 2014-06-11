@@ -21,8 +21,6 @@ import Data.List
 import Data.Maybe
 import Data.Word (Word8)
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Common

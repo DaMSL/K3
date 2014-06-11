@@ -152,7 +152,7 @@ refreshmentsDecl = do
                    (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
                    (text "refreshments")
                    Nothing
-    rs <- refreshables <$> get
+    -- rs <- refreshables <$> get
     mapInit <- map populateRefreshment . refreshables <$> get
     return $ vsep $ mapDecl : mapInit
   where

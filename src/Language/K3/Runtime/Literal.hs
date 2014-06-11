@@ -7,7 +7,6 @@ module Language.K3.Runtime.Literal where
 import Control.Applicative ( (<$>), (<*>) )
 import Control.Concurrent.MVar
 import Control.Monad.IO.Class
-import Data.Tree
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation

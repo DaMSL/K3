@@ -45,7 +45,10 @@ mutable b n =
   n @+ (if b then TMutable else TImmutable)
 
 -- | Shortcuts to the above
+mut :: K3 Type -> K3 Type
 mut = mutable True
+
+immut :: K3 Type -> K3 Type
 immut = mutable False
 
 -- | Boolean type.

@@ -9,7 +9,6 @@ module Language.K3.Interpreter.Builtins where
 
 import Control.Concurrent.MVar
 import Control.Monad.State
-import Control.Applicative
 import Data.List
 import qualified Data.Map as Map
 import qualified System.Random as Random
@@ -56,12 +55,12 @@ timeBinOp map1 map2 op = do
       (sec', nsec') = normalize sec nsec
   return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
   where
-      get id map = 
-        case fst $ Map.findWithDefault (VInt 0, MemImmut) id map of
+      get' nm m = 
+        case fst $ Map.findWithDefault (VInt 0, MemImmut) nm m of
           VInt i -> return i
           x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
-      secF map  = get "sec" map
-      nsecF map = get "nsec" map
+      secF m  = get' "sec" m
+      nsecF m = get' "nsec" m
       normalize s ns =
         let mega = 1000000 in
         if ns > mega || ns < -mega then
