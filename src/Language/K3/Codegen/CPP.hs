@@ -145,35 +145,35 @@ program d = do
   where
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
-refreshmentsDecl :: CPPGenM CPPGenR
-refreshmentsDecl = do
+matchersDecl :: CPPGenM CPPGenR
+matchersDecl = do
     let mapDecl = genCDecl
                    (text "map" <> angles (cat $ punctuate comma [text "string", text "std::function<void(string)>"]))
-                   (text "refreshments")
+                   (text "matchers")
                    Nothing
-    mapInit <- map populateRefreshment . refreshables <$> get
+    mapInit <- map populateMatchers . patchables <$> get
     return $ vsep $ mapDecl : mapInit
   where
-    populateRefreshment :: Identifier -> CPPGenR
-    populateRefreshment f = text "refreshments"
+    populateMatchers :: Identifier -> CPPGenR
+    populateMatchers f = text "matchers"
                             <> brackets (dquotes $ text f)
                             <+> equals
                             <+> brackets empty
-                            <+> parens (text "string s_")
-                            <+> braces (genCCall (text "refresh") Nothing [text "s_", text f] <> semi)
+                            <+> parens (text "string _s")
+                            <+> braces (genCCall (text "do_patch") Nothing [text "_s", text f] <> semi)
                             <> semi
 
 genKMain :: CPPGenM CPPGenR
 genKMain = do
-    refreshments <- refreshmentsDecl
+    matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
             genCCall (text "populate_dispatch") Nothing [] <> semi,
-            refreshments,
+            matchers,
             genCDecl (text "string") (text "parse_arg")
                      (Just $ genCCall (text "preprocess_argv") Nothing [text "argc", text "argv"]),
             genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
                      (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing [text "parse_arg"]),
-            genCCall (text "consolidate_refreshments") Nothing [text "bindings", text "refreshments"] <> semi,
+            genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             text "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table);",
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));",
