@@ -21,15 +21,13 @@ import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Transform.Common
-
 import Language.K3.Core.Constructor.Expression
-import qualified Language.K3.Core.Constructor.Type as T
-import qualified Language.K3.Core.Constructor.Declaration as D
 
+isROBAnno :: Annotation Expression -> Bool
 isROBAnno (EAnalysis(ReadOnlyBind _)) = True
 isROBAnno _                                    = False
 
+getROBval :: Maybe (Annotation Expression) -> [String]
 getROBval (Just (EAnalysis(ReadOnlyBind x))) = x
 getROBval _ = error "Not a ReadOnlyBind annotation"
 
@@ -41,10 +39,10 @@ flipList = map (\(a,b) -> (b,a))
 transform :: K3 Declaration -> K3 Declaration
 transform ds = runIdentity $ mapTree wrap ds
   where
-    wrap ch (details -> (DGlobal id t (Just expr@(tag -> ELambda _)), _, annos)) = 
-      return $ Node (DGlobal id t (Just $ transformExpr $ annotateROBinds expr) :@: annos) ch
-    wrap ch (details -> (DTrigger id t expr, _, annos)) =
-      return $ Node (DTrigger id t (transformExpr $ annotateROBinds expr) :@: annos) ch
+    wrap ch (details -> (DGlobal nm t (Just expr@(tag -> ELambda _)), _, annos)) = 
+      return $ Node (DGlobal nm t (Just $ transformExpr $ annotateROBinds expr) :@: annos) ch
+    wrap ch (details -> (DTrigger nm t expr, _, annos)) =
+      return $ Node (DTrigger nm t (transformExpr $ annotateROBinds expr) :@: annos) ch
     wrap ch (Node x _) = return $ Node x ch
 
 -- Stage 1
@@ -56,18 +54,18 @@ annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty 
     -- Remove ids as we encounter binds. 
     -- Lets, cases and lambdas don't support assign anyway so ignore them
     accumWrite :: [Set String] -> [K3 Expression] -> K3 Expression -> Identity (Set String, K3 Expression)
-    accumWrite accs ch (details -> (t@(EAssign id), _, annos)) =
-      return (Set.insert id (Set.unions accs), Node (t :@: annos) ch)
+    accumWrite accs ch (details -> (t@(EAssign nm), _, annos)) =
+      return (Set.insert nm (Set.unions accs), Node (t :@: annos) ch)
 
     -- unhandled. Just remove/capture a binding
-    accumWrite accs ch (details -> (t@(EBindAs (BIndirection id)), _, annos)) =
-      return (Set.delete id (accs!!1), Node (t :@: annos) ch)
+    accumWrite accs ch (details -> (t@(EBindAs (BIndirection nm)), _, annos)) =
+      return (Set.delete nm (accs!!1), Node (t :@: annos) ch)
 
     accumWrite accs ch (details -> (t@(EBindAs binder), _, annos)) = 
       let ids = Set.fromList $ case binder of
                                  BRecord idsMap -> map snd idsMap
-                                 BTuple  ids    -> ids
-
+                                 BTuple  ids'   -> ids'
+                                 BIndirection _ -> error "unexpected"
       -- transmit the set of written ids, and annotate with the ones that aren't written to
           node = Node (t :@: annos @+ (EAnalysis $ ReadOnlyBind $ Set.toList $ Set.difference ids $ accs!!1)) ch
       in return (Set.difference (accs!!1) ids, node)
@@ -95,7 +93,7 @@ transformExpr e = evalState computation 1
     -- of a bind does not get the bind's assignment
     -- Lambda modifies its child's context
     sendProjection :: Monad m => BindMap -> K3 Expression -> K3 Expression -> m BindMap
-    sendProjection acc _ (tag -> ELambda id) = return $ Map.delete id acc
+    sendProjection acc _ (tag -> ELambda nm) = return $ Map.delete nm acc
     sendProjection acc _ _ = return acc
 
     replicateCh ch = replicate (length ch - 1)
@@ -108,14 +106,14 @@ transformExpr e = evalState computation 1
     -- Send down a union of the current ro-set and the one found at this node (if any)
     -- Let, case and bind capture in the 2nd child's context only
     ch1SendProjection :: BindMap -> K3 Expression -> K3 Expression -> State Int (BindMap, [BindMap])
-    ch1SendProjection acc _ (details -> (ELetIn id, ch, _))  = removeFromMap [id] acc ch
-    ch1SendProjection acc _ (details -> (ECaseOf id, ch, _)) = removeFromMap [id] acc ch
+    ch1SendProjection acc _ (details -> (ELetIn nm, ch, _))  = removeFromMap [nm] acc ch
+    ch1SendProjection acc _ (details -> (ECaseOf nm, ch, _)) = removeFromMap [nm] acc ch
 
     -- These binds are unhandled for this modification, and can only capture ids
-    ch1SendProjection acc _ (details -> (EBindAs (BIndirection id), ch, _)) = removeFromMap [id] acc ch
+    ch1SendProjection acc _ (details -> (EBindAs (BIndirection nm), ch, _)) = removeFromMap [nm] acc ch
     ch1SendProjection acc _ (details -> (EBindAs (BTuple ids), ch, _)) = removeFromMap ids acc ch
 
-    ch1SendProjection acc ch (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
+    ch1SendProjection acc _ (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
       num <- get
       put $ num + 1
       let roIds = getROBval $ annos @~ isROBAnno 
@@ -131,25 +129,25 @@ transformExpr e = evalState computation 1
 
     -- Tranform variable accesses -> projections
     handleNode :: Monad m => BindMap -> [K3 Expression] -> K3 Expression -> m (K3 Expression)
-    handleNode acc _  (tag -> EVariable id) | id `Map.member` acc = 
-      let (proj, var) = fromMaybe (error "unexpected") $ id `Map.lookup` acc
+    handleNode acc _  (tag -> EVariable nm) | nm `Map.member` acc = 
+      let (proj, var) = fromMaybe (error "unexpected") $ nm `Map.lookup` acc
       in return $ immut $ project proj $ variable var
 
     -- We may need a let to replace our bind. 
     -- If some non-RO bindings remain, we need to keep them as well
     handleNode acc [ch1, ch2]
-      (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust $ annos @~ isROBAnno = return addLet
+      (details -> (EBindAs (BRecord idNames), _, annos)) | isJust $ annos @~ isROBAnno = return addLet
       where
         roIds = getROBval $ annos @~ isROBAnno
         -- Lookup our saved newId
         newId = maybe (error "not found") snd $ Map.lookup (head roIds) acc
         addLet = immut $ letIn newId (immut ch1) $ remainingBinds newId
 
-        remainingBinds id = 
+        remainingBinds nm = 
           let remain = Map.toList $ Map.difference (Map.fromList $ flipList idNames) $ Map.fromList $ map (\x -> (x,"")) roIds
           in if null remain then ch2
-             else Node (EBindAs (BRecord remain) :@: annos) [variable id, ch2]
+             else Node (EBindAs (BRecord remain) :@: annos) [variable nm, ch2]
 
-    handleNode acc ch (Node x _) = return $ Node x ch
+    handleNode _ ch (Node x _) = return $ Node x ch
               
 

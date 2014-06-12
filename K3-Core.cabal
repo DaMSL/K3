@@ -175,7 +175,7 @@ library
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
         Language.K3.TypeSystem.Data.Result
 
-    ghc-options: -Wall -O2
+    ghc-options: -Wall -fno-warn-orphans -O2
 
     other-modules:
         Language.K3.Codegen.CPP.Collections,

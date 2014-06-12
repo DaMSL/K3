@@ -68,9 +68,6 @@ csName n = n++"Start"
 cpName :: Identifier -> Identifier
 cpName n = n++"Process"
 
-cfName :: Identifier -> Identifier
-cfName n = n++"Final"
-
 ccName :: Identifier -> Identifier
 ccName n = n++"Controller"
 

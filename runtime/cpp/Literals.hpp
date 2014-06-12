@@ -17,6 +17,9 @@ namespace K3 {
 
   using boost::asio::ip::address;
 
+  using std::begin;
+  using std::end;
+  using std::function;
   using std::list;
   using std::make_shared;
   using std::map;
@@ -37,6 +40,7 @@ namespace K3 {
 
       angles = '<' >> *(qi::char_ - '>') >> '>';
       braces = '{' >> *(qi::char_ - '}') >> '}';
+      brackets = '[' >> *(qi::char_ - ']') >> ']';
       parens = '(' >> *(qi::char_ - ')') >> ')';
       quotes = '"' >> *(escape - '"') >> '"';
       other = *(qi::char_ - ',');
@@ -52,6 +56,7 @@ namespace K3 {
 
     qi::rule<iterator, qi::space_type> angles;
     qi::rule<iterator, qi::space_type> braces;
+    qi::rule<iterator, qi::space_type> brackets;
     qi::rule<iterator, qi::space_type> parens;
     qi::rule<iterator, qi::space_type> quotes;
     qi::rule<iterator, qi::space_type> other;
@@ -77,83 +82,137 @@ namespace K3 {
     shallow<iterator> value;
   };
 
-  // Built-in type refresh specializations.
+  // Built-in literal patchers.
 
-  template <class T> void refresh(string, T&);
-  template <class T, size_t i, size_t n> struct refresh_many;
+  template <class T> struct patcher;
+  template <class T, size_t i, size_t n> struct tuple_patcher;
 
-  template <> void refresh<bool>(string s, bool& b) {
-    qi::parse(begin(s), end(s), qi::bool_[([&b] (bool b_) { b = b_; })]);
-  }
-
-  template <> void refresh<int>(string s, int& i) {
-    qi::parse(begin(s), end(s), qi::int_[([&i] (int i_) { i = i_; })]);
-  }
-
-  template <> void refresh<double>(string s, double& d) {
-    qi::parse(begin(s), end(s), qi::double_[([&d] (double d_) { d = d_; })]);
-  }
-
-  template <> void refresh<string>(string s, string& t) {
-    string t_;
-    bool result = qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), t_);
-
-    if (result) {
-      t = t_;
-    }
-  }
-
-  template <class T> void refresh(string s, shared_ptr<T>& p) {
-    shallow<string::iterator> _shallow;
-    qi::rule<string::iterator, qi::space_type> raw_rule = _shallow[([&p] (string s_) {
-      if (!p) {
-        p = make_shared<T>();
-      }
-
-      refresh(s_, *p);
-    })];
-    qi::rule<string::iterator, qi::space_type> nullptr_rule = qi::lit("none")[([&p] () { p = nullptr; })];
-    qi::rule<string::iterator, qi::space_type> someptr_rule = (qi::lit("some") | qi::lit("ind")) >> raw_rule;
-    qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
-  }
-
-  template <> void refresh<address>(string s, address& a) {
-    a = address::from_string(s);
-  }
-
-  template <> void refresh<unsigned short>(string s, unsigned short& i) {
-    qi::parse(begin(s), end(s), qi::ushort_, i);
-  }
-
-  template <class ... Ts> void refresh(string s, tuple<Ts...>& t) {
-    list<string> v;
-    shallow<string::iterator> _shallow;
-
-    qi::rule<string::iterator, qi::space_type, list<string>()> tuple_rule = '(' >> (_shallow % ',') >> ')';
-
-    qi::rule<string::iterator, qi::space_type, string()> ip_rule = qi::raw[(qi::int_ % '.')];
-    qi::rule<string::iterator, qi::space_type, string()> port_rule = qi::raw[qi::int_];
-    qi::rule<string::iterator, qi::space_type, list<string>()> address_rule
-      = '<' >> ip_rule >> ':' >> port_rule >> '>';
-
-    qi::phrase_parse(begin(s), end(s), tuple_rule | address_rule, qi::space, v);
-    refresh_many<tuple<Ts...>, 0, sizeof...(Ts)>()(v, t);
-  }
-
-  template <class T, size_t i> struct refresh_many<T, i, i> {
-    void operator()(list<string>&, T&) {}
+  template <class T> struct patcher {
+    static void patch(string, T&);
   };
 
-  template <class T, size_t i, size_t n> struct refresh_many {
-    void operator()(list<string>& v, T& t) {
+  template <> struct patcher<bool> {
+    static void patch(string s, bool& b) {
+      qi::parse(begin(s), end(s), qi::bool_[([&b] (bool q) { b = q; })]);
+    }
+  };
+
+  template <> struct patcher<int> {
+    static void patch(string s, int& i) {
+      qi::parse(begin(s), end(s), qi::int_[([&i] (int j) { i = j; })]);
+    }
+  };
+
+  template <> struct patcher<double> {
+    static void patch(string s, double& d) {
+      qi::parse(begin(s), end(s), qi::double_[([&d] (double f) { d = f; })]);
+    }
+  };
+
+  template <> struct patcher<string> {
+    static void patch(string s, string& t) {
+      string r;
+
+      if (qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), r)) {
+        t = r;
+      }
+    }
+  };
+
+  template <> struct patcher<unsigned short> {
+    static void patch(string s, unsigned short& u) {
+      qi::parse(std::begin(s), std::end(s), qi::ushort_, u);
+    }
+  };
+
+  template <> struct patcher<address> {
+    static void patch(string s, address& a) {
+      a = address::from_string(s);
+    }
+  };
+
+  template <class T> struct patcher<shared_ptr<T>> {
+    static void patch(string s, shared_ptr<T> p) {
+      shallow<string::iterator> _shallow;
+
+      shared_ptr<T> tp = make_shared<T>(T());
+
+      qi::rule<string::iterator, qi::space_type> ind_rule
+        = qi::lit("ind") >> _shallow[([&tp] (string t) { patcher<T>::patch(t, *tp); })];
+      qi::rule<string::iterator, qi::space_type> opt_rule
+        = qi::lit("none")[([&p, &tp] () { tp = p = nullptr; })]
+        | qi::lit("some") >> _shallow[([&tp] (string t) { patcher<T>::patch(t, *tp); })];
+
+      qi::phrase_parse(begin(s), end(s), ind_rule | opt_rule, qi::space);
+
+      if (tp) {
+        p = tp;
+      }
+    }
+  };
+
+  template <class T> struct patcher<shared_ptr<list<T>>> {
+    static void patch(string s, shared_ptr<list<T>>& p) {
+      shallow<string::iterator> _shallow;
+      list<T> lp;
+      qi::rule<string::iterator, qi::space_type> item_rule
+        = _shallow[([&lp] (string t) { lp.push_back(T()); patcher<T>::patch(t, lp.back()); })];
+
+      qi::rule<string::iterator, qi::space_type> list_rule = '[' >> (item_rule % ',') >> ']';
+
+      if (qi::phrase_parse(begin(s), end(s), list_rule, qi::space)) {
+        p = make_shared<list<T>>(lp);
+      }
+    }
+  };
+
+  template <class ... Ts> struct patcher<tuple<Ts...>> {
+    static void patch(string s, tuple<Ts...>& t) {
+      list<string> v;
+      shallow<string::iterator> _shallow;
+
+      qi::rule<string::iterator, qi::space_type, list<string>()> tuple_rule = '(' >> (_shallow % ',') >> ')';
+
+      qi::rule<string::iterator, qi::space_type, string()> ip_rule = qi::raw[(qi::int_ % '.')];
+      qi::rule<string::iterator, qi::space_type, string()> port_rule = qi::raw[qi::int_];
+      qi::rule<string::iterator, qi::space_type, list<string>()> address_rule
+        = '<' >> ip_rule >> ':' >> port_rule >> '>';
+
+      qi::phrase_parse(begin(s), end(s), tuple_rule | address_rule, qi::space, v);
+      tuple_patcher<tuple<Ts...>, 0, sizeof...(Ts)>::patch(v, t);
+    }
+  };
+
+  template <class T, size_t i> struct tuple_patcher<T, i, i> {
+    static void patch(list<string>&, T&) {}
+  };
+
+  template <class T, size_t i, size_t n> struct tuple_patcher {
+    static void patch(list<string>& v, T& t) {
       if (v.empty()) {
         return;
       }
 
-      refresh<typename std::tuple_element<i, T>::type>(v.front(), std::get<i>(t));
+      patcher<typename std::tuple_element<i, T>::type>::patch(v.front(), std::get<i>(t));
 
       v.pop_front();
-      refresh_many<T, i + 1, n>()(v, t);
+      tuple_patcher<T, i + 1, n>::patch(v, t);
+    }
+  };
+
+  template <template <class> class C, class E> struct collection_patcher {
+    static void patch(string s, C<E>& c) {
+      shared_ptr<list<E>> tmp_dsp = nullptr;
+      patcher<shared_ptr<list<E>>>::patch(s, tmp_dsp);
+
+      if (tmp_dsp) {
+        C<E> new_c;
+        for (E e: *tmp_dsp) {
+          new_c.insert(e);
+        }
+
+        c = new_c;
+      }
     }
   };
 
@@ -162,6 +221,26 @@ namespace K3 {
     literal<string::iterator> parser;
     qi::phrase_parse(begin(s), end(s), parser, qi::space, bindings);
     return bindings;
+  }
+
+  template <class T>
+  void do_patch(string s, T& t) {
+    patcher<T>::patch(s, t);
+  }
+
+  void match_patchers(map<string, string>& m, map<string, function<void(string)>>& f) {
+    for (pair<string, string> p: m) {
+      if (f.find(p.first) != end(f)) {
+        f[p.first](p.second);
+      }
+    }
+  }
+
+  string preprocess_argv(int argc, char** argv) {
+    if (argc < 2)
+      return "";
+
+    return argv[1];
   }
 }
 

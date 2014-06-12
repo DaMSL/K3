@@ -70,7 +70,7 @@ declaration (tag -> DTrigger i t e) = do
     w <- triggerWrapper i t
     return $ d PL.<$$> w
 
-declaration (tag &&& children -> (DRole n, cs)) = do
+declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
     currentS <- get
     i <- genCType T.unit >>= \ctu ->
@@ -84,13 +84,12 @@ declaration (tag &&& children -> (DRole n, cs)) = do
 
     refreshCPPGenS
 
-    return $ text "namespace" <+> text n <+> hangBrace (
-        vsep $ punctuate line $
+    return $ vsep $ punctuate line $
                [text "using K3::Collection;"]
             ++ [forwards currentS]
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop])
+            ++ [subDecls, i, tableDecl, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
@@ -146,34 +145,39 @@ program d = do
   where
     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
 
-refreshmentsDecl :: CPPGenM CPPGenR
-refreshmentsDecl = do
+matchersDecl :: CPPGenM CPPGenR
+matchersDecl = do
     let mapDecl = genCDecl
-                   (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
-                   (text "refreshments")
+                   (text "map" <> angles (cat $ punctuate comma [text "string", text "std::function<void(string)>"]))
+                   (text "matchers")
                    Nothing
-    rs <- refreshables <$> get
-    mapInit <- map populateRefreshment . refreshables <$> get
+    mapInit <- map populateMatchers . patchables <$> get
     return $ vsep $ mapDecl : mapInit
   where
-    populateRefreshment :: Identifier -> CPPGenR
-    populateRefreshment f = text "refreshments"
+    populateMatchers :: Identifier -> CPPGenR
+    populateMatchers f = text "matchers"
                             <> brackets (dquotes $ text f)
                             <+> equals
-                            <+> brackets (text "&" <> text f)
-                            <+> parens (text "string s_")
-                            <+> braces (genCCall (text "refresh") Nothing [text "s_", text f] <> semi)
+                            <+> brackets empty
+                            <+> parens (text "string _s")
+                            <+> braces (genCCall (text "do_patch") Nothing [text "_s", text f] <> semi)
                             <> semi
 
 genKMain :: CPPGenM CPPGenR
 genKMain = do
-    refreshments <- refreshmentsDecl
-    return $ genCFunction Nothing (text "int") (text "main") [text "int", text "char**"] $ vsep [
-            genCQualify (text "__global") (genCCall (text "populate_dispatch") Nothing []) <> semi,
-            refreshments,
-            genCQualify (text "__global") (genCCall (text "processRole") Nothing [text "unit_t()"]) <> semi,
-            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(__global::dispatch_table);",
-            text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));"
+    matchers <- matchersDecl
+    return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
+            genCCall (text "populate_dispatch") Nothing [] <> semi,
+            matchers,
+            genCDecl (text "string") (text "parse_arg")
+                     (Just $ genCCall (text "preprocess_argv") Nothing [text "argc", text "argv"]),
+            genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
+                     (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing [text "parse_arg"]),
+            genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
+            genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
+            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table);",
+            text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));",
+            text "return 0;         "
         ]
 
 includes :: CPPGenM [Identifier]
@@ -191,6 +195,7 @@ includes = return [
         "Common.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
+        "Literals.hpp",
         "MessageProcessor.hpp",
         "Serialization.hpp"
     ]
@@ -199,7 +204,12 @@ namespaces :: CPPGenM [Identifier]
 namespaces = do
     serializationNamespace <- serializationMethod <$> get >>= \case
         BoostSerialization -> return "namespace K3::BoostSerializer"
-    return ["namespace std", "namespace K3", serializationNamespace]
+    return [
+            "namespace std",
+            "namespace K3",
+            serializationNamespace,
+            "std::begin", "std::end"
+        ]
 
 aliases :: [(Identifier, Identifier)]
 aliases = [

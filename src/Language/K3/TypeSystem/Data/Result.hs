@@ -2,7 +2,6 @@ module Language.K3.TypeSystem.Data.Result where
 
 import Data.Map
 import Data.Monoid
-import Data.Set
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common

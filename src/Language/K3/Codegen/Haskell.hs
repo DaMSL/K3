@@ -20,7 +20,6 @@ import Control.Monad.Trans.Either
 
 import Data.Function
 import Data.List
-import Data.Tree
 
 import qualified Language.Haskell.Exts.Build  as HB
 import qualified Language.Haskell.Exts.SrcLoc as HL
@@ -1214,7 +1213,7 @@ trigger n t e = do
 
 
 annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> CodeGeneration ()
-annotation n vdecls memberDecls =
+annotation n _ {- vdecls -} memberDecls =
   -- TODO: consider: should we do anything with "vdecls", the declared type
   --       variables and their upper bounds?
   foldM (initializeMember n) [] memberDecls >>= modifyAnnotationSpecs . (:) . (n,)

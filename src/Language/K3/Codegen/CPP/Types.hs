@@ -50,7 +50,7 @@ data CPPGenS = CPPGenS {
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [Identifier],
 
-        refreshables :: [Identifier],
+        patchables :: [Identifier],
 
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
@@ -78,12 +78,12 @@ defaultCPPGenS = CPPGenS 0 empty empty [] [] M.empty M.empty S.empty S.empty Boo
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
     gs <- globals <$> get
-    rs <- refreshables <$> get
-    put defaultCPPGenS { globals = gs, refreshables = rs }
+    rs <- patchables <$> get
+    put defaultCPPGenS { globals = gs, patchables = rs }
 
 -- | Copy state elements from the imperative transformation to CPP code generation.
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, refreshables = I.refreshables is}
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
