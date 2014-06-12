@@ -1,3 +1,5 @@
+include "Annotation/Collection.k3"
+
 declare final : mut int = 0
 
 trigger start : int = \n -> (fibonacci, me) <- (n, 0, 1)

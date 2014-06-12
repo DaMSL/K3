@@ -12,3 +12,10 @@ declare add_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:
 // Time difference
 declare sub_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:int}
 
+// ---- Date ----
+
+declare getUTCDate : () -> {y : int, m : int, d : int}
+
+declare getLocalDate : () -> {y : int, m : int, d : int}
+
+declare parseDate : string -> string -> option {y : int, m : int, d : int}
