@@ -18,7 +18,8 @@ module Language.K3.Core.Type (
     isTAnnotation,
 
     namedTAnnotations,
-    isTFunction
+    isTFunction,
+    isTEndpoint
 ) where
 
 import Control.Arrow
@@ -196,3 +197,9 @@ isTFunction :: K3 Type -> Bool
 isTFunction (tag -> TFunction) = True
 isTFunction (tag &&& children -> (TForall _, [t])) = isTFunction t
 isTFunction _ = False
+
+-- | Matches endpoint types.
+isTEndpoint :: K3 Type -> Bool
+isTEndpoint (tag -> TSource) = True
+isTEndpoint (tag -> TSink)   = True
+isTEndpoint _ = False
