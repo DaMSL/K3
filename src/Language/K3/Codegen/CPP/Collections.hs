@@ -150,7 +150,7 @@ record rName idts = do
         let fieldParser = parens $ keyParser <+> text ">>" <+> squotes (char ':') <+> text ">>" <+> valParser
         let actCapture = text "&r"
         let actArgs = text "string _string"
-        let actBody = genCCall (text "refresh") Nothing [text "_string", text "r" <> dot <> text i] <> semi
+        let actBody = genCCall (text "do_patch") Nothing [text "_string", text "r" <> dot <> text i] <> semi
         let fieldAction = brackets $ parens $ brackets actCapture <+> parens actArgs <+> braces actBody
 
         return $ genCDecl

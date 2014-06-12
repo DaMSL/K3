@@ -223,6 +223,11 @@ namespace K3 {
     return bindings;
   }
 
+  template <class T>
+  void do_patch(string s, T& t) {
+    patcher<T>::patch(s, t);
+  }
+
   void match_patchers(map<string, string>& m, map<string, function<void(string)>>& f) {
     for (pair<string, string> p: m) {
       if (f.find(p.first) != end(f)) {
