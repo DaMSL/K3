@@ -743,7 +743,7 @@ inferExprTypes tienv expr = do
 
     -- | Assignment expressions unify their source and target types, as well as 
     --   ensuring that the source is mutable.
-    inferQType env ch n@(tag -> EAssign i) = trace (show env) $ do
+    inferQType env ch n@(tag -> EAssign i) = do
       ipt <- either assignBindingErr return $ tilkupe env i
       eqt <- qTypeOfM $ head ch
       case ipt of 
