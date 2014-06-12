@@ -61,7 +61,7 @@ composite className ans = do
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
-    let classDefn = genCTemplateDecl [text "CONTENT"] <$$> classBody
+    let classDefn = genCTemplateDecl [text "CONTENT"] <$$> classBody <$$> patcherSpec
 
     return classDefn
   where
@@ -92,6 +92,29 @@ composite className ans = do
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
 
     constructors = [engineConstructor, copyConstructor]
+
+    patcherSpec :: CPPGenR
+    patcherSpec = genCTemplateDecl [text "E"] <$$> patcherSpecStruct
+
+    patcherSpecStruct :: CPPGenR
+    patcherSpecStruct = text "struct patcher"
+                     <> angles (text className <> angles (text "E")) <+> hangBrace patcherSpecMeth <> semi
+
+    patcherSpecMeth :: CPPGenR
+    patcherSpecMeth = text "static" <+> text "void" <+> text "patch"
+                   <> parens (cat $ punctuate comma [
+                              text "string s",
+                              text className <> angles (text "E") <> text "&" <+> text "c"
+                         ])
+                  <+> hangBrace subPatcherCall
+
+    subPatcherCall :: CPPGenR
+    subPatcherCall = genCQualify patcherStruct patcherCall <> semi
+
+    patcherStruct :: CPPGenR
+    patcherStruct = text "collection_patcher" <> angles (cat $ punctuate comma [text className, text "E"])
+
+    patcherCall = genCCall (text "patch") Nothing [text "s", text "c"]
 
 dataspaceType :: CPPGenR -> CPPGenM CPPGenR
 dataspaceType eType = return $ text "vector" <> angles eType
