@@ -87,26 +87,44 @@ namespace K3 {
   template <class T> struct patcher;
   template <class T, size_t i, size_t n> struct tuple_patcher;
 
-  template <> void refresh<bool>(string s, bool& b) {
-    qi::parse(begin(s), end(s), qi::bool_[([&b] (bool b_) { b = b_; })]);
-  }
+  template <class T> struct patcher {
+    static void patch(string, T&);
+  };
 
-  template <> void refresh<int>(string s, int& i) {
-    qi::parse(begin(s), end(s), qi::int_[([&i] (int i_) { i = i_; })]);
-  }
-
-  template <> void refresh<double>(string s, double& d) {
-    qi::parse(begin(s), end(s), qi::double_[([&d] (double d_) { d = d_; })]);
-  }
-
-  template <> void refresh<string>(string s, string& t) {
-    string t_;
-    bool result = qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), t_);
-
-    if (result) {
-      t = t_;
+  template <> struct patcher<bool> {
+    static void patch(string s, bool& b) {
+      qi::parse(begin(s), end(s), qi::bool_[([&b] (bool q) { b = q; })]);
     }
-  }
+  };
+
+  template <> struct patcher<int> {
+    static void patch(string s, int& i) {
+      qi::parse(begin(s), end(s), qi::int_[([&i] (int j) { i = j; })]);
+    }
+  };
+
+  template <> struct patcher<double> {
+    static void patch(string s, double& d) {
+      qi::parse(begin(s), end(s), qi::double_[([&d] (double f) { d = f; })]);
+    }
+  };
+
+  template <> struct patcher<string> {
+    static void patch(string s, string& t) {
+      string r;
+
+      if (qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), r)) {
+        t = r;
+      }
+    }
+  };
+
+  template <> struct patcher<unsigned short> {
+    static void patch(string s, unsigned short& u) {
+      qi::parse(std::begin(s), std::end(s), qi::ushort_, u);
+    }
+  };
+
 
   template <class T> void refresh(string s, shared_ptr<T>& p) {
     shallow<string::iterator> _shallow;
