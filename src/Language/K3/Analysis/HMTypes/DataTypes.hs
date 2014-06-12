@@ -21,6 +21,9 @@ data QType
         | QTCon       QTData
         | QTVar       QTVarId
         | QTOperator  QTOp
+        | QTContent
+        | QTFinal
+        | QTSelf
         | QTTop
       deriving (Eq, Ord, Read, Show)
 
@@ -76,6 +79,16 @@ ttop = tleaf QTTop
 
 tbot :: K3 QType
 tbot = tleaf QTBottom
+
+tcontent :: K3 QType
+tcontent = tleaf QTContent
+
+tfinal :: K3 QType
+tfinal = tleaf QTFinal
+
+tself :: K3 QType
+tself = tleaf QTSelf
+
 
 -- | Datatype constructors
 tfun :: K3 QType -> K3 QType -> K3 QType
