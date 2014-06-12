@@ -131,20 +131,26 @@ namespace K3 {
     }
   };
 
+  template <class T> struct patcher<shared_ptr<T>> {
+    static void patch(string s, shared_ptr<T> p) {
+      shallow<string::iterator> _shallow;
 
-  template <class T> void refresh(string s, shared_ptr<T>& p) {
-    shallow<string::iterator> _shallow;
-    qi::rule<string::iterator, qi::space_type> raw_rule = _shallow[([&p] (string s_) {
-      if (!p) {
-        p = make_shared<T>();
+      shared_ptr<T> tp = make_shared<T>(T());
+
+      qi::rule<string::iterator, qi::space_type> ind_rule
+        = qi::lit("ind") >> _shallow[([&tp] (string t) { patcher<T>::patch(t, *tp); })];
+      qi::rule<string::iterator, qi::space_type> opt_rule
+        = qi::lit("none")[([&p, &tp] () { tp = p = nullptr; })]
+        | qi::lit("some") >> _shallow[([&tp] (string t) { patcher<T>::patch(t, *tp); })];
+
+      qi::phrase_parse(begin(s), end(s), ind_rule | opt_rule, qi::space);
+
+      if (tp) {
+        p = tp;
       }
+    }
+  };
 
-      refresh(s_, *p);
-    })];
-    qi::rule<string::iterator, qi::space_type> nullptr_rule = qi::lit("none")[([&p] () { p = nullptr; })];
-    qi::rule<string::iterator, qi::space_type> someptr_rule = (qi::lit("some") | qi::lit("ind")) >> raw_rule;
-    qi::phrase_parse(begin(s), end(s), nullptr_rule | someptr_rule, qi::space);
-  }
 
   template <> void refresh<address>(string s, address& a) {
     a = address::from_string(s);
