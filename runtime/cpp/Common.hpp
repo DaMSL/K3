@@ -117,6 +117,7 @@ namespace K3 {
                                           std::forward<Value>(v))
     {}
 
+
     Address&    address()  { return get<0>(*this); }
     Identifier& id()       { return get<1>(*this); }
     Value&      contents() { return get<2>(*this); }

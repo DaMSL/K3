@@ -364,10 +364,17 @@ namespace K3 {
 
     MPStatus processMessage(shared_ptr<MessageProcessor> mp)
     {
+      // Log queues?
+
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
+        // Log Message
+        std::string target = next_message->target();
+        std::string contents = next_message->contents();
+        logAt(trivial::trace, "Processing Message for: " + target + ". Contents: " + contents);
+
         // If there was a message, return the result of processing that message.
         return mp->process(*next_message);
       } else {
@@ -381,6 +388,7 @@ namespace K3 {
     {
       MPStatus curr_status = init_st;
       MPStatus next_status;
+      logAt(trivial::trace, "Starting the Message Processing Loop")
       while(true) {
         switch (curr_status) {
 
@@ -399,10 +407,11 @@ namespace K3 {
           //  - Otherwise, wait for a message and continue.
           case LoopStatus::Done:
             if (control->terminate()) {
+                logAt(trivial::trace, "Finished Message Processing Loop.")
                 return;
             }
 
-            // TODO waiting timeout?
+            logAt(trivial::trace, "Waiting for Messages...")
             control->waitForMessage(
               [=] () {
                 return !control->terminate() && queues->size() < 1;
@@ -410,6 +419,7 @@ namespace K3 {
 
             // Check for termination signal after waiting is finished
             if (control->terminate()) {
+              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.")
               return;
             }
             // Otherwise continue
@@ -418,6 +428,7 @@ namespace K3 {
         }
         curr_status = next_status;
       }
+
     }
 
     void runEngine(shared_ptr<MessageProcessor> mp) {
