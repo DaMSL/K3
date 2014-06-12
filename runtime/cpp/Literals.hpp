@@ -160,20 +160,22 @@ namespace K3 {
     qi::parse(begin(s), end(s), qi::ushort_, i);
   }
 
-  template <class ... Ts> void refresh(string s, tuple<Ts...>& t) {
-    list<string> v;
-    shallow<string::iterator> _shallow;
+  template <class ... Ts> struct patcher<tuple<Ts...>> {
+    static void patch(string s, tuple<Ts...>& t) {
+      list<string> v;
+      shallow<string::iterator> _shallow;
 
-    qi::rule<string::iterator, qi::space_type, list<string>()> tuple_rule = '(' >> (_shallow % ',') >> ')';
+      qi::rule<string::iterator, qi::space_type, list<string>()> tuple_rule = '(' >> (_shallow % ',') >> ')';
 
-    qi::rule<string::iterator, qi::space_type, string()> ip_rule = qi::raw[(qi::int_ % '.')];
-    qi::rule<string::iterator, qi::space_type, string()> port_rule = qi::raw[qi::int_];
-    qi::rule<string::iterator, qi::space_type, list<string>()> address_rule
-      = '<' >> ip_rule >> ':' >> port_rule >> '>';
+      qi::rule<string::iterator, qi::space_type, string()> ip_rule = qi::raw[(qi::int_ % '.')];
+      qi::rule<string::iterator, qi::space_type, string()> port_rule = qi::raw[qi::int_];
+      qi::rule<string::iterator, qi::space_type, list<string>()> address_rule
+        = '<' >> ip_rule >> ':' >> port_rule >> '>';
 
-    qi::phrase_parse(begin(s), end(s), tuple_rule | address_rule, qi::space, v);
-    refresh_many<tuple<Ts...>, 0, sizeof...(Ts)>()(v, t);
-  }
+      qi::phrase_parse(begin(s), end(s), tuple_rule | address_rule, qi::space, v);
+      tuple_patcher<tuple<Ts...>, 0, sizeof...(Ts)>::patch(v, t);
+    }
+  };
 
   template <class T, size_t i> struct refresh_many<T, i, i> {
     void operator()(list<string>&, T&) {}
