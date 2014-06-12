@@ -82,10 +82,10 @@ namespace K3 {
     shallow<iterator> value;
   };
 
-  // Built-in type refresh specializations.
+  // Built-in literal patchers.
 
-  template <class T> void refresh(string, T&);
-  template <class T, size_t i, size_t n> struct refresh_many;
+  template <class T> struct patcher;
+  template <class T, size_t i, size_t n> struct tuple_patcher;
 
   template <> void refresh<bool>(string s, bool& b) {
     qi::parse(begin(s), end(s), qi::bool_[([&b] (bool b_) { b = b_; })]);
