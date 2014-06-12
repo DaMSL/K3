@@ -125,6 +125,12 @@ namespace K3 {
     }
   };
 
+  template <> struct patcher<address> {
+    static void patch(string s, address& a) {
+      a = address::from_string(s);
+    }
+  };
+
 
   template <class T> void refresh(string s, shared_ptr<T>& p) {
     shallow<string::iterator> _shallow;
