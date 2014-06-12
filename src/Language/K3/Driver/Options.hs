@@ -32,11 +32,21 @@ data Options = Options {
 
 -- | Modes of Operation.
 data Mode
-    = Compile   CompileOptions
+    = Parse     ParseOptions
+    | Compile   CompileOptions
     | Interpret InterpretOptions
     | Typecheck TypecheckOptions
     | Analyze   AnalyzeOptions
   deriving (Eq, Read, Show)
+
+data PrintMode
+    = PrintAST
+    | PrintSyntax
+  deriving (Eq, Read, Show)
+
+-- | Parsing options.
+data ParseOptions = ParseOptions { parsePrintMode :: PrintMode }
+                    deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
 data CompileOptions = CompileOptions
@@ -65,11 +75,6 @@ data InterpretOptions
     | Interactive
   deriving (Eq, Read, Show)
 
-data PrintMode
-    = PrintAST
-    | PrintSyntax
-  deriving (Eq, Read, Show)
-
 -- | Typechecking options
 data TypecheckOptions
     = TypecheckOptions {quickTypes :: Bool}
@@ -77,8 +82,8 @@ data TypecheckOptions
 
 -- | Analyze Options.
 data AnalyzeOptions
-    = AnalyzeOptions { aoTransform :: TransformOptions
-                     , printMode   :: PrintMode   }
+    = AnalyzeOptions { aoTransform      :: TransformOptions
+                     , analyzePrintMode :: PrintMode   }
   deriving (Eq, Read, Show)
 
 type TransformOptions = [TransformMode]
@@ -122,15 +127,33 @@ data Verbosity
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
 modeOptions = subparser (
-         command "compile"   (info compileOptions   $ progDesc compileDesc)
+         command "parse"     (info parseOptions     $ progDesc parseDesc)
+      <> command "compile"   (info compileOptions   $ progDesc compileDesc)
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
       <> command "analyze"   (info analyzeOptions   $ progDesc analyzeDesc)
     )
-  where compileDesc   = "Compile a K3 binary"
+  where parseDesc     = "Parse a K3 program"
+        compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
         analyzeDesc   = "Analyze a K3 program"
+
+-- | Print mode flags
+printModeOpt :: Parser PrintMode
+printModeOpt = (astPrintOpt <|> syntaxPrintOpt)
+
+astPrintOpt :: Parser PrintMode
+astPrintOpt = flag' PrintAST (   long "ast"
+                              <> help "Print AST output" )
+
+syntaxPrintOpt :: Parser PrintMode
+syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
+                                    <> help "Print syntax output" )
+
+-- | Parse mode
+parseOptions :: Parser Mode
+parseOptions = Parse . ParseOptions <$> printModeOpt
 
 -- | Transformation options
 transformOptions :: Parser TransformOptions
@@ -322,16 +345,7 @@ typecheckOptions = Typecheck <$> (TypecheckOptions <$> quickTypesOpt)
 
 -- | Analyze options
 analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (AnalyzeOptions <$>
-    transformOptions <*> (astPrintOpt <|> syntaxPrintOpt))
-
-astPrintOpt :: Parser PrintMode
-astPrintOpt = flag' PrintAST (   long "ast"
-                              <> help "Print AST output" )
-
-syntaxPrintOpt :: Parser PrintMode
-syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
-                                    <> help "Print syntax output" )
+analyzeOptions = Analyze <$> (AnalyzeOptions <$> transformOptions <*> printModeOpt)
 
 -- Accept a precursor string
 transformMode :: Parser [TransformMode]
@@ -476,6 +490,7 @@ programOptions = mkOptions <$> modeOptions
 {- Instance definitions -}
 
 instance Pretty Mode where
+  prettyLines (Parse     pOpts) = ["Parse " ++ show pOpts]
   prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts]
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]

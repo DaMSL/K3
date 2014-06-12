@@ -55,12 +55,13 @@ run opts = do
     transform ts prog      = foldl' (flip analyzer) (prog, "") ts
 
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Compile c) p   = compile c p
+    dispatch (Parse popts) p = printer (parsePrintMode popts) p
+    dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
       Left s   -> putStrLn s
       Right p' -> printer PrintAST p'
-    dispatch (Analyze a) p   = doAnalyze (printMode a) (aoTransform a) p
+    dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     chooseTypechecker opts' = if quickTypes opts'
                               then inferProgramTypes
