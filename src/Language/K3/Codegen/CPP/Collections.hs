@@ -184,9 +184,9 @@ record rName idts = do
         piv <- parserInvocation
         let shallowDecl = genCDecl (text "shallow<string::iterator>") (text "_shallow") Nothing
         let patchFn = text "static" <+> text "void" <+> text "patch"
-                   <> parens (cat $ punctuate comma [text "string s", text rName <> text "&" <> text "r"])
+                   <> parens (cat $ punctuate comma [text "string s", text rName <> text "&" <+> text "r"])
                   <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
-        return $ genCTemplateDecl [] <$$> text "struct patcher" <> angles (text rName) <+> hangBrace patchFn
+        return $ genCTemplateDecl [] <$$> text "struct patcher" <> angles (text rName) <+> hangBrace patchFn <> semi
 
     serializeDefn = serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
