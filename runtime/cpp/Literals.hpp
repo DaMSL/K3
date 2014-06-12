@@ -40,6 +40,7 @@ namespace K3 {
 
       angles = '<' >> *(qi::char_ - '>') >> '>';
       braces = '{' >> *(qi::char_ - '}') >> '}';
+      brackets = '[' >> *(qi::char_ - ']') >> ']';
       parens = '(' >> *(qi::char_ - ')') >> ')';
       quotes = '"' >> *(escape - '"') >> '"';
       other = *(qi::char_ - ',');
@@ -55,6 +56,7 @@ namespace K3 {
 
     qi::rule<iterator, qi::space_type> angles;
     qi::rule<iterator, qi::space_type> braces;
+    qi::rule<iterator, qi::space_type> brackets;
     qi::rule<iterator, qi::space_type> parens;
     qi::rule<iterator, qi::space_type> quotes;
     qi::rule<iterator, qi::space_type> other;
