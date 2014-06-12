@@ -140,17 +140,17 @@ record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
     sD <- serializeDefn
     let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
-    refreshDefn <- refreshSpecialization
-    return $ vsep [structDefn, refreshDefn]
+    patcherDefn <- patcherSpec
+    return $ vsep [structDefn, patcherDefn]
   where
     oneFieldParser :: Identifier -> CPPGenM CPPGenR
     oneFieldParser i = do
         let keyParser = text "qi::lit" <> parens (dquotes $ text i)
         let valParser = text "_shallow"
         let fieldParser = parens $ keyParser <+> text ">>" <+> squotes (char ':') <+> text ">>" <+> valParser
-        let actCapture = text "&_record"
+        let actCapture = text "&r"
         let actArgs = text "string _string"
-        let actBody = genCCall (text "refresh") Nothing [text "_string", text "_record" <> dot <> text i] <> semi
+        let actBody = genCCall (text "refresh") Nothing [text "_string", text "r" <> dot <> text i] <> semi
         let fieldAction = brackets $ parens $ brackets actCapture <+> parens actArgs <+> braces actBody
 
         return $ genCDecl
@@ -175,17 +175,18 @@ record rName idts = do
       = return $ genCCall (text "qi::phrase_parse") Nothing
                  [text "std::begin(s)", text "std::end(s)", text "_parser", text "qi::space"] <> semi
 
-    refreshSpecialization :: CPPGenM CPPGenR
-    refreshSpecialization = do
+    patcherSpec :: CPPGenM CPPGenR
+    patcherSpec = do
         let ids = fst $ unzip idts
         fps <- vsep <$> mapM oneFieldParser ids
         afp <- anyFieldParser ids
         lfp <- allFieldParser
         piv <- parserInvocation
         let shallowDecl = genCDecl (text "shallow<string::iterator>") (text "_shallow") Nothing
-        return $ genCFunction (Just []) (text "void") (text "K3::refresh" <> angles (text rName))
-                              [text "string s", text rName <> text "&" <+> text "_record"]
-                              (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
+        let patchFn = text "static" <+> text "void" <+> text "patch"
+                   <> parens (cat $ punctuate comma [text "string s", text rName <> text "&" <> text "r"])
+                  <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
+        return $ genCTemplateDecl [] <$$> text "struct patcher" <> angles (text rName) <+> hangBrace patchFn
 
     serializeDefn = serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
