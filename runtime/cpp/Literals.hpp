@@ -151,14 +151,20 @@ namespace K3 {
     }
   };
 
+  template <class T> struct patcher<shared_ptr<list<T>>> {
+    static void patch(string s, shared_ptr<list<T>>& p) {
+      shallow<string::iterator> _shallow;
+      list<T> lp;
+      qi::rule<string::iterator, qi::space_type> item_rule
+        = _shallow[([&lp] (string t) { lp.push_back(T()); patcher<T>::patch(t, lp.back()); })];
 
-  template <> void refresh<address>(string s, address& a) {
-    a = address::from_string(s);
-  }
+      qi::rule<string::iterator, qi::space_type> list_rule = '[' >> (item_rule % ',') >> ']';
 
-  template <> void refresh<unsigned short>(string s, unsigned short& i) {
-    qi::parse(begin(s), end(s), qi::ushort_, i);
-  }
+      if (qi::phrase_parse(begin(s), end(s), list_rule, qi::space)) {
+        p = make_shared<list<T>>(lp);
+      }
+    }
+  };
 
   template <class ... Ts> struct patcher<tuple<Ts...>> {
     static void patch(string s, tuple<Ts...>& t) {
@@ -177,20 +183,36 @@ namespace K3 {
     }
   };
 
-  template <class T, size_t i> struct refresh_many<T, i, i> {
-    void operator()(list<string>&, T&) {}
+  template <class T, size_t i> struct tuple_patcher<T, i, i> {
+    static void patch(list<string>&, T&) {}
   };
 
-  template <class T, size_t i, size_t n> struct refresh_many {
-    void operator()(list<string>& v, T& t) {
+  template <class T, size_t i, size_t n> struct tuple_patcher {
+    static void patch(list<string>& v, T& t) {
       if (v.empty()) {
         return;
       }
 
-      refresh<typename std::tuple_element<i, T>::type>(v.front(), std::get<i>(t));
+      patcher<typename std::tuple_element<i, T>::type>::patch(v.front(), std::get<i>(t));
 
       v.pop_front();
-      refresh_many<T, i + 1, n>()(v, t);
+      tuple_patcher<T, i + 1, n>::patch(v, t);
+    }
+  };
+
+  template <template <class> class C, class E> struct collection_patcher {
+    static void patch(string s, C<E>& c) {
+      shared_ptr<list<E>> tmp_dsp = nullptr;
+      patcher<shared_ptr<list<E>>>::patch(s, tmp_dsp);
+
+      if (tmp_dsp) {
+        C<E> new_c;
+        for (E e: *tmp_dsp) {
+          new_c.insert(e);
+        }
+
+        c = new_c;
+      }
     }
   };
 
@@ -201,7 +223,7 @@ namespace K3 {
     return bindings;
   }
 
-  void consolidate_refreshments(map<string, string>& m, map<string, function<void(string)>>& f) {
+  void match_patchers(map<string, string>& m, map<string, function<void(string)>>& f) {
     for (pair<string, string> p: m) {
       if (f.find(p.first) != end(f)) {
         f[p.first](p.second);
