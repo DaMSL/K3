@@ -75,6 +75,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
     currentS <- get
     i <- genCType T.unit >>= \ctu ->
         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
+    s <- showGlobals
     let amp = annotationMap currentS
     compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
@@ -89,10 +90,42 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ [forwards currentS]
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop]
+            ++ [subDecls, i, s, tableDecl, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
+
+
+-- | Generate a function to help print the current environment (global vars and their values).
+-- Currently, this function returns a map from string (variable name) to string (string representation of value)
+showGlobalsName :: String
+showGlobalsName = "show_globals"
+
+showGlobals :: CPPGenM CPPGenR
+showGlobals = do
+    currentS <- get
+    return $ genCFunction Nothing result_type fun_name [] (gen_body (patchables currentS))
+  where
+    result_type  = text "map<string,string>"
+    fun_name     = text showGlobalsName
+    result_var   = text "result"
+    var_to_str v = text "K3::show" <> parens (text v)
+
+    gen_body  :: [Identifier] -> CPPGenR
+    gen_body names = let
+      result_decl = result_type <> space <> result_var <> semi
+      inserts     = gen_inserts names
+      return_st   = text "return" <> space <> result_var <> semi
+      in vsep $ (result_decl : inserts) ++ [return_st]
+
+    gen_inserts :: [Identifier] -> [CPPGenR]
+    gen_inserts names = let
+      name_strs = map (dquotes . text) names -- C++ string literals
+      val_strs   = map var_to_str names
+      kvs        = zip name_strs val_strs
+      mk_insert (k,v) = result_var <> brackets k <> text " = " <> v <> semi
+      in map mk_insert kvs
+
 
 -- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
 -- (using Boost serialization) and call the appropriate trigger.
@@ -175,7 +208,7 @@ genKMain = do
                      (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing [text "parse_arg"]),
             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
-            text "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table);",
+            text $ "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table," ++ showGlobalsName ++ ");",
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));",
             text "return 0;         "
         ]

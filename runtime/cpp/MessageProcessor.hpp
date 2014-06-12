@@ -18,15 +18,21 @@ namespace K3
       // Result result;
   // };
 
+  using EnvStrFunction = std::function<std::map<std::string,std::string>()>;
+
   class MessageProcessor {
+
     public:
-      MessageProcessor(): _status(LoopStatus::Continue) {}
+      MessageProcessor(EnvStrFunction f): _status(LoopStatus::Continue), _get_env(f) {}
       virtual void initialize() {}
       virtual void finalize() {}
-      virtual LoopStatus process(Message msg) = 0;
+      virtual LoopStatus process( Message msg) = 0;
       LoopStatus status() { return _status; };
+      std::map<std::string, std::string> get_env() { auto x = _get_env(); return x;};
     private:
       LoopStatus _status;
+      EnvStrFunction _get_env;
+
   };
 
   using MPStatus = LoopStatus;
@@ -36,7 +42,7 @@ namespace K3
   template <class E>
   class VirtualizedMessageProcessor: public MessageProcessor {
     public:
-      VirtualizedMessageProcessor(E e): MessageProcessor(), env(e) {}
+      VirtualizedMessageProcessor(E e, EnvStrFunction f): MessageProcessor(f), env(e) {}
     private:
       E env;
   };
@@ -46,7 +52,9 @@ namespace K3
   // message payload themeselves.
   class DispatchMessageProcessor : public NativeMessageProcessor {
     public:
-      DispatchMessageProcessor(TriggerDispatch td): table(td) {}
+      DispatchMessageProcessor(TriggerDispatch td, EnvStrFunction f)
+        : NativeMessageProcessor(f), table(td)
+      {}
 
       LoopStatus process(Message msg)
       {

@@ -373,10 +373,27 @@ namespace K3 {
         // Log Message
         std::string target = next_message->target();
         std::string contents = next_message->contents();
-        logAt(trivial::trace, "Processing Message for: " + target + ". Contents: " + contents);
+        std::string sep = "======================================";
+        logAt(trivial::trace, sep);
+        logAt(trivial::trace, "Message for: " + target);
+        logAt(trivial::trace, "Contents: " + contents);
+
 
         // If there was a message, return the result of processing that message.
-        return mp->process(*next_message);
+        LoopStatus res =  mp->process(*next_message);
+
+        // Log Env
+        logAt(trivial::trace, "Environment: ");
+        std::map<std::string, std::string> env = mp->get_env();
+        std::map<std::string, std::string>::iterator iter;
+        for (iter = env.begin(); iter != env.end(); ++iter) {
+           std::string id = iter->first;
+           std::string val = iter->second;
+           logAt(trivial::trace, "  " + id + " = " + val);
+        }
+
+        return res;
+
       } else {
         // Otherwise return a Done, indicating no messages in the queues.
         return LoopStatus::Done;
@@ -388,7 +405,7 @@ namespace K3 {
     {
       MPStatus curr_status = init_st;
       MPStatus next_status;
-      logAt(trivial::trace, "Starting the Message Processing Loop")
+      logAt(trivial::trace, "Starting the Message Processing Loop");
       while(true) {
         switch (curr_status) {
 
@@ -407,11 +424,11 @@ namespace K3 {
           //  - Otherwise, wait for a message and continue.
           case LoopStatus::Done:
             if (control->terminate()) {
-                logAt(trivial::trace, "Finished Message Processing Loop.")
+                logAt(trivial::trace, "Finished Message Processing Loop.");
                 return;
             }
 
-            logAt(trivial::trace, "Waiting for Messages...")
+            logAt(trivial::trace, "Waiting for Messages...");
             control->waitForMessage(
               [=] () {
                 return !control->terminate() && queues->size() < 1;
@@ -419,7 +436,7 @@ namespace K3 {
 
             // Check for termination signal after waiting is finished
             if (control->terminate()) {
-              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.")
+              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.");
               return;
             }
             // Otherwise continue

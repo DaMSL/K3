@@ -128,6 +128,33 @@ namespace K3 {
     const string      target()   const { return id() + "@" + addressAsString(address()); }
   };
 
+
+  // Show
+  template <typename T>
+  std::string show(T t) {
+    return "Cannot show Value. No implementation found.";
+  }
+
+  template<>
+  std::string show(std::string s) {
+    return s;
+  }
+
+  template<>
+  std::string show(int i) {
+    return std::to_string(i);
+  }
+
+  template<>
+  std::string show(double d) {
+    return std::to_string(d);
+  }
+
+  template<>
+  std::string show(bool b) {
+    return std::to_string(b);
+  }
+
   //--------------------
   // System environment.
 
