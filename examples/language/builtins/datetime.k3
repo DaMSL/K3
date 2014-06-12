@@ -1,0 +1,15 @@
+include "Annotation/Collection.k3"
+include "Core/Time.k3"
+
+declare localDate : mut {y: int, m: int, d:int}
+declare utcDate : mut {y: int, m: int, d:int}
+declare parsedDate : mut option {y: int, m: int, d:int}
+
+trigger t : () = \_ -> (
+    localDate = getLocalDate ();
+    utcDate = getUTCDate ();
+    parsedDate = parseDate "%-d/%-m" "12/09"
+)
+
+source s1 : () = value ()
+feed s1 |> t

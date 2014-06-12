@@ -17,6 +17,7 @@ library
         src
 
     build-depends:
+        old-locale,
         attoparsec < 0.12,
         base,
         bytestring,
@@ -47,6 +48,7 @@ library
         split,
         SafeSemaphore,
         template-haskell,
+        time,
         transformers,
         unordered-containers,
         ansi-wl-pprint,

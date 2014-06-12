@@ -9,7 +9,12 @@ module Language.K3.Interpreter.Builtins where
 
 import Control.Concurrent.MVar
 import Control.Monad.State
+
+import System.Locale
+
 import Data.List
+import Data.Time
+
 import qualified Data.Map as Map
 import qualified System.Random as Random
 import qualified System.Clock as Clock
@@ -35,8 +40,8 @@ $(loggingFunctions)
 $(customLoggingFunctions ["Function"])
 
 -- Parse a date in SQL format
-parseDate :: String -> Maybe Int
-parseDate s = toInt $ foldr readChar [""] s
+parseSQLDate :: String -> Maybe Int
+parseSQLDate s = toInt $ foldr readChar [""] s
   where readChar _   []   = []
         readChar '-' xs   = "":xs
         readChar n (x:xs) = (n:x):xs
@@ -191,7 +196,7 @@ genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
-  let v = parseDate s
+  let v = parseSQLDate s
   case v of
     Just i  -> return $ VInt i
     Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
@@ -207,6 +212,39 @@ genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
 
 genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
   timeBinOp map1 map2 (-) >>= return . VRecord
+
+-- {Date/Time}
+
+-- getUTCDate :: () -> {y : int, m : int, d : int}
+genBuiltin "getUTCDate" _ = vfun $ \_ -> do
+    time <- liftIO $ getCurrentTime
+    (y,m,d) <- return $ toGregorian $ utctDay time
+    return $ VRecord $ Map.fromList $
+      [("y", (VInt $ fromInteger y, MemImmut)),
+       ("m", (VInt $ m, MemImmut)),
+       ("d", (VInt $ d, MemImmut))]
+
+-- getLocalDate :: () -> {y : int, m : int, d : int}
+genBuiltin "getLocalDate" _ = vfun $ \_ -> do
+    time <- liftIO $ getZonedTime
+    (y, m, d) <- return $ toGregorian $ localDay $ zonedTimeToLocalTime time
+    return $ VRecord $ Map.fromList $
+      [("y", (VInt $ fromInteger y, MemImmut)),
+       ("m", (VInt $ m, MemImmut)),
+       ("d", (VInt $ d, MemImmut))]
+
+-- parseDate :: string -> string -> option {y : int, m : int, d : int}
+genBuiltin "parseDate" _ = vfun $ \(VString formatString) -> vfun $ \(VString dateString) -> do
+    let day = parseTime defaultTimeLocale formatString dateString :: Maybe Day in
+        case day of
+            Nothing -> return $ VOption (Nothing, MemImmut)
+            Just someDay ->
+                let (y, m, d) = toGregorian someDay
+                in let record = VRecord $ Map.fromList $
+                        [("y", (VInt $ fromInteger y, MemImmut)),
+                        ("m", (VInt $ m, MemImmut)),
+                        ("d", (VInt $ d, MemImmut))] 
+                   in return $ VOption (Just record, MemImmut)
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
