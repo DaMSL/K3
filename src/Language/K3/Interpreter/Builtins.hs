@@ -213,12 +213,46 @@ genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
 genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
   timeBinOp map1 map2 (-) >>= return . VRecord
 
--- {Date/Time}
+-- getUTCTime :: {h : int, m : int, s : int}
+genBuiltin "getUTCTime" _ = vfun $ \_ -> do
+    currentTime <- liftIO $ getCurrentTime
+    dayTime <- return $ utctDayTime currentTime
+    timeOfDay <- return $ timeToTimeOfDay dayTime
+    return $ VRecord $ Map.fromList $
+      [("h", (VInt $ todHour timeOfDay, MemImmut)),
+       ("m", (VInt $ todMin timeOfDay, MemImmut)),
+       ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
+
+-- getUTCTimeWithFormat :: string -> string
+genBuiltin "getUTCTimeWithFormat" _ = vfun $ \(VString formatString) -> do
+    currentTime <- liftIO $ getCurrentTime
+    if formatString == ""
+        then return $ VString $ formatTime defaultTimeLocale "%H:%M:%S" currentTime
+        else return $ VString $ formatTime defaultTimeLocale formatString currentTime
+
+-- getLocalTime :: {h : int, m : int, s : int}
+genBuiltin "getLocalTime" _ = vfun $ \_ -> do
+    zonedTime <- liftIO $ getZonedTime
+    localTime <- return $ zonedTimeToLocalTime zonedTime
+    timeOfDay <- return $ localTimeOfDay localTime
+    return $ VRecord $ Map.fromList $
+      [("h", (VInt $ todHour timeOfDay, MemImmut)),
+       ("m", (VInt $ todMin timeOfDay, MemImmut)),
+       ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
+
+-- getLocalTimeWithFormat :: string -> string
+genBuiltin "getLocalTimeWithFormat" _ = vfun $ \(VString formatString) -> do
+    zonedTime <- liftIO $ getZonedTime
+    if formatString == "" 
+        then return $ VString $ formatTime defaultTimeLocale "%H:%M:%S" zonedTime
+        else return $ VString $ formatTime defaultTimeLocale formatString zonedTime
+
+-- {Date}
 
 -- getUTCDate :: () -> {y : int, m : int, d : int}
 genBuiltin "getUTCDate" _ = vfun $ \_ -> do
-    time <- liftIO $ getCurrentTime
-    (y,m,d) <- return $ toGregorian $ utctDay time
+    currentTime <- liftIO $ getCurrentTime
+    (y,m,d) <- return $ toGregorian $ utctDay currentTime
     return $ VRecord $ Map.fromList $
       [("y", (VInt $ fromInteger y, MemImmut)),
        ("m", (VInt $ m, MemImmut)),
@@ -226,8 +260,8 @@ genBuiltin "getUTCDate" _ = vfun $ \_ -> do
 
 -- getLocalDate :: () -> {y : int, m : int, d : int}
 genBuiltin "getLocalDate" _ = vfun $ \_ -> do
-    time <- liftIO $ getZonedTime
-    (y, m, d) <- return $ toGregorian $ localDay $ zonedTimeToLocalTime time
+    zonedTime <- liftIO $ getZonedTime
+    (y, m, d) <- return $ toGregorian $ localDay $ zonedTimeToLocalTime zonedTime
     return $ VRecord $ Map.fromList $
       [("y", (VInt $ fromInteger y, MemImmut)),
        ("m", (VInt $ m, MemImmut)),

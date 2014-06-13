@@ -19,3 +19,13 @@ declare getUTCDate : () -> {y : int, m : int, d : int}
 declare getLocalDate : () -> {y : int, m : int, d : int}
 
 declare parseDate : string -> string -> option {y : int, m : int, d : int}
+
+// ---- Time ----
+
+declare getUTCTime : () -> {h : int, m : int, d : int}
+
+declare getUTCTimeWithFormat : string -> string
+
+declare getLocalTime : () -> {h : int, m : int, d : int}
+
+declare getLocalTimeWithFormat : string -> string
