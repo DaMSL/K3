@@ -7,7 +7,9 @@
 -- | K3 builtin and standard library function interpretation
 module Language.K3.Interpreter.Builtins where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
+
 import Control.Monad.State
 
 import System.Locale
@@ -87,7 +89,7 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
 -- type ChannelId = String
 
--- openBuilting :: ChannelId -> String -> ()
+-- openBuiltin :: ChannelId -> String -> ()
 genBuiltin "openBuiltin" _ =
   vfun $ \(VString cid) -> 
     vfun $ \(VString builtinId) ->
@@ -300,6 +302,10 @@ genBuiltin "haltEngine" _ = vfun $ \_ -> liftEngine (terminateEngine True) >> re
 
 -- Shutdown the engine once it has empty queues
 genBuiltin "drainEngine" _ = vfun $ \_ -> liftEngine (terminateEngine False) >> return vunit
+
+-- Sleep
+genBuiltin "sleep" _ = vfun $ \(VInt x) -> liftIO (threadDelay x) >> return vunit
+
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
