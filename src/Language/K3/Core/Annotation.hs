@@ -27,8 +27,9 @@ module Language.K3.Core.Annotation (
 
     foldRebuildTree,
     foldMapRebuildTree,
+    mapIn1RebuildTree,
     foldIn1RebuildTree,
-    mapIn1RebuildTree
+    foldMapIn1RebuildTree
 ) where
 
 import Control.Monad
@@ -239,6 +240,27 @@ foldMapRebuildTree f x n@(Node _ []) = f [x] [] n
 foldMapRebuildTree f x n@(Node _ ch) =
     mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip 
 
+-- | Rebuild a tree with explicit pre and post transformers applied to the first
+--   child of every rree node. This is useful for stateful monads that modify
+--   environments based on the type of the first child.
+mapIn1RebuildTree :: (Monad m)
+                  => (Tree a -> Tree a -> m ())
+                  -> (Tree a -> Tree a -> m [m ()])
+                  -> ([Tree a] -> Tree a -> m (Tree a))
+                  -> Tree a -> m (Tree a)
+mapIn1RebuildTree _ _ allChF n@(Node _ []) = allChF [] n
+mapIn1RebuildTree preCh1F postCh1F allChF n@(Node _ ch) = do
+    preCh1F (head ch) n
+    nc1 <- rcr $ head ch
+    restm <- postCh1F nc1 n
+    if (length restm) /= (length $ tail ch)
+      then fail "Invalid mapIn1RebuildTree sequencing"
+      else do
+        nRestCh <- mapM (\(m, c) -> m >> rcr c) $ zip restm $ tail ch
+        allChF (nc1:nRestCh) n
+
+  where rcr = mapIn1RebuildTree preCh1F postCh1F allChF
+
 -- | Tree accumulation and reconstruction, with a priviliged first child accumulation.
 --   This function is useful for manipulating ASTs subject to bindings introduced by the first
 --   child, for example with let-ins, bind-as and case-of.
@@ -285,20 +307,20 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 --           over the other children.
 -- allChF:   The all-child function takes the post child's single accumulator, the processed children,
 --           and the node, and returns a new tree.
-mapIn1RebuildTree :: (Monad m)
+foldMapIn1RebuildTree :: (Monad m)
                   => (b -> Tree a -> Tree a -> m b)
                   -> (b -> Tree a -> Tree a -> m (b, [b]))
                   -> (b -> [Tree a] -> Tree a -> m (Tree a))
                   -> b -> Tree a -> m (Tree a)
-mapIn1RebuildTree _ _ allChF tdAcc n@(Node _ []) = allChF tdAcc [] n
-mapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
+foldMapIn1RebuildTree _ _ allChF tdAcc n@(Node _ []) = allChF tdAcc [] n
+foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
     nCh1Acc        <- preCh1F tdAcc (head ch) n
     nc1            <- rcr nCh1Acc $ head ch
     (nAcc, chAccs) <- postCh1F nCh1Acc nc1 n
     if (length chAccs) /= (length $ tail ch)
-      then fail "Invalid mapIn1RebuildTree accumulation"
+      then fail "Invalid foldMapIn1RebuildTree accumulation"
       else do
         nRestCh <- mapM (uncurry rcr) $ zip chAccs $ tail ch
         allChF nAcc (nc1:nRestCh) n
 
-  where rcr = mapIn1RebuildTree preCh1F postCh1F allChF
+  where rcr = foldMapIn1RebuildTree preCh1F postCh1F allChF

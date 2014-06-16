@@ -54,6 +54,18 @@ foldProgram declF annMemF exprF a prog = foldRebuildTree rebuildDecl a prog
       maybe (return (acc, Nothing)) (\e -> exprF acc e >>= return . fmap Just) eOpt
 
 
+-- | Fold a declaration, expression and annotation member transformer over the given program.
+mapProgram :: (Monad m)
+            => (K3 Declaration -> m (K3 Declaration))
+            -> (AnnMemDecl     -> m AnnMemDecl)
+            -> (K3 Expression  -> m (K3 Expression))
+            -> K3 Declaration
+            -> m (K3 Declaration)
+mapProgram declF annMemF exprF prog =
+    foldProgram (wrap declF) (wrap annMemF) (wrap exprF) () prog >>= return . snd
+  where wrap f _ x = f x >>= return . ((), )
+
+
 -- | Fold a function and accumulator over all expressions in the given program.
 foldExpression :: (Monad m)
                 => (a -> K3 Expression -> m (a, K3 Expression)) -> a -> K3 Declaration
@@ -68,75 +80,3 @@ mapExpression exprF prog = foldProgram returnPair returnPair wrapExprF () prog >
   where returnPair a b = return (a,b)
         wrapExprF a e = exprF e >>= return . (a,)
 
-
-{-
-type BindingEnv a = Map Identifier a
-
-data BindingEnvExtender a b
-      = BindingEnvExtender
-          { extract :: BindingEnv a -> K3 b -> Maybe (Identifier, a)
-          , extend  :: Identifier -> a -> BindingEnv a -> BindingEnv a }
-
-type BEnvDeclExtender a = BindingEnvExtender a Declaration
-type BEnvExprExtender a = BindingEnvExtender a Expression
-
--- | A generic analysis routine.
--- TODO: make this a type class?
-analyzeProgram :: (Monad m)
-               => (env -> K3 Declaration -> m (env, K3 Declaration))
-               -> (env -> AnnMemDecl     -> m (env, AnnMemDecl))
-               -> (env -> K3 Expression  -> m (env, K3 Expression))
-               -> env -> K3 Declaration -> m (K3 Declaration)
-analyzeProgram declF memF exprF initEnv prog =
-  foldProgram declF memF exprF initEnv prog >>= return . snd
-
-analyzeExpression :: (Monad m)
-                  => env -> K3 Expression -> m (env, K3 Expression)
-analyzeExpression preCh1F postCh1F mergeF allChF expr =
-  foldIn1RebuildTree preCh1F postCh1F mergeF allChF env expr
-
-
-analyzeWithEnv :: AnalysisEnvExtender a b
-               -> (AnalysisEnv a -> c -> K3 b -> c) 
-               -> AnalysisEnv a -> c -> K3 b -> c
-analyzeWithEnv extender analyzeF initEnv initAcc tree =
-
-
-type Matcher2 node a b c   = AnalysisEnv a -> [Annotation node] -> b -> c -> Maybe (Identifier, a) 
-type Matcher3 node a b c d = AnalysisEnv a -> [Annotation node] -> b -> c -> d -> Maybe (Identifier, a) 
-
-type DGlobalMatcher  a = Matcher3 Declaration a Identifier (K3 Type) (Maybe (K3 Expression))
-type DTriggerMatcher a = Matcher3 Declaration a Identifier (K3 Type) (K3 Expression)
-type DAnnotMatcher   a = Matcher3 Declaration a Identifier [TypeVarDecl] [AnnMemDecl]
-
-type ELambdaMatcher a = Matcher2 Expression a Identifier (K3 Expression)
-type ELetInMatcher  a = Matcher3 Expression a Identifier (K3 Expression) (K3 Expression)
-type EBindAsMatcher a = Matcher3 Expression a Binder     (K3 Expression) (K3 Expression)
-type ECaseOfMatcher a = Matcher3 Expression a Identifier (K3 Expression) (K3 Expression)
-
-scopeExtender :: ELambdaMatcher a -> ELetInMatcher a -> EBindAsMatcher a -> ECaseOfMatcher a
-              -> (Identifier -> a -> AnalysisEnv a -> AnalysisEnv a)
-              -> AEnvExprExtender a
-scopeExtender lambdaF letInF bindAsF caseOfF extendF =
-    AnalysisEnvExtender extractF extendOptF
-  where extractF env (details -> (ELambda i, [b],   anns)) = lambdaF env anns i b
-        extractF env (details -> (ELetIn  i, [e,b], anns)) = letInF  env anns i e b
-        extractF env (details -> (EBindAs b, [s,e], anns)) = bindAsF env anns b s e
-        extractF env (details -> (ECaseOf i, [s,n], anns)) = caseOfF env anns i s n
-        extractF env _                                     = Nothing
-
-        extendOptF k (Just v) env = extendF k v env
-        extendOptF k Nothing  env = env
-
-scopeUniqueExtender :: ELambdaMatcher a -> ELetInMatcher a -> EBindAsMatcher a -> ECaseOfMatcher a
-                    -> AEnvExprExtender a
-scopeUniqueExtender lambdaF letInF bindAsF caseOfF =
-  scopeExtender lambdaF letInF bindAsF caseOfF insert
-
-scopeMergeExtender :: ELambdaMatcher [a] -> ELetInMatcher [a] -> EBindAsMatcher [a] -> ECaseOfMatcher [a]
-                   -> AEnvExprExtender [a]
-scopeMergeExtender lambdaF letInF bindAsF caseOfF =
-    scopeExtender lambdaF letInF bindAsF caseOfF merge
-  where merge k v env = insertWith (++) k v env
-
--}
