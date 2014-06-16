@@ -20,10 +20,12 @@ def main():
                         default=None, help="Specify path to k3 peers file")
     parser.add_argument("-m", "--partmap", type=str, dest="partmap_file",
                         default=None, help="Specify path to k3 partition map file")
-    parser.add_argument("-n", "--network",  action='store_true', dest="use_network",
-                        default=False,       help="Use the network")
-    parser.add_argument("-i", "--index", type=int, dest="peer_index",
-                        default=None, help="Specify which peer (indexed from 1) to run on the local machine")
+    parser.add_argument("-n", "--network", action='store_true', dest="use_network",
+                        default=False, help="Use the network")
+    parser.add_argument("-i", "--index", type=int, dest="peer_index", default=None,
+                        help="Specify which peer (indexed from 1) to run on the local machine")
+    parser.add_argument("-t", "--halt_time", type=int, dest="halt_time", default=None,
+                        help="Give time for a halting-processing instruction (for distributed)")
 
     args = parser.parse_args()
 
@@ -58,8 +60,9 @@ def main():
 
     # Create short pre.k3 string
     pre_s = 'include "Core/Builtins.k3"\n' +  \
-                    'include "Annotation/Set.k3"\n' + \
-                    'include "Annotation/Seq.k3"\n\n'
+            'include "Core/Triggers.k3"\n' + \
+            'include "Annotation/Set.k3"\n' + \
+            'include "Annotation/Seq.k3"\n\n'
 
     # parse the peers file to create a peer command line string
     reg = r'declare my_peers[^=]+= \{\|[^|]+\|(.+)\|\} @.+'
@@ -75,15 +78,15 @@ def main():
 
     # Constrain the peers based on our peer index selection (if any)
     if args.peer_index:
-        peers = [peers[args.peer_index-1]]
-        
+        peers = [peers[args.peer_index - 1]]
+
     # Create peer_file_s for command
     peer_cmd_s = ""
     for peer in peers:
-        if peer[1]=='switch':
-            role=r':role=\"s1\"' 
+        if peer[1] == 'switch':
+            role = r':role=\"s1\"'
         else:
-            role=''
+            role = ''
         peer_cmd_s += '-p {peer[0]}{role} '.format(**locals())
 
     # Create a temporary k3 file
@@ -99,9 +102,21 @@ def main():
     old = r'file "{default_data_file}" k3'.format(**locals())
     new = r'file "{new_data_file}" k3'.format(**locals())
     s = re.sub(old, new, s)
-    with open('temp.k3', 'w') as f:
-        f.write(s)
+
+    # add call to haltEngine at end of switch_main()
+    if args.halt_time:
+        old = 'else \(\)\)\n\nsource'
+        new = '''else
+                (sleep {0};
+                (__HaltAllNodes, me) <- ()))
+
+    source'''.format(args.halt_time)
+        s = re.sub(old, new, s)
+
+    # write the temp file
     file_s = 'temp.k3'
+    with open(file_s, 'w') as f:
+        f.write(s)
 
     # Create command line
     log_s = '--log "debug"'
