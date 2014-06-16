@@ -295,6 +295,12 @@ genBuiltin "print" _ = vfun logString
               return $ VTuple []
         logString x           = throwE $ RunTimeTypeError ("In 'print': Expected a string but received " ++ show x)
 
+-- Shutdown the engine after processing current message
+genBuiltin "haltEngine" _ = vfun $ \_ -> liftEngine (terminateEngine True) >> return vunit
+
+-- Shutdown the engine once it has empty queues
+genBuiltin "drainEngine" _ = vfun $ \_ -> liftEngine (terminateEngine False) >> return vunit
+
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 
 channelMethod :: String -> (String, Maybe String)

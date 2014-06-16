@@ -56,3 +56,11 @@ declare show : forall a. a -> string
 
 // Error (exceptional state)
 declare error : forall a. () -> a
+
+
+///////////////////////
+//
+// Engine Termination
+declare haltEngine : () -> ()
+
+declare drainEngine : () -> ()
