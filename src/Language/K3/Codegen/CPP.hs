@@ -50,7 +50,7 @@ declaration (tag -> DGlobal i t Nothing) = cDecl t i
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
             (Just (tag &&& children -> (ELambda x, [b])))) = do
     newF <- cDecl t i
-    modify (\s -> s { forwards = forwards s PL.<$$> newF })
+    addForward newF
     body <- reify RReturn b
     cta <- genCType ta
     ctr <- genCType tr
@@ -87,7 +87,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
 
     return $ vsep $ punctuate line $
                [text "using K3::Collection;"]
-            ++ [forwards currentS]
+            ++ forwards currentS
             ++ compositeDecls
             ++ recordDecls
             ++ [subDecls, i, s, tableDecl, tablePop]

@@ -44,7 +44,7 @@ data CPPGenS = CPPGenS {
         initializations :: CPPGenR,
 
         -- | Forward declarations for constructs as a result of cyclic scope.
-        forwards :: CPPGenR,
+        forwards :: [CPPGenR],
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
@@ -73,7 +73,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty [] [] M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty [] [] [] M.empty M.empty S.empty S.empty BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -91,6 +91,9 @@ genSym = do
     current <- uuid <$> get
     modify (\s -> s { uuid = succ (uuid s) })
     return $ '_':  show current
+
+addForward :: CPPGenR -> CPPGenM ()
+addForward r = modify (\s -> s { forwards = r : forwards s })
 
 -- | Add an annotation to the code generation state.
 addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
