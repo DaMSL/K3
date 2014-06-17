@@ -67,6 +67,7 @@ run opts = do
     chooseTypechecker opts' p =
       if quickTypes opts'
         then inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
+                                 >>= Simplification.inferFusableProgramApplies
         else typecheck p
 
     compile cOpts prog = do
