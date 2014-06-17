@@ -156,9 +156,12 @@ namespace K3 {
       bool simulation,
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec
-    ):
-      LogMT("Engine"), internal_codec(_internal_codec) {
+    ): LogMT("Engine") {
+      configure(simulation, sys_env, internal_codec);
+    }
 
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec) {
+      internal_codec = _internal_codec;
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 

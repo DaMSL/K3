@@ -52,6 +52,10 @@ namespace K3
   // message payload themeselves.
   class DispatchMessageProcessor : public NativeMessageProcessor {
     public:
+      DispatchMessageProcessor(TriggerDispatch td)
+        : NativeMessageProcessor(empty_map), table(td)
+      {}
+
       DispatchMessageProcessor(TriggerDispatch td, EnvStrFunction f)
         : NativeMessageProcessor(f), table(td)
       {}
@@ -77,6 +81,7 @@ namespace K3
 
     private:
       TriggerDispatch table;
+      static std::map<std::string, std::string> empty_map() { return std::map<std::string, std::string>(); };
     };
 }
 
