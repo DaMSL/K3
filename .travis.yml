@@ -15,3 +15,6 @@ script:
 notifications:
   email:
     - k3-developers@googlegroups.com
+branches:
+  only:
+    - master
