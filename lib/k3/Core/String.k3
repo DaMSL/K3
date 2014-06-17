@@ -1,4 +1,42 @@
-// String functions
+///// String Constants /////
 
-// Substring of type string[1, x]
+// get concatenation of ascii lower case and ascii upper case constans
+declare getAsciiLetters : () -> string
+
+// get ascii lower case letters
+declare getAsciiLowerCase : () -> string
+
+// get ascii upper case letters
+declare getAsciiUpperCase : () -> string
+
+// get decimal digits
+declare getDigits : () -> string
+
+// get hex digits
+declare getHexDigits : () -> string
+
+// get octal digits
+declare getOctalDigits : () -> string
+
+///// String Functions /////
+
+// get substring from a string
 declare substring : int -> string -> string
+
+// convert a character to a number value
+declare getOrd : string -> option int
+
+// convert a numeric value to character
+declare getChar : int -> option string
+
+// reverse a string by characters
+declare reverseStringByCharacters : string -> string
+
+// reverse a string by words
+declare reverseStringByWords : string -> string
+
+// convert a string to upper case
+declare toUpper : string -> string
+
+// convert a string to lower case
+declare toLower : string -> string

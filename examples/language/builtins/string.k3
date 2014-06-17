@@ -1,0 +1,44 @@
+include "Annotation/Collection.k3"
+include "Core/String.k3"
+
+declare asciiLetters : mut string
+declare asciiLowerCase : mut string
+declare asciiUpperCase : mut string
+declare digits : mut string
+declare hexDigits : mut string
+declare octalDigits : mut string
+
+declare substringEx : mut string
+
+declare goodOrdValue : mut option int
+declare badOrdValue : mut option int
+declare goodChrValue : mut option string
+declare badChrValue : mut option string
+
+declare revc : mut string
+declare revw : mut string
+declare supper : mut string
+declare slower : mut string
+
+trigger start : () = \_ -> (
+    asciiLetters = getAsciiLetters ();
+    asciiLowerCase = getAsciiLowerCase ();
+    asciiUpperCase = getAsciiUpperCase ();
+    digits = getDigits ();
+    hexDigits = getHexDigits ();
+    octalDigits = getOctalDigits ();
+
+    substringEx = substring 4 "Hello";
+    goodOrdValue = getOrd "H";
+    badOrdValue = getOrd "Hi";
+    goodChrValue = getChar 12;
+    // badChrValue = getChar 1999999999999999999999999999999;
+
+    revc = reverseStringByCharacters "Hello Me!";
+    revw = reverseStringByWords "Hello World. This is not new.";
+    supper = toUpper "All lower case. Not";
+    slower = toLower "All Upper Case. Not."
+)
+
+source s1 : () = value ()
+feed s1 |> start
