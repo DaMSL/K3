@@ -12,6 +12,7 @@
 #include <Endpoint.hpp>
 #include <Listener.hpp>
 #include <MessageProcessor.hpp>
+#include <Options.hpp>
 
 namespace K3 {
 
