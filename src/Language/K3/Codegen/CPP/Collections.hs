@@ -63,6 +63,8 @@ composite className ans = do
 
     let classDefn = genCTemplateDecl [text "CONTENT"] <$$> classBody <$$> patcherSpec
 
+    addForward $ genCTemplateDecl [text "CONTENT"] <+> text "class" <+> text className <> semi
+
     return classDefn
   where
 
@@ -141,6 +143,7 @@ record rName idts = do
     sD <- serializeDefn
     let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
     patcherDefn <- patcherSpec
+    addForward $ text "struct" <+> text rName <> semi
     return $ vsep [structDefn, patcherDefn]
   where
     oneFieldParser :: Identifier -> CPPGenM CPPGenR
