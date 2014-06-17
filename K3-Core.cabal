@@ -183,8 +183,10 @@ library
     other-modules:
         Language.K3.Codegen.CPP.Collections,
         Language.K3.Codegen.CPP.Common,
+        Language.K3.Codegen.CPP.Declaration,
         Language.K3.Codegen.CPP.Expression,
         Language.K3.Codegen.CPP.Primitives,
+        Language.K3.Codegen.CPP.Program,
         Language.K3.Codegen.CPP.Types,
         Language.K3.Utils.Pretty.Common,
         Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
