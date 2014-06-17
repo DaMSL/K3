@@ -2,7 +2,7 @@ language: haskell
 ghc: 7.6
 install:
   - sudo apt-get update
-  - sudo apt-get install -y clang-3.4
+  - sudo apt-get install -y clang-3.3
   - sudo apt-get install -y libboost1.55-all-dev
   - wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz
   - tar -xvzf nanomsg-0.3-beta.tar.gz
