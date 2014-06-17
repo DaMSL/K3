@@ -19,7 +19,6 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
@@ -579,6 +578,27 @@ commonSubexprElim expr = do
 
 
 -- | Collection transformer fusion.
+
+-- | Marks all function applications that are fusable transformers as a
+--   preprocessing for fusion optimizations.
+inferFusableProgramApplies :: K3 Declaration -> Either String (K3 Declaration)
+inferFusableProgramApplies prog = mapProgram return return inferFusableExprApplies prog
+
+inferFusableExprApplies :: K3 Expression -> Either String (K3 Expression)
+inferFusableExprApplies expr = modifyTree fusable expr
+  where
+    fusable e@(tag -> EOperate OApp) = 
+      let pl = filter isPTransformer $ annotations $ head $ children e in
+      return $ if null pl then e else e @+ fusableProp
+    
+    fusable e = return e
+
+    isPTransformer :: Annotation Expression -> Bool
+    isPTransformer (EProperty "Transformer" _) = True
+    isPTransformer _ = False
+
+    fusableProp :: Annotation Expression
+    fusableProp = EProperty "Fusable" Nothing
 
 {-
 fuseProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
