@@ -21,7 +21,6 @@ script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
-  - ./dist/build/k3/k3 -I ../K3-Core/lib/k3 compile -l cpp --clang --cpp-flags='-DBOOST_LOG_DYN_LINK -I../K3-Core/runtime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lpthread -lboost_log_setup -lboost_log -lboost_program_options' ../K3-Core/examples/fibonacci.k3
 notifications:
   email:
     - k3-developers@googlegroups.com
