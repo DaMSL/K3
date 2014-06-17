@@ -67,7 +67,9 @@ genKMain = do
     matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
             genCDecl (text "Options") (text "opt") Nothing,
-            genCCall (text "opt.parse") Nothing [text "argc", text "argv"] <> semi,
+            (text "if") <>
+              parens (text "!" <> genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
+              <> text "return 0" <> semi,
             genCCall (text "populate_dispatch") Nothing [] <> semi,
             matchers,
             genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
@@ -75,13 +77,13 @@ genKMain = do
               (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
               [text "parse_arg"]),
             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
+            genCCall (text "engine.configure") Nothing
+              [text "opt.simulation", text "se", 
+               text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
               genCCall (text "DispatchMessageProcessor") Nothing 
                 [text "dispatch_table", text showGlobalsName]) <> semi,
-            genCCall (text "engine.configure") Nothing
-              [text "opt.simulation", text "se", 
-               text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
             text "return 0" <> semi
         ]

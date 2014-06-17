@@ -38,7 +38,7 @@ int Options::parse(int argc, const char *const argv[]) {
     if (vm.count("peer"))
       peer_strings = vm["peer"].as<vector<string>>();
     if (vm.count("simulation"))
-      simulation = vm["simulation"].as<bool>();
+      simulation = true;
     if (vm.count("log_level"))
       log_level = vm["log_level"].as<string>();
   }
