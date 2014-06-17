@@ -67,9 +67,9 @@ genKMain = do
     matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
             genCDecl (text "Options") (text "opt") Nothing,
-            (text "if") <>
-              parens (text "!" <> genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
-              <> text "return 0" <> semi,
+            (text "if ") <>
+              parens (genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
+              <> text " return 0" <> semi,
             genCCall (text "populate_dispatch") Nothing [] <> semi,
             matchers,
             genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
