@@ -145,9 +145,10 @@ instance Pretty (K3 Expression) where
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
-  let (typeAnns, anns) = partition isEType as
+  let (typeAnns, anns) = partition isETypeOrBound as
       prettyTypeAnns   = case typeAnns of
-                          []    -> []
+                          []        -> []
+                          [EType t] -> drawETypeAnnotation $ EType t
                           [t, l, u] -> drawETypeAnnotation t
                                         %+ indent 2 (drawETypeAnnotation l
                                         %+ indent 2 (drawETypeAnnotation u))
@@ -185,9 +186,13 @@ isEProperty _               = False
 
 isEType :: Annotation Expression -> Bool
 isEType (EType   _) = True
-isEType (ETypeLB _) = True
-isEType (ETypeUB _) = True
 isEType _           = False
+
+isETypeOrBound :: Annotation Expression -> Bool
+isETypeOrBound (EType   _) = True
+isETypeOrBound (ETypeLB _) = True
+isETypeOrBound (ETypeUB _) = True
+isETypeOrBound _           = False
 
 isEQType :: Annotation Expression -> Bool
 isEQType (EQType _) = True

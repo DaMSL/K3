@@ -276,9 +276,7 @@ analyzeExprEffect env e = do
     addDirectBindingEffect eEnv i pure =
       envWithBindings eEnv $ Map.insertWith (++) i (if pure then [[pureEffect]] else [[]]) (bindingE eEnv)
 
-    typeOf anns = maybe Nothing extractType $ find isEExactType anns
-    isEExactType (EType _) = True
-    isEExactType _         = False
+    typeOf anns = maybe Nothing extractType $ find isEType anns
     extractType (EType t)  = Just t
     extractType _          = Nothing
 

@@ -112,6 +112,7 @@ library
         Language.K3.Analysis.Effect,
         Language.K3.Analysis.HMTypes.DataTypes,
         Language.K3.Analysis.HMTypes.Inference,
+        Language.K3.Analysis.Properties,
         Language.K3.Analysis.Interpreter.BindAlias,
         Language.K3.Analysis.AnnotationGraph,
         Language.K3.TypeSystem.Consistency,

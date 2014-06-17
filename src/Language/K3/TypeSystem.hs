@@ -184,7 +184,7 @@ annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
       DAnnotation n tis mems -> DAnnotation n tis $ map annotateAnnMem mems
       _ -> dt
 
-    annotateExpr e@(_ :@: anns) = return $ case partition isEType anns of
+    annotateExpr e@(_ :@: anns) = return $ case partition isETypeOrBound anns of
       ([], rest) -> maybe e (\(t, lb,ub) -> e @+ EType t @+ ETypeLB lb @+ ETypeUB ub) $
                       Map.lookup (getEUID rest) typeBounds
       (_,_)      -> e

@@ -263,7 +263,7 @@ reasonM errf = mapEitherT $ \m -> m >>= \case
   Right r   -> return $ Right r
 
 liftEitherM :: Either String a -> TInfM a
-liftEitherM = either left return 
+liftEitherM = either left return
 
 getTVE :: TInfM TVEnv
 getTVE = get >>= return . tive
@@ -1023,3 +1023,62 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
     mutability0 nch n = mutabilityT (head $ children n) $ head nch
     mutabilityN nch n = map (uncurry mutabilityT) $ zip (children n) nch
+
+
+-- | Converts all QType annotations on program expressions to K3 types.
+translateProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
+translateProgramTypes prog = mapProgram declF annMemF exprF prog
+  where declF   d = return d
+        annMemF m = return m
+        exprF   e = translateExprTypes e
+
+translateExprTypes :: K3 Expression -> Either String (K3 Expression)
+translateExprTypes expr = modifyTree translate expr
+  where
+    translate (Node (tg :@: anns) ch) = do
+      nanns <- mapM translateEQType $ filter (not . isEType) anns
+      return (Node (tg :@: nanns) ch)
+
+    translateEQType (EQType qt) = translateQType qt >>= return . EType
+    translateEQType x = return x
+
+translateQType :: K3 QType -> Either String (K3 Type)
+translateQType qt = mapTree translateWithMutability qt
+  where translateWithMutability ch qt'@(Node (_ :@: anns) _) =
+          translate ch qt' >>= \t -> return (foldl (@+) t $ map translateAnnotation anns)
+
+        translateAnnotation a = case a of
+          QTMutable   -> TMutable
+          QTImmutable -> TImmutable
+          QTWitness   -> TWitness
+
+        translate _ qt'
+          | QTBottom     <- tag qt' = return TC.bottom
+          | QTTop        <- tag qt' = return TC.top
+          | QTContent    <- tag qt' = return $ TC.builtIn TContent
+          | QTFinal      <- tag qt' = return $ TC.builtIn TStructure
+          | QTSelf       <- tag qt' = return $ TC.builtIn TSelf
+          | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
+          | QTOperator _ <- tag qt' = Left $ "Invalid qtype translation for qtype operator"
+
+        translate _ (tag -> QTPrimitive p) = case p of
+          QTBool     -> return TC.bool
+          QTByte     -> return TC.byte
+          QTReal     -> return TC.real
+          QTInt      -> return TC.int
+          QTString   -> return TC.string
+          QTAddress  -> return TC.address
+          QTNumber   -> return TC.number
+
+        translate ch (tag -> QTCon d) = case d of
+          QTFunction          -> return $ TC.function (head ch) $ last ch
+          QTOption            -> return $ TC.option $ head ch
+          QTIndirection       -> return $ TC.indirection $ head ch
+          QTTuple             -> return $ TC.tuple ch
+          QTRecord        ids -> return $ TC.record $ zip ids ch
+          QTCollection annIds -> return $ foldl (@+) (TC.collection $ head ch) $ map TAnnotation annIds
+          QTTrigger           -> return $ TC.trigger $ head ch
+          QTSource            -> return $ TC.source $ head ch
+          QTSink              -> return $ TC.sink $ head ch
+
+        translate _ qt' = Left $ "No translation for: " ++ show qt'
