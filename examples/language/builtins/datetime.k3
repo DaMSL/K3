@@ -3,7 +3,8 @@ include "Core/Time.k3"
 
 declare utcDate : mut {y: int, m: int, d:int}
 declare localDate : mut {y: int, m: int, d:int}
-declare parsedDate : mut option {y: int, m: int, d:int}
+declare validParsedDate : mut option {y: int, m: int, d:int}
+declare invalidParsedDate : mut option {y: int, m: int, d:int}
 
 declare utcTime : mut {h : int, m : int, s : int}
 declare utcFormattedTime : mut string
@@ -13,7 +14,8 @@ declare localFormattedTime : mut string
 trigger t : () = \_ -> (
     localDate = getLocalDate ();
     utcDate = getUTCDate ();
-    parsedDate = parseDate "%-d/%-m" "12/09";
+    validParsedDate = parseDate "%-d/%-m" "12/09";
+    invalidParsedDate = parseDate "%-d/%-m" "12/09/1";
 
     utcTime = getUTCTime ();
     localTime = getLocalTime ();

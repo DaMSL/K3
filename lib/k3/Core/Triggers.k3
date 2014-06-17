@@ -1,0 +1,8 @@
+include "Annotation/Collection.k3"
+
+// Trigger to send a message to all peers to halt
+trigger __HaltAllNodes : ()
+= \_ -> peers.iterate (\p -> (__HaltNode, p) <- ())
+
+trigger __HaltNode : ()
+= \_ -> haltEngine()

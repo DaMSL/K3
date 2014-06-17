@@ -56,3 +56,17 @@ declare show : forall a. a -> string
 
 // Error (exceptional state)
 declare error : forall a. () -> a
+
+
+///////////////////////
+//
+// Engine Termination
+
+// Terminate engine after current message
+declare haltEngine : () -> ()
+
+// Terminate engine once queues are empty
+declare drainEngine : () -> ()
+
+// Sleep the engine (microseconds)
+declare sleep : int -> ()
