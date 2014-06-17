@@ -1,7 +1,10 @@
 #ifndef K3_RUNTIME_MESSAGEPROC_H
 #define K3_RUNTIME_MESSAGEPROC_H
 
-#include <Dispatch.hpp>
+#include <map>
+#include <string>
+
+#include "Dispatch.hpp"
 
 namespace K3
 {
@@ -21,30 +24,30 @@ namespace K3
   using EnvStrFunction = std::function<std::map<std::string,std::string>()>;
 
   class MessageProcessor {
-
     public:
-      MessageProcessor(EnvStrFunction f): _status(LoopStatus::Continue), _get_env(f) {}
+      MessageProcessor(): _status(LoopStatus::Continue) {}
       virtual void initialize() {}
       virtual void finalize() {}
       virtual LoopStatus process( Message msg) = 0;
       LoopStatus status() { return _status; };
-      std::map<std::string, std::string> get_env() { auto x = _get_env(); return x;};
+
+      virtual map<string, string> bindings(Address) = 0;
     private:
       LoopStatus _status;
-      EnvStrFunction _get_env;
-
   };
 
   using MPStatus = LoopStatus;
 
-  using NativeMessageProcessor = MessageProcessor;
+  class NativeMessageProcessor: public MessageProcessor {
+   public:
+    NativeMessageProcessor(EnvStrFunction get_env): MessageProcessor(),  _get_env(get_env) {}
 
-  template <class E>
-  class VirtualizedMessageProcessor: public MessageProcessor {
-    public:
-      VirtualizedMessageProcessor(E e, EnvStrFunction f): MessageProcessor(f), env(e) {}
-    private:
-      E env;
+    map<string, string> bindings(Address) override {
+      return _get_env();
+    }
+
+   private:
+    EnvStrFunction _get_env;
   };
 
   // Message Processor used by generated code. Processing is done by dispatch messages using a
@@ -83,8 +86,49 @@ namespace K3
       TriggerDispatch table;
       static std::map<std::string, std::string> empty_map() { return std::map<std::string, std::string>(); };
     };
+
+  class Engine;
+
+  class __program_context {
+   public:
+    __program_context(Engine& e): __engine(e) {}
+
+    virtual void __dispatch(std::string) = 0;
+    virtual std::map<std::string, std::string> __prettify() = 0;
+    virtual void __patch(std::string) = 0;
+
+   protected:
+    Engine& __engine;
+  };
+
+  class virtualizing_message_processor: public MessageProcessor {
+   public:
+    virtualizing_message_processor(): MessageProcessor() {}
+
+    virtualizing_message_processor(std::map<Address, shared_ptr<__program_context>> m):
+      MessageProcessor(), contexts(m) {}
+
+    void add_context(Address a, std::shared_ptr<__program_context> p) {
+      contexts[a] = p;
+    }
+
+    LoopStatus process(Message msg) {
+      try {
+        contexts[msg.address()]->__dispatch(msg.contents());
+      } catch(std::out_of_range e) {
+        return LoopStatus::Error;
+      }
+
+      return LoopStatus::Continue;
+    }
+
+    std::map<std::string, std::string> bindings(Address a) override {
+      return contexts[a]->__prettify();
+    }
+
+   private:
+    std::map<Address, shared_ptr<__program_context>> contexts;
+  };
 }
-
-
 
 #endif
