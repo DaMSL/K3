@@ -83,11 +83,11 @@ declaration (tag &&& children -> (DRole _, cs)) = do
     tablePop <- generateDispatchPopulation
     let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
-    refreshCPPGenS
+    newS <- get
 
     return $ vsep $ punctuate line $
                [text "using K3::Collection;"]
-            ++ forwards currentS
+            ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
             ++ [subDecls, i, s, tableDecl, tablePop]
