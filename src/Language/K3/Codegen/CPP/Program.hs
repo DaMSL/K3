@@ -65,7 +65,7 @@ genKMain = do
             genCCall (text "opt.parse") Nothing [text "argc", text "argv"] <> semi,
             genCCall (text "populate_dispatch") Nothing [] <> semi,
             matchers,
-            genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer[0]") <> semi,
+            genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
             genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
               (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
               [text "parse_arg"]),
