@@ -39,6 +39,7 @@ type ImperativeE = ()
 data ImperativeS = ImperativeS {
         globals :: [Identifier],
         patchables :: [Identifier],
+        showables  :: [(Identifier, K3 Type)],
         mutables :: [Identifier]
     }
 
@@ -48,7 +49,7 @@ runImperativeM :: ImperativeM a -> ImperativeS -> (Either ImperativeE a, Imperat
 runImperativeM m s = flip runState s $ runEitherT m
 
 defaultImperativeS :: ImperativeS
-defaultImperativeS = ImperativeS { globals = [], patchables = [], mutables = [] }
+defaultImperativeS = ImperativeS { globals = [], patchables = [], mutables = [], showables = []}
 
 withMutable :: Identifier -> ImperativeM a -> ImperativeM a
 withMutable i m = do
@@ -67,17 +68,21 @@ addGlobal i = modify $ \s -> s { globals = i : globals s }
 addPatchable :: Identifier -> ImperativeM ()
 addPatchable i = modify $ \s -> s { patchables  = i : patchables s }
 
+-- | Add a new showable variable
+addShowable :: Identifier -> K3 Type -> ImperativeM ()
+addShowable i t = modify $ \s -> s { showables = (i,t) : showables s }
+
 isCachedMutable :: Identifier -> ImperativeM Bool
 isCachedMutable i = elem i . mutables <$> get
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
 declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
     addGlobal i
-    when (tag y `notElem` [TFunction, TSource]) $ addPatchable i
+    when (tag y `notElem` [TFunction, TSource]) $ (addPatchable i >> addShowable i y)
     Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i
-    when (tag t `notElem` [TFunction, TSource]) $ addPatchable i
+    when (tag t `notElem` [TFunction, TSource]) $ (addPatchable i >> addShowable i t)
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'

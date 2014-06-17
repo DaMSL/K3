@@ -52,6 +52,8 @@ data CPPGenS = CPPGenS {
 
         patchables :: [Identifier],
 
+        showables :: [(Identifier, K3 Type)],
+
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
         recordMap :: M.Map Identifier [(Identifier, K3 Type)],
@@ -73,7 +75,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty [] [] [] M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty [] [] [] [] M.empty M.empty S.empty S.empty BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -83,7 +85,7 @@ refreshCPPGenS = do
 
 -- | Copy state elements from the imperative transformation to CPP code generation.
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is}
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is, showables = I.showables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
