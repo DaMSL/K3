@@ -20,6 +20,7 @@ import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
+import Language.K3.Analysis.Properties
 
 import qualified Language.K3.Transform.Normalization as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
@@ -63,9 +64,11 @@ run opts = do
       Right p' -> printer PrintAST p'
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
-    chooseTypechecker opts' = if quickTypes opts'
-                              then inferProgramTypes
-                              else typecheck
+    chooseTypechecker opts' p =
+      if quickTypes opts'
+        then inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
+        else typecheck p
+
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
       putStrLn str
