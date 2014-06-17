@@ -66,17 +66,24 @@ genKMain :: CPPGenM CPPGenR
 genKMain = do
     matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
+            genCDecl (text "Options") (text "opt") Nothing,
+            genCCall (text "opt.parse") Nothing [text "argc", text "argv"] <> semi,
             genCCall (text "populate_dispatch") Nothing [] <> semi,
             matchers,
-            genCDecl (text "string") (text "parse_arg")
-                     (Just $ genCCall (text "preprocess_argv") Nothing [text "argc", text "argv"]),
+            genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
             genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
-                     (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing [text "parse_arg"]),
+              (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
+              [text "parse_arg"]),
             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
-            text $ "DispatchMessageProcessor dmp = DispatchMessageProcessor(dispatch_table," ++ showGlobalsName ++ ");",
-            text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));",
-            text "return 0;         "
+            genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
+              genCCall (text "DispatchMessageProcessor") Nothing 
+                [text "dispatch_table", text showGlobalsName]) <> semi,
+            genCCall (text "engine.configure") Nothing
+              [text "opt.simulation", text "se", 
+               text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
+            text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
+            text "return 0" <> semi
         ]
 
 includes :: CPPGenM [Identifier]
@@ -118,7 +125,7 @@ aliases = [
 staticGlobals :: CPPGenM CPPGenR
 staticGlobals = return $ vsep [
             text "SystemEnvironment se = defaultEnvironment()" <> semi,
-            text "Engine engine = Engine(true, se, make_shared<DefaultInternalCodec>(DefaultInternalCodec()))" <> semi
+            text "Engine engine = Engine()" <> semi
         ]
 
 -- | Generate a function to help print the current environment (global vars and their values).
