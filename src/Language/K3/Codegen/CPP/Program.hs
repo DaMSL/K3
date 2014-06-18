@@ -77,6 +77,9 @@ genKMain = do
               (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
               [text "parse_arg"]),
             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
+            text "list<Address> addr_l;",
+            text "addr_l.push_back(me);",
+            text "SystemEnvironment se = defaultEnvironment(addr_l);",
             genCCall (text "engine.configure") Nothing
               [text "opt.simulation", text "se", 
                text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
@@ -121,14 +124,10 @@ namespaces = do
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
-        ("unit_t", "struct {}")
     ]
 
 staticGlobals :: CPPGenM CPPGenR
-staticGlobals = return $ vsep [
-            text "SystemEnvironment se = defaultEnvironment()" <> semi,
-            text "Engine engine = Engine()" <> semi
-        ]
+staticGlobals = return $ text "Engine engine = Engine()" <> semi
 
 -- | Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
