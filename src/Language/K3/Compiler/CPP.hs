@@ -49,10 +49,10 @@ outputFilePath ext opts copts = case buildDir copts of
     Just path -> Right (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
 
 typecheckStage :: CompilerStage (K3 Declaration) (K3 Declaration)
-typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubTypes cOpts then typecheck else quickTypecheck
+typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubTypes cOpts then typecheck' else quickTypecheck
 
   where
-    typecheck = if not $ S.null typeErrors
+    typecheck' = if not $ S.null typeErrors
                 then Left $ prettyTCErrors typedProgram typeErrors
                 else Right typedProgram
 
@@ -105,12 +105,12 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
                   allFiles = runtimeFiles' ++ sourceFiles
                   objects = [bDir </> src -<.> "o" | src <- allFiles]
               need objects
-              cmd cc ["-o"] [out] objects (words $ cppOptions copts)
+              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppOptions copts)
 
             bDir ++ "//*.o" *> \out -> do
               let source = dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (words $ cppOptions copts)
+              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
               needMakefileDependencies deps
 
         badSubDirs = [
@@ -121,6 +121,14 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
         hasBadSubDir s = foldr (\bad acc -> acc || bad `L.isInfixOf` s) False badSubDirs
 
         pruneBadSubDirs = filter (not . hasBadSubDir)
+
+        compilePrefix = ["-I", "-D", "-f", "-w"]
+        linkPrefix = ["-l", "-L", "-f", "-w"]
+
+        hasPrefixIn l x = foldr (\pre acc -> acc || pre `L.isPrefixOf` x) False l
+
+        filterLinkOptions = filter (hasPrefixIn linkPrefix)
+        filterCompileOptions = filter (hasPrefixIn compilePrefix)
 
         pName    = programName copts
         cc       = case ccCmd copts of
