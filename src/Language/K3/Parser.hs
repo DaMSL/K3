@@ -355,7 +355,7 @@ parseK3 noFeed includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram <$> endBy1 (roleBody noDriver "") eof
+  where rule = mkProgram <$> (spaces *> endBy1 (roleBody noDriver "") eof)
         mkProgram l = DC.role defaultRoleName $ concat l
 
         selfContainedProgram d = if noDriver then return d else (mkEntryPoints d >>= mkBuiltins)
