@@ -733,6 +733,11 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     iu :: TInfM ()
     iu = return ()
 
+    mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
+    mkErrorF e f s = spanAsString ++ f s
+      where spanAsString = let spans = mapMaybe getSpan $ annotations e
+                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
+
     monoBinding :: Identifier -> K3 QType -> TInfM ()
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
 
@@ -828,7 +833,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       case ipt of 
         QPType [] iqt
           | (iqt @~ isQTQualified) == Just QTMutable ->
-              do { void $ unifyM (iqt @- QTMutable) eqt (("Invalid assignment to " ++ i ++ ": ") ++);
+              do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF n (("Invalid assignment to " ++ i ++ ": ") ++);
                    return $ rebuildE n ch .+ tunit }
           | otherwise -> mutabilityErr i
 
@@ -838,7 +843,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
-      void    $  unifyM srcqt prjqt ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
+      void    $  unifyM srcqt prjqt $ mkErrorF n ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
@@ -846,45 +851,45 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       fnqt   <- qTypeOfM $ head ch
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
-      let errf s = (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"]) ++ s
+      let errf = mkErrorF n (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"] ++)
       void   $  unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EOperate OSeq) = do
         lqt <- qTypeOfM $ head ch
         rqt <- qTypeOfM $ last ch
-        void $ unifyM tunit lqt (("Invalid left sequence operand: ") ++)
+        void $ unifyM tunit lqt $ mkErrorF n (("Invalid left sequence operand: ") ++)
         return $ rebuildE n ch .+ rqt
 
     -- | Check trigger-address pair and unify trigger type and message argument.
     inferQType ch n@(tag -> EOperate OSnd) = do
         trgtv <- newtv
-        void $ unifyBinaryM (ttup [ttrg trgtv, taddr]) trgtv ch sndError
+        void $ unifyBinaryM (ttup [ttrg trgtv, taddr]) trgtv ch n sndError
         return $ rebuildE n ch .+ tunit
 
     -- | Unify operand types based on the kind of operator.
     inferQType ch n@(tag -> EOperate op) 
       | numeric op = do
-            (lqt, rqt) <- unifyBinaryM tnum tnum ch numericError
+            (lqt, rqt) <- unifyBinaryM tnum tnum ch n numericError
             resultqt   <- delayNumericQt lqt rqt
             return $ rebuildE n ch .+ resultqt
 
       | comparison op = do
           lqt <- qTypeOfM $ head ch
           rqt <- qTypeOfM $ last ch
-          void $ unifyM lqt rqt comparisonError
+          void $ unifyM lqt rqt $ mkErrorF n comparisonError
           return $ rebuildE n ch .+ tbool
 
       | logic op = do
-            void $ unifyBinaryM tbool tbool ch logicError
+            void $ unifyBinaryM tbool tbool ch n logicError
             return $ rebuildE n ch .+ tbool
 
       | textual op = do
-            void $ unifyBinaryM tstr tstr ch stringError
+            void $ unifyBinaryM tstr tstr ch n stringError
             return $ rebuildE n ch .+ tstr
 
       | op == ONeg = do
-            chqt <- unifyUnaryM tnum ch uminusError
+            chqt <- unifyUnaryM tnum ch $ mkErrorF n uminusError
             let resultqt = case tag chqt of
                              QTPrimitive _  -> chqt
                              QTVar _ -> chqt
@@ -892,7 +897,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             return $ rebuildE n ch .+ resultqt
 
       | op == ONot = do
-            void $ unifyUnaryM tbool ch negateError
+            void $ unifyUnaryM tbool ch $ mkErrorF n negateError
             return $ rebuildE n ch .+ tbool
 
       | otherwise = left $ "Invalid operation: " ++ show op
@@ -925,29 +930,34 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     inferQType ch n@(tag -> ECaseOf _) = do
       sqt   <- qTypeOfM $ ch !! 1
       nqt   <- qTypeOfM $ last ch
-      retqt <- unifyWithOverrideM sqt nqt (("Mismatched case-of branch types: ") ++)
+      retqt <- unifyWithOverrideM sqt nqt $ mkErrorF n (("Mismatched case-of branch types: ") ++)
       return $ rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EIfThenElse) = do
       pqt   <- qTypeOfM $ head ch
       tqt   <- qTypeOfM $ ch !! 1
       eqt   <- qTypeOfM $ last ch
-      void  $  unifyM pqt tbool $ (("Invalid if-then-else predicate: ") ++)
-      retqt <- unifyWithOverrideM tqt eqt $ (("Mismatched condition branches: ") ++)
+      void  $  unifyM pqt tbool $ mkErrorF n $ (("Invalid if-then-else predicate: ") ++)
+      retqt <- unifyWithOverrideM tqt eqt $ mkErrorF n $ (("Mismatched condition branches: ") ++)
       return $ rebuildE n ch .+ retqt
 
-    inferQType _ n@(tag -> EAddress) = return $ n .+ taddr
+    inferQType ch n@(tag -> EAddress) = do
+      hostqt <- qTypeOfM $ head ch
+      portqt <- qTypeOfM $ last ch
+      void $ unifyM hostqt tstr $ mkErrorF n $ (("Invalid address host string: ") ++)
+      void $ unifyM portqt tint $ mkErrorF n $ (("Invalid address port int: ") ++)
+      return $ rebuildE n ch .+ taddr
 
     inferQType ch n  = return $ rebuildE n ch
       -- ^ TODO unhandled: ESelf, EImperative
 
     rebuildE (Node t _) ch = Node t ch
 
-    unifyBinaryM lexpected rexpected ch errf = do
+    unifyBinaryM lexpected rexpected ch n errf = do
       lqt <- qTypeOfM $ head ch
       rqt <- qTypeOfM $ last ch
-      void $ unifyM lexpected lqt (errf "left")
-      void $ unifyM rexpected rqt (errf "right")
+      void $ unifyM lexpected lqt (mkErrorF n $ errf "left")
+      void $ unifyM rexpected rqt (mkErrorF n $ errf "right")
       return (lqt, rqt)
 
     unifyUnaryM expected ch errf = do
