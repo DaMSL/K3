@@ -23,7 +23,7 @@ trigger t : int = \i -> (
   c2.insert {x:(i + 1)};
   myCollection = c1.combine c2;
 
-  myCollection = myCollection.map (\r -> {x : r.x + 1});
+  //myCollection = myCollection.map (\r -> {x : r.x + 1});
   sumMyC = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
 
   myCollection = myCollection.combine myCollection;
