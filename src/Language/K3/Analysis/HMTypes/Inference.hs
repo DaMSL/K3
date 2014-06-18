@@ -307,6 +307,7 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
       (QTPrimitive p1, QTPrimitive p2)
         | [p1, p2] `intersect` [QTReal, QTInt, QTNumber] == [p1,p2] -> 
             annLower a' b' >>= return . foldl (@+) (tprim $ toEnum $ minimum $ map fromEnum [p1,p2])
+        | p1 == p2 -> return a'
       
       (QTCon (QTRecord i1), QTCon (QTRecord i2)) 
         | i1 `intersect` i2 == i1 -> mergedRecord True  i1 a' i2 b'
@@ -465,12 +466,11 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2@(tag -> QTOperator QTLower) = do
       lb1 <- lowerBound t1
       lb2 <- lowerBound t2
-      (lb1', lb2') <- case (tag lb1, tag lb2) of
-                        (QTCon (QTRecord _), QTCon (QTRecord _)) ->
-                          tvlower lb1 lb2 >>= \lb' ->
-                            return $ if lb' `elem` [lb1, lb2] then (lb1,lb2) else (lb1, lb')
-                        (_,_) -> return (lb1, lb2) 
-      void $ rcr lb1' lb2'
+      lbs <- case (tag lb1, tag lb2) of
+               (QTCon (QTRecord _), QTCon (QTRecord _)) ->
+                 tvlower lb1 lb2 >>= \lb' -> return $ if lb' `elem` [lb1, lb2] then [lb1,lb2] else [lb',lb1,lb2]
+               (_,_) -> return [lb1, lb2]
+      void $ foldM rcr (head $ lbs) $ tail lbs
       consistentTLower $ children t1 ++ children t2
 
     unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
