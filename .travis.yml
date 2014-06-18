@@ -1,16 +1,16 @@
 language: haskell
 ghc: 7.6
 install:
-  - sudo apt-get update
-  - sudo apt-get install -y clang-3.3
-  - sudo apt-get install -y libboost-all-dev
+  - echo "yes" | sudo apt-add-repository ppa:boost-latest/ppa
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq clang-3.3
+  - sudo apt-get install -qq boost1.55
   - wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz
   - tar -xvzf nanomsg-0.3-beta.tar.gz
   - mkdir -p ~/software/nanomsg
   - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
-  - cabal install cabal-install
+  - cabal install cabal-install && cabal --version
   - export PATH=~/.cabal/bin:$PATH
-  - cabal --version
   - mkdir ../K3-Driver
   - cd ../K3-Driver
   - git clone https://github.com/DaMSL/K3-Driver.git .
@@ -21,6 +21,7 @@ script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
+  - ./dist/build/k3/k3 -I ../K3-Core/lib/k3 compile -l cpp --clang --cpp-flags='-DBOOST_LOG_DYN_LINK -I../K3-Core/runtime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lpthread -lboost_log_setup -lboost_log -lboost_program_options' ../K3-Core/examples/fibonacci.k3
 notifications:
   email:
     - k3-developers@googlegroups.com
