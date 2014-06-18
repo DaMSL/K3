@@ -94,7 +94,10 @@ cDecl t i = do
 inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
-    Just ac -> genCType t >>= \ct -> addComposite (namedEAnnotations as) >> return (empty, text ac <> angles ct)
+    Just ac -> do
+        ct <- genCType t
+        addComposite (namedEAnnotations as)
+        return (empty, text ac <> angles ct <> parens empty)
 
 inline (tag -> EConstant c) = (empty,) <$> constant c
 
