@@ -669,7 +669,7 @@ inferProgramTypes prog = do
       case (qpt, eOpt) of
         (QPType [] qt1, Just e) -> do
           qt2 <- qTypeOfM e
-          void $ unifyWithOverrideM qt1 qt2 unifyInitErrF
+          void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           substituteDeepQt e >>= return . Just
 
         (_, Nothing) -> return Nothing
@@ -717,6 +717,11 @@ inferProgramTypes prog = do
 
     exprF :: K3 Expression -> TInfM (K3 Expression)
     exprF e = inferExprTypes e
+
+    mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
+    mkErrorF e f s = spanAsString ++ f s
+      where spanAsString = let spans = mapMaybe getSpan $ annotations e
+                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
     polyTypeErr     = left $ "Invalid polymorphic declaration type"
