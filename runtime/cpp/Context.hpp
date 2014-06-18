@@ -14,9 +14,9 @@ namespace K3 {
    public:
     __k3_context(Engine& e): __engine(e) {}
 
-    virtual void __dispatch(string) = 0;
-    virtual map<string, string> __prettify() = 0;
-    virtual void __patch(string) = 0;
+    virtual void __dispatch(string) {}
+    virtual map<string, string> __prettify() { return map<string, string> {}; }
+    virtual void __patch(string) {}
 
    protected:
     Engine& __engine;
