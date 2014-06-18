@@ -610,6 +610,19 @@ generalize ta = do
  --   in function application.
  --   Old implementation: return $ QPType fv t'
 
+-- | QType substitution helpers
+
+-- | Replaces any type variables in a QType annotation on any subexpression.
+substituteDeepQt :: K3 Expression -> TInfM (K3 Expression)
+substituteDeepQt e = mapTree subNode e
+  where subNode ch (Node (tg :@: anns) _) = do
+          nanns <- mapM subAnns anns 
+          return (Node (tg :@: nanns) ch)
+        
+        subAnns (EQType qt) = tvsub qt >>= return . EQType
+        subAnns x = return x
+
+-- | Top-level type inference methods
 inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramTypes prog = do
     (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
@@ -656,15 +669,11 @@ inferProgramTypes prog = do
       case (qpt, eOpt) of
         (QPType [] qt1, Just e) -> do
           qt2 <- qTypeOfM e
-          unifyM qt1 qt2 unifyInitErrF
-          nanns <- mapM subEQType $ annotations e 
-          return $ Just (Node (tag e :@: nanns) $ children e)
+          void $ unifyWithOverrideM qt1 qt2 unifyInitErrF
+          substituteDeepQt e >>= return . Just
 
         (_, Nothing) -> return Nothing
         (_, _) -> polyTypeErr
-
-    subEQType (EQType qt) = tvsub qt >>= return . EQType
-    subEQType x = return x
 
     declF :: K3 Declaration -> TInfM (K3 Declaration)
     declF d@(tag -> DGlobal n t eOpt) = do
@@ -714,25 +723,15 @@ inferProgramTypes prog = do
     trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
     unifyInitErrF s = "Failed to unify initializer: " ++ s
 
-
+-- | Expression type inference. Note this not perform a final type substitution, leaving
+--   it to the caller as desired. This may leave type variables present in the
+--   quicktype annotations attached to expressions.
 inferExprTypes :: K3 Expression -> TInfM (K3 Expression)
-inferExprTypes expr = do
-    nexpr <- mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType expr
-    exprQtSub nexpr
+inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType expr
 
   where
     iu :: TInfM ()
     iu = return ()
-
-    -- | Replaces any type variables in a QType annotation on any subexpression.
-    exprQtSub :: K3 Expression -> TInfM (K3 Expression)
-    exprQtSub e = mapTree subNode e
-      where subNode ch (Node (tg :@: anns) _) = do
-              nanns <- mapM subAnns anns 
-              return (Node (tg :@: nanns) ch)
-            
-            subAnns (EQType qt) = tvsub qt >>= return . EQType
-            subAnns x = return x
 
     monoBinding :: Identifier -> K3 QType -> TInfM ()
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
