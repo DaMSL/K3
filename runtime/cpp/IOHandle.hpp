@@ -52,41 +52,17 @@ namespace K3
     IStreamHandle(shared_ptr<Codec> cdec, Source& src) 
       : LogMT("IStreamHandle"), codec(cdec) 
     {
-      input = shared_ptr<filtering_istream>(new filtering_istream());
-      input->push(src);      
+      input_ = shared_ptr<filtering_istream>(new filtering_istream());
+      input_->push(src);      
     }
 
     bool hasRead() { 
-      return input? 
-        ((input->good() && codec->good()) || codec->decode_ready())
+      return input_? 
+        ((input_->good() && codec->good()) || codec->decode_ready())
         : false;
     }
     
-    shared_ptr<string> doRead() {
-      shared_ptr<string> result;
-      while ( !result ) {
-        if (codec->decode_ready()) {
-          // return a buffered value if possible
-          result = codec->decode("");
-        } 
-        else if (input->good()) {
-          // no buffered values: grab data from stream
-          char * buffer = new char[1024]();
-          input->read(buffer,sizeof(buffer));
-          string s = string(buffer);
-          // use the new data to attempt a decode.
-          // if it fails: continue the loop
-          result = codec->decode(s);
-          delete[] buffer;
-        } 
-        else {
-          // Failure: ran out of buffered values and stream data
-          BOOST_LOG(*this) << "doRead: Stream has been exhausted, and no values in buffer";
-          return result;
-        }
-      } 
-      return result;
-    }
+    shared_ptr<string> doRead();
 
     bool hasWrite() {
       BOOST_LOG(*this) << "Invalid write operation on input handle";
@@ -99,10 +75,10 @@ namespace K3
 
     // Invoke the destructor on the filtering_istream, which in 
     // turn closes all associated iostream filters and devices.
-    void close() { if ( input ) { input.reset(); } }
+    void close() { if ( input_ ) { input_.reset(); } }
 
   protected:
-    shared_ptr<filtering_istream> input;
+    shared_ptr<filtering_istream> input_;
     shared_ptr<Codec> codec;
   };
 
