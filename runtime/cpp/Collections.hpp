@@ -117,7 +117,6 @@ namespace K3 {
         return result;
       }
 
-  private:
     friend class boost::serialization::access;
     // Serialize a BaseCollection by serializing its base-class (a dataspace)
     template<class Archive>
@@ -175,6 +174,11 @@ namespace K3 {
         BaseCollection<ListDS, T> result = Super::ext(expand);
         return Collection<T>(result);
       }
+
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int version) {
+      ar & boost::serialization::base_object<BaseCollection<ListDS, E>>(*this);
+    }
 
   };
 
