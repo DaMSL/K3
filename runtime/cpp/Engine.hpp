@@ -7,7 +7,6 @@
 #include <map>
 #include <memory>
 #include <tuple>
-#include <thread>
 
 #include <Common.hpp>
 #include <Endpoint.hpp>
