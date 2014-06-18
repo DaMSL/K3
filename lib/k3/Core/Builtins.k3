@@ -49,7 +49,7 @@ declare real_of_int : real -> int
 declare get_max_int : () -> int
 
 // Print to the screen
-declare print : string -> unit
+declare print : string -> ()
 
 // Show a value
 declare show : forall a. a -> string
