@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 
+#include "Context.hpp"
 #include "Dispatch.hpp"
 
 namespace K3
@@ -91,26 +92,14 @@ namespace K3
 
   class Engine;
 
-  class __program_context {
-   public:
-    __program_context(Engine& e): __engine(e) {}
-
-    virtual void __dispatch(std::string) = 0;
-    virtual std::map<std::string, std::string> __prettify() = 0;
-    virtual void __patch(std::string) = 0;
-
-   protected:
-    Engine& __engine;
-  };
-
   class virtualizing_message_processor: public MessageProcessor {
    public:
     virtualizing_message_processor(): MessageProcessor() {}
 
-    virtualizing_message_processor(std::map<Address, shared_ptr<__program_context>> m):
+    virtualizing_message_processor(std::map<Address, shared_ptr<__k3_context>> m):
       MessageProcessor(), contexts(m) {}
 
-    void add_context(Address a, std::shared_ptr<__program_context> p) {
+    void add_context(Address a, std::shared_ptr<__k3_context> p) {
       contexts[a] = p;
     }
 
@@ -129,7 +118,7 @@ namespace K3
     }
 
    private:
-    std::map<Address, shared_ptr<__program_context>> contexts;
+    std::map<Address, shared_ptr<__k3_context>> contexts;
   };
 }
 
