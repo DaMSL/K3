@@ -387,7 +387,7 @@ namespace K3 {
         LoopStatus res =  mp->process(*next_message);
 
         // Log Env
-        logAt(trivial::trace, "Environment: ");
+        logAt(trivial::trace, "Environment:");
         std::map<std::string, std::string> env = mp->bindings(next_message->address());
         std::map<std::string, std::string>::iterator iter;
         for (iter = env.begin(); iter != env.end(); ++iter) {
