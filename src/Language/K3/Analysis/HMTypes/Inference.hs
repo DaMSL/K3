@@ -48,18 +48,20 @@ mutQT :: K3 QType -> K3 QType
 mutQT = (@+ QTMutable)
 
 mutabilityT :: K3 Type -> K3 QType -> K3 QType
-mutabilityT t qt = case t @~ isTQualified of
-                     Nothing -> qt
-                     Just TImmutable -> immutQT qt
-                     Just TMutable   -> mutQT qt
-                     _ -> error "Invalid type qualifier annotation"
+mutabilityT t qt = maybe propagate (const qt) $ find isQTQualified $ annotations qt
+  where propagate = case t @~ isTQualified of
+          Nothing -> qt
+          Just TImmutable -> immutQT qt
+          Just TMutable   -> mutQT qt
+          _ -> error "Invalid type qualifier annotation"
 
 mutabilityE :: K3 Expression -> K3 QType -> K3 QType
-mutabilityE e qt = case e @~ isEQualified of
-                     Nothing -> qt
-                     Just EImmutable -> immutQT qt
-                     Just EMutable   -> mutQT qt
-                     _ -> error "Invalid expression qualifier annotation"
+mutabilityE e qt = maybe propagate (const qt) $ find isQTQualified $ annotations qt
+  where propagate = case e @~ isEQualified of
+          Nothing -> qt
+          Just EImmutable -> immutQT qt
+          Just EMutable   -> mutQT qt
+          _ -> error "Invalid expression qualifier annotation"
 
 qTypeOf :: K3 Expression -> Maybe (K3 QType)
 qTypeOf e = case e @~ isEQType of
@@ -284,15 +286,17 @@ tvsub qt = mapTree sub qt
 
     sub ch t@(tag -> QTOperator QTLower)
       | null ch = left "Invalid qtype lower operator"
-      | null $ concatMap freevars ch = tvopeval QTLower ch
+      | null $ concatMap freevars ch = tvopeval QTLower ch >>= flip extendAnns t
       | otherwise = return $ foldl (@+) (tlower ch) $ annotations t
 
     sub _ t@(tag -> QTVar v) = getTVE >>= \tve ->
       case tvlkup tve v of
-        Just t' -> tvsub t'
+        Just t' -> tvsub t' >>= flip extendAnns t
         _       -> return t
 
     sub _ t = return t
+
+    extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1 
 
 -- | Lower bound computation for numeric and record types.
 --   This function does not preserve annotations.
@@ -302,22 +306,36 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
     tvlower' a' b' = case (tag a', tag b') of
       (QTPrimitive p1, QTPrimitive p2)
         | [p1, p2] `intersect` [QTReal, QTInt, QTNumber] == [p1,p2] -> 
-            return $ tprim $ toEnum $ minimum $ map fromEnum [p1,p2]
+            annLower a' b' >>= return . foldl (@+) (tprim $ toEnum $ minimum $ map fromEnum [p1,p2])
       
       (QTCon (QTRecord i1), QTCon (QTRecord i2)) 
         | i1 `intersect` i2 == i1 -> mergedRecord True  i1 a' i2 b'
         | i1 `intersect` i2 == i2 -> mergedRecord False i2 b' i1 a'
-        | otherwise -> return $ trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b')
+        | otherwise -> annLower a' b' >>= return . foldl (@+) (trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b'))
 
       (QTCon (QTCollection _), QTCon (QTRecord _)) -> coveringCollection a' b'
       (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b' a'
 
-      (_, _) -> lowerError a' b'
+      (QTCon (QTCollection idsA), QTCon (QTCollection idsB))
+        | idsA `intersect` idsB == idsA -> mergedCollection idsB a' b'
+        | idsA `intersect` idsB == idsB -> mergedCollection idsA a' b'
 
-    mergedRecord subAsLeft subid subqt supid supqt = do
+      (_, _)
+        | (isQTLower a' && isQTLower b') || isQTLower a' || isQTLower b' -> do
+          lb1 <- lowerBound a'
+          lb2 <- lowerBound b'
+          tvlower lb1 lb2
+
+        | otherwise -> lowerError a' b'
+
+    mergedRecord subAsLeft supid supqt subid subqt = do
       fieldQt <- mergeCovering subAsLeft
-                  (zip subid $ children subqt) (zip supid $ children supqt)
-      return $ trec $ zip supid fieldQt
+                  (zip supid $ children supqt) (zip subid $ children subqt)
+      annLower supqt subqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
+
+    mergedCollection annIds ct1 ct2 = do
+       ctntLower <- tvlower (head $ children ct1) (head $ children ct2) 
+       annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
     mergeCovering subAsLeft sub sup =
       let lowerF = if subAsLeft then \supV subV -> tvlower subV supV
@@ -330,6 +348,14 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
         _      -> lowerError ct rt
 
     coveringCollection x y = lowerError x y
+
+    annLower x@(annotations -> annA) y@(annotations -> annB) =
+      let annAB   = nub $ annA ++ annB
+          invalid = [QTMutable, QTImmutable]
+      in if annAB `intersect` invalid == invalid then lowerError x y else return annAB
+
+    lowerBound t@(tag -> QTOperator QTLower) = tvopeval QTLower $ children t
+    lowerBound t = return t
 
     lowerError x y = left $ unwords $ ["Invalid lower bound operands: ", show x, "and", show y]
 
@@ -391,10 +417,9 @@ type QTypeCtor = [K3 QType] -> K3 QType
 type UnifyPreF  a = K3 QType -> TInfM (a, K3 QType)
 type UnifyPostF a = (a, a) -> K3 QType -> TInfM (K3 QType)
 
--- TODO: unification for QTSelf
 -- | A unification driver, i.e., common unification code for both
 --   our standard unification method, and unification with variable overrides
-unifyDrv :: UnifyPreF a -> UnifyPostF a -> K3 QType -> K3 QType -> TInfM (K3 QType)
+unifyDrv :: (Show a) => UnifyPreF a -> UnifyPostF a -> K3 QType -> K3 QType -> TInfM (K3 QType)
 unifyDrv preF postF qt1 qt2 = do
     (p1, qt1') <- preF qt1
     (p2, qt2') <- preF qt2
@@ -425,6 +450,10 @@ unifyDrv preF postF qt1 qt2 = do
           Just (selfRecord, liftedAttrIds) -> onCollection selfRecord liftedAttrIds t2 t1
           _ -> unifyErr t1 t2 "collection-record" ""
 
+    unifyDrv' t1@(tag -> QTCon (QTCollection idsA)) t2@(tag -> QTCon (QTCollection idsB))
+        | idsA `intersect` idsB == idsA = onCollectionPair idsB t1 t2
+        | idsA `intersect` idsB == idsB = onCollectionPair idsA t1 t2
+
     unifyDrv' t1@(tag -> QTCon d1) t2@(tag -> QTCon d2) =
       onChildren d1 d2 "datatypes" (children t1) (children t2) (tdata d1)
 
@@ -434,7 +463,10 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2@(tag -> QTOperator QTLower) = do
       lb1 <- lowerBound t1
       lb2 <- lowerBound t2
-      void $ rcr lb1 lb2
+      (lb1', lb2') <- case (tag lb1, tag lb2) of
+                        (QTCon (QTRecord _), QTCon (QTRecord _)) -> tvlower lb1 lb2 >>= return . (lb1,)
+                        (_,_) -> return (lb1, lb2) 
+      void $ rcr lb1' lb2'
       consistentTLower $ children t1 ++ children t2
 
     unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
@@ -464,28 +496,31 @@ unifyDrv preF postF qt1 qt2 = do
     rcr :: K3 QType -> K3 QType -> TInfM (K3 QType)
     rcr a b = unifyDrv preF postF a b
 
+    onCollectionPair :: [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
+    onCollectionPair annIds t1 t2 = rcr (head $ children t1) (head $ children t2) >>= return . flip tcol annIds
+
     onCollection :: K3 QType -> [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
     onCollection sQt liftedAttrIds 
-                 ct@(tag -> QTCon ccon@(QTCollection _)) rt@(tag -> QTCon (QTRecord ids))
+                 ct@(tag -> QTCon (QTCollection _)) rt@(tag -> QTCon (QTRecord ids))
       = do
-          let selfPairs   = zip liftedAttrIds $ children sQt
+          subChQt <- mapM (substituteSelfQt ct) $ children sQt
+          let selfPairs   = zip liftedAttrIds subChQt
           let projSelfT   = projectNamedPairs ids selfPairs
           let tdcon       = QTRecord liftedAttrIds
           let errk        = "collection subtype" 
-          let colCtor nch = tdata ccon $ (init $ children ct) ++
-                              [tdata tdcon $ rebuildNamedPairs selfPairs ids nch]
+          let colCtor   _ = ct
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
       left $ unwords ["Invalid collection arguments", show ct, "and", show rt]
     
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
-    onRecord (subT, subCon, subIds) (supT, supCon, supIds) =
-      let supPairs    = zip supIds $ children supT
-          supProjT    = projectNamedPairs subIds $ supPairs
+    onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
+      let subPairs    = zip subIds $ children subT
+          subProjT    = projectNamedPairs supIds $ subPairs
           errk        = "record subtype"
-          recCtor nch = tdata supCon $ rebuildNamedPairs supPairs subIds nch
-      in onChildren subCon subCon errk (children subT) supProjT recCtor
+          recCtor nch = tdata subCon $ rebuildNamedPairs subPairs supIds nch
+      in onChildren supCon supCon errk (children supT) subProjT recCtor
 
     onChildren :: QTData -> QTData -> String -> [K3 QType] -> [K3 QType] -> QTypeCtor -> TInfM (K3 QType)
     onChildren tga tgb kind a b ctor
@@ -498,15 +533,24 @@ unifyDrv preF postF qt1 qt2 = do
         then mapM (uncurry rcr) (zip a b) >>= return . ctor
         else errf "Unification mismatch on lists."
 
+    substituteSelfQt :: K3 QType -> K3 QType -> TInfM (K3 QType)
+    substituteSelfQt ct@(tag -> QTCon (QTCollection _)) qt = mapTree sub qt
+      where sub _ (tag -> QTSelf) = return $ ct
+            sub ch (Node n _)     = return $ Node n ch
+
+    substituteSelfQt ct _ = subSelfErr ct
+
     lowerBound t = tvopeval QTLower $ children t
 
     primitiveErr a b = unifyErr a b "primitives" ""
     unifyErr a b kind s = left $ unwords ["Unification mismatch on ", kind, ": ", show a, "and", show b, "(", s, ")"]
 
+    subSelfErr ct = left $ unwords ["Invalid self substitution, qtype is not a collection: ", show ct]
+
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
 unifyM t1 t2 errf = reasonM errf $ void $ unifyDrv preChase postId t1 t2
-  where preChase qt = getTVE >>= \tve -> return (Nothing, tvchase tve qt)
+  where preChase qt = getTVE >>= \tve -> return ((), tvchase tve qt)
         postId _ qt = return qt
 
 -- | Type unification with variable overrides to the unification result.
@@ -516,7 +560,7 @@ unifyWithOverrideM qt1 qt2 errf = reasonM errf $ unifyDrv preChase postUnify qt1
         postUnify (v1, v2) qt = do
           let vs = catMaybes [v1, v2]
           void $ mapM_ (flip unifyv qt) vs
-          return $ if null vs then qt else (tvar $ head vs)
+          return $ if null vs then qt else (foldl (@+) (tvar $ head vs) $ annotations qt)
 
 
 -- | Given a polytype, for every polymorphic type var, replace all of
@@ -765,7 +809,7 @@ inferExprTypes expr = do
       case ipt of 
         QPType [] iqt
           | (iqt @~ isQTQualified) == Just QTMutable ->
-              do { void $ unifyM iqt eqt (("Invalid assignment to " ++ i ++ ": ") ++);
+              do { void $ unifyM (iqt @- QTMutable) eqt (("Invalid assignment to " ++ i ++ ": ") ++);
                    return $ rebuildE n ch .+ tunit }
           | otherwise -> mutabilityErr i
 
@@ -782,7 +826,8 @@ inferExprTypes expr = do
       fnqt   <- qTypeOfM $ head ch
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
-      void   $  unifyWithOverrideM fnqt (tfun argqt retqt) (("Invalid function application: ") ++)
+      let errf s = (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"]) ++ s
+      void   $  unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EOperate OSeq) = do
@@ -1033,19 +1078,47 @@ translateProgramTypes prog = mapProgram declF annMemF exprF prog
         exprF   e = translateExprTypes e
 
 translateExprTypes :: K3 Expression -> Either String (K3 Expression)
-translateExprTypes expr = modifyTree translate expr
+translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQualifier e $ exprTQualifier expr
   where
-    translate (Node (tg :@: anns) ch) = do
+    translate nch e@(Node (tg :@: anns) _) = do
+      let nch' = case tg of
+                   ELetIn _ -> [flip addTQualifier (head nch) $ letTQualifier e] ++ tail nch
+                   _        -> nch
       nanns <- mapM translateEQType $ filter (not . isEType) anns
-      return (Node (tg :@: nanns) ch)
+      return (Node (tg :@: nanns) nch')
+
+    addTQualifier tqOpt e@(Node (tg :@: anns) ch) = maybe e (\tq -> Node (tg :@: map (inject tq) anns) ch) tqOpt
+      where inject tq (EType t) = maybe (EType $ t @+ tq) (const $ EType t) $ find isTQualified $ annotations t
+            inject _ a = a
+
+    letTQualifier  e = exprTQualifier $ head $ children e
+    exprTQualifier e = maybe Nothing (Just . translateAnnotation) $ extractEQTypeQualifier e
+
+    extractEQTypeQualifier e = 
+      case find isEQType $ annotations e of
+        Just (EQType qt) -> find isQTQualified $ annotations qt
+        _ -> Nothing
 
     translateEQType (EQType qt) = translateQType qt >>= return . EType
     translateEQType x = return x
 
+    translateAnnotation a = case a of
+      QTMutable   -> TMutable
+      QTImmutable -> TImmutable
+      QTWitness   -> TWitness
+
+
 translateQType :: K3 QType -> Either String (K3 Type)
 translateQType qt = mapTree translateWithMutability qt
-  where translateWithMutability ch qt'@(Node (_ :@: anns) _) =
-          translate ch qt' >>= \t -> return (foldl (@+) t $ map translateAnnotation anns)
+  where translateWithMutability ch qt'@(tag -> QTCon tg) 
+          | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
+
+        translateWithMutability ch qt'@(tag -> QTCon (QTRecord _)) = translate (attachToChildren ch qt') qt'
+
+        translateWithMutability ch qt' = translate ch qt'
+
+        attachToChildren ch qt' = 
+          map (uncurry $ foldl (@+)) $ zip ch $ map (map translateAnnotation . annotations) $ children qt'
 
         translateAnnotation a = case a of
           QTMutable   -> TMutable
