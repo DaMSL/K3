@@ -12,6 +12,7 @@
 #include <Endpoint.hpp>
 #include <Listener.hpp>
 #include <MessageProcessor.hpp>
+#include <Options.hpp>
 
 namespace K3 {
 
@@ -156,9 +157,12 @@ namespace K3 {
       bool simulation,
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec
-    ):
-      LogMT("Engine"), internal_codec(_internal_codec) {
+    ): LogMT("Engine") {
+      configure(simulation, sys_env, internal_codec);
+    }
 
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec) {
+      internal_codec = _internal_codec;
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
@@ -384,7 +388,7 @@ namespace K3 {
 
         // Log Env
         logAt(trivial::trace, "Environment: ");
-        std::map<std::string, std::string> env = mp->get_env();
+        std::map<std::string, std::string> env = mp->bindings(next_message->address());
         std::map<std::string, std::string>::iterator iter;
         for (iter = env.begin(); iter != env.end(); ++iter) {
            std::string id = iter->first;

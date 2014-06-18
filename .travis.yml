@@ -1,6 +1,13 @@
 language: haskell
 ghc: 7.6
 install:
+  - sudo apt-get update
+  - sudo apt-get install -y clang-3.3
+  - sudo apt-get install -y libboost-all-dev
+  - wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz
+  - tar -xvzf nanomsg-0.3-beta.tar.gz
+  - mkdir -p ~/software/nanomsg
+  - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
   - cabal install cabal-install
   - export PATH=~/.cabal/bin:$PATH
   - cabal --version
@@ -17,3 +24,6 @@ script:
 notifications:
   email:
     - k3-developers@googlegroups.com
+branches:
+  only:
+    - master

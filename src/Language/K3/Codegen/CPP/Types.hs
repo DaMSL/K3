@@ -44,13 +44,15 @@ data CPPGenS = CPPGenS {
         initializations :: CPPGenR,
 
         -- | Forward declarations for constructs as a result of cyclic scope.
-        forwards :: CPPGenR,
+        forwards :: [CPPGenR],
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [Identifier],
 
         patchables :: [Identifier],
+
+        showables :: [(Identifier, K3 Type)],
 
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
@@ -73,7 +75,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty empty [] [] M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty [] [] [] [] M.empty M.empty S.empty S.empty BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -83,7 +85,7 @@ refreshCPPGenS = do
 
 -- | Copy state elements from the imperative transformation to CPP code generation.
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is}
+transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is, showables = I.showables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -91,6 +93,9 @@ genSym = do
     current <- uuid <$> get
     modify (\s -> s { uuid = succ (uuid s) })
     return $ '_':  show current
+
+addForward :: CPPGenR -> CPPGenM ()
+addForward r = modify (\s -> s { forwards = r : forwards s })
 
 -- | Add an annotation to the code generation state.
 addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
