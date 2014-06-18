@@ -10,6 +10,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath, replaceExtension, takeBaseName)
 
 import qualified Data.Sequence as S
+import qualified Data.List as L
 
 import Development.Shake
 import Development.Shake.FilePath hiding ( joinPath, replaceExtension, takeBaseName )
@@ -99,7 +100,10 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             phony "clean" $ removeFilesAfter bDir ["//*"]
 
             bDir </> pName <.> exe *> \out -> do
-              let objects = [bDir </> src -<.> "o" | src <- sourceFiles]
+              runtimeFiles <- getDirectoryFiles (runtimePath copts) ["//*.cpp"]
+              let runtimeFiles' = [runtimePath copts </> f | f <- pruneBadSubDirs runtimeFiles]
+                  allFiles = runtimeFiles' ++ sourceFiles
+                  objects = [bDir </> src -<.> "o" | src <- allFiles]
               need objects
               cmd cc ["-o"] [out] objects (words $ cppOptions copts)
 
@@ -108,6 +112,15 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
               let deps   = out -<.> "m"
               () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (words $ cppOptions copts)
               needMakefileDependencies deps
+
+        badSubDirs = [
+                        "dataspace"
+                      , "test"
+                      ]
+
+        hasBadSubDir s = foldr (\bad acc -> acc || bad `L.isInfixOf` s) False badSubDirs
+
+        pruneBadSubDirs = filter (not . hasBadSubDir)
 
         pName    = programName copts
         cc       = case ccCmd copts of

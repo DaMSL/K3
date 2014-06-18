@@ -52,6 +52,7 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode }
 data CompileOptions = CompileOptions
                       { outLanguage  :: String
                       , programName  :: String
+                      , runtimePath  :: FilePath
                       , outputFile   :: Maybe FilePath
                       , buildDir     :: Maybe FilePath
                       , ccCmd        :: CPPCompiler
@@ -165,6 +166,7 @@ compileOptions :: Parser Mode
 compileOptions = fmap Compile $ CompileOptions
                             <$> outLanguageOpt
                             <*> progNameOpt
+                            <*> runtimePathOpt
                             <*> outputFileOpt
                             <*> buildDirOpt
                             <*> ccCmdOpt
@@ -187,6 +189,14 @@ progNameOpt = option (   short   'n'
                       <> reader  str
                       <> help    "Program name"
                       <> metavar "PROGNAME" )
+
+runtimePathOpt :: Parser FilePath
+runtimePathOpt = option (
+                       short   'r'
+                    <> long    "runtime"
+                    <> reader  str
+                    <> help    "Specify runtime path"
+                    <> metavar "RUNTIME" )
 
 outputFileOpt :: Parser (Maybe FilePath)
 outputFileOpt = validatePath <$> option (
