@@ -63,6 +63,11 @@ genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
         Nothing -> return $ text "Collection" <> angles ct
         Just i' -> return $ text i' <> angles ct
 genCType (tag -> TAddress) = return $ text "Address"
+genCType (tag &&& children -> (TFunction, [ta, tr])) = do
+    cta <- genCType ta
+    ctr <- genCType tr
+    return $ genCQualify (text "std") $ text "function" <> angles (ctr <> parens cta)
+
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR
