@@ -174,6 +174,11 @@ inline (tag &&& children -> (EProject v, [e])) = do
 
 inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
 
+inline (tag &&& children -> (EAddress, [h, p])) = do
+    (he, hv) <- inline h
+    (pe, pv) <- inline p
+    return (he <$$> pe, genCCall (text "make_address") Nothing [hv, pv])
+
 inline e = do
     k <- genSym
     ct <- getKType e
