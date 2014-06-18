@@ -75,6 +75,41 @@ timeBinOp map1 map2 op = do
           in  (s + q, r)
         else  (s, ns)
 
+-- Compare operation on record maps [for date]
+compareDateOp :: NamedMembers Value -> NamedMembers Value -> Interpretation Int
+compareDateOp date1 date2 = do
+    y1 <- gety date1
+    y2 <- gety date2
+    m1 <- getm date1
+    m2 <- getm date2
+    d1 <- getd date1
+    d2 <- getd date2
+    if y1 /= y2 
+        then
+            if y1 > y2
+                then return $ 1 
+                else return $ -1
+        else 
+            if m1 /= m2 
+                then
+                    if m1 > m2 
+                        then return $ 1 
+                        else return $ -1
+            else 
+                if d1 /= d2 
+                    then
+                        if d1 > d2 
+                            then return $ 1 
+                            else return $ -1
+                        else return $ 0
+    where
+        get' elm rec = 
+            case fst $ Map.findWithDefault (VInt 0, MemImmut) elm rec of
+                VInt i -> return i
+                x      -> throwE $ RunTimeTypeError $ "Expected Int but found " ++ show x
+        gety date = get' "y" date
+        getm date = get' "m" date
+        getd date = get' "d" date
 
 {- Built-in functions -}
 
@@ -198,22 +233,22 @@ genBuiltin "get_max_int" _ = vfun $ \_  -> return $ VInt maxBound
 
 -- Parse an SQL date string and convert to integer
 genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
-  let v = parseSQLDate s
-  case v of
-    Just i  -> return $ VInt i
-    Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
+    let v = parseSQLDate s
+    case v of
+        Just i  -> return $ VInt i
+        Nothing -> throwE $ RunTimeInterpretationError "Bad date format"
 
 genBuiltin "now" _ = vfun $ \(VTuple []) -> do
-  v <- liftIO $ Clock.getTime Clock.Realtime
-  return $ VRecord $ Map.fromList $
-    [("sec", (VInt $ Clock.sec v, MemImmut)),
-     ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+    v <- liftIO $ Clock.getTime Clock.Realtime
+    return $ VRecord $ Map.fromList $
+        [("sec", (VInt $ Clock.sec v, MemImmut)),
+         ("nsec", (VInt $ Clock.nsec v, MemImmut))]
 
 genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
-  timeBinOp map1 map2 (+) >>= return . VRecord
+    timeBinOp map1 map2 (+) >>= return . VRecord
 
 genBuiltin "sub_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
-  timeBinOp map1 map2 (-) >>= return . VRecord
+    timeBinOp map1 map2 (-) >>= return . VRecord
 
 -- getUTCTime :: {h : int, m : int, s : int}
 genBuiltin "getUTCTime" _ = vfun $ \_ -> do
@@ -221,9 +256,9 @@ genBuiltin "getUTCTime" _ = vfun $ \_ -> do
     dayTime <- return $ utctDayTime currentTime
     timeOfDay <- return $ timeToTimeOfDay dayTime
     return $ VRecord $ Map.fromList $
-      [("h", (VInt $ todHour timeOfDay, MemImmut)),
-       ("m", (VInt $ todMin timeOfDay, MemImmut)),
-       ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
+        [("h", (VInt $ todHour timeOfDay, MemImmut)),
+         ("m", (VInt $ todMin timeOfDay, MemImmut)),
+         ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
 
 -- getUTCTimeWithFormat :: string -> string
 genBuiltin "getUTCTimeWithFormat" _ = vfun $ \(VString formatString) -> do
@@ -238,9 +273,9 @@ genBuiltin "getLocalTime" _ = vfun $ \_ -> do
     localTime <- return $ zonedTimeToLocalTime zonedTime
     timeOfDay <- return $ localTimeOfDay localTime
     return $ VRecord $ Map.fromList $
-      [("h", (VInt $ todHour timeOfDay, MemImmut)),
-       ("m", (VInt $ todMin timeOfDay, MemImmut)),
-       ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
+        [("h", (VInt $ todHour timeOfDay, MemImmut)),
+         ("m", (VInt $ todMin timeOfDay, MemImmut)),
+         ("s", (VInt $ truncate $ todSec timeOfDay, MemImmut))]
 
 -- getLocalTimeWithFormat :: string -> string
 genBuiltin "getLocalTimeWithFormat" _ = vfun $ \(VString formatString) -> do
@@ -256,18 +291,18 @@ genBuiltin "getUTCDate" _ = vfun $ \_ -> do
     currentTime <- liftIO $ getCurrentTime
     (y,m,d) <- return $ toGregorian $ utctDay currentTime
     return $ VRecord $ Map.fromList $
-      [("y", (VInt $ fromInteger y, MemImmut)),
-       ("m", (VInt $ m, MemImmut)),
-       ("d", (VInt $ d, MemImmut))]
+        [("y", (VInt $ fromInteger y, MemImmut)),
+         ("m", (VInt $ m, MemImmut)),
+         ("d", (VInt $ d, MemImmut))]
 
 -- getLocalDate :: () -> {y : int, m : int, d : int}
 genBuiltin "getLocalDate" _ = vfun $ \_ -> do
     zonedTime <- liftIO $ getZonedTime
     (y, m, d) <- return $ toGregorian $ localDay $ zonedTimeToLocalTime zonedTime
     return $ VRecord $ Map.fromList $
-      [("y", (VInt $ fromInteger y, MemImmut)),
-       ("m", (VInt $ m, MemImmut)),
-       ("d", (VInt $ d, MemImmut))]
+        [("y", (VInt $ fromInteger y, MemImmut)),
+         ("m", (VInt $ m, MemImmut)),
+         ("d", (VInt $ d, MemImmut))]
 
 -- parseDate :: string -> string -> option {y : int, m : int, d : int}
 genBuiltin "parseDate" _ = vfun $ \(VString formatString) -> vfun $ \(VString dateString) -> do
@@ -281,6 +316,10 @@ genBuiltin "parseDate" _ = vfun $ \(VString formatString) -> vfun $ \(VString da
                         ("m", (VInt $ m, MemImmut)),
                         ("d", (VInt $ d, MemImmut))] 
                    in return $ VOption (Just record, MemImmut)
+
+-- compareDate :: record -> record -> int
+genBuiltin "compareDate" _ = vfun $ \(VRecord date1) -> vfun $ \(VRecord date2) ->
+    compareDateOp date1 date2 >>= return . VInt
 
 genBuiltin "error" _ = vfun $ \_ -> throwE $ RunTimeTypeError "Error encountered in program"
 
