@@ -145,10 +145,16 @@ liftEitherM = either left return
 
 
 inferProgramUsageProperties :: K3 Declaration -> Either String (K3 Declaration)
-inferProgramUsageProperties prog = fst $ runPInfM pienv0 $ mapProgram declF annMemF exprF prog
-  where declF d@(tag &&& annotations -> (DGlobal n _ _, anns))  = extDeclProps n anns >> return d
-        declF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d
-        declF d@(tag -> DAnnotation n _ mems) = extAnnProps n mems >> return d
+inferProgramUsageProperties prog =
+    let (result, initEnv) = runPInfM pienv0 $ mapProgram initDeclF return return prog
+    in result >> (fst $ runPInfM initEnv $ mapProgram declF annMemF exprF prog)
+  where
+        initDeclF d@(tag &&& annotations -> (DGlobal n t _, anns)) | isTFunction t = extDeclProps n anns >> return d
+        initDeclF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d
+        initDeclF d@(tag -> DAnnotation n _ mems) = extAnnProps n mems >> return d
+        initDeclF d = return d
+
+        declF d@(tag &&& annotations -> (DGlobal n t _, anns)) | not (isTFunction t) = extDeclProps n anns >> return d
         declF d = return d
 
         annMemF m = return m

@@ -320,6 +320,8 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
         | idsA `intersect` idsB == idsA -> mergedCollection idsB a' b'
         | idsA `intersect` idsB == idsB -> mergedCollection idsA a' b'
 
+      (QTVar _, QTVar _) -> return a'
+
       (_, _)
         | (isQTLower a' && isQTLower b') || isQTLower a' || isQTLower b' -> do
           lb1 <- lowerBound a'
@@ -328,8 +330,8 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
 
         | otherwise -> lowerError a' b'
 
-    mergedRecord subAsLeft supid supqt subid subqt = do
-      fieldQt <- mergeCovering subAsLeft
+    mergedRecord supAsLeft supid supqt subid subqt = do
+      fieldQt <- mergeCovering supAsLeft
                   (zip supid $ children supqt) (zip subid $ children subqt)
       annLower supqt subqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
 
@@ -337,10 +339,10 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
        ctntLower <- tvlower (head $ children ct1) (head $ children ct2) 
        annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
-    mergeCovering subAsLeft sub sup =
-      let lowerF = if subAsLeft then \supV subV -> tvlower subV supV
-                                else \supV subV -> tvlower supV subV
-      in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sub) sup
+    mergeCovering supAsLeft sup sub =
+      let lowerF = if supAsLeft then \subV supV -> tvlower supV subV
+                                else \subV supV -> tvlower subV supV
+      in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sup) sub
 
     coveringCollection ct rt@(tag -> QTCon (QTRecord _)) =
       collectionSubRecord ct rt >>= \case
@@ -464,7 +466,9 @@ unifyDrv preF postF qt1 qt2 = do
       lb1 <- lowerBound t1
       lb2 <- lowerBound t2
       (lb1', lb2') <- case (tag lb1, tag lb2) of
-                        (QTCon (QTRecord _), QTCon (QTRecord _)) -> tvlower lb1 lb2 >>= return . (lb1,)
+                        (QTCon (QTRecord _), QTCon (QTRecord _)) ->
+                          tvlower lb1 lb2 >>= \lb' ->
+                            return $ if lb' `elem` [lb1, lb2] then (lb1,lb2) else (lb1, lb')
                         (_,_) -> return (lb1, lb2) 
       void $ rcr lb1' lb2'
       consistentTLower $ children t1 ++ children t2
@@ -642,7 +646,7 @@ inferProgramTypes prog = do
     initExprF :: K3 Expression -> TInfM (K3 Expression)
     initExprF expr = return expr
 
-    unifyInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression) -> TInfM ()
+    unifyInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression) -> TInfM (Maybe (K3 Expression))
     unifyInitializer n qptE eOpt = do
       qpt <- case qptE of
               Left (Nothing)   -> get >>= \env -> liftEitherM (tilkupe env n)
@@ -653,30 +657,46 @@ inferProgramTypes prog = do
         (QPType [] qt1, Just e) -> do
           qt2 <- qTypeOfM e
           unifyM qt1 qt2 unifyInitErrF
+          nanns <- mapM subEQType $ annotations e 
+          return $ Just (Node (tag e :@: nanns) $ children e)
 
-        (_, Nothing) -> return ()
+        (_, Nothing) -> return Nothing
         (_, _) -> polyTypeErr
+
+    subEQType (EQType qt) = tvsub qt >>= return . EQType
+    subEQType x = return x
 
     declF :: K3 Declaration -> TInfM (K3 Declaration)
     declF d@(tag -> DGlobal n t eOpt) = do
       qptE <- if isTFunction t then return (Left Nothing)
                                else (qpType t >>= return . Left . Just)
-      if isTEndpoint t then return d
-                       else unifyInitializer n qptE eOpt >> return d
+      if isTEndpoint t
+        then return d
+        else unifyInitializer n qptE eOpt >>= \neOpt ->
+               return $ (Node (DGlobal n t neOpt :@: annotations d) $ children d)
 
-    declF d@(tag -> DTrigger n _ e) =
+    declF d@(tag -> DTrigger n t e) =
       get >>= \env -> liftEitherM (tilkupe env n) >>= \(QPType qtvars qt) -> 
         case tag qt of
           QTCon QTTrigger -> let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-                             in unifyInitializer n nqptE (Just e) >> return d
+                             in unifyInitializer n nqptE (Just e) >>= \neOpt ->
+                                  return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
           _ -> trigTypeErr n
     
-    declF d@(tag -> DAnnotation n _ mems) =
-        get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >> return d
-      where chkAnnMemEnv amEnv = mapM_ (memType amEnv) mems
-            memType amEnv (Lifted      _ mn _ meOpt _) = unifyMemInit amEnv mn meOpt
-            memType amEnv (Attribute   _ mn _ meOpt _) = unifyMemInit amEnv mn meOpt
-            memType _ (MAnnotation _ _ _) = return ()
+    declF d@(tag -> DAnnotation n tvars mems) =
+        get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
+          return (Node (DAnnotation n tvars nmems :@: annotations d) $ children d)
+      
+      where chkAnnMemEnv amEnv = mapM (memType amEnv) mems
+            
+            memType amEnv (Lifted mp mn mt meOpt mAnns) =
+              unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Lifted mp mn mt nmeOpt mAnns)
+            
+            memType amEnv (Attribute   mp mn mt meOpt mAnns) =
+              unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Attribute mp mn mt nmeOpt mAnns)
+            
+            memType _ mem@(MAnnotation _ _ _) = return mem
+            
             unifyMemInit amEnv mn meOpt = do
               qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
               unifyInitializer mn (Right qpt) meOpt
@@ -818,7 +838,8 @@ inferExprTypes expr = do
     inferQType ch n@(tag -> EProject i) = do
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
-      void    $  unifyM srcqt (tlower $ [trec [(i, fieldqt)]]) (("Invalid record projection: ")++)
+      let prjqt = tlower $ [trec [(i, fieldqt)]]
+      void    $  unifyM srcqt prjqt ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
