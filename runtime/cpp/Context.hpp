@@ -4,11 +4,11 @@
 #include <map>
 #include <string>
 
-#include "Engine.hpp"
-
 namespace K3 {
   using std::map;
   using std::string;
+
+  class Engine;
 
   class __k3_context {
    public:

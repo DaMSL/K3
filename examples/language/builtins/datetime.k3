@@ -11,6 +11,8 @@ declare utcFormattedTime : mut string
 declare localTime : mut {h : int, m : int, s : int}
 declare localFormattedTime : mut string
 
+declare compareValue : mut int
+
 trigger t : () = \_ -> (
     localDate = getLocalDate ();
     utcDate = getUTCDate ();
@@ -20,7 +22,11 @@ trigger t : () = \_ -> (
     utcTime = getUTCTime ();
     localTime = getLocalTime ();
     utcFormattedTime = getUTCTimeWithFormat "%H -- %M __ %S :|";
-    localFormattedTime = getLocalTimeWithFormat "%H :: %M :: %S :)"
+    localFormattedTime = getLocalTimeWithFormat "%H :: %M :: %S :)";
+
+    case validParsedDate of
+        {Some d -> compareValue = compareDate d localDate}
+        {None -> ()}
 )
 
 source s1 : () = value ()

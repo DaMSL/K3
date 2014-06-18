@@ -20,6 +20,8 @@ declare getLocalDate : () -> {y : int, m : int, d : int}
 
 declare parseDate : string -> string -> option {y : int, m : int, d : int}
 
+declare compareDate : {y : int, m : int, d : int} -> {y : int, m : int, d : int} -> int
+
 ///// TIME /////
 
 declare getUTCTime : () -> {h : int, m : int, d : int}
