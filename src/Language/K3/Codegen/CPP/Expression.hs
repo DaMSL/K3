@@ -123,7 +123,7 @@ inline e@(tag &&& children -> (ERecord _, cs)) = do
         (tag &&& children -> (TRecord ids, ts)) -> do
             sig <- signature t
             addRecord sig (zip ids ts)
-            return (vsep es, text sig <> tupled vs)
+            return (vsep es, text sig <> braces (cat $ punctuate comma vs))
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
