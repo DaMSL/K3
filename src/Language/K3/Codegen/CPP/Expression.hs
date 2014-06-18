@@ -146,16 +146,22 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     body' <- reify RReturn body
     return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
+    -- Inline both function and argument for call.
+    (fe, fv) <- inline f
     (ae, av) <- inline a
-    case f of
-        (tag -> EVariable v) -> return (ae, text v <> parens av)
-        (tag -> EProject _) -> do
-            (pe, pv) <- inline f
-            return (ae <//> pe, pv <> parens av)
-        (tag -> ELambda _) -> do
-            (fe, fv) <- inline f
-            return (ae <//> fe, fv <> parens av)
-        _ -> throwE $ CPPGenE $ "Invalid Function Form " ++ show f
+
+    -- How many arguments does this function take?
+    ac <- argCount <$> getKType f
+
+    -- Generate a bind for one of them, with placeholders for the rest.
+    -- Additionally, invoke the function if we've curried all the arguments.
+    let bind = genCBind fv av ac <> (if ac == 1 then parens empty else empty)
+
+    return (fe <$$> ae, bind)
+  where
+    argCount :: K3 Type -> Int
+    argCount (tag &&& children -> (TFunction, [_, r])) = 1 + argCount r
+    argCount _ = 0
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]), v])) = do
     (te, tv) <- inline t
     (ae, av) <- inline a

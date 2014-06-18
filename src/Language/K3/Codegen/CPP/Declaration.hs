@@ -32,6 +32,7 @@ import Language.K3.Codegen.CPP.Types
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return empty
+declaration (tag -> DGlobal _ (tag -> TFunction) Nothing) = return empty
 declaration (tag -> DGlobal i t Nothing) = cDecl t i
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
             (Just (tag &&& children -> (ELambda x, [b])))) = do
