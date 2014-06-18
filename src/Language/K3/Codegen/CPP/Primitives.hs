@@ -65,6 +65,12 @@ genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
 genCType (tag -> TAddress) = return $ text "Address"
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
+genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR
+genCBind f x n = genCQualify (text "std") (text "bind") <> tupled ([f, x] ++ placeholderList)
+  where placeholderList = [ genCQualify (genCQualify (text "std") (text "placeholders")) (text "_" <> int i)
+                          | i <- [0 .. n - 1]
+                          ]
+
 -- | Get the K3 Type of an expression. Relies on type-manifestation to have attached an EType
 -- annotation to the expression ahead of time.
 getKType :: K3 Expression -> CPPGenM (K3 Type)
