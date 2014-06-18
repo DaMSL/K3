@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Collections where
@@ -44,9 +45,11 @@ composite className ans = do
     -- Split data and method declarations, for access specifiers.
     let (dataDecls, methDecls) = partition isDataDecl positives
 
-    let parentSerializeCall p = genCQualify (genCQualify (text "K3") (text p <> angles (text "CONTENT")))
-                                  (genCCall (text "serialize")
-                                  Nothing [text "_archive"]) <> semi
+    let parentSerializeCall p = text "_archive" <+> text "&" <+>
+                                genCQualify (genCQualify (text "boost") (text "serialization"))
+                                  (genCCall (text "base_object")
+                                  (Just [genCQualify (text "K3") (text p) <> angles (text "CONTENT")])
+                                  [text "*this"]) <> semi
     let dataSerialize = vsep $ map (parentSerializeCall . fst) ras
 
     -- Generate a serialization method based on engine preferences.
