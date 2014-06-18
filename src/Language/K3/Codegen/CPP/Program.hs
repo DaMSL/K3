@@ -94,6 +94,7 @@ genKMain = do
 includes :: CPPGenM [Identifier]
 includes = return [
         -- Standard Library
+        "functional",
         "memory",
         "sstream",
         "string",
