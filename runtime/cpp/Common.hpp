@@ -540,6 +540,12 @@ namespace K3 {
 
   using ExternalCodec = Codec;
 
+  class unit_t {
+   public:
+    template <class archive>
+    void serialize(archive&, const unsigned int) {}
+  };
+
 }
 
 #endif

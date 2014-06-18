@@ -124,7 +124,6 @@ namespaces = do
 
 aliases :: [(Identifier, Identifier)]
 aliases = [
-        ("unit_t", "struct {}")
     ]
 
 staticGlobals :: CPPGenM CPPGenR
