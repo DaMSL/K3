@@ -60,7 +60,7 @@ composite className ans = do
                           (Just [text "archive"])
                           (text "void")
                           (text "serialize")
-                          [text "archive _archive"]
+                          [text "archive& _archive", text "const unsigned int"]
                           (serializeBody <$$> dataSerialize)
 
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
@@ -213,7 +213,7 @@ record rName idts = do
                  (Just [text "archive"])
                  (text "void")
                  (text "serialize")
-                 [text "archive _archive"]
+                 [text "archive& _archive", text "const unsigned int"]
                  (body <$$> parentSerialize)
 
     serializeBody = serializationMethod <$> get >>= \case
