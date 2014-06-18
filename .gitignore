@@ -3,6 +3,7 @@ tmp
 /.dist-buildwrapper
 .project
 env.bat
+*.k3
 
 __build
 __build.database
