@@ -189,6 +189,34 @@ namespace K3 {
       }
     }
 
+    void Engine::runEngine(shared_ptr<MessageProcessor> mp) {
+      // TODO MessageProcessor initialize() is empty.
+      // In the Haskell code base, this is where the K3 AST
+      // is passed to the MessageProcessor
+      mp->initialize();
+
+      // TODO Check PoolType for Uniprocess, Multithreaded..etc
+      // Following code is for Uniprocess mode only:
+      // TODO Dummy ID. Need to log actual ThreadID
+      // workers->setId(1);
+
+      runMessages(mp, mp->status());
+    }
+    
+    // Return a new thread running runEngine()
+    // with the provided MessageProcessor
+    shared_ptr<thread> Engine::forkEngine(shared_ptr<MessageProcessor> mp) {
+      using std::placeholders::_1;
+
+      std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
+        &Engine::runEngine, this, _1
+      );
+
+      shared_ptr<thread> engineThread = shared_ptr<thread>(new thread(_runEngine, mp));
+
+      return engineThread;
+    }
+
     Builtin Engine::builtin(string builtinId) {
       Builtin r;
       if ( builtinId == "stdin" )       { r = Builtin::Stdin; }

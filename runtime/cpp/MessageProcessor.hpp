@@ -3,6 +3,8 @@
 
 #include <map>
 #include <string>
+#include <functional>
+#include <memory>
 
 #include "Dispatch.hpp"
 
