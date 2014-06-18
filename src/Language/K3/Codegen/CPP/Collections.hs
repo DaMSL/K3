@@ -44,9 +44,21 @@ composite className ans = do
     -- Split data and method declarations, for access specifiers.
     let (dataDecls, methDecls) = partition isDataDecl positives
 
+    let parentSerializeCall p = genCQualify (genCQualify (text "K3") (text p <> angles (text "CONTENT")))
+                                  (genCCall (text "serialize")
+                                  Nothing [text "_archive"]) <> semi
+    let dataSerialize = vsep $ map (parentSerializeCall . fst) ras
+
     -- Generate a serialization method based on engine preferences.
-    serializationDefn <- serializationMethod <$> get >>= \case
+    serializeBody <- serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize $ map (\(Lifted _ i _ _ _) -> i) dataDecls
+
+    let serializeDefn = genCFunction
+                          (Just [text "archive"])
+                          (text "void")
+                          (text "serialize")
+                          [text "archive _archive"]
+                          (serializeBody <$$> dataSerialize)
 
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
@@ -57,7 +69,7 @@ composite className ans = do
 
     let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
-            <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializationDefn] ++ pubDecls)
+            <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializeDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
@@ -117,6 +129,7 @@ composite className ans = do
     patcherStruct = text "collection_patcher" <> angles (cat $ punctuate comma [text className, text "E"])
 
     patcherCall = genCCall (text "patch") Nothing [text "s", text "c"]
+
 
 dataspaceType :: CPPGenR -> CPPGenM CPPGenR
 dataspaceType eType = return $ text "vector" <> angles eType
@@ -191,18 +204,23 @@ record rName idts = do
                   <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
         return $ genCTemplateDecl [] <$$> text "struct patcher" <> angles (text rName) <+> hangBrace patchFn <> semi
 
-    serializeDefn = serializationMethod <$> get >>= \case
+    serializeDefn = do
+        body <- serializeBody
+        return $ genCFunction
+                 (Just [text "archive"])
+                 (text "void")
+                 (text "serialize")
+                 [text "archive _archive"]
+                 (body <$$> parentSerialize)
+
+    serializeBody = serializationMethod <$> get >>= \case
         BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
 
+    parentSerialize = empty
+
 genCBoostSerialize :: [Identifier] -> CPPGenR
-genCBoostSerialize dataDecls = genCFunction
-    (Just [text "archive"])
-    (text "void")
-    (text "serialize")
-    [text "archive _archive"]
-    serializeBody
+genCBoostSerialize dataDecls = vsep $ map serializeMember dataDecls
   where
-    serializeBody = vsep $ map serializeMember dataDecls
     serializeMember dataDecl = text "_archive" <+> text "&" <+> text dataDecl <> semi
 
 definition :: Identifier -> K3 Type -> Maybe (K3 Expression) -> CPPGenM CPPGenR
