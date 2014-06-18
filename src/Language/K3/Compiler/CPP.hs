@@ -21,6 +21,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 
 import Language.K3.TypeSystem (typecheckProgram)
+import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgramTypes)
 
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
@@ -47,12 +48,16 @@ outputFilePath ext opts copts = case buildDir copts of
     Just path -> Right (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
 
 typecheckStage :: CompilerStage (K3 Declaration) (K3 Declaration)
-typecheckStage _ _ prog = prefixError "Type error:" $ return $
-    if not $ S.null typeErrors
-      then Left $ prettyTCErrors typedProgram typeErrors
-      else Right typedProgram
+typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubTypes cOpts then typecheck else quickTypecheck
 
-  where (typeErrors, _, typedProgram) = typecheckProgram prog
+  where
+    typecheck = if not $ S.null typeErrors
+                then Left $ prettyTCErrors typedProgram typeErrors
+                else Right typedProgram
+
+    (typeErrors, _, typedProgram) = typecheckProgram prog
+
+    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes

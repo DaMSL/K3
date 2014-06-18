@@ -65,10 +65,10 @@ run opts = do
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     chooseTypechecker opts' p =
-      if quickTypes opts'
-        then inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
+      if noQuickTypes opts'
+        then typecheck p
+        else inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
                                  >>= Simplification.inferFusableProgramApplies
-        else typecheck p
 
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog

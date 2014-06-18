@@ -57,6 +57,7 @@ data CompileOptions = CompileOptions
                       , ccCmd        :: CPPCompiler
                       , cppOptions   :: String
                       , coTransform  :: TransformOptions
+                      , useSubTypes    :: Bool
                       }
   deriving (Eq, Read, Show)
 
@@ -77,7 +78,7 @@ data InterpretOptions
 
 -- | Typechecking options
 data TypecheckOptions
-    = TypecheckOptions {quickTypes :: Bool}
+    = TypecheckOptions {noQuickTypes :: Bool}
   deriving (Eq, Read, Show)
 
 -- | Analyze Options.
@@ -169,6 +170,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> ccCmdOpt
                             <*> cppOpt
                             <*> transformOptions
+                            <*> noQuickTypesOpt
 
 outLanguageOpt :: Parser String
 outLanguageOpt = option ( short   'l'
@@ -335,13 +337,14 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 
 -- | Typecheck options
-quickTypesOpt :: Parser Bool
-quickTypesOpt = switch (
-                       long    "quicktypes"
-                    <> help    "Use HM Typesystem"
+noQuickTypesOpt :: Parser Bool
+noQuickTypesOpt = switch (
+                       long    "no-quicktypes"
+                    <> help    "Use Subtypes"
                 )
+
 typecheckOptions :: Parser Mode
-typecheckOptions = Typecheck <$> (TypecheckOptions <$> quickTypesOpt)
+typecheckOptions = Typecheck <$> (TypecheckOptions <$> noQuickTypesOpt)
 
 -- | Analyze options
 analyzeOptions :: Parser Mode
