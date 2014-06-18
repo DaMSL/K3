@@ -9,7 +9,7 @@ annotation Sorted given type a, b {
   provides lifted combine : self -> self
 
   @:Transformer
-  provides lifted split   : self -> (self, self)
+  provides lifted split   : () -> (self, self)
 
   @:Transformer
   provides lifted iterate : (content -> ()) -> ()
