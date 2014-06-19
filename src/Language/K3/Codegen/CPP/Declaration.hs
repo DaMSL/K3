@@ -32,7 +32,8 @@ import Language.K3.Codegen.CPP.Types
 declaration :: K3 Declaration -> CPPGenM CPPGenR
 declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return empty
-declaration (tag -> DGlobal _ (tag -> TFunction) Nothing) = return empty
+declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (\y -> y `L.isSuffixOf` name) source_builtins = genSourceBuiltin t name
+                                                               | otherwise = return empty
 declaration (tag -> DGlobal i t Nothing) = cDecl t i
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
             (Just (tag &&& children -> (ELambda x, [b])))) = do
@@ -109,3 +110,42 @@ triggerWrapper i t = do
                 triggerDispatch,
                 text "return;"
             ])
+
+-- Generated Builtins
+-- Interface for source builtins.
+-- Map special builtin suffix to a function that will generate the builtin.
+source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM CPPGenR))]
+source_builtin_map = [("HasRead", genHasRead), ("Read", genDoRead)]
+
+source_builtins :: [String]
+source_builtins = map fst source_builtin_map
+
+-- Grab the generator function from the map, currying the key of the builtin to be generated.
+getSourceBuiltin :: String -> (K3 Type -> String -> CPPGenM CPPGenR)
+getSourceBuiltin k =
+  case filter (\(x,_) -> k == x) source_builtin_map of
+    []         -> error $ "Could not find builtin with name" ++ k
+    ((_,f):xs) -> f k
+
+genHasRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
+genHasRead suf _ name = do
+  source_name <- return $ stripSuffix suf name
+  body  <- return $ text "return engine->hasRead" <> parens (dquotes $ text source_name) <> semi
+  return $ genCFunction Nothing (text "bool") (text name) [text "unit_t"] body
+
+genDoRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
+genDoRead suf typ name = do
+    ret_type  <- genCType $ last $ children typ
+    source_name <- return $ stripSuffix suf name
+    doRead <- return $ text "engine->doReadExternal" <> parens (dquotes $ text source_name)
+    body <- return $ text "return *unpack" <> angles ret_type <> parens doRead <> semi
+    return $ genCFunction Nothing ret_type (text name) [text "unit_t"] body
+
+stripSuffix :: String -> String -> String
+stripSuffix suffix name = maybe (error "not a suffix!") reverse $ L.stripPrefix (reverse suffix) (reverse name)
+
+genSourceBuiltin :: K3 Type -> Identifier -> CPPGenM CPPGenR
+genSourceBuiltin typ name = do
+  suffix <- return $ head $ filter (\y -> y `L.isSuffixOf` name) source_builtins
+  f <- return $ getSourceBuiltin suffix
+  f typ name
