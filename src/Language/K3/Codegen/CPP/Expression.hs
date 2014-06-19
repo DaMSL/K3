@@ -8,7 +8,7 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (delete, (\\))
+import Data.List (nub, (\\))
 import Data.Maybe
 
 import Language.K3.Core.Annotation
@@ -77,7 +77,7 @@ constant (CBool False) = return $ text "false"
 constant (CInt i) = return $ int i
 constant (CReal d) = return $ double d
 constant (CString s) = return $ text "string" <> (parens . text $ show s)
-constant (CNone _) = return $ text "null"
+constant (CNone _) = return $ text "nullptr"
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
@@ -142,7 +142,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- globals <$> get
-    let fvs = delete arg $ freeVariables body
+    let fvs = nub $ filter (/= arg) $ freeVariables body
     body' <- reify RReturn body
     return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
