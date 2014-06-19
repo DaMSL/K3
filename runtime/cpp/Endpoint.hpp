@@ -124,78 +124,15 @@ namespace K3
     size_t capacity() { return 1; }
 
     // Buffer Operations
-    bool push_back(shared_ptr<Value> v) {
-      strict_lock<LockB> guard(*this);
-      // Failure:
-      if (!v || (contents.get(guard))) {
-        return false;
-      }
-      // Success:
-      contents.get(guard) = v;
-      return true;
-    }
+    bool push_back(shared_ptr<Value> v);
 
-    shared_ptr<Value> pop() {
-      strict_lock<LockB> guard(*this);
-      shared_ptr<Value> v;
-      if (contents.get(guard)) {
-        // Success:
-        v = contents.get(guard);
-        contents.get(guard).reset();
-      }
-      // In case of failure, v is a null pointer
-      return v;
-    }
+    shared_ptr<Value> pop();
 
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      strict_lock<LockB> guard(*this);
-      shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent;
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-      // Read from the buffer if possible
-      if (contents.get(guard)) {
-        r = contents.get(guard);
-        contents.get(guard).reset();
-        notify(r);
-      }
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
-        shared_ptr<Value> v = ioh->doRead();
-        contents.get(guard) = v;
-      }
-
-     return r;
-    }
-
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // pop() a value and write to the handle if possible
-      strict_lock<LockB> guard(*this);
-      if (contents.get(guard)) {
-        shared_ptr<Value> v = contents.get(guard);
-        contents.get(guard).reset();
-        ioh->doWrite(v);
-        notify(v);
-      }
-    }
-
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
-      strict_lock<LockB> guard(*this);
-      bool transferred = false;
-      if(contents.get(guard)) {
-        shared_ptr<Value> v = contents.get(guard);
-        contents.get(guard).reset();
-        if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
-          queues->enqueue(msg);
-          transferred = true;
-        }
-        notify(v);
-      }
-      return transferred;
-    }
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
 
    protected:
     externally_locked<shared_ptr<Value>, LockB> contents;
@@ -211,70 +148,15 @@ namespace K3
     size_t capacity() { return 1; }
 
     // Buffer Operations
-    bool push_back(shared_ptr<Value> v) {
-      // Failure:
-      if (!v || this->full()) {
-        return false;
-      }
-      // Success:
-      contents = v;
-      return true;
-    }
+    bool push_back(shared_ptr<Value> v);
 
-    shared_ptr<Value> pop() {
-      shared_ptr<Value> v;
-      if (!this->empty()) {
-        // Success:
-        v = contents;
-        contents = shared_ptr<Value>();
-      }
-      // In case of failure, v is a null pointer
-      return v;
-    }
+    shared_ptr<Value> pop();
 
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent;
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-      // Read from the buffer if possible
-      if (!(this->empty())) {
-        r = this->pop();
-        notify(r);
-      }
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
-        shared_ptr<Value> v = ioh->doRead();
-        this->push_back(v);
-      }
-
-     return r;
-    }
-
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // pop() a value and write to the handle if possible
-      if (!this->empty()) {
-        shared_ptr<Value> v = this->pop();
-        ioh->doWrite(v);
-        notify(v);
-      }
-    }
-
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
-      bool transferred = false;
-      if(!this->empty()) {
-        shared_ptr<Value> v = this->pop();
-        if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
-          queues->enqueue(msg);
-          transferred = true;
-        }
-        notify(v);
-      }
-      return transferred;
-    }
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
 
    protected:
     shared_ptr<Value> contents;
@@ -289,70 +171,19 @@ namespace K3
     bool   empty() { return contents? contents->empty() : true; }
     bool   full()  { return size() >= bufferMaxSize(spec); }
     size_t size()  { return empty()? 0 : contents->size(); }
-    size_t capacity() {
-      if (!contents) {
-        return 0;
-      }
-      int s = bufferMaxSize(spec);
-      return s <= 0? contents->max_size() : s;
-    }
+    size_t capacity();
 
-    bool push_back(shared_ptr<Value> v) {
-      // Failure if contents is null or full
-      if (!v || !contents || full()) {
-        return false;
-      }
+    bool push_back(shared_ptr<Value> v);
 
-      // Success
-      contents->push_back(*v);
-      return true;
-    }
+    shared_ptr<Value> pop();
 
-    shared_ptr<Value> pop() {
-      shared_ptr<Value> v;
-      if (!empty()) {
-        v = make_shared<Value>(contents->front());
-        contents->pop_front();
-      }
-      return v;
-    }
-
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      shared_ptr<Value> r;
-
-      // Read from the buffer if possible
-      if (!(this->empty())) {
-        r = this->pop();
-        notify(r);
-      }
-
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer. try to batch
-      int n = batchSize();
-      for(int i=0; !full() && ioh->hasRead() && i < n; i++) {
-        shared_ptr<Value> v = ioh->doRead();
-        this->push_back(v);
-      }
-      return r;
-    }
+    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
     // Default flush: do not force, wait for batch
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      flush(ioh,notify,false);
-    }
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) { flush(ioh,notify,false); }
 
     // flush overloaded with force flag to ignore batching semantics
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force) {
-      while (batchAvailable() || force) {
-        int n = batchSize();
-        for (int i=0; i < n; i++) {
-          if (force && empty()) { return; }
-          shared_ptr<Value> v = this->pop();
-          ioh->doWrite(v);
-          notify(v);
-        }
-      }
-    }
+    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force);
 
     // Default transfer: do not force, wait for batch
     bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
@@ -360,24 +191,7 @@ namespace K3
     }
 
     // transfer overloaded with force flag to ignore batching semantics
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force) {
-      // Transfer as many full batches as possible
-      bool transferred = false;
-      while (batchAvailable() || force) {
-        int n = batchSize();
-        for (int i=0; i < n; i++) {
-          if (force && empty()) { return transferred; }
-          shared_ptr<Value> v = this->pop();
-          if (queues && cdec) {
-            Message msg = cdec->read_message(*v);
-            queues->enqueue(msg);
-            transferred = true;
-          }
-          notify(v);
-        }
-      }
-      return transferred;
-    }
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force);
 
    protected:
     shared_ptr<list<Value>> contents;
@@ -398,40 +212,11 @@ namespace K3
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
-      shared_ptr<Subscribers> s = eventSubscriptions[nt];
-      if (!s) {
-        s = shared_ptr<Subscribers>(new Subscribers());
-        eventSubscriptions[nt] = s;
-      }
+    void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id);
 
-      s->push_back(make_tuple(sub_addr, sub_id));
-    }
+    void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id);
 
-    void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id) {
-      auto it = eventSubscriptions.find(nt);
-      if ( it != eventSubscriptions.end() ) {
-        shared_ptr<Subscribers> s = it->second;
-        if (s) {
-          s->remove_if(
-            [&sub_id, &sub_addr](const tuple<Address, Identifier>& t){
-              return get<0>(t) == sub_addr && get<1>(t) == sub_id;
-            });
-        }
-      }
-    }
-
-    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload) {
-      auto it = eventSubscriptions.find(nt);
-      if (it != eventSubscriptions.end()) {
-        shared_ptr<Subscribers> s = it->second;
-        if (s) {
-          for (tuple<Address, Identifier> t : *s) {
-            sendFn(get<0>(t), get<1>(t), payload);
-          }
-        }
-      }
-    }
+    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload);
 
   protected:
     SendFunctionPtr sendFn;
@@ -458,72 +243,29 @@ namespace K3
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
-    void notify_subscribers(shared_ptr<Value> v) {
-      EndpointNotification nt =
-        (handle_->builtin() || handle_->file())?
-          EndpointNotification::FileData : EndpointNotification::SocketData;
-      subscribers_->notifyEvent(nt, v);
-    }
+    void notify_subscribers(shared_ptr<Value> v);
 
     // An endpoint can be read if the handle can be read or the buffer isn't empty.
-    bool hasRead() {
-        return handle_->hasRead() || !buffer_->empty();
-    }
+    bool hasRead() { return handle_->hasRead() || !buffer_->empty(); }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
-    bool hasWrite() {
-      return handle_->hasWrite() && !buffer_->full();
-    }
+    bool hasWrite() { return handle_->hasWrite() && !buffer_->full(); }
 
-    shared_ptr<Value> refreshBuffer() {
-      return buffer_->refresh(handle_,
-        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
-    }
+    shared_ptr<Value> refreshBuffer();
 
-    void flushBuffer() {
-      return buffer_->flush(handle_,
-        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
-    }
+    void flushBuffer();
 
-    shared_ptr<Value> doRead() {
-      return refreshBuffer();
-    }
+    shared_ptr<Value> doRead() { return refreshBuffer(); }
 
-    void doWrite(Value& v) {
-      doWrite(make_shared<Value>(v));
-      return;
-    }
+    void doWrite(Value& v) { doWrite(make_shared<Value>(v)); }
 
-    void doWrite(shared_ptr<Value> v_ptr) {
+    void doWrite(shared_ptr<Value> v_ptr); 
 
-      bool success = buffer_->push_back(v_ptr);
-      if ( !success ) {
-        // Flush buffer, and then try to append again.
-        flushBuffer();
-
-        // Try to append again, and if this still fails, throw a buffering exception.
-        success = buffer_->push_back(v_ptr);
-      }
-
-      if ( ! success ) { throw BufferException("Failed to buffer value during endpoint write."); }
-    }
-
-    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec) {
-      buffer_->push_back(val);
-      return buffer_->transfer(q, codec, bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
-    }
+    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec);
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.
-    void close() {
-      if( handle_->isOutput() )
-        flushBuffer();
-      EndpointNotification nt = (handle_->builtin() || handle_->file())?
-        EndpointNotification::FileClose : EndpointNotification::SocketClose;
-
-      subscribers_->notifyEvent(nt, nullptr);
-      handle_->close();
-    };
+    void close();;
 
   protected:
     shared_ptr<IOHandle> handle_;
@@ -572,57 +314,15 @@ namespace K3
       return;
     }
 
-    void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
-      list<Identifier> endpoint_names;
- 
-      strict_lock<EndpointState> guard(*this);
- 
-      for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
-        endpoint_names.push_back(p.first);
-      }
- 
-      for (Identifier i: endpoint_names) {
-        removeEndpoint(i);
-      }
- 
-      return;
-    }
+    void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m);
 
-    shared_ptr<Endpoint> getInternalEndpoint(Identifier id) {
-      if ( externalEndpointId(id) ) {
-        epsLogger->logAt(trivial::error, "Invalid request for internal endpoint: "+id);
-        return shared_ptr<Endpoint>();
-      }
-      return getEndpoint(id, internalEndpoints);
-    }
+    shared_ptr<Endpoint> getInternalEndpoint(Identifier id);
 
-    shared_ptr<Endpoint> getExternalEndpoint(Identifier id) {
-      if ( !externalEndpointId(id) ) {
-        epsLogger->logAt(trivial::error, "Invalid request for external endpoint: "+id);
-        return shared_ptr<Endpoint>();
-      }
-      return getEndpoint(id, externalEndpoints);
-    }
+    shared_ptr<Endpoint> getExternalEndpoint(Identifier id);
 
-    size_t numEndpoints() {
-      strict_lock<EndpointState> guard(*this);
-      return externalEndpoints->get(guard)->size() + internalEndpoints->get(guard)->size();
-    }
+    size_t numEndpoints();
 
-    void logEndpoints() {
-      strict_lock<EndpointState> guard(*this);
-      BOOST_LOG(*epsLogger) << "Internal Endpoints (" << internalEndpoints->get(guard)->size() << ") @ " << internalEndpoints << ":";
-      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(internalEndpoints->get(guard)) )
-      {
-        BOOST_LOG(*epsLogger) << "\t" << something.first;
-      }
-
-      BOOST_LOG(*epsLogger) << "External Endpoints (" << externalEndpoints->get(guard)->size() << ") @ " << externalEndpoints << ":";
-      for (const std::pair<Identifier, shared_ptr<Endpoint> >& something: *(externalEndpoints->get(guard)) )
-      {
-        BOOST_LOG(*epsLogger) << "\t" << something.first;
-      }
-    }
+    void logEndpoints();
 
   protected:
     shared_ptr<LogMT> epsLogger;
@@ -685,27 +385,9 @@ namespace K3
 
       ConnectionMap(shared_ptr<Net::NContext> ctxt): LogMT("ConnectionMap"), context_(ctxt) {}
 
-      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c) {
-        bool r = false;
-        auto lb = cache.lower_bound(addr);
-        if ( lb == cache.end() || addr != lb->first ) {
-          auto it = cache.insert(lb, make_pair(addr, c));
-          r = it->first == addr;
-        } else {
-          BOOST_LOG(*this) << "Invalid attempt to add a duplicate endpoint for " << addressAsString(addr);
-        }
-        return r;
-      }
+      bool addConnection(Address& addr, shared_ptr<Net::NConnection> c);
 
-      shared_ptr<Net::NConnection> getConnection(Address& addr)
-      {
-        shared_ptr<Net::NConnection> r;
-        try {
-          r = cache.at(addr);
-        } catch (const out_of_range& oor) {}
-        if ( !r ) { BOOST_LOG(*this) << "No connection found for " << addressAsString(addr); }
-        return r;
-      }
+      shared_ptr<Net::NConnection> getConnection(Address& addr);
  
       void removeConnection(Address& addr) { cache.erase(addr); }
  
@@ -742,90 +424,30 @@ namespace K3
     void unlock()        { shlockable::unlock(); }
     void unlock_shared() { shlockable::unlock_shared(); }
 
-    bool hasInternalConnections() {
-      bool r = false;
-      if ( internalConnections ) {
-        strict_lock<ConnectionState> guard(*this);
-        r = internalConnections->get(guard)? true : false;
-      }
-      return r;
-    }
+    bool hasInternalConnections();
 
-    shared_ptr<Net::NConnection> addConnection(Address addr, bool internal)
-    {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap =
-        internal? internalConnections : externalConnections;
- 
-      shared_ptr<Net::NConnection> conn =
-        shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
- 
-      return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
-    }
+    shared_ptr<Net::NConnection> addConnection(Address addr, bool internal);
 
-    void removeConnection(Address addr)
-    {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
-      if ( cMap ) {
-        cMap->get(guard)->removeConnection(addr);
-      } else {
-        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-      }
-    }
+    void removeConnection(Address addr);
 
-    void removeConnection(Address addr, bool internal)
-    {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
-      if ( cMap ) {
-        cMap->get(guard)->removeConnection(addr);
-      } else {
-        BOOST_LOG(*this) << "No connection to " << addressAsString(addr) << " found for removal";
-      }
-    }
+    void removeConnection(Address addr, bool internal);
 
     // TODO: Ideally, this should be a shared lock.
     // TODO: investigate why does clang not like a shared_lock_guard here, while EndpointState::getEndpoint is fine.
-    shared_ptr<Net::NConnection> getConnection(Address addr)
-    {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap = mapForAddress(addr, guard);
-      return getConnection(addr, cMap, guard);
-    }
+    shared_ptr<Net::NConnection> getConnection(Address addr);
 
     // TODO: Ideally, this should be a shared lock.
-    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal)
-    {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap = internal? internalConnections : externalConnections;
-      return getConnection(addr, cMap, guard);
-    }
+    shared_ptr<Net::NConnection> getConnection(Address addr, bool internal);
 
     // TODO
     // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr) = 0;
     // virtual shared_ptr<Net::NConnection> getEstablishedConnection(Address addr, bool internal) = 0;
 
-    void clearConnections() {
-      strict_lock<ConnectionState> guard(*this);
-      if ( internalConnections ) { internalConnections->get(guard)->clearConnections(); }
-      if ( externalConnections ) { externalConnections->get(guard)->clearConnections(); }
-    }
+    void clearConnections();
 
-    void clearConnections(bool internal) {
-      strict_lock<ConnectionState> guard(*this);
-      shared_ptr<ConcurrentConnectionMap> cMap =
-        internal ? internalConnections : externalConnections;
-      if ( cMap ) { cMap->get(guard)->clearConnections(); }
-    };
+    void clearConnections(bool internal);
 
-    size_t numConnections() {
-      strict_lock<ConnectionState> guard(*this);
-      size_t r = 0;
-      if ( internalConnections ) { r += internalConnections->get(guard)->size(); }
-      if ( externalConnections ) { r += externalConnections->get(guard)->size(); }
-      return r;
-    }
+    size_t numConnections();
 
   protected:
     shared_ptr<Net::NContext> networkCtxt;
@@ -837,11 +459,7 @@ namespace K3
     }
 
     shared_ptr<ConcurrentConnectionMap>
-    emptyConnectionMap(shared_ptr<Net::NContext> ctxt)
-    {
-      shared_ptr<ConnectionMap> mp(new ConnectionMap(ctxt));
-      return shared_ptr<ConcurrentConnectionMap>(new ConcurrentConnectionMap(*this, mp));
-    }
+    emptyConnectionMap(shared_ptr<Net::NContext> ctxt);
 
     shared_ptr<ConcurrentConnectionMap> mapForId(Identifier& id) {
       return externalEndpointId(id) ? externalConnections : internalConnections;
@@ -849,28 +467,13 @@ namespace K3
 
     // TODO: implement an alternative using a shared_lock_guard
     shared_ptr<ConcurrentConnectionMap>
-    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard)
-    {
-      shared_ptr<ConcurrentConnectionMap> r;
-      if ( internalConnections && getConnection(addr, internalConnections, guard) ) {
-        r = internalConnections;
-        if ( !r && externalConnections && getConnection(addr, externalConnections, guard) ) {
-          r = externalConnections;
-        }
-      }
-      return r;
-    }
+    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard);
 
     // TODO: implement an alternative using a shared_lock_guard
     shared_ptr<Net::NConnection>
     getConnection(Address& addr,
                   shared_ptr<ConcurrentConnectionMap> connections,
-                  strict_lock<ConnectionState>& guard)
-    {
-      shared_ptr<Net::NConnection> r;
-      if ( connections ) { r = connections->get(guard)->getConnection(addr); }
-      return r;
-    }
+                  strict_lock<ConnectionState>& guard);
   };
 };
 
