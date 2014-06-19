@@ -47,16 +47,24 @@ namespace K3 {
       { }
 
       std::shared_ptr<E> peek() { return D<E>::peek(); }
+      std::shared_ptr<E> peek(unit_t) { return D<E>::peek(); }
 
-      void insert(const E& elem) { D<E>::insert(elem); }
-      void insert(E&& elem) { D<E>::insert(elem); }
+      unit_t insert(const E& elem) { D<E>::insert(elem); return unit_t();}
+      unit_t insert(E&& elem) { D<E>::insert(elem); return unit_t();}
 
-      void erase(const E& elem)  { D<E>::erase(elem); }
+      unit_t erase(const E& elem)  { D<E>::erase(elem); return unit_t();}
 
-      void update(const E& v1, const E& v2) { D<E>::update(v1,v2); }
-      void update(const E& v1, E&& v2) { D<E>::update(v1,v2); }
+      unit_t update(const E& v1, const E& v2) { D<E>::update(v1,v2); return unit_t();}
+      unit_t update(const E& v1, E&& v2) { D<E>::update(v1,v2); return unit_t();}
 
       std::tuple<BaseCollection<D, E>, BaseCollection<D, E>> split() {
+        auto tup = D<E>::split();
+        D<E> ds1 = get<0>(tup);
+        D<E> ds2 = get<1>(tup);
+        return std::make_tuple(BaseCollection<D,E>(ds1), BaseCollection<D,E>(ds2));
+      }
+
+      std::tuple<BaseCollection<D, E>, BaseCollection<D, E>> split(unit_t) {
         auto tup = D<E>::split();
         D<E> ds1 = get<0>(tup);
         D<E> ds2 = get<1>(tup);
@@ -143,6 +151,13 @@ namespace K3 {
 
       // Convert from BaseCollection<ListDS, E> to Collection<E>
       std::tuple<Collection<E>, Collection<E>> split() {
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
+        return std::make_tuple(Collection<E>(ds1), Collection<E>(ds2));
+      }
+
+      std::tuple<Collection<E>, Collection<E>> split(unit_t) {
         auto tup = Super::split();
         Super ds1 = get<0>(tup);
         Super ds2 = get<1>(tup);
