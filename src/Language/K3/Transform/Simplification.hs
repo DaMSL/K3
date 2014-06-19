@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -11,9 +12,12 @@ import Data.Either
 import Data.Fixed
 import Data.Function
 import Data.List
+import Data.Maybe
 import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
+
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -582,7 +586,7 @@ commonSubexprElim expr = do
 -- | Marks all function applications that are fusable transformers as a
 --   preprocessing for fusion optimizations.
 inferFusableProgramApplies :: K3 Declaration -> Either String (K3 Declaration)
-inferFusableProgramApplies prog = mapProgram return return inferFusableExprApplies prog
+inferFusableProgramApplies prog = mapExpression inferFusableExprApplies prog
 
 inferFusableExprApplies :: K3 Expression -> Either String (K3 Expression)
 inferFusableExprApplies expr = modifyTree fusable expr
@@ -600,10 +604,58 @@ inferFusableExprApplies expr = modifyTree fusable expr
     fusableProp :: Annotation Expression
     fusableProp = EProperty "Fusable" Nothing
 
-{-
 fuseProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
-fuseProgramTransformers = mapExpression fuseTransformers
+fuseProgramTransformers prog = mapExpression fuseTransformers prog
 
 fuseTransformers :: K3 Expression -> Either String (K3 Expression)
-fuseTransformers = undefined
--}
+fuseTransformers expr = mapTree fuse expr
+  where
+    fuse ch n | Just (outer, inner) <- fusablePair n ch =
+      trace (unwords ["fuse", show outer, "and", show inner]) $ 
+      case (outer, inner) of 
+        (EProject "map",     EProject "map") -> rewriteMapMap n ch
+        (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
+        (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
+        _ -> rebuildE ch n
+
+    fuse ch n = rebuildE ch n
+    rebuildE ch (Node n _) = return $ Node n ch
+
+    -- TODO: add generated spans and type annotations for all expressions built.
+    rewriteMapMap :: K3 Expression -> [K3 Expression] -> Either String (K3 Expression)
+    rewriteMapMap n ch = case extractFusablePairArgs ch of
+      Just (c, f, g) -> return $ EC.applyMany (EC.project "map" c) [composeFunctions f g]
+      Nothing -> rebuildE ch n
+
+    -- TODO: simplify and inline function bodies where possible.
+    -- TODO: add generated spans and type annotations for all expressions built.
+    composeFunctions :: K3 Expression -> K3 Expression -> K3 Expression
+    composeFunctions f g = EC.lambda "x" $ EC.applyMany f [EC.record [("elem", EC.applyMany g [EC.variable "x"])]]
+
+    fusablePair :: K3 Expression -> [K3 Expression] -> Maybe (Expression, Expression)
+    fusablePair n [ch1@(tag &&& children -> (EProject _, [gch])), _]
+      | isFusable n && isFusable gch =
+        let ggch = children gch in
+        if null ggch then Nothing else Just (tag ch1, tag $ head ggch)
+      | otherwise = Nothing
+
+    fusablePair _ _ = Nothing
+
+    extractFusablePairArgs :: [K3 Expression] -> Maybe (K3 Expression, K3 Expression, K3 Expression)
+    extractFusablePairArgs [(children -> [gchApp]), arg1] = 
+      let ggch = children gchApp 
+          (target, arg2) = fusableTarget gchApp
+      in if null ggch then Nothing else Just (target, arg1, arg2)
+    
+    extractFusablePairArgs _ = Nothing
+
+    fusableTarget :: K3 Expression -> (K3 Expression, K3 Expression)
+    fusableTarget e = let ch = children e in (head $ children $ head ch, last ch)
+
+    isFusable :: K3 Expression -> Bool
+    isFusable e@(tag -> EOperate OApp) = isJust $ find isEFusable $ annotations e
+    isFusable _ = False
+
+    isEFusable :: Annotation Expression -> Bool
+    isEFusable (EProperty "Fusable" _) = True
+    isEFusable _ = False
