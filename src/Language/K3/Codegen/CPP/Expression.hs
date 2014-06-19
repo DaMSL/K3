@@ -150,18 +150,7 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
-    -- How many arguments does this function take?
-    ac <- argCount <$> getKType f
-
-    -- Generate a bind for one of them, with placeholders for the rest.
-    -- Additionally, invoke the function if we've curried all the arguments.
-    let bind = if ac == 1 then fv <> parens av else genCBind fv av ac <> parens empty
-
-    return (fe <$$> ae, bind)
-  where
-    argCount :: K3 Type -> Int
-    argCount (tag &&& children -> (TFunction, [_, r])) = 1 + argCount r
-    argCount _ = 0
+    return (fe <$$> ae, fv <> parens av)
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]), v])) = do
     (te, tv) <- inline t
     (ae, av) <- inline a
