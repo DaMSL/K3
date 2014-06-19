@@ -8,7 +8,7 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (delete, (\\))
+import Data.List (nub, (\\))
 import Data.Maybe
 
 import Language.K3.Core.Annotation
@@ -77,7 +77,7 @@ constant (CBool False) = return $ text "false"
 constant (CInt i) = return $ int i
 constant (CReal d) = return $ double d
 constant (CString s) = return $ text "string" <> (parens . text $ show s)
-constant (CNone _) = return $ text "null"
+constant (CNone _) = return $ text "nullptr"
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
@@ -142,7 +142,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- globals <$> get
-    let fvs = delete arg $ freeVariables body
+    let fvs = nub $ filter (/= arg) $ freeVariables body
     body' <- reify RReturn body
     return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
@@ -219,12 +219,14 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- getKType e
     d <- cDecl (head $ children ct) x
-    (ee, ev) <- inline e
+    g <- genSym
+    p <- cDecl ct g
+    ee <- reify (RName g) e
     se <- reify r s
     ne <- reify r n
-    return $ ee <//>
-        text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
-        hangBrace (d <$$> text x <+> equals <+> text "*" <> ev <> semi <//> se) <+> text "else" <+>
+    return $ p <$$> ee <$$>
+        text "if" <+> parens (text g) <+>
+        hangBrace (d <$$> text x <+> equals <+> text "*" <> text g <> semi <//> se) <+> text "else" <+>
         hangBrace ne
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do

@@ -62,7 +62,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
     currentS <- get
     i <- genCType T.unit >>= \ctu ->
-        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS)
+        return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS <> text "return unit_t();")
     let amp = annotationMap currentS
     compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]

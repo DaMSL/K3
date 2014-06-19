@@ -92,7 +92,7 @@ genSym :: CPPGenM Identifier
 genSym = do
     current <- uuid <$> get
     modify (\s -> s { uuid = succ (uuid s) })
-    return $ '_':  show current
+    return $ "__" ++ show current
 
 addForward :: CPPGenR -> CPPGenM ()
 addForward r = modify (\s -> s { forwards = r : forwards s })

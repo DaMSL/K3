@@ -33,7 +33,7 @@ namespace K3 {
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {
    public:
     shallow(): shallow::base_type(start) {
-      start = qi::raw[indirection | option | angles | braces | parens | quotes | other];
+      start = qi::raw[indirection | option | angles | braces | brackets | parens | quotes | other];
 
       indirection = qi::lit("ind") >> start;
       option = qi::lit("none") | qi::lit("some") >> start;
