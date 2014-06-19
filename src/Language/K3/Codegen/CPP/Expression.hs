@@ -155,7 +155,7 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
 
     -- Generate a bind for one of them, with placeholders for the rest.
     -- Additionally, invoke the function if we've curried all the arguments.
-    let bind = genCBind fv av ac <> (if ac == 1 then parens empty else empty)
+    let bind = if ac == 1 then fv <> parens av else genCBind fv av ac <> parens empty
 
     return (fe <$$> ae, bind)
   where
