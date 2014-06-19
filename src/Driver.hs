@@ -69,6 +69,7 @@ run opts = do
         then typecheck p
         else inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
                                  >>= Simplification.inferFusableProgramApplies
+                                 >>= Simplification.fuseProgramTransformers
 
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
