@@ -614,8 +614,8 @@ fuseTransformers expr = mapTree fuse expr
       trace (unwords ["fuse", show outer, "and", show inner]) $ 
       case (outer, inner) of 
         (EProject "map",     EProject "map") -> rewriteMapMap n ch
-        (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
-        (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
+        -- (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
+        -- (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
         _ -> rebuildE ch n
 
     fuse ch n = rebuildE ch n
