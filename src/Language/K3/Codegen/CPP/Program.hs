@@ -66,6 +66,7 @@ genKMain :: CPPGenM CPPGenR
 genKMain = do
     matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
+            genCCall (text "initGlobalDecls") Nothing [] <> semi,
             genCDecl (text "Options") (text "opt") Nothing,
             (text "if ") <>
               parens (genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
@@ -81,11 +82,11 @@ genKMain = do
             text "addr_l.push_back(me);",
             text "SystemEnvironment se = defaultEnvironment(addr_l);",
             genCCall (text "engine.configure") Nothing
-              [text "opt.simulation", text "se", 
+              [text "opt.simulation", text "se",
                text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
-              genCCall (text "DispatchMessageProcessor") Nothing 
+              genCCall (text "DispatchMessageProcessor") Nothing
                 [text "dispatch_table", text showGlobalsName]) <> semi,
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
             text "return 0" <> semi
