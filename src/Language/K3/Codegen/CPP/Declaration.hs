@@ -131,6 +131,8 @@ genHasRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
 genHasRead suf _ name = do
   source_name <- return $ stripSuffix suf name
   body  <- return $ text "return engine.hasRead" <> parens (dquotes $ text source_name) <> semi
+  forward <- return $ text "bool" <+> text name <> parens (text "unit_t") <> semi
+  addForward forward
   return $ genCFunction Nothing (text "bool") (text name) [text "unit_t"] body
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
@@ -142,6 +144,8 @@ genDoRead suf typ name = do
     doPatch <- return $ text "do_patch" <> angles ret_type <> parens (doRead <> comma <> text "result") <> semi
     ret <- return $ text "return result;"
     body <- return $ vsep $ [res_decl, doPatch, ret]
+    forward <- return $ ret_type <+> text name <> parens (text "unit_t") <> semi
+    addForward forward
     return $ genCFunction Nothing ret_type (text name) [text "unit_t"] body
 
 stripSuffix :: String -> String -> String

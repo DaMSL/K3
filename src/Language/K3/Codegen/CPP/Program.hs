@@ -37,6 +37,7 @@ program d = do
             vsep genNamespaces,
             vsep genAliases,
             staticGlobals',
+            (text "#include" <+> (dquotes (text "Builtins.hpp"))),
             program',
             s,
             main
