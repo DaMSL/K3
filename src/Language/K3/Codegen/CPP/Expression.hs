@@ -219,12 +219,14 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- getKType e
     d <- cDecl (head $ children ct) x
-    (ee, ev) <- inline e
+    g <- genSym
+    p <- cDecl ct g
+    ee <- reify (RName g) e
     se <- reify r s
     ne <- reify r n
-    return $ ee <//>
-        text "if" <+> parens (ev <+> text "==" <+> text "null") <+>
-        hangBrace (d <$$> text x <+> equals <+> text "*" <> ev <> semi <//> se) <+> text "else" <+>
+    return $ p <$$> ee <$$>
+        text "if" <+> parens (text g) <+>
+        hangBrace (d <$$> text x <+> equals <+> text "*" <> text g <> semi <//> se) <+> text "else" <+>
         hangBrace ne
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
