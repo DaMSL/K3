@@ -101,17 +101,23 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
 
             bDir </> pName <.> exe *> \out -> do
               runtimeFiles <- getDirectoryFiles (runtimePath copts) ["//*.cpp"]
-              let runtimeFiles' = [runtimePath copts </> f | f <- pruneBadSubDirs runtimeFiles]
+              let runtimeFiles' = [runtimePre </> f | f <- pruneBadSubDirs runtimeFiles]
                   allFiles = runtimeFiles' ++ sourceFiles
                   objects = [bDir </> src -<.> "o" | src <- allFiles]
               need objects
               cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppOptions copts)
 
             bDir ++ "//*.o" *> \out -> do
-              let source = dropDirectory1 $ out -<.> "cpp"
+              let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
               () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
               needMakefileDependencies deps
+
+        fixRuntime x   = if isRuntime x then substRuntime x else x
+        substRuntime x = runtimePath copts ++ drop runtimeLen x
+        isRuntime x    = take runtimeLen x == runtimePre
+        runtimeLen     = length runtimePre
+        runtimePre     = "runtime"
 
         badSubDirs = [
                         "dataspace"
