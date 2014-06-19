@@ -345,6 +345,8 @@ namespace K3 {
     void incrementCollectionCount() { collectionCount += 1; }
     Address getAddress() { return config->address(); }
 
+    // Converts a K3 channel mode into a native file descriptor mode.
+    IOMode ioMode(string k3Mode);
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
@@ -353,11 +355,11 @@ namespace K3 {
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
-    
+
     // Endpoint and collection tracked by the engine.
     shared_ptr<EndpointState>       endpoints;
     shared_ptr<ConnectionState>     connections;
-    
+
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
@@ -370,8 +372,7 @@ namespace K3 {
 
     Builtin builtin(string builtinId);
 
-    // Converts a K3 channel mode into a native file descriptor mode.
-    IOMode ioMode(string k3Mode);
+
 
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
