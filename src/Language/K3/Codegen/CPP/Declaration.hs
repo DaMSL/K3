@@ -125,20 +125,23 @@ getSourceBuiltin :: String -> (K3 Type -> String -> CPPGenM CPPGenR)
 getSourceBuiltin k =
   case filter (\(x,_) -> k == x) source_builtin_map of
     []         -> error $ "Could not find builtin with name" ++ k
-    ((_,f):xs) -> f k
+    ((_,f):_) -> f k
 
 genHasRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
 genHasRead suf _ name = do
   source_name <- return $ stripSuffix suf name
-  body  <- return $ text "return engine->hasRead" <> parens (dquotes $ text source_name) <> semi
+  body  <- return $ text "return engine.hasRead" <> parens (dquotes $ text source_name) <> semi
   return $ genCFunction Nothing (text "bool") (text name) [text "unit_t"] body
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
 genDoRead suf typ name = do
     ret_type  <- genCType $ last $ children typ
     source_name <- return $ stripSuffix suf name
-    doRead <- return $ text "engine->doReadExternal" <> parens (dquotes $ text source_name)
-    body <- return $ text "return *unpack" <> angles ret_type <> parens doRead <> semi
+    res_decl <- return $ ret_type <+> text "result" <> semi
+    doRead <- return $ text "*engine.doReadExternal" <> parens (dquotes $ text source_name)
+    doPatch <- return $ text "do_patch" <> angles ret_type <> parens (doRead <> comma <> text "result") <> semi
+    ret <- return $ text "return result;"
+    body <- return $ vsep $ [res_decl, doPatch, ret]
     return $ genCFunction Nothing ret_type (text name) [text "unit_t"] body
 
 stripSuffix :: String -> String -> String
