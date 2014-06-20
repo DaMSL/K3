@@ -56,13 +56,16 @@ data CompileOptions = CompileOptions
                       , outputFile   :: Maybe FilePath
                       , buildDir     :: Maybe FilePath
                       , ccCmd        :: CPPCompiler
+                      , ccStage      :: CPPStages
                       , cppOptions   :: String
                       , coTransform  :: TransformOptions
-                      , useSubTypes    :: Bool
+                      , useSubTypes  :: Bool
                       }
   deriving (Eq, Read, Show)
 
-data CPPCompiler = GCC | Clang | Source deriving (Eq, Read, Show)
+data CPPCompiler = GCC | Clang deriving (Eq, Read, Show)
+
+data CPPStages = Stage1 | Stage2 | AllStages deriving (Eq, Read, Show)
 
 -- | Interpretation options.
 data InterpretOptions
@@ -170,6 +173,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> outputFileOpt
                             <*> buildDirOpt
                             <*> ccCmdOpt
+                            <*> ccStageOpt
                             <*> cppOpt
                             <*> transformOptions
                             <*> noQuickTypesOpt
@@ -221,7 +225,10 @@ buildDirOpt = validatePath <$> option (
         validatePath (Just p) = if isValid p then Just p else Nothing
 
 ccCmdOpt :: Parser CPPCompiler
-ccCmdOpt = gccFlag <|> clangFlag <|> sourceFlag
+ccCmdOpt = (gccFlag <|> clangFlag <|> pure Clang)
+
+ccStageOpt :: Parser CPPStages
+ccStageOpt = (stage1Flag <|> stage2Flag <|> allStagesFlag <|> pure AllStages)
 
 gccFlag :: Parser CPPCompiler
 gccFlag = flag' GCC (
@@ -235,8 +242,14 @@ clangFlag = flag' Clang (
      <> help "Use the clang++ and LLVM toolchain for C++ compilation"
     )
 
-sourceFlag :: Parser CPPCompiler
-sourceFlag = flag' Source (long "source" <> help "No second-stage compilation.")
+stage1Flag :: Parser CPPStages
+stage1Flag = flag' Stage1 (short '1' <> long "stage1" <> help "Only run stage 1 compilation")
+
+stage2Flag :: Parser CPPStages
+stage2Flag = flag' Stage2 (short '2' <> long "stage2" <> help "Only run stage 2 compilation")
+
+allStagesFlag :: Parser CPPStages
+allStagesFlag = flag' AllStages (long "allstages" <> help "Compile all stages")
 
 cppOpt :: Parser String
 cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value ""

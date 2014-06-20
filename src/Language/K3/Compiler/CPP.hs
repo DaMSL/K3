@@ -4,8 +4,6 @@ module Language.K3.Compiler.CPP (compile) where
 
 import Data.Functor
 
-import Control.Monad
-
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath, replaceExtension, takeBaseName)
 
@@ -79,13 +77,13 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
       writeFile file (displayS (renderPretty 1.0 100 doc) "")
 
 -- Generate C++ code for a given K3 program.
-cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String [FilePath])
+cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String ())
 cppSourceStage opts copts prog = do
     tcStatus    <- typecheckStage opts copts prog
-    cgStatus    <- continue tcStatus $ cppCodegenStage opts copts
-    continue cgStatus $ const $ return outFile
+    continue tcStatus $ cppCodegenStage opts copts
 
-  where outFile = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
+cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
+cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
 
 cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String ())
 cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
@@ -140,12 +138,20 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
         cc       = case ccCmd copts of
                     GCC   -> "g++"
                     Clang -> "clang++"
-                    Source -> "true" -- Technically unreachable.
 
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
-compile opts copts prog = do
-    sourceStatus <- cppSourceStage opts copts prog
-    unless (ccCmd copts == Source) $ do
-        binStatus <- continue sourceStatus $ cppBinaryStage opts copts
+compile opts copts prog =
+    case ccStage copts of 
+      Stage1    -> do
+        sourceStatus <- cppSourceStage opts copts prog
+        finalize (const $ "Created source file: " ++ programName copts ++ ".cpp") sourceStatus
+      Stage2    -> do
+        let status = cppOutFile opts copts
+        binStatus <- continue status $ cppBinaryStage opts copts
+        finalize (const $ "Created binary file: " ++ programName copts) binStatus
+      AllStages -> do
+        sourceStatus <- cppSourceStage opts copts prog
+        let status = either Left (const $ cppOutFile opts copts) sourceStatus
+        binStatus <- continue status $ cppBinaryStage opts copts
         finalize (const $ "Created binary file: " ++ programName copts) binStatus
