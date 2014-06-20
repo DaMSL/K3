@@ -361,7 +361,7 @@ namespace K3 {
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
 
-    void logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
+    void logMessageLoop(string s);
 
     void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
