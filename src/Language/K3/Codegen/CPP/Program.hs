@@ -221,7 +221,7 @@ showVar base_t name =
         t_n  <- genCType t
         et_n <- genCType et
         v    <- showVar et "elem"
-        fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (text "oss <<" <+> v <+> text "<< \",\";") <> semi
+        fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
         iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
         -- wrap in lambda, then call it

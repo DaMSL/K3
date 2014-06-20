@@ -85,11 +85,6 @@ class StlDS {
     return unit_t();
   }
 
-  unit_t iterate(std::function<void(Elem)> f) {
-    for (Elem e : container) { f(e); }
-    return unit_t();
-  }
-
   StlDS filter(std::function<bool(Elem)> predicate) {
     StlDS<Elem, Container> result = StlDS<Elem, Container>(getEngine());
     for (Elem e : container) {

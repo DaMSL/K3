@@ -457,6 +457,6 @@ namespace K3 {
       return r;
     }
 
-    void logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
+    void Engine::logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
 
 }
