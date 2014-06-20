@@ -61,7 +61,7 @@ def pretty_print(total, counters):
     total_percent += percent
     print('{counter_nm} lines: {lines}, instances: {instances}, {percent:.2%}'.format(**locals()))
   print('Total listed: {total_percent:.2%}'.format(**locals()))
-        
+
 def main(filename):
   with open(filename, 'r') as f:
     lines = f.readlines()

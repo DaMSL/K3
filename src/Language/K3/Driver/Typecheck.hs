@@ -21,7 +21,7 @@ import Language.K3.Utils.Pretty
 typecheck:: K3 Declaration -> Either String (K3 Declaration)
 typecheck prog =
     let (errs, result, typedP) = typecheckProgram prog in
-    if Seq.null errs then 
+    if Seq.null errs then
       maybe inferenceError (const $ Right typedP) $ tcExprBounds result
     else Left $ prettyTCErrors typedP errs
 

@@ -41,6 +41,6 @@ prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env
   where
     prettyEnvEntry (addr, bs) = prettyLines addr ++ (indent 2 $ prettyBootstrap bs)
     prettyBootstrap bs        = concatMap (prettyPair $ maxNameLength bs) bs
-    prettyPair w (a,b)        = [a ++ replicate (w - length a) ' ' ++ " => " 
+    prettyPair w (a,b)        = [a ++ replicate (w - length a) ' ' ++ " => "
                                    ++ (either (const "<syntax error>") id $ literalS b)]
     maxNameLength l           = maximum $ map (length . fst) l

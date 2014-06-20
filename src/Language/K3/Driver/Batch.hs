@@ -39,7 +39,7 @@ runBatch :: Options -> InterpretOptions -> K3 Declaration -> IO ()
 runBatch _ iOpts prog =
    if not (network iOpts) then prepareAndRun prepareProgram runProgram (map Right)
                     else prepareAndRun prepareNetwork networkRunF id
-  where 
+  where
     prepareAndRun prepareF runF statusF = do
       prepared <- prepareF (printConfig iOpts) (isPar iOpts) (sysEnv iOpts) prog
       either engineError (\p -> loopWithConsole $ runOnce runF statusF p) prepared

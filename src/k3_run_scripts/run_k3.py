@@ -12,7 +12,7 @@ k3_path = "/home/vagrant/K3/K3-Driver/dist/build/k3/k3"
 
 
 def simulation_mode(topology_fns,ssh):
-  for topology_fn in topology_fns:  
+  for topology_fn in topology_fns:
     time.sleep(2)
     with open(topology_fn, 'rb') as csvfile:
       #reading program path header in file
@@ -22,7 +22,7 @@ def simulation_mode(topology_fns,ssh):
 
 
       full_cmd = "{1} -I {0} interpret -b".format(k3_lib_path, k3_path)
- 
+
       top_reader = csv.reader(csvfile, delimiter=',', quotechar='~')
       count = 0
       hostname = "localhost"
@@ -30,7 +30,7 @@ def simulation_mode(topology_fns,ssh):
         count += 1
         hostname = row[0]
         peer = row[1].replace("\n","")
-        
+
         #construct k3 program parameters
         peer_str = '-p {0}'.format(peer)
         for index in range (2, min(len(header), len(row))):
@@ -38,19 +38,19 @@ def simulation_mode(topology_fns,ssh):
 
         for index in range(len(header), len(row)):
           peer_str = peer_str + ':{0}'.format(row[index].replace("\n",""))
-         
+
         full_cmd = full_cmd + " " + peer_str
 
-      
+
       log = '--log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3.Runtime.Engine#EngineSteps:debug" '
       full_cmd = full_cmd +  " " + program_path + " " + log
-      
+
       ssh_prefix = "ssh {0} -C '".format(hostname)
       if ssh is 1:
         full_cmd = ssh_prefix + full_cmd + "' "
-      
+
       print full_cmd
-      output_fn = "simulation_{0}.output".format(program_path.split("/")[-1]) 
+      output_fn = "simulation_{0}.output".format(program_path.split("/")[-1])
       print output_fn
       with open(output_fn, "w") as logfile:
         subprocess.Popen(full_cmd, shell=True, stdout=logfile, stderr=logfile)
@@ -74,18 +74,18 @@ def network_mode(topology_fns):
 
       top_reader = csv.reader(csvfile, delimiter=',', quotechar='~')
       count = 0
-      for row in top_reader:    
+      for row in top_reader:
         count += 1
         hostname = row[0];
         peer = row[1].replace("\n","");
-        
+
         ssh_prefix = "ssh {0} -C '".format(hostname)
         cmd = "{1} -I {0} interpret -b -n ".format(k3_lib_path, k3_path)
         #construct k3 program parameters
         peer_str = '-p {0}'.format(peer)
         for index in range (2, len(header)):
           peer_str = peer_str + ':{0}={1}'.format(header[index].replace("\n",""), row[index].replace("\n",""))
-         
+
         for index in range(len(header), len(row)):
           peer_str = peer_str + ':{0}'.format(row[index].replace("\n",""))
 
@@ -114,8 +114,8 @@ if __name__=='__main__':
                     default=1, help="Specify network mode (1) or simulation mode (0)",
                     metavar="#NET")
 
-  parser.add_option("-t", "--topology", type="string", dest="topology_fn", 
-                    default="topology.csv", help="Specify comma-separated paths to k3 node topology files", 
+  parser.add_option("-t", "--topology", type="string", dest="topology_fn",
+                    default="topology.csv", help="Specify comma-separated paths to k3 node topology files",
                     metavar="#TOPOLOGY")
 
   (options, args) = parser.parse_args()

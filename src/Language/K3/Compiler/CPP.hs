@@ -142,7 +142,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
 compile opts copts prog =
-    case ccStage copts of 
+    case ccStage copts of
       Stage1    -> do
         sourceStatus <- cppSourceStage opts copts prog
         finalize (const $ "Created source file: " ++ programName copts ++ ".cpp") sourceStatus

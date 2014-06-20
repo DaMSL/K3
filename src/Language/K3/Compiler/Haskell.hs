@@ -22,14 +22,14 @@ import Language.K3.Driver.Typecheck
 compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
 compile _ cOpts prog =
     let (errs, _, typedP) = typecheckProgram prog
-    in if Seq.null errs then 
+    in if Seq.null errs then
       let source = mkSource name typedP in
-      case source of 
+      case source of
         Left e' -> compileError e'
         Right s -> case (outputFile cOpts, buildDir cOpts) of
                       (Just outP, Just buildP) -> doStages outP buildP s
                       (_,_)                    -> outputError
-      
+
     else putStrLn $ prettyTCErrors typedP errs
 
   where
@@ -41,7 +41,7 @@ compile _ cOpts prog =
     mkSource n p = CG.compile (CG.generate n p)
     mkBuilder n = k3PackageDescription n
 
-    doStages outP buildP src = do 
+    doStages outP buildP src = do
       prepare name outP buildP src $ mkBuilder name
       build name buildP
 
@@ -72,7 +72,7 @@ prepare :: String -> FilePath -> FilePath -> String -> PackageDescription -> IO 
 prepare name outP buildP source buildDesc = do
     createDirectoryIfMissing False buildP
     writePackageDescription buildFile buildDesc
-    writeFile outFile source 
+    writeFile outFile source
 
   where buildFile = buildP </> name <.> "cabal"
         outFile   = buildP </> outP <.> "hs"

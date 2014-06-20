@@ -162,7 +162,7 @@ parseOptions = Parse . ParseOptions <$> printModeOpt
 
 -- | Transformation options
 transformOptions :: Parser TransformOptions
-transformOptions = concat <$> many transformMode 
+transformOptions = concat <$> many transformMode
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -387,7 +387,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> deadCodeElimOpt
               <|> simplifyOpt
               <|> wrap <$> profilingOpt
-              <|> wrap <$> readOnlyBindOpts 
+              <|> wrap <$> readOnlyBindOpts
   where
     wrap x = [x]
 

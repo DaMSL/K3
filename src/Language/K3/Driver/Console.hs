@@ -34,7 +34,7 @@ console prompt consoleRunner networkStatus = do
                         Nothing -> outputStrLn $ "Invalid expression"
                         Just e  -> loop $ runExpr e
 
-  where 
+  where
     extractCmd (words -> [])    = ("", [])
     extractCmd (words -> (h:t)) = (h, t)
     extractCmd _ = undefined
@@ -47,12 +47,12 @@ console prompt consoleRunner networkStatus = do
          Nothing      -> Nothing
          Just nodeRes -> Just (addr, tid, e, getResultState nodeRes)
       _ -> return Nothing
-    
+
     validInterpreter (Left _)  = False
     validInterpreter (Right _) = True
 
     loop :: InputT IO Bool -> InputT IO ()
-    loop action = action >>= \case 
+    loop action = action >>= \case
       True  ->  -- TODO: rerunning a program/network is broken until we reset the engine's
                 -- control datastructures. For now, we just rerun with the same network state.
                 -- consoleRunner (outputStrLn . message) (console prompt consoleRunner)
@@ -60,7 +60,7 @@ console prompt consoleRunner networkStatus = do
       False -> return ()
 
     runExpr :: K3 Expression -> InputT IO Bool
-    runExpr e = liftIO anInterpreter >>= \case 
+    runExpr e = liftIO anInterpreter >>= \case
       Nothing -> outputStrLn "No engine found for interpretation" >> continue
       Just (addr, threadId, egn, st) ->
         do
@@ -79,17 +79,17 @@ console prompt consoleRunner networkStatus = do
     stop     = return False
 
     wrapError statusF = either (\err -> outputStrLn $ message err) statusF
-    
+
     nodeAction addr threadId str =
       outputStrLn $ "[" ++ show addr ++ "~" ++ show threadId ++ "] " ++ str
-    
+
     nodeEnv egnSt =
       void $ outputStr $ boxToString $ indent 2 $ either ((:[]) . message) id $ egnSt
-    
+
     withEngine addr threadId msg engine m f = do
       nodeAction addr threadId msg
       egnSt <- liftIO $ runEngineM m engine
-      f egnSt          
+      f egnSt
 
     outputStatus (addr, _, threadId, _) = nodeAction addr threadId "Running"
 
