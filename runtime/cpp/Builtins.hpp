@@ -47,7 +47,6 @@ namespace K3 {
               return [=] (string mode) {
                   IOMode iomode = engine.ioMode(mode);
                   engine.openFile(chan_id, path, iomode);
-                  std::cout << "opened file!" << std::endl;
                   return unit_t();
               };
           };
@@ -57,6 +56,20 @@ namespace K3 {
   unit_t close(string chan_id) {
       engine.close(chan_id);
       return unit_t();
+  }
+
+  unit_t printLine(string message) {
+    std::cout << message << endl;
+    return unit_t();
+  }
+
+  string itos(int i) {
+    return to_string(i);
+  }
+
+  unit_t haltEngine(unit_t) {
+    engine.forceTerminateEngine();
+    return unit_t();
   }
 }
 #endif /* K3_RUNTIME_BUILTINS_H */

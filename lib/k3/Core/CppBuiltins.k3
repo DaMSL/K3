@@ -1,0 +1,26 @@
+include "Annotation/Collection.k3"
+
+///////////////////////
+//
+// Engine I/O builtins
+
+// openBuiltin: channel id -> builtin channel id -> format -> ()
+// builtin channel id is one of: stdin, stdout, stderr
+declare openBuiltin : string -> string -> string -> ()
+
+// openFile: channel id -> path -> format -> mode -> ()
+declare openFile : string -> string -> string -> string -> ()
+
+// openSocket: channel id -> address -> format -> mode -> ()
+declare openSocket : string -> address -> string -> string -> ()
+
+// close: channel id -> ()
+declare close : string -> ()
+
+declare printLine : string -> ()
+
+declare itos : int -> string
+
+declare haltEngine : () -> ()
+
+

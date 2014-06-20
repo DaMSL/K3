@@ -2,8 +2,9 @@
 
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
       internal_codec = _internal_codec;
+      if (log_level != "") { log_enabled = true; }
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
@@ -115,25 +116,29 @@ namespace K3 {
 
       if (next_message) {
         // Log Message
-        std::string target = next_message->target();
-        std::string contents = next_message->contents();
-        std::string sep = "======================================";
-        logAt(trivial::trace, sep);
-        logAt(trivial::trace, "Message for: " + target);
-        logAt(trivial::trace, "Contents: " + contents);
+        if (log_enabled) {
+          std::string target = next_message->target();
+          std::string contents = next_message->contents();
+          std::string sep = "======================================";
+          logAt(trivial::trace, sep);
+          logAt(trivial::trace, "Message for: " + target);
+          logAt(trivial::trace, "Contents: " + contents);
+        }
 
         // If there was a message, return the result of processing that message.
         LoopStatus res =  mp->process(*next_message);
 
         // Log Env
-        logAt(trivial::trace, "Environment: ");
-        std::map<std::string, std::string> env = mp->bindings(next_message->address());
-        std::map<std::string, std::string>::iterator iter;
-        for (iter = env.begin(); iter != env.end(); ++iter) {
-           std::string id = iter->first;
-           std::string val = iter->second;
-           logAt(trivial::trace, "  " + id + " = " + val);
-        }
+        if (log_enabled) {
+          logAt(trivial::trace, "Environment: ");
+          std::map<std::string, std::string> env = mp->bindings(next_message->address());
+          std::map<std::string, std::string>::iterator iter;
+          for (iter = env.begin(); iter != env.end(); ++iter) {
+             std::string id = iter->first;
+             std::string val = iter->second;
+             logAt(trivial::trace, "  " + id + " = " + val);
+          }
+       }
 
         return res;
 

@@ -80,6 +80,11 @@ class StlDS {
     return result;
   }
 
+  unit_t iterate(std::function<unit_t(Elem)> f) {
+    for (Elem e : container) { f(e); }
+    return unit_t();
+  }
+
   unit_t iterate(std::function<void(Elem)> f) {
     for (Elem e : container) { f(e); }
     return unit_t();

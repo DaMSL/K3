@@ -156,12 +156,13 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec
+      shared_ptr<InternalCodec> _internal_codec,
+      string log_level
     ): LogMT("Engine") {
-      configure(simulation, sys_env, internal_codec);
+      configure(simulation, sys_env, _internal_codec, log_level);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level);
 
     //-----------
     // Messaging.
@@ -348,6 +349,7 @@ namespace K3 {
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode ioMode(string k3Mode);
   protected:
+    bool                            log_enabled;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
@@ -363,6 +365,8 @@ namespace K3 {
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
+
+    void logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
 
     void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
