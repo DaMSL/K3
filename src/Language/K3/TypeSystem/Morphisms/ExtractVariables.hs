@@ -36,10 +36,10 @@ data ExtractVariables = ExtractVariables
 
 instance Reduce ExtractVariables UVar VariableReduction where
   reduce ExtractVariables a = Set.singleton $ SomeUVar a
-  
+
 instance Reduce ExtractVariables QVar VariableReduction where
   reduce ExtractVariables a = Set.singleton $ SomeQVar a
-  
+
 instance Reduce ExtractVariables ConstraintSet VariableReduction where
   reduce ExtractVariables cs = reduce ExtractVariables $ csToList cs
 
@@ -60,16 +60,16 @@ $(
                 , ''StubbedConstraintSet
                 ]
  )
- 
+
 $(concat <$> mapM (defineReduceEmptyInstance [t|VariableReduction|]
                       ''ExtractVariables)
                 [ ''UID
                 , ''Stub
                 , ''MorphismArity
                 , ''K3
-                ]                
+                ]
  )
- 
+
 $(
   concat <$> mapM (defineReduceFoldInstance [t|VariableReduction|]
                       ''ExtractVariables)

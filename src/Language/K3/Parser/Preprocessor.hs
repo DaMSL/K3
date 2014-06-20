@@ -60,7 +60,7 @@ preprocess :: [FilePath] -> FilePath -> [FilePath] -> IO [FilePath]
 preprocess searchPaths (normalise -> path) excludes
   | path `elem` excludes = return []
 
-  | otherwise = do 
+  | otherwise = do
     matches <- mapM matchPath searchPaths >>= return . concat
     let actualPath = case matches of
                         [x] -> x

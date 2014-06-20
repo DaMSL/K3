@@ -80,7 +80,7 @@ closeTransitivity cs = csFromList $
       CLeft ta -> ta <: t
       CRight qa -> qa <: t
   )
-  
+
 -- |Performs immediate type closure.  This routine calculates the closure for
 --  all immediate type-to-type constraints.
 closeImmediate :: ConstraintSet -> ConstraintSet
@@ -104,7 +104,7 @@ closeImmediate cs = csUnions $ do
     _ -> mzero
   where
     give = return . csFromList
-    
+
 -- |Performs closure for opaque-extended records in a lower-bounding position.
 closeLowerBoundingExtendedRecord :: ConstraintSet -> ConstraintSet
 closeLowerBoundingExtendedRecord cs = csUnions $ do
@@ -131,7 +131,7 @@ closeUpperBoundingExtendedRecord cs = csUnions $ do
   case moa of
     Nothing -> {-Default case-} return $ csSing $ t <: SRecord m Set.empty ctOpt
     Just oa -> {-Opaque case -} return $ csSing $ t <: SOpaque oa
-  
+
 closeQualifiedTransitivity :: ConstraintSet -> ConstraintSet
 closeQualifiedTransitivity cs = csFromList $ do
   (qv1,qa2) <- csQuery cs $ QueryAllQualOrVarLowerBoundingQVar ()

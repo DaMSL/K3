@@ -33,7 +33,7 @@ genMathBuiltin "range" _ =
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- truncate :: int -> real
-genMathBuiltin "truncate" _ = Just $ vfun $ \x -> case x of 
+genMathBuiltin "truncate" _ = Just $ vfun $ \x -> case x of
   VReal r   -> return $ VInt $ truncate r
   _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 

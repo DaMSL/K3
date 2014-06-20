@@ -130,7 +130,7 @@ instance Pretty TypeError where
 
 instance Pretty (Seq TypeError) where
   prettyLines = prettyLines . Foldable.toList
-  
+
 instance Pretty [TypeError] where
   prettyLines es =
     ["[ "] %+ foldl (%$) [] (map prettyLines es) +% ["] "]

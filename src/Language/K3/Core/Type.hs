@@ -9,7 +9,7 @@ module Language.K3.Core.Type (
     TypeVarDecl(..),
     TypeVariableOperator(..),
     Annotation(..),
-    
+
     isTSpan,
     isTUID,
     isTQualified,
@@ -105,7 +105,7 @@ data TypeBuiltIn
     | THorizon
     | TContent
   deriving (Eq, Ord, Read, Show)
-  
+
 -- | Type variable declarations.  These consist of the identifier for the
 --   declared variable and, optionally, a type expression for the lower and
 --   upper bounds (respectively).
@@ -137,15 +137,15 @@ instance HasSpan (Annotation Type) where
 
 instance Pretty (K3 Type) where
     prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
-    
+
     prettyLines (Node (TForall tvdecls :@: as) ts) =
-        let ds = case tvdecls of 
+        let ds = case tvdecls of
                   []     -> []
                   (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
         in ["TForall " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
-    
+
     prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
-        let ds = case tvdecls of 
+        let ds = case tvdecls of
                   []     -> []
                   (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
         in ["TExternallyBound " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts

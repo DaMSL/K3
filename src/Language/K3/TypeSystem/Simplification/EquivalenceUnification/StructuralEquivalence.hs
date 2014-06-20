@@ -80,7 +80,7 @@ structuralEquivocator = Equivocator "structural equivalence" f
                                   => TVar q -> TVar q
                                   -> Maybe (Map QVar QVar, Map UVar UVar)
         testStructuralEquivalence v1 v2 =
-          listToMaybe $ proveStructuralEquivalence cs v1 v2 
+          listToMaybe $ proveStructuralEquivalence cs v1 v2
 
 {-
 This section defines a monad for structural equivalence.  This monad is used
@@ -204,7 +204,7 @@ instance StructEquivAlign ShallowType where
 
 instance StructEquivAlign (Set TQual) where
   align qs1 qs2 = guard $ qs1 == qs2
-  
+
 instance StructEquivAlign AnyTVar where
   align var var' = case (var,var') of
     (SomeUVar a, SomeUVar a') ->

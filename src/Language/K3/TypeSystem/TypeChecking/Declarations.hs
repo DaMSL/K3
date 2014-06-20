@@ -55,7 +55,7 @@ deriveDeclarations :: TAliasEnv -- ^The existing type alias environment.
 deriveDeclarations aEnv env aEnv' env' decls =
   case tag &&& subForest $ decls of
     (DRole _, globals) -> do
-      let aEnv'' = aEnv `envMerge` aEnv' 
+      let aEnv'' = aEnv `envMerge` aEnv'
       let env'' = env `envMerge` env'
       ids <- (Set.fromList . map TEnvIdentifier) <$> gatherParallelErrors
               (map (deriveDeclaration aEnv'' env'') globals)
@@ -81,7 +81,7 @@ deriveDeclaration aEnv env decl =
 
     DGlobal i _ Nothing -> do
       assert0Children decl
-      return i 
+      return i
 
     DGlobal i _ (Just expr) -> do
       rEnv <- globalREnv <$> typecheckingContext
@@ -167,16 +167,16 @@ deriveDeclaration aEnv env decl =
             prettyLines t_s
       _debug $ boxToString $ ["Annotation " ++ iAnn ++ " horizon part: "] %+
             prettyLines t_h'
-      
+
       -- NOTE: here, we'd normally enforce that a set of constraints existed in
       --       @cs@.  But that performs poorly.  Instead, we will rely on the
       --       type decision process to ensure that they are provided.
-      
+
       -- Get the opaque types.
       oa_c <- freshOVar $ OpaqueAnnotationOrigin u
       oa_f <- freshOVar $ OpaqueAnnotationOrigin u
       oa_s <- freshOVar $ OpaqueAnnotationOrigin u
-      
+
       -- Construct the full horizon type.
       t_h <- either
                   (typecheckError . InternalError .
@@ -199,12 +199,12 @@ deriveDeclaration aEnv env decl =
                                   (CLeft SBottom) (CLeft t_s)
                              ] ]
       let cs'2 = csUnions $ map (\(_,_,_,cs_i') -> cs_i') $ Map.elems qEnv
-      
+
       -- Derive appropriate types for the members.
       let arityMaps =
             let f = Map.fromList . map (\(AnnMemType i _ ar _ _) -> (i,ar)) in
             (f ms1, f ms2)
-      
+
       (bs,cs''s) <- unzip <$> mapM (deriveAnnotationMember arityMaps
                                 (envMerge (envMerge aEnv aEnv'1) aEnv'2)
                                 (envMerge (envMerge env env'1) env'2)) mems
@@ -220,7 +220,7 @@ deriveDeclaration aEnv env decl =
                 concatAnnBodies bs
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " inferred bodies concatenate to:"] %$
-          indent 2 (prettyLines b') 
+          indent 2 (prettyLines b')
       let allCs = csUnions $ cs:cs_s:cs_h:cs'1:cs'2:cs''s
       _debug $ boxToString $
         ["Annotation " ++ iAnn ++ " complete inferred constraint set C*:"] %$
@@ -228,7 +228,7 @@ deriveDeclaration aEnv env decl =
 
       -- Perform an early attribution just in case something goes wrong.
       attributeConstraints allCs
-          
+
       -- Now creating and recording our learned constraint sets for each member
       -- for the typechecking result.  See below for rationale.  We're doing
       -- this now so that we can attribute as much as possible before we
@@ -251,14 +251,14 @@ deriveDeclaration aEnv env decl =
       attributeConstraints $
         loggedClosure ("annotation " ++ iAnn ++ " ascription") $
           externalCs `csUnion` allCs
-      
+
       {-
         It remains to show the two forall conditions at the end of the
         annotation rule.  These conditions can be considerably simplified due to
         some of the guarantees that we can get out of other rules.  Comments
         below detail the assumptions on which we rely.
       -}
-      
+
       -- For negative members, annotation member inference *always* produces
       -- an unconstrained type.  It therefore suffices to reduce this problem to
       -- (1) consistency-checking the constraints and (2) ensuring that each
@@ -351,10 +351,10 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
   declUid <- uidOfAnnMem decl
   (b,cs)  <-
       case decl of
-      
+
         Lifted pol i _ mexpr _ ->
           let constr x = AnnBodyType [x] [] in
-          deriveMember ars1 pol i mexpr declUid constr 
+          deriveMember ars1 pol i mexpr declUid constr
 
         Attribute pol i _ mexpr _ ->
           let constr x = AnnBodyType [] [x] in
@@ -416,17 +416,17 @@ deriveAnnotationMember (ars1,ars2) aEnv env decl = do
     lookupSpecialVar :: TEnvId -> TypecheckM UVar
     lookupSpecialVar ei = do
       mqt <- envRequire (badFormErr Nothing) ei aEnv
-      let badForm = typecheckError $ badFormErr $ Just mqt 
+      let badForm = typecheckError $ badFormErr $ Just mqt
       case mqt of
         QuantAlias (QuantType sas qa cs) -> do
           unless (Set.null sas) badForm
           case csToList cs of
             [QualifiedLowerConstraint (CRight a) qa']
               | qa == qa' -> return a
-            
+
             [QualifiedLowerConstraint (CRight a) qa', QualifiedUpperConstraint qa'' (CRight a') ]
               | qa == qa' && qa == qa'' && a == a' -> return a
-            
+
             _ -> badForm
         AnnAlias _ -> badForm
       where

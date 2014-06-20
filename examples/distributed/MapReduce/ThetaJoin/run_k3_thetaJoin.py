@@ -7,7 +7,7 @@
 #
 
 """
-Usage: 
+Usage:
     run_k3_thetaJoin.py -s -t <topologyFile>
     run_k3_thetaJoin.py -n -t <topologyFile>
     run_k3_thetaJoin.py -t <topologyFile>
@@ -33,7 +33,7 @@ def createK3Command(topology, mode):
         # reading program execution info
         body = csv.reader(csvFile, delimiter=',', quotechar='~').next()
         (masterNodeAddress, role, sMappers, tMappers, reducers, ports, maxS, maxT) = [body[i] for i in range(0,8)]
-        
+
         ports = ports.split(",")
 
         portCommand = " ".join(["-p %s" % (port) for port in ports])
@@ -68,6 +68,6 @@ if __name__ == '__main__':
 
     # if simulation mode required or network mode not specified, run in simulation mode
     if simulationMode or (not networkMode):
-        simulateK3(topologyFile) 
+        simulateK3(topologyFile)
     else :
         networkK3(topologyFile)

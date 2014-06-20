@@ -20,7 +20,7 @@ import Language.K3.Utils.Logger
 
 $(loggingFunctions)
 
-        
+
 -- |A routine which unifies type variables which are always constrained to be
 --  equivalent as a result of immediate symmetric constraints.
 simplifyByConstraintEquivalenceUnification :: Simplifier

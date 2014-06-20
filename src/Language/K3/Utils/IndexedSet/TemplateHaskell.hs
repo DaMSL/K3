@@ -61,7 +61,7 @@ createIndexedSet idxStrName queryTypName elTyp descs = do
     indexedStructureDeclaration = do
       indices <- mapM mkIndexDefinition descs
       allField <- (allFieldName idxStrName, NotStrict,) <$>
-                    [t| Set $(elTyp) |] 
+                    [t| Set $(elTyp) |]
       return $ DataD [] (mkName idxStrName) []
         [ RecC (mkName idxStrName) $ allField:indices ]  []
       where
@@ -163,7 +163,7 @@ createIndexedSet idxStrName queryTypName elTyp descs = do
           let wilds = map (const wildP) descs
           let idxStrP = conP (mkName $ idxStrName) ((varP allName):wilds)
           funD 'ISC.toSet [clause [idxStrP] (normalB $ varE allName) []]
-            
+
 -- |Determines the name of the field in the record of the indexed structure
 --  which contains a set of all values in the structure.
 allFieldName :: String -> Name

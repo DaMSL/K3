@@ -31,11 +31,11 @@ data SimplificationConfig
   = SimplificationConfig
       { preserveVars :: Set AnyTVar
       }
-      
+
 -- |The data type used to describe the result of simplification.
 data SimplificationResult
   = SimplificationResult
-      { simplificationVarMap :: VariableSubstitution 
+      { simplificationVarMap :: VariableSubstitution
       }
 
 instance Monoid SimplificationResult where

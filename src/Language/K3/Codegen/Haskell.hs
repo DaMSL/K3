@@ -110,7 +110,7 @@ modifyTriggerDispatchSpecs f (w,x,y,z) = (w, f x, y, z)
 getRecordSpecs :: CGState -> RecordSpecs
 getRecordSpecs (_,_,x,_) = x
 
-modifyRecordSpecs :: (RecordSpecs -> RecordSpecs) -> CGState -> CGState 
+modifyRecordSpecs :: (RecordSpecs -> RecordSpecs) -> CGState -> CGState
 modifyRecordSpecs f (w,x,y,z) = (w, x, f y, z)
 
 getAnnotationState :: CGState -> AnnotationState
@@ -160,7 +160,7 @@ modifyCompositionSpecs f =
 {- Symbols and identifiers -}
 
 -- | Sanitizes a K3 identifier to a backend compatible identifier.
-sanitize :: Identifier -> Identifier 
+sanitize :: Identifier -> Identifier
 sanitize = id
 
 programId :: Identifier
@@ -272,13 +272,13 @@ store anns = not . null $ filter isStore anns
 
 {- Error constructors -}
 qualLoadError :: CodeGeneration a
-qualLoadError = throwCG $ CodeGenerationError "Invalid structure qualifier and load combination" 
+qualLoadError = throwCG $ CodeGenerationError "Invalid structure qualifier and load combination"
 
 qualStoreError :: CodeGeneration a
-qualStoreError = throwCG $ CodeGenerationError "Invalid structure qualifier and store combination" 
+qualStoreError = throwCG $ CodeGenerationError "Invalid structure qualifier and store combination"
 
 blockError :: CodeGeneration a
-blockError = throwCG $ CodeGenerationError "Invalid do expression" 
+blockError = throwCG $ CodeGenerationError "Invalid do expression"
 
 seqDoError :: CodeGeneration a
 seqDoError = throwCG $ CodeGenerationError "Invalid do-expression arguments"
@@ -328,7 +328,7 @@ indirectionType :: HS.Type -> HS.Type
 indirectionType t = tyApp "MVar" t
 
 listType :: HS.Type -> HS.Type
-listType = HS.TyList 
+listType = HS.TyList
 
 funType :: HS.Type -> HS.Type -> HS.Type
 funType a r = HS.TyFun a r
@@ -379,7 +379,7 @@ typ' (tag -> TSink)                     = throwCG $ CodeGenerationError "Invalid
 typ' (tag &&& children -> (TTrigger, [x])) = typ' x >>= return . flip funType unitType
 typ' (tag -> TTrigger)                     = throwCG $ CodeGenerationError "Invalid trigger type"
 
-typ' t@(tag &&& children -> (TCollection, [x])) = 
+typ' t@(tag &&& children -> (TCollection, [x])) =
   case annotationComboIdT $ annotations t of
     Just comboId -> typ' x >>= return . collectionType comboId
     Nothing      -> typ' x >>= return . listType
@@ -482,7 +482,7 @@ actionArgError n = throwCG . CodeGenerationError $ "Invalid action expression in
 
 {- View pattern helpers -}
 action :: CGExpr -> Maybe HS.Exp
-action (expr, m) = case m of 
+action (expr, m) = case m of
   Action _ -> Just expr
   _        -> Nothing
 
@@ -718,29 +718,29 @@ buildRecordE names subE = do
   lblCE <- spliceManyE lSym (buildMultiValueSpliceF HB.listE) namedLblE
   recCE <- foldM concatRecField (mkPValue [hs| emptyRecord |]) recFieldE
   spliceManyE rSym mkRecord [lblCE, recCE]
-  
+
   where
     mkRecord [(lblE,_), (recE,_)] = return $ mkPValue $ HB.tuple [lblE, recE]
     mkRecord _                    = argError "mkRecord"
 
-    accumulateLabelAndFieldE names' subE' = 
+    accumulateLabelAndFieldE names' subE' =
       foldM buildRecordFieldE (mkPValue [hs| firstLabel |], [], []) $ zip names' subE'
 
     buildRecordFieldE (keyCE, nlblAcc, recAcc) (n,(ce,s)) = do
       [kSym, kvSym, nkSym] <- mapM gensymCG ["__key", "__kv", "__nk"]
       nextKeyE  <- spliceE nkSym keyCE $
                       \keyE _ -> return $ mkPCG [hs| nextLabel $keyE |] s
-      
+
       namedKeyE <- spliceManyE kSym
                       (buildMultiValueSpliceF HB.tuple)
                       [mkPValue (HB.strE n), keyCE]
-      
+
       fieldE    <- spliceManyE kvSym mkField [keyCE, mkPCG ce s]
       return (nextKeyE, nlblAcc++[namedKeyE], recAcc++[fieldE])
 
     mkField [(keyE,_), (ce,_)] = return $ mkPValue [hs| $keyE .=. $ce |]
     mkField _                  = argError "mkField"
-    
+
     concatRecField a b = gensymCG "__crf" >>= \sym -> spliceManyE sym extendRecord [a, b]
     extendRecord [(a,_), (b,_)] = return $ mkPValue [hs| $b .*. $a |]
     extendRecord _      = argError "extendRecord"
@@ -791,7 +791,7 @@ defaultValue' (tag &&& children -> (TTuple, ch)) =
 -- TODO
 defaultValue' (tag -> TRecord _) = throwCG $ CodeGenerationError "Default records not implemented"
 
-defaultValue' (tag &&& annotations -> (TCollection, anns)) = 
+defaultValue' (tag &&& annotations -> (TCollection, anns)) =
   return . mkAValue $ case annotationComboIdT anns of
     Just comboId -> HB.var $ HB.name $ collectionEmptyConPrefixId ++ comboId
     Nothing      -> [hs| return [] |]
@@ -818,7 +818,7 @@ binary :: Operator -> K3 Expression -> K3 Expression -> CodeGeneration CGExpr
 binary op e e' = do
   eE  <- expression' e
   eE' <- expression' e'
-  case op of 
+  case op of
     OAdd -> doInfx "__arith" "+"      [eE, eE']
     OSub -> doInfx "__arith" "-"      [eE, eE']
     OMul -> doInfx "__arith" "*"      [eE, eE']
@@ -832,13 +832,13 @@ binary op e e' = do
     OLeq -> doInfx "__cmp"   "<="     [eE, eE']
     OGth -> doInfx "__cmp"   ">"      [eE, eE']
     OGeq -> doInfx "__cmp"   ">="     [eE, eE']
-    OSeq -> sequenceActions =<< (,) <$> ensureActionE eE <*> ensureActionE eE' 
+    OSeq -> sequenceActions =<< (,) <$> ensureActionE eE <*> ensureActionE eE'
     OApp -> spliceManyE "__app" applyFn [eE, eE']
     OSnd -> spliceManyE "__snd" doSendE [eE, eE']
     _    -> throwCG $ CodeGenerationError "Invalid binary operator"
 
   where doInfx n opStr args = gensymCG n >>= \n' -> spliceManyE n' (doOpF True opStr) args
-        doOpF infx opStr = if infx then infixBinary opStr else appBinary $ HB.function opStr 
+        doOpF infx opStr = if infx then infixBinary opStr else appBinary $ HB.function opStr
 
         infixBinary op' [(a,_),(b,_)] = return . mkPValue $ HB.infixApp a (HB.op $ HB.sym op') b
         infixBinary _ _              = argError "binary operator"
@@ -863,24 +863,24 @@ binary op e e' = do
         doSendE _ = argError "message send"
 
 
--- | Compiles an expression, yielding a combination of a do-expression of 
+-- | Compiles an expression, yielding a combination of a do-expression of
 --   monadic action bindings, and a residual expression.
 expression' :: K3 Expression -> CodeGeneration CGExpr
 
 -- | Constants
 expression' (tag &&& annotations -> (EConstant c, anns)) =
   constantE c anns
-  where 
+  where
     constantE (CBool b)   _ = return $ mkPValue $ if b then [hs| True |] else [hs| False |]
     constantE (CInt i)    _ = return $ mkPValue $ HB.intE $ toInteger i
     constantE (CByte w)   _ = return $ mkPValue $ HS.Lit $ HS.PrimWord $ toInteger w
     constantE (CReal r)   _ = return $ mkPValue $ HS.Lit $ HS.PrimDouble $ toRational r
     constantE (CString s) _ = return $ mkPValue $ HB.strE s
     constantE (CNone _)   _ = return $ mkPValue $ [hs| Nothing |]
-    
+
     constantE (CEmpty _) as =
       maybe comboIdErr (collectionCstr . (collectionEmptyConPrefixId++)) $ annotationComboIdE as
-    
+
     collectionCstr n = return $ avarCG n
     comboIdErr = throwCG $ CodeGenerationError "Invalid combo id for empty collection"
 
@@ -907,13 +907,13 @@ expression' (tag -> EIndirect) = throwCG $ CodeGenerationError "Invalid indirect
 -- | Tuple constructor
 expression' (tag &&& children -> (ETuple, cs)) = do
   cs' <- mapM expression' cs
-  n  <- gensymCG "__tup"  
+  n  <- gensymCG "__tup"
   spliceManyE n (buildMultiSpliceF HB.tuple $ Pure . STuple . map Pure) cs'
 
 -- | Functions
 expression' (tag &&& children -> (ELambda i,[b])) = do
   b' <- expression' b
-  nb <- if isPure b' then return b' else ensureActionE b' 
+  nb <- if isPure b' then return b' else ensureActionE b'
   return $ mkPCG [hs| \((ni)) -> $(getHSExp nb) |] $ SFunction $ getCGEmbed nb
   where ni = HB.name i
 
@@ -961,7 +961,7 @@ expression' (tag &&& children -> (ECaseOf i, [e, s, n])) = do
   where ni = HB.name i
 
         mutableCase sym eCE sCE nCE = do
-          j   <- gensymCG i 
+          j   <- gensymCG i
           s'' <- ensureActionE sCE
           n'' <- ensureActionE nCE
           spliceManyE sym (mkMCase $ HB.name j) [eCE, s'', n'']
@@ -997,7 +997,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
     BTuple ts   -> bindTupleFields ts
     BRecord ids -> bindRecordFields ids
 
-  where 
+  where
     eAnns = annotations e
     defaultStructure l = map (const PImmutable) l
     eStructure l = maybe (defaultStructure l) (map structureQualifier) $ complexStructure eAnns
@@ -1014,7 +1014,7 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       tupPat     <- return $ HB.pvarTuple $ map (HB.name . snd) tNames
 
       bindStmts  <- return $ \eE -> [ HB.genStmt HL.noLoc tupPat eE ]
-                                 ++ (if not $ null mutNames then 
+                                 ++ (if not $ null mutNames then
                                     [HB.genStmt HL.noLoc mutPat [hs| return $mutVars |] ] else [])
                                  ++ [HB.qualStmt $ HB.varTuple $ map (HB.name . fst) $ tNames ]
 
@@ -1029,8 +1029,8 @@ expression' (tag &&& children -> (EBindAs b, [e, f])) = case b of
       f'              <- expression' f
       sym             <- gensymCG "__bindR"
       rNamedStructure <- return $ zip namePairs $ eStructure namePairs
-      rBindings       <- bindE recordId e' >>= \rCE -> spliceE sym rCE $ 
-                          \re rs -> foldM (bindRecordField rs) (mkPCG re rs) rNamedStructure      
+      rBindings       <- bindE recordId e' >>= \rCE -> spliceE sym rCE $
+                          \re rs -> foldM (bindRecordField rs) (mkPCG re rs) rNamedStructure
       seqDoE rBindings f'
 
     bindRecordField rs acc ((x,y), q) = recordField rs q y >>= bindE x >>= seqDoE acc
@@ -1050,7 +1050,7 @@ expression' (tag &&& children -> (EIfThenElse, [p, t, e])) = do
   n  <- gensymCG "__if"
   spliceManyE n mkBranch [p', t', e']
   where mkBranch [(pE,_), (tE, tS), (eE, eS)] =
-          return $ flip mkPCG (if tS == eS then tS else SValue) $ 
+          return $ flip mkPCG (if tS == eS then tS else SValue) $
             [hs| if ( $pE ) then ( $tE ) else ( $eE ) |]
         mkBranch _ = argError "mkBranch"
 
@@ -1103,10 +1103,10 @@ mkTypedDecl n nType nInit = return . HDeclarations $ [ typeSig n nType , namedVa
 
 mkGlobalDecl :: Identifier -> [Annotation Type] -> HS.Type -> CGExpr -> CodeGeneration HaskellEmbedding
 mkGlobalDecl n anns nType nInit = do
-  (declType, declInit) <- promoteDeclType nType nInit  
+  (declType, declInit) <- promoteDeclType nType nInit
   case filter isTQualified anns of
     []           -> mkTypedDecl n declType declInit
-    [TImmutable] -> mkTypedDecl n declType declInit    
+    [TImmutable] -> mkTypedDecl n declType declInit
     [TMutable]   -> gensymCG "__decl"
                     >>= \sym -> spliceE sym nInit (\e s -> return $ mkACG [hs| liftIO $ newMVar ( $e ) |] s)
                     >>= mkTypedDecl n (engineType $ indirectionType nType) . getHSExp
@@ -1123,9 +1123,9 @@ globalWithDefault n anns t eOpt defaultE = do
     bsE   <- spliceManyE n' bootstrapE [e', litPE]
     mkGlobalDecl n anns t' bsE
 
-  where 
+  where
     bootstrapE [(e,s), (le,_)] = return . (flip mkACG s) $
-      [hs| getBootstrap $(HB.strE n) >>= 
+      [hs| getBootstrap $(HB.strE n) >>=
               \x -> case x of { Nothing -> return $e; Just v  -> $le v } |]
 
     bootstrapE _ = throwCG $ CodeGenerationError "Invalid bootstrap CG arguments"
@@ -1162,15 +1162,15 @@ global n t@(tag &&& children -> (TCollection, [_])) eOpt =
         annotationNames = namedTAnnotations anns
         composedName    = annotationComboIdT anns
 
-        testAndAddComposition comboId = 
-          getCompositionSpec comboId >>= \case 
+        testAndAddComposition comboId =
+          getCompositionSpec comboId >>= \case
             Nothing -> composeAnnotations comboId >>= \spec -> modifyCompositionSpecs (spec:)
             Just _  -> return ()
 
         composeAnnotations comboId = mapM lookupAnnotation annotationNames >>= composeSpec comboId
         lookupAnnotation n' = getAnnotationSpec n' >>= maybe (invalidAnnotation n') return
 
-        composeSpec comboId annSpecs = 
+        composeSpec comboId annSpecs =
           let cSpec  = concat annSpecs
               cNames = concat $ map (map (\(x,_,_) -> x)) annSpecs
           in
@@ -1179,7 +1179,7 @@ global n t@(tag &&& children -> (TCollection, [_])) eOpt =
           else compositionError n
 
         initializeCollection eOpt' = globalWithDefault n anns t eOpt' (defaultValue' t)
-        
+
         compositionError n'  = throwCG . CodeGenerationError $ "Overlapping attribute names in collection " ++ n'
         invalidAnnotation n' = throwCG . CodeGenerationError $ "Invalid annotation " ++ n'
 
@@ -1206,9 +1206,9 @@ trigger n t e = do
 
   void $ modifyTriggerDispatchCG ((n,t',rtAct):)
   return . HDeclarations $ [ typeSig n $ engineType pt, namedVal n pImpl ]
-  
-  where 
-    triggerImpl hndlE implE = 
+
+  where
+    triggerImpl hndlE implE =
       [hs| return $ $(HB.appFun (HS.Con $ HS.UnQual $ HB.name triggerConId) [hndlE, implE]) |]
 
 
@@ -1232,7 +1232,7 @@ annotationMember annId = \case
   _                                   -> return Nothing
   where memberSpec n t e = do
           e' <- expression' e
-          t' <- typ' t 
+          t' <- typ' t
           (t'', e'') <- promoteDeclType t' e'
           return $ Just (n, t'', Just e'')
 
@@ -1241,8 +1241,8 @@ annotationMember annId = \case
 
 genNotifier :: Identifier -> String -> CodeGeneration HaskellEmbedding
 genNotifier n evt = mkTypedDecl n
-  [ty| Identifier -> (Trigger a, Address) -> E.EngineM String () |] 
-  [hs| \cid (trig, addr) -> 
+  [ty| Identifier -> (Trigger a, Address) -> E.EngineM String () |]
+  [hs| \cid (trig, addr) ->
           (liftIO $ ishow ()) >>= E.attachNotifier_ cid $(HB.strE evt) . (addr, handle trig,) |]
 
 builtin :: Identifier -> K3 Type -> CodeGeneration HaskellEmbedding
@@ -1271,11 +1271,11 @@ builtin "registerSocketDataTrigger"   _ = genNotifier "registerSocketDataTrigger
 builtin "registerSocketCloseTrigger"  _ = genNotifier "registerSocketCloseTrigger"  "close"
 
 builtin (channelMethod -> ("HasRead", Just n)) _  =
-  let fnId = n++"HasRead" 
+  let fnId = n++"HasRead"
       fnTy = funType unitType $ engineType boolType
   in return . HDeclarations $
     [ typeSig fnId fnTy
-    , constFun fnId $     
+    , constFun fnId $
         HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "hasRead") $ HB.strE n ]
 
 -- TODO: engine error on invalid read.
@@ -1290,12 +1290,12 @@ builtin (channelMethod -> ("Read", Just n)) t = do
                 >>= liftIO . iread >>= return . maybe (error "Invalid read value") id |] ]
 
 builtin (channelMethod -> ("HasWrite", Just n)) _ =
-  let fnId = n++"HasWrite" 
+  let fnId = n++"HasWrite"
       fnTy = funType unitType $ engineType boolType
   in return . HDeclarations $
     [ typeSig fnId fnTy
-    , constFun fnId $ 
-        HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "hasWrite") $ HB.strE n ]       
+    , constFun fnId $
+        HB.app (HB.qvar (HS.ModuleName engineModuleAliasId) $ HB.name "hasWrite") $ HB.strE n ]
 
 builtin (channelMethod -> ("Write", Just n)) t = do
   argId <- return $ "v"
@@ -1327,11 +1327,11 @@ channelMethod x =
 
 
 builtinLiftedAttribute :: Identifier -> Identifier -> K3 Type -> CodeGeneration (Identifier, HS.Type, Maybe HS.Exp)
-builtinLiftedAttribute "Collection" "peek" t = typ' t >>= \t' -> 
+builtinLiftedAttribute "Collection" "peek" t = typ' t >>= \t' ->
   return ("peek",   t', Just
     [hs| (\() -> liftIO (readMVar self) >>= return . head . getData) |])
 
-builtinLiftedAttribute "Collection" "insert" t = typ' t >>= \t' -> 
+builtinLiftedAttribute "Collection" "insert" t = typ' t >>= \t' ->
   return ("insert", t', Just
     [hs| (\x -> liftIO $ modifyMVar_ self (return . modifyData (++[x]))) |])
 
@@ -1345,7 +1345,7 @@ builtinLiftedAttribute "Collection" "update" t = typ' t >>= \t' ->
 
 builtinLiftedAttribute "Collection" "combine" t = typ' t >>= \t' ->
   return ("combine", t', Just $
-    [hs| (\c' -> liftIO . newMVar =<< 
+    [hs| (\c' -> liftIO . newMVar =<<
          ((\x y -> copyWithData x (getData x ++ getData y))
            <$> liftIO (readMVar self) <*> liftIO (readMVar c'))) |])
 
@@ -1353,8 +1353,8 @@ builtinLiftedAttribute "Collection" "split" t = typ' t >>= \t' ->
   return ("split", t', Just $
     [hs| (\() -> liftIO (readMVar self) >>=
          (\r -> let l = getData r
-                    threshold = 10 
-                    (x,y) = if length l <= threshold 
+                    threshold = 10
+                    (x,y) = if length l <= threshold
                             then (l, []) else splitAt (length l `div` 2) l
                 in liftIO ((,) <$> newMVar (copyWithData r x) <*> newMVar (copyWithData r y)) )) |])
 
@@ -1371,26 +1371,26 @@ builtinLiftedAttribute "Collection" "map" t = typ' t >>= \t' ->
 
 builtinLiftedAttribute "Collection" "filter" t = typ' t >>= \t' ->
   return ("filter", t', Just $
-    [hs| (\f -> liftIO (readMVar self) >>= 
+    [hs| (\f -> liftIO (readMVar self) >>=
          (\r -> filterM f (getData r) >>= (liftIO . newMVar $ copyWithData r))) |])
 
 builtinLiftedAttribute "Collection" "fold" t = typ' t >>= \t' ->
-  return ("fold", t', Just $ 
+  return ("fold", t', Just $
     [hs| (\f accInit -> liftIO (readMVar self) >>= foldM f accInit . getData) |])
 
 -- TODO: key-value record construction for resulting collection
-builtinLiftedAttribute "Collection" "groupBy" t = typ' t >>= \t' -> 
+builtinLiftedAttribute "Collection" "groupBy" t = typ' t >>= \t' ->
   return ("groupBy", t', Just $
-    [hs| (\gb f accInit -> 
+    [hs| (\gb f accInit ->
             liftIO (readMVar self) >>=
-            (\r -> foldM (\m x -> let k = gb x 
+            (\r -> foldM (\m x -> let k = gb x
                                   in M.insert k $ f (M.findWithDefault accInit k m) x)
                          M.empty . getData
                    >>= liftIO . newMVar . copyWithData r . M.toList)) |])
 
 builtinLiftedAttribute "Collection" "ext" t = typ' t >>= \t' ->
   return ("ext", t', Just $
-    [hs| (\f -> liftIO (readMVar self) >>= 
+    [hs| (\f -> liftIO (readMVar self) >>=
          (\r -> mapM f . getData >>= liftIO . newMVar . copyWithData r . concat)) |])
 
 builtinLiftedAttribute _ _ _ = throwCG $ CodeGenerationError "Builtin lifted attributes not implemented"
@@ -1404,16 +1404,16 @@ builtinAttribute _ _ _ = throwCG $ CodeGenerationError "Builtin attributes not i
 
 declaration :: K3 Declaration -> CodeGeneration HaskellEmbedding
 declaration decl = case (tag &&& children) decl of
-  (DGlobal n t eO, ch) -> do 
+  (DGlobal n t eO, ch) -> do
     d     <- global n t eO >>= extractDeclarations
     decls <- mapM (declaration >=> extractDeclarations) ch
     return . HDeclarations $ d ++ concat decls
-  
+
   (DTrigger n t e, cs) -> do
     HDeclarations d <- trigger n t e
     decls           <- mapM (declaration >=> extractDeclarations) cs
     return . HDeclarations $ d ++ concat decls
-  
+
   (DRole _, ch) -> do
     decls <- mapM (declaration >=> extractDeclarations) ch
     return . HDeclarations $ concat decls
@@ -1466,7 +1466,7 @@ generateCollectionCompositions =
           reprRecDecl  = HS.RecDecl (HB.name reprId) $ recFields
           reprConDecl  = [HS.QualConDecl HL.noLoc [] [] reprRecDecl]
           reprDecl     = HS.DataDecl HL.noLoc HS.DataType [] (HB.name reprId) reprTyVars reprConDecl reprDeriving
-    
+
           typeId       = compositionTypeId n
           typeDecl     = HS.TypeDecl HL.noLoc (HB.name typeId) [] $ indirectionType (namedType reprId)
           typeExpr     = tyApp typeId contentTyVar
@@ -1478,7 +1478,7 @@ generateCollectionCompositions =
 
           reprExpr dataE fieldF = fieldExprs fieldF >>= return . (++[dataE]) >>=
             return . HB.appFun (HS.Con $ HS.UnQual $ HB.name reprId)
-          
+
           consExpr dataE fieldF = reprExpr dataE fieldF >>= \recE ->
             return [hs| do { cmv <- __emptyConId__ ;
                              void . liftIO $ modifyMVar_ cmv ( const $ $recE );
@@ -1510,7 +1510,7 @@ generateCollectionCompositions =
                          [ typeSig cDataConId $ funType typeExpr $ funType (listType contentTyVar) $ engineType typeExpr
                          , multiFun cDataConId cDArgs implE ]
 
-          cInstDecl = 
+          cInstDecl =
             let (cReprId, cReprVar) = ("repr", HB.var $ HB.name "repr")
                 (elemsId, elemsVar) = ("elems", HB.var $ HB.name "elems")
                 modifyFId           = "modifyF"
@@ -1520,12 +1520,12 @@ generateCollectionCompositions =
             in
             return $
               [HS.InstDecl HL.noLoc [] (HS.UnQual $ HB.name collectionClassId)
-                [tyApp reprId contentTyVar, listType contentTyVar] 
+                [tyApp reprId contentTyVar, listType contentTyVar]
                 [ HS.InsDecl $ simpleFun "getData" cReprId $ [hs| __collectionDataSegId__ repr |]
                 , HS.InsDecl $ multiFun  "modifyData" [cReprId, modifyFId] modifyE
                 , HS.InsDecl $ multiFun  "copyWithData" [cReprId, elemsId] copyE] ]
 
-          constructorDecls = (\v w x y z -> v ++ w ++ x ++ y ++ z) <$> 
+          constructorDecls = (\v w x y z -> v ++ w ++ x ++ y ++ z) <$>
             initCon <*> emptyCon <*> copyCon <*> cDataCon <*> cInstDecl
 
       in ([reprDecl, typeDecl] ++) <$> constructorDecls
@@ -1537,14 +1537,14 @@ generateCollectionCompositions =
     -- | Function fields are not copied between records to ensure correct handling of self-referencing.
     copyFieldExpr _ (_, HS.TyFun _ _, Just e)  = return e
     copyFieldExpr _ (_, HS.TyFun _ _, Nothing) = throwCG $ CodeGenerationError "No expression found for record function field"
-    copyFieldExpr varE (n,_,_)                 = return [hs| $(HB.var $ HB.name n) $varE |] 
+    copyFieldExpr varE (n,_,_)                 = return [hs| $(HB.var $ HB.name n) $varE |]
 
 
 {- Literal parser generation -}
 
 -- | Builds a function for parsing for a K3 literal of the given type.
 literal' :: K3 Type -> CodeGeneration CGExpr
-literal' lt = immutL lt 
+literal' lt = immutL lt
   where
     litF e = return $ mkPCG e $ SFunction $ Action SValue
 
@@ -1567,7 +1567,7 @@ literal' lt = immutL lt
 
     immutL (tag -> TIndirection) = throwCG $ CodeGenerationError "Invalid indirection type"
 
-    immutL (details -> (TTuple, ch, _)) = 
+    immutL (details -> (TTuple, ch, _)) =
       ((,) <$> gensymCG "__tupL" <*> mapM immutL ch) >>=
         (\(sym, sub) -> flip (spliceManyE sym) sub $
           buildMultiSpliceF (\el -> [hs| L.tuple ( $(tupleL el) ) |])
@@ -1575,7 +1575,7 @@ literal' lt = immutL lt
 
     immutL (tag -> TTuple) = throwCG $ CodeGenerationError "Invalid tuple type"
 
-    immutL t@(details -> (TRecord ids, ch, _)) = 
+    immutL t@(details -> (TRecord ids, ch, _)) =
       ((,,) <$> gensymCG "__recL" <*> signature t <*> mapM immutL ch) >>=
         (\(sym, recSig, sub) -> flip (spliceManyE sym) sub $
           buildMultiSpliceF (\el -> [hs| L.record ( $(recordL (recordCstr recSig) $ zip ids el) ) |])
@@ -1585,9 +1585,9 @@ literal' lt = immutL lt
 
     immutL (tag -> TRecord _) = throwCG $ CodeGenerationError "Invalid record type"
 
-    immutL (details -> (TCollection, [x], anns)) = 
+    immutL (details -> (TCollection, [x], anns)) =
       ((,) <$> gensymCG "__collL" <*> immutL x) >>=
-        (\(sym, sub) -> spliceE sym sub (\e _ -> 
+        (\(sym, sub) -> spliceE sym sub (\e _ ->
                           collectionL anns e >>= \e' -> litF [hs| L.anyCollection $e' |]))
 
     immutL (tag -> TCollection) = throwCG $ CodeGenerationError "Invalid collection type"
@@ -1605,11 +1605,11 @@ tupleL constructors = HB.lamE HL.noLoc [lPat] $ HB.letE decls $ HB.tuple exps
         (decls, exps) = aux n ([],[])
         aux 0 (dAcc, eAcc) = (dAcc, eAcc)
         aux i (dAcc, eAcc) = aux (i-1) (dAcc++[fieldD $ n-i], eAcc++[fieldE $ n-i])
-        
+
         fieldE i = HB.var $ fieldName i
-        fieldD i = letDecl i $ 
+        fieldD i = letDecl i $
                      [hs| $(constructors !! i) ( $lArg !! $(HB.intE $ toInteger i) ) |]
-        
+
         letDecl i e = HB.nameBind HL.noLoc (fieldName i) e
 
         fieldName i = HB.name $ "__f"++(show i)
@@ -1622,13 +1622,13 @@ tupleL constructors = HB.lamE HL.noLoc [lPat] $ HB.letE decls $ HB.tuple exps
 --   The data type constructor is applied to arguments based on their appearance order in the list.
 recordL :: HS.Exp -> [(Identifier, HS.Exp)] -> HS.Exp
 recordL recordCstr fieldCstrs = HB.lamE HL.noLoc [lPat] $ HB.letE decls $ HB.appFun recordCstr exps
-  where 
+  where
         decls = fst $ foldl (\(dAcc, i) (n,e) -> (dAcc++[fieldD n e i], i+1)) ([], 0::Int) fieldCstrs
         exps  = fst $ foldl (\(eAcc, i) _ -> (eAcc++[fieldE i], i+1)) ([],0::Int) fieldCstrs
-        
-        fieldE i     = HB.var $ fieldName i 
+
+        fieldE i     = HB.var $ fieldName i
         fieldD n e i = letDecl i $ [hs| maybe $errorE $e $ lookup $(HB.strE n) $lArg |]
-        
+
         letDecl i e = HB.nameBind HL.noLoc (fieldName i) e
         errorE      = [hs| E.throwEngineError $ E.EngineError "Invalid field" |]
 
@@ -1643,7 +1643,7 @@ emptyL :: [Annotation Type] -> CodeGeneration HS.Exp
 emptyL anns = case annotationComboIdT anns of
   Nothing      -> mkEmptyF [hs| return [] |]
   Just comboId -> mkEmptyF $ HB.var . HB.name $ collectionEmptyConPrefixId++comboId
-  
+
   where mkEmptyF e = return $ HB.lamE HL.noLoc [HB.wildcard] e
 
 
@@ -1664,10 +1664,10 @@ collectionL anns elemL = case annotationComboIdT anns of
 -- TODO: main, argument processing
 generate :: String -> K3 Declaration -> CodeGeneration HaskellEmbedding
 generate progName p = declaration p >>= mkProgram
-  where 
+  where
         mkProgram (HDeclarations decls) = programDecls decls
           >>= return . HProgram . HS.Module HL.noLoc (HS.ModuleName $ sanitize progName) pragmas warning expts impts
-        
+
         mkProgram _ = throwCG $ CodeGenerationError "Invalid program"
 
         pragmas   = [ HS.LanguagePragma HL.noLoc $ [ HB.name "MultiParamTypeClasses"
@@ -1675,17 +1675,17 @@ generate progName p = declaration p >>= mkProgram
                                                    , HB.name "FlexibleInstances"] ]
         warning   = Nothing
         expts     = Nothing
-        
+
         programDecls decls =
           generateRecords >>= \recordDecls ->
-          generateCollectionCompositions >>= \comboDecls -> 
+          generateCollectionCompositions >>= \comboDecls ->
           generateDispatch >>= return . ((preDecls ++ recordDecls ++ comboDecls ++ decls) ++) . postDecls
 
         impts = [ imprtDecl "Control.Concurrent"             False Nothing
                 , imprtDecl "Control.Concurrent.MVar"        False Nothing
                 , imprtDecl "Control.Monad"                  False Nothing
                 , imprtDecl "Control.Monad.IO.Class"         False Nothing
-                , imprtDecl "Options.Applicative"            False Nothing                
+                , imprtDecl "Options.Applicative"            False Nothing
                 , imprtDecl "Language.K3.Core.Common"        False Nothing
                 , imprtDecl "Language.K3.Utils.Pretty"       False Nothing
                 , imprtDecl "Language.K3.Runtime.Common"     False Nothing
@@ -1694,7 +1694,7 @@ generate progName p = declaration p >>= mkProgram
                 , imprtDecl "Language.K3.Runtime.Options"    False Nothing
                 , imprtDecl "Data.Map.Lazy"                  True  (Just "M") ]
 
-        preDecls = 
+        preDecls =
           [ typeSig programId stringType,
             namedVal programId $ HB.strE $ sanitize progName
 
@@ -1707,16 +1707,16 @@ generate progName p = declaration p >>= mkProgram
                     prettyLines rts = [show rts] |]
 
           , [dec| data Trigger a = Trigger { __triggerHandleFnId__ :: Identifier
-                                           , __triggerImplFnId__   :: a } |] 
+                                           , __triggerImplFnId__   :: a } |]
 
           , [dec| type RuntimeStatus = Either E.EngineError () |] ]
 
         postDecls dispatchDeclOpt =
-          [ 
+          [
             [dec| getBootstrap :: String -> E.EngineM String (Maybe (K3 Literal)) |]
           , [dec| getBootstrap n = do
                     engine <- ask
-                    case deployment engine of 
+                    case deployment engine of
                       [(addr, bootstrap)] -> lookup n bootstrap
                       _ -> E.throwEngineError $ E.EngineError "Invalid system environment" |]
 
@@ -1734,9 +1734,9 @@ generate progName p = declaration p >>= mkProgram
                     where
                       initializeRT _ = atInit ()
                       finalizeRT _   = atExit ()
-                      
+
                       statusRT rts = either Left (Right . Right) rts
-                                            
+
                       reportRT (Left err) = liftIO $ print err
                       reportRT (Right _)  = return ()
 
@@ -1753,7 +1753,7 @@ generate progName p = declaration p >>= mkProgram
                            sysEnv <- liftIO $ execParser options
                            engine <- E.networkEngine sysEnv identityWD
                            void $ E.runEngineM (E.runEngine compiledMsgPrcsr sysEnv ()) engine
-                         where options = info (helper <*> sysEnvOptions) $ fullDesc 
+                         where options = info (helper <*> sysEnvOptions) $ fullDesc
                                           <> progDesc (__programId__ ++ " K3 binary.")
                                           <> header (__programId__ ++ " K3 binary.")
                 |] ]
@@ -1761,10 +1761,10 @@ generate progName p = declaration p >>= mkProgram
         (dispatchArgs, dispatchVars) = unzip $ map (\n -> (n, HB.var $ HB.name n)) ["addr", "n", "msg"]
         dispatchNV    = dispatchVars !! 1
         dispatchMsgV  = dispatchVars !! 2
-        
+
         generateDispatch = do
           alts <- dispatchCaseAlts
-          case alts of 
+          case alts of
             [] -> return Nothing
             _  -> return . Just . multiFun "dispatch" dispatchArgs $ HB.caseE dispatchNV alts
 
@@ -1772,22 +1772,22 @@ generate progName p = declaration p >>= mkProgram
           trigIds <- getTriggerDispatchCG
           return $ map (\(n,t,rtAct) -> HB.alt HL.noLoc (HB.strP n) $ HB.paren $ dispatchMsg n t rtAct) trigIds
 
-        dispatchMsg n argT rtAct = 
+        dispatchMsg n argT rtAct =
           let trigFn e = if rtAct then [hs| __n__ >>= __triggerImplFnId__ >>= ($ $e) |]
                                   else [hs| __n__ >>= __triggerImplFnId__ >>= (\f -> return $ f $e) |]
           in
           HB.doE
             [ HB.genStmt HL.noLoc (HB.pvar $ HB.name "payload")
                   (HB.paren $ typedExpr [hs| liftIO ( iread $dispatchMsgV ) |] $ engineType $ maybeType argT)
-            
-            , HB.qualStmt [hs| case payload of 
+
+            , HB.qualStmt [hs| case payload of
                                   Nothing -> error "Failed to extract message payload" -- TODO: throw engine error
                                   Just v  -> $(trigFn . HB.var $ HB.name "v") >>= return . Right |]
-            ]          
+            ]
 
 
 compile :: CodeGeneration HaskellEmbedding -> Either String String
-compile cg = either (Left . show) (Right . compile') $ fst $ runCodeGeneration emptyCGState cg 
+compile cg = either (Left . show) (Right . compile') $ fst $ runCodeGeneration emptyCGState cg
   where compile' (HProgram      mdule) = HP.prettyPrint mdule
         compile' (HDeclarations decls) = unlines $ map HP.prettyPrint decls
         compile' (HExpression   expr)  = HP.prettyPrint expr

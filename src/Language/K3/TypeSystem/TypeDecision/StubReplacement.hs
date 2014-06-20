@@ -1,6 +1,6 @@
 {-# LANGUAGE TupleSections, FlexibleContexts, TemplateHaskell #-}
 
-module Language.K3.TypeSystem.TypeDecision.StubReplacement 
+module Language.K3.TypeSystem.TypeDecision.StubReplacement
 ( calculateStubs
 , aEnvStubSubstitute
 , rEnvStubSubstitute

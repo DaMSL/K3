@@ -62,7 +62,7 @@ instance Pretty ConstraintSet where
 instance Monoid ConstraintSet where
   mempty = csEmpty
   mappend = csUnion
-    
+
 -- * Constraint set operations
 
 csEmpty :: ConstraintSet

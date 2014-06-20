@@ -39,7 +39,7 @@ tests mfilename =
     mkTests name success subdir =
       let prefix = testFilePath </> subdir in
       let files = filter testPredicate <$> getDirectoryContents prefix in
-      sequence    
+      sequence
         [
           testGroup name <$>
             map (\path -> testCase path $ mkDirectSourceTest path success) <$>
@@ -52,7 +52,7 @@ tests mfilename =
 
 testFilePath :: FilePath
 testFilePath = "examples" </> "typeSystem"
-  
+
 -- |This function, when given the path of an example source file, will generate
 --  a test to parse and typecheck it.  The parsed code is submitted directly to
 --  the type system; it is not preprocessed in any way.

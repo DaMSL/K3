@@ -39,7 +39,7 @@ data BoundDictionary
       , qvarQualDict :: Map (QVar, BoundType) (Set TQual)
       , ovarRangeDict :: Map (OpaqueVar, BoundType) TypeOrVar
       }
-      
+
 instance Monoid BoundDictionary where
   mempty =
     BoundDictionary Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty

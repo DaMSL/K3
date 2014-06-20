@@ -71,7 +71,7 @@ getDataArgTypes info = do
       NormalC _ sts -> map snd sts
       _ -> error $ "getDataArgTypes: " ++ show con
             ++ " is not a normal constructor"
-            
+
 -- |Retrieves data constructors for a type info.
 getConstructors :: Info -> Q [Con]
 getConstructors info = case info of

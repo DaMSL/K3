@@ -71,7 +71,7 @@ annotationComboIdL (namedLAnnotations -> [])  = Nothing
 annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 
 annotationIdsOfCombo :: Identifier -> [Identifier]
-annotationIdsOfCombo s = filter (not . null) $ splitOn ";" s 
+annotationIdsOfCombo s = filter (not . null) $ splitOn ";" s
 
 
 {- Collection operations -}
@@ -103,7 +103,7 @@ initialDataspace annIds vals = case annIds `intersect` dataspaceAnnotationIds of
   _   -> throwE $ RunTimeInterpretationError "Ambiguous collection type based on annotations."
 
 -- | Create collections with empty namespaces.
---   These are internal methods that should not be used directly, since they 
+--   These are internal methods that should not be used directly, since they
 --   produce partially consistent collections (i.e. w/ inconsistencies between the comboId and namespace).
 emptyCollectionBody :: [Identifier] -> Interpretation (Collection Value)
 emptyCollectionBody annIds =
@@ -145,7 +145,7 @@ copyCollection newC = lookupACombo (realizationId newC) >>= \cstrs -> (copyCtor 
 {- Collection tying and value construction helpers. -}
 
 -- | Tie a self reference and a collection value, assuming the collection member methods
---   have already been contextualized to the self reference. 
+--   have already been contextualized to the self reference.
 tieContextualizedCollection :: MVar Value -> Collection Value -> Interpretation Value
 tieContextualizedCollection selfMV c = do
   result <- return $ VCollection (selfMV, c)
@@ -186,16 +186,16 @@ getComposedAnnotationT anns = getComposedAnnotation $ namedTAnnotations anns
 
 getComposedAnnotationE :: [Annotation Expression] -> Interpretation (Maybe Identifier)
 getComposedAnnotationE anns = getComposedAnnotation $ namedEAnnotations anns
-  --(annotationComboIdE anns, namedEAnnotations anns) 
+  --(annotationComboIdE anns, namedEAnnotations anns)
 
 getComposedAnnotationL :: [Annotation Literal] -> Interpretation (Maybe Identifier)
 getComposedAnnotationL anns = getComposedAnnotation $ namedLAnnotations anns
-  --(annotationComboIdL anns, namedLAnnotations anns) 
+  --(annotationComboIdL anns, namedLAnnotations anns)
 
 getComposedAnnotation :: [Identifier] -> Interpretation (Maybe Identifier)
 getComposedAnnotation annIds = case annIds of
   [] -> return Nothing
-  _  -> do 
+  _  -> do
           let comboId = annotationComboId annIds
           realizationOpt <- tryLookupACombo comboId
           void $ initializeComposition comboId realizationOpt
@@ -233,7 +233,7 @@ getComposedAnnotation annIds = case annIds of
       emptyCollectionBody (map fst cAnnDefs) >>= mkContextualizedCollection cAnnDefs
 
     mkInitialConstructor :: [(Identifier, NamedMembers Value)] -> CInitialConstructor Value
-    mkInitialConstructor cAnnDefs = \vals -> 
+    mkInitialConstructor cAnnDefs = \vals ->
       initialCollectionBody (map fst cAnnDefs) vals >>= mkContextualizedCollection cAnnDefs
 
     mkEmplaceConstructor :: [(Identifier, NamedMembers Value)] -> CEmplaceConstructor Value
@@ -265,12 +265,12 @@ recontextualizeAnnDefs selfMV ns cAnnDefs = do
   return $ CollectionNamespace cns ans
 
 contextualizeAnnDef :: Bool -> MVar Value
-                    -> (NamedMembers Value, [(Identifier, NamedMembers Value)]) 
+                    -> (NamedMembers Value, [(Identifier, NamedMembers Value)])
                     -> (Identifier, NamedMembers Value)
                     -> Interpretation (NamedMembers Value, [(Identifier, NamedMembers Value)])
 contextualizeAnnDef True selfMV (cns, ans) (annId, annDef) = do
     annForC <- foldMembers (insertFunctionMems selfMV) emptyMembers annDef
-    ncns    <- foldMembers replaceDup cns annForC 
+    ncns    <- foldMembers replaceDup cns annForC
     nans    <- return $ replaceAssoc ans annId annForC
     return (ncns, nans)
 
@@ -282,7 +282,7 @@ contextualizeAnnDef True selfMV (cns, ans) (annId, annDef) = do
 
 contextualizeAnnDef False selfMV (cns, ans) (annId, annDef) = do
     annForC <- mapMembers (const $ contextualizeFunction selfMV) annDef
-    ncns    <- foldMembers insertNonDup cns annForC 
+    ncns    <- foldMembers insertNonDup cns annForC
     nans    <- return $ (annId, annForC):ans
     return (ncns, nans)
 

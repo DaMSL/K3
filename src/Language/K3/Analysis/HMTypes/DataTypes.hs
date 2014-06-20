@@ -27,7 +27,7 @@ data QType
         | QTTop
       deriving (Eq, Ord, Read, Show)
 
--- | Primitive types. 
+-- | Primitive types.
 --   Note this class derives an enum instance which we use to determine precedence.
 --   Hence the ordering of the constructors should not be changed lightly.
 data QTBase

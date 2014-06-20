@@ -308,7 +308,7 @@ deriveExpression aEnv env expr = do
       where
         arithConstraints = [a1 <: SNumber, a2 <: SNumber, a1 <: a0, a2 <: a0 ]
         arithCompConstraints = [ a1 <: SNumber, a2 <: SNumber, SBool <: a0 ]
-        
+
 
 -- |Obtains the type qualifiers of a given expression.  If no type qualifier
 --  tags appear, a type error is generated.  The qualifiers are obtained as a

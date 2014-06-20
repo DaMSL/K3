@@ -65,7 +65,7 @@ typecheckingContext = ask
 
 -- |Evaluates a typechecking computation.
 runTypecheckM :: TGlobalQuantEnv -> Int -> TypecheckM a
-              -> ( Either (Seq TypeError) (a, Int) 
+              -> ( Either (Seq TypeError) (a, Int)
                  , (Map UID AnyTVar, ConstraintSet) )
 runTypecheckM rEnv firstVarId x =
   let initState = TypecheckState { nextVarId = firstVarId } in
@@ -75,7 +75,7 @@ runTypecheckM rEnv firstVarId x =
   (,tmap) $ case eVal of
     Left err -> Left err
     Right v -> Right (v,nextVarId finalState)
-  
+
 getNextVarId :: TypecheckM Int
 getNextVarId = do
   s <- get
@@ -88,11 +88,11 @@ instance FreshVarI TypecheckM where
 
 instance FreshOpaqueI TypecheckM where
   freshOVar origin = OpaqueVar origin . OpaqueID <$> getNextVarId
-  
+
 freshVar :: (TVarID -> TVarOrigin q -> TVar q) -> TVarOrigin q
          -> TypecheckM (TVar q)
 freshVar cnstr origin = cnstr <$> (TVarBasicID <$> getNextVarId) <*> pure origin
-  
+
 instance TypeErrorI TypecheckM where
   typeError = typecheckError
 

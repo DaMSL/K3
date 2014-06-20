@@ -16,7 +16,7 @@ class Compilable a where
   typ         :: K3 Type -> a
   expression  :: K3 Expression -> a
   declaration :: K3 Declaration -> a
-  
+
   generate    :: Identifier -> K3 Declaration -> a
   compile     :: a -> Either String String
 

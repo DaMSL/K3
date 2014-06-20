@@ -30,8 +30,8 @@ labelBindAliases prog = snd $ labelDecl 0 prog
     withAnnMems cnt mems    = threadCntChildren cnt mems labelAnnMem id
 
     labelDecl :: Int -> K3 Declaration -> (Int, K3 Declaration)
-    labelDecl cnt d@(tag &&& children -> (DGlobal n t eOpt, ch)) = 
-      withDeclChildren cnt ch (\(ncnt,nch) -> 
+    labelDecl cnt d@(tag &&& children -> (DGlobal n t eOpt, ch)) =
+      withDeclChildren cnt ch (\(ncnt,nch) ->
         let (ncnt2, neOpt) = maybe (ncnt, Nothing) (fmap Just . labelBindAliasesExpr ncnt) eOpt
         in (ncnt2, Node (DGlobal n t neOpt :@: annotations d) nch))
 
@@ -41,7 +41,7 @@ labelBindAliases prog = snd $ labelDecl 0 prog
         in (ncnt2, Node (DTrigger n t ne :@: annotations d) nch))
 
     labelDecl cnt d@(tag &&& children -> (DAnnotation n tVars annMems, ch)) =
-      withDeclChildren cnt ch (\(ncnt,nch) -> 
+      withDeclChildren cnt ch (\(ncnt,nch) ->
         let (ncnt2, nAnnMems) = withAnnMems ncnt annMems
         in (ncnt2, Node (DAnnotation n tVars nAnnMems :@: annotations d) nch))
 
@@ -51,7 +51,7 @@ labelBindAliases prog = snd $ labelDecl 0 prog
     labelAnnMem cnt (Lifted p n t eOpt memAnns) =
       let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
       in (ncnt, (Lifted p n t neOpt memAnns))
-    
+
     labelAnnMem cnt (Attribute p n t eOpt memAnns) =
       let (ncnt, neOpt) = maybe (cnt, Nothing) (fmap Just . labelBindAliasesExpr cnt) eOpt
       in (ncnt, (Attribute p n t neOpt memAnns))
@@ -64,7 +64,7 @@ labelBindAliases prog = snd $ labelDecl 0 prog
 
 labelBindAliasesExpr :: Int -> K3 Expression -> (Int, K3 Expression)
 labelBindAliasesExpr counter expr = labelExpr counter expr
-  where 
+  where
     labelExpr cnt e@(tag &&& children -> (EBindAs b, [s, t])) =
       (ncnt2, Node (EBindAs b :@: annotations e) [ns, nt])
       where (ncnt, ns)     = labelProxyPath $ labelExpr cnt s
@@ -79,7 +79,7 @@ labelBindAliasesExpr counter expr = labelExpr counter expr
     -- Recur through all other operations.
     labelExpr cnt (Node t cs) =
       (\(x,y) -> (maxCnt cnt x, Node t y)) $ unzip $ foldl (threadCnt labelExpr cnt) [] cs
-    
+
     labelProxyPath (i, e) = annotateAliases i (exprUIDs $ extractReturns e) e
       where exprUIDs       = concatMap asUID . mapMaybe (@~ isEUID)
             asUID (EUID x) = [x]
@@ -98,7 +98,7 @@ extractReturns e@(tag &&& children -> (ELetIn i, [_, b])) =
   let r = filter (notElem i . freeVariables) $ extractReturns b
   in if r == [] then [e] else r
 
-extractReturns e@(tag &&& children -> (ECaseOf i, [_, s, n])) = 
+extractReturns e@(tag &&& children -> (ECaseOf i, [_, s, n])) =
   let r    = extractReturns s
       depR = filter (notElem i . freeVariables) r
   in (if r /= depR then [e] else r ++ extractReturns n)
@@ -118,7 +118,7 @@ extractReturns (tag -> EIfThenElse) = error "Invalid branch expression"
 
 extractReturns e = [e]
 
--- | Annotates variables and temporaries in the candidate expressions as 
+-- | Annotates variables and temporaries in the candidate expressions as
 --   alias points in the argument K3 expression.
 annotateAliases :: Int -> [UID] -> K3 Expression -> (Int, K3 Expression)
 annotateAliases i candidateExprs expr = (\((j, _), ne) -> (j, ne)) $ annotate i expr
@@ -136,16 +136,16 @@ annotateAliases i candidateExprs expr = (\((j, _), ne) -> (j, ne)) $ annotate i 
       where newExpr = Node (EProject f :@: annotations e) [subExpr]
             ((ncnt, subAlias), subExpr) = annotate cnt r
 
-    annotate cnt e@(Node t cs) = withEUID e (\uid -> 
+    annotate cnt e@(Node t cs) = withEUID e (\uid ->
       if uid `elem` candidateExprs
         then ((ncnt+1, True), (Node t subExprs) @+ (EAnalysis . BindFreshAlias $ "tmp"++(show ncnt)))
         else ((ncnt, subAlias), Node t subExprs))
-      
+
       where (ncnt, subAlias) = (if x == [] then cnt else fst $ last x, or $ map snd x)
             (x,subExprs)     = unzip $ foldl threadCnt [] cs
             threadCnt acc c  = acc++[annotate (if acc == [] then cnt else (fst . fst . last $ acc)) c]
 
-    withEUID e f    = case e @~ isEUID of 
+    withEUID e f    = case e @~ isEUID of
       Just (EUID x) -> f x
       Just _        -> error "Invalid EUID annotation match"
       Nothing       -> error "No UID found on variable expression"

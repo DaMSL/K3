@@ -5,7 +5,7 @@
   This algorithm does not *completely* eliminate branching in all constraint
   sets; opaque types cannot be inspected and so cannot be unioned or
   intersected.
-  
+
   At the completion of the @semiEliminateBranches@ routine, each type variable
   in the resulting constraint set will have only one /transparent/ (i.e.
   non-opaque) bound in each direction.  Performing this conversion often causes
@@ -104,12 +104,12 @@ data BranchElimState
       , uvarSignatures :: Map (Set UVar) UVar
       , qvarSignatures :: Map (Set QVar) QVar
       }
-    
+
 -- |Describes a set of variables and an operation performed upon them.
 data VariableSignature q
   = VariableSignature (Set (TVar q)) BoundType
   deriving (Eq, Ord, Show)
-  
+
 freshBranchElimVar :: BranchElimM TVarID
 freshBranchElimVar = do
   s <- get
@@ -134,7 +134,7 @@ instance AddBoundingConstraint ShallowType where
 
 instance AddBoundingConstraint (Set TQual) where
   addBoundingConstraint = _addBoundingConstraint
-    
+
 _addBoundingConstraint :: ( ConstraintConstructor2 a b
                           , ConstraintConstructor2 b a)
                        => BoundType -> a -> b -> BranchElimM ()
@@ -366,7 +366,7 @@ delayedIntersections ts =
 --  of @Monoid@.
 newtype DelayedIntersection
   = DelayedIntersection {unDelayedIntersection :: DelayedType }
-  
+
 instance Monoid DelayedIntersection where
   mempty = DelayedIntersection $ shallowToDelayed STop
   mappend (DelayedIntersection t) (DelayedIntersection t') =
@@ -395,7 +395,7 @@ delayedUnions ts =
 --  of @Monoid@.
 newtype DelayedUnion
   = DelayedUnion {unDelayedUnion :: DelayedType }
-  
+
 instance Monoid DelayedUnion where
   mempty = DelayedUnion $ shallowToDelayed SBottom
   mappend (DelayedUnion t) (DelayedUnion t') =
@@ -501,10 +501,10 @@ delayedInnerMerge tDefaultVal fSpecCase fTop fBottom mapMerge t t'  =
     (DString, _) -> tDefault
     (DAddress, DAddress) -> DAddress
     (DAddress, _) -> tDefault
-    (DOption qas, DOption qas') -> DOption (qas `Set.union` qas') 
+    (DOption qas, DOption qas') -> DOption (qas `Set.union` qas')
     (DOption _, _) -> tDefault
     (DIndirection qas, DIndirection qas') ->
-      DIndirection (qas `Set.union` qas') 
+      DIndirection (qas `Set.union` qas')
     (DIndirection _, _) -> tDefault
     (DTuple qass, DTuple qass') ->
       if length qass /= length qass' then tDefault else
@@ -515,7 +515,7 @@ delayedInnerMerge tDefaultVal fSpecCase fTop fBottom mapMerge t t'  =
                       (Nothing,  Nothing) -> Nothing
                       (Nothing,  Just ct) -> Just ct
                       (Just ct,  Nothing) -> Just ct
-                      (Just ct1, Just ct2) 
+                      (Just ct1, Just ct2)
                         | ct1 == ct2 -> Just ct1
                         | otherwise  -> Nothing -- TODO: merge collection type metadata
       in DRecord (mapMerge Set.union m m') (oas `Set.union` oas') nCtOpt

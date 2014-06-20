@@ -47,7 +47,7 @@ typeOfOp op = case op of
   OSeq -> SomeBinaryOperator BinOpSequence
   OApp -> SomeBinaryOperator BinOpApply
   OSnd -> SomeBinaryOperator BinOpSend
-  
+
 -- |Translates from expression-level polarities.
 typeOfPol :: Polarity -> TPolarity
 typeOfPol Provides = Positive
@@ -118,7 +118,7 @@ leastFixedPoint f x =
   let xs = iterate f x in
   let pairs = zip xs $ tail xs in
   snd $ head $ Data.List.filter (uncurry (==)) pairs
-  
+
 -- |Calculates the least fixed point of a monadic operation given a value.  Note
 --  that the behavior of the monad is not taken into account; this operation
 --  will stop iterating once the value does not change regardless of the monad's

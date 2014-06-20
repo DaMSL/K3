@@ -12,7 +12,7 @@ import Control.Monad.Writer
 
 import Data.Map  ( Map   )
 import Data.Word ( Word8 )
-import qualified Data.HashTable.IO as HT 
+import qualified Data.HashTable.IO as HT
 
 import GHC.Generics
 import System.Mem.StableName
@@ -28,10 +28,10 @@ import Language.K3.Utils.Pretty(PrintConfig)
 --
 --   Certain K3 values use the concept of an entity tag, which introduces instantiation
 --   and lifetimes for values. We define physical equality as equivalent entities, and
---   logical equality as structurally equal values. 
+--   logical equality as structurally equal values.
 --   K3 indirections, functions and triggers support phyiscal equality only, since we cannot
 --   inspect their structures in pure fashion, while all other kind of values employ structural
---   equality. 
+--   equality.
 --
 --   Collections include a self pointer, as well as a pure representation of their fields.
 --   This ensures collection values are referentially transparent, while also allowing
@@ -63,10 +63,10 @@ data Value
 -- | Runtime qualifier values. Used to construct environment entries.
 data VQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
 
--- | Entity tags for values. 
+-- | Entity tags for values.
 --   In-memory values use stable names, while external values use an integer
 --   corresponding to their file offset.
-data EntityTag 
+data EntityTag
   = forall a . MemEntTag (StableName a)
   | ExtEntTag Int
 
@@ -89,13 +89,13 @@ newtype ListMDS         v = ListMDS         [v]
 newtype SetAsOrdListMDS v = SetAsOrdListMDS [v]
 newtype BagAsOrdListMDS v = BagAsOrdListMDS [v]
 
-data PrimitiveMDS v 
+data PrimitiveMDS v
     = MemDS    (ListMDS v)
     | SeqDS    (ListMDS v)
     | SetDS    (SetAsOrdListMDS v)
     | SortedDS (BagAsOrdListMDS v)
 
-data CollectionDataspace v 
+data CollectionDataspace v
     = InMemoryDS [v]
     | InMemDS    (PrimitiveMDS v)
     | ExternalDS (FileDataspace v)
@@ -117,7 +117,7 @@ data Collection v = Collection { namespace     :: CollectionNamespace v
 -- | Two-level namespacing of collection constituents. Collections have two levels of named values:
 --   i. global names, comprised of unambiguous annotation member names.
 --   ii. annotation-specific names, comprised of overlapping named annotation members.
---   
+--
 -- The annotation namespace is kept as an association list, where the list order
 -- indicates the resolution order of member names.
 --
@@ -128,8 +128,8 @@ data Collection v = Collection { namespace     :: CollectionNamespace v
 -- Thus, namespaces are referentially transparent and provide copy semantics when
 -- used in interpretation environment modification. However, as a result, we need
 -- to create proxy values for mutable fields during method contextualization.
--- 
-data CollectionNamespace v = 
+--
+data CollectionNamespace v =
         CollectionNamespace { collectionNS :: NamedMembers v
                             , annotationNS :: [(Identifier, NamedMembers v)] }
 
@@ -160,8 +160,8 @@ type CCopyConstructor v = Collection v -> Interpretation Value
 -- There are four types of annotation combination constructors (see above), each of
 -- which returns a collection value (with the self pointer initialized), for varying
 -- arguments that define the collection's contents.
---  
-data AEnvironment v = 
+--
+data AEnvironment v =
   AEnvironment { definitions  :: AnnotationDefinitions v
                , realizations :: AnnotationCombinations v }
 
@@ -169,7 +169,7 @@ type AnnotationDefinitions v  = [(Identifier, NamedMembers v)]
 type AnnotationCombinations v = [(Identifier, CollectionConstructors v)]
 
 -- | An environment for rebuilding static values after their serialization.
---   The static value can either be a value (e.g., a global function) or a 
+--   The static value can either be a value (e.g., a global function) or a
 --   collection namespace associated with an annotation combination id.
 type SEnvironment v = (IEnvironment v, AEnvironment v)
 
@@ -232,7 +232,7 @@ data IState = IState { getGlobals     :: Globals
                      , getAnnotEnv    :: AEnvironment Value
                      , getStaticEnv   :: SEnvironment Value
                      , getProxyStack  :: ProxyPathStack
-                     , getTracer      :: ITracer 
+                     , getTracer      :: ITracer
                      , getPrintConfig :: PrintConfig}
 
 -- | An evaluated value type, produced from running an interpretation.

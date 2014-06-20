@@ -21,7 +21,7 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Constructor.Expression as EC
 import Language.K3.Analysis.Common
 
-type NamedEnv a = [(Identifier, a)] 
+type NamedEnv a = [(Identifier, a)]
 type PList = [(Identifier, Maybe (K3 Literal))]
 type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
@@ -33,7 +33,7 @@ neenv0 :: NamedEnv a
 neenv0 = []
 
 nelkup :: NamedEnv a -> Identifier -> Either String a
-nelkup env x = maybe err Right $ lookup x env 
+nelkup env x = maybe err Right $ lookup x env
  where err = Left $ "Unbound identifier in named environment: " ++ x
 
 neext :: NamedEnv a -> Identifier -> a -> NamedEnv a
@@ -75,7 +75,7 @@ pextp env x y v = snd $ modifyAssoc env x $ \case
   Just pl -> ((), Just $ plext pl y v)
 
 pdelp :: PEnv -> Identifier -> Identifier -> PEnv
-pdelp env x y = snd $ modifyAssoc env x $ \case 
+pdelp env x y = snd $ modifyAssoc env x $ \case
   Nothing -> ((), Nothing)
   Just pl -> ((), Just $ pldel pl y)
 
@@ -97,7 +97,7 @@ paextm env x y pl = snd $
   modifyAssoc env x  $ \peOpt -> ((), Just $ pext (maybe penv0 id peOpt) y pl)
 
 padelm :: PAEnv -> Identifier -> Identifier -> PAEnv
-padelm env x y = snd $ 
+padelm env x y = snd $
   modifyAssoc env x $ \peOpt -> ((), maybe Nothing (\pe -> Just $ pdel pe y) peOpt)
 
 
@@ -179,7 +179,7 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
 
     sidewaysProp :: K3 Expression -> K3 Expression -> PInfM [PInfM ()]
     sidewaysProp ch1 (tag -> ELetIn  i) = extExprProps i ch1 >> return [iu]
-    sidewaysProp _ (tag -> ECaseOf i) = return [extNullExprProps i, pruneExprProps i] 
+    sidewaysProp _ (tag -> ECaseOf i) = return [extNullExprProps i, pruneExprProps i]
     sidewaysProp _ (tag -> EBindAs b) = case b of
       BIndirection i -> return [extNullExprProps i]
       BTuple     ids -> return [mapM_ extNullExprProps ids]
@@ -229,7 +229,7 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
 
     extExprProps :: Identifier -> K3 Expression -> PInfM ()
     extExprProps i (annotations -> anns) = modify (\env -> piexte env i $ mapMaybe extractEProperty anns)
-    
+
     pruneExprProps :: Identifier -> PInfM ()
     pruneExprProps i = modify (\env -> pidele env i)
 

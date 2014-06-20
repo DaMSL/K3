@@ -35,11 +35,11 @@ flipList :: [(a, b)] -> [(b, a)]
 flipList = map (\(a,b) -> (b,a))
 
 -- Entry point for the module
--- Transform all functions and triggers: 
+-- Transform all functions and triggers:
 transform :: K3 Declaration -> K3 Declaration
 transform ds = runIdentity $ mapTree wrap ds
   where
-    wrap ch (details -> (DGlobal nm t (Just expr@(tag -> ELambda _)), _, annos)) = 
+    wrap ch (details -> (DGlobal nm t (Just expr@(tag -> ELambda _)), _, annos)) =
       return $ Node (DGlobal nm t (Just $ transformExpr $ annotateROBinds expr) :@: annos) ch
     wrap ch (details -> (DTrigger nm t expr, _, annos)) =
       return $ Node (DTrigger nm t (transformExpr $ annotateROBinds expr) :@: annos) ch
@@ -51,7 +51,7 @@ annotateROBinds :: K3 Expression -> K3 Expression
 annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty e
   where
     -- Accumulate the tags that have a write (assignment) bottom-up
-    -- Remove ids as we encounter binds. 
+    -- Remove ids as we encounter binds.
     -- Lets, cases and lambdas don't support assign anyway so ignore them
     accumWrite :: [Set String] -> [K3 Expression] -> K3 Expression -> Identity (Set String, K3 Expression)
     accumWrite accs ch (details -> (t@(EAssign nm), _, annos)) =
@@ -61,7 +61,7 @@ annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty 
     accumWrite accs ch (details -> (t@(EBindAs (BIndirection nm)), _, annos)) =
       return (Set.delete nm (accs!!1), Node (t :@: annos) ch)
 
-    accumWrite accs ch (details -> (t@(EBindAs binder), _, annos)) = 
+    accumWrite accs ch (details -> (t@(EBindAs binder), _, annos)) =
       let ids = Set.fromList $ case binder of
                                  BRecord idsMap -> map snd idsMap
                                  BTuple  ids'   -> ids'
@@ -76,7 +76,7 @@ annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty 
 -- Stage 2: Go over the tree top down to send read-only binds to the statements where they're used.
 -- Stage 3 (simultaneously with 2) transform the variable accesses and the binds themselves bottom-up
 
-                   
+
 -- The type we send down the tree.
 --                 Variable (record label, record variable name)
 type BindMap = Map String (String, String)
@@ -116,7 +116,7 @@ transformExpr e = evalState computation 1
     ch1SendProjection acc _ (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
       num <- get
       put $ num + 1
-      let roIds = getROBval $ annos @~ isROBAnno 
+      let roIds = getROBval $ annos @~ isROBAnno
           varId = "_rovar_"++show num  -- fresh variable name
           -- Create the data structure we want to transmit
           bindIds  = Map.fromList $ map (second (,varId)) $ flipList idNames
@@ -129,11 +129,11 @@ transformExpr e = evalState computation 1
 
     -- Tranform variable accesses -> projections
     handleNode :: Monad m => BindMap -> [K3 Expression] -> K3 Expression -> m (K3 Expression)
-    handleNode acc _  (tag -> EVariable nm) | nm `Map.member` acc = 
+    handleNode acc _  (tag -> EVariable nm) | nm `Map.member` acc =
       let (proj, var) = fromMaybe (error "unexpected") $ nm `Map.lookup` acc
       in return $ immut $ project proj $ variable var
 
-    -- We may need a let to replace our bind. 
+    -- We may need a let to replace our bind.
     -- If some non-RO bindings remain, we need to keep them as well
     handleNode acc [ch1, ch2]
       (details -> (EBindAs (BRecord idNames), _, annos)) | isJust $ annos @~ isROBAnno = return addLet
@@ -143,11 +143,11 @@ transformExpr e = evalState computation 1
         newId = maybe (error "not found") snd $ Map.lookup (head roIds) acc
         addLet = immut $ letIn newId (immut ch1) $ remainingBinds newId
 
-        remainingBinds nm = 
+        remainingBinds nm =
           let remain = Map.toList $ Map.difference (Map.fromList $ flipList idNames) $ Map.fromList $ map (\x -> (x,"")) roIds
           in if null remain then ch2
              else Node (EBindAs (BRecord remain) :@: annos) [variable nm, ch2]
 
     handleNode _ ch (Node x _) = return $ Node x ch
-              
+
 

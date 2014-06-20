@@ -65,21 +65,21 @@ instance (Monad m) => Dataspace m (ListMDS Value) Value where
   emptyDS _                  = return $ ListMDS []
   initialDS vals _           = return $ ListMDS vals
   copyDS (ListMDS ls)        = return $ ListMDS ls
-  
+
   peekDS (ListMDS [])        = return Nothing
   peekDS (ListMDS (h:_))     = return $ Just h
-  
+
   insertDS (ListMDS ls) v    = return $ ListMDS $ ls ++ [v]
   deleteDS v (ListMDS ls)    = return $ ListMDS $ delete v ls
   updateDS v v' (ListMDS ls) = return $ ListMDS $ (delete v ls) ++ [v']
-  
+
   foldDS acc acc_init (ListMDS ls) = foldM acc acc_init ls
   mapDS f (ListMDS ls)             = return . ListMDS =<< mapM f ls
   mapDS_  f (ListMDS ls)           = mapM_ f ls
   filterDS  f (ListMDS ls)         = return . ListMDS =<< filterM f ls
-  
+
   combineDS (ListMDS l) (ListMDS r) = return $ ListMDS $ l ++ r
-  
+
   splitDS (ListMDS l) = return $ uncurry ((,) `on` ListMDS) $
       if length l <= threshold then (l, [])
                                else splitAt (length l `quot` 2) l
@@ -105,7 +105,7 @@ instance (Monad m) => SequentialDataspace m (ListMDS Value) Value where
 
 -- | Set dataspace
 instance OrdM Interpretation Value where
-  compareV v1 v2 = valueCompare v1 v2 >>= \(VInt sgn) -> return $ 
+  compareV v1 v2 = valueCompare v1 v2 >>= \(VInt sgn) -> return $
     if sgn < 0 then LT else if sgn == 0 then EQ else GT
 
 instance (Monad m) => Dataspace m (SetAsOrdListMDS Value) Value where
@@ -127,7 +127,7 @@ instance (Monad m) => Dataspace m (SetAsOrdListMDS Value) Value where
   filterDS  f (SetAsOrdListMDS ls)         = return . SetAsOrdListMDS =<< filterM f ls
 
   combineDS (SetAsOrdListMDS l) (SetAsOrdListMDS r) = return $ SetAsOrdListMDS $ OrdList.unionBy compare l r
-  
+
   splitDS (SetAsOrdListMDS l) = return $ uncurry ((,) `on` SetAsOrdListMDS) $
       if length l <= threshold then (l, [])
                                else splitAt (length l `quot` 2) l
@@ -138,10 +138,10 @@ instance SetDataspace Interpretation (SetAsOrdListMDS Value) Value where
 
   memberDS v (SetAsOrdListMDS ls) = return $ memberBy compare v ls
   isSubsetOfDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs) = return $ subsetBy compare ls rs
-  
+
   unionDS = combineDS
-  
-  intersectDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs) = return . SetAsOrdListMDS $ isectBy compare ls rs 
+
+  intersectDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs) = return . SetAsOrdListMDS $ isectBy compare ls rs
   differenceDS (SetAsOrdListMDS ls) (SetAsOrdListMDS rs)   = return . SetAsOrdListMDS $ minusBy compare ls rs
 
 
@@ -149,17 +149,17 @@ instance SortedDataspace Interpretation (SetAsOrdListMDS Value) Value where
 
   minDS (SetAsOrdListMDS []) = return Nothing
   minDS (SetAsOrdListMDS ls) = return . Just $ head ls
-  
+
   maxDS (SetAsOrdListMDS []) = return Nothing
   maxDS (SetAsOrdListMDS ls) = return . Just $ last ls
 
   -- TODO: implement Ord.compare for VCollections or use compareV
-  lowerBoundDS v (SetAsOrdListMDS ls) = 
+  lowerBoundDS v (SetAsOrdListMDS ls) =
     case partition (\v2 -> compare v2 v == LT) ls of
       ([],_) -> return Nothing
       (x,_)  -> return . Just $ last x
 
-  upperBoundDS v (SetAsOrdListMDS ls) = 
+  upperBoundDS v (SetAsOrdListMDS ls) =
     case partition (\v2 -> compare v2 v == GT) ls of
       ([],_) -> return Nothing
       (x,_)  -> return . Just $ last x
@@ -189,7 +189,7 @@ instance (Monad m) => Dataspace m (BagAsOrdListMDS Value) Value where
   filterDS  f (BagAsOrdListMDS ls)         = return . BagAsOrdListMDS =<< filterM f ls
 
   combineDS (BagAsOrdListMDS l) (BagAsOrdListMDS r) = return $ BagAsOrdListMDS $ mergeBy compare l r
-  
+
   splitDS (BagAsOrdListMDS l) = return $ uncurry ((,) `on` BagAsOrdListMDS) $
       if length l <= threshold then (l, [])
                                else splitAt (length l `quot` 2) l
@@ -200,10 +200,10 @@ instance SetDataspace Interpretation (BagAsOrdListMDS Value) Value where
 
   memberDS v (BagAsOrdListMDS ls) = return $ memberBy compare v ls
   isSubsetOfDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs) = return $ subsetBy compare ls rs
-  
+
   unionDS = combineDS
-  
-  intersectDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs) = return . BagAsOrdListMDS $ isectBy compare ls rs 
+
+  intersectDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs) = return . BagAsOrdListMDS $ isectBy compare ls rs
   differenceDS (BagAsOrdListMDS ls) (BagAsOrdListMDS rs)   = return . BagAsOrdListMDS $ minusBy compare ls rs
 
 
@@ -211,17 +211,17 @@ instance SortedDataspace Interpretation (BagAsOrdListMDS Value) Value where
 
   minDS (BagAsOrdListMDS []) = return Nothing
   minDS (BagAsOrdListMDS ls) = return . Just $ head ls
-  
+
   maxDS (BagAsOrdListMDS []) = return Nothing
   maxDS (BagAsOrdListMDS ls) = return . Just $ last ls
 
   -- TODO: implement compare for VCollections or use compareV
-  lowerBoundDS v (BagAsOrdListMDS ls) = 
+  lowerBoundDS v (BagAsOrdListMDS ls) =
     case partition (\v2 -> compare v2 v == LT) ls of
       ([],_) -> return Nothing
       (x,_)  -> return . Just $ last x
 
-  upperBoundDS v (BagAsOrdListMDS ls) = 
+  upperBoundDS v (BagAsOrdListMDS ls) =
     case partition (\v2 -> compare v2 v == GT) ls of
       ([],_) -> return Nothing
       (x,_)  -> return . Just $ last x
@@ -232,18 +232,18 @@ instance SortedDataspace Interpretation (BagAsOrdListMDS Value) Value where
 
 
 -- | Splice in chained dataspace and sequential dataspace instances for the PrimitiveMDS
-$(dsChainInstanceGenerator 
+$(dsChainInstanceGenerator
   [| (throwE . RunTimeInterpretationError) |]
   [ ([t|Dataspace Interpretation (PrimitiveMDS Value) Value|]
     , "Dataspace"
     , [("MemDS", "lst"), ("SeqDS", "lst"), ("SetDS", "lst"), ("SortedDS", "lst")]
     , "MemDS", False)
-  
+
   , ([t|SequentialDataspace Interpretation (PrimitiveMDS Value) Value|]
     , "SequentialDataspace"
     , [("SeqDS", "lst")]
-    , "SeqDS", True) 
-  
+    , "SeqDS", True)
+
   , ([t|SetDataspace Interpretation (PrimitiveMDS Value) Value|]
     , "SetDataspace"
     , [("SetDS", "lst"), ("SortedDS", "lst")]
@@ -280,17 +280,17 @@ instance SequentialDataspace Interpretation (FileDataspace Value) Value where
   sortDS = sortFile liftEngine
 
 -- | Splice in chained dataspace and sequential dataspace instances for the PrimitiveMDS
-$(dsChainInstanceGenerator 
+$(dsChainInstanceGenerator
   [| (throwE . RunTimeInterpretationError) |]
   [ ([t|Dataspace Interpretation (CollectionDataspace Value) Value|]
     , "Dataspace"
     , [("InMemoryDS", "lst"), ("ExternalDS", "f"), ("InMemDS", "mds")]
     , "InMemoryDS", False)
-  
+
   , ([t|SequentialDataspace Interpretation (CollectionDataspace Value) Value|]
     , "SequentialDataspace"
     , [("InMemoryDS", "lst"), ("ExternalDS", "f"), ("InMemDS", "mds")]
-    , "InMemoryDS", False) 
+    , "InMemoryDS", False)
 
   , ([t|SetDataspace Interpretation (CollectionDataspace Value) Value|]
     , "SetDataspace"
@@ -306,7 +306,7 @@ $(dsChainInstanceGenerator
 
 {- moves to Runtime/Dataspace.hs -}
 matchPair :: Value -> Interpretation (Value, Value)
-matchPair v@(VRecord nb) = case membersToList nb of 
+matchPair v@(VRecord nb) = case membersToList nb of
     [(_, (v1, _)), (_, (v2, _))] -> return (v1, v2)
     _ -> throwE $ RunTimeTypeError $ "Expected a key/value record, but got " ++ show v
 
@@ -316,9 +316,9 @@ matchPair x = throwE $ RunTimeTypeError $ "Expected a key/value record, but got 
 instance EmbeddedKV Interpretation Value Value where
   extractKey value = matchPair value >>= return . fst
   embedKey key value = return . VRecord $ membersFromList [("key", (key, MemImmut)), ("value", (value, MemImmut))]
-  
+
 instance (Dataspace Interpretation dst Value) => AssociativeDataspace Interpretation dst Value Value where
-  lookupKV ds key = 
+  lookupKV ds key =
     foldDS (\result cur_val ->  do
       (match_key, match_val) <- matchPair cur_val
       return $ case result of

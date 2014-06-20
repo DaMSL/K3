@@ -21,7 +21,7 @@ module Language.K3.Core.Annotation (
     modifyTree,
     foldMapTree,
     foldTree,
-    
+
     biFoldTree,
     biFoldMapTree,
 
@@ -60,7 +60,7 @@ infixl 3 @+
 infixl 3 @-
 
 -- | An annotation construct is a data structure where each member contains a tag, and a container
--- of the corresponding tag type's annotations. 
+-- of the corresponding tag type's annotations.
 class AConstruct c where
     -- | The type of the tag.
     type ITag c :: *
@@ -168,14 +168,14 @@ details (Node (tg :@: anns) ch) = (tg, ch, anns)
 --   is provided transformed children for every new node built.
 mapTree :: (Monad m) => ([Tree b] -> Tree a -> m (Tree b)) -> Tree a -> m (Tree b)
 mapTree f n@(Node _ []) = f [] n
-mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n 
+mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
 
--- | Transform a tree by mapping a function over every tree node. 
+-- | Transform a tree by mapping a function over every tree node.
 --   The children of a node are pre-transformed recursively
 modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
 modifyTree f n@(Node _ []) = f n
 modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch 
+   ch' <- mapM (modifyTree f) ch
    f (Node x ch')
 
 -- | Map an accumulator over a tree, recurring independently over each child.
@@ -228,7 +228,7 @@ foldRebuildTree :: (Monad m)
                 => (b -> [Tree a] -> Tree a -> m (b, Tree a))
                 -> b -> Tree a -> m (b, Tree a)
 foldRebuildTree f x n@(Node _ []) = f x [] n
-foldRebuildTree f x n@(Node _ ch) = foldM rebuild (x,[]) ch >>= uncurry (\a b -> f a b n) 
+foldRebuildTree f x n@(Node _ ch) = foldM rebuild (x,[]) ch >>= uncurry (\a b -> f a b n)
   where rebuild (acc, chAcc) c =
           foldRebuildTree f acc c >>= (\(nAcc, nc) -> return (nAcc, chAcc++[nc]))
 
@@ -238,7 +238,7 @@ foldMapRebuildTree :: (Monad m)
                    -> b -> Tree a -> m (b, Tree a)
 foldMapRebuildTree f x n@(Node _ []) = f [x] [] n
 foldMapRebuildTree f x n@(Node _ ch) =
-    mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip 
+    mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip
 
 -- | Rebuild a tree with explicit pre and post transformers applied to the first
 --   child of every rree node. This is useful for stateful monads that modify
@@ -288,7 +288,7 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
         allChF nAcc4 nch n
 
   where rcr = foldIn1RebuildTree preCh1F postCh1F mergeF allChF
-        
+
         rebuild (rAcc, chAcc) (True, c) = do
           (nrAcc, nc) <- rcr rAcc c
           return (nrAcc, chAcc++[nc])

@@ -62,7 +62,7 @@ $(concat <$> mapM (defineTransformIdentityInstance ''ReplaceVariables)
                 [ ''UID
                 , ''MorphismArity
                 , ''K3
-                ]                
+                ]
  )
 
 $(

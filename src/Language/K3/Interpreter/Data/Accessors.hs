@@ -12,7 +12,7 @@ import Control.Monad.Writer
 
 import Data.List
 import Data.Maybe
-import qualified Data.HashTable.IO as HT 
+import qualified Data.HashTable.IO as HT
 import qualified Data.Map          as Map
 
 import System.Mem.StableName
@@ -38,17 +38,17 @@ vfun f = (\env tg -> VFunction (f, env, tg)) <$> emptyEnv <*> memEntTag f
 
 -- | Helper functions.
 onQualifiedType :: K3 Type -> a -> a -> a
-onQualifiedType t immutR mutR = case t @~ isTQualified of  
+onQualifiedType t immutR mutR = case t @~ isTQualified of
   Just TMutable -> mutR
   _ -> immutR
 
 onQualifiedExpression :: K3 Expression -> a -> a -> a
-onQualifiedExpression e immutR mutR = case e @~ isEQualified of  
+onQualifiedExpression e immutR mutR = case e @~ isEQualified of
   Just EMutable -> mutR
   _ -> immutR
 
 onQualifiedAnnotationsE :: [Annotation Expression] -> a -> a -> a
-onQualifiedAnnotationsE anns immutR mutR = case anns @~ isEQualified of 
+onQualifiedAnnotationsE anns immutR mutR = case anns @~ isEQualified of
   Just EMutable -> mutR
   _ -> immutR
 
@@ -74,14 +74,14 @@ vQualOfAnnsE anns = onQualifiedAnnotationsE anns MemImmut MemMut
 syncCollection :: Value -> Interpretation Value
 syncCollection (VCollection (s,_)) =
   liftIO (readMVar s) >>= \case
-      VCollection (s2,c2) | s == s2 -> return $ VCollection (s, c2) 
+      VCollection (s2,c2) | s == s2 -> return $ VCollection (s, c2)
       _ -> throwE $ RunTimeInterpretationError "Invalid cyclic self value"
 syncCollection v = return v
 
 syncCollectionIO :: Value -> IO Value
 syncCollectionIO v@(VCollection (s,_)) = readMVar s >>= \case
     VCollection (s2,c2) | s == s2 -> return (VCollection (s,c2))
-    _ -> return v 
+    _ -> return v
 syncCollectionIO v = return v
 
 -- | Refreshes a collection's cached value while also modifying a binding.
@@ -98,7 +98,7 @@ valueQOfEntryIO (IVal v)  = return (v, MemImmut)
 valueQOfEntryIO (MVal mv) = readMVar mv >>= return . (, MemMut)
 
 valueOfEntry :: IEnvEntry Value -> Interpretation Value
-valueOfEntry = liftIO . valueOfEntryIO 
+valueOfEntry = liftIO . valueOfEntryIO
 
 valueOfEntryIO :: IEnvEntry Value -> IO Value
 valueOfEntryIO entry = valueQOfEntryIO entry >>= return . fst
@@ -141,7 +141,7 @@ memEntTag a = liftIO (makeStableName a >>= return . MemEntTag)
 
 
 {- Named bindings and members operations -}
-boundNames :: NamedBindings a -> [Identifier] 
+boundNames :: NamedBindings a -> [Identifier]
 boundNames = Map.keys
 
 emptyBindings :: NamedBindings a
@@ -168,7 +168,7 @@ foldBindings f z bindings = Map.foldlWithKey chainAcc (return z) bindings
 
 mapBindings :: (Monad m) => (Identifier -> a -> m b) -> NamedBindings a -> m (NamedBindings b)
 mapBindings f bindings = foldBindings appendAcc emptyBindings bindings
-  where appendAcc acc k v = f k v >>= \nv -> return $ insertBinding k nv acc 
+  where appendAcc acc k v = f k v >>= \nv -> return $ insertBinding k nv acc
 
 mapBindings_ :: (Monad m) => (Identifier -> a -> m b) -> NamedBindings a -> m ()
 mapBindings_ f bindings = foldBindings chainF () bindings
@@ -256,7 +256,7 @@ removeEnv n env = liftIO (removeEnvIO n env)
 
 removeEnvIO :: Identifier -> IEnvironment Value -> IO (IEnvironment Value)
 removeEnvIO n = chainEnv (\env -> HT.lookup env n >>= maybe (return ()) (remove env))
-  where remove env []           = HT.delete env n 
+  where remove env []           = HT.delete env n
         remove env (tail -> nl) = if null nl then HT.delete env n else HT.insert env n nl
 
 replaceEnv :: Identifier -> IEnvEntry Value -> IEnvironment Value
@@ -368,7 +368,7 @@ getResultVal :: IResult a -> Either InterpretationError a
 getResultVal ((x, _), _) = x
 
 syncIState :: IState -> IO IState
-syncIState st = modifyStateEnvIO syncEnvIO st 
+syncIState st = modifyStateEnvIO syncEnvIO st
 
 {- Interpretation Helpers -}
 
@@ -400,10 +400,10 @@ spanUid anns = convert span_ uid
 liftEngine :: EngineM Value b -> Interpretation b
 liftEngine = lift . lift . lift
 
--- | Checks the result of running an interpretation for an error, and 
+-- | Checks the result of running an interpretation for an error, and
 --   lifts any error present to the engine monad.
 liftError :: String -> IResult a -> EngineM b (IResult a)
-liftError msg r = either rethrow pass' $ getResultVal r 
+liftError msg r = either rethrow pass' $ getResultVal r
   where pass'   = const $ return r
         rethrow = throwEngineError . EngineError . (++ (" " ++ msg)) . show
 
@@ -435,7 +435,7 @@ replaceE n v = modifyE $ replaceEnv n v
 
 -- | Bulk environment binding insertion.
 mergeE :: IEnvironment Value -> Interpretation ()
-mergeE env = modifyE $ mergeEnv env 
+mergeE env = modifyE $ mergeEnv env
 
 -- | Bulk environment binding removal.
 pruneE :: IEnvironment Value -> Interpretation ()
@@ -532,7 +532,7 @@ getWatchedVariables uid = get >>= return . maybe [] id . lookup uid . watchedVar
 
 ignoreWatchVariable :: UID -> Identifier -> Interpretation ()
 ignoreWatchVariable uid i = modify $ modifyTracer $
-  \(ITracer s we wv) -> ITracer s we $ snd $ modifyAssoc wv uid $ maybe ((), Nothing) $ \l -> ((), Just $ delete i l) 
+  \(ITracer s we wv) -> ITracer s we $ snd $ modifyAssoc wv uid $ maybe ((), Nothing) $ \l -> ((), Just $ delete i l)
 
 
 {- Dataspace accessors -}

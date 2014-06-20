@@ -32,7 +32,7 @@ data StubbedConstraintSet = StubbedConstraintSet ConstraintSet (Set Stub)
 --  unknown type or type variable.
 newtype Stub = Stub Int
   deriving (Eq, Ord, Show)
-  
+
 instance Pretty Stub where
   prettyLines (Stub n) = ["stub " ++ show n]
 

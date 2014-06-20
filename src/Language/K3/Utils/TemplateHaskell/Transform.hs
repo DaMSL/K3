@@ -4,9 +4,9 @@
   This module defines a generic @Transform@ typeclass which allows general
   transformations over a data type.  It also provides Template Haskell routines
   to generate naturally homomorphic boilerplate instances for data types.
-  
+
   An example of use is as follows:
-  
+
   @
     -- Data structure describing the transformation.
     data MyTransformation = MyTransformation Int
@@ -22,7 +22,7 @@
         Baz5 m -> Baz5 $ n + m
         _ -> homBaz baz
   @
-  
+
   In this example, we assume that Foo, Bar, and Baz are data structures which
   contain each other in some fashion.  Each may have any number of constructors.
   The above code defines transformation through Foo and Bar to be naturally
@@ -54,7 +54,7 @@ import Language.K3.Utils.TemplateHaskell.Utils
 
 class Transform t d where
   transform :: t -> d -> d
-  
+
 -- |A Template Haskell mechanism for defining a transformation instance for
 --  the @Transform@ typeclass at a given type declaration.
 defineHomInstance :: Name -> Name -> Q [Dec]
@@ -159,7 +159,7 @@ defineTransformFunctorInstance tname funcType = do
   [d| instance (Transform $(return ttyp) a)
             => Transform $(return ttyp) ($(funcType) a) where
         transform t d = fmap (transform t) d |]
-        
+
 -- |Creates identity @Transform@ instances for common primitives.
 defineCommonPrimitiveTransformIdentityInstances :: Name -> Q [Dec]
 defineCommonPrimitiveTransformIdentityInstances tname =
@@ -169,7 +169,7 @@ defineCommonPrimitiveTransformIdentityInstances tname =
     , ''Char
     , ''Bool
     ]
-    
+
 defineCommonTupleTransformInstance :: Name -> Int -> Q [Dec]
 defineCommonTupleTransformInstance tname n = do
   (ttyp,_) <- canonicalType tname
@@ -184,7 +184,7 @@ defineCommonTupleTransformInstance tname n = do
                 (normalB body) []]
   let context = cxt $ map (\v -> classP (''Transform) [return ttyp, varT v])
                         paramNames
-  let instD = 
+  let instD =
         instanceD context (applyTypeCon (ConT ''Transform) <$>
                               sequence [return ttyp, return tupleType])
           [funD 'transform [clause [varP transName, varP tupleName]
@@ -198,7 +198,7 @@ defineCommonTupleTransformInstance tname n = do
       * @Maybe@
       * @[]@
       * @Set@
--}    
+-}
 defineCommonHomInstances :: Name -> Q [Dec]
 defineCommonHomInstances tname = do
   (ttyp,_) <- canonicalType tname
