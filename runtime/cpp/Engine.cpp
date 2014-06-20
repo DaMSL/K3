@@ -52,7 +52,7 @@ namespace K3 {
         }
       }
     }
-    
+
     //-----------
     // Messaging.
 
@@ -63,7 +63,7 @@ namespace K3 {
         bool local_address = isDeployedNode(*deployment, addr);
         bool shortCircuit =  local_address || simulation();
         Message msg(addr, triggerId, v);
-   
+
         if ( shortCircuit ) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
@@ -107,7 +107,7 @@ namespace K3 {
         throw runtime_error(errorMsg);
       }
     }
-    
+
     //-----------------------
     // Engine execution loop
 
@@ -211,7 +211,7 @@ namespace K3 {
 
       runMessages(mp, mp->status());
     }
-    
+
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
     shared_ptr<thread> Engine::forkEngine(shared_ptr<MessageProcessor> mp) {
@@ -237,7 +237,7 @@ namespace K3 {
       }
       return r;
     }
-    
+
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode Engine::ioMode(string k3Mode) {
       IOMode r;
@@ -339,7 +339,7 @@ namespace K3 {
 
     void Engine::genericClose(Identifier eid, shared_ptr<Endpoint> ep) {
       // Close the endpoint
-      if (ep) { 
+      if (ep) {
         // Deregister the listener if this is a network source
         if ( get<1>(ep->handle()->networkSource()) ) {
           stopListener(eid);
@@ -377,7 +377,7 @@ namespace K3 {
 
     void Engine::stopListener(Identifier listener_name) {
       if ( listeners ) {
-      
+
         try {
           // Update listener control to decrement network done counter.
           shared_ptr<Net::Listener> lstnr = listeners->at(listener_name);
@@ -386,12 +386,12 @@ namespace K3 {
         } catch ( std::out_of_range& oor ) {
           logAt(trivial::error, "Invalid listener identifier "+listener_name);
         }
-      
+
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
     }
-    
+
     //-----------------------
     // IOHandle constructors.
 

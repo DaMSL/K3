@@ -84,7 +84,7 @@ namespace K3 {
       BaseCollection<D, E> filter(std::function<bool(E)> f) {
        return BaseCollection<D,E>(D<E>::filter(f));
       }
-   
+
       template <class Z>
       Z fold(std::function<Z(Z, E)> f, Z init) {
        return D<E>::fold(f, init);
@@ -235,7 +235,7 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      Seq<std::tuple<K, Z>> group_by 
+      Seq<std::tuple<K, Z>> group_by
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
         BaseCollection<ListDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Seq<std::tuple<K,Z>>(s);
@@ -293,7 +293,7 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      Set<std::tuple<K, Z>> group_by 
+      Set<std::tuple<K, Z>> group_by
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
         BaseCollection<SetDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Set<std::tuple<K,Z>>(s);
@@ -369,7 +369,7 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      Sorted<std::tuple<K, Z>> group_by 
+      Sorted<std::tuple<K, Z>> group_by
       (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
         BaseCollection<SortedDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Sorted<std::tuple<K,Z>>(s);
@@ -436,7 +436,7 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      ExternalBaseCollection<std::tuple<K, Z>> group_by 
+      ExternalBaseCollection<std::tuple<K, Z>> group_by
             (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
         BaseCollection<FileDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return ExternalBaseCollection<std::tuple<K,Z>>(s);

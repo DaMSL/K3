@@ -85,7 +85,7 @@ namespace K3 {
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<InternalCodec> c)
-        : name(n), ctxt_(ctxt), queues(q), 
+        : name(n), ctxt_(ctxt), queues(q),
           endpoint_(ep), control_(ctrl), transfer_codec(c),
           listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
       {
@@ -146,7 +146,7 @@ namespace K3 {
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
-          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));     
+          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
 
         } else {
           listenerLog->logAt(boost::log::trivial::error, "Invalid listener arguments.");
@@ -176,7 +176,7 @@ namespace K3 {
       // Endpoint execution.
 
       void acceptConnection()
-      { 
+      {
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),

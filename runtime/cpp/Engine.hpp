@@ -37,7 +37,7 @@ namespace K3 {
     BufferSpec defaultBufferSpec() { return defaultBufferSpec_; }
     int        connectionRetries() { return connectionRetries_; }
     bool       waitForNetwork()    { return waitForNetwork_; }
-  
+
   protected:
 
     void defaultConfiguration() {

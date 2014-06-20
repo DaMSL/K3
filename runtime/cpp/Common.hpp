@@ -37,7 +37,7 @@ namespace K3 {
 
   enum class Builtin { Stdin, Stdout, Stderr };
   enum class IOMode  { Read, Write, Append, ReadWrite };
-  
+
   //---------------
   // Addresses.
 
@@ -55,7 +55,7 @@ namespace K3 {
 
   inline std::string addressHost(const Address& addr) { return std::get<0>(addr).to_string(); }
   inline std::string addressHost(Address&& addr) { return std::get<0>(std::forward<Address>(addr)).to_string(); }
-  
+
   inline int addressPort(const Address& addr) { return std::get<1>(addr); }
   inline int addressPort(Address&& addr) { return std::get<1>(std::forward<Address>(addr)); }
 
@@ -71,7 +71,7 @@ namespace K3 {
   static inline Address internalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+1);
   }
-  
+
   static inline Address internalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+1);
@@ -80,7 +80,7 @@ namespace K3 {
   static inline Address externalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+2);
   }
-  
+
   static inline Address externalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+2);
@@ -127,7 +127,7 @@ namespace K3 {
   typedef boost::any Literal;
   typedef std::map<Identifier, Literal> PeerBootstrap;
   typedef std::map<Address, PeerBootstrap> SystemEnvironment;
-  
+
   static inline SystemEnvironment defaultEnvironment(Address addr) {
     PeerBootstrap bootstrap = PeerBootstrap();
     SystemEnvironment s_env = SystemEnvironment();
@@ -169,7 +169,7 @@ namespace K3 {
     virtual void log(const char* msg) = 0;
     virtual void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) = 0;
     virtual void logAt(boost::log::trivial::severity_level lvl, const char* msg) = 0;
-  
+
   protected:
     boost::log::trivial::severity_level defaultLevel;
   };
@@ -178,17 +178,17 @@ namespace K3 {
   {
   public:
     typedef severity_channel_logger<boost::log::trivial::severity_level,std::string> logger;
-    
+
     LogST(std::string chan) : logger(boost::log::keywords::channel = chan), Log(boost::log::trivial::severity_level::info) {}
     LogST(std::string chan, boost::log::trivial::severity_level lvl) : logger(boost::log::keywords::channel = chan), Log(lvl) {}
-    
+
     void log(const std::string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
     void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    
+
     void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
     void logAt(boost::log::trivial::severity_level lvl, const char& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
-  
+
   class LogMT : public boost::log::sources::severity_channel_logger_mt<boost::log::trivial::severity_level,std::string>, public Log
   {
   public:
@@ -221,7 +221,7 @@ namespace K3 {
   // to a value. It is left to the implementation to determine the scope of functionality
   // supported, for example partial unpacking (e.g., for network sockets).
   // The semantics of repeated invocations are dependent on the actual implementation
-  // of the wire description (including factors such as message loss). 
+  // of the wire description (including factors such as message loss).
   // This includes the conditions under which an exception is thrown.
 
   class Codec: public virtual LogMT {
@@ -277,16 +277,16 @@ namespace K3 {
 
   class DelimiterCodec : public virtual Codec, public virtual LogMT {
     public:
-      DelimiterCodec(char delimiter) 
+      DelimiterCodec(char delimiter)
         : Codec(), LogMT("DelimiterCodec"), delimiter_(delimiter), good_(true), buf_(new std::string())
       {}
-      
+
       Value encode(const Value& v);
 
       std::shared_ptr<Value> decode(const Value& v);
 
       bool decode_ready() {
-       return buf_? 
+       return buf_?
           find_delimiter() != std::string::npos : false;
       }
 
@@ -330,7 +330,7 @@ namespace K3 {
       std::shared_ptr<fixed_int> next_size_;
       std::shared_ptr<std::string> buf_;
 
-      void strip_header(); 
+      void strip_header();
   };
 
   class AbstractDefaultInternalCodec : public virtual InternalCodec, public virtual LogMT {

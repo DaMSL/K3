@@ -17,8 +17,8 @@ int Options::parse(int argc, const char *const argv[]) {
     std::cout << desc << "\n";
     return 1;
   }
-  if (vm.count("peer")) { 
-    peer_strings = vm["peer"].as<vector<string>>();
+  if (vm.count("peer")) {
+    peer_strings = vm["peer"].as<vector<string> >();
   } else { // required
     std::cout << desc << "\n";
     return 1;

@@ -253,7 +253,7 @@ namespace K3
 
     void doWrite(Value& v) { doWrite(make_shared<Value>(v)); }
 
-    void doWrite(shared_ptr<Value> v_ptr); 
+    void doWrite(shared_ptr<Value> v_ptr);
 
     bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec);
 
@@ -340,7 +340,7 @@ namespace K3
       {
         shared_ptr<Endpoint> ep =
           shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
- 
+
         epMap->get(guard)->insert(lb, make_pair(id, ep));
       } else if ( epsLogger ) {
         BOOST_LOG(*epsLogger) << "Invalid attempt to add a duplicate endpoint for " << id;
@@ -382,13 +382,13 @@ namespace K3
       bool addConnection(Address& addr, shared_ptr<Net::NConnection> c);
 
       shared_ptr<Net::NConnection> getConnection(Address& addr);
- 
+
       void removeConnection(Address& addr) { cache.erase(addr); }
- 
+
       void clearConnections() { cache.clear(); }
- 
+
       size_t size() { return cache.size(); }
- 
+
     protected:
       shared_ptr<Net::NContext> context_;
       map<Address, shared_ptr<Net::NConnection> > cache;

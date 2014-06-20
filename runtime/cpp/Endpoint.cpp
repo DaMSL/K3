@@ -235,7 +235,7 @@ namespace K3
       return transferred;
     }
 
-    void EndpointBindings::attachNotifier(EndpointNotification nt, 
+    void EndpointBindings::attachNotifier(EndpointNotification nt,
                                           Address sub_addr,
                                           Identifier sub_id) {
       shared_ptr<Subscribers> s = eventSubscriptions[nt];
@@ -302,15 +302,15 @@ namespace K3
         success = buffer_->push_back(v_ptr);
       }
 
-      if ( ! success ) 
+      if ( ! success )
         { throw BufferException("Failed to buffer value during endpoint write."); }
     }
 
-    bool Endpoint::do_push(shared_ptr<Value> val, 
+    bool Endpoint::do_push(shared_ptr<Value> val,
                            shared_ptr<MessageQueues> q,
                            shared_ptr<InternalCodec> codec) {
       buffer_->push_back(val);
-      return buffer_->transfer(q, codec, 
+      return buffer_->transfer(q, codec,
                std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
@@ -328,17 +328,17 @@ namespace K3
 
     void EndpointState::clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
       list<Identifier> endpoint_names;
- 
+
       strict_lock<EndpointState> guard(*this);
- 
+
       for (pair<Identifier, shared_ptr<Endpoint>> p: *(m->get(guard))) {
         endpoint_names.push_back(p.first);
       }
- 
+
       for (Identifier i: endpoint_names) {
         removeEndpoint(i);
       }
- 
+
       return;
     }
 
@@ -377,7 +377,7 @@ namespace K3
         BOOST_LOG(*epsLogger) << "\t" << something.first;
       }
     }
-    
+
     bool ConnectionState::ConnectionMap::addConnection(Address& addr, shared_ptr<Net::NConnection> c) {
       bool r = false;
       auto lb = cache.lower_bound(addr);
@@ -415,10 +415,10 @@ namespace K3
       strict_lock<ConnectionState> guard(*this);
       shared_ptr<ConnectionState::ConcurrentConnectionMap> cMap =
         internal? internalConnections : externalConnections;
- 
+
       shared_ptr<Net::NConnection> conn =
         shared_ptr<Net::NConnection>(new Net::NConnection(networkCtxt, addr));
- 
+
       return (cMap && cMap->get(guard)->addConnection(addr, conn))? conn : shared_ptr<Net::NConnection>();
     }
 

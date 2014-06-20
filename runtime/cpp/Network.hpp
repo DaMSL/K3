@@ -49,7 +49,7 @@ namespace K3
     NConnection(const string& logId, shared_ptr<NContext> ctxt, Socket s)
       : LogMT(logId)
     {}
-    
+
     NConnection(const char* logId, shared_ptr<NContext> ctxt, Socket s)
       : LogMT(logId)
     {}
@@ -67,7 +67,7 @@ namespace K3
   // Boost ASIO low-level networking implementation.
 
   namespace Asio
-  { 
+  {
     // Boost implementation of a network context.
     class NContext
     {
@@ -108,7 +108,7 @@ namespace K3
       }
 
       Acceptor acceptor() { return acceptor_; }
-      
+
       void close() { if ( acceptor_ ) { acceptor_->close(); } }
 
     protected:
@@ -154,7 +154,7 @@ namespace K3
 
       void close() { if ( socket_ ) { socket_->close(); } }
 
-      void write(shared_ptr<Value>  val) { 
+      void write(shared_ptr<Value>  val) {
         // TODO switch to scoped locks
         // If the loop is already running, just add the message to the queue
         mut.lock();
@@ -162,7 +162,7 @@ namespace K3
           while(buffer_->size() > 1000) {
             logAt(boost::log::trivial::trace, "Too many messages on outgoing queue: waiting...");
             mut.unlock();
-	    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+      boost::this_thread::sleep_for( boost::chrono::seconds(1) );
             mut.lock();
           }
           buffer_->push(val);
@@ -210,7 +210,7 @@ namespace K3
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
-          LogMT("NConnection"), socket_(s), connected_(false), busy(false), 
+          LogMT("NConnection"), socket_(s), connected_(false), busy(false),
           buffer_(new std::queue<shared_ptr<Value>>())
       {}
       // use mutex to operate on queues and busy atomically
@@ -237,7 +237,7 @@ namespace K3
       }
 
       // K3 Nanomsg endpoints use the TCP transport.
-      string urlOfAddress(Address addr) { 
+      string urlOfAddress(Address addr) {
         return string("tcp://") + addressAsString(addr);
       }
 
@@ -258,7 +258,7 @@ namespace K3
           int bDone = nn_bind(socket_, bindAddr.c_str());
           if ( bDone < 0 ) {
             socket_ = -1;
-            logAt(boost::log::trivial::error, 
+            logAt(boost::log::trivial::error,
               string("Failed to bind endpoint to address ")
                 + addressAsString(addr) + " : " + nn_strerror(nn_errno()));
           }
@@ -266,13 +266,13 @@ namespace K3
       }
 
       Acceptor acceptor() { return socket_; }
-      
+
       void close()
       {
         if ( socket_ >= 0 ) {
           int cDone = nn_close(socket_);
           if ( cDone < 0 ) {
-            logAt(boost::log::trivial::error, 
+            logAt(boost::log::trivial::error,
               string("Failed to close endpoint: ") + nn_strerror(nn_errno()));
           }
         }
@@ -307,14 +307,14 @@ namespace K3
       Socket socket() { return socket_; }
 
       void close()
-      { 
-        if ( socket_ >= 0 ) { 
+      {
+        if ( socket_ >= 0 ) {
           int cDone = nn_close(socket_);
           if ( cDone < 0 ) {
             logAt(boost::log::trivial::error,
               string("Failed to close connection: ") + nn_strerror(nn_errno()));
           }
-        } 
+        }
       }
 
       void write(const string& val) {

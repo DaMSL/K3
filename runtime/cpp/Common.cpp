@@ -4,13 +4,13 @@ using namespace std;
 
 namespace K3
 {
-      Value DelimiterCodec::encode(const Value& v) { 
+      Value DelimiterCodec::encode(const Value& v) {
         string res = string(v);
         res.push_back(delimiter_);
         return res;
       }
 
-      shared_ptr<Value> DelimiterCodec::decode(const Value& v) { 
+      shared_ptr<Value> DelimiterCodec::decode(const Value& v) {
 
         // Append to buffer
         *buf_ = *buf_ + v;
@@ -124,7 +124,7 @@ namespace K3
           Value payload = value_match[3];
           return Message(a,m,payload);
          }
-        else { 
+        else {
           throw CodecException("Invalid Format for Value:" + v);
         }
       }

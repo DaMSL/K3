@@ -2,7 +2,7 @@
 #define K3_RUNTIME_ENGINE_H
 
 #include <atomic>
-#include <functional>
+#include <string>
 #include <list>
 #include <map>
 #include <memory>
@@ -16,18 +16,13 @@
 
 namespace K3 {
 
-  using namespace std;
-
-  using std::atomic;
-  using boost::thread;
-
   namespace Net = K3::Asio;
 
   //-------------------
   // Utility functions
 
   static inline Identifier listenerId(Address& addr) {
-    return string("__") + "_listener_" + addressAsString(addr);
+    return std::string("__") + "_listener_" + addressAsString(addr);
   }
 
   //---------------
@@ -42,20 +37,20 @@ namespace K3 {
     BufferSpec defaultBufferSpec() { return defaultBufferSpec_; }
     int        connectionRetries() { return connectionRetries_; }
     bool       waitForNetwork()    { return waitForNetwork_; }
-  
+
   protected:
 
     void defaultConfiguration() {
       address_           = defaultAddress;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 5;
+      connectionRetries_ = 100;
       waitForNetwork_    = false;
     }
 
     void configureWithAddress(Address addr) {
       address_           = addr;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 5;
+      connectionRetries_ = 100;
       waitForNetwork_    = false;
     }
 
@@ -75,12 +70,12 @@ namespace K3 {
     EngineControl(shared_ptr<EngineConfiguration> conf)
       : LogMT("EngineControl"), config(conf)
     {
-      terminateV        = shared_ptr<atomic<bool>>(new atomic<bool>(false));
+      terminateV        = shared_ptr<std::atomic<bool>>(new std::atomic<bool>(false));
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
-      waitMutex         = shared_ptr<mutex>(new mutex());
-      waitCondition     = shared_ptr<condition_variable>(new condition_variable());
-      msgAvailMutex     = shared_ptr<mutex>(new mutex());
-      msgAvailCondition = shared_ptr<condition_variable>(new condition_variable());
+      waitMutex         = shared_ptr<boost::mutex>(new boost::mutex());
+      waitCondition     = shared_ptr<boost::condition_variable>(new boost::condition_variable());
+      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
+      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
     }
 
     bool terminate() {
@@ -100,9 +95,9 @@ namespace K3 {
     void waitForEngine()
     {
       if ( waitMutex && waitCondition ) {
-        unique_lock<mutex> lock(*waitMutex);
+        boost::unique_lock<boost::mutex> lock(*waitMutex);
         while ( !this->terminate() ) { waitCondition->wait(lock); }
-      } else { logAt(warning, "Could not wait for engine, no condition variable available."); }
+      } else { logAt(boost::log::trivial::warning, "Could not wait for engine, no condition variable available."); }
     }
 
     // Wait for a notification that the engine associated
@@ -111,9 +106,9 @@ namespace K3 {
     void waitForMessage(Predicate pred)
     {
       if (  msgAvailMutex && msgAvailCondition ) {
-        unique_lock<mutex> lock(*msgAvailMutex);
+        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
         while ( pred() ) { msgAvailCondition->wait(lock); }
-      } else { logAt(warning, "Could not wait for message, no condition variable available."); }
+      } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
     }
 
     shared_ptr<ListenerControl> listenerControl() {
@@ -130,18 +125,18 @@ namespace K3 {
     shared_ptr<EngineConfiguration> config;
 
     // Engine termination indicator
-    shared_ptr<atomic<bool>> terminateV;
+    shared_ptr<std::atomic<bool>> terminateV;
 
     // Network listener completion indicator.
     shared_ptr<ListenerCounter> listenerCounter;
 
     // Notifications for threads waiting on the engine.
-    shared_ptr<mutex> waitMutex;
-    shared_ptr<condition_variable> waitCondition;
+    shared_ptr<boost::mutex> waitMutex;
+    shared_ptr<boost::condition_variable> waitCondition;
 
     // Notifications for engine worker threads waiting on messages.
-    shared_ptr<mutex> msgAvailMutex;
-    shared_ptr<condition_variable> msgAvailCondition;
+    shared_ptr<boost::mutex> msgAvailMutex;
+    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
 
@@ -156,12 +151,13 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec
+      shared_ptr<InternalCodec> _internal_codec,
+      string log_level
     ): LogMT("Engine") {
-      configure(simulation, sys_env, internal_codec);
+      configure(simulation, sys_env, _internal_codec, log_level);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level);
 
     //-----------
     // Messaging.
@@ -275,106 +271,13 @@ namespace K3 {
 
     MPStatus processMessage(shared_ptr<MessageProcessor> mp);
 
-<<<<<<< HEAD
-        // If there was a message, return the result of processing that message.
-        LoopStatus res =  mp->process(*next_message);
-
-        // Log Env
-        logAt(trivial::trace, "Environment:");
-        std::map<std::string, std::string> env = mp->bindings(next_message->address());
-        std::map<std::string, std::string>::iterator iter;
-        for (iter = env.begin(); iter != env.end(); ++iter) {
-           std::string id = iter->first;
-           std::string val = iter->second;
-           logAt(trivial::trace, "  " + id + " = " + val);
-        }
-
-        return res;
-
-      } else {
-        // Otherwise return a Done, indicating no messages in the queues.
-        return LoopStatus::Done;
-      }
-    }
-
-
-    void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st)
-    {
-      MPStatus curr_status = init_st;
-      MPStatus next_status;
-      logAt(trivial::trace, "Starting the Message Processing Loop");
-      while(true) {
-        switch (curr_status) {
-
-          // If we are not in error, process the next message.
-          case LoopStatus::Continue:
-            next_status = processMessage(mp);
-            break;
-
-          // If we were in error, exit out with error.
-          case LoopStatus::Error:
-            //TODO silent error?
-            return;
-
-          // If there are no messages on the queues,
-          //  - If the terminate flag has been set, exit out normally.
-          //  - Otherwise, wait for a message and continue.
-          case LoopStatus::Done:
-            if (control->terminate()) {
-                logAt(trivial::trace, "Finished Message Processing Loop.");
-                return;
-            }
-
-            logAt(trivial::trace, "Waiting for Messages...");
-            control->waitForMessage(
-              [=] () {
-                return !control->terminate() && queues->size() < 1;
-              });
-
-            // Check for termination signal after waiting is finished
-            if (control->terminate()) {
-              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.");
-              return;
-            }
-            // Otherwise continue
-            next_status = LoopStatus::Continue;
-            break;
-        }
-        curr_status = next_status;
-      }
-
-    }
-=======
     void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st);
->>>>>>> cpp: refactored engine to be in cpp file as well
 
-    void runEngine(shared_ptr<MessageProcessor> mp) {
-      // TODO MessageProcessor initialize() is empty.
-      // In the Haskell code base, this is where the K3 AST
-      // is passed to the MessageProcessor
-      mp->initialize();
-
-      // TODO Check PoolType for Uniprocess, Multithreaded..etc
-      // Following code is for Uniprocess mode only:
-      // TODO Dummy ID. Need to log actual ThreadID
-      // workers->setId(1);
-
-      runMessages(mp, mp->status());
-    }
+    void runEngine(shared_ptr<MessageProcessor> mp);
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    shared_ptr<thread> forkEngine(shared_ptr<MessageProcessor> mp) {
-      using std::placeholders::_1;
-
-      std::function<void(shared_ptr<MessageProcessor>)> _runEngine = std::bind(
-        &Engine::runEngine, this, _1
-      );
-
-      shared_ptr<thread> engineThread = shared_ptr<thread>(new thread(_runEngine, mp));
-
-      return engineThread;
-    }
+    shared_ptr<boost::thread> forkEngine(shared_ptr<MessageProcessor> mp);
 
     // Delegate wait to EngineControl
     void waitForEngine() {
@@ -384,7 +287,7 @@ namespace K3 {
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
       control->set_terminate();
-      logAt(trivial::trace, "Signalled engine termination");
+      logAt(boost::log::trivial::trace, "Signalled engine termination");
     }
 
     void forceTerminateEngine() {
@@ -417,7 +320,7 @@ namespace K3 {
     list<Address> nodes() {
       list<Address> r;
       if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(trivial::error, "Invalid system environment."); }
+      else { logAt(boost::log::trivial::error, "Invalid system environment."); }
       return r;
     }
 
@@ -429,7 +332,7 @@ namespace K3 {
     bool simulation() {
       if ( connections ) {
         return !connections->hasInternalConnections(); }
-      else { logAt(trivial::error, "Invalid connection state."); }
+      else { logAt(boost::log::trivial::error, "Invalid connection state."); }
       return false;
     }
 
@@ -438,7 +341,10 @@ namespace K3 {
     void incrementCollectionCount() { collectionCount += 1; }
     Address getAddress() { return config->address(); }
 
+    // Converts a K3 channel mode into a native file descriptor mode.
+    IOMode ioMode(string k3Mode);
   protected:
+    bool                            log_enabled;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
@@ -446,25 +352,30 @@ namespace K3 {
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
-    
+
     // Endpoint and collection tracked by the engine.
     shared_ptr<EndpointState>       endpoints;
     shared_ptr<ConnectionState>     connections;
-    
+
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
 
+<<<<<<< HEAD
+    void logMessageLoop(string s);
+=======
+    void logMessageLoop(string s) { if (log_enabled) { logAt(boost::log::trivial::trace, s); } }
+>>>>>>> cpp: add missing namespace qualification
+
     void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
-      logAt(trivial::error, errorMsg);
+      logAt(boost::log::trivial::error, errorMsg);
       throw runtime_error(errorMsg);
     }
 
     Builtin builtin(string builtinId);
 
-    // Converts a K3 channel mode into a native file descriptor mode.
-    IOMode ioMode(string k3Mode);
+
 
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
