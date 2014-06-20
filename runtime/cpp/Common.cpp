@@ -1,5 +1,7 @@
 #include "Common.hpp"
 
+using namespace std;
+
 namespace K3
 {
       Value DelimiterCodec::encode(const Value& v) { 

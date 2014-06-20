@@ -6,8 +6,6 @@
 
 namespace K3 {
 
-  using namespace std;
-
   //------------
   // Workers
   class WorkerPool {

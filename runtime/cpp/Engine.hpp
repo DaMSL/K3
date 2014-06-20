@@ -16,18 +16,13 @@
 
 namespace K3 {
 
-  using namespace std;
-
-  using std::atomic;
-  using boost::thread;
-
   namespace Net = K3::Asio;
 
   //-------------------
   // Utility functions
 
   static inline Identifier listenerId(Address& addr) {
-    return string("__") + "_listener_" + addressAsString(addr);
+    return std::string("__") + "_listener_" + addressAsString(addr);
   }
 
   //---------------
@@ -75,12 +70,12 @@ namespace K3 {
     EngineControl(shared_ptr<EngineConfiguration> conf)
       : LogMT("EngineControl"), config(conf)
     {
-      terminateV        = shared_ptr<atomic<bool>>(new atomic<bool>(false));
+      terminateV        = shared_ptr<std::atomic<bool>>(new std::atomic<bool>(false));
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
-      waitMutex         = shared_ptr<mutex>(new mutex());
-      waitCondition     = shared_ptr<condition_variable>(new condition_variable());
-      msgAvailMutex     = shared_ptr<mutex>(new mutex());
-      msgAvailCondition = shared_ptr<condition_variable>(new condition_variable());
+      waitMutex         = shared_ptr<boost::mutex>(new boost::mutex());
+      waitCondition     = shared_ptr<boost::condition_variable>(new boost::condition_variable());
+      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
+      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
     }
 
     bool terminate() {
@@ -100,9 +95,9 @@ namespace K3 {
     void waitForEngine()
     {
       if ( waitMutex && waitCondition ) {
-        unique_lock<mutex> lock(*waitMutex);
+        boost::unique_lock<boost::mutex> lock(*waitMutex);
         while ( !this->terminate() ) { waitCondition->wait(lock); }
-      } else { logAt(warning, "Could not wait for engine, no condition variable available."); }
+      } else { logAt(boost::log::trivial::warning, "Could not wait for engine, no condition variable available."); }
     }
 
     // Wait for a notification that the engine associated
@@ -111,9 +106,9 @@ namespace K3 {
     void waitForMessage(Predicate pred)
     {
       if (  msgAvailMutex && msgAvailCondition ) {
-        unique_lock<mutex> lock(*msgAvailMutex);
+        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
         while ( pred() ) { msgAvailCondition->wait(lock); }
-      } else { logAt(warning, "Could not wait for message, no condition variable available."); }
+      } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
     }
 
     shared_ptr<ListenerControl> listenerControl() {
@@ -130,18 +125,18 @@ namespace K3 {
     shared_ptr<EngineConfiguration> config;
 
     // Engine termination indicator
-    shared_ptr<atomic<bool>> terminateV;
+    shared_ptr<std::atomic<bool>> terminateV;
 
     // Network listener completion indicator.
     shared_ptr<ListenerCounter> listenerCounter;
 
     // Notifications for threads waiting on the engine.
-    shared_ptr<mutex> waitMutex;
-    shared_ptr<condition_variable> waitCondition;
+    shared_ptr<boost::mutex> waitMutex;
+    shared_ptr<boost::condition_variable> waitCondition;
 
     // Notifications for engine worker threads waiting on messages.
-    shared_ptr<mutex> msgAvailMutex;
-    shared_ptr<condition_variable> msgAvailCondition;
+    shared_ptr<boost::mutex> msgAvailMutex;
+    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
 
@@ -282,7 +277,7 @@ namespace K3 {
 
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
-    shared_ptr<thread> forkEngine(shared_ptr<MessageProcessor> mp);
+    shared_ptr<boost::thread> forkEngine(shared_ptr<MessageProcessor> mp);
 
     // Delegate wait to EngineControl
     void waitForEngine() {
@@ -292,7 +287,7 @@ namespace K3 {
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
       control->set_terminate();
-      logAt(trivial::trace, "Signalled engine termination");
+      logAt(boost::log::trivial::trace, "Signalled engine termination");
     }
 
     void forceTerminateEngine() {
@@ -325,7 +320,7 @@ namespace K3 {
     list<Address> nodes() {
       list<Address> r;
       if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(trivial::error, "Invalid system environment."); }
+      else { logAt(boost::log::trivial::error, "Invalid system environment."); }
       return r;
     }
 
@@ -337,7 +332,7 @@ namespace K3 {
     bool simulation() {
       if ( connections ) {
         return !connections->hasInternalConnections(); }
-      else { logAt(trivial::error, "Invalid connection state."); }
+      else { logAt(boost::log::trivial::error, "Invalid connection state."); }
       return false;
     }
 
@@ -370,7 +365,7 @@ namespace K3 {
 
     void invalidEndpointIdentifier(string idType, const Identifier& eid) {
       string errorMsg = "Invalid " + idType + " endpoint identifier: " + eid;
-      logAt(trivial::error, errorMsg);
+      logAt(boost::log::trivial::error, errorMsg);
       throw runtime_error(errorMsg);
     }
 

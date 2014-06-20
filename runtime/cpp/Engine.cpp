@@ -1,5 +1,9 @@
 #include "Engine.hpp"
 
+using namespace boost::log;
+using namespace boost::log::trivial;
+using boost::thread;
+
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
