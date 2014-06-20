@@ -12,9 +12,3 @@ script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
-notifications:
-  email:
-    - k3-developers@googlegroups.com
-branches:
-  only:
-    - master
