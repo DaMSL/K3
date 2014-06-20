@@ -15,19 +15,6 @@
 namespace K3 {
   namespace qi = boost::spirit::qi;
 
-  using boost::asio::ip::address;
-
-  using std::begin;
-  using std::end;
-  using std::function;
-  using std::list;
-  using std::make_shared;
-  using std::map;
-  using std::pair;
-  using std::shared_ptr;
-  using std::string;
-  using std::tuple;
-  using std::vector;
 
   template <class iterator>
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {
@@ -125,9 +112,9 @@ namespace K3 {
     }
   };
 
-  template <> struct patcher<address> {
-    static void patch(string s, address& a) {
-      a = address::from_string(s);
+  template <> struct patcher<boost::asio::ip::address> {
+    static void patch(string s, boost::asio::ip::address& a) {
+      a = boost::asio::ip::address::from_string(s);
     }
   };
 

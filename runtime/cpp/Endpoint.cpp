@@ -1,5 +1,8 @@
 #include "Endpoint.hpp"
 
+using namespace boost::log;
+using namespace boost;
+
 namespace K3
 {
 
@@ -280,12 +283,12 @@ namespace K3
 
     shared_ptr<Value> Endpoint::refreshBuffer() {
       return buffer_->refresh(handle_,
-        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+        std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     void Endpoint::flushBuffer() {
       return buffer_->flush(handle_,
-        bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+        std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     void Endpoint::doWrite(shared_ptr<Value> v_ptr) {
@@ -308,7 +311,7 @@ namespace K3
                            shared_ptr<InternalCodec> codec) {
       buffer_->push_back(val);
       return buffer_->transfer(q, codec, 
-               bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+               std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
     }
 
     // Closes the endpoint's IOHandle, while also notifying subscribers

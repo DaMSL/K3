@@ -11,9 +11,6 @@
 
 namespace K3
 {
-  using namespace std;
-  using namespace boost::iostreams;
-
   //--------------------------
   // IO handles
 

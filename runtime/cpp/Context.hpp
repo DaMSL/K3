@@ -5,8 +5,6 @@
 #include <string>
 
 namespace K3 {
-  using std::map;
-  using std::string;
 
   class Engine;
 
@@ -14,9 +12,9 @@ namespace K3 {
    public:
     __k3_context(Engine& e): __engine(e) {}
 
-    virtual void __dispatch(string) {}
-    virtual map<string, string> __prettify() { return map<string, string> {}; }
-    virtual void __patch(string) {}
+    virtual void __dispatch(std::string) {}
+    virtual std::map<std::string, std::string> __prettify() { return std::map<std::string, std::string> {}; }
+    virtual void __patch(std::string) {}
 
    protected:
     Engine& __engine;

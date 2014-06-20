@@ -19,12 +19,6 @@
 
 namespace K3
 {
-  using namespace std;
-  using namespace boost;
-
-  using mutex = boost::mutex;
-  using std::bind;
-
   typedef tuple<int, int> BufferSpec;
 
   enum class EndpointNotification {
@@ -33,13 +27,13 @@ namespace K3
 
   class BufferException : public runtime_error {
   public:
-    BufferException( const string& msg ) : runtime_error(msg) {}
+    BufferException( const std::string& msg ) : runtime_error(msg) {}
     BufferException( const char* msg ) : runtime_error(msg) {}
   };
 
   class EndpointException : public runtime_error {
   public:
-    EndpointException( const string& msg ) : runtime_error(msg) {}
+    EndpointException( const std::string& msg ) : runtime_error(msg) {}
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
@@ -51,7 +45,7 @@ namespace K3
   static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
   static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
-  static inline string internalEndpointPrefix() { return string("__");  }
+  static inline std::string internalEndpointPrefix() { return std::string("__");  }
 
   static inline Identifier connectionId(Address& addr) {
     return internalEndpointPrefix() + "_conn_" + addressAsString(addr);
@@ -62,7 +56,7 @@ namespace K3
   }
 
   static inline bool externalEndpointId(Identifier& id) {
-    string pfx = internalEndpointPrefix();
+    std::string pfx = internalEndpointPrefix();
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }
 
@@ -103,22 +97,22 @@ namespace K3
   };
 
 
-  class ScalarEPBufferMT : public EndpointBuffer, public basic_lockable_adapter<mutex> {
+  class ScalarEPBufferMT : public EndpointBuffer, public boost::basic_lockable_adapter<boost::mutex> {
   public:
     typedef ScalarEPBufferMT LockB;
 
     ScalarEPBufferMT() : EndpointBuffer(), contents(*this) {}
     // Metadata
     bool   empty()    {
-      strict_lock<LockB> guard(*this);
+      boost::strict_lock<LockB> guard(*this);
       return !(contents.get(guard));
     }
     bool   full()     {
-      strict_lock<LockB> guard(*this);
+      boost::strict_lock<LockB> guard(*this);
       return static_cast<bool>(contents.get(guard));
     }
     size_t size()     {
-      strict_lock<LockB> guard(*this);
+      boost::strict_lock<LockB> guard(*this);
       return contents.get(guard) ? 1 : 0;
     }
     size_t capacity() { return 1; }
@@ -135,7 +129,7 @@ namespace K3
     bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
 
    protected:
-    externally_locked<shared_ptr<Value>, LockB> contents;
+    boost::externally_locked<shared_ptr<Value>, LockB> contents;
   };
 
   class ScalarEPBufferST : public EndpointBuffer {
@@ -274,13 +268,13 @@ namespace K3
   };
 
 
-  class EndpointState : public basic_lockable_adapter<mutex>
+  class EndpointState : public boost::basic_lockable_adapter<boost::mutex>
   {
   public:
-    typedef basic_lockable_adapter<mutex> eplockable;
+    typedef boost::basic_lockable_adapter<boost::mutex> eplockable;
 
     using ConcurrentEndpointMap =
-      externally_locked<shared_ptr<EndpointMap>,EndpointState>;
+      boost::externally_locked<shared_ptr<EndpointMap>,EndpointState>;
 
     using EndpointDetails = tuple<shared_ptr<IOHandle>,
                                  shared_ptr<EndpointBuffer>,
@@ -339,7 +333,7 @@ namespace K3
     void addEndpoint(Identifier id, EndpointDetails details,
                      shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       auto lb = epMap->get(guard)->lower_bound(id);
 
       if ( lb == epMap->get(guard)->end() || id != lb->first )
@@ -355,14 +349,14 @@ namespace K3
 
     void removeEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       epMap->get(guard)->erase(id);
     }
 
     shared_ptr<Endpoint>
     getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
-      strict_lock<EndpointState> guard(*this);
+      boost::strict_lock<EndpointState> guard(*this);
       shared_ptr<Endpoint> r;
       auto it = epMap->get(guard)->find(id);
       if ( it != epMap->get(guard)->end() ) { r = it->second; }
@@ -374,7 +368,7 @@ namespace K3
   ////-------------------------------------
   //// Connections and their containers.
 
-  class ConnectionState : public shared_lockable_adapter<shared_mutex>, public virtual LogMT
+  class ConnectionState : public boost::shared_lockable_adapter<boost::shared_mutex>, public virtual LogMT
   {
   protected:
     // Connection maps are not thread-safe themselves, but are only
@@ -401,9 +395,9 @@ namespace K3
    };
 
   public:
-    typedef shared_lockable_adapter<shared_mutex> shlockable;
+    typedef boost::shared_lockable_adapter<boost::shared_mutex> shlockable;
 
-    typedef externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
+    typedef boost::externally_locked<shared_ptr<ConnectionMap>, ConnectionState>
               ConcurrentConnectionMap;
 
 
@@ -467,13 +461,13 @@ namespace K3
 
     // TODO: implement an alternative using a shared_lock_guard
     shared_ptr<ConcurrentConnectionMap>
-    mapForAddress(Address& addr, strict_lock<ConnectionState>& guard);
+    mapForAddress(Address& addr, boost::strict_lock<ConnectionState>& guard);
 
     // TODO: implement an alternative using a shared_lock_guard
     shared_ptr<Net::NConnection>
     getConnection(Address& addr,
                   shared_ptr<ConcurrentConnectionMap> connections,
-                  strict_lock<ConnectionState>& guard);
+                  boost::strict_lock<ConnectionState>& guard);
   };
 };
 

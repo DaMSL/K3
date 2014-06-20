@@ -103,7 +103,7 @@ namespace K3
           ip::tcp::endpoint ep(get<0>(addr), get<1>(addr));
           acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service), ep));
         } else {
-          logAt(warning, "Invalid network context in constructing an NEndpoint");
+          logAt(boost::log::trivial::warning, "Invalid network context in constructing an NEndpoint");
         }
       }
 
@@ -137,15 +137,15 @@ namespace K3
               [=] (const boost::system::error_code& error) {
                 if (!error) {
                   connected_ = true;
-                  //logAt(warning, "connected");
+                  //logAt(boost::log::trivial::warning, "connected");
                   BOOST_LOG(*this) << "Connected! ";
 
                 } else {
                   BOOST_LOG(*this) << "Connect error: " << error.message();
                 }
               } );
-          } else { logAt(warning, "Uninitialized socket in constructing an NConnection"); }
-        } else { logAt(warning, "Invalid network context in constructing an NConnection"); }
+          } else { logAt(boost::log::trivial::warning, "Uninitialized socket in constructing an NConnection"); }
+        } else { logAt(boost::log::trivial::warning, "Invalid network context in constructing an NConnection"); }
       }
 
       Socket socket() { return socket_; }
@@ -160,7 +160,7 @@ namespace K3
         mut.lock();
         if (busy) {
           while(buffer_->size() > 1000) {
-            logAt(trivial::trace, "Too many messages on outgoing queue: waiting...");
+            logAt(boost::log::trivial::trace, "Too many messages on outgoing queue: waiting...");
             mut.unlock();
 	    boost::this_thread::sleep_for( boost::chrono::seconds(1) );
             mut.lock();
@@ -258,7 +258,7 @@ namespace K3
           int bDone = nn_bind(socket_, bindAddr.c_str());
           if ( bDone < 0 ) {
             socket_ = -1;
-            logAt(trivial::error, 
+            logAt(boost::log::trivial::error, 
               string("Failed to bind endpoint to address ")
                 + addressAsString(addr) + " : " + nn_strerror(nn_errno()));
           }
@@ -272,7 +272,7 @@ namespace K3
         if ( socket_ >= 0 ) {
           int cDone = nn_close(socket_);
           if ( cDone < 0 ) {
-            logAt(trivial::error, 
+            logAt(boost::log::trivial::error, 
               string("Failed to close endpoint: ") + nn_strerror(nn_errno()));
           }
         }
@@ -296,7 +296,7 @@ namespace K3
           int cDone = nn_connect(socket_, connectAddr.c_str());
           if ( cDone < 0 ) {
             this->close();
-            logAt(trivial::error,
+            logAt(boost::log::trivial::error,
               string("Failed to connect to address "
                 + addressAsString(addr) + " : " + nn_strerror(nn_errno())));
           }
@@ -311,7 +311,7 @@ namespace K3
         if ( socket_ >= 0 ) { 
           int cDone = nn_close(socket_);
           if ( cDone < 0 ) {
-            logAt(trivial::error,
+            logAt(boost::log::trivial::error,
               string("Failed to close connection: ") + nn_strerror(nn_errno()));
           }
         } 
@@ -323,7 +323,7 @@ namespace K3
         if ( wDone < 0 ) {
           int err = nn_errno();
           string errStr(nn_strerror(err));
-          logAt(trivial::error, string("Failed to write to socket: " + errStr));
+          logAt(boost::log::trivial::error, string("Failed to write to socket: " + errStr));
         }
         return;
       }
@@ -334,7 +334,7 @@ namespace K3
           LogMT("NConnection"), socket_(s)
       {
         if ( socket_ < 0 ) {
-          logAt(trivial::error,
+          logAt(boost::log::trivial::error,
             string("Failed in connection socket construction: ") + nn_strerror(nn_errno()));
         }
       }
