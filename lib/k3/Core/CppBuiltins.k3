@@ -23,4 +23,6 @@ declare itos : int -> string
 
 declare haltEngine : () -> ()
 
+declare now : () -> int
+
 

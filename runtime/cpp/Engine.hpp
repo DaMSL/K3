@@ -48,14 +48,14 @@ namespace K3 {
     void defaultConfiguration() {
       address_           = defaultAddress;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 5;
+      connectionRetries_ = 100;
       waitForNetwork_    = false;
     }
 
     void configureWithAddress(Address addr) {
       address_           = addr;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 5;
+      connectionRetries_ = 100;
       waitForNetwork_    = false;
     }
 

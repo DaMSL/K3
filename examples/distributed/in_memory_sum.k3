@@ -20,6 +20,11 @@ declare workers_ready : mut int = 0
 declare local_sum : mut int = 0
 declare global_sum : mut int = 0
 
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
 // Compute the global sum
 trigger compute_global_sum : int = \s -> (
   ( global_sum = global_sum + s );
@@ -28,7 +33,10 @@ trigger compute_global_sum : int = \s -> (
   ( workers_ready = workers_ready - 1 );
   ( if workers_ready == 0
     then (
-      ( printLine "Finished." );
+      ( end_ms = now ());
+      ( elapsed_ms = end_ms - start_ms );
+      ( printLine "Finished. Elapsed Time in ms:" );
+      ( printLine ( itos elapsed_ms ) );
       ( haltEngine () )
     )
     else ()
@@ -71,6 +79,7 @@ trigger worker_ready : () = \_ -> (
   ( if workers_ready == total_workers
     then (
       ( printLine "All Workers Ready. Computing Local Sums" );
+      ( start_ms = now () );
       ( workers.iterate (\worker -> ( compute_local_sum, worker.addr) <- () ) )
     )
     else ()

@@ -81,7 +81,7 @@ namespace K3 {
             } else {
               if (ep && !ep->hasWrite()) {
                 logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
-                boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+                boost::this_thread::sleep_for( boost::chrono::milliseconds(20) );
 
               }
               else {

@@ -2,6 +2,7 @@
 #define K3_RUNTIME_BUILTINS_H
 
 #include <ctime>
+#include <chrono>
 #include <climits>
 #include <functional>
 
@@ -70,6 +71,13 @@ namespace K3 {
   unit_t haltEngine(unit_t) {
     engine.forceTerminateEngine();
     return unit_t();
+  }
+
+  // ms
+  int now(unit_t) {
+    auto t = std::chrono::system_clock::now();
+    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
+    return elapsed.count();
   }
 }
 #endif /* K3_RUNTIME_BUILTINS_H */
