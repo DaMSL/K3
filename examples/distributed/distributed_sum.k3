@@ -1,0 +1,48 @@
+// Add a bunch of numbers across multiple peers.
+
+include "Annotation/Collection.k3"
+
+declare master: address = 127.0.0.1:40000
+
+declare data: mut collection { x: int } @ { Collection } = empty { x: int } @ { Collection }
+
+declare local_aggregate: mut int = 0
+declare global_aggregate: mut int = 0
+
+// Send one element from is to each peer, deleting it along the way.
+trigger sendOnce: () = \_ ->
+    peers.iterate (
+        \p -> case (data.peek ()) of
+            { Some i -> (((aggregate, p.addr) <- i.x); (data.erase i)) }
+            { None -> () }
+    )
+
+// Send all elements in data in a round robin to each peer.
+trigger sendAll: () = \_ -> (
+    ((sendOnce, me) <- ());
+    (case (data.peek ()) of
+        { Some _ -> (sendAll, me) <- () }
+        { None -> peers.iterate (\p -> (aggregate, p.addr) <- -1) })
+)
+
+trigger aggregate: int = \x ->
+    if x == -1
+        then (result, master) <- local_aggregate
+        else local_aggregate = local_aggregate + x
+
+trigger result: int = \x ->
+    global_aggregate = global_aggregate + x
+
+// Scatter the data, and start the sum.
+trigger distribute: () = \_ -> (
+    (data.insert { x: 1 });
+    (data.insert { x: 2 });
+    (data.insert { x: 3 });
+    (data.insert { x: 4 });
+    (data.insert { x: 5 });
+    (data.insert { x: 6 });
+    ((sendAll, me) <- ())
+)
+
+source start: () = value ()
+feed start |> distribute

@@ -64,12 +64,12 @@ loggerGenerator suffixTag = do
                       ]
   where
     moduleNameExpr :: String -> Q Exp
-    moduleNameExpr tag = 
+    moduleNameExpr tag =
       let modNameE = LitE <$> StringL <$> loc_module <$> location in
       if null tag
          then [| $modNameE |]
-         else [| ( $modNameE ++ $(litE $ stringL $ "#" ++ tag) ) |] 
-    
+         else [| ( $modNameE ++ $(litE $ stringL $ "#" ++ tag) ) |]
+
 
     loggingFunction :: String -> (String,Q Exp,Q Type) -> (String, Q Exp) -> Q [Dec]
     loggingFunction tag (nameSuffix,baseFn,typ) (namePart,prioExpr) = do

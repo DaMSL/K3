@@ -80,8 +80,9 @@ class StlDS {
     return result;
   }
 
-  void iterate(std::function<void(Elem)> f) {
+  unit_t iterate(std::function<unit_t(Elem)> f) {
     for (Elem e : container) { f(e); }
+    return unit_t();
   }
 
   StlDS filter(std::function<bool(Elem)> predicate) {

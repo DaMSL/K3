@@ -54,13 +54,13 @@ instance HasSpan (Annotation Literal) where
 
 instance Pretty (K3 Literal) where
     prettyLines (Node (LTuple :@: as) []) = ["LUnit" ++ drawAnnotations as]
-    
+
     prettyLines (Node (LEmpty t :@: as) []) =
         ["LEmpty" ++ drawAnnotations as, "|"] ++ prettyLines t
 
     prettyLines (Node (LCollection t :@: as) []) =
         ["LCollection" ++ drawAnnotations as, "|"] ++ prettyLines t
-    
+
     prettyLines (Node (t :@: as) es) = (show t ++ drawAnnotations as) : drawSubTrees es
 
 {- Literal annotation predicates -}

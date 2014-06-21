@@ -19,21 +19,12 @@
 
 namespace K3 {
 
-  using namespace std;
-
-  using std::atomic_uint;
-
-  using boost::condition_variable;
-  using boost::lock_guard;
-  using boost::mutex;
-  using boost::unique_lock;
-
   //--------------------------------------------
   // A reference counter for listener instances.
 
-  class ListenerCounter : public atomic_uint {
+  class ListenerCounter : public std::atomic_uint {
   public:
-    ListenerCounter() : atomic_uint(0) {}
+    ListenerCounter() : std::atomic_uint(0) {}
 
     void registerListener() { this->fetch_add(1); }
     void deregisterListener() { this->fetch_sub(1); }
@@ -46,7 +37,7 @@ namespace K3 {
   class ListenerControl {
   public:
 
-    ListenerControl(shared_ptr<mutex> m, shared_ptr<condition_variable> c,
+    ListenerControl(shared_ptr<boost::mutex> m, shared_ptr<boost::condition_variable> c,
                     shared_ptr<ListenerCounter> i)
       : listenerCounter(i), msgAvailable(false), msgAvailMutex(m), msgAvailCondition(c)
     {}
@@ -54,7 +45,7 @@ namespace K3 {
     // Waits on the message available condition variable.
     void waitForMessage()
     {
-      unique_lock<mutex> lock(*msgAvailMutex);
+      boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
       while ( !msgAvailable ) { msgAvailCondition->wait(lock); }
     }
 
@@ -62,7 +53,7 @@ namespace K3 {
     void messageAvailable()
     {
       {
-        lock_guard<mutex> lock(*msgAvailMutex);
+        boost::lock_guard<boost::mutex> lock(*msgAvailMutex);
         msgAvailable = true;
       }
       msgAvailCondition->notify_one();
@@ -70,15 +61,15 @@ namespace K3 {
 
     shared_ptr<ListenerCounter> counter() { return listenerCounter; }
 
-    shared_ptr<mutex> msgMutex() { return msgAvailMutex; }
-    shared_ptr<condition_variable> msgCondition() { return msgAvailCondition; }
+    shared_ptr<boost::mutex> msgMutex() { return msgAvailMutex; }
+    shared_ptr<boost::condition_variable> msgCondition() { return msgAvailCondition; }
 
   protected:
     shared_ptr<ListenerCounter> listenerCounter;
 
     bool msgAvailable;
-    shared_ptr<mutex> msgAvailMutex;
-    shared_ptr<condition_variable> msgAvailCondition;
+    shared_ptr<boost::mutex> msgAvailMutex;
+    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
   //------------
@@ -94,7 +85,7 @@ namespace K3 {
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<InternalCodec> c)
-        : name(n), ctxt_(ctxt), queues(q), 
+        : name(n), ctxt_(ctxt), queues(q),
           endpoint_(ep), control_(ctrl), transfer_codec(c),
           listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
       {
@@ -136,9 +127,9 @@ namespace K3 {
     using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
     // TODO: close method, terminating all incoming connections to this acceptor.
-    class Listener : public BaseListener<NContext, NEndpoint>, public boost::basic_lockable_adapter<mutex> {
+    class Listener : public BaseListener<NContext, NEndpoint>, public boost::basic_lockable_adapter<boost::mutex> {
     public:
-      typedef basic_lockable_adapter<mutex> llockable;
+      typedef basic_lockable_adapter<boost::mutex> llockable;
       typedef list<shared_ptr<NConnection> > ConnectionList;
       typedef boost::externally_locked<shared_ptr<ConnectionList>, Listener> ConcurrentConnectionList;
 
@@ -155,10 +146,10 @@ namespace K3 {
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
-          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));     
+          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
 
         } else {
-          listenerLog->logAt(trivial::error, "Invalid listener arguments.");
+          listenerLog->logAt(boost::log::trivial::error, "Invalid listener arguments.");
         }
       }
 
@@ -185,24 +176,24 @@ namespace K3 {
       // Endpoint execution.
 
       void acceptConnection()
-      { 
+      {
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const error_code& ec) {
               if ( !ec ) {
                 registerConnection(nextConnection);
-                this->listenerLog->logAt(trivial::trace, "Listener Registered a connection");
+                this->listenerLog->logAt(boost::log::trivial::trace, "Listener Registered a connection");
 
               }
               else {
-                this->listenerLog->logAt(trivial::error, "Failed to accept a connection: " + ec.message());
+                this->listenerLog->logAt(boost::log::trivial::error, "Failed to accept a connection: " + ec.message());
               }
               // recursive call:
               acceptConnection();
             });
         }
-        else { this->listenerLog->logAt(trivial::error, "Invalid listener endpoint or wire description"); }
+        else { this->listenerLog->logAt(boost::log::trivial::error, "Invalid listener endpoint or wire description"); }
       }
 
       void registerConnection(shared_ptr<NConnection> c)
@@ -271,11 +262,11 @@ namespace K3 {
                 receiveMessages(c, cdec);
               } else {
                 deregisterConnection(c);
-                listenerLog->logAt(trivial::error, string("Connection error: ")+ec.message());
+                listenerLog->logAt(boost::log::trivial::error, string("Connection error: ")+ec.message());
               }
             });
 
-        } else { listenerLog->logAt(trivial::error, "Invalid listener connection"); }
+        } else { listenerLog->logAt(boost::log::trivial::error, "Invalid listener connection"); }
       }
     };
   }
@@ -304,7 +295,7 @@ namespace K3 {
           terminated_ = false;
           thread_ = shared_ptr<boost::thread>(this->ctxt_->listenerThreads->create_thread(*this));
         } else {
-          listenerLog->logAt(trivial::error, "Invalid listener arguments.");
+          listenerLog->logAt(boost::log::trivial::error, "Invalid listener arguments.");
         }
       }
 
@@ -338,7 +329,7 @@ namespace K3 {
               v = cdec->decode("");
             }
           } else {
-            listenerLog->logAt(trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));
+            listenerLog->logAt(boost::log::trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));
             terminate();
           }
         }

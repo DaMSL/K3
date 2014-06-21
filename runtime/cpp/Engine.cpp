@@ -1,9 +1,14 @@
 #include "Engine.hpp"
 
+using namespace boost::log;
+using namespace boost::log::trivial;
+using boost::thread;
+
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
       internal_codec = _internal_codec;
+      if (log_level != "") { log_enabled = true; }
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
@@ -47,7 +52,7 @@ namespace K3 {
         }
       }
     }
-    
+
     //-----------
     // Messaging.
 
@@ -58,7 +63,7 @@ namespace K3 {
         bool local_address = isDeployedNode(*deployment, addr);
         bool shortCircuit =  local_address || simulation();
         Message msg(addr, triggerId, v);
-   
+
         if ( shortCircuit ) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
@@ -80,7 +85,7 @@ namespace K3 {
             } else {
               if (ep && !ep->hasWrite()) {
                 logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
-                boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+                boost::this_thread::sleep_for( boost::chrono::milliseconds(20) );
 
               }
               else {
@@ -102,7 +107,7 @@ namespace K3 {
         throw runtime_error(errorMsg);
       }
     }
-    
+
     //-----------------------
     // Engine execution loop
 
@@ -115,25 +120,29 @@ namespace K3 {
 
       if (next_message) {
         // Log Message
-        std::string target = next_message->target();
-        std::string contents = next_message->contents();
-        std::string sep = "======================================";
-        logAt(trivial::trace, sep);
-        logAt(trivial::trace, "Message for: " + target);
-        logAt(trivial::trace, "Contents: " + contents);
+        if (log_enabled) {
+          std::string target = next_message->target();
+          std::string contents = next_message->contents();
+          std::string sep = "======================================";
+          logAt(trivial::trace, sep);
+          logAt(trivial::trace, "Message for: " + target);
+          logAt(trivial::trace, "Contents: " + contents);
+        }
 
         // If there was a message, return the result of processing that message.
         LoopStatus res =  mp->process(*next_message);
 
         // Log Env
-        logAt(trivial::trace, "Environment: ");
-        std::map<std::string, std::string> env = mp->bindings(next_message->address());
-        std::map<std::string, std::string>::iterator iter;
-        for (iter = env.begin(); iter != env.end(); ++iter) {
-           std::string id = iter->first;
-           std::string val = iter->second;
-           logAt(trivial::trace, "  " + id + " = " + val);
-        }
+        if (log_enabled) {
+          logAt(trivial::trace, "Environment: ");
+          std::map<std::string, std::string> env = mp->bindings(next_message->address());
+          std::map<std::string, std::string>::iterator iter;
+          for (iter = env.begin(); iter != env.end(); ++iter) {
+             std::string id = iter->first;
+             std::string val = iter->second;
+             logAt(trivial::trace, "  " + id + " = " + val);
+          }
+       }
 
         return res;
 
@@ -202,7 +211,7 @@ namespace K3 {
 
       runMessages(mp, mp->status());
     }
-    
+
     // Return a new thread running runEngine()
     // with the provided MessageProcessor
     shared_ptr<thread> Engine::forkEngine(shared_ptr<MessageProcessor> mp) {
@@ -228,7 +237,7 @@ namespace K3 {
       }
       return r;
     }
-    
+
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode Engine::ioMode(string k3Mode) {
       IOMode r;
@@ -330,7 +339,7 @@ namespace K3 {
 
     void Engine::genericClose(Identifier eid, shared_ptr<Endpoint> ep) {
       // Close the endpoint
-      if (ep) { 
+      if (ep) {
         // Deregister the listener if this is a network source
         if ( get<1>(ep->handle()->networkSource()) ) {
           stopListener(eid);
@@ -368,7 +377,7 @@ namespace K3 {
 
     void Engine::stopListener(Identifier listener_name) {
       if ( listeners ) {
-      
+
         try {
           // Update listener control to decrement network done counter.
           shared_ptr<Net::Listener> lstnr = listeners->at(listener_name);
@@ -377,12 +386,12 @@ namespace K3 {
         } catch ( std::out_of_range& oor ) {
           logAt(trivial::error, "Invalid listener identifier "+listener_name);
         }
-      
+
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
     }
-    
+
     //-----------------------
     // IOHandle constructors.
 
@@ -447,5 +456,7 @@ namespace K3 {
       }
       return r;
     }
+
+    void Engine::logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
 
 }

@@ -79,7 +79,7 @@ instantiateAnnotation p (AnnType p' b cs) =
   let (b',cs') =
         replaceVariables Map.empty (Map.fromList substitutions) (b,cs) in
   AnnType (Map.difference p' p) b' cs'
-  
+
 -- |Defines concatenation of annotation types.
 concatAnnType :: ( CSL.ConstraintSetLike e c
                  , CSL.ConstraintSetLikePromotable ConstraintSet c
@@ -96,7 +96,7 @@ concatAnnType ann1@(AnnType p1 b1 cs1) ann2@(AnnType p2 _ _) = do
       IncompatibleTypeParameters p1 p2
     b3 <- concatAnnBody b1 b2'
     return $ AnnType p1 b3 $ cs1 `CSL.union` cs2'
-    
+
 -- |Defines concatenation over numerous annotation types.
 concatAnnTypes :: ( CSL.ConstraintSetLike e c
                   , CSL.ConstraintSetLikePromotable ConstraintSet c
@@ -140,7 +140,7 @@ concatAnnBodies :: forall c el.
                 => [AnnBodyType c]
                 -> Either AnnotationConcatenationError (AnnBodyType c)
 concatAnnBodies = foldM concatAnnBody $ AnnBodyType [] []
-  
+
 -- |Defines concatenation over (lists of) annotation member types.
 concatAnnMembers :: forall c el.
                     ( CSL.ConstraintSetLike el c
@@ -199,7 +199,7 @@ concatAnnMembers ms1 ms2 =
       ans
       where
         prettyEither :: (Pretty a, Pretty b) => Either a b -> [String]
-        prettyEither = either prettyLines prettyLines 
+        prettyEither = either prettyLines prettyLines
         typeOfMem :: AnnMemType c -> (QVar, c)
         typeOfMem (AnnMemType _ _ _ qa cs) = (qa,cs)
         memTypesToCs :: (QVar -> c) -> [(QVar,c)] -> c
@@ -216,7 +216,7 @@ concatAnnMembers ms1 ms2 =
           if x `mutuallyWithin` y
             then Right ()
             else Left $ PolymorphicArityMembersNotEquivalent $ idOf $ head mems
-            
+
 -- |Defines depolarization of annotation members.  If depolarization is not
 --  defined (e.g. because multiple annotations positively define the same
 --  identifier), then an appropriate error is returned instead.

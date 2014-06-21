@@ -364,7 +364,7 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
 
 roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
 roleBody noDriver n =
-    pushBindings >> rule >>= popBindings 
+    pushBindings >> rule >>= popBindings
       >>= \df -> if noDriver then return $ fst df else postProcessRole n df
   where rule = some declaration >>= return . concat
         pushBindings = modifyEnvironment_ addFrame
@@ -452,10 +452,10 @@ annotationMember = memberError $ mkMember <$> annotatedRule
   where
     rule          = (,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
     annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
-    
+
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
                               <*> identifier <* colon
-                              <*> qualifiedTypeExpr 
+                              <*> qualifiedTypeExpr
                               <*> optional equateExpr
 
     subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
@@ -474,7 +474,7 @@ annotationMember = memberError $ mkMember <$> annotatedRule
     mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
     mkSub n uid              = Right (n, uid)
 
-    attachMemAnnots uid spn cmts props memCtor = memCtor $ (DUID uid):(DSpan spn):(props ++ map DSyntax cmts)    
+    attachMemAnnots uid spn cmts props memCtor = memCtor $ (DUID uid):(DSpan spn):(props ++ map DSyntax cmts)
     wrapInComments p = (\a b c -> (b, a ++ c)) <$> comment False <*> p <*> comment True
 
     memberError = parseError "annotation" "member"
@@ -595,7 +595,7 @@ tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
 {- Expressions -}
 
 expr :: ExpressionParser
-expr = parseError "expression" "k3" 
+expr = parseError "expression" "k3"
         $ withProperties False eProperties $ buildExpressionParser fullOpTable eApp
 
 nonSeqExpr :: ExpressionParser
@@ -635,7 +635,7 @@ eTerm = do
 
     eProject = dot *> identifier
 
-    wrapInComments p = 
+    wrapInComments p =
       (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment False <*> p <*> comment True
 
     attachComment e cmt = e @+ (ESyntax cmt)

@@ -42,8 +42,8 @@ declare range : int -> collection {i : int} @ { Collection }
 ///////////////////////
 //
 // Value conversion
-declare truncate : int -> real
-declare real_of_int : real -> int
+declare truncate : real -> int
+declare real_of_int : int -> real
 
 // Maximum Int value
 declare get_max_int : () -> int

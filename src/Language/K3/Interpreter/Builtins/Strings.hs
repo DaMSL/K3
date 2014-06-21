@@ -16,7 +16,7 @@ import Data.Char
 genStringBuiltin :: Identifier -> K3 Type -> Maybe (Interpretation Value)
 
 -- substring :: int -> string -> int
-genStringBuiltin "substring" _ = 
+genStringBuiltin "substring" _ =
     Just $ vfun $ \(VInt n) ->
         vfun $ \(VString s) ->
             return $ (VString (take n s))
@@ -37,7 +37,7 @@ genStringBuiltin "getOctalDigits" _ = Just $ vfun $ \_ -> return $ VString "0123
 
 -- Functions --
 
-genStringBuiltin "substring" _ = 
+genStringBuiltin "substring" _ =
   Just $ vfun $ \(VInt n) ->
     vfun $ \(VString s) ->
       return $ \(VString (take n s))
@@ -49,7 +49,7 @@ genStringBuiltin "getOrd" _ = Just $ vfun $ (\VString char) -> do
       throwE $ RunTimeTypeError ("In 'getOrd' : Expected a character but received" ++ show char)
 
 genStringBuiltin "getChar" _ = Just $ vfun $ \(VInt num) -> do
-    
+
 
 genStringBuiltin "reverseStringByCharacters" _ = Just $ vfun $
 

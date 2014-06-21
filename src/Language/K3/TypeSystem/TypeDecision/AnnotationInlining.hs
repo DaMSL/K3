@@ -3,7 +3,7 @@
 {-|
   This module defines the routines necessary to inline member annotation
   declarations for the purpose of constructing an initial environment.
-  
+
   Inlining proceeds by extracting the annotations from the AST and representing
   them in a form more amenable to duplicate detection.  This form is essentially
   a dictionary of dictionary pairs.  The outermost layer maps identifiers to the
@@ -64,7 +64,7 @@ data AnnMemRepr = AnnMemRepr
                     , reprNative   :: Bool
                     }
   deriving (Show)
-  
+
 -- |A type alias for type parameter contexts.  Each entry maps the name of a
 --  declared type parameter to a pair of type variables chosen for it as well as
 --  an upper bounding type expression when one was provided.
@@ -144,7 +144,7 @@ appendRepr (AnnRepr lam sam mad umad) (AnnRepr lam' sam' mad' umad') =
         let i = head ks in
         typeError $ MultipleAnnotationBindings i [ reprMem $ m1 Map.! i
                                                  , reprMem $ m2 Map.! i]
-        
+
 concatReprs :: forall m. (TypeErrorI m, Monad m)
            => [AnnRepr] -> m AnnRepr
 concatReprs = foldM appendRepr emptyRepr
@@ -232,8 +232,8 @@ closeReprs dict = do
       if Set.null unproc then return ((repr,s,decl), False) else
         do
           let (i,pol) = Set.findMin unproc
-          (repr',_,_) <- 
-              maybe (typeError (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i)) 
+          (repr',_,_) <-
+              maybe (typeError (UnboundTypeEnvironmentIdentifier s $ TEnvIdentifier i))
                     return $ Map.lookup i current
           let repr'' = case pol of
                           Positive -> repr'

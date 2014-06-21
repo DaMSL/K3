@@ -50,7 +50,7 @@ genCType (tag -> TByte) = return (text "unsigned char")
 genCType (tag -> TInt) = return (text "int")
 genCType (tag -> TReal) = return (text "double")
 genCType (tag -> TString) = return (text "string")
-genCType (tag &&& children -> (TOption, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
+genCType (tag &&& children -> (TOption, [t])) = (text "std::shared_ptr" <>) . angles <$> genCType t
 genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
 genCType (tag &&& children -> (TTuple, [])) = return (text "unit_t")
 genCType (tag &&& children -> (TTuple, ts))
@@ -63,7 +63,18 @@ genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
         Nothing -> return $ text "Collection" <> angles ct
         Just i' -> return $ text i' <> angles ct
 genCType (tag -> TAddress) = return $ text "Address"
+genCType (tag &&& children -> (TFunction, [ta, tr])) = do
+    cta <- genCType ta
+    ctr <- genCType tr
+    return $ genCQualify (text "std") $ text "function" <> angles (ctr <> parens cta)
+
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
+
+genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR
+genCBind f x n = genCQualify (text "std") (text "bind") <> tupled ([f, x] ++ placeholderList)
+  where placeholderList = [ genCQualify (genCQualify (text "std") (text "placeholders")) (text "_" <> int i)
+                          | i <- [1 .. n - 2]
+                          ]
 
 -- | Get the K3 Type of an expression. Relies on type-manifestation to have attached an EType
 -- annotation to the expression ahead of time.

@@ -4,9 +4,9 @@
   This module defines a generic @Reduce@ typeclass which allows general
   reductions over a data type.  It also provides Template Haskell routines
   to generate naturally catamorphic boilerplate instances for data types.
-  
+
   An example of use is as follows:
-  
+
   @
     -- Data structure describing the reduction.
     data MyReduction = MyReduction Int
@@ -21,7 +21,7 @@
         Baz5 m -> if n > m then mempty else Set.singleton m
         _ -> homBaz baz
   @
-  
+
   In this example, we assume that Foo, Bar, and Baz are data structures which
   contain each other in some fashion.  Each may have any number of constructors.
   The above code defines reduction through Foo and Bar to be naturally
@@ -55,7 +55,7 @@ import Language.K3.Utils.TemplateHaskell.Utils
 
 class (Monoid r) => Reduce t d r | t d -> r where
   reduce :: t -> d -> r
-  
+
 -- |A Template Haskell mechanism for defining a reduction instance for
 --  the @Reduce@ typeclass at a given type declaration.
 defineCatInstance :: Q Type -> Name -> Name -> Q [Dec]
@@ -142,7 +142,7 @@ defineReduceEmptyInstance rtype tname dname = do
   (dtyp,_) <- canonicalType dname
   [d| instance Reduce $(return ttyp) $(return dtyp) $(rtype) where
         reduce _ = const mempty |]
-        
+
 -- |Creates a @Reduce@ instance for a concrete data type which is known to be
 --  @Foldable@.
 defineReduceFoldInstance :: Q Type -> Name -> Q Type -> Q [Dec]
@@ -161,7 +161,7 @@ defineCommonPrimitiveReduceEmptyInstances rtype tname =
     , ''Char
     , ''Bool
     ]
-    
+
 defineCommonTupleReduceInstance :: Q Type -> Name -> Int -> Q [Dec]
 defineCommonTupleReduceInstance rtype tname n = do
   (ttyp,_) <- canonicalType tname
@@ -177,7 +177,7 @@ defineCommonTupleReduceInstance rtype tname n = do
                 (normalB body) []]
   let context = cxt $ map (\v -> classP (''Reduce) [return ttyp, varT v, rtype])
                         paramNames
-  let instD = 
+  let instD =
         instanceD context (applyTypeCon (ConT ''Reduce) <$>
                               sequence [return ttyp, return tupleType, rtype])
           [funD 'reduce [clause [varP redName, varP tupleName]
@@ -191,7 +191,7 @@ defineCommonTupleReduceInstance rtype tname n = do
       * @Maybe@
       * @[]@
       * @Set@
--}    
+-}
 defineCommonCatInstances :: Q Type -> Name -> Q [Dec]
 defineCommonCatInstances rtype tname =
   let insts = [ defineCommonPrimitiveReduceEmptyInstances rtype tname

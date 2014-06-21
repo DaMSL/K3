@@ -16,11 +16,11 @@ import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 peerBReader :: String -> Either String (Address, PeerBootstrap)
 peerBReader peerDesc = either (Left . show) Right $ runK3Parser parser peerDesc
   where parser       = mkBootstrap <$> ipAddressP <* colon <*> portP
-                                   <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> literal)         
+                                   <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> literal)
         ipAddressP   = some $ choice [alphaNum, oneOf "."]
         portP        = fromIntegral <$> natural
-        
-        mkBootstrap host port bootstrap = 
+
+        mkBootstrap host port bootstrap =
           let addr  = Address (host, port)
               addrE = LC.address (LC.string host) (LC.int port)
           in

@@ -14,7 +14,7 @@ data AnalysisAnnotation
 
   | BindAliasExtension Identifier
     -- ^ Annotation to extend record bind targets for record projection.
-  
+
   | ReadOnlyBind [Identifier]
     -- ^ Annotation to mark the ids that are never written to in a bind
     --   False = used by variables which cannot access the unbound variable

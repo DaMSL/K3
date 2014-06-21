@@ -12,7 +12,7 @@ import Control.Monad.State
 
 import Data.Function
 import Data.List
-import qualified Data.HashTable.IO as HT 
+import qualified Data.HashTable.IO as HT
 
 import Language.K3.Core.Common
 import Language.K3.Interpreter.Data.Types
@@ -29,7 +29,7 @@ $(customLoggingFunctions ["Dispatch", "BindPath"])
 
 -- Print a value, obeying the instructions in the printconfig structure
 valuePrint :: PrintConfig -> Value -> String
-valuePrint pc (VCollection (_, c)) = "VCollection (Collection {" ++ 
+valuePrint pc (VCollection (_, c)) = "VCollection (Collection {" ++
     if printNamespace pc then "namespace = " ++ (show $ namespace c) ++ ", " else "" ++
     if printDataspace pc then "dataspace = " ++ (show $ dataspace c) ++ ", " else "" ++
     if printRealizationId pc then "realizationId = " ++ (show $ realizationId $ c) ++ ", " else "" ++
@@ -47,8 +47,8 @@ prettyIEnvM pc env = do
     let nWidth = maximum $ map (length . fst) env_list
         sorted_env = sortBy (compare `on` fst) env_list
     bindings <- mapM (prettyEnvEntries nWidth) sorted_env
-    return $ concat bindings 
-  where 
+    return $ concat bindings
+  where
     prettyEnvEntries w (n, eel) = do
       sl <- foldM checkAndPretty [] eel
       return . concat $ map (shift (prettyName w n) (prefixPadTo (w+4) " .. ") . wrap 70) sl
@@ -75,7 +75,7 @@ prettyIStateM st = do
 
 prettyIResultM :: IResult Value -> EngineM Value [String]
 prettyIResultM ((res, st), _) =
-  return . ([showResultValue res] ++) =<< prettyIStateM st 
+  return . ([showResultValue res] ++) =<< prettyIStateM st
 
 
 {- Additional show methods -}
@@ -106,14 +106,14 @@ showIResultM :: IResult Value -> EngineM Value String
 showIResultM r = prettyIResultM r >>= return . boxToString
 
 showDispatchM :: Address -> Identifier -> Value -> IState -> Maybe (Either InterpretationError Value) -> String -> EngineM Value [String]
-showDispatchM addr name args st m_res str = 
+showDispatchM addr name args st m_res str =
   -- If we have a result, show that. Otherwise show state
   case m_res of
     Just v  -> wrap' (showPC (getPrintConfig st) args) <$> (showIResultTagM str ((v,st),[])) >>= return . indent 2
     Nothing -> wrap' (showPC (getPrintConfig st) args) <$> (showIStateTagM  str st) >>= return . indent 2
   where
     wrap' arg res =  ["", "TRIGGER " ++ name ++ " " ++ show addr ++ " { "]
-                  ++ ["  Args: " ++ arg] 
+                  ++ ["  Args: " ++ arg]
                   ++ res ++ ["}"]
 
 {- Debugging helpers -}
@@ -129,7 +129,7 @@ logIStateM tag' addr st = do
 
 logIResultM :: String -> Maybe Address -> IResult Value -> EngineM Value ()
 logIResultM tag' addr r = do
-    msg <- showIResultTagM (tag' ++ (maybe "" show $ addr)) r 
+    msg <- showIResultTagM (tag' ++ (maybe "" show $ addr)) r
     void $ _notice_Dispatch $ boxToString msg
 
 logTriggerM :: Address -> Identifier -> Value -> IState -> Maybe (Either InterpretationError Value) -> String -> EngineM Value ()
@@ -138,7 +138,7 @@ logTriggerM addr n args st m_res str = do
     void $ _notice_Dispatch $ boxToString msg
 
 logIStateMI :: Interpretation ()
-logIStateMI = get >>= liftEngine . showIStateM >>= liftIO . putStrLn 
+logIStateMI = get >>= liftEngine . showIStateM >>= liftIO . putStrLn
 
 logProxyPathI :: Interpretation ()
 logProxyPathI = getProxyPath >>= void . _notice_BindPath . ("BIND PATH: "++) . show

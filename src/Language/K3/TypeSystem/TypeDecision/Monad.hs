@@ -62,7 +62,7 @@ instance FreshOpaqueI TypeDecideM where
 instance FreshVarI TypeDecideM where
   freshQVar origin = QTVar <$> (TVarBasicID <$> getNextVarId) <*> return origin
   freshUVar origin = UTVar <$> (TVarBasicID <$> getNextVarId) <*> return origin
-  
+
 instance TypeErrorI TypeDecideM where
   typeError = decisionError
 

@@ -28,7 +28,7 @@ constraintSetQueryDescriptors =
                 [ ( () , (t,someVar qa) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllTypesUpperBoundingAnyVars"
         [t| () |]
@@ -40,7 +40,7 @@ constraintSetQueryDescriptors =
                 [ ( () , (someVar qa,t) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllTypesLowerBoundingTypes"
         [t| () |]
@@ -50,7 +50,7 @@ constraintSetQueryDescriptors =
                 [ ( () , (t,t') ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllQualOrVarLowerBoundingQVar"
         [t| () |]
@@ -60,7 +60,7 @@ constraintSetQueryDescriptors =
                 [ ( () , (qv,qa) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllTypeOrVarLowerBoundingQVar"
         [t| () |]
@@ -70,7 +70,7 @@ constraintSetQueryDescriptors =
                 [ ( () , (ta,qa) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllQVarLowerBoundingQVar"
         [t| () |]
@@ -80,7 +80,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (qa1, qa2) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllUVarLowerBoundingQVar"
         [t| () |]
@@ -90,7 +90,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (a, qa) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllQVarLowerBoundingUVar"
         [t| () |]
@@ -100,7 +100,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (qa, a) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllUVarLowerBoundingUVar"
         [t| () |]
@@ -110,7 +110,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (a1, a2) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllMonomorphicQualifiedUpperConstraint"
         [t| () |]
@@ -120,7 +120,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (qa, qs) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllOpaqueLowerBoundedConstraints"
         [t| () |]
@@ -130,7 +130,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (oa, t) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "AllOpaqueUpperBoundedConstraints"
         [t| () |]
@@ -140,7 +140,7 @@ constraintSetQueryDescriptors =
                 [ ( (), (t, oa) ) ]
               _ -> []
         |]
-        
+
     , QueryDescriptor
         "TypeOrAnyVarByAnyVarLowerBound"
         [t| AnyTVar |]
@@ -298,5 +298,5 @@ constraintSetQueryDescriptors =
               OpaqueBoundConstraint oa lb ub -> [ (oa, (lb, ub)) ]
               _ -> []
         |]
-    
+
     ]

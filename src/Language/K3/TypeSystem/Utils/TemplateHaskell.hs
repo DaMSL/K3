@@ -19,7 +19,7 @@ import Language.K3.Core.Annotation
 mkAssertChildren :: (Name -> Q Type -> Q Type)
                       -- ^A function which, given the name of the K3 tree type
                       --  parameter and the resulting tuple type, will produce
-                      --  the type for the function. 
+                      --  the type for the function.
                  -> (Q Exp -> Q Exp)
                       -- ^A function which, given an expression referring to the
                       --  tree, will produce an expression to be evaluated when
@@ -40,7 +40,7 @@ mkAssertChildren ftypeDeclFn errExp succExpFn n = do
   let tupTyp = foldl appT (tupleT n) $ replicate n $ [t|K3 $(return typ)|]
   ftype <- ftypeDeclFn typN tupTyp
   let signature = sigD fname $ return ftype
-  let bodyExp = 
+  let bodyExp =
         [| \tree -> case $(varE checkChildrenFnName) tree of
                       Nothing -> $(errExp [|tree|])
                       Just r -> $(succExpFn [|r|]) |]

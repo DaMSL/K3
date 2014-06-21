@@ -26,7 +26,7 @@ genIOBuiltin "show" _ = Just $ vfun $ \x -> do
 -- Log to the screen
 genIOBuiltin "print" _ = Just $ vfun logString
   where logString (VString s) = do
-              -- liftIO $ putStrLn s 
+              -- liftIO $ putStrLn s
               _notice_Function s
               return $ VTuple []
         logString x           = throwE $ RunTimeTypeError ("In 'print': Expected a string but received " ++ show x)

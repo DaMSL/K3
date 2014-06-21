@@ -28,8 +28,8 @@ substituteImmutBinding i iExpr expr =
     pruneSubs subs (tag -> ECaseOf j) = return $ pruneBinding subs [j] [False, True, False]
     pruneSubs subs n = return $ (subs, replicate (length $ children n) subs)
 
-    pruneBinding subs ids oldOrNew = 
-      let newSubs = foldl removeAssoc subs ids  
+    pruneBinding subs ids oldOrNew =
+      let newSubs = foldl removeAssoc subs ids
       in (subs, map (\useNew -> if useNew then newSubs else subs) oldOrNew)
 
     rebuild subs _  n@(tag -> EVariable j) = return $ maybe n id $ lookup j subs
@@ -41,9 +41,9 @@ substituteImmutBinding i iExpr expr =
 renumberUids :: K3 Declaration -> K3 Declaration
 renumberUids p = evalState run 1
   where
-    run = do 
+    run = do
       -- First modify declaration annotations
-      ds  <- modifyTree (\n -> replace isDUID (DUID . UID) n) p 
+      ds  <- modifyTree (\n -> replace isDUID (DUID . UID) n) p
       ds' <- mapExpression replaceAll ds
       return ds'
 
@@ -60,12 +60,12 @@ renumberUids p = evalState run 1
 -- Add missing spans in a program tree
 addSpans :: String -> K3 Declaration -> K3 Declaration
 addSpans spanName p = runIdentity $ do
-  ds  <- modifyTree (return . add isDSpan (DSpan $ GeneratedSpan spanName)) p 
+  ds  <- modifyTree (return . add isDSpan (DSpan $ GeneratedSpan spanName)) p
   mapExpression addExpr ds
   where
     addExpr n = modifyTree addSpanQual n
 
-    addSpanQual n = return $ 
+    addSpanQual n = return $
                       add isESpan (ESpan $ GeneratedSpan spanName) n
                       -- add isEQualified EImmutable n
 

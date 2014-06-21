@@ -6,9 +6,9 @@
   to generate naturally catamorphic boilerplate instances for data types.
   This typeclass is distinct from @Reduce@ for reasons of performance and to
   simplify the underlying generation code.
-  
+
   An example of use is as follows:
-  
+
   @
     -- Data structure describing the reduction.
     data MyReduction = MyReduction Int
@@ -28,7 +28,7 @@
               return $ Set.singleton m
         _ -> homBaz baz
   @
-  
+
   In this example, we assume that Foo, Bar, and Baz are data structures which
   contain each other in some fashion.  Each may have any number of constructors.
   The above code defines reduction through Foo and Bar to be naturally
@@ -65,7 +65,7 @@ import Language.K3.Utils.TemplateHaskell.Utils
 
 class (Monad m, Monoid r) => ReduceM m t d r | t d -> r where
   reduceM :: t -> d -> m r
-  
+
 -- |A Template Haskell mechanism for defining a reduction instance for
 --  the @ReduceM@ typeclass at a given type declaration.
 defineCatInstanceM :: Q Type -> Name -> Name -> Q [Dec]
@@ -165,7 +165,7 @@ defineReduceEmptyInstanceM rtype tname dname = do
   [d| instance (Monad m)
             => ReduceM m $(return ttyp) $(return dtyp) $(rtype) where
         reduceM _ = return . const mempty |]
-        
+
 -- |Creates a @ReduceM@ instance for a concrete data type which is known to be
 --  @Traversable@.
 defineReduceTraversableInstanceM :: Q Type -> Name -> Q Type -> Q [Dec]
@@ -184,7 +184,7 @@ defineCommonPrimitiveReduceEmptyInstancesM rtype tname =
     , ''Char
     , ''Bool
     ]
-    
+
 defineCommonTupleReduceInstanceM :: Q Type -> Name -> Int -> Q [Dec]
 defineCommonTupleReduceInstanceM rtype tname n = do
   (ttyp,_) <- canonicalType tname
@@ -194,7 +194,7 @@ defineCommonTupleReduceInstanceM rtype tname n = do
   resNames <- sequence $ take n $ mkPrefixNames "tupleRes"
   let redName = mkName "_t"
   let tupleName = mkName "tuple"
-  mname <- newName "m" 
+  mname <- newName "m"
   let body = doE $ (map (\(anm,rnm) -> bindS (varP rnm)
                                           [| reduceM $(varE redName)
                                                      $(varE anm) |]) $
@@ -207,7 +207,7 @@ defineCommonTupleReduceInstanceM rtype tname n = do
                               [varT mname, return ttyp, varT v, rtype])
                         typeParamNames
                       ++ [classP ''Monad [varT mname]]
-  let instD = 
+  let instD =
         instanceD context (applyTypeCon (ConT ''ReduceM) <$>
                               sequence [ varT mname, return ttyp
                                        , return tupleType, rtype])
@@ -222,7 +222,7 @@ defineCommonTupleReduceInstanceM rtype tname n = do
       * @Maybe@
       * @[]@
       * @Set@
--}    
+-}
 defineCommonCatInstancesM :: Q Type -> Name -> Q [Dec]
 defineCommonCatInstancesM rtype tname = do
   (ttyp,_) <- canonicalType tname
@@ -232,8 +232,8 @@ defineCommonCatInstancesM rtype tname = do
                   => ReduceM m $(return ttyp) (Set a) r where
               reduceM t s =
                 mconcat `liftM` mapM (reduceM t) (Set.toList s)
-              
-              
+
+
               --  Set.fromList `liftM` mapM (transformM t) (Set.toList s)
           |]
         ]

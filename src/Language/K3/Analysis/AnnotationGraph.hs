@@ -4,7 +4,7 @@
 module Language.K3.Analysis.AnnotationGraph where
 
 import Data.Graph.Wrapper ( Graph )
-import qualified Data.Graph.Wrapper as G 
+import qualified Data.Graph.Wrapper as G
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
@@ -18,7 +18,7 @@ annotationGraph annotationF prog = G.fromList $ maybe [] id $ foldMapTree concat
   where concatChildAcc childAccs (tag -> DAnnotation n tvars mems) =
           let (node, edges) = annotationF n tvars mems
           in Just $ [(n, node, edges)] ++ concat childAccs
-        concatChildAcc childAccs _ = Just $ concat childAccs 
+        concatChildAcc childAccs _ = Just $ concat childAccs
 
 providesGraph :: K3 Declaration -> Graph Identifier ([TypeVarDecl], [AnnMemDecl])
 providesGraph prog = annotationGraph extractProvides prog

@@ -59,8 +59,8 @@ defaultAddress = Address ("127.0.0.1", 40000)
 data Span
     = Span String Int Int Int Int
         -- ^ Source name, start line and column, end line and column.
-    
-    | GeneratedSpan String 
+
+    | GeneratedSpan String
         -- ^ Generator-specific metadata.
   deriving (Eq, Ord, Read, Show)
 
@@ -78,7 +78,7 @@ data NoneMutability
 -- | Endpoint types.
 data EndpointSpec
   = ValueEP
-  | BuiltinEP String String    -- ^ Builtin endpoint type (stdin/stdout/stderr), format  
+  | BuiltinEP String String    -- ^ Builtin endpoint type (stdin/stdout/stderr), format
   | FileEP    String String    -- ^ File path, format
   | NetworkEP String String    -- ^ Address, format
   deriving (Eq, Ord, Read, Show)
@@ -162,7 +162,7 @@ ireadEither s =
     []  -> return $ Left "iread: no parse"
     _   -> return $ Left "iread: ambiguous parse"
  where
-  read' = do 
+  read' = do
     x <- ireadPrec
     TRP.lift TP.skipSpaces
     return x
@@ -181,7 +181,7 @@ instance (IShow a) => IShow (MVar a) where
 instance (IRead a) => IRead (IORef a) where
   ireadPrec = parens ( do
       TR.Ident s <- TR.lexP
-      case s of 
+      case s of
         "IORef" -> ireadPrec >>= return . (>>= newIORef)
         _ -> TRP.pfail
     )
@@ -189,7 +189,7 @@ instance (IRead a) => IRead (IORef a) where
 instance (IRead a) => IRead (MVar a) where
   ireadPrec = parens ( do
       TR.Ident s <- TR.lexP
-      case s of 
+      case s of
         "MVar" -> ireadPrec >>= return . (>>= newMVar)
         _ -> TRP.pfail
     )

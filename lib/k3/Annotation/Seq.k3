@@ -11,13 +11,13 @@ annotation Seq given type a,b {
   provides lifted combine : self -> self
 
   @:Transformer
-  provides lifted split   : self -> (self, self)
+  provides lifted split   : () -> (self, self)
 
   @:Transformer
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Seq}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self

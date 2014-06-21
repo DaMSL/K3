@@ -22,7 +22,7 @@ module Language.K3.Utils.Pretty (
     shift,
     terminalShift,
     nonTerminalShift,
-    
+
     wrap,
     indent,
     hconcatTop,
@@ -35,7 +35,7 @@ module Language.K3.Utils.Pretty (
     hconcatSoft,
     intersperseBoxes,
     sequenceBoxes,
-    
+
     (%+),
     (+%),
     (%$),
@@ -77,7 +77,7 @@ removeTrailingWhitespace s = case s of
             else c:s''
 
 -- Configuration for the kind of printing we want to do
-data PrintConfig = PrintConfig { 
+data PrintConfig = PrintConfig {
                      printVerboseTypes  :: Bool
                    , printEnv           :: Bool
                    , printNamespace     :: Bool
@@ -98,7 +98,7 @@ defaultPrintConfig :: PrintConfig
 defaultPrintConfig  = PrintConfig True True True True True True True True True True True True True
 
 tersePrintConfig :: PrintConfig
-tersePrintConfig = defaultPrintConfig {printNamespace=False, 
+tersePrintConfig = defaultPrintConfig {printNamespace=False,
                                        printFunctions=False,
                                        printQualifiers=False,
                                        printVerboseTypes=False}
@@ -134,17 +134,17 @@ indent n = let s = replicate n ' ' in shift s s
 
 hconcatTop :: [String] -> [String] -> [String]
 hconcatTop = hconcat (++[""])
- 
+
 hconcatBottom :: [String] -> [String] -> [String]
 hconcatBottom = hconcat ([""]++)
-  
+
 hconcat :: ([String] -> [String]) -> [String] -> [String] -> [String]
 hconcat f x y =
   let (x',y') = mkSameLength x y f in
   let size = maximum (map length x') in
   let x'' = map (\s -> s ++ replicate (size - length s) ' ') x' in
   zipWith (++) x'' y'
-  
+
 mkSameLength :: [a] -> [a] -> ([a] -> [a]) -> ([a],[a])
 mkSameLength x y f =
   case (length x, length y) of

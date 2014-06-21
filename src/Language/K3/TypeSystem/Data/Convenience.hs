@@ -40,13 +40,13 @@ type NormalAnnMemType = AnnMemType ConstraintSet
 -- |A value defining the empty annotation.
 emptyAnnotation :: NormalAnnType
 emptyAnnotation = AnnType Map.empty (AnnBodyType [] []) csEmpty
-  
+
 -- |A typeclass with convenience instances for constructing constraints.  This
 --  constructor only works on 2-ary constraint constructors (which most
 --  constraints have).
 class ConstraintConstructor2 a b where
   constraint :: a -> b -> Constraint
-  
+
 -- |An infix synonym for @constraint@.
 infix 7 <:
 (<:) :: (ConstraintConstructor2 a b) => a -> b -> Constraint
@@ -118,4 +118,4 @@ $(
   -- Rubber, meet road.
   concat <$> mapM mkInstance instances
  )
-  
+

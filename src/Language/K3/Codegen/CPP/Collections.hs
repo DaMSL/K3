@@ -157,11 +157,15 @@ record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
 record rName idts = do
     members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
     sD <- serializeDefn
-    let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> sD) <> semi
+    let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> equalsOperator <$$> sD) <> semi
     patcherDefn <- patcherSpec
     addForward $ text "struct" <+> text rName <> semi
     return $ vsep [structDefn, patcherDefn]
   where
+    fieldEq :: CPPGenR
+    fieldEq = text "if" <+> parens (cat $ punctuate (text "&&") [text f <+> text "==" <+> text "__other" <> dot <> text f | (f, _) <- idts]) <+> hangBrace (text "return true;") <+> hangBrace (text "return false;")
+    equalsOperator :: CPPGenR
+    equalsOperator = genCFunction Nothing (text "bool") (text "operator==") [text rName <+> text "__other"] fieldEq
     oneFieldParser :: Identifier -> CPPGenM CPPGenR
     oneFieldParser i = do
         let keyParser = text "qi::lit" <> parens (dquotes $ text i)

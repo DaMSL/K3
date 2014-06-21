@@ -108,7 +108,7 @@ tenv0 :: TEnv
 tenv0 = []
 
 tlkup :: TEnv -> Identifier -> Either String QPType
-tlkup env x = maybe err Right $ lookup x env 
+tlkup env x = maybe err Right $ lookup x env
  where err = Left $ "Unbound variable in type environment: " ++ x
 
 text :: TEnv -> Identifier -> QPType -> TEnv
@@ -119,7 +119,7 @@ tdel env x = deleteBy ((==) `on` fst) (x, QPType [] tint) env
 
 
 {- TAEnv helpers -}
-taenv0 :: TAEnv 
+taenv0 :: TAEnv
 taenv0 = Map.empty
 
 talkup :: TAEnv -> Identifier -> Either String TMEnv
@@ -145,7 +145,7 @@ tdvdel :: TDVEnv -> Identifier -> TDVEnv
 tdvdel env x = deleteBy ((==) `on` fst) (x,-1) env
 
 {- TIEnv helpers -}
-tienv0 :: TIEnv 
+tienv0 :: TIEnv
 tienv0 = (tenv0, taenv0, tdvenv0, tvenv0)
 
 -- | Getters.
@@ -187,7 +187,7 @@ tiexte :: TIEnv -> Identifier -> QPType -> TIEnv
 tiexte (te,ta,tdv,tv) x t = (text te x t, ta, tdv, tv)
 
 tiexta :: TIEnv -> Identifier -> TMEnv -> TIEnv
-tiexta (te,ta,tdv,tv) x ate = (te, taext ta x ate, tdv, tv) 
+tiexta (te,ta,tdv,tv) x ate = (te, taext ta x ate, tdv, tv)
 
 tiextdv :: TIEnv -> Identifier -> QTVarId -> TIEnv
 tiextdv (te, ta, tdv, tv) x v = (te, ta, tdvext tdv x v, tv)
@@ -232,10 +232,10 @@ tvchasev :: TVEnv -> Maybe QTVarId -> K3 QType -> (Maybe QTVarId, K3 QType)
 tvchasev tve _ (tag -> QTVar v) | Just ctv <- tvlkup tve v = tvchasev tve (Just v) ctv
 tvchasev _ lastV tv = (lastV, tv)
 
--- Compute (quite unoptimally) the characteristic function of the set 
+-- Compute (quite unoptimally) the characteristic function of the set
 --  forall tvb \in fv(tve_before). Union fv(tvsub(tve_after,tvb))
 tvdependentset :: TVEnv -> TVEnv -> (QTVarId -> Bool)
-tvdependentset tve_before tve_after = 
+tvdependentset tve_before tve_after =
     \tv -> any (\tvb -> occurs tv (tvar tvb) tve_after) tvbs
  where
    tvbs = tvfree tve_before
@@ -296,7 +296,7 @@ tvsub qt = mapTree sub qt
 
     sub _ t = return t
 
-    extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1 
+    extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
 -- | Lower bound computation for numeric and record types.
 --   This function does not preserve annotations.
@@ -305,11 +305,11 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
   where
     tvlower' a' b' = case (tag a', tag b') of
       (QTPrimitive p1, QTPrimitive p2)
-        | [p1, p2] `intersect` [QTReal, QTInt, QTNumber] == [p1,p2] -> 
+        | [p1, p2] `intersect` [QTReal, QTInt, QTNumber] == [p1,p2] ->
             annLower a' b' >>= return . foldl (@+) (tprim $ toEnum $ minimum $ map fromEnum [p1,p2])
         | p1 == p2 -> return a'
-      
-      (QTCon (QTRecord i1), QTCon (QTRecord i2)) 
+
+      (QTCon (QTRecord i1), QTCon (QTRecord i2))
         | i1 `intersect` i2 == i1 -> mergedRecord True  i1 a' i2 b'
         | i1 `intersect` i2 == i2 -> mergedRecord False i2 b' i1 a'
         | otherwise -> annLower a' b' >>= return . foldl (@+) (trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b'))
@@ -337,7 +337,7 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
       annLower supqt subqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
 
     mergedCollection annIds ct1 ct2 = do
-       ctntLower <- tvlower (head $ children ct1) (head $ children ct2) 
+       ctntLower <- tvlower (head $ children ct1) (head $ children ct2)
        annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
     mergeCovering supAsLeft sup sub =
@@ -393,12 +393,12 @@ collectionSubRecord ct@(tag -> QTCon (QTCollection annIds)) (tag -> QTCon (QTRec
     mkColQT tienv = do
       memEnvs <- mapM (liftEitherM . tilkupa tienv) annIds
       mkCollectionFSQType annIds memEnvs (last $ children ct)
-    
+
     testF (_, self)
       | QTCon (QTRecord liftedAttrIds) <- tag self
       , liftedAttrIds `intersect` ids == ids
       = Just (self, liftedAttrIds)
-    
+
     testF _ = Nothing
 
 collectionSubRecord _ _ = return Nothing
@@ -504,20 +504,20 @@ unifyDrv preF postF qt1 qt2 = do
     onCollectionPair annIds t1 t2 = rcr (head $ children t1) (head $ children t2) >>= return . flip tcol annIds
 
     onCollection :: K3 QType -> [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
-    onCollection sQt liftedAttrIds 
+    onCollection sQt liftedAttrIds
                  ct@(tag -> QTCon (QTCollection _)) rt@(tag -> QTCon (QTRecord ids))
       = do
           subChQt <- mapM (substituteSelfQt ct) $ children sQt
           let selfPairs   = zip liftedAttrIds subChQt
           let projSelfT   = projectNamedPairs ids selfPairs
           let tdcon       = QTRecord liftedAttrIds
-          let errk        = "collection subtype" 
+          let errk        = "collection subtype"
           let colCtor   _ = ct
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
       left $ unwords ["Invalid collection arguments", show ct, "and", show rt]
-    
+
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
     onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
       let subPairs    = zip subIds $ children subT
@@ -604,7 +604,7 @@ generalize ta = do
  t'         <- tvsub t
  let tvdep = tvdependentset tve_before tve_after
  let fv    = filter (not . tvdep) $ nub $ freevars t'
- return $ QPType fv t 
+ return $ QPType fv t
  -- ^ We return an unsubstituted type to preserve type variables
  --   for late binding based on overriding unification performed
  --   in function application.
@@ -616,9 +616,9 @@ generalize ta = do
 substituteDeepQt :: K3 Expression -> TInfM (K3 Expression)
 substituteDeepQt e = mapTree subNode e
   where subNode ch (Node (tg :@: anns) _) = do
-          nanns <- mapM subAnns anns 
+          nanns <- mapM subAnns anns
           return (Node (tg :@: nanns) ch)
-        
+
         subAnns (EQType qt) = tvsub qt >>= return . EQType
         subAnns x = return x
 
@@ -634,10 +634,10 @@ inferProgramTypes prog = do
     initializeTypeEnv = mapProgram initDeclF initAMemF initExprF prog
 
     initDeclF :: K3 Declaration -> TInfM (K3 Declaration)
-    initDeclF d@(tag -> DGlobal n t _) 
+    initDeclF d@(tag -> DGlobal n t _)
       | isTFunction t = qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       | otherwise     = return d
-    
+
     initDeclF d@(tag -> DTrigger n t _) =
       trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
@@ -665,11 +665,11 @@ inferProgramTypes prog = do
               Left (Nothing)   -> get >>= \env -> liftEitherM (tilkupe env n)
               Left (Just qpt') -> modify (\env -> tiexte env n qpt') >> return qpt'
               Right qpt'       -> return qpt'
-      
+
       case (qpt, eOpt) of
         (QPType [] qt1, Just e) -> do
           qt2 <- qTypeOfM e
-          void $ unifyWithOverrideM qt1 qt2 unifyInitErrF
+          void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           substituteDeepQt e >>= return . Just
 
         (_, Nothing) -> return Nothing
@@ -685,27 +685,27 @@ inferProgramTypes prog = do
                return $ (Node (DGlobal n t neOpt :@: annotations d) $ children d)
 
     declF d@(tag -> DTrigger n t e) =
-      get >>= \env -> liftEitherM (tilkupe env n) >>= \(QPType qtvars qt) -> 
+      get >>= \env -> liftEitherM (tilkupe env n) >>= \(QPType qtvars qt) ->
         case tag qt of
           QTCon QTTrigger -> let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
                              in unifyInitializer n nqptE (Just e) >>= \neOpt ->
                                   return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
           _ -> trigTypeErr n
-    
+
     declF d@(tag -> DAnnotation n tvars mems) =
         get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
           return (Node (DAnnotation n tvars nmems :@: annotations d) $ children d)
-      
+
       where chkAnnMemEnv amEnv = mapM (memType amEnv) mems
-            
+
             memType amEnv (Lifted mp mn mt meOpt mAnns) =
               unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Lifted mp mn mt nmeOpt mAnns)
-            
+
             memType amEnv (Attribute   mp mn mt meOpt mAnns) =
               unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Attribute mp mn mt nmeOpt mAnns)
-            
+
             memType _ mem@(MAnnotation _ _ _) = return mem
-            
+
             unifyMemInit amEnv mn meOpt = do
               qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
               unifyInitializer mn (Right qpt) meOpt
@@ -717,6 +717,11 @@ inferProgramTypes prog = do
 
     exprF :: K3 Expression -> TInfM (K3 Expression)
     exprF e = inferExprTypes e
+
+    mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
+    mkErrorF e f s = spanAsString ++ f s
+      where spanAsString = let spans = mapMaybe getSpan $ annotations e
+                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
     polyTypeErr     = left $ "Invalid polymorphic declaration type"
@@ -758,7 +763,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             itv <- newtv
             void $ unifyM ch1T (tind itv) $ bindErr "indirection"
             monoBinding i itv
-          
+
           BTuple ids -> do
             idtvs <- mapM (const newtv) ids
             void   $ unifyM ch1T (ttup idtvs) $ bindErr "tuple"
@@ -771,16 +776,16 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
         return [iu]
-      
+
       where
         bindErr kind reason = unwords ["Invalid", kind, "bind-as:", reason]
-    
+
     sidewaysBinding ch1 (tag -> ECaseOf i) = do
       ch1T <- qTypeOfM ch1
       itv  <- newtv
       void $  unifyM ch1T (topt itv) $ (("Invalid case-of source expression: ")++)
       return [monoBinding i itv, modify $ \env -> tidele env i]
-    
+
     sidewaysBinding _ (children -> ch) = return (replicate (length ch - 1) iu)
 
     inferQType :: [K3 Expression] -> K3 Expression -> TInfM (K3 Expression)
@@ -810,27 +815,27 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     -- | Data structures. Qualifiers are taken from child expressions by rebuildE.
     inferQType ch n@(tag -> ESome)       = qTypeOfM (head ch) >>= return . ((rebuildE n ch) .+) . topt
     inferQType ch n@(tag -> EIndirect)   = qTypeOfM (head ch) >>= return . ((rebuildE n ch) .+) . tind
-    inferQType ch n@(tag -> ETuple)      = mapM qTypeOfM ch   >>= return . ((rebuildE n ch) .+) . ttup 
+    inferQType ch n@(tag -> ETuple)      = mapM qTypeOfM ch   >>= return . ((rebuildE n ch) .+) . ttup
     inferQType ch n@(tag -> ERecord ids) = mapM qTypeOfM ch   >>= return . ((rebuildE n ch) .+) . trec . zip ids
 
-    -- | Lambda expressions are passed the post-processed environment, 
+    -- | Lambda expressions are passed the post-processed environment,
     --   so the type variable for the identifier is bound in the type environment.
     inferQType ch n@(tag -> ELambda i) = do
         env  <- get
         ipt  <- either (lambdaBindingErr i) return $ tilkupe env i
         chqt <- qTypeOfM $ head ch
         void $ modify $ \env' -> tidele env' i
-        case ipt of 
+        case ipt of
           QPType [] iqt -> return $ rebuildE n ch .+ tfun iqt chqt
           _             -> polyLambdaBindingErr
 
-    -- | Assignment expressions unify their source and target types, as well as 
+    -- | Assignment expressions unify their source and target types, as well as
     --   ensuring that the source is mutable.
     inferQType ch n@(tag -> EAssign i) = do
       env <- get
       ipt <- either (assignBindingErr i) return $ tilkupe env i
       eqt <- qTypeOfM $ head ch
-      case ipt of 
+      case ipt of
         QPType [] iqt
           | (iqt @~ isQTQualified) == Just QTMutable ->
               do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF n (("Invalid assignment to " ++ i ++ ": ") ++);
@@ -868,7 +873,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         return $ rebuildE n ch .+ tunit
 
     -- | Unify operand types based on the kind of operator.
-    inferQType ch n@(tag -> EOperate op) 
+    inferQType ch n@(tag -> EOperate op)
       | numeric op = do
             (lqt, rqt) <- unifyBinaryM tnum tnum ch n numericError
             resultqt   <- delayNumericQt lqt rqt
@@ -902,7 +907,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
       | otherwise = left $ "Invalid operation: " ++ show op
 
-      where 
+      where
         delayNumericQt l r
           | or (map isQTVar   [l, r]) = return $ tlower [l,r]
           | or (map isQTLower [l, r]) = return $ tlower $ concatMap childrenOrSelf [l,r]
@@ -916,7 +921,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       bqt <- qTypeOfM $ last ch
       void $ modify $ \env -> tidele env j
       return $ rebuildE n ch .+ bqt
-    
+
     -- First child unification has already been performed in sidewaysBinding
     inferQType ch n@(tag -> EBindAs b) = do
       bqt <- qTypeOfM $ last ch
@@ -925,7 +930,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         BTuple ids     -> modify $ \env -> foldl tidele env ids
         BRecord ijs    -> modify $ \env -> foldl tidele env $ map snd ijs
       return $ rebuildE n ch .+ bqt
-    
+
     -- First child unification has already been performed in sidewaysBinding
     inferQType ch n@(tag -> ECaseOf _) = do
       sqt   <- qTypeOfM $ ch !! 1
@@ -1001,7 +1006,7 @@ mkCollectionFSQType annIds memEnvs contentQt = do
     finalQt <- mkFinalQType contentQt regular
     selfQt  <- subCTVars contentQt finalQt $ trec $ membersAsRecordFields lifted
     return (finalQt, selfQt)
-  where 
+  where
     mkFinalQType cqt regular =
       case tag cqt of
         QTCon (QTRecord ids) ->
@@ -1013,12 +1018,12 @@ mkCollectionFSQType annIds memEnvs contentQt = do
     subCF _ ft _ (tag -> QTFinal)   = return ft
     subCF _ _ ch (Node t _) = return $ Node t ch
 
-    assertNoDuplicateIds = 
+    assertNoDuplicateIds =
       let flatEnvs = concat memEnvs
           ids      = map fst flatEnvs
       in if nub ids /= ids then nameConflictErr else return flatEnvs
-    
-    membersAsRecordFields attrs = map (\(j,(QPType _ qt,_)) -> (j,qt)) attrs 
+
+    membersAsRecordFields attrs = map (\(j,(QPType _ qt,_)) -> (j,qt)) attrs
       -- ^ TODO: handle free vars?
 
     nameConflictErr        = left $ "Conflicting annotation member names: " ++ show annIds
@@ -1054,10 +1059,10 @@ qpType t = generalize (qType t)
 --   The above qpType method constructs polymorphic QTypes, which handles
 --   top-level polymorphic types, creating mappings for declared variables
 --   in a K3 Type to QType typevars.
---   
+--
 qType :: K3 Type -> TInfM (K3 QType)
 qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
-  where 
+  where
     mkQType _ (tag -> TTop)    = return ttop
     mkQType _ (tag -> TBottom) = return tbot
 
@@ -1078,12 +1083,12 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
         let cqt = head ch
         let annIds = namedTAnnotations $ annotations n
         mkCollectionQType annIds cqt
-    
+
     mkQType ch (tag -> TFunction) = return $ tfun (head ch) $ last ch
     mkQType ch (tag -> TTrigger)  = return $ ttrg $ head ch
     mkQType ch (tag -> TSource)   = return $ tsrc $ head ch
     mkQType ch (tag -> TSink)     = return $ tsnk $ head ch
-    
+
     mkQType _ (tag -> TBuiltIn TContent)   = return tcontent
     mkQType _ (tag -> TBuiltIn TStructure) = return tfinal
     mkQType _ (tag -> TBuiltIn TSelf)      = return tself
@@ -1124,7 +1129,7 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
     letTQualifier  e = exprTQualifier $ head $ children e
     exprTQualifier e = maybe Nothing (Just . translateAnnotation) $ extractEQTypeQualifier e
 
-    extractEQTypeQualifier e = 
+    extractEQTypeQualifier e =
       case find isEQType $ annotations e of
         Just (EQType qt) -> find isQTQualified $ annotations qt
         _ -> Nothing
@@ -1140,14 +1145,14 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
 
 translateQType :: K3 QType -> Either String (K3 Type)
 translateQType qt = mapTree translateWithMutability qt
-  where translateWithMutability ch qt'@(tag -> QTCon tg) 
+  where translateWithMutability ch qt'@(tag -> QTCon tg)
           | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
 
         translateWithMutability ch qt'@(tag -> QTCon (QTRecord _)) = translate (attachToChildren ch qt') qt'
 
         translateWithMutability ch qt' = translate ch qt'
 
-        attachToChildren ch qt' = 
+        attachToChildren ch qt' =
           map (uncurry $ foldl (@+)) $ zip ch $ map (map translateAnnotation . annotations) $ children qt'
 
         translateAnnotation a = case a of

@@ -62,7 +62,7 @@ timeBinOp map1 map2 op = do
       (sec', nsec') = normalize sec nsec
   return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
   where
-      get' nm m = 
+      get' nm m =
         case fst $ Map.findWithDefault (VInt 0, MemImmut) nm m of
           VInt i -> return i
           x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
@@ -84,26 +84,26 @@ compareDateOp date1 date2 = do
     m2 <- getm date2
     d1 <- getd date1
     d2 <- getd date2
-    if y1 /= y2 
+    if y1 /= y2
         then
             if y1 > y2
-                then return $ 1 
+                then return $ 1
                 else return $ -1
-        else 
-            if m1 /= m2 
+        else
+            if m1 /= m2
                 then
-                    if m1 > m2 
-                        then return $ 1 
+                    if m1 > m2
+                        then return $ 1
                         else return $ -1
-            else 
-                if d1 /= d2 
+            else
+                if d1 /= d2
                     then
-                        if d1 > d2 
-                            then return $ 1 
+                        if d1 > d2
+                            then return $ 1
                             else return $ -1
                         else return $ 0
     where
-        get' elm rec = 
+        get' elm rec =
             case fst $ Map.findWithDefault (VInt 0, MemImmut) elm rec of
                 VInt i -> return i
                 x      -> throwE $ RunTimeTypeError $ "Expected Int but found " ++ show x
@@ -126,10 +126,10 @@ genBuiltin :: Identifier -> K3 Type -> Interpretation Value
 
 -- openBuiltin :: ChannelId -> String -> ()
 genBuiltin "openBuiltin" _ =
-  vfun $ \(VString cid) -> 
+  vfun $ \(VString cid) ->
     vfun $ \(VString builtinId) ->
-      vfun $ \(VString format) -> 
-        do   
+      vfun $ \(VString format) ->
+        do
           sEnv <- get >>= return . getStaticEnv
           let wd = wireDesc sEnv format
           void $ liftEngine (openBuiltin cid builtinId wd)
@@ -205,7 +205,7 @@ genBuiltin "randomFraction" _ = vfun $ \_ -> liftIO Random.randomIO >>= return .
 genBuiltin "hash" _ = vfun $ \v -> valueHash v
 
 -- substring :: int -> string -> int
-genBuiltin "substring" _ = 
+genBuiltin "substring" _ =
     vfun $ \(VInt n) ->
         vfun $ \(VString s) ->
             return $ (VString (take n s))
@@ -217,7 +217,7 @@ genBuiltin "range" _ =
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- truncate :: int -> real
-genBuiltin "truncate" _ = vfun $ \x -> case x of 
+genBuiltin "truncate" _ = vfun $ \x -> case x of
   VReal r   -> return $ VInt $ truncate r
   _         -> throwE $ RunTimeInterpretationError $ "Expected real but got " ++ show x
 
@@ -280,7 +280,7 @@ genBuiltin "getLocalTime" _ = vfun $ \_ -> do
 -- getLocalTimeWithFormat :: string -> string
 genBuiltin "getLocalTimeWithFormat" _ = vfun $ \(VString formatString) -> do
     zonedTime <- liftIO $ getZonedTime
-    if formatString == "" 
+    if formatString == ""
         then return $ VString $ formatTime defaultTimeLocale "%H:%M:%S" zonedTime
         else return $ VString $ formatTime defaultTimeLocale formatString zonedTime
 
@@ -314,7 +314,7 @@ genBuiltin "parseDate" _ = vfun $ \(VString formatString) -> vfun $ \(VString da
                 in let record = VRecord $ Map.fromList $
                         [("y", (VInt $ fromInteger y, MemImmut)),
                         ("m", (VInt $ m, MemImmut)),
-                        ("d", (VInt $ d, MemImmut))] 
+                        ("d", (VInt $ d, MemImmut))]
                    in return $ VOption (Just record, MemImmut)
 
 -- compareDate :: record -> record -> int
@@ -331,7 +331,7 @@ genBuiltin "show" _ = vfun $ \x -> do
 -- Log to the screen
 genBuiltin "print" _ = vfun logString
   where logString (VString s) = do
-              -- liftIO $ putStrLn s 
+              -- liftIO $ putStrLn s
               _notice_Function s
               return $ VTuple []
         logString x           = throwE $ RunTimeTypeError ("In 'print': Expected a string but received " ++ show x)
@@ -359,7 +359,7 @@ registerNotifier :: Identifier -> Interpretation Value
 registerNotifier n =
   vfun $ \cid -> vfun $ \target -> attach cid n target >> return vunit
 
-  where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) = 
+  where attach (VString cid) _ (targetOfValue -> (addr, tid, v)) =
           liftEngine $ attachNotifier_ cid n (addr, tid, v)
         attach _ _ _ = undefined
 
@@ -373,7 +373,7 @@ providesError kind n = error $
   "Invalid " ++ kind ++ " definition for " ++ n ++ ": no initializer expression"
 
 -- BREAKING EXCEPTION SAFETY
-modifyCollection :: MVar (Collection Value) 
+modifyCollection :: MVar (Collection Value)
                   -> (Collection Value -> Interpretation (Collection Value))
                   -> Interpretation Value
 --TODO modifyMVar_ function has to be over IO
@@ -443,7 +443,7 @@ builtinLiftedAttribute annId n _ =
     deleteFn = vfun $ \v -> modifySelf $ \selfMV (Collection ns ds cId) -> do
       new_ds <- deleteDS v ds
       return $ (VCollection (selfMV, Collection ns new_ds cId), vunit)
-    
+
     updateFn = vfun $ \old -> vfun $ \new -> modifySelf $ \selfMV (Collection ns ds cId) -> do
       new_ds <- updateDS old new ds
       return $ (VCollection (selfMV, Collection ns new_ds cId), vunit)
@@ -456,13 +456,13 @@ builtinLiftedAttribute annId n _ =
     -- | Collection transformer implementation
     binaryCollectionFn binaryDSFn crossDSFn = vfun $ \other -> withSelf $ \(Collection ns ds cId) ->
       flip (matchCollection collectionError) (IVal other) $
-        \(Collection _ ds' cId') -> 
-          if cId == cId' 
+        \(Collection _ ds' cId') ->
+          if cId == cId'
             then binaryDSFn ns cId ds ds'
             else crossDSFn ns cId ds ds'
 
     injectFn binaryDSFn ns cId ds ds' = binaryDSFn ds ds' >>= \nds -> copy $ Collection ns nds cId
-    
+
     -- | Implement a membership test as a complete traversal. This is necessary, since we do not
     --   know that the backing collection is actually a set during cross-collection binary operations.
     memberDSFn ds v = foldDS (\acc v' -> if acc then return acc else return $ v == v') False ds
@@ -477,7 +477,7 @@ builtinLiftedAttribute annId n _ =
     crossSubsetFn _ _ ds ds' = foldDS (\acc v -> if not acc then return acc else memberDSFn ds' v) True ds >>= return . VBool
 
     onSuccess f ds v True  = f ds v
-    onSuccess _ ds _ False = return ds 
+    onSuccess _ ds _ False = return ds
     onFail _ ds _ True  = return ds
     onFail f ds v False = f ds v
 
@@ -492,11 +492,11 @@ builtinLiftedAttribute annId n _ =
         lc <- copy (Collection ns l cId)
         rc <- copy (Collection ns r cId)
         return $ VTuple [(lc, MemImmut), (rc, MemImmut)]
-    
+
     -- Pass in the namespace
     mapFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
-      flip (matchFunction $ funArgError "map") f $ 
-        \f'  -> mapDS (withClosure f') ds >>= 
+      flip (matchFunction $ funArgError "map") f $
+        \f'  -> mapDS (withClosure f') ds >>=
         \ds' -> copy (Collection ns ds' cId)
 
     filterFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
@@ -532,17 +532,17 @@ builtinLiftedAttribute annId n _ =
       look_result <- lookupKV acc k
       case look_result of
         Nothing         -> do
-          val    <- curryFoldFn f' accInit v 
+          val    <- curryFoldFn f' accInit v
           tmp_ds <- emptyDS (Just acc) >>= \ds -> insertKV ds k val
           combineDS acc tmp_ds
 
-        Just partialAcc -> do 
+        Just partialAcc -> do
           new_val <- curryFoldFn f' partialAcc v
           replaceKV acc k new_val
 
-    extFn = vfun $ \f -> vfun $ \emptyColV -> withSelf $ \(Collection _ ds _) -> 
-      flip (matchFunction $ funArgError "ext") f $ \f' -> 
-      flip (matchCollection extError) (IVal emptyColV) $ \emptyCol -> 
+    extFn = vfun $ \f -> vfun $ \emptyColV -> withSelf $ \(Collection _ ds _) ->
+      flip (matchFunction $ funArgError "ext") f $ \f' ->
+      flip (matchCollection extError) (IVal emptyColV) $ \emptyCol ->
         do
           val_ds <- mapDS (withClosure f') ds
           first_subcol <- peekDS val_ds
@@ -554,8 +554,8 @@ builtinLiftedAttribute annId n _ =
               maybe (typeMismatchError "ext combine") return result
 
     sortFn = vfun $ \f -> withSelf $ \(Collection ns ds cId) ->
-      flip (matchFunction $ funArgError "sort") f $ 
-        \f'  -> sortDS (sortResultAsOrdering f') ds >>= 
+      flip (matchFunction $ funArgError "sort") f $
+        \f'  -> sortDS (sortResultAsOrdering f') ds >>=
         \ds' -> copy (Collection ns ds' cId)
 
     sortResultAsOrdering (f, cl, sn) = \v1 v2 -> do
@@ -575,7 +575,7 @@ builtinLiftedAttribute annId n _ =
     lowerBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> lowerBoundDS el ds >>= return . VOption . (, MemImmut)
     upperBoundFn = vfun $ \el -> withSelf $ \(Collection _ ds _) -> upperBoundDS el ds >>= return . VOption . (, MemImmut)
 
-    sliceFn = vfun $ \lowerEl -> vfun $ \upperEl -> withSelf $ \(Collection ns ds cId) -> 
+    sliceFn = vfun $ \lowerEl -> vfun $ \upperEl -> withSelf $ \(Collection ns ds cId) ->
         sliceDS lowerEl upperEl ds >>= \nds -> copy $ Collection ns nds cId
 
 
@@ -585,8 +585,8 @@ builtinLiftedAttribute annId n _ =
 
     -- TODO: make more efficient by avoiding intermediate MVar construction.
     combine' (Just acc) (Just cv) =
-      flip (matchCollection $ return Nothing) (IVal acc) $ \(Collection ns1 ds1 cId1) -> 
-      flip (matchCollection $ return Nothing) (IVal cv)  $ \(Collection _ ds2 cId2) -> 
+      flip (matchCollection $ return Nothing) (IVal acc) $ \(Collection ns1 ds1 cId1) ->
+      flip (matchCollection $ return Nothing) (IVal cv)  $ \(Collection _ ds2 cId2) ->
       if cId1 /= cId2 then return Nothing
       else do
         new_ds <- combineDS ds1 ds2
@@ -601,9 +601,9 @@ builtinLiftedAttribute annId n _ =
     withSelf f = lookupE annotationSelfId >>= matchCollection collectionError f
 
     -- | Modifies the collection currently referenced by the self keyword with the given
-    --   function, and rebinds all collection components with the function's result. 
+    --   function, and rebinds all collection components with the function's result.
     modifySelf :: (MVar Value -> Collection Value -> Interpretation (Value, Value)) -> Interpretation Value
-    modifySelf f = lookupE annotationSelfId >>= matchSelf collectionError modifySMV 
+    modifySelf f = lookupE annotationSelfId >>= matchSelf collectionError modifySMV
       where modifySMV selfMV c = do
               (nSelfV, r) <- f selfMV c
               void $ liftIO (modifyMVar_ selfMV $ const $ return nSelfV)
@@ -634,7 +634,7 @@ builtinLiftedAttribute annId n _ =
     matchSelf err f (MVal mv) = liftIO (readMVar mv) >>= \case
       VCollection (s,c) -> f s c
       _ -> err
-    matchSelf err _ _ = err  
+    matchSelf err _ _ = err
 
     matchFunction :: a -> ((IFunction, Closure Value, EntityTag) -> a) -> Value -> a
     matchFunction _ f (VFunction f') = f f'

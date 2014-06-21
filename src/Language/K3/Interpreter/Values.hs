@@ -111,7 +111,7 @@ qvalueListCompare [] _  = return $ -1
 qvalueListCompare _ []  = return 1
 qvalueListCompare ((a,aq):as) ((b,bq):bs) =
   if aq /= bq
-    then return . orderingAsInt $ compare aq bq 
+    then return . orderingAsInt $ compare aq bq
     else valueCompare a b >>= \(VInt sgn) ->
             if sgn == 0 then qvalueListCompare as bs else return sgn
 
@@ -131,7 +131,7 @@ collectionEq :: Collection Value -> Collection Value -> Interpretation Value
 collectionEq c1 c2 = collectionCompare c1 c2 >>= \(VInt sgn) -> return . VBool $ sgn == 0
 
 collectionCompare :: Collection Value -> Collection Value -> Interpretation Value
-collectionCompare (Collection ns ds cId) (Collection ns' ds' cId') = 
+collectionCompare (Collection ns ds cId) (Collection ns' ds' cId') =
   let idOrd = compare cId cId' in
   if idOrd /= EQ then return . VInt $ orderingAsInt idOrd
                  else do
@@ -153,23 +153,23 @@ namespaceEq a b = namespaceCompare a b >>= \(VInt sgn) -> return . VBool $ sgn =
 
 namespaceCompare :: CollectionNamespace Value -> CollectionNamespace Value -> Interpretation Value
 namespaceCompare (CollectionNamespace cns ans) (CollectionNamespace cns' ans') =
-  do 
+  do
     (VInt cSgn) <- namedMembersCompare cns cns'
-    if cSgn /= 0 
+    if cSgn /= 0
       then return $ VInt cSgn
-      else foldM chainCompare (VInt 0) $ zip ans ans' 
-  
-  where chainCompare (VInt 0) ((na,a), (nb,b)) = if na /= nb then return . VInt . orderingAsInt $ compare na nb 
+      else foldM chainCompare (VInt 0) $ zip ans ans'
+
+  where chainCompare (VInt 0) ((na,a), (nb,b)) = if na /= nb then return . VInt . orderingAsInt $ compare na nb
                                                       else namedMembersCompare a b
         chainCompare (VInt sgn) _ = return $ VInt sgn
         chainCompare _ _          = throwE $ RunTimeInterpretationError "Invalid comparison result"
 
 namespaceHashWithSalt :: Int -> CollectionNamespace Value -> Interpretation Value
 namespaceHashWithSalt salt (CollectionNamespace cns ans) =
-  do 
+  do
     (VInt cSalt) <- namedMembersHashWithSalt salt cns
     foldM hashAnnNs cSalt ans >>= return . VInt
-  
+
   where hashAnnNs accSalt (n, mems) =
           namedMembersHashWithSalt (accSalt `hashWithSalt` n) mems >>= intOfValue
 
@@ -222,7 +222,7 @@ namedBindingsCompareBy f failF initR a b =
 
 namedBindingsEq :: NamedBindings Value -> NamedBindings Value -> Interpretation Value
 namedBindingsEq a b = namedBindingsCompareBy chainValueEq (\_ _ -> return $ VBool False) (return $ VBool True) a b
-  where 
+  where
     chainValueEq macc x y     = macc >>= chainEq valueEq x y
     chainEq f x y (VBool True)  = f x y
     chainEq _ _ _ (VBool False) = return $ VBool False
@@ -230,7 +230,7 @@ namedBindingsEq a b = namedBindingsCompareBy chainValueEq (\_ _ -> return $ VBoo
 
 namedBindingsCompare :: NamedBindings Value -> NamedBindings Value -> Interpretation Value
 namedBindingsCompare a b = namedBindingsCompareBy chainValueCompare compareAsList (return $ VInt 0) a b
-  where 
+  where
     chainValueCompare macc x y = macc >>= chainCompare valueCompare x y
     chainCompare f x y (VInt 0)       = f x y
     chainCompare _ _ _ (VInt i)       = return $ VInt i
@@ -265,11 +265,11 @@ namedMembersCompare :: NamedBindings (Value, VQualifier)
                     -> NamedBindings (Value, VQualifier)
                     -> Interpretation Value
 namedMembersCompare a b = namedBindingsCompareBy chainValueQualCompare compareAsList (return $ VInt 0) a b
-  where 
+  where
     chainValueQualCompare macc (v,q) (v',q') =
       macc >>= \sgn -> if q == q' then chainCompare valueCompare v v' sgn else return . VInt . orderingAsInt $ compare q q'
     chainCompare f x y (VInt 0) = f x y
-    chainCompare _ _ _ (VInt i) = return $ VInt i  
+    chainCompare _ _ _ (VInt i) = return $ VInt i
     chainCompare _ _ _ _        = throwE $ RunTimeInterpretationError "Invalid collection member comparison result"
 
     compareAsList x y                         = foldM chainEntryPairCompare (VInt 0) $ zip (Map.toAscList x) (Map.toAscList y)
@@ -320,7 +320,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
       VRecord v'        -> packNamedMembers (d+1) v'
       VAddress v'       -> rt $ showsPrec d v'
 
-      VCollection (_,c)     -> packCollection (d+1) c      
+      VCollection (_,c)     -> packCollection (d+1) c
       VIndirection (i,q,_)  -> readMVar i >>= (\v' -> (.) <$> rt (showChar 'I') <*> packValueQ (d+1) (v', q))
 
       VFunction (_,_,tg) -> (forTransport ? error $ (rt . showString)) $ funSym tg
@@ -338,7 +338,7 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     packQualifier d q = rt $ showsPrec d q
 
     packOptQ d (vOpt,q) =
-      maybe (rt (("Nothing " ++ show q ++ " ") ++)) 
+      maybe (rt (("Nothing " ++ show q ++ " ") ++))
             (\v' -> packValue appPrec1 v' >>= \showS -> rt (showParen (d > appPrec) (("Just " ++ show q ++ " ") ++) . showS))
             vOpt
 
@@ -351,9 +351,9 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
 
     packCollectionNamespace d (CollectionNamespace cns ans) =
       (\a b c d' e -> a . b . c . d' . e)
-        <$> rt (showString "CNS=") <*> packNamedMembers d (nonMemberFunctions cns) 
+        <$> rt (showString "CNS=") <*> packNamedMembers d (nonMemberFunctions cns)
         <*> rt (showChar ',')
-        <*> rt (showString "ANS=") 
+        <*> rt (showString "ANS=")
         <*> braces (packAnnotationNamespace d) (map (\(x,y) -> (x, nonMemberFunctions y)) ans)
 
     packAnnotationNamespace d (n, namedMems) =
@@ -379,8 +379,8 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
     -}
     packNamedMembers d nm = braces (packNamedValueQual d) $ Map.toList nm
     packNamedValueQual d (n,(v',q)) =
-      (\x y z -> x . showChar '(' . y . showChar ',' . z . showChar ')') 
-        <$> rt (showString n . showChar '=') <*> packValue d v' <*> packQual d q 
+      (\x y z -> x . showChar '(' . y . showChar ',' . z . showChar ')')
+        <$> rt (showString n . showChar '=') <*> packValue d v' <*> packQual d q
 
     packQual d q = rt $ showsPrec d q
 
@@ -394,13 +394,13 @@ packValueSyntax forTransport v = packValue 0 v >>= return . ($ "")
       (\a b c -> a . b . c) <$> rt (showString lWrap) <*> packx <*> rt (showString rWrap)
 
     appPrec  = 10
-    appPrec1 = 11  
+    appPrec1 = 11
 
     nonMemberFunctions = Map.filter (nonFunction . fst)
     nonFunction (VFunction _) = False
     nonFunction _             = True
 
-    True  ? x = const x  
+    True  ? x = const x
     False ? _ = id
 
 
@@ -447,7 +447,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
             vq <- unpackValueQ
             return (vq >>= \(nv,q) ->
               (\x y -> VIndirection (x, q, MemEntTag y)) <$> newMVar nv <*> makeStableName nv))
-      
+
       +++ readCollectionPrec)
 
     unpackValueQ =
@@ -498,20 +498,20 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
             void $ readExpectedName "InMemDS"
             n <- readMemDSTag
             v <- readBrackets unpackValue
-            case n of 
+            case n of
               "MemDS"    -> return $ InMemDS . MemDS . ListMDS            <$> sequence v
               "SeqDS"    -> return $ InMemDS . SeqDS . ListMDS            <$> sequence v
               "SetDS"    -> return $ InMemDS . SetDS . SetAsOrdListMDS    <$> sequence v
               "SortedDS" -> return $ InMemDS . SortedDS . BagAsOrdListMDS <$> sequence v
               _ -> pfail)
-      
+
       +++ (parens $ do
             void $ readExpectedName "ExternalDS"
             String filename <- lexP
             return $ rt $ ExternalDS $ FileDataspace filename)
-    
+
     readAnnotationNamespace :: ReadPrec (IO ([(Identifier, NamedMembers Value)]))
-    readAnnotationNamespace = 
+    readAnnotationNamespace =
       (parens $ do
         v <- readBraces $ readNamedF readNamedMembers
         return $ sequence v)
@@ -520,7 +520,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
     readNamedBindings :: ReadPrec (IO (NamedBindings Value))
     readNamedBindings = parens $ do
         v <- readBraces $ readNamedF unpackValue
-        return $ Map.fromList <$> sequence v 
+        return $ Map.fromList <$> sequence v
     -}
 
     readNamedMembers :: ReadPrec (IO (NamedMembers Value))
@@ -539,7 +539,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
 
     readNamedF :: ReadPrec (IO a) -> ReadPrec (IO (String, a))
     readNamedF readF = parens $ do
-        n <- readName 
+        n <- readName
         v <- step readF
         return $ v >>= rt . (n,)
 
@@ -564,7 +564,7 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
     readParens   = readCustomList "(" ")" ","
     readBraces   = readCustomList "{" "}" ","
     readBrackets = readCustomList "[" "]" ","
-    
+
     readSingleParse :: Show a => ReadPrec (IO a) -> String -> IO a
     readSingleParse readP s =
       case [ x | (x,"") <- readPrec_to_S read' minPrec s ] of
@@ -589,26 +589,26 @@ unpackValueSyntax sEnv = readSingleParse unpackValue
            if c == rWrap then return []
            else if c == sep && started then listNext
            else pfail
-      
+
       listNext =
         do x  <- reset readx
            xs <- listRest True
            return (x:xs)
 
-    rebuildCollection comboId c = 
+    rebuildCollection comboId c =
       case lookup comboId $ realizations $ snd sEnv of
         Nothing -> return c
         Just r  -> do
           let copyCstr = copyCtor r
           cCopyResult <- simpleEngine >>= \e -> emptyStateIO >>= \st -> runInterpretation e st (copyCstr c)
           either (const $ return c) (either (const $ return c) (\(VCollection (_,c')) -> return c') . getResultVal) cCopyResult
-    
-    appPrec1 = 11  
+
+    appPrec1 = 11
 
 {- Misc. helpers -}
 
 --TODO is it okay to have empty trigger list here? QueueConfig
 simpleEngine :: IO (Engine Value)
-simpleEngine = emptyStaticEnvIO >>= \sEnv -> 
+simpleEngine = emptyStaticEnvIO >>= \sEnv ->
   simulationEngine [] False defaultSystem (syntaxValueWD sEnv)
 

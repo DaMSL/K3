@@ -597,7 +597,7 @@ commaBrace = encloseSep lbrace rbrace comma
 matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
                 => String -> (Annotation a -> Bool) -> (Annotation a -> Printer b)
                 -> [Annotation a] -> Printer b
-matchAnnotation desc matchF mapF anns = 
+matchAnnotation desc matchF mapF anns =
   let uidStr = maybe "" show (getUID =<< find (isJust . getUID) anns) in
   case filter matchF anns of
     []            -> throwSP $ "No matching "++desc++" annotation found at "++uidStr

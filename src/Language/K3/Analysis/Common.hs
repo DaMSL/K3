@@ -37,14 +37,14 @@ foldProgram declF annMemF exprF a prog = foldRebuildTree rebuildDecl a prog
 
     rebuildAnnMem (acc, memAcc) (Lifted p n t eOpt anns) =
       rebuildMem acc memAcc eOpt $ \neOpt -> Lifted p n t neOpt anns
-    
+
     rebuildAnnMem (acc, memAcc) (Attribute p n t eOpt anns) =
       rebuildMem acc memAcc eOpt $ \neOpt -> Attribute p n t neOpt anns
-    
+
     rebuildAnnMem (acc, memAcc) (MAnnotation p n anns) = do
       (acc2, nMem) <- annMemF acc $ MAnnotation p n anns
       return (acc2, memAcc ++ [nMem])
-    
+
     rebuildMem acc memAcc eOpt rebuildF = do
       (acc2, neOpt) <- rebuildInitializer acc eOpt
       (acc3, nMem)  <- annMemF acc2 $ rebuildF neOpt

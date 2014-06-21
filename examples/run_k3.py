@@ -12,8 +12,8 @@ if __name__=='__main__':
   usage = "Usagge: %prog [options] <config file>"
   parser = OptionParser(usage=usage)
 
-  parser.add_option("-t", "--topology", type="string", dest="topology_fn", 
-                    default="topology.csv", help="Specify comma-separated paths to k3 node topology files", 
+  parser.add_option("-t", "--topology", type="string", dest="topology_fn",
+                    default="topology.csv", help="Specify comma-separated paths to k3 node topology files",
                     metavar="#TOPOLOGY")
 
   (options, args) = parser.parse_args()
@@ -31,7 +31,7 @@ if __name__=='__main__':
 
       top_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
       count = 0
-      for row in top_reader:    
+      for row in top_reader:
         count += 1
         hostname = row[0];
         peer = row[1];
@@ -45,7 +45,7 @@ if __name__=='__main__':
         peer_str = '-p {0}'.format(peer)
         for index in range (2, len(header)):
           peer_str = peer_str + ':{0}={1}'.format(header[index].replace("\n",""), row[index].replace("\n",""))
-        
+
         #program_path = "/home/vagrant/K3/K3-Core/examples/distributed/networkRing.k3"
         log = '--log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3.Runtime.Engine#EngineSteps:debug" '
         output_fn = "{0}:{1}.output".format(hostname, peer)
@@ -55,7 +55,7 @@ if __name__=='__main__':
           subprocess.Popen(full_cmd, shell=True, stdout=logfile, stderr=logfile)
         #if count == 1:
          # go_cmd = 'ssh {0} -C \'/home/vagrant/K3/K3-Driver/dist/build/k3/k3 -I /home/vagrant/K3/K3-Core/k3-lib/ interpret -b -p {1}:40001:role=\"go\":to_activate="{1}:40000" /home/vagrant/K3/K3-Core/examples/distributed/networkRing.k3 --log "Language.K3.Interpreter#Dispatch:debug" --log "Language.K3.Runtime.Engine#EngineSteps:debug"\' >> {0}.go.out '.format(hostname, peer, successor)
-        #start peer  
+        #start peer
 
 
 

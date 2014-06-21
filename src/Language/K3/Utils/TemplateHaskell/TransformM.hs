@@ -6,9 +6,9 @@
   routines to generate naturally homomorphic boilerplate instances for data
   types.  This typeclass is distinct from @Transform@ for reasons of performance
   and to simplify the underlying generation code.
-  
+
   An example of use is as follows:
-  
+
   @
     -- Data structure describing the transformation.
     data MyTransformation = MyTransformation Int
@@ -26,7 +26,7 @@
           return $ Baz5 $ if m > k then m + n else m
         _ -> homBaz baz
   @
-  
+
   In this example, we assume that Foo, Bar, and Baz are data structures which
   contain each other in some fashion.  Each may have any number of constructors.
   The above code defines transformation through Foo and Bar to be naturally
@@ -62,7 +62,7 @@ import Language.K3.Utils.TemplateHaskell.Utils
 -- |The typeclass which defines monadic transformations.
 class (Monad m) => TransformM m t d where
   transformM :: t -> d -> m d
-  
+
 -- |A Template Haskell mechanism for defining a transformation instance for
 --  the @TransformM@ typeclass at a given type declaration.
 defineHomInstanceM :: Name -> Name -> Q [Dec]
@@ -171,7 +171,7 @@ defineTransformTraversableInstanceM tname funcType = do
   [d| instance (Monad m, TransformM m $(return ttyp) a)
             => TransformM m $(return ttyp) ($(funcType) a) where
         transformM t d = Trav.sequence $ fmap (transformM t) d |]
-        
+
 -- |Creates identity @TransformM@ instances for common primitives.
 defineCommonPrimitiveTransformIdentityInstancesM :: Name -> Q [Dec]
 defineCommonPrimitiveTransformIdentityInstancesM tname =
@@ -181,7 +181,7 @@ defineCommonPrimitiveTransformIdentityInstancesM tname =
     , ''Char
     , ''Bool
     ]
-    
+
 defineCommonTupleTransformInstanceM :: Name -> Int -> Q [Dec]
 defineCommonTupleTransformInstanceM tname n = do
   (ttyp,_) <- canonicalType tname
@@ -201,7 +201,7 @@ defineCommonTupleTransformInstanceM tname n = do
   let context = cxt $ map (\v -> classP (''TransformM)
                               [varT mname, return ttyp, varT v]) typeParamNames
                       ++ [classP ''Monad [varT mname]]
-  let instD = 
+  let instD =
         instanceD context (applyTypeCon (ConT ''TransformM) <$>
                               sequence [varT mname, return ttyp,
                                         return tupleType])
@@ -216,7 +216,7 @@ defineCommonTupleTransformInstanceM tname n = do
       * @Maybe@
       * @[]@
       * @Set@
--}    
+-}
 defineCommonHomInstancesM :: Name -> Q [Dec]
 defineCommonHomInstancesM tname = do
   (ttyp,_) <- canonicalType tname

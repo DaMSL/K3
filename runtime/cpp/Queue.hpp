@@ -37,7 +37,7 @@ namespace K3 {
   template<typename Value>
   class LockfreeMsgQueue : public MsgQueue<Value> {
   public:
-    LockfreeMsgQueue() {}    
+    LockfreeMsgQueue() {}
     bool empty()        { return queue.empty(); }
     bool push(Value& v) { ++qSize; return queue.push(v); }
     bool pop(Value& v)  { --qSize; return queue.pop(v); }
@@ -68,7 +68,7 @@ namespace K3 {
       queue.get(guard).push(v);
       return true;
     }
-    
+
     bool pop(Value& v) {
         boost::strict_lock<LockingMsgQueue> guard(*this);
       bool r = false;
@@ -124,14 +124,14 @@ namespace K3 {
       shared_ptr<Message> r;
       tuple<QueueIndex, shared_ptr<Queue> > idxQ = nonEmptyQueue();
       if ( get<1>(idxQ) ) { r = dequeue(idxQ); }
-      
+
       // upon failure: return nullptr (Nothing)
       return r;
     }
 
   protected:
     virtual bool validTarget(Message& m) = 0;
-    
+
     virtual shared_ptr<Queue> queue(Message& m) = 0;
     virtual tuple<QueueIndex, shared_ptr<Queue> > nonEmptyQueue() = 0;
 
@@ -150,7 +150,7 @@ namespace K3 {
     typedef tuple<QueueKey, shared_ptr<Queue> > PeerMessages;
 
     SinglePeerQueue() : LogMT("SinglePeerQueue") {}
-    
+
     SinglePeerQueue(Address addr)
       : LogMT("SinglePeerQueue"), peerMsgs(addr, shared_ptr<Queue>(new Queue()))
     {}
@@ -160,13 +160,13 @@ namespace K3 {
   protected:
     typedef MsgQueue<tuple<Identifier, Value> > BaseQueue;
     PeerMessages peerMsgs;
-    
+
     bool validTarget(Message& m) { return m.address() == get<0>(peerMsgs); }
-    
-    shared_ptr<BaseQueue> queue(Message& m) { 
+
+    shared_ptr<BaseQueue> queue(Message& m) {
       return dynamic_pointer_cast<BaseQueue, Queue>(get<1>(peerMsgs));
     }
-    
+
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
     {
       shared_ptr<Queue> r = get<1>(peerMsgs);
@@ -187,12 +187,12 @@ namespace K3 {
     {
       shared_ptr<Message>  r;
       tuple<Identifier, Value> entry;
-      
+
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {
         const Address& addr  = get<0>(idxQ);
         const Identifier& id = get<0>(entry);
-        const Value& v       = get<1>(entry);        
+        const Value& v       = get<1>(entry);
         r = shared_ptr<Message>(new Message(addr, id, v));
       } else {
         BOOST_LOG(*this) << "Invalid source queue during dequeue";
@@ -229,12 +229,12 @@ namespace K3 {
   protected:
     typedef MsgQueue<tuple<Identifier, Value> > BaseQueue;
     MultiPeerMessages multiPeerMsgs;
-    
+
     bool validTarget(Message& m) {
       return multiPeerMsgs.find(m.address()) != multiPeerMsgs.end();
     }
 
-    shared_ptr<BaseQueue> queue(Message& m) { 
+    shared_ptr<BaseQueue> queue(Message& m) {
       shared_ptr<BaseQueue> bqueue = multiPeerMsgs[m.address()];
       return bqueue;
     }
@@ -247,25 +247,25 @@ namespace K3 {
         find_if(multiPeerMsgs.begin(), multiPeerMsgs.end(),
           [](MultiPeerMessages::value_type& x){ return !x.second->empty(); });
 
-      if ( it != multiPeerMsgs.end() ) { 
+      if ( it != multiPeerMsgs.end() ) {
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));
       }
       return r;
     }
-    
-    void enqueue(Message& m, shared_ptr<BaseQueue> q) 
+
+    void enqueue(Message& m, shared_ptr<BaseQueue> q)
     {
       tuple<Identifier, Value> entry = make_tuple(m.id(), m.contents());
       if ( !(q && q->push(entry)) ) {
         BOOST_LOG(*this) << "Invalid destination queue during enqueue";
       }
     }
-    
+
     shared_ptr<Message> dequeue(const tuple<QueueKey, shared_ptr<BaseQueue> >& idxQ)
     {
       shared_ptr<Message> r;
       tuple<Identifier, Value> entry;
-      
+
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {
         const Address& addr  = get<0>(idxQ);
@@ -313,7 +313,7 @@ namespace K3 {
   protected:
     typedef MsgQueue<Value> BaseQueue;
     MultiTriggerMessages multiTriggerMsgs;
-    
+
     bool validTarget(Message& m) {
       return multiTriggerMsgs.find(make_tuple(m.address(), m.id())) != multiTriggerMsgs.end();
     }
@@ -326,15 +326,15 @@ namespace K3 {
     tuple<QueueKey, shared_ptr<BaseQueue> > nonEmptyQueue()
     {
       tuple<QueueKey, shared_ptr<BaseQueue> > r;
-    
+
       MultiTriggerMessages::iterator it =
-        find_if(multiTriggerMsgs.begin(), multiTriggerMsgs.end(), 
+        find_if(multiTriggerMsgs.begin(), multiTriggerMsgs.end(),
           [](MultiTriggerMessages::value_type& x) { return !x.second->empty(); });
-      
+
       if ( it != multiTriggerMsgs.end() ) {
         r = make_tuple(it->first, dynamic_pointer_cast<BaseQueue, Queue>(it->second));
       }
-      return r;      
+      return r;
     }
 
     void enqueue(Message& m, shared_ptr<BaseQueue> q) {
@@ -342,12 +342,12 @@ namespace K3 {
         BOOST_LOG(*this) << "Invalid destination queue during enqueue";
       }
     }
-    
+
     shared_ptr<Message > dequeue(const tuple<QueueKey, shared_ptr<BaseQueue> >& idxQ)
     {
       shared_ptr<Message > r;
       Value entry;
-      
+
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {
         const Address& addr  = get<0>(get<0>(idxQ));
@@ -357,7 +357,7 @@ namespace K3 {
         BOOST_LOG(*this) << "Invalid source queue during dequeue";
       }
       return r;
-    }    
+    }
   };
 
 

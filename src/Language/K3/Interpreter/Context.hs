@@ -17,7 +17,7 @@ module Language.K3.Interpreter.Context (
 
   prepareProgram,
   runProgram,
-  
+
   prepareNetwork,
   runNetwork,
 
@@ -82,15 +82,15 @@ staticEnvironment pc prog = do
   staticR <- runInterpretation' initSt (declaration prog)
   logIStateM "PRE STATIC " Nothing $ getResultState staticR
   let st = getResultState staticR
-  funEnv   <- staticFunctions st   
+  funEnv   <- staticFunctions st
   annotEnv <- staticAnnotations st
-  liftIO (staticStateIO (funEnv, annotEnv)) >>= logIStateM "STATIC " Nothing 
+  liftIO (staticStateIO (funEnv, annotEnv)) >>= logIStateM "STATIC " Nothing
   return (funEnv, annotEnv)
 
   where
     staticFunctions :: IState -> EngineM Value (IEnvironment Value)
     staticFunctions st = do
-      resultIEnv <- runInterpretation' st 
+      resultIEnv <- runInterpretation' st
                           (emptyEnv >>= \nenv -> foldEnv insertIfFunction nenv $ getEnv st)
                       >>= liftError "(constructing static function environment)"
       case getResultVal resultIEnv of
@@ -99,7 +99,7 @@ staticEnvironment pc prog = do
 
     insertIfFunction acc n e@(IVal (VFunction _)) = insertEnvIO n e acc
     insertIfFunction acc n e@(MVal mv) = readMVar mv >>= \case
-      VFunction _  -> insertEnvIO n e acc 
+      VFunction _  -> insertEnvIO n e acc
       _            -> return acc
     insertIfFunction acc _ _ = return acc
 
@@ -109,19 +109,19 @@ staticEnvironment pc prog = do
       let flatADefs = flattenADefinitions annProvs (definitions $ getAnnotEnv st)
       let newAEnv   = AEnvironment flatADefs []
       let annEnvI   = foldM addRealization newAEnv $ nub $ declCombos prog
-      resultAEnv    <- liftIO (annotationStateIO newAEnv) 
+      resultAEnv    <- liftIO (annotationStateIO newAEnv)
                         >>= \est -> runInterpretation' est annEnvI
                         >>= liftError "(constructing static annotation environment)"
       case getResultVal resultAEnv of
         Left err                 -> throwEngineError . EngineError $ show err
         Right (AEnvironment d r) -> return $ AEnvironment d $ nubBy ((==) `on` fst) r
-    
+
     flattenADefinitions :: [(Identifier, Identifier)] -> AnnotationDefinitions Value
                         -> AnnotationDefinitions Value
     flattenADefinitions provides aDefs = foldl addProvidesMembers aDefs provides
 
     addProvidesMembers aDefs (s,t) = case (lookup s aDefs, lookup t aDefs) of
-      (Just sMems, Just tMems) -> replaceAssoc aDefs s $ mergeMembers sMems tMems 
+      (Just sMems, Just tMems) -> replaceAssoc aDefs s $ mergeMembers sMems tMems
       _ -> aDefs
 
     addRealization :: AEnvironment Value -> [Identifier] -> Interpretation (AEnvironment Value)
@@ -138,24 +138,24 @@ staticEnvironment pc prog = do
     typeCombos = runIdentity . foldTree extractTypeCombos []
 
     exprCombos :: K3 Expression -> [[Identifier]]
-    exprCombos = runIdentity . foldTree extractExprCombos []    
-    
+    exprCombos = runIdentity . foldTree extractExprCombos []
+
     extractDeclCombos :: [[Identifier]] -> K3 Declaration -> Identity [[Identifier]]
     extractDeclCombos st (tag -> DGlobal _ t eOpt)     = return $ st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
     extractDeclCombos st (tag -> DTrigger _ t e)       = return $ st ++ typeCombos t ++ exprCombos e
     extractDeclCombos st (tag -> DAnnotation _ _ mems) = return $ st ++ concatMap memCombos mems
     extractDeclCombos st _ = return st
-    
+
     extractTypeCombos :: [[Identifier]] -> K3 Type -> Identity [[Identifier]]
-    extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) = 
+    extractTypeCombos c (tag &&& annotations -> (TCollection, tAnns)) =
       case namedTAnnotations tAnns of
         []        -> return c
         namedAnns -> return $ namedAnns:c
-    
+
     extractTypeCombos c _ = return c
 
     extractExprCombos :: [[Identifier]] -> K3 Expression -> Identity [[Identifier]]
-    extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) = 
+    extractExprCombos c (tag &&& annotations -> (EConstant (CEmpty et), eAnns)) =
       case namedEAnnotations eAnns of
         []        -> return $ c ++ typeCombos et
         namedAnns -> return $ (namedAnns:c) ++ typeCombos et
@@ -171,7 +171,7 @@ initEnvironment :: K3 Declaration -> IState -> EngineM Value IState
 initEnvironment decl st =
   let declGState  = runIdentity $ foldTree registerDecl st decl
   in initDecl declGState decl
-  where 
+  where
     initDecl st' (tag &&& children -> (DGlobal n t eOpt, ch)) = initGlobal st' n t eOpt >>= flip (foldM initDecl) ch
     initDecl st' (tag &&& children -> (DTrigger n _ _, ch))   = initTrigger st' n >>= flip (foldM initDecl) ch
     initDecl st' (tag &&& children -> (DRole _, ch))          = foldM initDecl st' ch
@@ -222,14 +222,14 @@ atInitTrigger ((Right _, st), ilog) = do
     case vOpt of
       Just (VFunction (f, _, _)) -> runInterpretation' st (f vunit)
       _                          -> return ((unknownTrigger, st), ilog)
-  where 
+  where
     unknownTrigger = Left $ RunTimeTypeError "Could not find atInit trigger" Nothing
 
 atExitTrigger :: IState -> EngineM Value (IResult Value)
 atExitTrigger st = do
     atExitVOpt <- liftIO (lookupEnvIO "atExit" (getEnv st) >>= valueOfEntryOptIO)
     runInterpretation' st $ maybe unknownTrigger runFinal atExitVOpt
-  
+
   where runFinal (VFunction (f,_,_)) = f vunit >>= \r -> syncE >> return r
         runFinal _                   = throwE $ RunTimeTypeError "Invalid atExit trigger"
         unknownTrigger               = throwE $ RunTimeTypeError "Could not find atExit trigger"
@@ -240,7 +240,7 @@ initBootstrap bootstrap aEnv = do
     st <- liftIO $ annotationStateIO aEnv
     namedLiterals <- mapM (interpretLiteral st) bootstrap
     liftIO $ envFromListIO namedLiterals
-  where 
+  where
     interpretLiteral st (n,l) = runInterpretation' st (literal l)
                                   >>= liftError "(initializing bootstrap)"
                                   >>= either invalidErr (return . (n,) . IVal) . getResultVal
@@ -330,7 +330,7 @@ runProgram pc (prog, engine, msgProc) = do
 prepareNetwork :: PrintConfig -> Bool -> SystemEnvironment -> K3 Declaration
                -> IO (Either EngineError PreparedNetwork)
 prepareNetwork pc isPar systemEnv prog =
-  let nodeBootstraps = map (:[]) systemEnv in 
+  let nodeBootstraps = map (:[]) systemEnv in
     buildStaticEnv (getTriggerIds tProg) >>= \case
       Left err   -> return $ Left err
       Right sEnv -> do
@@ -372,7 +372,7 @@ runTrigger addr result nm arg = \case
         st'         <- liftIO $ syncIState st
         logTriggerM addr nm arg st' (Just v) "AFTER"
         return ((v,st'),lg)
-    
+
     (VTrigger _)           -> return $ iError ("Uninitialized trigger " ++ nm) Nothing
     _                      -> return $ tError ("Invalid trigger or sink value for " ++ nm) Nothing
 
@@ -382,7 +382,7 @@ runTrigger addr result nm arg = \case
 
 
 -- | Message processing for multiple (virtualized) peers.
-type VirtualizedMessageProcessor = 
+type VirtualizedMessageProcessor =
   MessageProcessor (K3 Declaration) Value [(Address, IResult Value)] [(Address, IResult Value)]
 
 virtualizedProcessor :: PrintConfig -> SEnvironment Value -> IO VirtualizedMessageProcessor
@@ -449,7 +449,7 @@ virtualizedProcessor pc staticEnv = do
 
     reportNodeIResult (addr, r) = do
       void $ liftIO (putStrLn ("[" ++ show addr ++ "]"))
-      void $ prettyIResultM r >>= liftIO . putStr . boxToString . indent 2 
+      void $ prettyIResultM r >>= liftIO . putStr . boxToString . indent 2
 
 
 -- | Message processing for a single peer.

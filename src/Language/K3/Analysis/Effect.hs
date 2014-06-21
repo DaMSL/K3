@@ -5,7 +5,7 @@ module Language.K3.Analysis.Effect where
 import Control.Arrow
 import Control.Monad
 
-import Data.List 
+import Data.List
 import Data.Map ( Map )
 import Data.Tree
 import qualified Data.Map as Map
@@ -48,17 +48,17 @@ insertBinding n props env = flip EffectEnv (annotationE env) $ Map.insert n prop
 
 insertAnnDef :: Identifier -> NamedEnv [Property] -> EffectEnv -> EffectEnv
 insertAnnDef n memEnv env =
-  EffectEnv (bindingE env) $ 
+  EffectEnv (bindingE env) $
     annEnvWithDefinitions (annotationE env) $ Map.insert n memEnv (definitions $ annotationE env)
 
 envWithBindings :: EffectEnv -> NamedEffectEnv -> EffectEnv
 envWithBindings (EffectEnv _ aeEnv) bEnv = EffectEnv bEnv aeEnv
 
-envWithAnnotations :: EffectEnv -> AnnEffectEnv -> EffectEnv 
+envWithAnnotations :: EffectEnv -> AnnEffectEnv -> EffectEnv
 envWithAnnotations (EffectEnv bEnv _) aeEnv = EffectEnv bEnv aeEnv
 
 annEnvWithDefinitions :: AnnEffectEnv -> NamedEnv (NamedEnv [Property]) -> AnnEffectEnv
-annEnvWithDefinitions annEnv defns = AnnEffectEnv defns (realizations annEnv) 
+annEnvWithDefinitions annEnv defns = AnnEffectEnv defns (realizations annEnv)
 
 annEnvWithRealizations :: AnnEffectEnv -> NamedEnv (NamedEnv [Property]) -> AnnEffectEnv
 annEnvWithRealizations annEnv reals = AnnEffectEnv (definitions annEnv) reals
@@ -133,7 +133,7 @@ analyzeDeclEffect :: EffectEnv -> [K3 Declaration] -> K3 Declaration
                   -> Either String (EffectEnv, K3 Declaration)
 
 -- | Add an effect binding for the global, ensuring that any collection realization
---   is appropriately constucted in the annotation effect environment. 
+--   is appropriately constucted in the annotation effect environment.
 analyzeDeclEffect env ch (tag &&& annotations -> (DGlobal n t eOpt, anns)) = do
     ntEnv <- ensureGlobalCollectionRealization env t eOpt
     ((naEnv, nEffects), neOpt) <- maybe (effectFromDType ntEnv t anns) (effectFromDExpr ntEnv) eOpt
@@ -144,7 +144,7 @@ analyzeDeclEffect env ch (tag &&& annotations -> (DGlobal n t eOpt, anns)) = do
     effectFromDType eEnv dt dAnns = do
       props <- analyzeTypeEffect dt dAnns
       return ((annotationE $ eEnv, props), Nothing)
-    
+
     effectFromDExpr eEnv e = do
       ((naEnv, props), ne) <- analyzeExprEffect eEnv e
       return ((naEnv, props), Just ne)
@@ -195,14 +195,14 @@ analyzeExprEffect env e = do
     postMkEffect :: EffectEnv -> K3 Expression -> K3 Expression -> Either String (EffectEnv, [Bool])
     postMkEffect eEnv src (tag &&& children -> (ELetIn  i, ch)) =
       propagateEnvFlags ch $ addBindingEffect eEnv i src
-    
+
     postMkEffect eEnv src (tag &&& children -> (EBindAs b, ch)) =
       propagateEnvFlags ch $ foldl (\acc i -> addBindingEffect acc i src) eEnv $ bindingVariables b
 
     -- We do not propagate i's effect binding to the None branch in foldIn1RebuildTree.
     postMkEffect eEnv src (tag -> ECaseOf i) =
       Right $ (addBindingEffect eEnv i src, [True, False])
-    
+
     postMkEffect eEnv _ (children -> ch) = propagateEnvFlags ch eEnv
 
     -- | Effect environment merging
@@ -212,18 +212,18 @@ analyzeExprEffect env e = do
     -- | Effect propagation.
     propagateEffect :: EffectEnv -> [K3 Expression] -> K3 Expression
                     -> Either String (EffectEnv, K3 Expression)
-    propagateEffect eEnv ch n@(tag -> EAssign _)     = Right (eEnv, Node (tag n :@: annotations n) ch) 
-    propagateEffect eEnv ch n@(tag -> EOperate OSnd) = Right (eEnv, Node (tag n :@: annotations n) ch) 
+    propagateEffect eEnv ch n@(tag -> EAssign _)     = Right (eEnv, Node (tag n :@: annotations n) ch)
+    propagateEffect eEnv ch n@(tag -> EOperate OSnd) = Right (eEnv, Node (tag n :@: annotations n) ch)
 
     -- TODO: since empty collections may involve allocation, reconsider whether these are pure in K3.
     propagateEffect eEnv ch (tag &&& annotations -> (EConstant c, anns)) = do
-      nEnv <- case c of 
+      nEnv <- case c of
                 CEmpty _ -> ensureERealization eEnv anns
                 _        -> return eEnv
       return (nEnv, Node (EConstant c :@: addPureEEffect anns) ch)
 
     propagateEffect eEnv ch (tag &&& annotations -> (EVariable i,  anns)) =
-      case Map.lookup i $ bindingE eEnv of 
+      case Map.lookup i $ bindingE eEnv of
         Nothing -> Left $ "Unbound effect for variable " ++ i
         Just [] -> Left $ "Invalid empty effect for variable " ++ i
         Just el -> let nAnns = if any isPureProperty (head el) then addPureEEffect anns else anns
@@ -297,7 +297,7 @@ analyzeTypeEffect t anns =
     ifAnnotated = return $ if any isPureDProperty anns then [pureEffect] else []
 
 
--- | Returns a member effect environment which assumes all members with 
+-- | Returns a member effect environment which assumes all members with
 --   valid bodies (i.e., non-externals) are pure to support cyclic definitions.
 --   Externals adopt their purity properties through explicit specification.
 initialAnnotationEnv :: [AnnMemDecl] -> NamedEnv [Property]
@@ -322,7 +322,7 @@ analyzeMembersEffects env initMemEnv mems = foldM analyzeInit (annotationE env, 
 
     analyzeInit acc (Attribute Provides n t (Just e) dAnns) =
       fromExpr acc n e dAnns $ \ne ndAnns -> Attribute Provides n t (Just ne) ndAnns
-    
+
     analyzeInit acc mem@(Lifted    Provides n _ Nothing _) = fromInitEnv acc n mem
     analyzeInit acc mem@(Attribute Provides n _ Nothing _) = fromInitEnv acc n mem
 

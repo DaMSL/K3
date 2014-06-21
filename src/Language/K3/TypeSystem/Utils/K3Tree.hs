@@ -58,8 +58,8 @@ uidOfAnnMem mem = case mem of
     Lifted _ _ _ _ anns    -> extractUID anns
     Attribute _ _ _ _ anns -> extractUID anns
     MAnnotation _ _ anns   -> extractUID anns
-  where 
-    extractUID anns =  
+  where
+    extractUID anns =
       let uids = mapMaybe (\a -> case a of { DUID u -> Just u; _ -> Nothing }) anns in
       if length uids == 1 then return $ head uids
                           else internalTypeError $ InvalidUIDsInAnnMemDecl mem

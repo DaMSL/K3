@@ -1,0 +1,90 @@
+// Compute a distributed in-memory sum
+
+include "Annotation/Collection.k3"
+include "Core/CppBuiltins.k3"
+
+// Peers
+declare master: address = 127.0.0.1:40000
+declare workers: mut collection { addr: address } @ { Collection } = empty { addr: address } @ { Collection }
+
+// Local Dataset
+declare data: mut collection { x: int } @ { Collection } = empty { x: int } @ { Collection }
+
+// Control
+declare total_points: immut int = 1024*256
+declare points_loaded: mut int = 0
+declare total_workers : immut int = 3
+declare workers_ready : mut int = 0
+
+// Aggregates
+declare local_sum : mut int = 0
+declare global_sum : mut int = 0
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
+// Compute the global sum
+trigger compute_global_sum : int = \s -> (
+  ( global_sum = global_sum + s );
+  ( printLine  "Update to Global Sum:" );
+  ( printLine (itos global_sum) );
+  ( workers_ready = workers_ready - 1 );
+  ( if workers_ready == 0
+    then (
+      ( end_ms = now ());
+      ( elapsed_ms = end_ms - start_ms );
+      ( printLine "Finished. Elapsed Time in ms:" );
+      ( printLine ( itos elapsed_ms ) );
+      ( haltEngine () )
+    )
+    else ()
+  )
+)
+
+// Compute the local sum
+trigger compute_local_sum : () = \_ -> (
+  ( data.iterate (\point -> (local_sum = local_sum + point.x) ) );
+  ( printLine "Calculated Local Sum:") ;
+  ( printLine (itos local_sum) );
+  ( (compute_global_sum, master) <- local_sum );
+  (if me != master
+    then (
+      ( printLine "Finished" );
+      ( haltEngine() )
+    )
+    else ()
+  )
+)
+
+// Load data into a (In-Memory) Collection
+trigger load_point: int = \i -> (
+    ( data.insert { x: i } );
+    ( points_loaded = points_loaded + 1 );
+    ( if points_loaded == total_points
+      then (
+        ( (worker_ready, master) <- () );
+        ( printLine "Data Loaded into Memory" )
+      )
+      else ()
+    )
+)
+
+// Signal the master that a worker is ready.
+// This is a barrier. Once all workers are ready it is time to compute the sum
+trigger worker_ready : () = \_ -> (
+  ( printLine "Recieved a Worker Ready Signal" );
+  ( workers_ready = workers_ready + 1 );
+  ( if workers_ready == total_workers
+    then (
+      ( printLine "All Workers Ready. Computing Local Sums" );
+      ( start_ms = now () );
+      ( workers.iterate (\worker -> ( compute_local_sum, worker.addr) <- () ) )
+    )
+    else ()
+  )
+)
+
+source points : int = file "data/points.txt" k3
+feed points |> load_point

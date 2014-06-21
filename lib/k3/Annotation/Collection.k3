@@ -2,14 +2,14 @@ annotation Collection given type a, b {
   provides lifted peek    : () -> option content
 
   provides lifted insert  : content -> ()
-  provides lifted delete  : content -> ()
+  provides lifted erase  : content -> ()
   provides lifted update  : content -> (content -> ())
 
   @:Transformer
   provides lifted combine : self -> self
 
   @:Transformer
-  provides lifted split   : self -> (self, self)
+  provides lifted split   : () -> (self, self)
 
   @:Transformer
   provides lifted iterate : (content -> ()) -> ()

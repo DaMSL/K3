@@ -61,8 +61,8 @@ defaultValue (tag -> TString)     = return $ VString ""
 defaultValue t@(tag -> TOption)   = return $ VOption (Nothing, vQualOfType t)
 defaultValue (tag -> TAddress)    = return $ VAddress defaultAddress
 
-defaultValue (tag &&& children -> (TIndirection, [x])) = 
-  defaultValue x >>= (\y -> (\i tg -> (i, onQualifiedType x MemImmut MemMut, tg)) 
+defaultValue (tag &&& children -> (TIndirection, [x])) =
+  defaultValue x >>= (\y -> (\i tg -> (i, onQualifiedType x MemImmut MemMut, tg))
     <$> liftIO (newMVar y) <*> memEntTag y) >>= return . VIndirection
 
 defaultValue (tag &&& children -> (TTuple, ch)) =
@@ -71,11 +71,11 @@ defaultValue (tag &&& children -> (TTuple, ch)) =
 defaultValue (tag &&& children -> (TRecord ids, ch)) =
   mapM (\ct -> defaultValue ct >>= return . (, vQualOfType ct)) ch >>= return . VRecord . membersFromList . zip ids
 
-defaultValue (tag &&& annotations -> (TCollection, anns)) = 
+defaultValue (tag &&& annotations -> (TCollection, anns)) =
   (getComposedAnnotationT anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
   where annIds = namedTAnnotations anns
-  
-{- TODO: 
+
+{- TODO:
   TSource
   TSink
   TTrigger
@@ -93,7 +93,7 @@ constant (CInt i)    _   = return $ VInt i
 constant (CReal r)   _   = return $ VReal r
 constant (CString s) _   = return $ VString s
 constant (CNone _)  anns = return $ VOption (Nothing, vQualOfAnnsE anns)
-constant (CEmpty _) anns = 
+constant (CEmpty _) anns =
   (getComposedAnnotationE anns) >>= maybe (emptyCollection annIds) emptyAnnotatedCollection
   where annIds = namedEAnnotations anns
 
@@ -128,7 +128,7 @@ numeric op a b = do
 -- | Similar to numeric above, except disallow a zero value for the second argument.
 numericExceptZero :: (Word8 -> Word8 -> Word8)
                   -> (Int -> Int -> Int)
-                  -> (Double -> Double -> Double) 
+                  -> (Double -> Double -> Double)
                   -> K3 Expression -> K3 Expression -> Interpretation Value
 numericExceptZero byteOpF intOpF realOpF a b = do
     a' <- expression a
@@ -169,7 +169,7 @@ textual :: (String -> String -> String)
 textual op a b = do
   a' <- expression a
   b' <- expression b
-  case (a', b') of 
+  case (a', b') of
     (VString s1, VString s2) -> return . VString $ op s1 s2
     _ -> throwE $ RunTimeTypeError "Invalid String Operation"
 
@@ -245,7 +245,7 @@ binary _ = \_ _ -> throwE $ RunTimeInterpretationError "Invalid binary operation
 expression :: K3 Expression -> Interpretation Value
 expression e_ = traceExpression $ do
     result <- expr e_
-    void $ buildProxyPath e_ 
+    void $ buildProxyPath e_
     return result
 
   where
@@ -255,7 +255,7 @@ expression e_ = traceExpression $ do
       pushed <- maybe (return False) (\su -> pushTraceUID su >> return True) suOpt
       result <- m
       void $ if pushed then popTraceUID else return ()
-      case suOpt of 
+      case suOpt of
         Nothing -> return ()
         Just (_, uid) -> do
             (watched, wvars) <- (,) <$> isWatchedExpression uid <*> getWatchedVariables uid
@@ -270,7 +270,7 @@ expression e_ = traceExpression $ do
 
     -- TODO: dataspace bind aliases
     buildProxyPath :: K3 Expression -> Interpretation ()
-    buildProxyPath e = 
+    buildProxyPath e =
       case e @~ isBindAliasAnnotation of
         Just (EAnalysis (BindAlias i))          -> appendAlias (Named i)
         Just (EAnalysis (BindFreshAlias i))     -> appendAlias (Temporary i)
@@ -295,11 +295,11 @@ expression e_ = traceExpression $ do
     --   This retrieves the current binding values from the environment
     --   and reconstructs a path value to replace the bind target.
     refreshBindings :: Binder -> ProxyPath -> Value -> Interpretation ()
-    refreshBindings (BIndirection i) proxyPath bindV = 
+    refreshBindings (BIndirection i) proxyPath bindV =
       lookupVQ i >>= \case
         (iV, MemMut) ->
           replaceProxyPath proxyPath bindV iV (\oldV newPathV ->
-            case oldV of 
+            case oldV of
               VIndirection (mv, MemMut, _) ->
                 liftIO (modifyMVar_ mv $ const $ return newPathV) >> return oldV
               _ -> throwE $ RunTimeTypeError "Invalid bind indirection target")
@@ -320,11 +320,11 @@ expression e_ = traceExpression $ do
                   (\oldV newPathV -> mergeRecords oldV newPathV)
           else return () -- Skip writebsack if all fields are immutable.
 
-    replaceProxyPath :: ProxyPath -> Value -> Value 
+    replaceProxyPath :: ProxyPath -> Value -> Value
                      -> (Value -> Value -> Interpretation Value)
                      -> Interpretation ()
     replaceProxyPath proxyPath origV newComponentV refreshF =
-      case proxyPath of 
+      case proxyPath of
         (Named n):t     -> do
                             entry <- lookupE n
                             oldV  <- valueOfEntry entry
@@ -338,7 +338,7 @@ expression e_ = traceExpression $ do
     reconstructPathValue :: ProxyPath -> Value -> Value -> Interpretation Value
     reconstructPathValue [] newR@(VRecord _) oldR@(VRecord _) = mergeRecords oldR newR
     reconstructPathValue [] v _ = return v
-    
+
     reconstructPathValue (Dereference:t) v (VIndirection (iv, q, tg)) =
       liftIO (readMVar iv)
         >>= reconstructPathValue t v
@@ -352,7 +352,7 @@ expression e_ = traceExpression $ do
       reconstructPathValue t v (fst $ last x) >>= \nv -> return $ VTuple ((init x) ++ [(nv, snd $ last x)] ++ y)
 
     reconstructPathValue ((RecordField n):t) v (VRecord ivs) = do
-      fields <- flip mapMembers ivs (\fn (fv, fq) -> 
+      fields <- flip mapMembers ivs (\fn (fv, fq) ->
                   if fn == n then reconstructPathValue t v fv >>= return . (, fq)
                              else return (fv, fq))
       return $ VRecord fields
@@ -375,12 +375,12 @@ expression e_ = traceExpression $ do
 
     -- | Interpretation of variable lookups.
     expr (details -> (EVariable i, _, _)) =
-      lookupE i >>= \e -> valueOfEntry e >>= syncCollectionE i e 
+      lookupE i >>= \e -> valueOfEntry e >>= syncCollectionE i e
 
     -- | Interpretation of option type construction expressions.
     expr (tag &&& children -> (ESome, [x])) =
       expression x >>= freshenValue >>= return . VOption . (, vQualOfExpr x) . Just
-    
+
     expr (details -> (ESome, _, _)) =
       throwE $ RunTimeTypeError "Invalid Construction of Option"
 
@@ -406,7 +406,7 @@ expression e_ = traceExpression $ do
       where
         mkFunction f = (\cl tg -> VFunction (f, cl, tg)) <$> closure <*> memEntTag f
 
-        -- TODO: currently, this definition of a closure captures 
+        -- TODO: currently, this definition of a closure captures
         -- annotation member variables during annotation member initialization.
         -- This invalidates the use of annotation member function contextualization
         -- since the context is overridden by the closure whenever applying the
@@ -451,9 +451,9 @@ expression e_ = traceExpression $ do
     -- | Interpretation of Assignment.
     expr (details -> (EAssign i, [e], _)) = do
       entry <- lookupE i
-      case entry of 
+      case entry of
         MVal mv -> expression e >>= freshenValue >>= \v -> liftIO (modifyMVar_ mv $ const $ return v) >> return v
-        IVal _  -> throwE $ RunTimeInterpretationError 
+        IVal _  -> throwE $ RunTimeInterpretationError
                           $ "Invalid assignment to an immutable variable: " ++ i
 
     expr (details -> (EAssign _, _, _)) = throwE $ RunTimeTypeError "Invalid Assignment"
@@ -478,7 +478,7 @@ expression e_ = traceExpression $ do
     expr (details -> (ECaseOf i, [e, s, n], _)) = do
         void $ pushProxyFrame
         targetV <- expression e
-        case targetV of 
+        case targetV of
           VOption (Just v, q) -> do
             pp <- getProxyPath >>= \case
               Just ((Named pn):t)     -> return $ (Named pn):t
@@ -496,7 +496,7 @@ expression e_ = traceExpression $ do
 
           VOption (Nothing, _) -> popProxyFrame >> expression n
           _ -> throwE $ RunTimeTypeError "Invalid Argument to Case-Match"
-    
+
     expr (details -> (ECaseOf _, _, _)) = throwE $ RunTimeTypeError "Invalid Case-Match"
 
     -- | Interpretation of Binding.
@@ -533,7 +533,7 @@ expression e_ = traceExpression $ do
             then do
               let recordMems = membersFromList $ joinByKeys (,) idls ids ivs
               bindAndRefresh bp bv recordMems
-            
+
             else throwE $ RunTimeTypeError "Invalid Bind-Pattern"
 
         (binder, binderV) ->
@@ -541,7 +541,7 @@ expression e_ = traceExpression $ do
             "Bind Mis-Match: value is " ++ showPC (pc {convertToTuples=False}) binderV
                                         ++ " but bind is " ++ show binder
 
-      where 
+      where
         bindAndRefresh bp bv mems = do
           bindings <- bindMembers mems
           fV       <- expression f
@@ -591,11 +591,11 @@ literal (details -> (LCollection _, elems, anns)) = do
     Nothing       -> initialCollection (namedLAnnotations anns) cElems
     Just comboId  -> initialAnnotatedCollection comboId cElems
 
-literal (details -> (LAddress, [h,p], _)) = mapM literal [h,p] >>= \case 
+literal (details -> (LAddress, [h,p], _)) = mapM literal [h,p] >>= \case
   [VString a, VInt b] -> return . VAddress $ Address (a,b)
   _     -> throwE $ RunTimeTypeError "Invalid address literal"
 
-literal (details -> (LAddress, _, _)) = throwE $ RunTimeTypeError "Invalid address literal" 
+literal (details -> (LAddress, _, _)) = throwE $ RunTimeTypeError "Invalid address literal"
 
 literal _ = throwE $ RunTimeTypeError "Invalid literal"
 
@@ -632,7 +632,7 @@ global n t@(details -> (TCollection, _, _)) eOpt = elemE n >>= \case
       Just e  -> expression e >>= entryOfValueT (t @~ isTQualified) >>= insertE n
 
     verifyInitialCollection comboId = \case
-      v@(VCollection (_, Collection _ _ cId)) -> 
+      v@(VCollection (_, Collection _ _ cId)) ->
           if comboId == cId then entryOfValueT (t @~ isTQualified) v >>= insertE n
                             else collInitError comboId cId
       _ -> collValError
@@ -670,11 +670,11 @@ annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> Interpretation ()
 annotation n _ memberDecls = tryLookupADef n >>= \case
   Nothing -> addAnnotationDef
   Just _  -> return ()
-  
+
   where
     addAnnotationDef = do
       (annMems, bindings) <- foldM initializeMembers
-                                      (emptyMembers, emptyBindings) 
+                                      (emptyMembers, emptyBindings)
                                       [liftedAttrFuns, liftedAttrs, attrFuns, attrs]
       _ <- unbindMembers bindings
       void $ modifyADefs $ (:) (n, annMems)
@@ -706,7 +706,7 @@ annotationMember annId matchLifted matchF annMem = case (matchLifted, annMem) of
   (True,  Lifted    Provides n t Nothing  _) | matchF t -> builtinLiftedAttribute annId n t >>= return . builtinQual t
   (False, Attribute Provides n t Nothing  _) | matchF t -> builtinAttribute annId n t >>= return . builtinQual t
   _ -> return Nothing
-  
+
   where initializeMember n t e = expression e >>= \v -> return . Just $ (n, (v, memberQual t))
         builtinQual t (Just (n,v)) = Just (n, (v, memberQual t))
         builtinQual _ Nothing      = Nothing

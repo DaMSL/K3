@@ -72,7 +72,7 @@ simplifyByEquivalenceUnification (Equivocator name eqvrFn) cs =
                 ["Qualified variables:   "] %+ prettyVarMap qm
               )
         )
-        
+
 -- * Relevant data types
 
 -- |A type alias for a routine which will compute a variable equivalence mapping
@@ -84,7 +84,7 @@ type EquivocatorFunction = ConstraintSet -> SimplifyM VarEquivMap
 
 -- |A data type describing an equivocator function and its name.
 data Equivocator = Equivocator String EquivocatorFunction
-      
+
 -- |An alias for a type variable equivalence map.
 type TVarEquivMap q = Map (TVar q) (Set (TVar q))
 type UVarEquivMap = TVarEquivMap UnqualifiedTVar
@@ -149,9 +149,9 @@ cleanPreservations :: (AnyTVar -> Maybe (TVar q))
                    -> SimplifyM (TVarEquivMap q)
 cleanPreservations destr m = do
   toPreserve <- Set.fromList . mapMaybe destr . Set.toList .
-                    preserveVars <$> ask 
+                    preserveVars <$> ask
   return $ Map.map (Set.\\ toPreserve) m
-                            
+
 closeEquivMap :: forall a. (Eq a, Ord a)
               => Map a (Set a) -> Map a (Set a)
 closeEquivMap = leastFixedPoint closeEquivMapOnce
@@ -170,7 +170,7 @@ filterPairsBySymmetry :: (Eq a, Ord a) => [(a,a)] -> [(a,a)]
 filterPairsBySymmetry xs =
   let xS = Set.fromList xs in
   filter (\(x,y) -> (y,x) `Set.member` xS) xs
-  
+
 -- |A function to select groups of type variable substitutions to use.  The
 --  input mapping describes equivalences; the output mapping describes which
 --  variables will actually do the replacement (to prevent replacing each

@@ -7,7 +7,7 @@
 #
 
 """
-Usage: 
+Usage:
     run_k3.py -s -t <topologyFile>
     run_k3.py -n -t <topologyFile>
     run_k3.py -t <topologyFile>
@@ -80,6 +80,6 @@ if __name__ == '__main__':
 
     # if simulation mode required or network mode not specified, run in simulation mode
     if simulationMode or (not networkMode):
-        simulateK3(topologyFile) 
+        simulateK3(topologyFile)
     else :
         networkK3(topologyFile)

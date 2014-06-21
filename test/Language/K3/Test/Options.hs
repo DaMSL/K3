@@ -75,7 +75,7 @@ data K3TestOptions =
   { loggerInstructions :: Maybe [LoggerInstruction]
   , typeSystemOnlyByName :: Maybe (Maybe String)
   }
-  
+
 instance Monoid K3TestOptions where
   mempty =
     -- Empty entries here
@@ -124,11 +124,11 @@ k3testOptions =
     in
     Option "L" ["log"] (ReqArg parse "log_cmd")
       "a logging instruction of the form PRIO or PRIO:MODULE (e.g. debug:Foo)"
-  , let parse s = Right $ mempty {typeSystemOnlyByName = Just $ Just s } in 
+  , let parse s = Right $ mempty {typeSystemOnlyByName = Just $ Just s } in
     Option [] ["ts-only"] (ReqArg parse "filename")
       "execute only type system tests matching the provided filename"
   ]
-  
+
 -- |Lifts an existing @OptDescr@ to a new space.
 liftOptDescr :: (a -> b) -> OptDescr a -> OptDescr b
 liftOptDescr f (Option short long argDescr descr) =

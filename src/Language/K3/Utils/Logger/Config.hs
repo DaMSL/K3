@@ -33,13 +33,13 @@ configureLogging configs =
     Right steps -> do
       mapM_ configureByInstruction steps
       return True
-      
+
 -- | Given a module name and a priority, sets that module to log only messages
 --   of that priority and higher.
 configureByInstruction :: (String, Priority) -> IO ()
 configureByInstruction (loggerName, prio) =
   updateGlobalLogger loggerName $ setLevel prio
-  
+
 parseInstruction :: String -> Either String (String, Priority)
 parseInstruction str =
   let elems = splitOn ":" str in

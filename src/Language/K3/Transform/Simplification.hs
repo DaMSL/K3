@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -11,9 +12,12 @@ import Data.Either
 import Data.Fixed
 import Data.Function
 import Data.List
+import Data.Maybe
 import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
+
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -74,10 +78,10 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     --   in Haskell this requires a side effect.
     simplifyConstants ch n@(tag -> ESome) =
       applyVCtor ch n (asUnary $ someCtor $ extractQualifier $ head $ children n)
-    
+
     simplifyConstants ch n@(tag -> ETuple) =
       applyVCtor ch n (tupleCtor $ map extractQualifier $ children n)
-    
+
     simplifyConstants ch n@(tag -> ERecord ids) =
       applyVCtor ch n (recordCtor ids $ map extractQualifier $ children n)
 
@@ -90,21 +94,21 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         (Left v, Right bodyE, True) -> substituteBinding i v bodyE >>= simplifyAsFoldedExpr
         (_, _, _)                   -> rebuildNode n ch
 
-    -- TODO: substitute when we have read-only mutable bindings.    
+    -- TODO: substitute when we have read-only mutable bindings.
     simplifyConstants ch n@(tag -> EBindAs b) =
       case (b, head ch, last ch) of
         (_, _, Left v) -> return $ Left v
-        
+
         (BTuple ids,  Left (VTuple vqs), Right bodyE) ->
           (foldM substituteQualifiedField bodyE $ zip ids vqs) >>= simplifyAsFoldedExpr
-        
+
         (BRecord ijs, Left (VRecord nvqs), Right bodyE) -> do
           subVQs <- mapM (\(s,t) -> maybe (invalidRecordBinding s) (return . (t,)) $ Map.lookup s nvqs) ijs
           foldM substituteQualifiedField bodyE subVQs >>= simplifyAsFoldedExpr
 
         (_, _, _) -> rebuildNode n ch
 
-      where invalidRecordBinding s = 
+      where invalidRecordBinding s =
               Left $ "Invalid bind-as mapping source during simplification: " ++ s
 
     -- Branch simplification.
@@ -115,14 +119,14 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid if-then-else predicate simplification"
 
-    -- TODO: substitute when we have read-only mutable bindings.    
+    -- TODO: substitute when we have read-only mutable bindings.
     simplifyConstants ch n@(tag -> ECaseOf i) =
       case head ch of
         Left (VOption (Just v, MemImmut)) ->
           (case ch !! 1 of
             Left v2     -> return $ Left v2
             Right someE -> substituteBinding i v someE >>= simplifyAsFoldedExpr)
-        
+
         Left (VOption (Nothing,  _)) -> return $ last ch
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid case-of source simplification"
@@ -135,8 +139,8 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
           Left (VRecord nvqs) -> maybe fieldError (return . Left . fst) $ Map.lookup i nvqs
           Right _ -> rebuildNode n ch
           _ -> Left "Invalid projection source simplification"
-      
-      where fieldError = Left $ "Unknown record field in project simplification: " ++ i  
+
+      where fieldError = Left $ "Unknown record field in project simplification: " ++ i
 
     -- The default case is to rebuild the current node as an expression.
     -- This handles: lambda, assignment, addresses, and self expressions
@@ -144,14 +148,14 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
 
     rebuildValue :: [Annotation Expression] -> Value -> Either String (K3 Expression)
     rebuildValue anns v = valueAsExpression v >>= return . flip (foldl (@+)) anns
-    
+
     rebuildNode :: K3 Expression -> [Either Value (K3 Expression)] -> FoldedExpr
     rebuildNode n ch = do
         let chAnns = map annotations $ children n
         nch <- mapM (\(vOrE, anns) -> either (rebuildValue anns) return vOrE) $ zip ch chAnns
         return . Right $ Node (tag n :@: annotations n) nch
 
-    withValueChildren :: K3 Expression -> [Either Value (K3 Expression)] 
+    withValueChildren :: K3 Expression -> [Either Value (K3 Expression)]
                       -> ([Value] -> FoldedExpr) -> FoldedExpr
     withValueChildren n ch f = if all isLeft ch then f (lefts ch) else rebuildNode n ch
 
@@ -200,17 +204,17 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     valueAsExpression (VInt    v)       = Right . EC.constant $ CInt    v
     valueAsExpression (VReal   v)       = Right . EC.constant $ CReal   v
     valueAsExpression (VString v)       = Right . EC.constant $ CString v
-    
+
     valueAsExpression (VOption (Nothing, vq)) =
       Right . EC.constant $ CNone $ noneQualifier vq
 
     valueAsExpression (VOption (Just v, vq)) =
       valueAsExpression v >>= Right . (\e -> e @+ eQualifier vq) . EC.some
-    
+
     valueAsExpression (VTuple  vqs) =
-      mapM (valueAsExpression . fst) vqs >>= 
+      mapM (valueAsExpression . fst) vqs >>=
         (\l -> Right $ EC.tuple $ map (uncurry (@+)) $ zip l $ map (eQualifier . snd) vqs)
-    
+
     valueAsExpression (VRecord nvqs) =
       let (ids, vqs) = unzip $ Map.toList nvqs
           (vs, qs)   = unzip vqs
@@ -309,7 +313,7 @@ betaReduction expr = mapTree reduce expr
     reduce ch n = rebuildNode n ch
 
     reduceOnOccurrences n ch i ie e =
-      let occurrences = length $ filter (== i) $ freeVariables e in 
+      let occurrences = length $ filter (== i) $ freeVariables e in
       if occurrences <= 1
         then betaReduction $ substituteImmutBinding i ie e
         else rebuildNode n ch
@@ -334,22 +338,22 @@ betaReduction expr = mapTree reduce expr
 --          => case x of { Some j -> l } { None -> n }
 eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
 eliminateDeadProgramCode prog = do
-  aProg <- analyzeEffects prog 
+  aProg <- analyzeEffects prog
   mapExpression eliminateDeadCode aProg
 
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
 eliminateDeadCode expr = mapTree pruneExpr expr
   where
     pruneExpr ch n@(tag -> ELetIn  i) =
-      let vars = freeVariables $ last ch in 
+      let vars = freeVariables $ last ch in
       if maybe False (const $ i `notElem` vars) $ (head ch) @~ ePure
         then return $ last ch
         else rebuildNode n ch
 
     pruneExpr ch n@(tag -> EBindAs b) =
       let vars = freeVariables $ last ch in
-      case b of 
-        BRecord ijs -> 
+      case b of
+        BRecord ijs ->
           let nBinder = BRecord $ filter (\(_,j) -> j `elem` vars) ijs
           in return $ Node (EBindAs nBinder :@: annotations n) ch
         _ -> rebuildNode n ch
@@ -374,7 +378,7 @@ eliminateDeadCode expr = mapTree pruneExpr expr
 -- | Effect-aware common subexpression elimination.
 --
 -- Naive algorithm:
---   build tree of candidates: each tree node captures when it is the LCA of a 
+--   build tree of candidates: each tree node captures when it is the LCA of a
 --   common subexpression, along with the number of times that it occurs.
 --     i. propagate all subtrees up, identifying candidates as
 --        common subtrees across children (i.e., marking candidates at their LCA).
@@ -393,7 +397,7 @@ eliminateDeadCode expr = mapTree pruneExpr expr
 --     iv. at each node, the candidates are stored in frequency-order: [(K3 Expression, Int)]
 --     v. covered expressions must occur at least as frequently, if not more frequently than
 --        their covering expressions nearer the root of the tree.
---     
+--
 --   build tree of substitutions: greedy selection of what to substitute given candidate tree.
 --     i. traverse tree of candidates top-down and mark for substitution, tracking the node UID
 --        and the expression to substitute.
@@ -406,10 +410,10 @@ eliminateDeadCode expr = mapTree pruneExpr expr
 --   flatten substitutions
 --     i. extract a list of UIDs and expression to substitute.
 --     ii. close over substitutions
--- 
+--
 --   perform substitutions
 --     i. traverse tree top-down, and when encountering a UID, test and substitute.
--- 
+--
 -- TODO: add UID and span annotations to the transformed code.
 --
 type Candidates        = [(K3 Expression, Int)]
@@ -434,7 +438,7 @@ commonSubexprElim expr = do
     buildCandidateTree :: K3 Expression -> Either String CandidateTree
     buildCandidateTree e = do
       (cTree, _, _) <- foldMapTree buildCandidates ([], [], []) e
-      case cTree of 
+      case cTree of
         [x] -> return x
         _   -> Left "Invalid candidate tree"
 
@@ -446,14 +450,14 @@ commonSubexprElim expr = do
       case x of
         EUID uid ->
           let (ctCh, sExprCh, subAcc) = unzip3 chAccs
-              bindings      = case tag t of 
+              bindings      = case tag t of
                                 ELambda i -> [[i]]
                                 ELetIn  i -> [[], [i]]
                                 ECaseOf j -> [[], [j], []]
                                 EBindAs b -> [[], bindingVariables b]
                                 _         -> repeat []
               filteredCands = nub $ concatMap filterOpenCandidates $ zip bindings subAcc
-              localCands    = sortBy ((flip compare) `on` snd) $ 
+              localCands    = sortBy ((flip compare) `on` snd) $
                                 foldl (addCandidateIfLCA subAcc) [] filteredCands
               candTreeNode  = Node (uid, localCands) $ concat ctCh
               nStrippedExpr = Node (tag t :@: (filter isEQualified $ annotations t)) $ concat sExprCh
@@ -464,7 +468,7 @@ commonSubexprElim expr = do
 
         _ -> uidError n
 
-      where 
+      where
         filterOpenCandidates ([], cands) = cands
         filterOpenCandidates (bindings, cands) =
           filter (\e -> null $ freeVariables e `intersect` bindings) cands
@@ -496,14 +500,14 @@ commonSubexprElim expr = do
     countInBranch sub (a,b) cs =
       let i = length $ filter (== sub) cs in (if i > 0 then a+1 else a, b+i)
 
-    pruneCandidateTree :: CandidateTree -> Either String CandidateTree 
+    pruneCandidateTree :: CandidateTree -> Either String CandidateTree
     pruneCandidateTree = biFoldMapTree trackCandidates pruneCandidates [] (Node (UID $ -1, []) [])
       where
         trackCandidates :: Candidates -> CandidateTree -> Either String (Candidates, [Candidates])
         trackCandidates candAcc (Node (_, cands) ch) = do
           let nCandAcc = foldl appendCandidate candAcc cands
           return (nCandAcc, replicate (length ch) nCandAcc)
-        
+
         pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
                         -> Either String CandidateTree
         pruneCandidates candAcc ch (Node (uid, cands) _) =
@@ -526,7 +530,7 @@ commonSubexprElim expr = do
 
         foldSubstitutions :: [Substitution] -> Either String [NamedSubstitution]
         foldSubstitutions subs = do
-          (_,namedSubs) <- foldM nameSubstitution (0::Int,[]) subs 
+          (_,namedSubs) <- foldM nameSubstitution (0::Int,[]) subs
           foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
 
         nameSubstitution :: (Int, [NamedSubstitution]) -> Substitution
@@ -535,7 +539,7 @@ commonSubexprElim expr = do
           return (cnt+1, acc++[(uid, ("__cse"++show cnt), e, i)])
 
         closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
-        closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2) 
+        closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2)
           | uid == uid2 && n == n2 = return $ (uid, n, e2, i2)
           | e2 `covers` e          = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
           | otherwise              = return $ (uid2, n2, e2, i2)
@@ -564,7 +568,7 @@ commonSubexprElim expr = do
           (strippedE, rebuiltE) <- return $ case tag n of
               EConstant _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
               EVariable _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
-              _           -> (Node (tag n :@: (filter isEQualified $ annotations n)) chAcc, Node (tag n :@: annotations n) ch) 
+              _           -> (Node (tag n :@: (filter isEQualified $ annotations n)) chAcc, Node (tag n :@: annotations n) ch)
 
           return $ if strippedE == compareE
                      then (newE, foldl (@+) newE $ annotations n)
@@ -582,15 +586,15 @@ commonSubexprElim expr = do
 -- | Marks all function applications that are fusable transformers as a
 --   preprocessing for fusion optimizations.
 inferFusableProgramApplies :: K3 Declaration -> Either String (K3 Declaration)
-inferFusableProgramApplies prog = mapProgram return return inferFusableExprApplies prog
+inferFusableProgramApplies prog = mapExpression inferFusableExprApplies prog
 
 inferFusableExprApplies :: K3 Expression -> Either String (K3 Expression)
 inferFusableExprApplies expr = modifyTree fusable expr
   where
-    fusable e@(tag -> EOperate OApp) = 
+    fusable e@(tag -> EOperate OApp) =
       let pl = filter isPTransformer $ annotations $ head $ children e in
       return $ if null pl then e else e @+ fusableProp
-    
+
     fusable e = return e
 
     isPTransformer :: Annotation Expression -> Bool
@@ -600,10 +604,58 @@ inferFusableExprApplies expr = modifyTree fusable expr
     fusableProp :: Annotation Expression
     fusableProp = EProperty "Fusable" Nothing
 
-{-
 fuseProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
-fuseProgramTransformers = mapExpression fuseTransformers
+fuseProgramTransformers prog = mapExpression fuseTransformers prog
 
 fuseTransformers :: K3 Expression -> Either String (K3 Expression)
-fuseTransformers = undefined
--}
+fuseTransformers expr = mapTree fuse expr
+  where
+    fuse ch n | Just (outer, inner) <- fusablePair n ch =
+      trace (unwords ["fuse", show outer, "and", show inner]) $
+      case (outer, inner) of
+        (EProject "map",     EProject "map") -> rewriteMapMap n ch
+        -- (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
+        -- (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
+        _ -> rebuildE ch n
+
+    fuse ch n = rebuildE ch n
+    rebuildE ch (Node n _) = return $ Node n ch
+
+    -- TODO: add generated spans and type annotations for all expressions built.
+    rewriteMapMap :: K3 Expression -> [K3 Expression] -> Either String (K3 Expression)
+    rewriteMapMap n ch = case extractFusablePairArgs ch of
+      Just (c, f, g) -> return $ EC.applyMany (EC.project "map" c) [composeFunctions f g]
+      Nothing -> rebuildE ch n
+
+    -- TODO: simplify and inline function bodies where possible.
+    -- TODO: add generated spans and type annotations for all expressions built.
+    composeFunctions :: K3 Expression -> K3 Expression -> K3 Expression
+    composeFunctions f g = EC.lambda "x" $ EC.applyMany f [EC.record [("elem", EC.applyMany g [EC.variable "x"])]]
+
+    fusablePair :: K3 Expression -> [K3 Expression] -> Maybe (Expression, Expression)
+    fusablePair n [ch1@(tag &&& children -> (EProject _, [gch])), _]
+      | isFusable n && isFusable gch =
+        let ggch = children gch in
+        if null ggch then Nothing else Just (tag ch1, tag $ head ggch)
+      | otherwise = Nothing
+
+    fusablePair _ _ = Nothing
+
+    extractFusablePairArgs :: [K3 Expression] -> Maybe (K3 Expression, K3 Expression, K3 Expression)
+    extractFusablePairArgs [(children -> [gchApp]), arg1] =
+      let ggch = children gchApp
+          (target, arg2) = fusableTarget gchApp
+      in if null ggch then Nothing else Just (target, arg1, arg2)
+
+    extractFusablePairArgs _ = Nothing
+
+    fusableTarget :: K3 Expression -> (K3 Expression, K3 Expression)
+    fusableTarget e = let ch = children e in (head $ children $ head ch, last ch)
+
+    isFusable :: K3 Expression -> Bool
+    isFusable e@(tag -> EOperate OApp) = isJust $ find isEFusable $ annotations e
+    isFusable _ = False
+
+    isEFusable :: Annotation Expression -> Bool
+    isEFusable (EProperty "Fusable" _) = True
+    isEFusable _ = False

@@ -146,7 +146,7 @@ success = return ()
 
 class WithinAlignable t where
   withinAlign :: t -> t -> WithinM e ()
-  
+
 instance WithinAlignable Constraint where
   withinAlign c c' =
     case (c,c') of
@@ -173,7 +173,7 @@ instance WithinAlignable Constraint where
       (PolyinstantiationLineageConstraint _ _, _) -> mzero
       (OpaqueBoundConstraint oa t1 t2, OpaqueBoundConstraint oa' t1' t2') ->
         guard (oa == oa') >> withinAlign t1 t1' >> withinAlign t2 t2'
-      (OpaqueBoundConstraint _ _ _, _) -> mzero  
+      (OpaqueBoundConstraint _ _ _, _) -> mzero
 
 instance WithinAlignable TypeOrVar where
   withinAlign ta ta' =

@@ -280,7 +280,7 @@ qualifiersOfType tExpr = mapMaybe unQual $ annotations tExpr
       TImmutable -> Just [TImmut]
       TMutable -> Just [TMut]
       _ -> Nothing
-      
+
 -- |A utility function for type derivation over record types.  This is separated
 --  from the main derivation routine so that it can be called by both the main
 --  routine as well as @deriveCollectionType@ and in such a way that the derived

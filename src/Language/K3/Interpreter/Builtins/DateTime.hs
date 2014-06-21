@@ -44,7 +44,7 @@ timeBinOp map1 map2 op = do
       (sec', nsec') = normalize sec nsec
   return $ Map.fromList [("sec", (VInt sec', MemImmut)), ("nsec", (VInt nsec', MemImmut))]
   where
-      get' nm m = 
+      get' nm m =
         case fst $ Map.findWithDefault (VInt 0, MemImmut) nm m of
           VInt i -> return i
           x      -> throwE $ RunTimeTypeError $ "Expected Int but found "++show x
@@ -91,7 +91,7 @@ genDateTimeBuiltin "getLocalTime" _ = Just $ vfun $ \_ -> do
 -- getLocalTimeWithFormat :: string -> string
 genDateTimeBuiltin "getLocalTimeWithFormat" _ = Just $ vfun $ \(VString formatString) -> do
     zonedTime <- liftIO $ getZonedTime
-    if formatString == "" 
+    if formatString == ""
         then return $ VString $ formatTime defaultTimeLocale "%H:%M:%S" zonedTime
         else return $ VString $ formatTime defaultTimeLocale formatString zonedTime
 
@@ -125,7 +125,7 @@ genDateTimeBuiltin "parseDate" _ = Just $ vfun $ \(VString formatString) -> vfun
                 in let record = VRecord $ Map.fromList $
                         [("y", (VInt $ fromInteger y, MemImmut)),
                         ("m", (VInt $ m, MemImmut)),
-                        ("d", (VInt $ d, MemImmut))] 
+                        ("d", (VInt $ d, MemImmut))]
                    in return $ VOption (Just record, MemImmut)
 
 -- Parse an SQL date string and convert to integer

@@ -20,7 +20,7 @@ module Language.K3.Runtime.Dataspace (
   filterDS,
   combineDS,
   splitDS,
-  
+
   SequentialDataspace,
   sortDS,
 
@@ -108,32 +108,32 @@ class (Monad m, Dataspace m ds v) => AssociativeDataspace m ds k v where
 dsChainInstanceGenerator :: ExpQ -> [(TypeQ, String, [(String, String)], String, Bool)] -> Q [Dec]
 dsChainInstanceGenerator mErrorE dsInstanceSpec =
     mapM genInstance dsInstanceSpec
-  
+
   where
     genInstance (instT, instName, chainInstances, defaultChain, defaultPattern) = do
       let instMethods  = maybe [] id $ lookup instName instanceMethods
       let methodsToGen = filter (\(n,_,_,_,_) -> n `elem` instMethods) $ methods defaultChain defaultPattern
       let methodDecls  = [ genMethod chainInstances method | method <- methodsToGen ]
       instanceD (cxt []) instT methodDecls
-    
+
     instanceMethods =
       [ ("Dataspace",
           ["emptyDS", "initialDS", "copyDS", "peekDS",
            "insertDS", "deleteDS", "updateDS",
            "foldDS", "mapDS", "mapDS_", "filterDS", "combineDS", "splitDS"])
-      
+
       , ("SequentialDataspace", ["sortDS"])
-      
+
       , ("SetDataspace", ["memberDS", "isSubsetOfDS", "unionDS", "intersectDS", "differenceDS"])
-      
+
       , ("SortedDataspace", ["minDS", "maxDS", "lowerBoundDS", "upperBoundDS", "sliceDS"])
       ]
 
-    methods defaultInstance defaultPattern = 
-      [ chainConOM  "emptyDS" 
+    methods defaultInstance defaultPattern =
+      [ chainConOM  "emptyDS"
           [clause [[p|Nothing|]] (normalB [| (emptyDS Nothing) >>= return . $(conE $ mkName defaultInstance) |]) []]
           $ if defaultPattern then [clause [[p|_|]] (normalB errorE) []] else []
-  
+
       , chainCon1OM "initialDS" "vals"
           [clause [(varP $ mkName "vals"),[p|Nothing|]]
             (normalB [| (initialDS $(varE $ mkName "vals") Nothing) >>= return . $(conE $ mkName defaultInstance) |]) []]
@@ -144,7 +144,7 @@ dsChainInstanceGenerator mErrorE dsInstanceSpec =
       , chainCon1PM "insertDS" "val"    [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
       , chainCon1M  "deleteDS" "val"    [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
       , chainCon2M  "updateDS" "v" "v'" [] $ if defaultPattern then [clause [[p|_|], [p|_|], [p|_|]] (normalB errorE) []] else []
-      
+
       , chain2M     "foldDS"   "acc" "acc_init" [] $ if defaultPattern then [clause [[p|_|], [p|_|], [p|_|]] (normalB errorE) []] else []
       , chainCon1M  "mapDS"    "func"           [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []
       , chain1M     "mapDS_"   "func"           [] $ if defaultPattern then [clause [[p|_|], [p|_|]] (normalB errorE) []] else []

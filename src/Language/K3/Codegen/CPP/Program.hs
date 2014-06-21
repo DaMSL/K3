@@ -37,6 +37,7 @@ program d = do
             vsep genNamespaces,
             vsep genAliases,
             staticGlobals',
+            (text "#include" <+> (dquotes (text "Builtins.hpp"))),
             program',
             s,
             main
@@ -66,6 +67,7 @@ genKMain :: CPPGenM CPPGenR
 genKMain = do
     matchers <- matchersDecl
     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
+            genCCall (text "initGlobalDecls") Nothing [] <> semi,
             genCDecl (text "Options") (text "opt") Nothing,
             (text "if ") <>
               parens (genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
@@ -81,11 +83,12 @@ genKMain = do
             text "addr_l.push_back(me);",
             text "SystemEnvironment se = defaultEnvironment(addr_l);",
             genCCall (text "engine.configure") Nothing
-              [text "opt.simulation", text "se", 
-               text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())"] <> semi,
+              [text "opt.simulation", text "se",
+               text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())",
+               text "opt.log_level"] <> semi,
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
-              genCCall (text "DispatchMessageProcessor") Nothing 
+              genCCall (text "DispatchMessageProcessor") Nothing
                 [text "dispatch_table", text showGlobalsName]) <> semi,
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
             text "return 0" <> semi
@@ -94,6 +97,7 @@ genKMain = do
 includes :: CPPGenM [Identifier]
 includes = return [
         -- Standard Library
+        "functional",
         "memory",
         "sstream",
         "string",
@@ -217,7 +221,7 @@ showVar base_t name =
         t_n  <- genCType t
         et_n <- genCType et
         v    <- showVar et "elem"
-        fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (text "oss <<" <+> v <+> text "<< \",\";") <> semi
+        fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
         iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
         -- wrap in lambda, then call it

@@ -150,7 +150,7 @@ qualifyE e = if null $ filter isEQualified $ annotations e then e @+ EImmutable 
 processInitsAndRoles :: K3 Declaration -> [(Identifier, EndpointInfo)] -> [(Identifier, Identifier)]
                      -> K3 Declaration
 processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initializerFns
-  where 
+  where
         (sinkEndpoints, sourceEndpoints) = partition matchSink endpointBQGs
         matchSink (_,(_, Nothing, _, _)) = True
         matchSink _ = False
@@ -158,7 +158,7 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
         initializerFns =
             [ builtinGlobal initDeclId (qualifyT unitFnT)
                 $ Just . qualifyE $ mkInitDeclBody sinkEndpoints,
-             
+
               builtinGlobal roleFnId (qualifyT unitFnT)
                 $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults ]
 
@@ -166,13 +166,13 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
 
         sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
         sinkInitE acc _ = acc
-        
+
         mkRoleBody sources defaults =
           EC.lambda "_" $ uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults
-        
+
         defaultAndRestIds sources defaults = (defaultE sources $ lookup "" defaults, sources)
         dispatchId elseE (n,(_,_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE
-        
+
         eqRole n = EC.binop OEqu roleVar (EC.constant $ CString n)
 
         runE _ (Just goE) = goE
@@ -184,7 +184,7 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
         defaultE _ Nothing   = EC.unit
 
         third (_,_,x,_) = x
-        
+
         unitFnT = TC.function TC.unit TC.unit
 
 
@@ -195,7 +195,7 @@ endpointMethods :: Bool -> EndpointSpec -> K3 Expression -> K3 Expression -> Ide
                 -> (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
 endpointMethods isSource eSpec argE formatE n t =
   if isSource then sourceDecls else sinkDecls
-  where 
+  where
     sourceDecls = (eSpec, Nothing,) $
          (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead])
       ++ [sourceController]
@@ -271,14 +271,14 @@ bindSource bindings d
 
   where
     -- | Constructs a dispatch function declaration for a source.
-    mkProcessFn n eOpt = 
+    mkProcessFn n eOpt =
       builtinGlobal (cpName n) (qualifyT unitFnT) (Just . qualifyE $ body n eOpt)
-      
+
     body n eOpt = EC.lambda "_" $ EC.applyMany (processFnE n) [nextE n eOpt]
-            
+
     processFnE n = EC.lambda "next" $ EC.block $
       map (\(_,dest) -> sendNextE dest) $ filter ((n ==) . fst) bindings
-    
+
     nextE _ (Just e) = e
     nextE n Nothing  = EC.applyMany (EC.variable $ crName n) [EC.unit]
     sendNextE dest   = EC.send (EC.variable dest) myAddr (EC.variable "next")

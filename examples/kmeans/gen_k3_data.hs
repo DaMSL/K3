@@ -13,7 +13,7 @@ join_c :: Char -> [String] ->  String
 join_c c = concat . (intersperse [c])
 
 gen_DS :: (Show a) => [a] -> [String]
-gen_DS vals = map gen $ zip [1..] vals 
+gen_DS vals = map gen $ zip [1..] vals
   where
     gen (i, v) = "{key = (" ++ (show i) ++ ", MemImmut), value= (" ++ (show v) ++ ", MemImmut)}"
 
@@ -26,5 +26,5 @@ main :: IO ()
 main = do
   floats      <- parse_floats <$> readFile filename
   collections <- return $ map gen_k3_vector floats
-  mapM_ putStrLn collections 
-  
+  mapM_ putStrLn collections
+

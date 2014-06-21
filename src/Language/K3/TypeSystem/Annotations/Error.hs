@@ -29,7 +29,7 @@ data AnnotationConcatenationError
       -- ^Produced when a concatenated member uses polymorphic signatures and
       --  those signatures are not equivalent.
   deriving (Eq, Show)
-  
+
 instance Pretty AnnotationConcatenationError where
   prettyLines x = case x of
     DifferentMorphicArities i ->

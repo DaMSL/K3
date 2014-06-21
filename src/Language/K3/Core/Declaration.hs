@@ -9,9 +9,9 @@ module Language.K3.Core.Declaration (
     -- * User defined Annotations
     Polarity(..),
     AnnMemDecl(..),
-    UnorderedConflict(..),    
+    UnorderedConflict(..),
 
-    getTriggerIds,    
+    getTriggerIds,
 
     isDSpan,
     isDUID,
@@ -47,13 +47,13 @@ data AnnMemDecl
     = Lifted      Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
                   [Annotation Declaration]
-    
+
     | Attribute   Polarity Identifier
                   (K3 Type) (Maybe (K3 Expression))
                   [Annotation Declaration]
-    
+
     | MAnnotation Polarity Identifier [Annotation Declaration]
-  deriving (Eq, Read, Show)  
+  deriving (Eq, Read, Show)
 
 -- | Annotation member polarities
 data Polarity = Provides | Requires deriving (Eq, Read, Show)
@@ -89,17 +89,17 @@ instance Pretty (K3 Declaration) where
             (Just e, [])  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
             (Nothing, _)  -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
             (Just e, _)   -> nonTerminalShift t ++ ["|"] ++ nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
-    
+
     prettyLines (Node (DTrigger i t e :@: as) ds) =
         ["DTrigger " ++ i ++ drawAnnotations as, "|"]
         ++ nonTerminalShift t ++ ["|"]
         ++ case ds of
             [] -> terminalShift e
             _  -> nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
-    
+
     prettyLines (Node (DRole i :@: as) ds) =
         ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
-    
+
     prettyLines (Node (DAnnotation i vdecls members :@: as) ds) =
         ["DAnnotation " ++ i
             ++ if null vdecls
@@ -113,7 +113,7 @@ instance Pretty (K3 Declaration) where
       where
         drawAnnotationMembers []  = []
         drawAnnotationMembers [x] = terminalShift x
-        drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x) 
+        drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
                                       ++ terminalShift (last x)
 
     prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
@@ -124,13 +124,13 @@ instance Pretty AnnMemDecl where
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
-  
+
   prettyLines (Attribute   pol n t eOpt anns) =
     ["Attribute " ++ unwords [show pol, n, show anns], "|"]
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
-  
+
   prettyLines (MAnnotation pol n anns) =
     ["MAnnotation " ++ unwords [show pol, n, show anns]]
 

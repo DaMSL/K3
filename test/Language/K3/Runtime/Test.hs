@@ -45,30 +45,30 @@ import Language.K3.Utils.Pretty
 {-
 constructBuffer :: [Test]
 constructBuffer = [
-      testCase "Empty exclusive singleton" $ empty $ exclusive emptySingletonBuffer    
+      testCase "Empty exclusive singleton" $ empty $ exclusive emptySingletonBuffer
     , testCase "Empty exclusive bounded"   $ empty $ exclusive ebBuf
     , testCase "Empty exclusive unbounded" $ empty $ exclusive emptyUnboundedBuffer
     , testCase "Empty shared singleton"    $ empty $ shared emptySingletonBuffer
     , testCase "Empty shared bounded"      $ empty $ shared ebBuf
     , testCase "Empty shared unbounded"    $ empty $ shared emptyUnboundedBuffer
-    , testCase "Full exclusive singleton"  $ full $ exclusive (singletonBuffer 1) 
+    , testCase "Full exclusive singleton"  $ full $ exclusive (singletonBuffer 1)
     , testCase "Full shared singleton"     $ full $ shared (singletonBuffer 1)
     , testCase "Full exclusive bounded"    $ optional (full . exclusive) $ bBuf [1,2,3]
     , testCase "Full shared bounded"       $ optional (full . shared) $ bBuf [1,2,3]
   ]
-  where 
+  where
         failed   = assertFailure "Constructor failed"
         empty b  = b >>= emptyEBuffer >>= flip unless failed
         full b   = b >>= fullEBuffer >>= flip unless failed
-        ebBuf    = emptyBoundedBuffer $ defaultBufferSpec defaultConfig 
+        ebBuf    = emptyBoundedBuffer $ defaultBufferSpec defaultConfig
         bBuf l   = boundedBuffer (boundedBufferSpec $ length l) l
         optional = maybe failed
         boundedBufferSpec n = BufferSpec n $ min n 10
 
 readBuffer :: [Test]
 readBuffer = [
-      testCase "Read empty"          $ readEmpty $ exclusive emptySingletonBuffer 
-    , testCase "Read singleton"      $ readValid 1 $ exclusive (singletonBuffer 1) 
+      testCase "Read empty"          $ readEmpty $ exclusive emptySingletonBuffer
+    , testCase "Read singleton"      $ readValid 1 $ exclusive (singletonBuffer 1)
     , testCase "Read unbounded head" $ optional (readValid 1 . exclusive) $ unboundedBuffer [1,2,3]
   ]
   where success = return ()
@@ -91,7 +91,7 @@ appendBuffer = [
         testAppend f g (nb, rv) = unless (f nb && g rv) failed
         testAppendOverflow f    = testAppend (\_ -> True) f
         testAppendBuffer f      = testAppend f (\_ -> True)
-        
+
         optional            = maybe failed
         bBuf l sz           = boundedBuffer (boundedBufferSpec sz) l
         boundedBufferSpec n = BufferSpec n $ min n 10
@@ -114,7 +114,7 @@ takeBuffer = [
         testTakeBuffer f      = testTake f (\_ -> True)
 
         optional            = maybe failed
-        ebBuf               = emptyBoundedBuffer $ defaultBufferSpec defaultConfig 
+        ebBuf               = emptyBoundedBuffer $ defaultBufferSpec defaultConfig
         bBuf l sz           = boundedBuffer (boundedBufferSpec sz) l
         boundedBufferSpec n = BufferSpec n $ min n 10
 
@@ -138,21 +138,21 @@ transportTests :: [Test]
 transportTests = [
       testCase "NEndpoint"   $ withEndpoint "receiver" recvr (\_ -> success)
     , testCase "NConnection" $ withEndpointPair (\x y -> newConnection (fst x) (snd y) >>= failNothing)
-    
-    , testCase "Send data" $ 
+
+    , testCase "Send data" $
         let testData = ["hello", "this", "is", "K3"]
             expected = (:[]) . concatMap id
               -- Above, NT uses Network.Socket.ByteString.sendMany for its sends.
               -- This has the effect of concatenating data segments.
-            
+
             sendData ep (conn -> c) = NT.send c (map BS.pack testData)
-            
+
             recvData (endpoint -> ep) =
               testRecvSeq ep [ (matchConnectionOpen, Nothing, "connect")
                              , (matchReceive (expected testData), Just showReceive, "data/1") ]
 
-        in withEndpointPair (\x y -> 
-              newConnection (fst x) (snd y) >>= optional (\c -> 
+        in withEndpointPair (\x y ->
+              newConnection (fst x) (snd y) >>= optional (\c ->
                 sendData (snd x) c >>= either (\_ -> failed) (\_ -> recvData $ snd x)))
 
     -- TODO
@@ -188,8 +188,8 @@ transportTests = [
         showReceive (NT.Received _ msgs) = putStrLn $ "Data:\n" ++ (intercalate "\n" $ map BS.unpack msgs)
         showReceive _ = return ()
 
-        testRecvSeq ep evtSeq = 
-          let testMsg (testF, showF, s) evt = 
+        testRecvSeq ep evtSeq =
+          let testMsg (testF, showF, s) evt =
                 evt >>= (\e -> maybe (return ()) ($ e) showF >> unless (testF e) (failedS s))
           in mapM_ (uncurry testMsg) $ zip evtSeq (repeat $ NT.receive ep)
 
@@ -202,13 +202,13 @@ endpointTests = []
 
 handleTests :: [Test]
 handleTests = [
-      testCase "Open readable file" $ 
+      testCase "Open readable file" $
         let (n, path) = ("testSource", "data/expr-i.txt") in
         withSimulation (\eg -> openFile n path syntaxValueWD Nothing "r" eg >> failExternalEndpoint n eg)
 
-    , testCase "Open writeable file" $ 
+    , testCase "Open writeable file" $
         let (n, path) = ("testSink", "data/out.txt") in
-        withFile n path "w" (const $ failPath path) (const $ return ()) 
+        withFile n path "w" (const $ failPath path) (const $ return ())
 
     , testCase "Write to file" $
         let (n, path) = ("testSink", "data/out.txt") in
@@ -222,7 +222,7 @@ handleTests = [
         readAndShowValue "testSource" "data/expr-i.txt"
 
     , testCase "Read complex syntax values from file" $
-        readAndShowValue "testSource" "data/expr-ii.txt"    
+        readAndShowValue "testSource" "data/expr-ii.txt"
 
     -- TODO
     , testCase "Open readable socket"  $ return ()
@@ -235,18 +235,18 @@ handleTests = [
     , testCase "Write to socket"  $ return ()
   ]
   where failed = assertFailure "Handle test failed"
-        
+
         failInternalEndpoint n (endpoints -> EEndpointState ieps _) = getEndpoint n ieps >>= flip unless failed . isJust
         failExternalEndpoint n (endpoints -> EEndpointState _ eeps) = getEndpoint n eeps >>= flip unless failed . isJust
 
         failPath p = doesFileExist p >>= flip unless failed
         failRead   = flip when failed . isNothing
-        
+
         withSimulation f = simulationEngine defaultSystem syntaxValueWD >>= f
 
-        withFile n path mode test f = 
-          withSimulation (\eg -> 
-            openFile n path syntaxValueWD Nothing mode eg 
+        withFile n path mode test f =
+          withSimulation (\eg ->
+            openFile n path syntaxValueWD Nothing mode eg
               >> f eg >>= (\v -> close n eg >> return v)) >>= test
 
         readAndShowValue n path =
@@ -284,20 +284,20 @@ engineTests = [
         void $ cleanupEngine eg
         unless (simulation eg) failed
 
-    , testCase "Network engine constructor" $ 
+    , testCase "Network engine constructor" $
         withEngine (networkEngine defaultSystem format) id (validPeerEndpoint defaultAddress)
 
-    , testCase "Virtualized simulation constructor" $ 
+    , testCase "Virtualized simulation constructor" $
         buildMultiNodeSystem simulationEngine validMessageQueue >>= cleanupEngine . fst
 
-    , testCase "Virtualized network constructor" $ 
+    , testCase "Virtualized network constructor" $
         buildMultiNodeSystem networkEngine validPeerEndpoint >>= cleanupEngine . fst
 
-    , testCase "Multi-engine network constructor" $ 
+    , testCase "Multi-engine network constructor" $
         buildMultiEngineSystem testSystem networkEngine validPeerEndpoint
           >>= mapM_ (cleanupEngine . snd)
 
-    , testCase "Simulation send message" $ 
+    , testCase "Simulation send message" $
         withEngine (buildMultiNodeSystem simulationEngine validMessageQueue) fst sendMessages
 
     , testCase "Network send message (short-circuited)" $
@@ -315,7 +315,7 @@ engineTests = [
     , testCase "Network message received" $ return ()
   ]
   where failed = assertFailure "Engine test failed"
-        
+
         format = syntaxValueWD
 
         withEngine engine extract f = engine >>= (\eg -> f eg >> cleanupEngine (extract eg))
@@ -327,15 +327,15 @@ engineTests = [
           Peer mv          -> withMVar mv $ flip unless failed . (addr ==) . fst
           ManyByPeer mv    -> withMVar mv $ flip unless failed . elem addr . H.keys
           ManyByTrigger mv -> withMVar mv $ flip unless failed . elem addr . map fst . H.keys
-        
+
         validPeerEndpoint addr = validInternalEndpoint (peerEndpointId addr)
 
         validInternalEndpoint n eg =
-          getEndpoint n (internalEndpoints $ endpoints eg) 
+          getEndpoint n (internalEndpoints $ endpoints eg)
             >>= flip unless failed . (maybe False (const True))
 
         validExternalEndpoint n eg =
-          getEndpoint n (externalEndpoints $ endpoints eg) 
+          getEndpoint n (externalEndpoints $ endpoints eg)
             >>= flip unless failed . (maybe False (const True))
 
         testNode1  = defaultAddress
@@ -345,18 +345,18 @@ engineTests = [
         testTrigger = "dummyTrigger"
         testValue   = unpackValueSyntax "1"
 
-        mkSysEnv numNodes (Address (host,port)) portStep = 
+        mkSysEnv numNodes (Address (host,port)) portStep =
           let aux acc 0 = acc
               aux acc n = aux ((Address (host, port + portStep * (n-1))):acc) $ n-1
           in map (,[]) $ aux [] numNodes
 
         buildMultiNodeSystem engineF testF = do
-          eg <- engineF testSystem format 
+          eg <- engineF testSystem format
           void $ testF testNode1 eg
           void $ testF testNode2 eg
           return (eg, [testNode1, testNode2])
 
-        buildMultiEngineSystem sysEnv engineF testF = 
+        buildMultiEngineSystem sysEnv engineF testF =
           let nodes = map fst sysEnv in do
             engines <- mapM (flip engineF format . (:[])) sysEnv
             nodesAndEngines <- return $ zip nodes engines
@@ -378,7 +378,7 @@ engineTests = [
             (msgs, eps) <- statistics recvr
             void $ putStrLn $ "Stats: " ++ show (msgs,eps)
 
-        sendMultiEngineMessages nodesAndEngines 
+        sendMultiEngineMessages nodesAndEngines
           | length nodesAndEngines < 2 = failed
           | otherwise =
             let msgsToSend = 5

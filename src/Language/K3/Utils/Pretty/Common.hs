@@ -11,7 +11,7 @@ module Language.K3.Utils.Pretty.Common
 , normalPrettySet
 
 , normalPrettyPair
-, explicitNormalPrettyPair 
+, explicitNormalPrettyPair
 ) where
 
 import Data.Map (Map)

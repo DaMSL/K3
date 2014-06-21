@@ -6,8 +6,6 @@
 
 namespace K3 {
 
-  using namespace std;
-
   //------------
   // Workers
   class WorkerPool {
@@ -27,13 +25,13 @@ namespace K3 {
     // Set the ID of the single worker
     void setId(WorkerId x) {
       if (!uniProcessor) {
-        uniProcessor = make_shared<WorkerId>(x); 
-      } else { 
+        uniProcessor = make_shared<WorkerId>(x);
+      } else {
         *uniProcessor = x;
       }
     }
     // Get the ID of the single worker, or -1 if it is not yet initialized
-    WorkerId getId() { 
+    WorkerId getId() {
       if (!uniProcessor) {
         return -1;
       } else {
@@ -47,7 +45,7 @@ namespace K3 {
   class ThreadPool : public WorkerPool {
   public:
     void run() {}
-  
+
   protected:
     shared_ptr<list<WorkerId> > threadedProcessor;
   };

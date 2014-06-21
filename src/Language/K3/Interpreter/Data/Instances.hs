@@ -33,14 +33,14 @@ instance Eq Value where
   VInt  v               == VInt  v'             = v == v'
   VReal v               == VReal v'             = v == v'
   VString v             == VString v'           = v == v'
-  VAddress v            == VAddress v'          = v == v'  
+  VAddress v            == VAddress v'          = v == v'
   VOption v             == VOption v'           = v == v'
   VTuple v              == VTuple v'            = v == v'
   VRecord v             == VRecord v'           = v == v'   -- Equality based on Data.Map.Eq
-  VIndirection (_,_,tg) == VIndirection (_,_,tg') = tg == tg'  
+  VIndirection (_,_,tg) == VIndirection (_,_,tg') = tg == tg'
   VFunction (_,_,tg)    == VFunction (_,_,tg')  = tg == tg'
   VTrigger (n,_,tg)     == VTrigger (n',_,tg')  = n == n' && tg == tg'
-  
+
   -- Collections must compare their namespaces due to mutable members.
   VCollection (_,v)   == VCollection (_,v') =
     (realizationId v, namespace v, dataspace v)
@@ -141,7 +141,7 @@ instance Hashable Value where
   hashWithSalt salt (VTrigger (_,_,tg))     = hashWithSalt salt tg
 
   hashWithSalt salt (VCollection (_,a)) =
-    salt `hashWithSalt` (namespace a) `hashWithSalt` (dataspace a) 
+    salt `hashWithSalt` (namespace a) `hashWithSalt` (dataspace a)
 
 instance Hashable VQualifier
 
@@ -150,7 +150,7 @@ instance Hashable EntityTag where
   hashWithSalt salt (ExtEntTag i)  = salt `hashWithSalt` i
 
 instance (Hashable a) => Hashable (NamedBindings a) where
-  hashWithSalt salt nb = salt `hashWithSalt` (Map.foldl hashWithSalt 0 nb) 
+  hashWithSalt salt nb = salt `hashWithSalt` (Map.foldl hashWithSalt 0 nb)
 
 instance (Hashable a) => Hashable (CollectionNamespace a) where
   hashWithSalt salt (CollectionNamespace cns ans) =
@@ -165,10 +165,10 @@ instance (Hashable a) => Hashable (CollectionDataspace a) where
 
 -- | Hashable instance declaration for list-based primitive in-memory dataspaces.
 instance (Hashable a) => Hashable (PrimitiveMDS a) where
-  hashWithSalt salt (MemDS    l) = salt `hashWithSalt` (0 :: Int) `hashWithSalt` l 
-  hashWithSalt salt (SeqDS    l) = salt `hashWithSalt` (1 :: Int) `hashWithSalt` l 
-  hashWithSalt salt (SetDS    l) = salt `hashWithSalt` (2 :: Int) `hashWithSalt` l 
-  hashWithSalt salt (SortedDS l) = salt `hashWithSalt` (3 :: Int) `hashWithSalt` l 
+  hashWithSalt salt (MemDS    l) = salt `hashWithSalt` (0 :: Int) `hashWithSalt` l
+  hashWithSalt salt (SeqDS    l) = salt `hashWithSalt` (1 :: Int) `hashWithSalt` l
+  hashWithSalt salt (SetDS    l) = salt `hashWithSalt` (2 :: Int) `hashWithSalt` l
+  hashWithSalt salt (SortedDS l) = salt `hashWithSalt` (3 :: Int) `hashWithSalt` l
 
 deriving instance (Hashable a) => Hashable (ListMDS a)
 deriving instance (Hashable a) => Hashable (SetAsOrdListMDS a)
@@ -198,7 +198,7 @@ instance Show Value where
   showsPrec d (VOption v)          = showsPrecTag "VOption" d v
   showsPrec d (VTuple v)           = showsPrecTag "VTuple" d v
   showsPrec d (VRecord v)          = showsPrecTag "VRecord" d v
-  showsPrec d (VAddress v)         = showsPrecTag "VAddress" d v  
+  showsPrec d (VAddress v)         = showsPrecTag "VAddress" d v
   showsPrec d (VCollection (_,c))  = showsPrecTag "VCollection"  d c
 
   showsPrec d (VIndirection (_,q,tg))     = showsPrecTagF "VIndirection" d $ showString $ "<" ++ show q ++ ", " ++ show tg ++ ">"
@@ -272,7 +272,7 @@ instance ShowPC Value where
   showPC pc (VCollection (_,c)) | ptag pc = showPCTag pc "VCollection" c
   showPC pc (VCollection (_,c))           = showPC pc c
 
-  showPC pc (VIndirection (_,q,tg))         = 
+  showPC pc (VIndirection (_,q,tg))         =
     showPCTagF "VIndirection" $
       if printQualifiers pc then "<" ++ show q ++ ", " ++ show tg ++ ">"
       else "<" ++ show tg ++ ">"
@@ -300,7 +300,7 @@ instance ShowPC (Collection Value) where
     let ns_s = if printNamespace pc then [show ns] else []
         ds_s = if printDataspace pc then [showPC pc ds] else []
         ns_ds = concat $ intersperse ", " $ ns_s++ds_s
-        (name, wrap') = case cId of 
+        (name, wrap') = case cId of
           ""    | pSimple pc -> ("", \x -> "{|"++x++"|}")
           "Set" | pSimple pc -> ("", \x -> "{"++x++"}")
           "Seq" | pSimple pc -> ("", \x -> "["++x++"]")
@@ -351,7 +351,7 @@ instance ShowPC [(Identifier, (Value, VQualifier))] where
 -- | Verbose stringification of values through read instance.
 --   This errors on attempting to read unshowable values (IORefs and functions)
 instance Read Value where
-  readPrec = parens $ 
+  readPrec = parens $
         (prec app_prec $ do
           Ident "VBool" <- lexP
           v <- step readPrec
@@ -430,7 +430,7 @@ instance Read Value where
   readListPrec = readListPrecDefault
 
 instance Read EntityTag where
-  readPrec = parens $ 
+  readPrec = parens $
         (prec app_prec $ do
           Ident "MemEntTag" <- lexP
           _ <- step (readPrec :: ReadPrec Int)
@@ -541,12 +541,12 @@ instance PrettyPC [(Identifier, NamedMembers Value)] where
 
 instance Pretty (Collection Value) where
   prettyLines (Collection ns ds cId) =
-    ["Collection " ++ cId] ++ (indent 2 $ prettyLines ns) ++ (indent 2 $ prettyLines ds) 
+    ["Collection " ++ cId] ++ (indent 2 $ prettyLines ns) ++ (indent 2 $ prettyLines ds)
 
 instance PrettyPC (Collection Value) where
   prettyLinesPC pc (Collection ns ds cId) =
     let name = if printVerboseTypes pc then "Collection " else "" in
-    [name ++ cId] ++ (indent 2 $ prettyLinesPC pc ns) ++ (indent 2 $ prettyLinesPC pc ds) 
+    [name ++ cId] ++ (indent 2 $ prettyLinesPC pc ns) ++ (indent 2 $ prettyLinesPC pc ds)
 
 instance Pretty (CollectionNamespace Value) where
   prettyLines (CollectionNamespace cns ans) =
@@ -554,21 +554,21 @@ instance Pretty (CollectionNamespace Value) where
 
 instance PrettyPC (CollectionNamespace Value) where
   prettyLinesPC pc (CollectionNamespace cns ans) =
-    if printNamespace pc then 
+    if printNamespace pc then
       let name = if printVerboseTypes pc then ["CollectionNameSpace"] else [] in
       name ++ (indent 2 $ prettyLinesPC pc cns) ++ (indent 2 $ prettyLinesPC pc ans)
     else []
 
 instance Pretty (CollectionDataspace Value) where
   prettyLines (InMemoryDS l)    = ["InMemoryDS"] ++ (indent 2 $ prettyLines l)
-  prettyLines (InMemDS primMDS) = ["InMemDS"] ++ (indent 2 $ prettyLines primMDS) 
+  prettyLines (InMemDS primMDS) = ["InMemDS"] ++ (indent 2 $ prettyLines primMDS)
   prettyLines (ExternalDS (FileDataspace fId)) = ["ExternalDS (FileDataspace " ++ fId ++ ")"]
 
 instance PrettyPC (CollectionDataspace Value) where
   prettyLinesPC pc (InMemoryDS l)    =
     if printDataspace pc then ["InMemoryDS"] ++ (indent 2 $ prettyLinesPC pc l) else []
 
-  prettyLinesPC pc (InMemDS primMDS) = 
+  prettyLinesPC pc (InMemDS primMDS) =
     if printDataspace pc then ["InMemDS"]    ++ (indent 2 $ prettyLinesPC pc primMDS) else []
 
   prettyLinesPC _ (ExternalDS (FileDataspace fId)) = ["ExternalDS (FileDataspace " ++ fId ++ ")"]
@@ -611,7 +611,7 @@ instance Pretty ProxyPath where
   prettyLines path = concatMap prettyLines path
 
 instance Pretty ProxyPathStack where
-  prettyLines pStack = concatMap prettyOption pStack 
+  prettyLines pStack = concatMap prettyOption pStack
 
 instance Pretty InterpretationError where
   prettyLines err = [show err]

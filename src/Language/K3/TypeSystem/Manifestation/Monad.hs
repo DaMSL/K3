@@ -53,7 +53,7 @@ newtype ManifestM a
       }
   deriving ( Monad, Functor, Applicative, MonadState ManifestState
            , MonadReader ManifestEnviron, MonadWriter ManifestLog)
-  
+
 -- |Executes a type manifesting computation.
 runManifestM :: BoundType -> BoundDictionary -> ManifestM a -> a
 runManifestM bt dict x =
@@ -66,7 +66,7 @@ runManifestM bt dict x =
                                    , resultCache = Map.empty } in
   let (result,_,_) = runRWS (unManifestM x) initialEnviron initialState in
   result
-  
+
 -- |A structure for the manifestation environment.
 data ManifestEnviron
   = ManifestEnviron
@@ -84,7 +84,7 @@ data ManifestLog
 instance Monoid ManifestLog where
   mempty = ManifestLog { usedVariables = Set.empty }
   mappend (ManifestLog a) (ManifestLog a') =
-    ManifestLog (a `Set.union` a') 
+    ManifestLog (a `Set.union` a')
 
 -- |A structure for the manifestation state.
 data ManifestState
@@ -104,7 +104,7 @@ initialNames = iterate nextName "a"
                     [] -> "a"
                     h:t -> let (h',b) = advanceChar h in
                            h' : if b then advanceStr t else t
-                           
+
 -- * Monad operations
 
 -- |Retrieves the constraints in context.
@@ -157,7 +157,7 @@ catchVarUse var x = do
             then Map.lookup var <$> variableNameMap <$> get
             else return Nothing
   return (v, name)
-  
+
 -- |Defines a name for the provided opaque variable if one does not already
 --  exist.  In either case, returns the name for the given opaque variable.
 nameOpaque :: OpaqueVar -> ManifestM Identifier
@@ -180,7 +180,7 @@ clearNamedOpaques :: ManifestM ()
 clearNamedOpaques = do
   s <- get
   put s{ opaqueNameMap = Map.empty }
-  
+
 -- |Performs a computation under the current monad but using a specific bound
 --  type.
 usingBoundType :: BoundType -> ManifestM a -> ManifestM a
@@ -207,7 +207,7 @@ typeComputationCache var x = do
     Just result -> do
       _debug $ boxToString $
         ["Manifestation cache hit: "] %+ prettyLines var %+ [" => "] %+
-          prettyLines result 
+          prettyLines result
       return result
     Nothing -> do
       _debug $ boxToString $

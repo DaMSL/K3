@@ -16,7 +16,7 @@ normalizeProgram :: K3 Declaration -> K3 Declaration
 normalizeProgram p = runIdentity $ mapExpression normalizeExpr p
 
 normalizeExpr :: K3 Expression -> Identity (K3 Expression)
-normalizeExpr expr = foldMapRebuildTree normalize [] expr >>= return . uncurry rebuildBlock 
+normalizeExpr expr = foldMapRebuildTree normalize [] expr >>= return . uncurry rebuildBlock
   where
     normalize _ ch n@(tag -> EConstant c) = return $ ([], Node (EConstant c :@: annotations n) ch)
     normalize _ ch n@(tag -> EVariable i) = return $ ([], Node (EVariable i :@: annotations n) ch)
