@@ -58,6 +58,7 @@ declare _randomColumn: mut int = 0
 /* REDUCER */
 
 /* Number of Reducers is equal to the total of Regions in the grid */
+declare nReducers: mut int
 declare reducers: mut collection {Address: address, Id: int} @ {Collection}
 
 declare sTuples: collection {Id: int, PageURL: string, PageRank: int} @ {Collection}
@@ -165,8 +166,8 @@ trigger preProcessRegions: () = \_ -> (
 
 /* PHASE 3: SETUP PHASE - Send Data to Mappers and Reducers; Initiate Mappers */
 
-trigger understandMapData: (collection {Row: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Column: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Address: address, Id: int} @ {Collection}, int, int, int, int, {y: int, m: int, d: int}) = \data -> (
-    bind data as (_rowLookupTable, _columnLookupTable, _reducers, _sNumRows, _tNumRows, _sNumMappers, _tNumMappers, _thresholdDate) in (
+trigger understandMapData: (collection {Row: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Column: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Address: address, Id: int} @ {Collection}, int, int, int, int, int, {y: int, m: int, d: int}) = \data -> (
+    bind data as (_rowLookupTable, _columnLookupTable, _reducers, _sNumRows, _tNumRows, _sNumMappers, _tNumMappers, _nReducers, _thresholdDate) in (
         rowLookupTable = _rowLookupTable;
         columnLookupTable = _columnLookupTable;
         reducers = _reducers;
@@ -174,16 +175,18 @@ trigger understandMapData: (collection {Row: int, Regions: mut collection {Regio
         tNumRows = _tNumRows;
         sNumMappers = _sNumMappers;
         tNumMappers = _tNumMappers;
+        nReducers = _nReducers;
 
         // custom data
         thresholdDate = _thresholdDate
     )
 )
 
-trigger understandReduceData: (int, int) = \data -> (
-    bind data as (_sNumMappers, _tNumMappers, _thresholdDate) in (
+trigger understandReduceData: (int, int, int, {y: int, m: int, d: int}) = \data -> (
+    bind data as (_sNumMappers, _tNumMappers, _nReducers, _thresholdDate) in (
         sNumMappers = _sNumMappers;
         tNumMappers = _tNumMappers;
+        nReducers = _nReducers;
 
         // custom data
         thresholdDate = _thresholdDate
@@ -197,11 +200,11 @@ trigger sendDataToMappers: () = \_ -> (
      * also the reducers are created on fly using a script; therefore sending a collection of reducer addresses seems ideal. 
      */
     sMappers.iterate (\mapper -> (
-        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, thresholdDate)
+        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, nReducers, thresholdDate)
     ));
 
     tMappers.iterate (\mapper -> (
-        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, thresholdDate)
+        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, nReducers, thresholdDate)
     ))
 )
 
@@ -209,7 +212,7 @@ trigger sendDataToReducer: (address) = \reducerAddress -> (
     /*
      * Copy data to reducers == Put all shared data in this subroutine network call; also update understandReduceData ==
      */
-    (understandReduceData, reducerAddress) <- (sNumMappers, tNumMappers, thresholdDate)
+    (understandReduceData, reducerAddress) <- (sNumMappers, tNumMappers, nReducers, thresholdDate)
 )
 
 trigger startMappers: () = \_ -> (
@@ -430,20 +433,42 @@ trigger reduceDoJoin: () = \_ -> (
 
 /* PHASE 4: ACCUMULATE OUTPUT */
 
+declare getMinS: mut (int -> int -> int) = fun oldSId -> fun newSId -> (
+    /* Simply get the minimum of two integer values. */
+    if oldSId < newSId then oldSId
+    else newSId
+)
+
 declare reducerReceiveCounter: mut int = 0
-declare groupBySourceIPCollection: collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}
+declare groupBySourceIPCollection: collection {Id: int, SourceIP: string, PageRank: collection {v: int} @ {Collection}, AdRevenue: v: real} @ {Collection}
+declare _emptyPageRanks : collection {v: int} @ {Collection}
 
 trigger accumulateOutput: (collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \reducerOutput -> (
+    reducerReceiveCounter = reducerReceiveCounter + 1;
     reducerOutput.iterate (\outputInstance -> (
         let existingOutput = (groupBySourceIPCollection.filter (\element -> element.SourceIP == outputInstance.SourceIP)).peek() in
             case existingOutput of
                 {Some existingOutput -> (
-                    let oldAdRevenue = existingOutput.AdRevenue in
-                        groupBySourceIPCollection.update {SId: outputInstance.SId, TId: outputInstance.TId, SourceIP: outputInstance.SourceIP, PageRank: outputInstance.PageRank, AdRevenue: oldAdRevenue} {SId: outputInstance.SId, TId: outputInstance.TId, SourceIP: outputInstance.SourceIP, PageRank: outputInstance.PageRank, AdRevenue: oldAdRevenue + outputInstance.AdRevenue}
+                    let newPageRank = existingOutput.PageRank in
+                        newPageRank.insert {v: outputInstance.PageRank};
+                        groupBySourceIPCollection.update {Id: existingOutput.SId, SourceIP: existingOutput.SourceIP, PageRank: existingOutput.PageRank, AdRevenue: existingOutput.AdRevenue} {Id: (getMinS existingOutput.SId outputInstance.SId), SourceIP: existingOutput.SourceIP, PageRank: newPageRank, AdRevenue: existingOutput.AdRevenue + outputInstance.AdRevenue}
                 )}
-                {None -> groupBySourceIPCollection.insert {SId: outputInstance.SId, TId: outputInstance.TId, SourceIP: outputInstance.SourceIP, PageRank: outputInstance.PageRank, AdRevenue: outputInstance.AdRevenue}}
-    ))
+                {None -> (
+                    let pageRanks = _emptyPageRanks in
+                        pageRanks.insert {v: outputInstance.PageRank};
+                        groupBySourceIPCollection.insert {Id: outputInstance.SId, SourceIP: outputInstance.SourceIP, PageRank: pageRanks, AdRevenue: outputInstance.AdRevenue}
+                )}
+    ));
+
+    // once you have received reducerOutput from all reducers, implement orderBy operation
+    if reducerReceiveCounter == nReducers then (implementOrderBy, me) <- (groupBySourceIPCollection)
+    else ()
 )
+
+trigger implementOrderBy : (collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \data -> (
+    
+)
+
 
 source tableSource: ({fromS: bool, sRow: option {PageURL: string, PageRank: int, AvgDuration: int}, tRow: option {SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real, UserAgent: string, CountryCode: string, LanguageCode: string, SearchWord: string, Duration: int}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/R_UV_Tables.text" k3
 
