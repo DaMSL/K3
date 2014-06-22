@@ -116,13 +116,6 @@ namespace K3 {
 
   namespace Asio
   {
-    using namespace boost::asio;
-    using namespace boost::log;
-    using namespace boost::system;
-
-    using boost::system::error_code;
-    using boost::thread;
-
     template<typename NContext, typename NEndpoint>
     using BaseListener = ::K3::Listener<NContext, NEndpoint>;
 
@@ -146,7 +139,7 @@ namespace K3 {
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
-          thread_ = shared_ptr<thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
+          thread_ = shared_ptr<boost::thread>(this->ctxt_->service_threads->create_thread(*(this->ctxt_)));
 
         } else {
           listenerLog->logAt(boost::log::trivial::error, "Invalid listener arguments.");
@@ -160,7 +153,7 @@ namespace K3 {
       }
 
     protected:
-      shared_ptr<thread> thread_;
+      shared_ptr<boost::thread> thread_;
       shared_ptr<boost::externally_locked<shared_ptr<ConnectionList>, Listener> > connections_;
 
       //---------
@@ -180,7 +173,7 @@ namespace K3 {
         if ( this->endpoint_ && this->handle_codec ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
-            [=] (const error_code& ec) {
+            [=] (const boost::system::error_code& ec) {
               if ( !ec ) {
                 registerConnection(nextConnection);
                 this->listenerLog->logAt(boost::log::trivial::trace, "Listener Registered a connection");
@@ -232,7 +225,7 @@ namespace K3 {
           typedef boost::array<char, 1024*1024> SocketBuffer;
           shared_ptr<SocketBuffer> buffer_ = shared_ptr<SocketBuffer>(new SocketBuffer());
           c->socket()->async_read_some(buffer(buffer_->c_array(), buffer_->size()),
-            [=](const error_code& ec, std::size_t bytes_transferred) {
+            [=](const boost::system::error_code& ec, std::size_t bytes_transferred) {
 
                 // Capture the buffer in closure to keep the pointer count > 0
                 // until the callback has finished
