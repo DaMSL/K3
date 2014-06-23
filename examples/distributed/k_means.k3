@@ -19,7 +19,7 @@ declare nearest_neighbor: collection { key: int, value: real } -> collection { k
             if squared_distance p next.value < squared_distance p best.value
                 then next
                 else best
-        ) in nearest.key
+        ) f in nearest.key
     )
 )
 
