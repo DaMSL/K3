@@ -1,0 +1,30 @@
+include "Annotation/Collection.k3"
+
+declare k: int = 1
+declare means: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare aggregates: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection }
+declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+
+declare vector_zip: (real -> real -> real) -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \f -> \v -> \w ->
+    let c = v.combine w in c.groupBy (\i -> i.key) (\a -> \e -> f a e.value) 0.0
+
+declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
+    let diff = vector_zip (\a -> \b -> a - b) p q in diff.fold (\a -> \x -> a + (x.value * x.value)) 0.0
+
+declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \ns -> (
+    let f = ns.peek () in (
+        (ns.erase f);
+        let nearest = ns.fold (\best -> \next ->
+            if squared_distance p next.value < squared_distance p best.value
+                then next
+                else best
+        ) in nearest.key
+    )
+)
+
+trigger assign: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } = \current_means -> (
+        (complete_aggregate, master) <-
+            data.groupBy (\p -> nearest_neighbor p.elem current_means) (\sc -> \p -> { sum: vector_zip (\a -> \b -> a + b) sc.sum p.elem, count: sc.count + 1 }) { sum: empty { key: int, value: real } @ { Collection }, count: 0 } in
+)
+
+trigger complete_aggregate: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection } = \_ -> ()
