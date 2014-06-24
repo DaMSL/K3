@@ -1,5 +1,4 @@
 K3-Core/examples/fibonacci.k3
-K3-Core/examples/language/empty_compare.k3
 K3-Core/examples/language/builtins/builtinEndpoints.k3
 K3-Core/examples/language/builtins/datetime.k3
 K3-Core/examples/language/collections/external.k3
