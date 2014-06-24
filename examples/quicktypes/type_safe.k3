@@ -1,0 +1,38 @@
+include "Annotation/Collection.k3"
+declare c : collection { key: int, value: real} @ { Collection }
+
+// There should be no type errors here!
+
+
+trigger foo1 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) 0.0
+  in ()
+)
+
+
+// These currently fail:
+trigger foo2 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) {sum: 0.0}
+  in ()
+)
+
+trigger foo3 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (empty {sum: real} @ {Collection })
+  in ()
+)
+
+trigger foo4 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (1,2)
+  in ()
+)
+
+trigger foo5 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) 
+  in ()
+)
+
+
+
+
+source s1 : () = value ()
+feed s1 |> foo1
