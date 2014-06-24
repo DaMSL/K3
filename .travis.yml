@@ -8,7 +8,9 @@ install:
   - git clone https://github.com/DaMSL/K3-Core.git ../K3-Core
   - cabal sandbox init
   - cabal sandbox add-source ../K3-Core
+  - sudo pip install six
 script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
+  - scripts/tests/tests.py -l scripts/tests/passed_tests.txt
