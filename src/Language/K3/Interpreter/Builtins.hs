@@ -396,7 +396,7 @@ builtinLiftedAttribute annId n _ =
   if annId `elem` dataspaceAnnotationIds then case n of
     "peek"        -> wrapF peekFn
     "insert"      -> wrapF insertFn
-    "delete"      -> wrapF deleteFn
+    "erase"       -> wrapF deleteFn
     "update"      -> wrapF updateFn
     "combine"     -> wrapF combineFn
     "split"       -> wrapF splitFn
