@@ -17,6 +17,7 @@ import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Declaration
+import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
@@ -26,9 +27,10 @@ import Language.K3.Codegen.CPP.Types
 --  - Generate namespace use directives.
 program :: K3 Declaration -> CPPGenM CPPGenR
 program d = do
+    let preprocessed = mangleReservedNames d
     s <- showGlobals
     staticGlobals' <- staticGlobals
-    program' <- declaration d
+    program' <- declaration preprocessed
     genNamespaces <- namespaces >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
