@@ -22,7 +22,7 @@ import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Utils.Pretty
 
 type NetworkStatus = [Either EngineError (Address, Engine Value, ThreadId, VirtualizedMessageProcessor)]
-type ConsoleRunner = (EngineError -> InputT IO ()) -> (NetworkStatus -> InputT IO ()) -> InputT IO ()
+type ConsoleRunner = (EngineError -> IO ()) -> (NetworkStatus -> InputT IO ()) -> InputT IO ()
 
 console :: String -> ConsoleRunner -> NetworkStatus -> InputT IO ()
 console prompt consoleRunner networkStatus = do
@@ -31,7 +31,7 @@ console prompt consoleRunner networkStatus = do
       Nothing      -> return ()
       Just (':':t) -> loop $ uncurry runCmd $ extractCmd t
       Just eStr    -> case parseExpression eStr of
-                        Nothing -> outputStrLn $ "Invalid expression"
+                        Nothing -> liftIO $ putStrLn $ "Invalid expression"
                         Just e  -> loop $ runExpr e
 
   where
@@ -55,13 +55,13 @@ console prompt consoleRunner networkStatus = do
     loop action = action >>= \case
       True  ->  -- TODO: rerunning a program/network is broken until we reset the engine's
                 -- control datastructures. For now, we just rerun with the same network state.
-                -- consoleRunner (outputStrLn . message) (console prompt consoleRunner)
+                -- consoleRunner (putStrLn . message) (console prompt consoleRunner)
                 console prompt consoleRunner networkStatus
       False -> return ()
 
     runExpr :: K3 Expression -> InputT IO Bool
     runExpr e = liftIO anInterpreter >>= \case
-      Nothing -> outputStrLn "No engine found for interpretation" >> continue
+      Nothing -> liftIO (putStrLn "No engine found for interpretation") >> continue
       Just (addr, threadId, egn, st) ->
         do
           eStatus <- liftIO $ runInterpretation egn st $ expression $ snd $ labelBindAliasesExpr 0 e
@@ -73,15 +73,15 @@ console prompt consoleRunner networkStatus = do
     runCmd "nodes" _ = mapM_ (wrapError outputStatus) networkStatus >> continue
     runCmd "envs"  _ = mapM_ (wrapError outputEnv) networkStatus >> continue
     runCmd "wait"  _ = interruptibleWait $ mapM_ (wrapError waitForNode) networkStatus >> stop
-    runCmd cmd args  = (outputStrLn $ "Invalid command: " ++ (intercalate " " $ cmd:args)) >> continue
+    runCmd cmd args  = (liftIO $ putStrLn $ "Invalid command: " ++ (intercalate " " $ cmd:args)) >> continue
 
     continue = return True
     stop     = return False
 
-    wrapError statusF = either (\err -> outputStrLn $ message err) statusF
+    wrapError statusF = either (\err -> liftIO $ putStrLn $ message err) statusF
 
     nodeAction addr threadId str =
-      outputStrLn $ "[" ++ show addr ++ "~" ++ show threadId ++ "] " ++ str
+      liftIO $ putStrLn $ "[" ++ show addr ++ "~" ++ show threadId ++ "] " ++ str
 
     nodeEnv egnSt =
       void $ outputStr $ boxToString $ indent 2 $ either ((:[]) . message) id $ egnSt

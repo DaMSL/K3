@@ -48,15 +48,17 @@ runBatch _ iOpts prog =
 
     waitF = if (noConsole iOpts) then return . id else mapM (printError printNode)
 
-    loopWithConsole rcrF = runInputT defaultSettings $ rcrF cEngineError (runConsole rcrF)
+    loopWithConsole rcrF = runInputT defaultSettings $ rcrF (engineError) (runConsole rcrF)
 
     runOnce runF statusF prepared errorF continueF = do
       runStatus <- liftIO $ runF (printConfig iOpts) prepared
-      either errorF (continueF . statusF) runStatus
+      case runStatus of
+        Left e  -> liftIO $ errorF e
+        Right x -> continueF . statusF $ x
+      -- either (liftIO errorF) (continueF . statusF) runStatus
 
     runConsole rcrF ns = if (noConsole iOpts) then console defaultPrompt rcrF ns else return ()
     engineError        = putStrLn . message
-    cEngineError       = outputStrLn . message
 
     printNode (addr, engine, threadid,_) = do
       void $ putStrLn $ "Waiting for node " ++ show addr ++ " running on thread " ++ show threadid
