@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Regression tests for K3
 import sys
 import os
 import re
 import argparse
+import six
 
 temp_file = 'temp.out'
 
@@ -28,19 +29,19 @@ def test_file(count, file, verbose=False):
     temp = temp_file
     k3_path = os.path.join(root_path, './K3-Driver/dist/build/k3/k3')
     lib_path = os.path.join(root_path, './K3-Core/lib/k3')
-    print('[{count}] Testing {file}...'.format(**locals()), end="")
+    six.print_('[{count}] Testing {file}...'.format(**locals()), end="")
     cmd = r'{k3_path} -I {lib_path} interpret -b -p 127.0.0.1:40000:role=\"s1\" {file} > {temp} 2> {temp}'.format(**locals())
     if verbose:
-        print('\n' + cmd)
+        six.print_('\n' + cmd)
     os.system(cmd)
     if find_error(temp_file):
-        print("[ERROR]")
+        six.print_("[ERROR]")
         if verbose:
             with open(temp_file, 'r') as f:
-                print(f.read())
+                six.print_(f.read())
         return False
     else:
-        print("[OK]")
+        six.print_("[OK]")
         return True
 
 def find_test_files():
@@ -59,10 +60,10 @@ def run_tests(file_list, verbose=False):
             failed += 1
 
     if failed > 0:
-        print('[{0}/{1}] tests failed.'.format(failed, len(file_list)))
+        six.print_('[{0}/{1}] tests failed.'.format(failed, len(file_list)))
         return False
     else:
-        print('All tests passed')
+        six.print_('All tests passed')
         return True
 
 def main(options):
