@@ -2,7 +2,7 @@ annotation Collection given type a, b {
   provides lifted peek    : () -> option content
 
   provides lifted insert  : content -> ()
-  provides lifted erase  : content -> ()
+  provides lifted delete  : content -> ()
   provides lifted update  : content -> (content -> ())
 
   @:Transformer
