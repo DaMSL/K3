@@ -29,12 +29,12 @@ def test_file(count, file, verbose=False):
     k3_path = os.path.join(root_path, './K3-Driver/dist/build/k3/k3')
     lib_path = os.path.join(root_path, './K3-Core/lib/k3')
     print('[{count}] Testing {file}...'.format(**locals()), end="")
-    cmd = r'{k3_path} -I {lib_path} interpret -b -p 127.0.0.1:40000:role=\"s1\" {file} > {temp} 2>&1'.format(**locals())
+    cmd = r'{k3_path} -I {lib_path} interpret -b -p 127.0.0.1:40000:role=\"s1\" {file} > {temp} 2> {temp}'.format(**locals())
     if verbose:
-        print(cmd)
+        print('\n' + cmd)
     os.system(cmd)
     if find_error(temp_file):
-        print("[ERROR]") 
+        print("[ERROR]")
         if verbose:
             with open(temp_file, 'r') as f:
                 print(f.read())
@@ -76,7 +76,7 @@ def main(options):
         with open(options.list_file, 'r') as f:
             files = f.readlines()
         for x in files:
-            file_list += [os.path.join(root_path, x)]
+            file_list += [os.path.join(root_path, x.replace('\n', ''))]
 
     if len(file_list) == 0:
         file_list = find_test_files()
