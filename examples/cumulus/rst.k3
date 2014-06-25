@@ -217,10 +217,11 @@ declare frontier_int_int_int : {
          else {key:acc, value:max_vid})))
        {key:empty {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
-        } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).ext
-      ((\_b1_ -> 
-        bind _b1_ as {key:_, value:_b2_} in 
-        bind _b2_ as {key:project, value:_} in project)) empty {
+        } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).fold
+      ((\__acc_ext -> (\_b3_ -> 
+        bind _b3_ as {key:_, value:_b4_} in 
+        bind _b4_ as {key:project, value:_} in __acc_ext.combine project)))
+      empty {
       _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
       } @ { Collection })
 
@@ -282,11 +283,11 @@ declare frontier_int_int : {
              else {key:acc, value:max_vid}
          else {key:acc, value:max_vid})))
        {key:empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-        } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).ext
-      ((\_b1_ -> 
-        bind _b1_ as {key:_, value:_b2_} in 
-        bind _b2_ as {key:project, value:_} in project)) empty {
-      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).fold
+      ((\__acc_ext -> (\_b3_ -> 
+        bind _b3_ as {key:_, value:_b4_} in 
+        bind _b4_ as {key:project, value:_} in __acc_ext.combine project)))
+      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
       } @ { Collection })
 
 declare log_read_geq : { _r1_:int, _r2_:int, _r3_:int } -> collection {
@@ -295,10 +296,7 @@ declare log_read_geq : { _r1_:int, _r2_:int, _r3_:int } -> collection {
     (log__master.filter
       ((\_b1_ -> 
         bind _b1_ as {_r1_:vid2, _r2_:trig, _r3_:stmt} in 
-        vid_geq {key:vid2, value:vid}))).map
-      ((\_b1_ -> 
-        bind _b1_ as {_r1_:vid2, _r2_:trig, _r3_:stmt} in 
-        {_r1_:vid2, _r2_:trig, _r3_:stmt})))
+        vid_geq {key:vid2, value:vid}))))
 
 declare check_and_update_stmt_cntr_index : {
   key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } -> bool = (\_b1_ -> 
@@ -399,11 +397,7 @@ declare add_delta_to_int_int_int : {
                 _r2_ == __arg_0 and _r3_ == __arg_1))).filter
               ((\_b1_ -> 
                 bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
-                              _r4_:__map_val} in vid > min_vid))).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2,
-                              _r4_:__id_3} in 
-                {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2, _r4_:__id_3})) in
+                              _r4_:__map_val} in vid > min_vid))) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
@@ -468,10 +462,7 @@ declare add_delta_to_int : {
               as ind __x
               in __x).filter
               ((\_b1_ -> 
-                bind _b1_ as {key:vid, value:__map_val} in vid > min_vid))).map
-              ((\_b1_ -> 
-                bind _b1_ as {key:__id_0, value:__id_1} in 
-                {key:__id_0, value:__id_1})) in
+                bind _b1_ as {key:vid, value:__map_val} in vid > min_vid))) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {key:vid, value:__map_val} in 
@@ -547,10 +538,7 @@ declare add_delta_to_int_int : {
                 __arg_0))).filter
               ((\_b1_ -> 
                 bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_val} in vid >
-                min_vid))).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2} in 
-                {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2})) in
+                min_vid))) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_val} in 
@@ -656,10 +644,13 @@ declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = (\_b1_ ->
     let rng =
       range (case (replicas.peek ()) of { Some x -> x.i } { None -> error () }) in
     let new_elems =
-      rng.map
-        ((\_b1_ -> 
-          bind _b1_ as {i:i} in 
-          {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)})) in (
+      rng.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {i:i} in __acc_map.combine
+          ({| _r1_:address, _r2_:string, _r3_:string, _r4_:int |
+          {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash (i + hash addr)}|} @ { Seq }))))
+        empty { _r1_:address, _r2_:string, _r3_:string, _r4_:int } @ { Seq } in
+    (
       new_elems.iterate ((\x ->  node_ring.insert x));
       let temp_ring = node_ring.sort
         ((\_b2_ ->
@@ -692,10 +683,7 @@ declare get_ring_node : { key:int, value:int } -> address = (\_b1_ ->
       (node_ring.filter
         ((\_b1_ -> 
           bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in hash
-          >= scaled))).map
-        ((\_b1_ -> 
-          bind _b1_ as {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2, _r4_:__id_3} in 
-          {_r1_:__id_0, _r2_:__id_1, _r3_:__id_2, _r4_:__id_3})) in
+          >= scaled))) in
     bind if results == empty { _r1_:address, _r2_:string, _r3_:string, _r4_:int
            } @ { Seq }
          then case (node_ring.peek ()) of { Some x -> x } { None -> error () }
@@ -707,20 +695,25 @@ declare get_all_uniq_nodes : () -> collection {i:address} @ { Collection } =
     (node_ring.groupBy
        ((\_b1_ -> 
          bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in addr))
-       ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq }).map
-      ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in {i:__1})))
+       ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq }).fold
+      ((\__acc_map -> (\_b3_ -> 
+        bind _b3_ as {key:__1, value:__2} in __acc_map.combine
+        ({|i:address| __1|} @ { Collection }))))
+      empty {i:address} @ { Collection })
 
 declare pmap_data : collection {
   key:int, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
-  pmap_input.map
-    ((\_b1_ -> 
-      bind _b1_ as {key:map_name, value:map_types} in 
+  pmap_input.fold
+    ((\__acc_map -> (\_b3_ -> 
+      bind _b3_ as {key:map_name, value:map_types} in __acc_map.combine
+      ({| key:int, value:collection { key:int, value:int } @ { Seq } |
       {key:bind case ((__map_ids__.filter
        ((\_b1_ -> 
          bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == map_name))).peek
        ()) of { Some x -> x }
        { None -> error () } as {_r1_:__1, _r2_:__2, _r3_:__3} in __1,
-       value:map_types}))
+       value:map_types}|} @ { Seq })))) empty {
+    key:int, value:collection { key:int, value:int } @ { Seq } } @ { Seq }
 
 declare calc_dim_bounds : collection { key:int, value:int } @ { Seq } -> {
   key:collection { key:int, value:int } @ { Seq }, value:int } = (\pmap -> 
@@ -766,52 +759,62 @@ declare route_to_int : { key:int, value:option int
            ((\_b1_ ->  bind _b1_ as {key:key, value:value} in key == 0))).combine
         empty { key:int, value:int } @ { Seq } in
       let free_domains =
-        free_dims.map
-          ((\_b1_ -> 
-            bind _b1_ as {key:i, value:b_i} in {key:i, value:range b_i})) in
+        free_dims.fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:i, value:b_i} in __acc_map.combine
+            ({| key:int, value:collection {i:int} @ { Seq } |
+            {key:i, value:range b_i}|} @ { Seq })))) empty {
+          key:int, value:collection {i:int} @ { Seq } } @ { Seq } in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {key:i, value:domain} in 
-            domain.ext
-              ((\_b1_ -> 
-                bind _b1_ as {i:domain_element} in 
-                if prev_cart_prod == empty {i:collection { key:int, value:int
-                  } @ { Seq }} @ { Seq }
-                then {|i:collection { key:int, value:int } @ { Seq }| {|
-                  key:int, value:int |
-                  {key:i, value:domain_element}|} @ { Seq }|} @ { Seq }
-                else
-                  prev_cart_prod.map
-                    ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in 
-                      {i:rest_tup.combine
+            domain.fold
+              ((\__acc_ext -> (\_b3_ -> 
+                bind _b3_ as {i:domain_element} in __acc_ext.combine
+                (if prev_cart_prod == empty {i:collection { key:int, value:int
+                   } @ { Seq }} @ { Seq }
+                 then {|i:collection { key:int, value:int } @ { Seq }| {|
+                   key:int, value:int |
+                   {key:i, value:domain_element}|} @ { Seq }|} @ { Seq }
+                 else
+                   prev_cart_prod.fold
+                     ((\__acc_map -> (\_b3_ -> 
+                       bind _b3_ as {i:rest_tup} in __acc_map.combine
+                       ({|i:collection { key:int, value:int } @ { Seq }|
+                       rest_tup.combine
                        ({| key:int, value:int |
-                       {key:i, value:domain_element}|} @ { Seq })}))))
-              empty {i:collection { key:int, value:int
-              } @ { Seq }} @ { Collection }))) empty {i:collection {
-          key:int, value:int } @ { Seq }} @ { Seq } in
+                       {key:i, value:domain_element}|} @ { Seq })|} @ { Seq }))))
+                     empty {i:collection { key:int, value:int
+                     } @ { Seq }} @ { Seq })))) empty {i:collection {
+              key:int, value:int } @ { Seq }} @ { Seq })))
+          empty {i:collection { key:int, value:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
+        (free_cart_prod.fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:free_bucket} in __acc_map.combine
+             ({|i:address|
+             get_ring_node
+               {key:free_bucket.fold
+                      ((\acc -> (\_b3_ -> 
+                        bind _b3_ as {key:i, value:val} in acc + (val *
+                        bind case ((dim_bounds.filter
+                        ((\_b1_ -> 
+                          bind _b1_ as {key:key, value:value} in key == i))).peek
+                        ()) of { Some x -> x }
+                        { None -> error () } as {key:__1, value:__2} in __2))))
+                      bound_bucket, value:max_val}|} @ { Seq }))))
+           empty {i:address} @ { Seq }).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) () in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
       else
-        sorted_ip_list.map
-          ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in {i:__1})))
+        sorted_ip_list.fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:__1, value:__2} in __acc_map.combine
+            ({|i:address| __1|} @ { Collection }))))
+          empty {i:address} @ { Collection })
 
 declare route_to_int_int : { _r1_:int, _r2_:option int, _r3_:option int
   } -> collection {i:address} @ { Collection } = (\_b1_ -> 
@@ -867,52 +870,62 @@ declare route_to_int_int : { _r1_:int, _r2_:option int, _r3_:option int
             ((\_b1_ ->  bind _b1_ as {key:key, value:value} in key == 0))).combine
         empty { key:int, value:int } @ { Seq }) in
       let free_domains =
-        free_dims.map
-          ((\_b1_ -> 
-            bind _b1_ as {key:i, value:b_i} in {key:i, value:range b_i})) in
+        free_dims.fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:i, value:b_i} in __acc_map.combine
+            ({| key:int, value:collection {i:int} @ { Seq } |
+            {key:i, value:range b_i}|} @ { Seq })))) empty {
+          key:int, value:collection {i:int} @ { Seq } } @ { Seq } in
       let free_cart_prod =
         free_domains.fold
           ((\prev_cart_prod -> (\_b3_ -> 
             bind _b3_ as {key:i, value:domain} in 
-            domain.ext
-              ((\_b1_ -> 
-                bind _b1_ as {i:domain_element} in 
-                if prev_cart_prod == empty {i:collection { key:int, value:int
-                  } @ { Seq }} @ { Seq }
-                then {|i:collection { key:int, value:int } @ { Seq }| {|
-                  key:int, value:int |
-                  {key:i, value:domain_element}|} @ { Seq }|} @ { Seq }
-                else
-                  prev_cart_prod.map
-                    ((\_b1_ -> 
-                      bind _b1_ as {i:rest_tup} in 
-                      {i:rest_tup.combine
+            domain.fold
+              ((\__acc_ext -> (\_b3_ -> 
+                bind _b3_ as {i:domain_element} in __acc_ext.combine
+                (if prev_cart_prod == empty {i:collection { key:int, value:int
+                   } @ { Seq }} @ { Seq }
+                 then {|i:collection { key:int, value:int } @ { Seq }| {|
+                   key:int, value:int |
+                   {key:i, value:domain_element}|} @ { Seq }|} @ { Seq }
+                 else
+                   prev_cart_prod.fold
+                     ((\__acc_map -> (\_b3_ -> 
+                       bind _b3_ as {i:rest_tup} in __acc_map.combine
+                       ({|i:collection { key:int, value:int } @ { Seq }|
+                       rest_tup.combine
                        ({| key:int, value:int |
-                       {key:i, value:domain_element}|} @ { Seq })}))))
-              empty {i:collection { key:int, value:int
-              } @ { Seq }} @ { Collection }))) empty {i:collection {
-          key:int, value:int } @ { Seq }} @ { Seq } in
+                       {key:i, value:domain_element}|} @ { Seq })|} @ { Seq }))))
+                     empty {i:collection { key:int, value:int
+                     } @ { Seq }} @ { Seq })))) empty {i:collection {
+              key:int, value:int } @ { Seq }} @ { Seq })))
+          empty {i:collection { key:int, value:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
-        (free_cart_prod.map
-           ((\_b1_ -> 
-             bind _b1_ as {i:free_bucket} in 
-             {i:get_ring_node
-                  {key:free_bucket.fold
-                         ((\acc -> (\_b3_ -> 
-                           bind _b3_ as {key:i, value:val} in acc + (val *
-                           bind case ((dim_bounds.filter
-                           ((\_b1_ -> 
-                             bind _b1_ as {key:key, value:value} in key == i))).peek
-                           ()) of { Some x -> x }
-                           { None -> error () } as {key:__1, value:__2} in __2))))
-                         bound_bucket, value:max_val}}))).groupBy
+        (free_cart_prod.fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:free_bucket} in __acc_map.combine
+             ({|i:address|
+             get_ring_node
+               {key:free_bucket.fold
+                      ((\acc -> (\_b3_ -> 
+                        bind _b3_ as {key:i, value:val} in acc + (val *
+                        bind case ((dim_bounds.filter
+                        ((\_b1_ -> 
+                          bind _b1_ as {key:key, value:value} in key == i))).peek
+                        ()) of { Some x -> x }
+                        { None -> error () } as {key:__1, value:__2} in __2))))
+                      bound_bucket, value:max_val}|} @ { Seq }))))
+           empty {i:address} @ { Seq }).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) () in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
         get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }
       else
-        sorted_ip_list.map
-          ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in {i:__1})))
+        sorted_ip_list.fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:__1, value:__2} in __acc_map.combine
+            ({|i:address| __1|} @ { Collection }))))
+          empty {i:address} @ { Collection })
 
 declare route_to_ : { key:int, value:()
   } -> collection {i:address} @ { Collection } = (\_b1_ -> 
@@ -930,26 +943,41 @@ declare shuffle_ATIMESD_mT1_to_ATIMESD : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_ {key:1, value:()}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_ {key:1, value:()}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_ {key:1, value:()}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_ {key:1, value:()}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -969,26 +997,42 @@ declare shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0 : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_int {key:6, value:lkey_0}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_int {key:6, value:lkey_0}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
-             _r4_:int } @ { Collection }}))
+             _r4_:int } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2, _r4_:rkey_3} in 
-           (route_to_int {key:6, value:Some rkey_1}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2, _r4_:rkey_3} in 
+           (route_to_int {key:6, value:Some rkey_1}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+               _r4_:int } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
-                _r4_:int | r_tuple|} @ { Collection }})))) empty {
+                _r4_:int | r_tuple|} @ { Collection }}|} @ { Collection }))))
+             empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+             _r4_:int } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1009,26 +1053,41 @@ declare shuffle_ATIMESD_mS2_to_ATIMESD : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_ {key:1, value:()}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_ {key:1, value:()}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_ {key:1, value:()}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_ {key:1, value:()}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1048,26 +1107,41 @@ declare shuffle_ATIMESD_mS1_to_ATIMESD : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_ {key:1, value:()}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_ {key:1, value:()}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_ {key:1, value:()}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_ {key:1, value:()}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1087,26 +1161,41 @@ declare shuffle_ATIMESD_mS1_to_ATIMESD_mT1 : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_int {key:2, value:lkey_0}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_int {key:2, value:lkey_0}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_int {key:2, value:lkey_0}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_int {key:2, value:lkey_0}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1126,26 +1215,41 @@ declare shuffle_ATIMESD_mS2_to_ATIMESD_mR1 : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_int {key:6, value:lkey_0}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_int {key:6, value:lkey_0}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_int {key:6, value:lkey_0}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_int {key:6, value:lkey_0}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1165,26 +1269,41 @@ declare shuffle_ATIMESD_mR1_to_ATIMESD : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_ {key:1, value:()}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_ {key:1, value:()}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }}))
+             } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
-           (route_to_ {key:1, value:()}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2} in 
+           (route_to_ {key:1, value:()}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+               } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                r_tuple|} @ { Collection }})))) empty {
+                r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+             } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1204,26 +1323,42 @@ declare shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1 : {
     let all_targets =
       if shuffle_on_empty == true
       then
-        (route_to_int {key:2, value:lkey_0}).map
-          ((\_b1_ -> 
-            bind _b1_ as {i:ip} in 
+        (route_to_int {key:2, value:lkey_0}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {i:ip} in __acc_map.combine
+            ({|
+            key:address, value:collection {
+            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+            } @ { Collection } |
             {key:ip, value:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
-             _r4_:int } @ { Collection }}))
+             _r4_:int } @ { Collection }}|} @ { Collection })))) empty {
+          key:address, value:collection {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+          } @ { Collection } } @ { Collection }
       else empty {
         key:address, value:collection {
         _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
         } @ { Collection } } @ { Collection } in
     (all_targets.combine
-      (tuples.ext
-         ((\r_tuple -> 
-           bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2, _r4_:rkey_3} in 
-           (route_to_int {key:2, value:Some rkey_2}).map
-             ((\_b1_ -> 
-               bind _b1_ as {i:ip} in 
+      (tuples.fold
+         ((\__acc_ext -> (\r_tuple -> 
+           __acc_ext.combine
+           (bind r_tuple as {_r1_:rkey_0, _r2_:rkey_1, _r3_:rkey_2, _r4_:rkey_3} in 
+           (route_to_int {key:2, value:Some rkey_2}).fold
+             ((\__acc_map -> (\_b3_ -> 
+               bind _b3_ as {i:ip} in __acc_map.combine
+               ({|
+               key:address, value:collection {
+               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+               _r4_:int } @ { Collection } |
                {key:ip, value:{|
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
-                _r4_:int | r_tuple|} @ { Collection }})))) empty {
+                _r4_:int | r_tuple|} @ { Collection }}|} @ { Collection }))))
+             empty {
+             key:address, value:collection {
+             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+             _r4_:int } @ { Collection } } @ { Collection })))) empty {
          key:address, value:collection {
          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
          } @ { Collection } } @ { Collection })).groupBy
@@ -1249,10 +1384,13 @@ declare filter_corrective_list : {
   } @ { Collection } = (\_b1_ -> 
     bind _b1_ as {key:request_vid, value:trig_stmt_list} in 
     let log_entries = log_read_geq request_vid in
-    ((log_entries.map
-        ((\_b1_ -> 
-          bind _b1_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
-          {key:vid, value:stmt_id}))).sort
+    ((log_entries.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
+          __acc_map.combine
+          ({| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+          {key:vid, value:stmt_id}|} @ { Collection })))) empty {
+        key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection }).sort
       ((\_b2_ -> bind _b2_ as {key:vid1, value:stmt1} in (\_b5_ -> 
         bind _b5_ as {key:vid2, value:stmt2} in 
         if vid_lt {key:vid1, value:vid2} then -1 else 1)))).groupBy
@@ -1301,20 +1439,24 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mT1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:0, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:0, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:2, _r3_:sender_count}))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:2, _r3_:sender_count}|} @ { Collection })))) empty {
+          _r1_:address, _r2_:int, _r3_:int } @ { Collection }))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -1332,10 +1474,18 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (insert_T_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:T_C, _r5_:T_D}
           )));
-    ((((route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:2, _r2_:3, _r3_:ip}))).combine
-       (((route_to_int {key:2, value:Some T_C}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:0, _r2_:2, _r3_:ip}))).combine
+    ((((route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:2, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:2, value:Some T_C}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:0, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -1548,10 +1698,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mT1_s0_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == T_C))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == T_C))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -1592,22 +1745,34 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             in __x).filter
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in _r3_
-              == T_C))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
-                          _r4_:__map_val} in 
-            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}))).map
-         ((\_b1_ -> 
-           bind _b1_ as {_r1_:ATIMESD_mRR_B, _r2_:T_C, _r3_:__map_ret__2} in 
-           {key:ATIMESD_mRR_B, value:__map_ret__2}))).map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mRR_B, value:__map_ret__2} in 
-          {key:ATIMESD_mRR_B, value:__map_ret__2 * T_D})) in
+              == T_C))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
+                          _r4_:__map_val} in __acc_map.combine
+            ({| _r1_:int, _r2_:int, _r3_:int |
+            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}|} @ { Collection }))))
+          empty { _r1_:int, _r2_:int, _r3_:int } @ { Collection }).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {_r1_:ATIMESD_mRR_B, _r2_:T_C, _r3_:__map_ret__2} in 
+           __acc_map.combine
+           ({| key:int, value:int |
+           {key:ATIMESD_mRR_B, value:__map_ret__2}|} @ { Collection }))))
+         empty { key:int, value:int } @ { Collection }).fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mRR_B, value:__map_ret__2} in 
+          __acc_map.combine
+          ({| key:int, value:int |
+          {key:ATIMESD_mRR_B, value:__map_ret__2 * T_D}|} @ { Collection }))))
+        empty { key:int, value:int } @ { Collection } in
     let __delta_with_vid__ =
-      __delta_values__.map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mRR_B, value:__prod_ret__2} in 
-          {_r1_:vid, _r2_:ATIMESD_mRR_B, _r3_:__prod_ret__2})) in (
+      __delta_values__.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mRR_B, value:__prod_ret__2} in 
+          __acc_map.combine
+          ({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
+          {_r1_:vid, _r2_:ATIMESD_mRR_B, _r3_:__prod_ret__2}|} @ { Collection }))))
+        empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection } in (
       add_delta_to_int_int
         {_r1_:ATIMESD_mR1, _r2_:false, _r3_:vid, _r4_:__delta_with_vid__};
       (ATIMESD_mR1_send_correctives, me)<- {key:vid, value:__delta_with_vid__}
@@ -1751,20 +1916,24 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mT1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:3, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:3, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:5, _r3_:sender_count}))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:5, _r3_:sender_count}|} @ { Collection })))) empty {
+          _r1_:address, _r2_:int, _r3_:int } @ { Collection }))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -1782,10 +1951,18 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (delete_T_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:T_C, _r5_:T_D}
           )));
-    ((((route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:5, _r2_:3, _r3_:ip}))).combine
-       (((route_to_int {key:2, value:Some T_C}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:3, _r2_:2, _r3_:ip}))).combine
+    ((((route_to_int_int {_r1_:3, _r2_:None immut, _r3_:Some T_C}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:5, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:2, value:Some T_C}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:3, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -1998,10 +2175,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mT1_s3_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == T_C))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == T_C))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -2043,22 +2223,34 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             in __x).filter
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in _r3_
-              == T_C))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
-                          _r4_:__map_val} in 
-            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}))).map
-         ((\_b1_ -> 
-           bind _b1_ as {_r1_:ATIMESD_mRR_B, _r2_:T_C, _r3_:__map_ret__4} in 
-           {key:ATIMESD_mRR_B, value:__map_ret__4}))).map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mRR_B, value:__map_ret__4} in 
-          {key:ATIMESD_mRR_B, value:__map_ret__4 * -T_D})) in
+              == T_C))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
+                          _r4_:__map_val} in __acc_map.combine
+            ({| _r1_:int, _r2_:int, _r3_:int |
+            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}|} @ { Collection }))))
+          empty { _r1_:int, _r2_:int, _r3_:int } @ { Collection }).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {_r1_:ATIMESD_mRR_B, _r2_:T_C, _r3_:__map_ret__4} in 
+           __acc_map.combine
+           ({| key:int, value:int |
+           {key:ATIMESD_mRR_B, value:__map_ret__4}|} @ { Collection }))))
+         empty { key:int, value:int } @ { Collection }).fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mRR_B, value:__map_ret__4} in 
+          __acc_map.combine
+          ({| key:int, value:int |
+          {key:ATIMESD_mRR_B, value:__map_ret__4 * -T_D}|} @ { Collection }))))
+        empty { key:int, value:int } @ { Collection } in
     let __delta_with_vid__ =
-      __delta_values__.map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mRR_B, value:__prod_ret__7} in 
-          {_r1_:vid, _r2_:ATIMESD_mRR_B, _r3_:__prod_ret__7})) in (
+      __delta_values__.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mRR_B, value:__prod_ret__7} in 
+          __acc_map.combine
+          ({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
+          {_r1_:vid, _r2_:ATIMESD_mRR_B, _r3_:__prod_ret__7}|} @ { Collection }))))
+        empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection } in (
       add_delta_to_int_int
         {_r1_:ATIMESD_mR1, _r2_:false, _r3_:vid, _r4_:__delta_with_vid__};
       (ATIMESD_mR1_send_correctives, me)<- {key:vid, value:__delta_with_vid__}
@@ -2202,40 +2394,48 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mS2_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:6, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:6, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:4, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:6, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:6, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:4, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_to_ATIMESD_mT1
             {_r1_:Some S_C, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:7, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:7, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:5, value:Some S_C}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mS2_to_ATIMESD_mR1
            {_r1_:Some S_B, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:9, _r3_:sender_count}))))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:9, _r3_:sender_count}|} @ { Collection })))) empty {
+          _r1_:address, _r2_:int, _r3_:int } @ { Collection }))))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -2253,14 +2453,30 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (insert_S_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:S_B, _r5_:S_C}
           )));
-    ((((route_to_int {key:5, value:Some S_C}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:9, _r2_:5, _r3_:ip}))).combine
-       (((route_to_int {key:4, value:Some S_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:7, _r2_:4, _r3_:ip}))).combine
-       (((route_to_int {key:5, value:Some S_C}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:6, _r2_:5, _r3_:ip}))).combine
-       (((route_to_int {key:4, value:Some S_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:6, _r2_:4, _r3_:ip}))).combine
+    ((((route_to_int {key:5, value:Some S_C}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:9, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:4, value:Some S_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:7, _r2_:4, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:5, value:Some S_C}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:6, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:4, value:Some S_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:6, _r2_:4, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })))).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -2595,10 +2811,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mS1_s6_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -2609,10 +2828,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
            {key:vid, value:(bind map_ATIMESD_mS2_s6_buf as ind __x
             in __x).filter
             ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-            {key:__map_0, value:__map_val})) in
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+            __acc_map.combine
+            ({| key:int, value:int |
+            {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+          key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -2636,10 +2858,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
            {key:vid, value:(bind map_ATIMESD_mS1_s7_buf as ind __x
             in __x).filter
             ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-            {key:__map_0, value:__map_val})) in
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+            __acc_map.combine
+            ({| key:int, value:int |
+            {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+          key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -2686,10 +2911,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
            {key:vid, value:(bind map_ATIMESD_mS2_s9_buf as ind __x
             in __x).filter
             ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-            {key:__map_0, value:__map_val})) in
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+            __acc_map.combine
+            ({| key:int, value:int |
+            {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+          key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -2826,10 +3054,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                {key:vid, value:(bind map_ATIMESD_mS2_s6_buf as ind __x
                 in __x).filter
                 ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-                {key:__map_0, value:__map_val})) in
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+              ((\__acc_map -> (\_b3_ -> 
+                bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+                __acc_map.combine
+                ({| key:int, value:int |
+                {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+              key:int, value:int } @ { Collection } in
           if wrapped_lookup_value == empty { key:int, value:int
             } @ { Collection }
           then 0
@@ -2858,10 +3089,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                {key:vid, value:(bind map_ATIMESD_mS1_s6_buf as ind __x
                 in __x).filter
                 ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-                {key:__map_0, value:__map_val})) in
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+              ((\__acc_map -> (\_b3_ -> 
+                bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+                __acc_map.combine
+                ({| key:int, value:int |
+                {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+              key:int, value:int } @ { Collection } in
           if wrapped_lookup_value == empty { key:int, value:int
             } @ { Collection }
           then 0
@@ -2961,40 +3195,48 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mS2_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:10, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:10, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:4, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:10, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:10, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:4, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS1_to_ATIMESD_mT1
             {_r1_:Some S_C, _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:11, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:11, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int {key:5, value:Some S_C}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mS2_to_ATIMESD_mR1
            {_r1_:Some S_B, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:13, _r3_:sender_count}))))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:13, _r3_:sender_count}|} @ { Collection }))))
+          empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }))))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -3012,14 +3254,30 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (delete_S_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:S_B, _r5_:S_C}
           )));
-    ((((route_to_int {key:5, value:Some S_C}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:13, _r2_:5, _r3_:ip}))).combine
-       (((route_to_int {key:4, value:Some S_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:11, _r2_:4, _r3_:ip}))).combine
-       (((route_to_int {key:5, value:Some S_C}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:10, _r2_:5, _r3_:ip}))).combine
-       (((route_to_int {key:4, value:Some S_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:10, _r2_:4, _r3_:ip}))).combine
+    ((((route_to_int {key:5, value:Some S_C}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:13, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:4, value:Some S_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:11, _r2_:4, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:5, value:Some S_C}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:10, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:4, value:Some S_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:10, _r2_:4, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })))).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -3356,10 +3614,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {key:vid, value:(bind map_ATIMESD_mS1_s10_buf as ind __x
               in __x).filter
               ((\_b1_ -> 
-                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-            ((\_b1_ -> 
-              bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-              {key:__map_0, value:__map_val})) in
+                bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+            ((\__acc_map -> (\_b3_ -> 
+              bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+              __acc_map.combine
+              ({| key:int, value:int |
+              {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+            key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -3370,10 +3631,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
            {key:vid, value:(bind map_ATIMESD_mS2_s10_buf as ind __x
             in __x).filter
             ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-            {key:__map_0, value:__map_val})) in
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+            __acc_map.combine
+            ({| key:int, value:int |
+            {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+          key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -3397,10 +3661,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mS1_s11_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -3447,10 +3714,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mS2_s13_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -3587,10 +3857,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                {key:vid, value:(bind map_ATIMESD_mS2_s10_buf as ind __x
                 in __x).filter
                 ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-                {key:__map_0, value:__map_val})) in
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_C))}).fold
+              ((\__acc_map -> (\_b3_ -> 
+                bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+                __acc_map.combine
+                ({| key:int, value:int |
+                {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+              key:int, value:int } @ { Collection } in
           if wrapped_lookup_value == empty { key:int, value:int
             } @ { Collection }
           then 0
@@ -3619,10 +3892,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                {key:vid, value:(bind map_ATIMESD_mS1_s10_buf as ind __x
                 in __x).filter
                 ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).map
-              ((\_b1_ -> 
-                bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-                {key:__map_0, value:__map_val})) in
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))}).fold
+              ((\__acc_map -> (\_b3_ -> 
+                bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+                __acc_map.combine
+                ({| key:int, value:int |
+                {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+              key:int, value:int } @ { Collection } in
           if wrapped_lookup_value == empty { key:int, value:int
             } @ { Collection }
           then 0
@@ -3722,20 +3998,24 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mR1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:14, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:14, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:15, _r3_:sender_count}))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:15, _r3_:sender_count}|} @ { Collection }))))
+          empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -3753,10 +4033,18 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (insert_R_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:R_A, _r5_:R_B}
           )));
-    ((((route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:15, _r2_:3, _r3_:ip}))).combine
-       (((route_to_int {key:6, value:Some R_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:14, _r2_:6, _r3_:ip}))).combine
+    ((((route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:15, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:6, value:Some R_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:14, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -3970,10 +4258,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mR1_s14_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == R_B))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == R_B))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -3997,22 +4288,34 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             in __x).filter
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in _r2_
-              == R_B))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
-                          _r4_:__map_val} in 
-            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}))).map
-         ((\_b1_ -> 
-           bind _b1_ as {_r1_:R_B, _r2_:ATIMESD_mTT_C, _r3_:__map_ret__14} in 
-           {key:ATIMESD_mTT_C, value:__map_ret__14}))).map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mTT_C, value:__map_ret__14} in 
-          {key:ATIMESD_mTT_C, value:__map_ret__14 * R_A})) in
+              == R_B))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
+                          _r4_:__map_val} in __acc_map.combine
+            ({| _r1_:int, _r2_:int, _r3_:int |
+            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}|} @ { Collection }))))
+          empty { _r1_:int, _r2_:int, _r3_:int } @ { Collection }).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {_r1_:R_B, _r2_:ATIMESD_mTT_C, _r3_:__map_ret__14} in 
+           __acc_map.combine
+           ({| key:int, value:int |
+           {key:ATIMESD_mTT_C, value:__map_ret__14}|} @ { Collection }))))
+         empty { key:int, value:int } @ { Collection }).fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mTT_C, value:__map_ret__14} in 
+          __acc_map.combine
+          ({| key:int, value:int |
+          {key:ATIMESD_mTT_C, value:__map_ret__14 * R_A}|} @ { Collection }))))
+        empty { key:int, value:int } @ { Collection } in
     let __delta_with_vid__ =
-      __delta_values__.map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mTT_C, value:__prod_ret__14} in 
-          {_r1_:vid, _r2_:ATIMESD_mTT_C, _r3_:__prod_ret__14})) in (
+      __delta_values__.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mTT_C, value:__prod_ret__14} in 
+          __acc_map.combine
+          ({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
+          {_r1_:vid, _r2_:ATIMESD_mTT_C, _r3_:__prod_ret__14}|} @ { Collection }))))
+        empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection } in (
       add_delta_to_int_int
         {_r1_:ATIMESD_mT1, _r2_:false, _r3_:vid, _r4_:__delta_with_vid__};
       (ATIMESD_mT1_send_correctives, me)<- {key:vid, value:__delta_with_vid__}
@@ -4174,20 +4477,24 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         ((shuffle_ATIMESD_mR1_to_ATIMESD
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-             } @ { Collection }, _r3_:true}).map
-           ((\_b1_ -> 
-             bind _b1_ as {key:ip, value:tuples} in 
-             {_r1_:ip, _r2_:17, _r3_:sender_count}))).combine
+             } @ { Collection }, _r3_:true}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+             ({| _r1_:address, _r2_:int, _r3_:int |
+             {_r1_:ip, _r2_:17, _r3_:sender_count}|} @ { Collection }))))
+           empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
            (route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1
            {_r1_:None immut, _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
-            } @ { Collection }, _r3_:true}).map
-          ((\_b1_ -> 
-            bind _b1_ as {key:ip, value:tuples} in 
-            {_r1_:ip, _r2_:18, _r3_:sender_count}))))).groupBy
+            } @ { Collection }, _r3_:true}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+            ({| _r1_:address, _r2_:int, _r3_:int |
+            {_r1_:ip, _r2_:18, _r3_:sender_count}|} @ { Collection }))))
+          empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }))).groupBy
         ((\_b1_ -> 
           bind _b1_ as {_r1_:ip, _r2_:stmt_id, _r3_:count} in 
           {key:ip, value:stmt_id})) ((\acc -> (\_b3_ -> 
@@ -4205,10 +4512,18 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (delete_R_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:R_A, _r5_:R_B}
           )));
-    ((((route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).map
-         ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:18, _r2_:3, _r3_:ip}))).combine
-       (((route_to_int {key:6, value:Some R_B}).map
-           ((\_b1_ ->  bind _b1_ as {i:ip} in {_r1_:17, _r2_:6, _r3_:ip}))).combine
+    ((((route_to_int_int {_r1_:3, _r2_:Some R_B, _r3_:None immut}).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {i:ip} in __acc_map.combine
+           ({| _r1_:int, _r2_:int, _r3_:address |
+           {_r1_:18, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+         _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
+       (((route_to_int {key:6, value:Some R_B}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {i:ip} in __acc_map.combine
+             ({| _r1_:int, _r2_:int, _r3_:address |
+             {_r1_:17, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
+           _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        empty { _r1_:int, _r2_:int, _r3_:address } @ { Collection })).groupBy
        ((\_b1_ ->  bind _b1_ as {_r1_:stmt_id, _r2_:map_id, _r3_:ip} in ip))
        ((\acc -> (\_b3_ -> 
@@ -4422,10 +4737,13 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             {key:vid, value:(bind map_ATIMESD_mR1_s17_buf as ind __x
              in __x).filter
              ((\_b1_ -> 
-               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == R_B))}).map
-           ((\_b1_ -> 
-             bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
-             {key:__map_0, value:__map_val})) in
+               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == R_B))}).fold
+           ((\__acc_map -> (\_b3_ -> 
+             bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+             __acc_map.combine
+             ({| key:int, value:int |
+             {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+           key:int, value:int } @ { Collection } in
       if wrapped_lookup_value == empty { key:int, value:int } @ { Collection }
       then 0
       else bind case (wrapped_lookup_value.peek ()) of { Some x -> x }
@@ -4449,22 +4767,34 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             in __x).filter
             ((\_b1_ -> 
               bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in _r2_
-              == R_B))}).map
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
-                          _r4_:__map_val} in 
-            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}))).map
-         ((\_b1_ -> 
-           bind _b1_ as {_r1_:R_B, _r2_:ATIMESD_mTT_C, _r3_:__map_ret__16} in 
-           {key:ATIMESD_mTT_C, value:__map_ret__16}))).map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mTT_C, value:__map_ret__16} in 
-          {key:ATIMESD_mTT_C, value:__map_ret__16 * -R_A})) in
+              == R_B))}).fold
+          ((\__acc_map -> (\_b3_ -> 
+            bind _b3_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_1,
+                          _r4_:__map_val} in __acc_map.combine
+            ({| _r1_:int, _r2_:int, _r3_:int |
+            {_r1_:__map_0, _r2_:__map_1, _r3_:__map_val}|} @ { Collection }))))
+          empty { _r1_:int, _r2_:int, _r3_:int } @ { Collection }).fold
+         ((\__acc_map -> (\_b3_ -> 
+           bind _b3_ as {_r1_:R_B, _r2_:ATIMESD_mTT_C, _r3_:__map_ret__16} in 
+           __acc_map.combine
+           ({| key:int, value:int |
+           {key:ATIMESD_mTT_C, value:__map_ret__16}|} @ { Collection }))))
+         empty { key:int, value:int } @ { Collection }).fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mTT_C, value:__map_ret__16} in 
+          __acc_map.combine
+          ({| key:int, value:int |
+          {key:ATIMESD_mTT_C, value:__map_ret__16 * -R_A}|} @ { Collection }))))
+        empty { key:int, value:int } @ { Collection } in
     let __delta_with_vid__ =
-      __delta_values__.map
-        ((\_b1_ -> 
-          bind _b1_ as {key:ATIMESD_mTT_C, value:__prod_ret__18} in 
-          {_r1_:vid, _r2_:ATIMESD_mTT_C, _r3_:__prod_ret__18})) in (
+      __delta_values__.fold
+        ((\__acc_map -> (\_b3_ -> 
+          bind _b3_ as {key:ATIMESD_mTT_C, value:__prod_ret__18} in 
+          __acc_map.combine
+          ({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
+          {_r1_:vid, _r2_:ATIMESD_mTT_C, _r3_:__prod_ret__18}|} @ { Collection }))))
+        empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection } in (
       add_delta_to_int_int
         {_r1_:ATIMESD_mT1, _r2_:false, _r3_:vid, _r4_:__delta_with_vid__};
       (ATIMESD_mT1_send_correctives, me)<- {key:vid, value:__delta_with_vid__}
@@ -4604,15 +4934,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         bind _b1_ as {key:stmt_id, value:vid_list} in 
         if stmt_id == 3
         then
-          ((vid_list.ext
-              ((\vid -> 
-                bind log_get_bound_delete_T vid as {_r1_:vid, _r2_:T_C,
-                                                    _r3_:T_D} in 
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_T vid as {_r1_:vid, _r2_:T_C,
+                                                     _r3_:T_D} in 
                 (shuffle_ATIMESD_mT1_to_ATIMESD
-                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                  ((\_b1_ -> 
-                    bind _b1_ as {key:ip, value:tuples} in 
-                    {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                  } @ { Collection } } @ { Collection })))) empty {
               _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
               _r3_:collection {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4625,8 +4966,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                 ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                 value:((acc_tuples.combine
                          tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                        ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in __1))})))
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int | __1|} @ { Collection })))) empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection }})))
              {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
               value:empty {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4640,15 +4988,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else
           if stmt_id == 0
           then
-            ((vid_list.ext
-                ((\vid -> 
-                  bind log_get_bound_insert_T vid as {_r1_:vid, _r2_:T_C,
-                                                      _r3_:T_D} in 
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_insert_T vid as {_r1_:vid, _r2_:T_C,
+                                                       _r3_:T_D} in 
                   (shuffle_ATIMESD_mT1_to_ATIMESD
-                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                    ((\_b1_ -> 
-                      bind _b1_ as {key:ip, value:tuples} in 
-                      {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } } @ { Collection })))) empty {
                 _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                 _r3_:collection {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4662,9 +5021,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                   ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                   value:((acc_tuples.combine
                            tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                          ((\_b1_ -> 
-                            bind _b1_ as {key:__1, value:__2} in __1))})))
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int | __1|} @ { Collection })))) empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection }})))
                {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                 value:empty {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4693,15 +5058,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         bind _b1_ as {key:stmt_id, value:vid_list} in 
         if stmt_id == 17
         then
-          ((vid_list.ext
-              ((\vid -> 
-                bind log_get_bound_delete_R vid as {_r1_:vid, _r2_:R_A,
-                                                    _r3_:R_B} in 
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_R vid as {_r1_:vid, _r2_:R_A,
+                                                     _r3_:R_B} in 
                 (shuffle_ATIMESD_mR1_to_ATIMESD
-                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                  ((\_b1_ -> 
-                    bind _b1_ as {key:ip, value:tuples} in 
-                    {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                  } @ { Collection } } @ { Collection })))) empty {
               _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
               _r3_:collection {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4714,8 +5090,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                 ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                 value:((acc_tuples.combine
                          tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                        ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in __1))})))
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int | __1|} @ { Collection })))) empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection }})))
              {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
               value:empty {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4729,15 +5112,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else
           if stmt_id == 14
           then
-            ((vid_list.ext
-                ((\vid -> 
-                  bind log_get_bound_insert_R vid as {_r1_:vid, _r2_:R_A,
-                                                      _r3_:R_B} in 
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_insert_R vid as {_r1_:vid, _r2_:R_A,
+                                                       _r3_:R_B} in 
                   (shuffle_ATIMESD_mR1_to_ATIMESD
-                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                    ((\_b1_ -> 
-                      bind _b1_ as {key:ip, value:tuples} in 
-                      {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } } @ { Collection })))) empty {
                 _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                 _r3_:collection {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4751,9 +5145,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                   ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                   value:((acc_tuples.combine
                            tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                          ((\_b1_ -> 
-                            bind _b1_ as {key:__1, value:__2} in __1))})))
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int | __1|} @ { Collection })))) empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection }})))
                {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                 value:empty {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4784,15 +5184,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
         bind _b1_ as {key:stmt_id, value:vid_list} in 
         if stmt_id == 18
         then
-          ((vid_list.ext
-              ((\vid -> 
-                bind log_get_bound_delete_R vid as {_r1_:vid, _r2_:R_A,
-                                                    _r3_:R_B} in 
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_R vid as {_r1_:vid, _r2_:R_A,
+                                                     _r3_:R_B} in 
                 (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1
-                   {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).map
-                  ((\_b1_ -> 
-                    bind _b1_ as {key:ip, value:tuples} in 
-                    {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                   {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+                    _r4_:int } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+                  _r4_:int } @ { Collection } } @ { Collection })))) empty {
               _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
               _r3_:collection {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4805,8 +5216,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
                 ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                 value:((acc_tuples.combine
                          tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                        ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in __1))})))
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int, _r4_:int | __1|} @ { Collection }))))
+                        empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int, _r4_:int } @ { Collection }})))
              {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
               value:empty {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4819,15 +5238,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
         else
           if stmt_id == 15
           then
-            ((vid_list.ext
-                ((\vid -> 
-                  bind log_get_bound_insert_R vid as {_r1_:vid, _r2_:R_A,
-                                                      _r3_:R_B} in 
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_insert_R vid as {_r1_:vid, _r2_:R_A,
+                                                       _r3_:R_B} in 
                   (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1
-                     {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).map
-                    ((\_b1_ -> 
-                      bind _b1_ as {key:ip, value:tuples} in 
-                      {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                     {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                      _r3_:int, _r4_:int } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
+                    _r4_:int } @ { Collection } } @ { Collection })))) empty {
                 _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                 _r3_:collection {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4841,9 +5271,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
                   ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                   value:((acc_tuples.combine
                            tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                          ((\_b1_ -> 
-                            bind _b1_ as {key:__1, value:__2} in __1))})))
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int, _r4_:int | __1|} @ { Collection }))))
+                          empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int, _r4_:int } @ { Collection }})))
                {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                 value:empty {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4856,15 +5293,28 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
           else
             if stmt_id == 5
             then
-              ((vid_list.ext
-                  ((\vid -> 
-                    bind log_get_bound_delete_T vid as {_r1_:vid, _r2_:T_C,
-                                                        _r3_:T_D} in 
+              ((vid_list.fold
+                  ((\__acc_ext -> (\vid -> 
+                    __acc_ext.combine
+                    (bind log_get_bound_delete_T vid as {_r1_:vid, _r2_:T_C,
+                                                         _r3_:T_D} in 
                     (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0
-                       {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).map
-                      ((\_b1_ -> 
-                        bind _b1_ as {key:ip, value:tuples} in 
-                        {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                       {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).fold
+                      ((\__acc_map -> (\_b3_ -> 
+                        bind _b3_ as {key:ip, value:tuples} in 
+                        __acc_map.combine
+                        ({|
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int, _r4_:int } @ { Collection } |
+                        {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                      empty {
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                      _r3_:int, _r4_:int } @ { Collection } } @ { Collection }))))
+                  empty {
                   _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                   _r3_:collection {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4878,9 +5328,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
                     ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                     value:((acc_tuples.combine
                              tuples).groupBy
-                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                            ((\_b1_ -> 
-                              bind _b1_ as {key:__1, value:__2} in __1))})))
+                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                            ((\__acc_map -> (\_b3_ -> 
+                              bind _b3_ as {key:__1, value:__2} in 
+                              __acc_map.combine
+                              ({|
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int, _r4_:int | __1|} @ { Collection }))))
+                            empty {
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int, _r4_:int } @ { Collection }})))
                  {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                   value:empty {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4893,15 +5350,28 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
             else
               if stmt_id == 2
               then
-                ((vid_list.ext
-                    ((\vid -> 
-                      bind log_get_bound_insert_T vid as {_r1_:vid, _r2_:T_C,
-                                                          _r3_:T_D} in 
+                ((vid_list.fold
+                    ((\__acc_ext -> (\vid -> 
+                      __acc_ext.combine
+                      (bind log_get_bound_insert_T vid as {_r1_:vid, _r2_:T_C,
+                                                           _r3_:T_D} in 
                       (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0
-                         {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).map
-                        ((\_b1_ -> 
-                          bind _b1_ as {key:ip, value:tuples} in 
-                          {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                         {_r1_:None immut, _r2_:delta_tuples, _r3_:false}).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:ip, value:tuples} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                          _r3_:collection {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int, _r4_:int } @ { Collection } |
+                          {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                        empty {
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int, _r4_:int } @ { Collection }
+                        } @ { Collection })))) empty {
                     _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                     _r3_:collection {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4915,9 +5385,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
                       ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                       value:((acc_tuples.combine
                                tuples).groupBy
-                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                              ((\_b1_ -> 
-                                bind _b1_ as {key:__1, value:__2} in __1))})))
+                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                              ((\__acc_map -> (\_b3_ -> 
+                                bind _b3_ as {key:__1, value:__2} in 
+                                __acc_map.combine
+                                ({|
+                                _r1_:{ _r1_:int, _r2_:int, _r3_:int },
+                                _r2_:int, _r3_:int, _r4_:int |
+                                __1|} @ { Collection })))) empty {
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int, _r4_:int } @ { Collection }})))
                    {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                     value:empty {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int,
@@ -4946,15 +5423,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         bind _b1_ as {key:stmt_id, value:vid_list} in 
         if stmt_id == 11
         then
-          ((vid_list.ext
-              ((\vid -> 
-                bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
-                                                    _r3_:S_C} in 
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
+                                                     _r3_:S_C} in 
                 (shuffle_ATIMESD_mS1_to_ATIMESD_mT1
-                   {_r1_:Some S_C, _r2_:delta_tuples, _r3_:false}).map
-                  ((\_b1_ -> 
-                    bind _b1_ as {key:ip, value:tuples} in 
-                    {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                   {_r1_:Some S_C, _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                  } @ { Collection } } @ { Collection })))) empty {
               _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
               _r3_:collection {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4967,8 +5455,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                 ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                 value:((acc_tuples.combine
                          tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                        ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in __1))})))
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int | __1|} @ { Collection })))) empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection }})))
              {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
               value:empty {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -4982,15 +5477,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else
           if stmt_id == 10
           then
-            ((vid_list.ext
-                ((\vid -> 
-                  bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
-                                                      _r3_:S_C} in 
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
+                                                       _r3_:S_C} in 
                   (shuffle_ATIMESD_mS1_to_ATIMESD
-                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                    ((\_b1_ -> 
-                      bind _b1_ as {key:ip, value:tuples} in 
-                      {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } } @ { Collection })))) empty {
                 _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                 _r3_:collection {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5004,9 +5510,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                   ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                   value:((acc_tuples.combine
                            tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                          ((\_b1_ -> 
-                            bind _b1_ as {key:__1, value:__2} in __1))})))
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int | __1|} @ { Collection })))) empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection }})))
                {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                 value:empty {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5020,15 +5532,27 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
           else
             if stmt_id == 7
             then
-              ((vid_list.ext
-                  ((\vid -> 
-                    bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
-                                                        _r3_:S_C} in 
+              ((vid_list.fold
+                  ((\__acc_ext -> (\vid -> 
+                    __acc_ext.combine
+                    (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
+                                                         _r3_:S_C} in 
                     (shuffle_ATIMESD_mS1_to_ATIMESD_mT1
-                       {_r1_:Some S_C, _r2_:delta_tuples, _r3_:false}).map
-                      ((\_b1_ -> 
-                        bind _b1_ as {key:ip, value:tuples} in 
-                        {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                       {_r1_:Some S_C, _r2_:delta_tuples, _r3_:false}).fold
+                      ((\__acc_map -> (\_b3_ -> 
+                        bind _b3_ as {key:ip, value:tuples} in 
+                        __acc_map.combine
+                        ({|
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection } |
+                        {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                      empty {
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } } @ { Collection })))) empty {
                   _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                   _r3_:collection {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5042,9 +5566,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                     ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                     value:((acc_tuples.combine
                              tuples).groupBy
-                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                            ((\_b1_ -> 
-                              bind _b1_ as {key:__1, value:__2} in __1))})))
+                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                            ((\__acc_map -> (\_b3_ -> 
+                              bind _b3_ as {key:__1, value:__2} in 
+                              __acc_map.combine
+                              ({|
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int | __1|} @ { Collection })))) empty {
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int } @ { Collection }})))
                  {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                   value:empty {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5058,15 +5588,28 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             else
               if stmt_id == 6
               then
-                ((vid_list.ext
-                    ((\vid -> 
-                      bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
-                                                          _r3_:S_C} in 
+                ((vid_list.fold
+                    ((\__acc_ext -> (\vid -> 
+                      __acc_ext.combine
+                      (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
+                                                           _r3_:S_C} in 
                       (shuffle_ATIMESD_mS1_to_ATIMESD
-                         {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                        ((\_b1_ -> 
-                          bind _b1_ as {key:ip, value:tuples} in 
-                          {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                         {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:ip, value:tuples} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                          _r3_:collection {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection } |
+                          {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                        empty {
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection } } @ { Collection }))))
+                    empty {
                     _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                     _r3_:collection {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5080,9 +5623,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                       ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                       value:((acc_tuples.combine
                                tuples).groupBy
-                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                              ((\_b1_ -> 
-                                bind _b1_ as {key:__1, value:__2} in __1))})))
+                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                              ((\__acc_map -> (\_b3_ -> 
+                                bind _b3_ as {key:__1, value:__2} in 
+                                __acc_map.combine
+                                ({|
+                                _r1_:{ _r1_:int, _r2_:int, _r3_:int },
+                                _r2_:int, _r3_:int | __1|} @ { Collection }))))
+                              empty {
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int } @ { Collection }})))
                    {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                     value:empty {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5111,15 +5661,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         bind _b1_ as {key:stmt_id, value:vid_list} in 
         if stmt_id == 13
         then
-          ((vid_list.ext
-              ((\vid -> 
-                bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
-                                                    _r3_:S_C} in 
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
+                                                     _r3_:S_C} in 
                 (shuffle_ATIMESD_mS2_to_ATIMESD_mR1
-                   {_r1_:Some S_B, _r2_:delta_tuples, _r3_:false}).map
-                  ((\_b1_ -> 
-                    bind _b1_ as {key:ip, value:tuples} in 
-                    {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                   {_r1_:Some S_B, _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                  } @ { Collection } } @ { Collection })))) empty {
               _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
               _r3_:collection {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5132,8 +5693,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                 ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                 value:((acc_tuples.combine
                          tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                        ((\_b1_ ->  bind _b1_ as {key:__1, value:__2} in __1))})))
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int | __1|} @ { Collection })))) empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection }})))
              {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
               value:empty {
               _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5147,15 +5715,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else
           if stmt_id == 10
           then
-            ((vid_list.ext
-                ((\vid -> 
-                  bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
-                                                      _r3_:S_C} in 
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
+                                                       _r3_:S_C} in 
                   (shuffle_ATIMESD_mS2_to_ATIMESD
-                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                    ((\_b1_ -> 
-                      bind _b1_ as {key:ip, value:tuples} in 
-                      {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } } @ { Collection })))) empty {
                 _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                 _r3_:collection {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5169,9 +5748,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                   ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                   value:((acc_tuples.combine
                            tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                          ((\_b1_ -> 
-                            bind _b1_ as {key:__1, value:__2} in __1))})))
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int | __1|} @ { Collection })))) empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection }})))
                {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                 value:empty {
                 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5185,15 +5770,27 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
           else
             if stmt_id == 9
             then
-              ((vid_list.ext
-                  ((\vid -> 
-                    bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
-                                                        _r3_:S_C} in 
+              ((vid_list.fold
+                  ((\__acc_ext -> (\vid -> 
+                    __acc_ext.combine
+                    (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
+                                                         _r3_:S_C} in 
                     (shuffle_ATIMESD_mS2_to_ATIMESD_mR1
-                       {_r1_:Some S_B, _r2_:delta_tuples, _r3_:false}).map
-                      ((\_b1_ -> 
-                        bind _b1_ as {key:ip, value:tuples} in 
-                        {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                       {_r1_:Some S_B, _r2_:delta_tuples, _r3_:false}).fold
+                      ((\__acc_map -> (\_b3_ -> 
+                        bind _b3_ as {key:ip, value:tuples} in 
+                        __acc_map.combine
+                        ({|
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection } |
+                        {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                      empty {
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } } @ { Collection })))) empty {
                   _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                   _r3_:collection {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5207,9 +5804,15 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                     ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                     value:((acc_tuples.combine
                              tuples).groupBy
-                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                            ((\_b1_ -> 
-                              bind _b1_ as {key:__1, value:__2} in __1))})))
+                             ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                            ((\__acc_map -> (\_b3_ -> 
+                              bind _b3_ as {key:__1, value:__2} in 
+                              __acc_map.combine
+                              ({|
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int | __1|} @ { Collection })))) empty {
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int } @ { Collection }})))
                  {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                   value:empty {
                   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5223,15 +5826,28 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             else
               if stmt_id == 6
               then
-                ((vid_list.ext
-                    ((\vid -> 
-                      bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
-                                                          _r3_:S_C} in 
+                ((vid_list.fold
+                    ((\__acc_ext -> (\vid -> 
+                      __acc_ext.combine
+                      (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
+                                                           _r3_:S_C} in 
                       (shuffle_ATIMESD_mS2_to_ATIMESD
-                         {_r1_:(), _r2_:delta_tuples, _r3_:false}).map
-                        ((\_b1_ -> 
-                          bind _b1_ as {key:ip, value:tuples} in 
-                          {_r1_:ip, _r2_:vid, _r3_:tuples})))) empty {
+                         {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:ip, value:tuples} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                          _r3_:collection {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection } |
+                          {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                        empty {
+                        _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                        _r3_:collection {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection } } @ { Collection }))))
+                    empty {
                     _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
                     _r3_:collection {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
@@ -5245,9 +5861,16 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                       ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
                       value:((acc_tuples.combine
                                tuples).groupBy
-                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).map
-                              ((\_b1_ -> 
-                                bind _b1_ as {key:__1, value:__2} in __1))})))
+                               ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                              ((\__acc_map -> (\_b3_ -> 
+                                bind _b3_ as {key:__1, value:__2} in 
+                                __acc_map.combine
+                                ({|
+                                _r1_:{ _r1_:int, _r2_:int, _r3_:int },
+                                _r2_:int, _r3_:int | __1|} @ { Collection }))))
+                              empty {
+                              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                              _r3_:int } @ { Collection }})))
                    {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
                     value:empty {
                     _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int

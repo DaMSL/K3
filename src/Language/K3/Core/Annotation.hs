@@ -15,6 +15,7 @@ module Language.K3.Core.Annotation (
     K3,
 
     children,
+    replaceCh,
     details,
 
     mapTree,
@@ -159,6 +160,10 @@ instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
 children :: Tree a -> Forest a
 children = subForest
 
+-- | Replace children
+replaceCh :: Tree a -> Forest a -> Tree a
+replaceCh (Node x _) ch = Node x ch
+
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details (Node (tg :@: anns) ch) = (tg, ch, anns)
@@ -241,7 +246,7 @@ foldMapRebuildTree f x n@(Node _ ch) =
     mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip
 
 -- | Rebuild a tree with explicit pre and post transformers applied to the first
---   child of every rree node. This is useful for stateful monads that modify
+--   child of every tree node. This is useful for stateful monads that modify
 --   environments based on the type of the first child.
 mapIn1RebuildTree :: (Monad m)
                   => (Tree a -> Tree a -> m ())
@@ -300,8 +305,8 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 
 -- | A mapping variant of foldIn1RebuildTree that threads a top-down accumulator
 --   while reconstructing the tree.
--- preCh1F:  The pre-child function takes the top-down accumulator, the first child, and the node
---           returns a new accumulator
+-- preCh1F:  The pre-child function takes the top-down accumulator, the first child, and the node.
+--           It returns a new accumulator
 -- postCh1F: The post-child function takes the pre's accumulator, the processed first child, and the node.
 --           It returns an accumulator, and a list of accumulators to be sent down while recursing
 --           over the other children.
@@ -317,10 +322,10 @@ foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
     nCh1Acc        <- preCh1F tdAcc (head ch) n
     nc1            <- rcr nCh1Acc $ head ch
     (nAcc, chAccs) <- postCh1F nCh1Acc nc1 n
-    if (length chAccs) /= (length $ tail ch)
+    if length chAccs /= (length $ tail ch)
       then fail "Invalid foldMapIn1RebuildTree accumulation"
       else do
-        nRestCh <- mapM (uncurry rcr) $ zip chAccs $ tail ch
+        nRestCh <- zipWithM rcr chAccs $ tail ch
         allChF nAcc (nc1:nRestCh) n
 
   where rcr = foldMapIn1RebuildTree preCh1F postCh1F allChF
