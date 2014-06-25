@@ -10,7 +10,6 @@ trigger foo1 : () = \_ -> (
 )
 
 
-// These currently fail:
 trigger foo2 : () = \_ -> (
   let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) {sum: 0.0}
   in ()
@@ -25,13 +24,6 @@ trigger foo4 : () = \_ -> (
   let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (1,2)
   in ()
 )
-
-trigger foo5 : () = \_ -> (
-  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) 
-  in ()
-)
-
-
 
 
 source s1 : () = value ()

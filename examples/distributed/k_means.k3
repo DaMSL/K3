@@ -9,19 +9,27 @@ declare master: address = 127.0.0.1:40000
 declare vector_zip: (real -> real -> real) -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \f -> \v -> \w ->
     let c = v.combine w in c.groupBy (\i -> i.key) (\a -> \e -> f a e.value) 0.0
 
-declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
-    let diff = vector_zip (\a -> \b -> a - b) p q in diff.fold (\a -> \x -> a + (x.value * x.value)) 0.0
+declare vector_add : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = vector_zip (\acc -> \elem -> acc + elem)
 
-declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \ns -> (
-    let f = ns.peek () in (
-        (ns.erase f);
-        let nearest = ns.fold (\best -> \next ->
-            if squared_distance p next.value < squared_distance p best.value
-                then next
-                else best
-        ) f in nearest.key
-    )
+declare vector_sub : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \c1 -> \c2 -> vector_zip (\acc -> \e -> (-1 * acc) + e) c2 c1
+
+declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
+    let diff = vector_sub p q in diff.fold (\a -> \x -> a + (x.value * x.value)) 0.0
+
+declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \means -> (
+    case means.peek () of
+        { Some first_mean ->
+            (means.erase first_mean); // Necessary/Correct?
+            let nearest = means.fold (\acc -> \next ->
+                let next_dist = squared_distance p next.value in
+                if next_dist < acc.distance
+                    then {mean: next, distance: next_dist}
+                    else acc
+            ) {mean: first_mean, distance: squared_distance p first_mean.value} in nearest.key
+        }
+        { None -> (-1) } // Error
 )
+
 
 trigger assign: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } = \current_means -> (
         (complete_aggregate, master) <-
