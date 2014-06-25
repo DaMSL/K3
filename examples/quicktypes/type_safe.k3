@@ -41,7 +41,7 @@ trigger foo6 : () = \_ -> (
 )
 
 // Broken:
-trigger foo6 : () = \_ -> (
+trigger foo7 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if (a.sum == 0) then {sum:a.sum} else {sum:a.sum}) {sum: 0}
   in ()
 )
