@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -9,6 +10,7 @@ import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Utils.Pretty
 
 type QTVarId = Int
 
@@ -169,3 +171,12 @@ isQTVar _ = False
 isQTLower :: K3 QType -> Bool
 isQTLower (tag -> QTOperator QTLower) = True
 isQTLower _ = False
+
+instance Pretty QTVarId where
+  prettyLines x = [show x]
+
+instance Pretty (K3 QType) where
+  prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
+
+instance Pretty QPType where
+  prettyLines (QPType tvars qt) = [unwords ["QPT", show tvars] ++ " "] %+ (prettyLines qt)

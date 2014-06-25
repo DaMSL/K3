@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
@@ -26,6 +27,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -34,6 +37,7 @@ import Language.K3.Core.Type
 import Language.K3.Core.Constructor.Type as TC
 import Language.K3.Analysis.Common
 import Language.K3.Analysis.HMTypes.DataTypes
+import Language.K3.Utils.Pretty
 
 -- | Misc. helpers
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
@@ -261,7 +265,7 @@ runTInfM env m = flip runState env $ runEitherT m
 
 reasonM :: (String -> String) -> TInfM a -> TInfM a
 reasonM errf = mapEitherT $ \m -> m >>= \case
-  Left  err -> return . Left $ errf err
+  Left  err -> get >>= \env -> (return . Left $ errf $ err ++ "\nType environment:\n" ++ pretty env)
   Right r   -> return $ Right r
 
 liftEitherM :: Either String a -> TInfM a
@@ -407,12 +411,12 @@ collectionSubRecord _ _ = return Nothing
 unifyv :: QTVarId -> K3 QType -> TInfM ()
 unifyv v1 t@(tag -> QTVar v2)
   | v1 == v2  = return ()
-  | otherwise = modify $ mtive $ \tve -> tvext tve v1 t
+  | otherwise = trace (prettyTaggedSPair "unifyv" v1 t) $ modify $ mtive $ \tve -> tvext tve v1 t
 
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
-    then modify $ mtive $ \tve' -> tvext tve' v t
-    else tvsub t >>= \t' -> left $ unwords ["occurs check:", show v, "in", show t']
+    then trace (prettyTaggedSPair "unifyv" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
+    else trace (prettyTaggedSPair "unifyv" v t) $ tvsub t >>= \t' -> left $ unwords ["occurs check:", show v, "in", show t']
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
@@ -426,7 +430,7 @@ unifyDrv :: (Show a) => UnifyPreF a -> UnifyPostF a -> K3 QType -> K3 QType -> T
 unifyDrv preF postF qt1 qt2 = do
     (p1, qt1') <- preF qt1
     (p2, qt2') <- preF qt2
-    qt         <- unifyDrv' qt1' qt2'
+    qt         <- trace (prettyTaggedPair "unifyDrv" qt1' qt2') $ unifyDrv' qt1' qt2'
     postF (p1, p2) qt
 
   where
@@ -553,13 +557,13 @@ unifyDrv preF postF qt1 qt2 = do
 
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
-unifyM t1 t2 errf = reasonM errf $ void $ unifyDrv preChase postId t1 t2
+unifyM t1 t2 errf = trace (prettyTaggedPair "unifyM" t1 t2) $ reasonM errf $ void $ unifyDrv preChase postId t1 t2
   where preChase qt = getTVE >>= \tve -> return ((), tvchase tve qt)
         postId _ qt = return qt
 
 -- | Type unification with variable overrides to the unification result.
 unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QType)
-unifyWithOverrideM qt1 qt2 errf = reasonM errf $ unifyDrv preChase postUnify qt1 qt2
+unifyWithOverrideM qt1 qt2 errf = trace (prettyTaggedPair "unifyOvM" qt1 qt2) $ reasonM errf $ unifyDrv preChase postUnify qt1 qt2
   where preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
         postUnify (v1, v2) qt = do
           let vs = catMaybes [v1, v2]
@@ -848,7 +852,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
-      void    $  unifyM srcqt prjqt $ mkErrorF n ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
+      void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt) $ unifyM srcqt prjqt $ mkErrorF n ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
@@ -857,7 +861,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
       let errf = mkErrorF n (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"] ++)
-      void   $  unifyWithOverrideM fnqt (tfun argqt retqt) errf
+      void   $  trace (prettyTaggedPair ("infer app " ++ pretty n) fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EOperate OSeq) = do
@@ -1004,13 +1008,13 @@ mkCollectionFSQType annIds memEnvs contentQt = do
     flatEnvs <- assertNoDuplicateIds
     let (lifted, regular) = partition (snd . snd) flatEnvs
     finalQt <- mkFinalQType contentQt regular
-    selfQt  <- subCTVars contentQt finalQt $ trec $ membersAsRecordFields lifted
+    selfQt  <- membersAsRecordFields lifted >>= subCTVars contentQt finalQt . trec
     return (finalQt, selfQt)
   where
     mkFinalQType cqt regular =
       case tag cqt of
         QTCon (QTRecord ids) ->
-           return $ trec $ (zip ids $ children cqt) ++ (membersAsRecordFields regular)
+           membersAsRecordFields regular >>= return . trec . ((zip ids $ children cqt) ++)
         _ -> nonRecordContentErr cqt
 
     subCTVars ct ft st = mapTree (subCF ct ft) st
@@ -1023,8 +1027,7 @@ mkCollectionFSQType annIds memEnvs contentQt = do
           ids      = map fst flatEnvs
       in if nub ids /= ids then nameConflictErr else return flatEnvs
 
-    membersAsRecordFields attrs = map (\(j,(QPType _ qt,_)) -> (j,qt)) attrs
-      -- ^ TODO: handle free vars?
+    membersAsRecordFields attrs = mapM (\(j,(qpt,_)) -> instantiate qpt >>= return . (j,)) attrs
 
     nameConflictErr        = left $ "Conflicting annotation member names: " ++ show annIds
     nonRecordContentErr qt = left $ "Invalid content record type: " ++ show qt
@@ -1190,3 +1193,43 @@ translateQType qt = mapTree translateWithMutability qt
           QTSink              -> return $ TC.sink $ head ch
 
         translate _ qt' = Left $ "No translation for: " ++ show qt'
+
+
+{- Instances -}
+instance Pretty TIEnv where
+  prettyLines (te, ta, tdv, tve) = 
+    ["TEnv: "]   %$ (indent 2 $ prettyLines te)  ++
+    ["TAEnv: "]  %$ (indent 2 $ prettyLines ta)  ++
+    ["TDVEnv: "] %$ (indent 2 $ prettyLines tdv) ++
+    ["TVEnv: "]  %$ (indent 2 $ prettyLines tve)
+
+instance Pretty TEnv where
+  prettyLines te = prettyPairList te
+
+instance Pretty TAEnv where
+  prettyLines ta = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] ta
+
+instance Pretty TMEnv where
+  prettyLines tme = prettyPairList tme
+
+instance Pretty TDVEnv where
+  prettyLines tdve = prettyPairList tdve
+
+instance Pretty TVEnv where
+  prettyLines (TVEnv n m) = ["# vars: " ++ show n] ++
+                            (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+
+instance Pretty (QPType, Bool) where
+  prettyLines (a,b) = (if b then ["(Lifted) "] else ["(Attr) "]) %+ prettyLines a
+
+prettyPairList :: (Show a, Pretty b) => [(a,b)] -> [String]
+prettyPairList l = foldl (\acc kvPair -> acc ++ prettyPair kvPair) [] l
+
+prettyPair :: (Show a, Pretty b) => (a,b) -> [String]
+prettyPair (a,b) = [show a ++ " => "] %+ prettyLines b
+
+prettyTaggedSPair :: (Show a, Pretty b) => String -> a -> b -> String
+prettyTaggedSPair s a b = boxToString $ [s ++ " " ++ show a] %+ [" and "] %+ prettyLines b
+
+prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> String
+prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] %+ prettyLines b
