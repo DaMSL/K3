@@ -87,8 +87,11 @@ namespace K3 {
       }
 
       template <class Z>
-      Z fold(F<F<Z(E)>(E)> f, Z init) {
-       return D<E>::fold(f, init);
+      F<Z(Z)> fold(F<F<Z(E)>(Z)> f) {
+           F<Z(Z)> r = [=] (Z init) {
+             return D<E>::template fold<Z>(f, init);
+           };
+           return r;
       }
 
       template <class K, class Z>
