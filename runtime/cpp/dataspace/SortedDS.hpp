@@ -3,7 +3,6 @@
 
 namespace K3 {
 
-template <class r> using F = std::function<r>;
 template <typename Elem>
 class SortedDS : public StlDS<Elem, std::multiset> {
   // Iterator Types

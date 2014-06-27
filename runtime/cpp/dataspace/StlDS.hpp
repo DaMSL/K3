@@ -11,7 +11,6 @@
 
 namespace K3 {
 
-template <class r> using F = std::function<r>;
 using K3::Engine;
 using std::shared_ptr;
 using std::tuple;

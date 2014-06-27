@@ -28,7 +28,6 @@
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
-  template <class r> using F = std::function<r>;
 
   template <template <class...> class D, class E>
   class BaseCollection: public D<E> {

@@ -7,7 +7,8 @@ int Options::parse(int argc, const char *const argv[]) {
   desc.add_options()
     ("help,h", "produce help message")
     ("peer,p", po::value< vector<string> >(), "variables to set in peer (required)")
-    ("simulation,s", "run in simulation mode");
+    ("simulation,s", "run in simulation mode")
+    ("log,l",po::value<string>(), "log level");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -26,8 +27,8 @@ int Options::parse(int argc, const char *const argv[]) {
   if (vm.count("simulation")) {
     simulation = true;
   }
-  if (vm.count("log_level")) {
-    log_level = vm["log_level"].as<string>();
+  if (vm.count("log")) {
+    log_level = vm["log"].as<string>();
   }
 
   return 0;

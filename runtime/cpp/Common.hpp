@@ -24,6 +24,7 @@
 
 namespace K3 {
 
+  template <class r> using F = std::function<r>;
   typedef std::string Identifier;
   typedef std::string Value;
 

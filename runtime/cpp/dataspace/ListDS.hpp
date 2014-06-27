@@ -11,7 +11,6 @@
 
 namespace K3
 {
-  template <class r> using F = std::function<r>;
   using namespace std;
 
   template <typename Elem>

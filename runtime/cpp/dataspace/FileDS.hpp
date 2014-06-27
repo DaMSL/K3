@@ -16,7 +16,6 @@
 namespace K3
 {
   using namespace std;
-  template <class r> using F = std::function<r>;
   string generateCollectionFilename(Engine * engine);
   string openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
   Identifier openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
@@ -47,7 +46,7 @@ namespace K3
       }
 
       template<typename AccumT>
-      static AccumT foldOpenFile(Engine * engine, F<F(AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+      static AccumT foldOpenFile(Engine * engine, F<F<AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
       {
         while (engine->hasRead(file_id))
         {
@@ -61,7 +60,7 @@ namespace K3
       }
 
       template<typename AccumT>
-      static AccumT foldFile(Engine * engine, F<F(AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+      static AccumT foldFile(Engine * engine, F<F<AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
       {
         openCollectionFile(engine, file_id, IOMode::Read);
         AccumT result = foldOpenFile<AccumT>(engine, accumulation, initial_accumulator, file_id);
@@ -284,7 +283,7 @@ namespace K3
 
       template<typename Accum>
 
-      Accum fold(F<F(Accum(Elem)>(Accum)> accum, Accum initial_accumulator)
+      Accum fold(F<F<Accum(Elem)>(Accum)> accum, Accum initial_accumulator)
       {
         return foldFile<Accum>(engine, accum, initial_accumulator, file_id);
       }

@@ -86,5 +86,5 @@ trigger worker_ready : () = \_ -> (
   )
 )
 
-source points : int = file "data/points.txt" k3
+source points : int = file "/k3/data/points.txt" k3
 feed points |> load_point

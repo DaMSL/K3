@@ -29,7 +29,6 @@ namespace K3 {
   //    int get_max_int(unit_t x) { return INT_MAX; }
   //};
 
-  template <class r> using F = std::function<r>;
 
   F<F<F<unit_t(string)>(string)>(string)> openBuiltin =
     [] (string chan_id) {

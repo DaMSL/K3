@@ -1,7 +1,6 @@
 #include <set>
 
 namespace K3 {
-template <class r> using F = std::function<r>;
 
 template <typename Elem>
 class SetDS : public StlDS<Elem, std::unordered_set> {
