@@ -326,6 +326,8 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
         | idsA `intersect` idsB == idsB -> mergedCollection idsA a' b'
 
       (QTVar _, QTVar _) -> return a'
+      (QTVar _, _) -> return a'
+      (_, QTVar _) -> return b'
 
       (_, _)
         | (isQTLower a' && isQTLower b') || isQTLower a' || isQTLower b' -> do
@@ -637,16 +639,28 @@ inferProgramTypes prog = do
     initializeTypeEnv :: TInfM (K3 Declaration)
     initializeTypeEnv = mapProgram initDeclF initAMemF initExprF prog
 
+    withUnique :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
+    withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilkupe n) >>= const m
+
+    withUniqueA :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
+    withUniqueA n m = failOnValid (return ()) (uniqueErr "annotation" n) (flip tilkupa n) >>= const m
+
+    failOnValid :: TInfM () -> TInfM () -> (TIEnv -> Either a b) -> TInfM ()
+    failOnValid success failure f = get >>= \env -> either (const $ success) (const $ failure) $ f env
+
+    uniqueErr :: String -> Identifier -> TInfM a
+    uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
+
     initDeclF :: K3 Declaration -> TInfM (K3 Declaration)
     initDeclF d@(tag -> DGlobal n t _)
-      | isTFunction t = qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
+      | isTFunction t = withUnique n $ qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       | otherwise     = return d
 
     initDeclF d@(tag -> DTrigger n t _) =
-      trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
+      withUnique n $ trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
 
-    initDeclF d@(tag -> DAnnotation n tdeclvars mems) = mkAnnMemEnv >> return d
+    initDeclF d@(tag -> DAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
       where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
             memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
             memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
