@@ -3,6 +3,7 @@
 
 namespace K3 {
 
+template <class r> using F = std::function<r>;
 template <typename Elem>
 class SortedDS : public StlDS<Elem, std::multiset> {
   // Iterator Types
@@ -11,7 +12,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
 
   public:
     SortedDS(Engine * eng) : StlDS<Elem, std::multiset>(eng) {}
-    
+
     template<typename Iterator>
     SortedDS(Engine * eng, Iterator start, Iterator finish)
         : StlDS<Elem,std::multiset>(eng,start,finish) {}
@@ -27,12 +28,12 @@ class SortedDS : public StlDS<Elem, std::multiset> {
 
      // Need to convert from StlDS to SortedDS
     template<typename NewElem>
-    SortedDS<NewElem> map(std::function<NewElem(Elem)> f) {
+    SortedDS<NewElem> map(F<NewElem(Elem)> f) {
       StlDS<NewElem, std::multiset> s = super::map(f);
       return SortedDS<NewElem>(s);
     }
 
-    SortedDS filter(std::function<bool(Elem)> pred) {
+    SortedDS filter(F<bool(Elem)> pred) {
       super s = super::filter(pred);
       return SortedDS(s);
     }
@@ -58,7 +59,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
       if (it != x.end()) {
         result = make_shared<Elem>(*it);
       }
-      
+
       return result;
     }
 
@@ -69,7 +70,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
       if (it != x.end()) {
         result = make_shared<Elem>(*it);
       }
-      
+
       return result;
     }
 
@@ -80,7 +81,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
       if (it != x.end()) {
         result = make_shared<Elem>(*it);
       }
-      
+
       return result;
     }
 
@@ -91,7 +92,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
       if (it != x.end()) {
         result = make_shared<Elem>(*it);
       }
-      
+
       return result;
     }
 
@@ -107,7 +108,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
         }
       }
       return result;
-    }    
+    }
 };
 
 }

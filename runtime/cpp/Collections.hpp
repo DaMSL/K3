@@ -28,6 +28,8 @@
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
+  template <class r> using F = std::function<r>;
+
   template <template <class...> class D, class E>
   class BaseCollection: public D<E> {
     public:
@@ -77,31 +79,32 @@ namespace K3 {
       }
 
       template <class T>
-      BaseCollection<D, T> map(std::function<T(E)> f) {
+      BaseCollection<D, T> map(F<T(E)> f) {
        return BaseCollection<D,T>(D<E>::map(f));
       }
 
-      BaseCollection<D, E> filter(std::function<bool(E)> f) {
+      BaseCollection<D, E> filter(F<bool(E)> f) {
        return BaseCollection<D,E>(D<E>::filter(f));
       }
 
       template <class Z>
-      Z fold(std::function<Z(Z, E)> f, Z init) {
+      Z fold(F<F<Z(E)>(E)> f, Z init) {
        return D<E>::fold(f, init);
       }
 
       template <class K, class Z>
       BaseCollection<D, std::tuple<K, Z>> group_by(
-        std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+        F<K(E)> grouper, F<F<Z(E)>(E)> folder, Z init) {
           // Create a map to hold partial results
           std::map<K, Z> accs = std::map<K,Z>();
           // lambda to apply to each element
-          std::function<void(E)> f = [&] (E elem) {
+          F<unit_t(E)> f = [&] (E elem) {
             K key = grouper(elem);
             if (accs.find(key) == accs.end()) {
               accs[key] = init;
             }
             accs[key] = folder(accs[key], elem);
+            return unit_t();
           };
           D<E>::iterate(f);
           // Build BaseCollection result
@@ -115,9 +118,10 @@ namespace K3 {
       }
 
       template <template <class> class F, class T>
-      BaseCollection<D, T> ext(std::function<BaseCollection<F, T>(E)> expand) {
+
+      BaseCollection<D, T> ext(F<BaseCollection<F, T>(E)> expand) {
         BaseCollection<D, T> result = BaseCollection<D,T>(D<E>::getEngine());
-        auto add_to_result = [&] (T elem) {result.insert(elem); };
+        auto add_to_result = [&] (T elem) {result.insert(elem); return unit_t(); };
         auto fun = [&] (E elem) {
           expand(elem).iterate(add_to_result);
         };
@@ -169,23 +173,23 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<T> map(std::function<T(E)> f) {
+      Collection<T> map(F<T(E)> f) {
        return Collection<T>(Super::map(f));
       }
 
-      Collection<E> filter(std::function<bool(E)> f) {
+      Collection<E> filter(F<bool(E)> f) {
        return Collection<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Collection<std::tuple<K, Z>> group_by
-      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+      (F<K(E)> grouper, F<F<Z(E)>(E)> folder, Z init) {
         BaseCollection<ListDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Collection<std::tuple<K,Z>>(s);
       }
 
       template <class T>
-      Collection<T> ext(std::function<BaseCollection<ListDS, T>(E)> expand) {
+      Collection<T> ext(F<BaseCollection<ListDS, T>(E)> expand) {
         BaseCollection<ListDS, T> result = Super::ext(expand);
         return Collection<T>(result);
       }
@@ -226,28 +230,28 @@ namespace K3 {
       }
 
       template <class T>
-      Seq<T> map(std::function<T(E)> f) {
+      Seq<T> map(F<T(E)> f) {
        return Seq<T>(Super::map(f));
       }
 
-      Seq<E> filter(std::function<bool(E)> f) {
+      Seq<E> filter(F<bool(E)> f) {
        return Seq<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Seq<std::tuple<K, Z>> group_by
-      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+      (F<K(E)> grouper, F<F<Z(E)>(E)> folder, Z init) {
         BaseCollection<ListDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Seq<std::tuple<K,Z>>(s);
       }
 
       template <class T>
-      Seq<T> ext(std::function<BaseCollection<ListDS, T>(E)> expand) {
+      Seq<T> ext(F<BaseCollection<ListDS, T>(E)> expand) {
         BaseCollection<ListDS, T> result = Super::ext(expand);
         return Seq<T>(result);
       }
 
-      Seq<E> sort(std::function<int(E,E)> f) {
+      Seq<E> sort(F<F<int(E)>(E)> f) {
         Super s = Super(ListDS<E>::sort(f));
         return Seq<E>(s);
       }
@@ -284,23 +288,23 @@ namespace K3 {
       }
 
       template <class T>
-      Set<T> map(std::function<T(E)> f) {
+      Set<T> map(F<T(E)> f) {
        return Set<T>(Super::map(f));
       }
 
-      Set<E> filter(std::function<bool(E)> f) {
+      Set<E> filter(F<bool(E)> f) {
        return Set<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Set<std::tuple<K, Z>> group_by
-      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+      (F<K(E)> grouper, F<F<int(E)>(E)> folder, Z init) {
         BaseCollection<SetDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Set<std::tuple<K,Z>>(s);
       }
 
       template <class T>
-      Set<T> ext(std::function<BaseCollection<SetDS, T>(E)> expand) {
+      Set<T> ext(F<BaseCollection<SetDS, T>(E)> expand) {
         BaseCollection<SetDS, T> result = Super::ext(expand);
         return Set<T>(result);
       }
@@ -360,23 +364,23 @@ namespace K3 {
       }
 
       template <class T>
-      Sorted<T> map(std::function<T(E)> f) {
+      Sorted<T> map(F<T(E)> f) {
        return Sorted<T>(Super::map(f));
       }
 
-      Sorted<E> filter(std::function<bool(E)> f) {
+      Sorted<E> filter(F<bool(E)> f) {
        return Sorted<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       Sorted<std::tuple<K, Z>> group_by
-      (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+      (F<K(E)> grouper, F<Z(Z, E)> folder, Z init) {
         BaseCollection<SortedDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return Sorted<std::tuple<K,Z>>(s);
       }
 
       template <class T>
-      Sorted<T> ext(std::function<BaseCollection<SortedDS, T>(E)> expand) {
+      Sorted<T> ext(F<BaseCollection<SortedDS, T>(E)> expand) {
         BaseCollection<SortedDS, T> result = Super::ext(expand);
         return Sorted<T>(result);
       }
@@ -427,23 +431,23 @@ namespace K3 {
       }
 
       template <class T>
-      ExternalBaseCollection<T> map(std::function<T(E)> f) {
+      ExternalBaseCollection<T> map(F<T(E)> f) {
        return ExternalBaseCollection<T>(Super::map(f));
       }
 
-      ExternalBaseCollection<E> filter(std::function<bool(E)> f) {
+      ExternalBaseCollection<E> filter(F<bool(E)> f) {
        return ExternalBaseCollection<E>(Super::filter(f));
       }
 
       template <class K, class Z>
       ExternalBaseCollection<std::tuple<K, Z>> group_by
-            (std::function<K(E)> grouper, std::function<Z(Z, E)> folder, Z init) {
+            (F<K(E)> grouper, F<F<Z(E)>(Z)> folder, Z init) {
         BaseCollection<FileDS, std::tuple<K,Z>> s = Super::group_by(grouper,folder,init);
         return ExternalBaseCollection<std::tuple<K,Z>>(s);
       }
 
       template <class T>
-      ExternalBaseCollection<T> ext(std::function<BaseCollection<SetDS, T>(E)> expand) {
+      ExternalBaseCollection<T> ext(F<BaseCollection<SetDS, T>(E)> expand) {
         BaseCollection<SetDS, T> result = Super::ext(expand);
         return ExternalBaseCollection<T>(result);
       }

@@ -1,6 +1,8 @@
 #include <set>
 
 namespace K3 {
+template <class r> using F = std::function<r>;
+
 template <typename Elem>
 class SetDS : public StlDS<Elem, std::unordered_set> {
   // Iterator Types
@@ -9,7 +11,7 @@ class SetDS : public StlDS<Elem, std::unordered_set> {
 
   public:
     SetDS(Engine * eng) : StlDS<Elem, std::unordered_set>(eng) {}
-    
+
     template<typename Iterator>
     SetDS(Engine * eng, Iterator start, Iterator finish)
         : StlDS<Elem,std::unordered_set>(eng,start,finish) {}
@@ -25,12 +27,12 @@ class SetDS : public StlDS<Elem, std::unordered_set> {
 
      // Need to convert from StlDS to SetDS
     template<typename NewElem>
-    SetDS<NewElem> map(std::function<NewElem(Elem)> f) {
+    SetDS<NewElem> map(F<NewElem(Elem)> f) {
       StlDS<NewElem, std::unordered_set> s = super::map(f);
       return SetDS<NewElem>(s);
     }
 
-    SetDS filter(std::function<bool(Elem)> pred) {
+    SetDS filter(F<bool(Elem)> pred) {
       super s = super::filter(pred);
       return SetDS(s);
     }

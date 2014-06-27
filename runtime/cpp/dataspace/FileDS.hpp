@@ -16,7 +16,7 @@
 namespace K3
 {
   using namespace std;
-
+  template <class r> using F = std::function<r>;
   string generateCollectionFilename(Engine * engine);
   string openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
   Identifier openCollectionFile(Engine * engine, const Identifier& name, IOMode mode);
@@ -47,13 +47,13 @@ namespace K3
       }
 
       template<typename AccumT>
-      static AccumT foldOpenFile(Engine * engine, std::function<AccumT(AccumT, Elem)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+      static AccumT foldOpenFile(Engine * engine, F<F(AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
       {
         while (engine->hasRead(file_id))
         {
           shared_ptr<Elem> cur_val = readExternal(engine, file_id);
           if (cur_val)
-            initial_accumulator = accumulation(initial_accumulator, *cur_val);
+            initial_accumulator = accumulation(initial_accumulator)(*cur_val);
           else
             return initial_accumulator;
         }
@@ -61,7 +61,7 @@ namespace K3
       }
 
       template<typename AccumT>
-      static AccumT foldFile(Engine * engine, std::function<AccumT(AccumT, Elem)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
+      static AccumT foldFile(Engine * engine, F<F(AccumT(Elem)>(AccumT)> accumulation, AccumT initial_accumulator, const Identifier& file_id)
       {
         openCollectionFile(engine, file_id, IOMode::Read);
         AccumT result = foldOpenFile<AccumT>(engine, accumulation, initial_accumulator, file_id);
@@ -94,7 +94,7 @@ namespace K3
           return result;
       }
 
-      static void iterateOpenFile(Engine * engine, std::function<void(Elem)> f, const Identifier& file_id)
+      static void iterateOpenFile(Engine * engine, F<unit_t(Elem)> f, const Identifier& file_id)
       {
           while (engine->hasRead(file_id))
           {
@@ -104,7 +104,7 @@ namespace K3
           }
       }
 
-      static void iterateFile_noCopy(Engine * engine, std::function<void(Elem)> function, const Identifier& file_id)
+      static void iterateFile_noCopy(Engine * engine, F<unit_t(Elem)> function, const Identifier& file_id)
       {
           openCollectionFile(engine, file_id, IOMode::Read);
           iterateOpenFile(engine, function, file_id);
@@ -124,7 +124,7 @@ namespace K3
       }
 
       template<typename Output>
-      static Identifier mapFile(Engine * engine, std::function<Output(Elem)> function, const Identifier& file_ds)
+      static Identifier mapFile(Engine * engine, F<Output(Elem)> function, const Identifier& file_ds)
       {
           Identifier tmp_ds = copyFile(engine, file_ds);
           Identifier new_id = generateCollectionFilename(engine);
@@ -136,7 +136,7 @@ namespace K3
           engine->close(new_id);
           return new_id;
       }
-      static void mapFile_(Engine * engine, std::function<void(Elem)> function, const Identifier& file_ds)
+      static void mapFile_(Engine * engine, F<unit_t(Elem)> function, const Identifier& file_ds)
       {
           Identifier tmp_ds = copyFile(engine, file_ds);
           iterateFile_noCopy(engine, [engine, &function](Elem val) {
@@ -144,7 +144,7 @@ namespace K3
                   }, tmp_ds);
       }
 
-      static Identifier filterFile(Engine * engine, std::function<bool(Elem)> predicate, const Identifier& old_ds)
+      static Identifier filterFile(Engine * engine, F<bool(Elem)> predicate, const Identifier& old_ds)
       {
           Identifier tmp_ds = copyFile(engine, old_ds);
           Identifier new_id = generateCollectionFilename(engine);
@@ -283,25 +283,26 @@ namespace K3
       }
 
       template<typename Accum>
-      Accum fold(std::function<Accum(Accum, Elem)> accum, Accum initial_accumulator)
+
+      Accum fold(F<F(Accum(Elem)>(Accum)> accum, Accum initial_accumulator)
       {
         return foldFile<Accum>(engine, accum, initial_accumulator, file_id);
       }
 
       template<typename Result>
-      FileDS map(std::function<Result(Elem)> func)
+      FileDS map(F<Result(Elem)> func)
       {
         return FileDS(engine,
                 mapFile<Result>(engine, func, file_id)
                 );
       }
 
-      void iterate(std::function<void(Elem)> func)
+      void iterate(F<unit_t(Elem)> func)
       {
         mapFile_(engine, func, file_id);
       }
 
-      FileDS filter(std::function<bool(Elem)> predicate)
+      FileDS filter(F<bool(Elem)> predicate)
       {
         return FileDS(engine,
                 filterFile(engine, predicate, file_id)

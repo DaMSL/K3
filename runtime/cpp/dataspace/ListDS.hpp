@@ -11,6 +11,7 @@
 
 namespace K3
 {
+  template <class r> using F = std::function<r>;
   using namespace std;
 
   template <typename Elem>
@@ -33,12 +34,12 @@ namespace K3
 
     // Need to convert from StlDS to ListDS
     template<typename NewElem>
-    ListDS<NewElem> map(std::function<NewElem(Elem)> f) {
+    ListDS<NewElem> map(F<NewElem(Elem)> f) {
       StlDS<NewElem, std::list> s = super::map(f);
       return ListDS<NewElem>(s);
     }
 
-    ListDS filter(std::function<bool(Elem)> pred) {
+    ListDS filter(F<bool(Elem)> pred) {
       super s = super::filter(pred);
       return ListDS(s);
     }
@@ -55,9 +56,9 @@ namespace K3
       return ListDS(s);
     }
 
-    ListDS sort(std::function<int(Elem, Elem)> comp) {
+    ListDS sort(F<F<int(Elem)>(Elem)> comp) {
       std::list<Elem> l = std::list<Elem>(super::getContainer());
-      std::function<bool(Elem,Elem)> f = [&] (Elem a, Elem b) { return comp(a,b) < 0; };
+      std::function<bool(Elem,Elem)> f = [&] (Elem a, Elem b) { return comp(a)(b) < 0; };
       l.sort(f);
       return ListDS(l);
     }

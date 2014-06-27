@@ -11,6 +11,7 @@
 
 namespace K3 {
 
+template <class r> using F = std::function<r>;
 using K3::Engine;
 using std::shared_ptr;
 using std::tuple;
@@ -64,14 +65,14 @@ class StlDS {
   }
 
   template<typename Acc>
-  Acc fold(std::function<Acc(Acc, Elem)> f, Acc init_acc) {
+  Acc fold(F<F<Acc(Elem)>(Acc)> f, Acc init_acc) {
     Acc acc = init_acc;
-    for (Elem e : container) { acc = f(acc, e); }
+    for (Elem e : container) { acc = f(acc)(e); }
     return acc;
   }
 
   template<typename NewElem>
-  StlDS<NewElem, Container> map(std::function<NewElem(Elem)> f) {
+  StlDS<NewElem, Container> map(F<NewElem(Elem)> f) {
     StlDS<NewElem, Container> result = StlDS<NewElem, Container>(getEngine());
     for (Elem e : container) {
       NewElem new_e = f(e);
@@ -80,12 +81,12 @@ class StlDS {
     return result;
   }
 
-  unit_t iterate(std::function<unit_t(Elem)> f) {
+  unit_t iterate(F<unit_t(Elem)> f) {
     for (Elem e : container) { f(e); }
     return unit_t();
   }
 
-  StlDS filter(std::function<bool(Elem)> predicate) {
+  StlDS filter(F<bool(Elem)> predicate) {
     StlDS<Elem, Container> result = StlDS<Elem, Container>(getEngine());
     for (Elem e : container) {
       if (predicate(e)) {

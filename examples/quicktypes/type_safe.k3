@@ -30,18 +30,18 @@ trigger foo5 : () = \_ -> (
   in ()
 )
 
-trigger foo5 : () = \_ -> (
+trigger foo6 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if true then a else a) {sum: 0}
   in ()
 )
 
-trigger foo6 : () = \_ -> (
+trigger foo7 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if true then {sum:a.sum} else {sum:a.sum}) {sum: 0}
   in ()
 )
 
 // Broken:
-trigger foo7 : () = \_ -> (
+trigger foo8 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if (a.sum == 0) then {sum:a.sum} else {sum:a.sum}) {sum: 0}
   in ()
 )
