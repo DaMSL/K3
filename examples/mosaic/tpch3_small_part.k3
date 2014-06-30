@@ -1,0 +1,21 @@
+declare pmap_input : collection {
+  key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
+  {| key:string, value:collection { key:int, value:int } @ { Seq } |
+  {key:"QUERY3", value:{| key:int, value:int | {key:0, value:4},
+   {key:1, value:2}, {key:2, value:2}|} @ { Seq }},
+  {key:"QUERY3_mLINEITEM1", value:{| key:int, value:int | {key:0, value:4},
+   {key:1, value:2}, {key:2, value:2}|} @ { Seq }},
+  {key:"QUERY3_mLINEITEM1_mCUSTOMER2", value:{| key:int, value:int |
+   {key:0, value:2}, {key:1, value:2}, {key:2, value:2},
+   {key:3, value:2}|} @ { Seq }},
+  {key:"QUERY3_mORDERS1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"QUERY3_mORDERS3", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"QUERY3_mORDERS6", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"QUERY3_mCUSTOMER2", value:{| key:int, value:int | {key:0, value:2},
+   {key:1, value:2}, {key:2, value:2}, {key:3, value:2}|} @ { Seq }},
+  {key:"QUERY3_mCUSTOMER4", value:{| key:int, value:int | {key:0, value:2},
+   {key:1, value:2}, {key:2, value:2}, {key:3, value:2}|} @ { Seq }}|} @ { Seq }
+
