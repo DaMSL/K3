@@ -66,13 +66,14 @@ composite className ans = do
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
+    let constructors'' = constructors' ++ [superConstructor p | (p, _) <- take 1 ras]
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
 
     let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
-            <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializeDefn] ++ pubDecls)
+            <$$> indent 4 (vsep $ punctuate line $ constructors'' ++ [serializeDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
@@ -107,6 +108,12 @@ composite className ans = do
          <> parens (text $ "const " ++ className ++ "& c")
          <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
+
+    superConstructor p =
+            text className
+         <> parens (text "const" <+> text p <+> text "& c")
+         <> colon
+        <+> text p <> parens (text "c") <+> braces empty
 
     constructors = [engineConstructor, copyConstructor]
 

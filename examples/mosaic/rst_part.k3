@@ -1,0 +1,14 @@
+declare pmap_input : collection {
+  key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
+  {| key:string, value:collection { key:int, value:int } @ { Seq } |
+  {key:"ATIMESD_mT1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mT1_mR1", value:{| key:int, value:int | {key:0, value:4},
+   {key:1, value:4}|} @ { Seq }},
+  {key:"ATIMESD_mS1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mS2", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }}|} @ { Seq }
+
