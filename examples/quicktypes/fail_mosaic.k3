@@ -1,0 +1,65 @@
+include "Core/Builtins.k3"
+include "Annotation/Set.k3"
+include "Annotation/Seq.k3"
+include "Core/Time.k3"
+
+declare vid_eq : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ -> 
+    bind _b1_ as {key:_b2_, value:_b6_} in 
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in 
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 == r0 and (l1 == r1 and l2
+    == r2))
+
+declare vid_lt : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ -> 
+    bind _b1_ as {key:_b2_, value:_b6_} in 
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in 
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 < r0 or (l0 == r0 and (l1 <
+    r1 or (l1 == r1 and l2 < r2))))
+
+declare vid_gt : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ -> 
+    bind _b1_ as {key:_b2_, value:_b6_} in 
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in 
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 > r0 or (l0 == r0 and (l1 >
+    r1 or (l1 == r1 and l2 > r2))))
+
+declare frontier_int_int : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+  } -> collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = (\_b1_ -> 
+    bind _b1_ as {key:vid, value:input_map} in 
+    (input_map.groupBy
+       ((\_b1_ -> 
+         bind _b1_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in __map_0))
+       ((\_b2_ -> bind _b2_ as {key:acc, value:max_vid} in (\_b5_ -> 
+         bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
+         if vid_lt {key:map_vid, value:vid}
+         then
+           if vid_eq {key:map_vid, value:max_vid}
+           then
+             {key:(({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+              |
+              {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val}|} @ { Collection }).combine
+              acc), value:max_vid}
+           else
+             if vid_gt {key:map_vid, value:max_vid}
+             then
+               {key:{|
+                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
+                {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val}|} @ { Collection },
+                value:map_vid}
+             else {key:acc, value:max_vid}
+         else {key:acc, value:max_vid})))
+       {key:empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+        } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).fold
+      ((\__acc_ext -> (\_b3_ -> 
+        bind _b3_ as {key:_, value:_b4_} in 
+        bind _b4_ as {key:project, value:_} in __acc_ext.combine project)))
+      empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+      } @ { Collection })
+
