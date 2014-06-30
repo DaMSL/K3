@@ -659,7 +659,7 @@ declare add_node : { _r1_:address, _r2_:string, _r3_:string } -> () = (\_b1_ ->
           bind _b7_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash2} in 
           if hash1 > hash2 then -1 else 1))) in
       (
-        node_ring.iterate ((\node ->  node_ring.delete node));
+        node_ring.iterate ((\node ->  node_ring.erase node));
         temp_ring.iterate ((\node ->  node_ring.insert node))
         )
       ))
@@ -671,7 +671,7 @@ declare remove_node : { _r1_:address, _r2_:string, _r3_:string } -> () =
       ((\_b1_ -> 
         bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_, _r4_:_r4_} in (_r1_ ==
         addr and _r3_ == name) and _r2_ == _role_)) in
-    nodes_to_delete.iterate ((\x ->  node_ring.delete x)))
+    nodes_to_delete.iterate ((\x ->  node_ring.erase x)))
 
 declare get_ring_node : { key:int, value:int } -> address = (\_b1_ -> 
     bind _b1_ as {key:data, value:max_val} in 
