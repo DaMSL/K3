@@ -40,20 +40,7 @@ declare frontier_int_int : {
          bind _b5_ as {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val} in 
          if vid_lt {key:map_vid, value:vid}
          then
-           if vid_eq {key:map_vid, value:max_vid}
-           then
-             {key:(({| _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-              |
-              {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val}|} @ { Collection }).combine
-              acc), value:max_vid}
-           else
-             if vid_gt {key:map_vid, value:max_vid}
-             then
-               {key:{|
-                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int |
-                {_r1_:map_vid, _r2_:__map_0, _r3_:__map_val}|} @ { Collection },
-                value:map_vid}
-             else {key:acc, value:max_vid}
+             {key:acc, value:max_vid}
          else {key:acc, value:max_vid})))
        {key:empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         } @ { Collection }, value:{_r1_:0, _r2_:0, _r3_:0}}).fold
