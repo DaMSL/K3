@@ -684,14 +684,14 @@ inferProgramTypes prog = do
               Left (Just qpt') -> modify (\env -> tiexte env n qpt') >> return qpt'
               Right qpt'       -> return qpt'
 
-      case (qpt, eOpt) of
-        (QPType [] qt1, Just e) -> do
+      case eOpt of
+        Just e -> do
+          qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           substituteDeepQt e >>= return . Just
 
-        (_, Nothing) -> return Nothing
-        (_, _) -> polyTypeErr
+        Nothing -> return Nothing
 
     declF :: K3 Declaration -> TInfM (K3 Declaration)
     declF d@(tag -> DGlobal n t eOpt) = do
@@ -742,7 +742,6 @@ inferProgramTypes prog = do
                            in if null spans then "" else unwords ["[", show $ head spans, "] "]
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
-    polyTypeErr     = left $ "Invalid polymorphic declaration type"
     trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
     unifyInitErrF s = "Failed to unify initializer: " ++ s
 
