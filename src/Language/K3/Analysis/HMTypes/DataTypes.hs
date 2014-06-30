@@ -175,6 +175,12 @@ isQTLower _ = False
 instance Pretty QTVarId where
   prettyLines x = [show x]
 
+instance Pretty QTBase where
+  prettyLines x = [show x]
+
+instance Pretty QTData where
+  prettyLines x = [show x]
+
 instance Pretty (K3 QType) where
   prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
 

@@ -418,7 +418,11 @@ unifyv v1 t@(tag -> QTVar v2)
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
     then trace (prettyTaggedSPair "unifyv" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
-    else trace (prettyTaggedSPair "unifyv" v t) $ tvsub t >>= \t' -> left $ unwords ["occurs check:", show v, "in", show t']
+    else trace (prettyTaggedSPair "unifyv" v t) $ 
+            tvsub t >>= \t' ->
+              case tag t'  of 
+                QTCon (QTRecord _) -> modify $ mtive $ \tve' -> tvext tve' v tself
+                _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in"]] %+ prettyLines t'
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
@@ -442,6 +446,10 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTPrimitive p1) (tag -> QTPrimitive p2)
       | p1 == p2  = return t1
       | otherwise = primitiveErr p1 p2
+
+    -- | Self type unification
+    unifyDrv' t1@(tag -> QTCon (QTCollection _)) (tag -> QTSelf) = return t1
+    unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTCollection _)) = return t2
 
     -- | Record subtyping for projection
     unifyDrv' t1@(tag -> QTCon d1@(QTRecord f1)) t2@(tag -> QTCon d2@(QTRecord f2))
@@ -479,9 +487,6 @@ unifyDrv preF postF qt1 qt2 = do
       void $ foldM rcr (head $ lbs) $ tail lbs
       consistentTLower $ children t1 ++ children t2
 
-    unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
-    unifyDrv' t tv@(tag -> QTVar v) = unifyv v t >> return tv
-
     -- | Unification of a lower bound with a non-bound applies to the non-bound
     --   and the lower bound of the deferred set.
     --   This pattern match applies after type variable unification to allow typevars
@@ -495,6 +500,9 @@ unifyDrv preF postF qt1 qt2 = do
       lb2 <- lowerBound t2
       void $ rcr t1 lb2
       consistentTLower $ [t1] ++ children t2
+
+    unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
+    unifyDrv' t tv@(tag -> QTVar v) = unifyv v t >> return tv
 
     -- | Top unifies with any value. Bottom unifies with only itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
@@ -553,7 +561,7 @@ unifyDrv preF postF qt1 qt2 = do
     lowerBound t = tvopeval QTLower $ children t
 
     primitiveErr a b = unifyErr a b "primitives" ""
-    unifyErr a b kind s = left $ unwords ["Unification mismatch on ", kind, ": ", show a, "and", show b, "(", s, ")"]
+    unifyErr a b kind s = left $ unwords ["Unification mismatch on ", kind, "(", s, ")"] ++ "\n" ++ pretty a ++ "\nand\n" ++ pretty b
 
     subSelfErr ct = left $ unwords ["Invalid self substitution, qtype is not a collection: ", show ct]
 
@@ -874,7 +882,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
       let errf = mkErrorF n (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"] ++)
-      void   $  trace (prettyTaggedPair ("infer app " ++ pretty n) fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
+      void   $  trace (prettyTaggedTriple "infer app " n fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EOperate OSeq) = do
@@ -1246,3 +1254,6 @@ prettyTaggedSPair s a b = boxToString $ [s ++ " " ++ show a] %+ [" and "] %+ pre
 
 prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> String
 prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] %+ prettyLines b
+
+prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> String
+prettyTaggedTriple s a b c = boxToString $ [s ++ " "] %+ prettyLines a %+ [" "] %+ prettyLines b %+ [" and "] %+ prettyLines c
