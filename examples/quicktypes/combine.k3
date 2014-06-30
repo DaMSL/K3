@@ -16,7 +16,9 @@ declare combiner :
   } @ {Collection}
 
   = \x -> \y -> 
-    x.fold(\acc -> \z -> acc.combine z)
+    x.fold(\acc -> \z -> 
+      bind z as {elem:z'} in
+      acc.combine z')
     (empty {
     key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
     } @ {Collection})
