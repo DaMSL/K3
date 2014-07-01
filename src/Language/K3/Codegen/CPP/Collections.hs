@@ -68,7 +68,7 @@ composite className ans = do
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
-    let constructors'' = constructors' ++ [superConstructor p | (p, _) <- take 1 ras]
+    let constructors'' = constructors' ++ [superConstructor p | p <- take 1 ps]
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
@@ -113,9 +113,9 @@ composite className ans = do
 
     superConstructor p =
             text className
-         <> parens (text "const" <+> genCQualify (text "K3") (text p) <+> text "& c")
+         <> parens (text "const" <+> p <> text "& c")
          <> colon
-        <+> text p <> parens (text "c") <+> braces empty
+        <+> p <> parens (text "c") <+> braces empty
 
     constructors = [engineConstructor, copyConstructor]
 
