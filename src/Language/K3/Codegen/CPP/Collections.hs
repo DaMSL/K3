@@ -113,7 +113,7 @@ composite className ans = do
 
     superConstructor p =
             text className
-         <> parens (text "const" <+> text p <+> text "& c")
+         <> parens (text "const" <+> genCQualify (text "K3") (text p) <+> text "& c")
          <> colon
         <+> text p <> parens (text "c") <+> braces empty
 
