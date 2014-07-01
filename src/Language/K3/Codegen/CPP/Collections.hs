@@ -167,16 +167,21 @@ record (sort -> ids) = do
     let formalVars = [text "_" <> text i | i <- ids]
 
     let defaultConstructor
+            = recordName <> parens empty <+> braces empty
+
+    let initConstructor
             = recordName <> tupled (zipWith (<+>) templateVars formalVars) <> colon
                         <+> hsep (punctuate comma $ [text i <> parens f | i <- ids | f <- formalVars])
                         <+> braces empty
 
     let copyConstructor
-            = recordName <> parens (recordName <+> text "_r") <> colon
+            = recordName <> parens (text "const" <+> recordName
+                                      <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "_r")
+                                      <> colon
                         <+> hsep (punctuate comma [text i <> parens (text "_r" <> dot <> text i) | i <- ids])
                         <+> braces empty
 
-    let constructors = [defaultConstructor, copyConstructor]
+    let constructors = [defaultConstructor, initConstructor, copyConstructor]
 
     let fieldEqs = text "if"
           <+> parens (hsep $ punctuate (text "&&") [text i <+> text "==" <+> text "_r" <> dot <> text i | i <- ids])
@@ -241,11 +246,12 @@ record (sort -> ids) = do
         afp <- anyFieldParser ids
         lfp <- allFieldParser
         piv <- parserInvocation
+        let templateVars = [text "_T" <> int n | _ <- ids | n <- [0..]]
         let shallowDecl = genCDecl (text "shallow<string::iterator>") (text "_shallow") Nothing
         let patchFn = text "static" <+> text "void" <+> text "patch"
-                   <> parens (cat $ punctuate comma [text "string s", recordName <> text "&" <+> text "r"])
+                   <> parens (cat $ punctuate comma [text "string s", recordName
+                       <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "r"])
                   <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
-        let templateVars = [text "_T" <> int n | _ <- ids | n <- [0..]]
         return $ genCTemplateDecl templateVars
                    <$$> text "struct patcher" <> angles (recordName <> angles (hsep $ punctuate comma templateVars))
                     <+> hangBrace patchFn <> semi
