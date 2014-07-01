@@ -121,7 +121,7 @@ inline e@(tag &&& children -> (ERecord _, cs)) = do
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord ids, ts)) -> do
-            sig <- signature t
+            let sig = recordSignature ids
             addRecord sig (zip ids ts)
             return (vsep es, text sig <> braces (cat $ punctuate comma vs))
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
