@@ -55,7 +55,11 @@ genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . an
 genCType (tag &&& children -> (TTuple, [])) = return (text "unit_t")
 genCType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM genCType ts
-genCType t@(tag -> TRecord ids) = let sig = recordSignature ids in addRecord sig (zip ids (children t)) >> return (text sig)
+genCType t@(tag -> TRecord ids) = do
+  let sig = recordSignature ids
+  addRecord sig (zip ids (children t))
+  templateVars <- mapM genCType (children t)
+  return $ text sig <> angles (hsep $ punctuate comma templateVars)
 genCType (tag -> TDeclaredVar t) = return $ text t
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- genCType et
