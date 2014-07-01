@@ -213,7 +213,7 @@ genBuiltin "substring" _ =
 -- range :: int -> collection {i : int} @ { Collection }
 genBuiltin "range" _ =
   vfun $ \(VInt upper) ->
-    initialAnnotatedCollection "Collection"
+    initialAnnotatedCollection "Seq"
       $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- truncate :: int -> real
