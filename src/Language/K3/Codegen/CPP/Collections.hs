@@ -195,7 +195,7 @@ record (sort -> ids) = do
 
     let publicDefs = vsep $ constructors ++ [equalityOperator, serializer]
     let privateDefs = vsep fields
-    let recordDefs = text "public:" <$$> indent 4 publicDefs <$$> text "private:" <$$> indent 4 privateDefs
+    let recordDefs = text "public:" <$$> indent 4 (publicDefs <$$> privateDefs)
 
     let templateDecl = genCTemplateDecl templateVars
     let recordStructDef = templateDecl <$$> text "class" <+> recordName <+> hangBrace recordDefs <> semi
