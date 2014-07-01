@@ -197,6 +197,8 @@ record (sort -> ids) = do
 
     recordPatcherDef <- patcherSpec
 
+    addForward $ templateDecl <+> text "class" <+> recordName <> semi
+
     return $ recordStructDef <$$> recordPatcherDef
   where
     recordName = text $ recordSignature ids
