@@ -5,8 +5,10 @@ declare master: address = 127.0.0.1:40000
 declare k: int = 1
 declare iterations_remaining: int = 100
 
-declare means: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare means: mut collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
 declare aggregates: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection }
+
+
 
 declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
 
@@ -24,7 +26,6 @@ declare squared_distance: collection { key: int, value: real } @ { Collection } 
 declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \means -> (
     case means.peek () of
         { Some first_mean ->
-            (means.erase first_mean); // Necessary/Correct?
             let nearest = means.fold (\acc -> \next ->
                 let next_dist = squared_distance p next.value in
                 if next_dist < acc.distance
@@ -40,11 +41,21 @@ trigger assign: collection { key: int, value: collection { key: int, value: real
             data.groupBy (\p -> nearest_neighbor p.elem current_means) (\sc -> \p -> { sum: vector_zip (\a -> \b -> a + b) sc.sum p.elem, count: sc.count + 1 }) { sum: empty { key: int, value: real } @ { Collection }, count: 0 }
 )
 
-trigger aggregate: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection } = \_ -> ()
+trigger aggregate: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection } = \ags -> let f = aggregates.combine aggregates in ()
 
 trigger maximize: () = \_ -> ()
 
-trigger start: () = \_ ->
-    let initial_means = (data.fold (\a -> \p -> if a.remaining == 0 then a else { remaining: a.remaining - 1, means: ((a.means.insert p.elem); a.means) })
-                                   ({remaining: k, means: empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }})).means
+trigger start: () = \_ -> let
+    initial_means =
+      (data.fold
+        (\a -> \p ->
+          if a.remaining == 0
+          then a
+          else (
+            (a.means.insert p.elem);
+            {remaining: a.remaining - 1, means:  a.means}
+          )
+        )
+        ({remaining: k, means: empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }})
+      ).means
     in peers.iterate (\p -> (assign, p.addr) <- initial_means)

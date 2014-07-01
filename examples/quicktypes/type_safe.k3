@@ -40,11 +40,13 @@ trigger foo7 : () = \_ -> (
   in ()
 )
 
-// Broken:
 trigger foo8 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if (a.sum == 0) then {sum:a.sum} else {sum:a.sum}) {sum: 0}
   in ()
 )
+
+// Broken:
+trigger foo9 : collection { key: int } @ { Collection } = \ags -> let f = ags.combine ags in ()
 
 
 

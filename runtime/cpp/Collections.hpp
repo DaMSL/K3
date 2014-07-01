@@ -2,7 +2,7 @@
 //
 // This file contains definitions for the various operations performed on K3 Collections, used by
 // the generated C++ code. The C++ realizations of K3 Collections will inherit from the
-// K3::Collection class, providing a suitable content type.
+// K3::BaseCollection class, providing a suitable content type.
 //
 // TODO:
 //  - Use <algorithm> routines to perform Collection transformations? In particular, investigate
