@@ -43,7 +43,7 @@ class SetDS : public StlDS<Elem, std::unordered_set> {
       return std::make_tuple(ds1, ds2);
     }
 
-    SetDS combine(SetDS other) {
+    SetDS combine(SetDS other) const {
       super s = super::combine(other);
       return SetDS(s);
     }

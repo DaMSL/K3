@@ -44,7 +44,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
       return std::make_tuple(ds1, ds2);
     }
 
-    SortedDS combine(SortedDS other) {
+    SortedDS combine(SortedDS other) const {
       super s = super::combine(other);
       return SortedDS(s);
 

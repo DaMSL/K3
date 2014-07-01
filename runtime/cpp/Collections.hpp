@@ -80,7 +80,7 @@ namespace K3 {
       }
 
       template <template <class> class F>
-      BaseCollection<D, E> combine(const BaseCollection<F, E>& other) {
+      BaseCollection<D, E> combine(const BaseCollection<F, E>& other) const {
        return BaseCollection<D,E>(D<E>::combine(other));
       }
 
@@ -188,7 +188,7 @@ namespace K3 {
         return std::make_tuple(Collection<E>(ds1), Collection<E>(ds2));
       }
 
-      Collection<E> combine(const Collection<E>& other) {
+      Collection<E> combine(const Collection<E>& other) const {
        return Collection<E>(Super::combine(other));
       }
 
@@ -249,7 +249,7 @@ namespace K3 {
         return std::make_tuple(Seq<E>(ds1), Seq<E>(ds2));
       }
 
-      Seq<E> combine(const Seq<E>& other) {
+      Seq<E> combine(const Seq<E>& other) const {
        return Seq<E>(Super::combine(other));
       }
 
@@ -313,7 +313,7 @@ namespace K3 {
         return std::make_tuple(Set<E>(ds1), Set<E>(ds2));
       }
 
-      Set<E> combine(const Set<E>& other) {
+      Set<E> combine(const Set<E>& other) const {
        return Set<E>(Super::combine(other));
       }
 
@@ -394,7 +394,7 @@ namespace K3 {
         return std::make_tuple(Sorted<E>(ds1), Sorted<E>(ds2));
       }
 
-      Sorted<E> combine(const Sorted<E>& other) {
+      Sorted<E> combine(const Sorted<E>& other) const {
        return Sorted<E>(Super::combine(other));
       }
 
@@ -466,7 +466,7 @@ namespace K3 {
         return std::make_tuple(ExternalCollection<E>(ds1), ExternalCollection<E>(ds2));
       }
 
-      ExternalCollection<E> combine(const ExternalCollection<E>& other) {
+      ExternalCollection<E> combine(const ExternalCollection<E>& other) const {
        return ExternalCollection<E>(Super::combine(other));
       }
 

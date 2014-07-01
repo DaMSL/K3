@@ -50,7 +50,7 @@ namespace K3
       return std::make_tuple(ds1, ds2);
     }
 
-    ListDS combine(ListDS other) {
+    ListDS combine(ListDS other) const {
       super s = super::combine(other);
       return ListDS(s);
     }

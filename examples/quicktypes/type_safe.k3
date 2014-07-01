@@ -48,7 +48,5 @@ trigger foo8 : () = \_ -> (
 
 trigger foo9 : (collection { x: int } @ { Collection }) = \ags -> let f = (ags.combine ags) in ()
 
-
-
 source s1 : () = value ()
 feed s1 |> foo1
