@@ -255,7 +255,9 @@ freevars t = runIdentity $ foldMapTree extractVars [] t
 occurs :: QTVarId -> K3 QType -> TVEnv -> Bool
 occurs v t@(tag -> QTCon _)      tve = or $ map (flip (occurs v) tve) $ children t
 occurs v t@(tag -> QTOperator _) tve = or $ map (flip (occurs v) tve) $ children t
-occurs v (tag -> QTVar v2)  tve = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
+occurs v (tag -> QTVar v2) tve
+  | v == v2   = True
+  | otherwise = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
 occurs _ _ _ = False
 
 
@@ -414,12 +416,12 @@ collectionSubRecord _ _ = return Nothing
 unifyv :: QTVarId -> K3 QType -> TInfM ()
 unifyv v1 t@(tag -> QTVar v2)
   | v1 == v2  = return ()
-  | otherwise = trace (prettyTaggedSPair "unifyv" v1 t) $ modify $ mtive $ \tve -> tvext tve v1 t
+  | otherwise = trace (prettyTaggedSPair "unifyv var" v1 t) $ modify $ mtive $ \tve -> tvext tve v1 t
 
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
-    then trace (prettyTaggedSPair "unifyv" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
-    else trace (prettyTaggedSPair "unifyv" v t) $ tvsub t >>= \t' ->
+    then trace (prettyTaggedSPair "unifyv noc" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
+    else trace (prettyTaggedSPair "unifyv yoc" v t) $ tvsub t >>= \t' ->
           case t'  of 
             Node (QTCon      (QTRecord _) :@: _) _                                   -> modify $ mtive $ \tve' -> tvext tve' v tself
             Node (QTOperator QTLower      :@: _) [Node (QTCon (QTRecord _) :@: _) _] -> modify $ mtive $ \tve' -> tvext tve' v tself
@@ -498,12 +500,14 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2 = do
       lb1 <- lowerBound t1
       void $ rcr lb1 t2
-      consistentTLower $ children t1 ++ [t2]
+      r <- consistentTLower $ children t1 ++ [t2]
+      trace (boxToString $ ["consistentTLowerL "] %+ prettyLines r) $ return r
 
     unifyDrv' t1 t2@(tag -> QTOperator QTLower) = do
       lb2 <- lowerBound t2
       void $ rcr t1 lb2
-      consistentTLower $ [t1] ++ children t2
+      r <- consistentTLower $ [t1] ++ children t2
+      trace (boxToString $ ["consistentTLowerR "] %+ prettyLines r) $ return r
 
     -- | Top unifies with any value. Bottom unifies with only itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
@@ -577,8 +581,9 @@ unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QT
 unifyWithOverrideM qt1 qt2 errf = trace (prettyTaggedPair "unifyOvM" qt1 qt2) $ reasonM errf $ unifyDrv preChase postUnify qt1 qt2
   where preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
         postUnify (v1, v2) qt = do
+          tve <- getTVE
           let vs = catMaybes [v1, v2]
-          void $ mapM_ (flip unifyv qt) vs
+          void $ mapM_ (\v -> if occurs v qt tve then return () else unifyv v qt) vs
           return $ if null vs then qt else (foldl (@+) (tvar $ head vs) $ annotations qt)
 
 
@@ -748,7 +753,9 @@ inferProgramTypes prog = do
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
       where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
+                           in if null spans 
+                                then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
+                                else unwords ["[", show $ head spans, "] "]
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
     trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
@@ -767,7 +774,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
       where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
+                           in if null spans then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
+                                            else unwords ["[", show $ head spans, "] "]
 
     monoBinding :: Identifier -> K3 QType -> TInfM ()
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
