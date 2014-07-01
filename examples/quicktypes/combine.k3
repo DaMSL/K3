@@ -1,25 +1,5 @@
 include "Core/Builtins.k3"
 
-declare combiner : 
-  collection { elem:
-    collection {
-    key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
-    } @ {Collection}
-  } @ {Collection}
-  ->
-  collection {
-  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
-  } @ {Collection}
-  ->
-  collection {
-  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
-  } @ {Collection}
-
-  = \x -> \y -> 
-    x.fold(\acc -> \z -> 
-      bind z as {elem:z'} in
-      acc.combine z')
-    (empty {
-    key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
-    } @ {Collection})
-    y
+declare combiner :  collection {m: collection {a:int} @ {Collection}} @ { Collection }
+                 -> collection {a:int} @ { Collection } 
+  = \x -> x.fold (\acc -> \y -> bind y as {m:i} in acc.combine i) (empty {a:int} @ {Collection})
