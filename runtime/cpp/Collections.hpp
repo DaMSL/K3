@@ -30,7 +30,7 @@
 namespace K3 {
   // Forward Declaration
   template <class E> class R_elem;
-  template <class K, class V> R_key_value;
+  template <class K, class V> class R_key_value;
   template <class E> using MapReturnType = R_elem<E>;
   template<class K, class V> using GroupByReturnType = R_key_value<K,V>;
 
@@ -104,9 +104,9 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<BaseCollection<D, GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<BaseCollection<D, GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<BaseCollection<D, GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
+      F<F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
               // Create a map to hold partial results
               std::map<K, Z> accs = std::map<K,Z>();
               // lambda to apply to each element
@@ -120,10 +120,10 @@ namespace K3 {
               };
               D<E>::iterate(f);
               // Build BaseCollection result
-              BaseCollection<D, GroupByReturnType<K,V>> result = BaseCollection<D, GroupByReturnType<K,V>>(D<E>::getEngine());
+              BaseCollection<D, GroupByReturnType<K,Z>> result = BaseCollection<D, GroupByReturnType<K,Z>>(D<E>::getEngine());
               typename std::map<K,Z>::iterator it;
               for (it = accs.begin(); it != accs.end(); ++it) {
-                GroupByReturnType<K,V> r;
+                GroupByReturnType<K,Z> r;
                 r.key = it->first;
                 r.value = it->second;
                 result.insert(r);
@@ -201,11 +201,11 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,V>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,V>>(s);
+      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Collection<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -263,11 +263,11 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,V>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,V>>(s);
+      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Collection<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -326,11 +326,11 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,V>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,V>>(s);
+      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Collection<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -407,11 +407,11 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,V>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,V>>(s);
+      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Collection<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -471,7 +471,7 @@ namespace K3 {
 
       template <class T>
       ExternalCollection<MapReturnType<T>> map(F<T(E)> f) {
-       return ExternalCollection<MapReturnType<T>>(Super::template map<R,T>(f));
+       return ExternalCollection<MapReturnType<T>>(Super::template map<T>(f));
       }
 
       ExternalCollection<E> filter(F<bool(E)> f) {
@@ -480,11 +480,11 @@ namespace K3 {
 
       // TODO: reconcile types with Annotation/External.k3
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,V>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,V>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,V>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,V>>(s);
+      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Collection<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };

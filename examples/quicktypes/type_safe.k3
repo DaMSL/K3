@@ -1,5 +1,6 @@
 include "Annotation/Collection.k3"
 declare c : collection { key: int, value: real} @ { Collection }
+declare c2 : collection { x: int } @ { Collection }
 
 // There should be no type errors here!
 
@@ -45,7 +46,6 @@ trigger foo8 : () = \_ -> (
   in ()
 )
 
-// Broken:
 trigger foo9 : (collection { x: int } @ { Collection }) = \ags -> let f = (ags.combine ags) in ()
 
 

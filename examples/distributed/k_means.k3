@@ -49,19 +49,21 @@ trigger aggregate: collection { key: int, value: { sum: collection { key: int, v
   combined = aggregates.combine ags in let
   new_ags = combined.groupBy
     (\ag -> ag.key)
-    (\acc -> \ag -> { sum: (vector_add acc.sum ag.sum), count: acc.count + ag.count})
-    { sum: empty { key: int, value: real } @ { Collection }, count: 0 }
-  in ((aggregates = new_ags);
-     (requests = requests - 1);
-     (if requests == 0 then ((maximize,master) <- ()) else ())
+    (\acc -> \ag -> { sum: (vector_add acc.sum ag.value.sum), count: acc.count + ag.value.count})
+    ({ sum: (empty { key: int, value: real } @ { Collection }), count: 0 })
+  in (
+    (aggregates = new_ags);
+    (requests = requests - 1);
+    (if requests == 0 then ((maximize,master) <- ()) else ())
+  )
 
 trigger maximize: () = \_ -> (
-  means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection };
-  aggregates.iterate (\ag -> means.insert {key: ag.key, value: (scalar_mult (1.0/(ag.count)) ag.sum)});
-  aggregates = empty { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection };
-  iterations_remaining = iterations_remaining -1;
-  if iterations_remaining == 0 then () else peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means))
+  (means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection });
+  (aggregates.iterate (\x -> means.insert {key: x.key, value: scalar_mult (1.0/(x.value.count)) (x.value.sum)}));
+  (iterations_remaining = iterations_remaining - 1);
+  (if iterations_remaining == 0 then () else peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
 )
+
 
 trigger start: () = \_ -> let
     e = empty {key: int, value: collection {key: int, value: real} @ { Collection }} @ {Collection} in let
