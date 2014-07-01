@@ -531,7 +531,7 @@ unifyDrv preF postF qt1 qt2 = do
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
-      left $ unwords ["Invalid collection arguments", show ct, "and", show rt]
+      left $ unlines ["Invalid collection arguments:", pretty ct, "and", pretty rt]
 
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
     onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
@@ -562,9 +562,9 @@ unifyDrv preF postF qt1 qt2 = do
     lowerBound t = tvopeval QTLower $ children t
 
     primitiveErr a b = unifyErr a b "primitives" ""
-    unifyErr a b kind s = left $ unwords ["Unification mismatch on ", kind, "(", s, ")"] ++ "\n" ++ pretty a ++ "\nand\n" ++ pretty b
+    unifyErr a b kind s = left $ unlines [unwords ["Unification mismatch on ", kind, "(", s, "):"], pretty a, pretty b]
 
-    subSelfErr ct = left $ unwords ["Invalid self substitution, qtype is not a collection: ", show ct]
+    subSelfErr ct = left $ boxToString $ ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
 
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
@@ -874,7 +874,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
-      void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt) $ unifyM srcqt prjqt $ mkErrorF n ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
+      void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt)
+              $    unifyM srcqt prjqt $ mkErrorF n ((unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
@@ -882,7 +883,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       fnqt   <- qTypeOfM $ head ch
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
-      let errf = mkErrorF n (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"] ++)
+      let errf = mkErrorF n (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
       void   $  trace (prettyTaggedTriple "infer app " n fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
