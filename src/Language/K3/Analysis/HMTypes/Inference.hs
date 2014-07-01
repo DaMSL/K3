@@ -421,11 +421,32 @@ unifyv v1 t@(tag -> QTVar v2)
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
     then trace (prettyTaggedSPair "unifyv noc" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
-    else trace (prettyTaggedSPair "unifyv yoc" v t) $ tvsub t >>= \t' ->
-          case t'  of 
-            Node (QTCon      (QTRecord _) :@: _) _                                   -> modify $ mtive $ \tve' -> tvext tve' v tself
-            Node (QTOperator QTLower      :@: _) [Node (QTCon (QTRecord _) :@: _) _] -> modify $ mtive $ \tve' -> tvext tve' v tself
-            _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in"]] %+ prettyLines t'
+    else tvsub t >>= unifyvMuQt tve
+
+  where 
+    {-
+    restrictedUnifyMu tve qt = 
+      case tag qt of
+        QTCon (QTRecord _) -> unifyvMuQt tve qt
+        QTCon QTFunction   -> unifyvMuQt tve qt
+        QTOperator QTLower -> unifyvMuQt tve qt
+        _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in "]] %+ prettyLines qt
+    -}
+
+    unifyvMuQt tve qt = do
+      qt' <- injectSelfQt tve qt
+      trace (prettyTaggedSPair "unifyv yoc" v qt') $ modify $ mtive $ \tve' -> tvext tve' v qt'
+
+    injectSelfQt tve qt = mapTree (inject tve) qt
+    
+    inject tve nch n@(Node (QTCon (QTRecord _) :@: anns) _)
+      | occurs v n tve = return $ foldl (@+) tself anns
+      | otherwise = return $ Node (tag n :@: anns) nch
+    
+    inject _ [(tag -> QTSelf)] (Node (QTOperator QTLower :@: anns) [Node (QTCon (QTRecord _) :@: _) _])
+      = return $ foldl (@+) tself anns
+
+    inject _ ch n = return $ Node (tag n :@: annotations n) ch
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
