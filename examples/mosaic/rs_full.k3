@@ -64,37 +64,37 @@ declare __SQL_SUM_AGGREGATE_2_mR1 : ind collection {
 declare map___SQL_SUM_AGGREGATE_1_mS1_s0_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_2_mS3_s2_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_1_mS1_s2_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_1_mS1_s2_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_2_mS3_s2_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mS1_s4_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_2_mS3_s6_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_1_mS1_s6_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_1_mS1_s6_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_2_mS3_s6_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s8_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_1_mR1_s10_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_2_mR1_s10_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_2_mR1_s10_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_1_mR1_s10_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s12_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_1_mR1_s14_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_2_mR1_s14_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
-declare map___SQL_SUM_AGGREGATE_2_mR1_s14_buf : ind collection {
+declare map___SQL_SUM_AGGREGATE_1_mR1_s14_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __stmt_cntrs__ : collection {
@@ -274,13 +274,12 @@ declare add_delta_to_int : {
   } @ { Collection } } -> () = (\_b1_ -> 
     bind _b1_ as {_r1_:target_map, _r2_:corrective, _r3_:min_vid,
                   _r4_:delta_tuples} in (
-      bind target_map as ind __x in
       delta_tuples.iterate
         ((\_b1_ -> 
           bind _b1_ as {key:vid, value:__map_val} in 
           let lookup_value =
             if corrective
-            then __x.filter
+            then (bind target_map as ind __x in __x).filter
               ((\_b1_ ->  bind _b1_ as {key:key, value:value} in key == vid))
             else empty { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int
               } @ { Collection } in
@@ -290,7 +289,10 @@ declare add_delta_to_int : {
             let update_value = __map_val + bind case (lookup_value.peek 
               ()) of { Some x -> x }
               { None -> error () } as {key:__1, value:__2} in __2 in
-            __x.insert
+            (bind
+              target_map
+              as ind __x
+              in __x).insert
               {key:vid, value:update_value}
           else
             let lookup_value =
@@ -525,7 +527,7 @@ declare get_all_uniq_nodes : () -> collection {i:address} @ { Collection } =
     (node_ring.groupBy
        ((\_b1_ -> 
          bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in addr))
-       ((\_ -> (\_ ->  ()))) empty {i:address} @ { Seq }).fold
+       ((\_ -> (\_ ->  ()))) ()).fold
       ((\__acc_map -> (\_b3_ -> 
         bind _b3_ as {key:__1, value:__2} in __acc_map.combine
         ({|i:address| __1|} @ { Collection }))))
@@ -705,7 +707,7 @@ declare shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_1 : {
       empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
       } @ { Collection })
 
-declare shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 : {
+declare shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2 : {
   _r1_:(), _r2_:collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection },
   _r3_:bool } -> collection {
@@ -759,7 +761,7 @@ declare shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 : {
       empty { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
       } @ { Collection })
 
-declare shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2 : {
+declare shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 : {
   _r1_:(), _r2_:collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection },
   _r3_:bool } -> collection {
@@ -1057,9 +1059,9 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:0, _r3_:sender_count}|} @ { Collection }))))
            empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
-           (route_to_int {key:5, value:Some S_B}).fold
+           (route_to_int {key:2, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
-        ((shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+        ((shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Collection }, _r3_:true}).fold
@@ -1069,9 +1071,9 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:2, _r3_:sender_count}|} @ { Collection }))))
            empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
-           (route_to_int {key:2, value:Some S_B}).fold
+           (route_to_int {key:5, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
-        (shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2
+        (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
            {_r1_:(), _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             } @ { Collection }, _r3_:true}).fold
@@ -1097,17 +1099,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (insert_S_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:S_B, _r5_:S_C}
           )));
-    ((((route_to_int {key:2, value:Some S_B}).fold
+    ((((route_to_int {key:5, value:Some S_B}).fold
          ((\__acc_map -> (\_b3_ -> 
            bind _b3_ as {i:ip} in __acc_map.combine
            ({| _r1_:int, _r2_:int, _r3_:address |
-           {_r1_:2, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
+           {_r1_:2, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
          _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
-       (((route_to_int {key:5, value:Some S_B}).fold
+       (((route_to_int {key:2, value:Some S_B}).fold
            ((\__acc_map -> (\_b3_ -> 
              bind _b3_ as {i:ip} in __acc_map.combine
              ({| _r1_:int, _r2_:int, _r3_:address |
-             {_r1_:2, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+             {_r1_:2, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
            _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        (((route_to_int {key:2, value:Some S_B}).fold
            ((\__acc_map -> (\_b3_ -> 
@@ -1200,14 +1202,14 @@ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
         else
           if stmt_id == 2
           then
-            if map_id == 5
+            if map_id == 2
             then
-              (insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
+              (insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {
                 _r1_:vid, _r2_:S_B, _r3_:S_C}
             else
-              if map_id == 2
+              if map_id == 5
               then
-                (insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {
+                (insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
                   _r1_:vid, _r2_:S_B, _r3_:S_C}
               else ()
           else ()))
@@ -1236,29 +1238,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                   _r4_:S_C}))
     ))
 
-trigger insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
-    log_master_write {_r1_:vid, _r2_:0, _r3_:2};
-    (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
-       {_r1_:(),
-        _r2_:frontier_int_int
-               {key:vid, value:(bind __SQL_SUM_AGGREGATE_2_mS3 as ind __x
-                in __x).filter
-                ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))},
-        _r3_:true}).iterate
-      ((\_b1_ -> 
-        bind _b1_ as {key:ip, value:tuples} in 
-        (insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {_r1_:tuples,
-                                                                  _r2_:vid,
-                                                                  _r3_:S_B,
-                                                                  _r4_:S_C}))
-    ))
-
 trigger insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 }
@@ -1277,6 +1256,29 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
       ((\_b1_ -> 
         bind _b1_ as {key:ip, value:tuples} in 
         (insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_1_mS1, ip)<- {_r1_:tuples,
+                                                                  _r2_:vid,
+                                                                  _r3_:S_B,
+                                                                  _r4_:S_C}))
+    ))
+
+trigger insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
+    log_master_write {_r1_:vid, _r2_:0, _r3_:2};
+    (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+       {_r1_:(),
+        _r2_:frontier_int_int
+               {key:vid, value:(bind __SQL_SUM_AGGREGATE_2_mS3 as ind __x
+                in __x).filter
+                ((\_b1_ -> 
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))},
+        _r3_:true}).iterate
+      ((\_b1_ -> 
+        bind _b1_ as {key:ip, value:tuples} in 
+        (insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {_r1_:tuples,
                                                                   _r2_:vid,
                                                                   _r3_:S_B,
                                                                   _r4_:S_C}))
@@ -1322,46 +1324,6 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     else ()
     ))
 
-trigger insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:S_B, _r4_:S_C} in (
-    log_write_insert_S {_r1_:vid, _r2_:S_B, _r3_:S_C};
-    tuples.iterate
-      ((\tuple -> 
-        if (bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind __x in __x).filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
-            == __temp_0 and _r2_ == __temp_1)) != empty {
-          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-          } @ { Collection }
-        then
-          (bind
-            map___SQL_SUM_AGGREGATE_2_mS3_s2_buf
-            as ind __x
-            in __x).update
-            (case (((bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind __x
-            in __x).filter
-            ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
-            { Some x -> x } { None -> error () }) tuple
-        else
-          (bind
-            map___SQL_SUM_AGGREGATE_2_mS3_s2_buf
-            as ind __x
-            in __x).insert
-            tuple));
-    if check_and_update_stmt_cntr_index {key:vid, value:2}
-    then (insert_S_do_complete_s2, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
-    else ()
-    ))
-
 trigger insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 } @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
@@ -1394,6 +1356,46 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         else
           (bind
             map___SQL_SUM_AGGREGATE_1_mS1_s2_buf
+            as ind __x
+            in __x).insert
+            tuple));
+    if check_and_update_stmt_cntr_index {key:vid, value:2}
+    then (insert_S_do_complete_s2, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
+    else ()
+    ))
+
+trigger insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:S_B, _r4_:S_C} in (
+    log_write_insert_S {_r1_:vid, _r2_:S_B, _r3_:S_C};
+    tuples.iterate
+      ((\tuple -> 
+        if (bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind __x in __x).filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1)) != empty {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection }
+        then
+          (bind
+            map___SQL_SUM_AGGREGATE_2_mS3_s2_buf
+            as ind __x
+            in __x).update
+            (case (((bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind __x
+            in __x).filter
+            ((\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
+              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
+            { Some x -> x } { None -> error () }) tuple
+        else
+          (bind
+            map___SQL_SUM_AGGREGATE_2_mS3_s2_buf
             as ind __x
             in __x).insert
             tuple));
@@ -1543,32 +1545,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
-trigger insert_S_rcv_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
-_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
-    add_delta_to_int_int
-      {_r1_:map___SQL_SUM_AGGREGATE_2_mS3_s2_buf, _r2_:false, _r3_:vid,
-       _r4_:delta_tuples};
-    compute_vids.iterate
-      ((\compute_vid -> 
-        if case ((__stmt_cntrs__.filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid and _r2_ == 2))).peek ()) of { Some x -> x }
-          { None -> error () } == {_r1_:compute_vid, _r2_:2, _r3_:0}
-        then
-          bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
-                                                      _r3_:S_C} in 
-          (insert_S_do_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
-            _r1_:compute_vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples}
-        else ()))
-    ))
-
 trigger insert_S_rcv_corrective_s2_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
 _r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
@@ -1595,6 +1571,32 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
+trigger insert_S_rcv_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
+_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
+    add_delta_to_int_int
+      {_r1_:map___SQL_SUM_AGGREGATE_2_mS3_s2_buf, _r2_:false, _r3_:vid,
+       _r4_:delta_tuples};
+    compute_vids.iterate
+      ((\compute_vid -> 
+        if case ((__stmt_cntrs__.filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
+            compute_vid and _r2_ == 2))).peek ()) of { Some x -> x }
+          { None -> error () } == {_r1_:compute_vid, _r2_:2, _r3_:0}
+        then
+          bind log_get_bound_insert_S compute_vid as {_r1_:vid, _r2_:S_B,
+                                                      _r3_:S_C} in 
+          (insert_S_do_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
+            _r1_:compute_vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples}
+        else ()))
+    ))
+
 trigger insert_S_do_corrective_s0_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -1615,26 +1617,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
              {key:vid, value:__prod_ret__37}|} @ { Collection }}
           ))))
 
-trigger insert_S_do_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples} in 
-    delta_tuples.iterate
-      ((\_b1_ -> 
-        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mSS_B,
-                      _r3_:delta___SQL_SUM_AGGREGATE_2_mS3} in 
-        let __prod_ret__43 =
-          ((if S_B == delta___SQL_SUM_AGGREGATE_2_mSS_B then 1 else 0) *
-          delta___SQL_SUM_AGGREGATE_2_mS3) * S_C in (
-          add_delta_to_int
-            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
-             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-             {key:vid, value:__prod_ret__43}|} @ { Collection }}
-          ))))
-
 trigger insert_S_do_corrective_s2_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -1653,6 +1635,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
              key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
              {key:vid, value:__prod_ret__38}|} @ { Collection }}
+          ))))
+
+trigger insert_S_do_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+=
+  (\_b1_ -> 
+    bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples} in 
+    delta_tuples.iterate
+      ((\_b1_ -> 
+        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mSS_B,
+                      _r3_:delta___SQL_SUM_AGGREGATE_2_mS3} in 
+        let __prod_ret__43 =
+          ((if S_B == delta___SQL_SUM_AGGREGATE_2_mSS_B then 1 else 0) *
+          delta___SQL_SUM_AGGREGATE_2_mS3) * S_C in (
+          add_delta_to_int
+            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
+             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+             {key:vid, value:__prod_ret__43}|} @ { Collection }}
           ))))
 
 trigger delete_S : {
@@ -1705,9 +1707,9 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:4, _r3_:sender_count}|} @ { Collection }))))
            empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
-           (route_to_int {key:5, value:Some S_B}).fold
+           (route_to_int {key:2, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
-        ((shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+        ((shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2
             {_r1_:(), _r2_:empty {
              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              } @ { Collection }, _r3_:true}).fold
@@ -1717,9 +1719,9 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
              {_r1_:ip, _r2_:6, _r3_:sender_count}|} @ { Collection }))))
            empty { _r1_:address, _r2_:int, _r3_:int } @ { Collection }).combine
         (let sender_count =
-           (route_to_int {key:2, value:Some S_B}).fold
+           (route_to_int {key:5, value:Some S_B}).fold
              ((\count -> (\_b3_ ->  bind _b3_ as {i:ip} in count + 1))) 0 in
-        (shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2
+        (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
            {_r1_:(), _r2_:empty {
             _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
             } @ { Collection }, _r3_:true}).fold
@@ -1745,17 +1747,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (delete_S_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:S_B, _r5_:S_C}
           )));
-    ((((route_to_int {key:2, value:Some S_B}).fold
+    ((((route_to_int {key:5, value:Some S_B}).fold
          ((\__acc_map -> (\_b3_ -> 
            bind _b3_ as {i:ip} in __acc_map.combine
            ({| _r1_:int, _r2_:int, _r3_:address |
-           {_r1_:6, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
+           {_r1_:6, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
          _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
-       (((route_to_int {key:5, value:Some S_B}).fold
+       (((route_to_int {key:2, value:Some S_B}).fold
            ((\__acc_map -> (\_b3_ -> 
              bind _b3_ as {i:ip} in __acc_map.combine
              ({| _r1_:int, _r2_:int, _r3_:address |
-             {_r1_:6, _r2_:5, _r3_:ip}|} @ { Collection })))) empty {
+             {_r1_:6, _r2_:2, _r3_:ip}|} @ { Collection })))) empty {
            _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        (((route_to_int {key:2, value:Some S_B}).fold
            ((\__acc_map -> (\_b3_ -> 
@@ -1848,14 +1850,14 @@ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
         else
           if stmt_id == 6
           then
-            if map_id == 5
+            if map_id == 2
             then
-              (delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
+              (delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {
                 _r1_:vid, _r2_:S_B, _r3_:S_C}
             else
-              if map_id == 2
+              if map_id == 5
               then
-                (delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {
+                (delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
                   _r1_:vid, _r2_:S_B, _r3_:S_C}
               else ()
           else ()))
@@ -1884,29 +1886,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                   _r4_:S_C}))
     ))
 
-trigger delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
-    log_master_write {_r1_:vid, _r2_:1, _r3_:6};
-    (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
-       {_r1_:(),
-        _r2_:frontier_int_int
-               {key:vid, value:(bind __SQL_SUM_AGGREGATE_2_mS3 as ind __x
-                in __x).filter
-                ((\_b1_ -> 
-                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))},
-        _r3_:true}).iterate
-      ((\_b1_ -> 
-        bind _b1_ as {key:ip, value:tuples} in 
-        (delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {_r1_:tuples,
-                                                                  _r2_:vid,
-                                                                  _r3_:S_B,
-                                                                  _r4_:S_C}))
-    ))
-
 trigger delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 }
@@ -1925,6 +1904,29 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
       ((\_b1_ -> 
         bind _b1_ as {key:ip, value:tuples} in 
         (delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_1_mS1, ip)<- {_r1_:tuples,
+                                                                  _r2_:vid,
+                                                                  _r3_:S_B,
+                                                                  _r4_:S_C}))
+    ))
+
+trigger delete_S_send_push_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C} in (
+    log_master_write {_r1_:vid, _r2_:1, _r3_:6};
+    (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+       {_r1_:(),
+        _r2_:frontier_int_int
+               {key:vid, value:(bind __SQL_SUM_AGGREGATE_2_mS3 as ind __x
+                in __x).filter
+                ((\_b1_ -> 
+                  bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r2_ == S_B))},
+        _r3_:true}).iterate
+      ((\_b1_ -> 
+        bind _b1_ as {key:ip, value:tuples} in 
+        (delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {_r1_:tuples,
                                                                   _r2_:vid,
                                                                   _r3_:S_B,
                                                                   _r4_:S_C}))
@@ -1970,46 +1972,6 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     else ()
     ))
 
-trigger delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:S_B, _r4_:S_C} in (
-    log_write_delete_S {_r1_:vid, _r2_:S_B, _r3_:S_C};
-    tuples.iterate
-      ((\tuple -> 
-        if (bind map___SQL_SUM_AGGREGATE_2_mS3_s6_buf as ind __x in __x).filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
-            == __temp_0 and _r2_ == __temp_1)) != empty {
-          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-          } @ { Collection }
-        then
-          (bind
-            map___SQL_SUM_AGGREGATE_2_mS3_s6_buf
-            as ind __x
-            in __x).update
-            (case (((bind map___SQL_SUM_AGGREGATE_2_mS3_s6_buf as ind __x
-            in __x).filter
-            ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
-            { Some x -> x } { None -> error () }) tuple
-        else
-          (bind
-            map___SQL_SUM_AGGREGATE_2_mS3_s6_buf
-            as ind __x
-            in __x).insert
-            tuple));
-    if check_and_update_stmt_cntr_index {key:vid, value:6}
-    then (delete_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
-    else ()
-    ))
-
 trigger delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 } @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
@@ -2042,6 +2004,46 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         else
           (bind
             map___SQL_SUM_AGGREGATE_1_mS1_s6_buf
+            as ind __x
+            in __x).insert
+            tuple));
+    if check_and_update_stmt_cntr_index {key:vid, value:6}
+    then (delete_S_do_complete_s6, me)<- {_r1_:vid, _r2_:S_B, _r3_:S_C}
+    else ()
+    ))
+
+trigger delete_S_rcv_push_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:S_B, _r4_:S_C} in (
+    log_write_delete_S {_r1_:vid, _r2_:S_B, _r3_:S_C};
+    tuples.iterate
+      ((\tuple -> 
+        if (bind map___SQL_SUM_AGGREGATE_2_mS3_s6_buf as ind __x in __x).filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1)) != empty {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection }
+        then
+          (bind
+            map___SQL_SUM_AGGREGATE_2_mS3_s6_buf
+            as ind __x
+            in __x).update
+            (case (((bind map___SQL_SUM_AGGREGATE_2_mS3_s6_buf as ind __x
+            in __x).filter
+            ((\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
+              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
+            { Some x -> x } { None -> error () }) tuple
+        else
+          (bind
+            map___SQL_SUM_AGGREGATE_2_mS3_s6_buf
             as ind __x
             in __x).insert
             tuple));
@@ -2192,32 +2194,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
-trigger delete_S_rcv_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
-_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
-    add_delta_to_int_int
-      {_r1_:map___SQL_SUM_AGGREGATE_2_mS3_s6_buf, _r2_:false, _r3_:vid,
-       _r4_:delta_tuples};
-    compute_vids.iterate
-      ((\compute_vid -> 
-        if case ((__stmt_cntrs__.filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid and _r2_ == 6))).peek ()) of { Some x -> x }
-          { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
-        then
-          bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
-                                                      _r3_:S_C} in 
-          (delete_S_do_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
-            _r1_:compute_vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples}
-        else ()))
-    ))
-
 trigger delete_S_rcv_corrective_s6_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
 _r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
@@ -2244,6 +2220,32 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
+trigger delete_S_rcv_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
+_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
+    add_delta_to_int_int
+      {_r1_:map___SQL_SUM_AGGREGATE_2_mS3_s6_buf, _r2_:false, _r3_:vid,
+       _r4_:delta_tuples};
+    compute_vids.iterate
+      ((\compute_vid -> 
+        if case ((__stmt_cntrs__.filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
+            compute_vid and _r2_ == 6))).peek ()) of { Some x -> x }
+          { None -> error () } == {_r1_:compute_vid, _r2_:6, _r3_:0}
+        then
+          bind log_get_bound_delete_S compute_vid as {_r1_:vid, _r2_:S_B,
+                                                      _r3_:S_C} in 
+          (delete_S_do_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {
+            _r1_:compute_vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples}
+        else ()))
+    ))
+
 trigger delete_S_do_corrective_s4_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -2264,26 +2266,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
              {key:vid, value:__prod_ret__46}|} @ { Collection }}
           ))))
 
-trigger delete_S_do_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples} in 
-    delta_tuples.iterate
-      ((\_b1_ -> 
-        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mSS_B,
-                      _r3_:delta___SQL_SUM_AGGREGATE_2_mS3} in 
-        let __prod_ret__56 =
-          (if S_B == delta___SQL_SUM_AGGREGATE_2_mSS_B then 1 else 0) *
-          (-delta___SQL_SUM_AGGREGATE_2_mS3 * S_C) in (
-          add_delta_to_int
-            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
-             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-             {key:vid, value:__prod_ret__56}|} @ { Collection }}
-          ))))
-
 trigger delete_S_do_corrective_s6_m___SQL_SUM_AGGREGATE_1_mS1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -2302,6 +2284,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
              key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
              {key:vid, value:__prod_ret__48}|} @ { Collection }}
+          ))))
+
+trigger delete_S_do_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+=
+  (\_b1_ -> 
+    bind _b1_ as {_r1_:vid, _r2_:S_B, _r3_:S_C, _r4_:delta_tuples} in 
+    delta_tuples.iterate
+      ((\_b1_ -> 
+        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mSS_B,
+                      _r3_:delta___SQL_SUM_AGGREGATE_2_mS3} in 
+        let __prod_ret__56 =
+          (if S_B == delta___SQL_SUM_AGGREGATE_2_mSS_B then 1 else 0) *
+          (-delta___SQL_SUM_AGGREGATE_2_mS3 * S_C) in (
+          add_delta_to_int
+            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
+             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+             {key:vid, value:__prod_ret__56}|} @ { Collection }}
           ))))
 
 trigger insert_R : {
@@ -2394,17 +2396,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (insert_R_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:R_A, _r5_:R_B}
           )));
-    ((((route_to_int {key:6, value:Some R_B}).fold
+    ((((route_to_int {key:3, value:Some R_B}).fold
          ((\__acc_map -> (\_b3_ -> 
            bind _b3_ as {i:ip} in __acc_map.combine
            ({| _r1_:int, _r2_:int, _r3_:address |
-           {_r1_:10, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
+           {_r1_:10, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
          _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
-       (((route_to_int {key:3, value:Some R_B}).fold
+       (((route_to_int {key:6, value:Some R_B}).fold
            ((\__acc_map -> (\_b3_ -> 
              bind _b3_ as {i:ip} in __acc_map.combine
              ({| _r1_:int, _r2_:int, _r3_:address |
-             {_r1_:10, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+             {_r1_:10, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
            _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        (((route_to_int {key:3, value:Some R_B}).fold
            ((\__acc_map -> (\_b3_ -> 
@@ -2498,14 +2500,14 @@ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
         else
           if stmt_id == 10
           then
-            if map_id == 3
+            if map_id == 6
             then
-              (insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
+              (insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_2_mR1, me)<- {
                 _r1_:vid, _r2_:R_A, _r3_:R_B}
             else
-              if map_id == 6
+              if map_id == 3
               then
-                (insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_2_mR1, me)<- {
+                (insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
                   _r1_:vid, _r2_:R_A, _r3_:R_B}
               else ()
           else ()))
@@ -2620,47 +2622,6 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     else ()
     ))
 
-trigger insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
-_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:R_A, _r4_:R_B} in (
-    log_write_insert_R {_r1_:vid, _r2_:R_A, _r3_:R_B};
-    tuples.iterate
-      ((\tuple -> 
-        if (bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind __x
-          in __x).filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
-            == __temp_0 and _r2_ == __temp_1)) != empty {
-          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-          } @ { Collection }
-        then
-          (bind
-            map___SQL_SUM_AGGREGATE_1_mR1_s10_buf
-            as ind __x
-            in __x).update
-            (case (((bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind __x
-            in __x).filter
-            ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
-            { Some x -> x } { None -> error () }) tuple
-        else
-          (bind
-            map___SQL_SUM_AGGREGATE_1_mR1_s10_buf
-            as ind __x
-            in __x).insert
-            tuple));
-    if check_and_update_stmt_cntr_index {key:vid, value:10}
-    then (insert_R_do_complete_s10, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
-    else ()
-    ))
-
 trigger insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_2_mR1 : {
 _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 } @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
@@ -2694,6 +2655,47 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         else
           (bind
             map___SQL_SUM_AGGREGATE_2_mR1_s10_buf
+            as ind __x
+            in __x).insert
+            tuple));
+    if check_and_update_stmt_cntr_index {key:vid, value:10}
+    then (insert_R_do_complete_s10, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
+    else ()
+    ))
+
+trigger insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
+_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:R_A, _r4_:R_B} in (
+    log_write_insert_R {_r1_:vid, _r2_:R_A, _r3_:R_B};
+    tuples.iterate
+      ((\tuple -> 
+        if (bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind __x
+          in __x).filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1)) != empty {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection }
+        then
+          (bind
+            map___SQL_SUM_AGGREGATE_1_mR1_s10_buf
+            as ind __x
+            in __x).update
+            (case (((bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind __x
+            in __x).filter
+            ((\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
+              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
+            { Some x -> x } { None -> error () }) tuple
+        else
+          (bind
+            map___SQL_SUM_AGGREGATE_1_mR1_s10_buf
             as ind __x
             in __x).insert
             tuple));
@@ -2843,32 +2845,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
-trigger insert_R_rcv_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
-_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
-    add_delta_to_int_int
-      {_r1_:map___SQL_SUM_AGGREGATE_1_mR1_s10_buf, _r2_:false, _r3_:vid,
-       _r4_:delta_tuples};
-    compute_vids.iterate
-      ((\compute_vid -> 
-        if case ((__stmt_cntrs__.filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid and _r2_ == 10))).peek ()) of { Some x -> x }
-          { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
-        then
-          bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
-                                                      _r3_:R_B} in 
-          (insert_R_do_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
-            _r1_:compute_vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples}
-        else ()))
-    ))
-
 trigger insert_R_rcv_corrective_s10_m___SQL_SUM_AGGREGATE_2_mR1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
 _r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
@@ -2895,6 +2871,32 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
+trigger insert_R_rcv_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
+_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
+    add_delta_to_int_int
+      {_r1_:map___SQL_SUM_AGGREGATE_1_mR1_s10_buf, _r2_:false, _r3_:vid,
+       _r4_:delta_tuples};
+    compute_vids.iterate
+      ((\compute_vid -> 
+        if case ((__stmt_cntrs__.filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
+            compute_vid and _r2_ == 10))).peek ()) of { Some x -> x }
+          { None -> error () } == {_r1_:compute_vid, _r2_:10, _r3_:0}
+        then
+          bind log_get_bound_insert_R compute_vid as {_r1_:vid, _r2_:R_A,
+                                                      _r3_:R_B} in 
+          (insert_R_do_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
+            _r1_:compute_vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples}
+        else ()))
+    ))
+
 trigger insert_R_do_corrective_s8_m___SQL_SUM_AGGREGATE_1_mR1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -2915,26 +2917,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
              {key:vid, value:__prod_ret__16}|} @ { Collection }}
           ))))
 
-trigger insert_R_do_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples} in 
-    delta_tuples.iterate
-      ((\_b1_ -> 
-        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_1_mRR_B,
-                      _r3_:delta___SQL_SUM_AGGREGATE_1_mR1} in 
-        let __prod_ret__17 =
-          (if R_B == delta___SQL_SUM_AGGREGATE_1_mRR_B then 1 else 0) *
-          delta___SQL_SUM_AGGREGATE_1_mR1 in (
-          add_delta_to_int
-            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
-             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-             {key:vid, value:__prod_ret__17}|} @ { Collection }}
-          ))))
-
 trigger insert_R_do_corrective_s10_m___SQL_SUM_AGGREGATE_2_mR1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -2953,6 +2935,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
              key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
              {key:vid, value:__prod_ret__22}|} @ { Collection }}
+          ))))
+
+trigger insert_R_do_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+=
+  (\_b1_ -> 
+    bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples} in 
+    delta_tuples.iterate
+      ((\_b1_ -> 
+        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_1_mRR_B,
+                      _r3_:delta___SQL_SUM_AGGREGATE_1_mR1} in 
+        let __prod_ret__17 =
+          (if R_B == delta___SQL_SUM_AGGREGATE_1_mRR_B then 1 else 0) *
+          delta___SQL_SUM_AGGREGATE_1_mR1 in (
+          add_delta_to_int
+            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
+             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+             {key:vid, value:__prod_ret__17}|} @ { Collection }}
           ))))
 
 trigger delete_R : {
@@ -3045,17 +3047,17 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
           (delete_R_rcv_put, ip)<- {_r1_:me, _r2_:stmt_id_cnt_list, _r3_:vid,
                                     _r4_:R_A, _r5_:R_B}
           )));
-    ((((route_to_int {key:6, value:Some R_B}).fold
+    ((((route_to_int {key:3, value:Some R_B}).fold
          ((\__acc_map -> (\_b3_ -> 
            bind _b3_ as {i:ip} in __acc_map.combine
            ({| _r1_:int, _r2_:int, _r3_:address |
-           {_r1_:14, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
+           {_r1_:14, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
          _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
-       (((route_to_int {key:3, value:Some R_B}).fold
+       (((route_to_int {key:6, value:Some R_B}).fold
            ((\__acc_map -> (\_b3_ -> 
              bind _b3_ as {i:ip} in __acc_map.combine
              ({| _r1_:int, _r2_:int, _r3_:address |
-             {_r1_:14, _r2_:3, _r3_:ip}|} @ { Collection })))) empty {
+             {_r1_:14, _r2_:6, _r3_:ip}|} @ { Collection })))) empty {
            _r1_:int, _r2_:int, _r3_:address } @ { Collection }).combine
        (((route_to_int {key:3, value:Some R_B}).fold
            ((\__acc_map -> (\_b3_ -> 
@@ -3149,14 +3151,14 @@ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
         else
           if stmt_id == 14
           then
-            if map_id == 3
+            if map_id == 6
             then
-              (delete_R_send_push_s14_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
+              (delete_R_send_push_s14_m___SQL_SUM_AGGREGATE_2_mR1, me)<- {
                 _r1_:vid, _r2_:R_A, _r3_:R_B}
             else
-              if map_id == 6
+              if map_id == 3
               then
-                (delete_R_send_push_s14_m___SQL_SUM_AGGREGATE_2_mR1, me)<- {
+                (delete_R_send_push_s14_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
                   _r1_:vid, _r2_:R_A, _r3_:R_B}
               else ()
           else ()))
@@ -3272,47 +3274,6 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
     else ()
     ))
 
-trigger delete_R_rcv_push_s14_m___SQL_SUM_AGGREGATE_1_mR1 : {
-_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:R_A, _r4_:R_B} in (
-    log_write_delete_R {_r1_:vid, _r2_:R_A, _r3_:R_B};
-    tuples.iterate
-      ((\tuple -> 
-        if (bind map___SQL_SUM_AGGREGATE_1_mR1_s14_buf as ind __x
-          in __x).filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
-            == __temp_0 and _r2_ == __temp_1)) != empty {
-          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-          } @ { Collection }
-        then
-          (bind
-            map___SQL_SUM_AGGREGATE_1_mR1_s14_buf
-            as ind __x
-            in __x).update
-            (case (((bind map___SQL_SUM_AGGREGATE_1_mR1_s14_buf as ind __x
-            in __x).filter
-            ((\_b1_ -> 
-              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
-              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
-              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
-            { Some x -> x } { None -> error () }) tuple
-        else
-          (bind
-            map___SQL_SUM_AGGREGATE_1_mR1_s14_buf
-            as ind __x
-            in __x).insert
-            tuple));
-    if check_and_update_stmt_cntr_index {key:vid, value:14}
-    then (delete_R_do_complete_s14, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
-    else ()
-    ))
-
 trigger delete_R_rcv_push_s14_m___SQL_SUM_AGGREGATE_2_mR1 : {
 _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
 } @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
@@ -3346,6 +3307,47 @@ _r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
         else
           (bind
             map___SQL_SUM_AGGREGATE_2_mR1_s14_buf
+            as ind __x
+            in __x).insert
+            tuple));
+    if check_and_update_stmt_cntr_index {key:vid, value:14}
+    then (delete_R_do_complete_s14, me)<- {_r1_:vid, _r2_:R_A, _r3_:R_B}
+    else ()
+    ))
+
+trigger delete_R_rcv_push_s14_m___SQL_SUM_AGGREGATE_1_mR1 : {
+_r1_:collection { _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+} @ { Collection }, _r2_:{ _r1_:int, _r2_:int, _r3_:int }, _r3_:int, _r4_:int
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:tuples, _r2_:vid, _r3_:R_A, _r4_:R_B} in (
+    log_write_delete_R {_r1_:vid, _r2_:R_A, _r3_:R_B};
+    tuples.iterate
+      ((\tuple -> 
+        if (bind map___SQL_SUM_AGGREGATE_1_mR1_s14_buf as ind __x
+          in __x).filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+            bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in _r1_
+            == __temp_0 and _r2_ == __temp_1)) != empty {
+          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+          } @ { Collection }
+        then
+          (bind
+            map___SQL_SUM_AGGREGATE_1_mR1_s14_buf
+            as ind __x
+            in __x).update
+            (case (((bind map___SQL_SUM_AGGREGATE_1_mR1_s14_buf as ind __x
+            in __x).filter
+            ((\_b1_ -> 
+              bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in 
+              bind tuple as {_r1_:__temp_0, _r2_:__temp_1, _r3_:__temp_2} in 
+              _r1_ == __temp_0 and _r2_ == __temp_1))).peek ()) of
+            { Some x -> x } { None -> error () }) tuple
+        else
+          (bind
+            map___SQL_SUM_AGGREGATE_1_mR1_s14_buf
             as ind __x
             in __x).insert
             tuple));
@@ -3496,32 +3498,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
-trigger delete_R_rcv_corrective_s14_m___SQL_SUM_AGGREGATE_1_mR1 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
-_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-= (\_b1_ ->
-
-  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
-    add_delta_to_int_int
-      {_r1_:map___SQL_SUM_AGGREGATE_1_mR1_s14_buf, _r2_:false, _r3_:vid,
-       _r4_:delta_tuples};
-    compute_vids.iterate
-      ((\compute_vid -> 
-        if case ((__stmt_cntrs__.filter
-          ((\_b1_ -> 
-            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
-            compute_vid and _r2_ == 14))).peek ()) of { Some x -> x }
-          { None -> error () } == {_r1_:compute_vid, _r2_:14, _r3_:0}
-        then
-          bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
-                                                      _r3_:R_B} in 
-          (delete_R_do_corrective_s14_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
-            _r1_:compute_vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples}
-        else ()))
-    ))
-
 trigger delete_R_rcv_corrective_s14_m___SQL_SUM_AGGREGATE_2_mR1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
 _r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
@@ -3548,6 +3524,32 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
         else ()))
     ))
 
+trigger delete_R_rcv_corrective_s14_m___SQL_SUM_AGGREGATE_1_mR1 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:collection {
+_r1_:int, _r2_:int, _r3_:int } @ { Seq }, _r3_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+= (\_b1_ ->
+
+  bind _b1_ as {_r1_:vid, _r2_:compute_vids, _r3_:delta_tuples} in (
+    add_delta_to_int_int
+      {_r1_:map___SQL_SUM_AGGREGATE_1_mR1_s14_buf, _r2_:false, _r3_:vid,
+       _r4_:delta_tuples};
+    compute_vids.iterate
+      ((\compute_vid -> 
+        if case ((__stmt_cntrs__.filter
+          ((\_b1_ -> 
+            bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ ==
+            compute_vid and _r2_ == 14))).peek ()) of { Some x -> x }
+          { None -> error () } == {_r1_:compute_vid, _r2_:14, _r3_:0}
+        then
+          bind log_get_bound_delete_R compute_vid as {_r1_:vid, _r2_:R_A,
+                                                      _r3_:R_B} in 
+          (delete_R_do_corrective_s14_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {
+            _r1_:compute_vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples}
+        else ()))
+    ))
+
 trigger delete_R_do_corrective_s12_m___SQL_SUM_AGGREGATE_1_mR1 : {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
@@ -3566,6 +3568,26 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
             {_r1_:__SQL_SUM_AGGREGATE_1, _r2_:true, _r3_:vid, _r4_:{|
              key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
              {key:vid, value:__prod_ret__25}|} @ { Collection }}
+          ))))
+
+trigger delete_R_do_corrective_s14_m___SQL_SUM_AGGREGATE_2_mR1 : {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
+_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
+}
+=
+  (\_b1_ -> 
+    bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples} in 
+    delta_tuples.iterate
+      ((\_b1_ -> 
+        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mRR_B,
+                      _r3_:delta___SQL_SUM_AGGREGATE_2_mR1} in 
+        let __prod_ret__35 =
+          (if R_B == delta___SQL_SUM_AGGREGATE_2_mRR_B then 1 else 0) *
+          (-delta___SQL_SUM_AGGREGATE_2_mR1 * R_A) in (
+          add_delta_to_int
+            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
+             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+             {key:vid, value:__prod_ret__35}|} @ { Collection }}
           ))))
 
 trigger delete_R_do_corrective_s14_m___SQL_SUM_AGGREGATE_1_mR1 : {
@@ -3588,25 +3610,127 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
              {key:vid, value:__prod_ret__27}|} @ { Collection }}
           ))))
 
-trigger delete_R_do_corrective_s14_m___SQL_SUM_AGGREGATE_2_mR1 : {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:collection {
+trigger __SQL_SUM_AGGREGATE_2_mS3_send_correctives : {
+key:{ _r1_:int, _r2_:int, _r3_:int }, value:collection {
 _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 }
 =
   (\_b1_ -> 
-    bind _b1_ as {_r1_:vid, _r2_:R_A, _r3_:R_B, _r4_:delta_tuples} in 
-    delta_tuples.iterate
+    bind _b1_ as {key:corrective_vid, value:delta_tuples} in 
+    let corrective_list =
+      filter_corrective_list
+        {key:corrective_vid, value:{| key:int, value:int | {key:1, value:6},
+         {key:0, value:2}|} @ { Collection }} in
+    corrective_list.iterate
       ((\_b1_ -> 
-        bind _b1_ as {_r1_:_, _r2_:delta___SQL_SUM_AGGREGATE_2_mRR_B,
-                      _r3_:delta___SQL_SUM_AGGREGATE_2_mR1} in 
-        let __prod_ret__35 =
-          (if R_B == delta___SQL_SUM_AGGREGATE_2_mRR_B then 1 else 0) *
-          (-delta___SQL_SUM_AGGREGATE_2_mR1 * R_A) in (
-          add_delta_to_int
-            {_r1_:__SQL_SUM_AGGREGATE_2, _r2_:true, _r3_:vid, _r4_:{|
-             key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-             {key:vid, value:__prod_ret__35}|} @ { Collection }}
-          ))))
+        bind _b1_ as {key:stmt_id, value:vid_list} in 
+        if stmt_id == 6
+        then
+          ((vid_list.fold
+              ((\__acc_ext -> (\vid -> 
+                __acc_ext.combine
+                (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
+                                                     _r3_:S_C} in 
+                (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                  ((\__acc_map -> (\_b3_ -> 
+                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                    ({|
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } |
+                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                  empty {
+                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                  _r3_:collection {
+                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                  } @ { Collection } } @ { Collection })))) empty {
+              _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+              _r3_:collection {
+              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+              } @ { Collection } } @ { Collection }).groupBy
+             ((\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in ip))
+             ((\_b2_ ->
+             bind _b2_ as {key:acc_vid, value:acc_tuples} in (\_b5_ -> 
+               bind _b5_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in 
+               {key:acc_vid.combine
+                ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
+                value:((acc_tuples.combine
+                         tuples).groupBy
+                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                        ((\__acc_map -> (\_b3_ -> 
+                          bind _b3_ as {key:__1, value:__2} in 
+                          __acc_map.combine
+                          ({|
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int | __1|} @ { Collection })))) empty {
+                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                        _r3_:int } @ { Collection }})))
+             {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
+              value:empty {
+              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+              } @ { Collection }}).iterate
+            ((\_b1_ -> 
+              bind _b1_ as {key:ip, value:_b3_} in 
+              bind _b3_ as {key:vid_send_list, value:tuple} in 
+              (delete_S_rcv_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {
+                _r1_:corrective_vid, _r2_:vid_send_list, _r3_:tuple}))
+        else
+          if stmt_id == 2
+          then
+            ((vid_list.fold
+                ((\__acc_ext -> (\vid -> 
+                  __acc_ext.combine
+                  (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
+                                                       _r3_:S_C} in 
+                  (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
+                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
+                    ((\__acc_map -> (\_b3_ -> 
+                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
+                      ({|
+                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                      _r3_:collection {
+                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                      } @ { Collection } |
+                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
+                    empty {
+                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                    _r3_:collection {
+                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                    } @ { Collection } } @ { Collection })))) empty {
+                _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
+                _r3_:collection {
+                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                } @ { Collection } } @ { Collection }).groupBy
+               ((\_b1_ -> 
+                 bind _b1_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in ip))
+               ((\_b2_ ->
+               bind _b2_ as {key:acc_vid, value:acc_tuples} in (\_b5_ -> 
+                 bind _b5_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in 
+                 {key:acc_vid.combine
+                  ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
+                  value:((acc_tuples.combine
+                           tuples).groupBy
+                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
+                          ((\__acc_map -> (\_b3_ -> 
+                            bind _b3_ as {key:__1, value:__2} in 
+                            __acc_map.combine
+                            ({|
+                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                            _r3_:int | __1|} @ { Collection })))) empty {
+                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
+                          _r3_:int } @ { Collection }})))
+               {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
+                value:empty {
+                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+                } @ { Collection }}).iterate
+              ((\_b1_ -> 
+                bind _b1_ as {key:ip, value:_b3_} in 
+                bind _b3_ as {key:vid_send_list, value:tuple} in 
+                (insert_S_rcv_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {
+                  _r1_:corrective_vid, _r2_:vid_send_list, _r3_:tuple}))
+          else ())))
 
 trigger __SQL_SUM_AGGREGATE_1_mS1_send_correctives : {
 key:{ _r1_:int, _r2_:int, _r3_:int }, value:collection {
@@ -4201,128 +4325,6 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
                       ip)<- {_r1_:corrective_vid, _r2_:vid_send_list,
                              _r3_:tuple}))
               else ())))
-
-trigger __SQL_SUM_AGGREGATE_2_mS3_send_correctives : {
-key:{ _r1_:int, _r2_:int, _r3_:int }, value:collection {
-_r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
-}
-=
-  (\_b1_ -> 
-    bind _b1_ as {key:corrective_vid, value:delta_tuples} in 
-    let corrective_list =
-      filter_corrective_list
-        {key:corrective_vid, value:{| key:int, value:int | {key:1, value:6},
-         {key:0, value:2}|} @ { Collection }} in
-    corrective_list.iterate
-      ((\_b1_ -> 
-        bind _b1_ as {key:stmt_id, value:vid_list} in 
-        if stmt_id == 6
-        then
-          ((vid_list.fold
-              ((\__acc_ext -> (\vid -> 
-                __acc_ext.combine
-                (bind log_get_bound_delete_S vid as {_r1_:vid, _r2_:S_B,
-                                                     _r3_:S_C} in 
-                (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
-                   {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
-                  ((\__acc_map -> (\_b3_ -> 
-                    bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
-                    ({|
-                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-                    _r3_:collection {
-                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                    } @ { Collection } |
-                    {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
-                  empty {
-                  _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-                  _r3_:collection {
-                  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                  } @ { Collection } } @ { Collection })))) empty {
-              _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-              _r3_:collection {
-              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-              } @ { Collection } } @ { Collection }).groupBy
-             ((\_b1_ ->  bind _b1_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in ip))
-             ((\_b2_ ->
-             bind _b2_ as {key:acc_vid, value:acc_tuples} in (\_b5_ -> 
-               bind _b5_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in 
-               {key:acc_vid.combine
-                ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
-                value:((acc_tuples.combine
-                         tuples).groupBy
-                         ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
-                        ((\__acc_map -> (\_b3_ -> 
-                          bind _b3_ as {key:__1, value:__2} in 
-                          __acc_map.combine
-                          ({|
-                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
-                          _r3_:int | __1|} @ { Collection })))) empty {
-                        _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
-                        _r3_:int } @ { Collection }})))
-             {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
-              value:empty {
-              _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-              } @ { Collection }}).iterate
-            ((\_b1_ -> 
-              bind _b1_ as {key:ip, value:_b3_} in 
-              bind _b3_ as {key:vid_send_list, value:tuple} in 
-              (delete_S_rcv_corrective_s6_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {
-                _r1_:corrective_vid, _r2_:vid_send_list, _r3_:tuple}))
-        else
-          if stmt_id == 2
-          then
-            ((vid_list.fold
-                ((\__acc_ext -> (\vid -> 
-                  __acc_ext.combine
-                  (bind log_get_bound_insert_S vid as {_r1_:vid, _r2_:S_B,
-                                                       _r3_:S_C} in 
-                  (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2
-                     {_r1_:(), _r2_:delta_tuples, _r3_:false}).fold
-                    ((\__acc_map -> (\_b3_ -> 
-                      bind _b3_ as {key:ip, value:tuples} in __acc_map.combine
-                      ({|
-                      _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-                      _r3_:collection {
-                      _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                      } @ { Collection } |
-                      {_r1_:ip, _r2_:vid, _r3_:tuples}|} @ { Collection }))))
-                    empty {
-                    _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-                    _r3_:collection {
-                    _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                    } @ { Collection } } @ { Collection })))) empty {
-                _r1_:address, _r2_:{ _r1_:int, _r2_:int, _r3_:int },
-                _r3_:collection {
-                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                } @ { Collection } } @ { Collection }).groupBy
-               ((\_b1_ -> 
-                 bind _b1_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in ip))
-               ((\_b2_ ->
-               bind _b2_ as {key:acc_vid, value:acc_tuples} in (\_b5_ -> 
-                 bind _b5_ as {_r1_:ip, _r2_:vid, _r3_:tuples} in 
-                 {key:acc_vid.combine
-                  ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq }),
-                  value:((acc_tuples.combine
-                           tuples).groupBy
-                           ((\tuple ->  tuple)) ((\_ -> (\_ ->  ()))) ()).fold
-                          ((\__acc_map -> (\_b3_ -> 
-                            bind _b3_ as {key:__1, value:__2} in 
-                            __acc_map.combine
-                            ({|
-                            _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
-                            _r3_:int | __1|} @ { Collection })))) empty {
-                          _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int,
-                          _r3_:int } @ { Collection }})))
-               {key:empty { _r1_:int, _r2_:int, _r3_:int } @ { Seq },
-                value:empty {
-                _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-                } @ { Collection }}).iterate
-              ((\_b1_ -> 
-                bind _b1_ as {key:ip, value:_b3_} in 
-                bind _b3_ as {key:vid_send_list, value:tuple} in 
-                (insert_S_rcv_corrective_s2_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {
-                  _r1_:corrective_vid, _r2_:vid_send_list, _r3_:tuple}))
-          else ())))
 
 trigger node_dummy : int
 =
