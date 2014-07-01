@@ -20,6 +20,10 @@ declare vector_add : collection { key: int, value: real } @ { Collection } -> co
 declare vector_sub : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \c1 -> \c2 ->
     vector_zip (\acc -> \e -> (-1 * acc) + e) c2 c1
 
+declare scalar_mult : real -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \x -> \c -> (
+  c.groupBy (\dim -> dim.key) (\acc -> \dim -> x * dim.value) 0.0
+)
+
 declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
     let diff = vector_sub p q in diff.fold (\a -> \x -> a + (x.value * x.value)) 0.0
 
@@ -51,7 +55,13 @@ trigger aggregate: collection { key: int, value: { sum: collection { key: int, v
      (requests = requests - 1);
      (if requests == 0 then ((maximize,master) <- ()) else ())
 
-trigger maximize: () = \_ -> ()
+trigger maximize: () = \_ -> (
+  means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection };
+  aggregates.iterate (\ag -> means.insert {key: ag.key, value: (scalar_mult (1.0/(ag.count)) ag.sum)});
+  aggregates = empty { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection };
+  iterations_remaining = iterations_remaining -1;
+  if iterations_remaining == 0 then () else peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means))
+)
 
 trigger start: () = \_ -> let
     e = empty {key: int, value: collection {key: int, value: real} @ { Collection }} @ {Collection} in let
