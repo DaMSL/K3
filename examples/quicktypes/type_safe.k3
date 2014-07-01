@@ -46,7 +46,7 @@ trigger foo8 : () = \_ -> (
 )
 
 // Broken:
-trigger foo9 : collection { key: int } @ { Collection } = \ags -> let f = ags.combine ags in ()
+trigger foo9 : (collection { x: int } @ { Collection }) = \ags -> let f = (ags.combine ags) in ()
 
 
 
