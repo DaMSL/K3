@@ -230,11 +230,11 @@ declare frontier_int_int : {
 
 declare log_read_geq : { _r1_:int, _r2_:int, _r3_:int } -> collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
-  } @ { Collection } = (\vid -> 
+  } @ { Collection } = (\vid2 -> 
     (log__master.filter
       ((\_b1_ -> 
-        bind _b1_ as {_r1_:vid2, _r2_:trig, _r3_:stmt} in 
-        vid_geq {key:vid2, value:vid}))))
+        bind _b1_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
+        vid_geq {key:vid, value:vid2}))))
 
 declare check_and_update_stmt_cntr_index : {
   key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } -> bool = (\_b1_ -> 
@@ -255,8 +255,8 @@ declare check_and_update_stmt_cntr_index : {
           ((\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
             _r2_ == stmt_id))).peek ()) of { Some x -> x }
-          { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:count} in 
-          {_r1_:vid, _r2_:stmt_id, _r3_:count - 1});
+          { None -> error () } as {_r1_:vid, _r2_:stmt_id, _r3_:counter} in 
+          {_r1_:vid, _r2_:stmt_id, _r3_:counter - 1});
         if case ((__stmt_cntrs__.filter
           ((\_b1_ -> 
             bind _b1_ as {_r1_:_r1_, _r2_:_r2_, _r3_:_r3_} in _r1_ == vid and
@@ -994,12 +994,11 @@ declare filter_corrective_list : {
     bind _b1_ as {key:request_vid, value:trig_stmt_list} in 
     let log_entries = log_read_geq request_vid in
     ((log_entries.fold
-        ((\__acc_map -> (\_b3_ -> 
-          bind _b3_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
-          __acc_map.combine
+        ((\acc -> (\_b3_ -> 
+          bind _b3_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in acc.combine
           ({| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-          {key:vid, value:stmt_id}|} @ { Collection })))) empty {
-        key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection }).sort
+          {key:vid, value:stmt_id}|} @ { Seq })))) empty {
+        key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Seq }).sort
       ((\_b2_ -> bind _b2_ as {key:vid1, value:stmt1} in (\_b5_ -> 
         bind _b5_ as {key:vid2, value:stmt2} in 
         if vid_lt {key:vid1, value:vid2} then -1 else 1)))).groupBy
