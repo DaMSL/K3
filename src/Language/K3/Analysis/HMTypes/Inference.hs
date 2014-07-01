@@ -253,7 +253,8 @@ freevars t = runIdentity $ foldMapTree extractVars [] t
 
 -- The occurs check: if v appears free in t
 occurs :: QTVarId -> K3 QType -> TVEnv -> Bool
-occurs v t@(tag -> QTCon _) tve = or $ map (flip (occurs v) tve) $ children t
+occurs v t@(tag -> QTCon _)      tve = or $ map (flip (occurs v) tve) $ children t
+occurs v t@(tag -> QTOperator _) tve = or $ map (flip (occurs v) tve) $ children t
 occurs v (tag -> QTVar v2)  tve = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
 occurs _ _ _ = False
 
@@ -418,11 +419,11 @@ unifyv v1 t@(tag -> QTVar v2)
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
     then trace (prettyTaggedSPair "unifyv" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
-    else trace (prettyTaggedSPair "unifyv" v t) $ 
-            tvsub t >>= \t' ->
-              case tag t'  of 
-                QTCon (QTRecord _) -> modify $ mtive $ \tve' -> tvext tve' v tself
-                _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in"]] %+ prettyLines t'
+    else trace (prettyTaggedSPair "unifyv" v t) $ tvsub t >>= \t' ->
+          case t'  of 
+            Node (QTCon      (QTRecord _) :@: _) _                                   -> modify $ mtive $ \tve' -> tvext tve' v tself
+            Node (QTOperator QTLower      :@: _) [Node (QTCon (QTRecord _) :@: _) _] -> modify $ mtive $ \tve' -> tvext tve' v tself
+            _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in"]] %+ prettyLines t'
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
@@ -487,6 +488,9 @@ unifyDrv preF postF qt1 qt2 = do
       void $ foldM rcr (head $ lbs) $ tail lbs
       consistentTLower $ children t1 ++ children t2
 
+    unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
+    unifyDrv' t tv@(tag -> QTVar v) = unifyv v t >> return tv
+
     -- | Unification of a lower bound with a non-bound applies to the non-bound
     --   and the lower bound of the deferred set.
     --   This pattern match applies after type variable unification to allow typevars
@@ -500,9 +504,6 @@ unifyDrv preF postF qt1 qt2 = do
       lb2 <- lowerBound t2
       void $ rcr t1 lb2
       consistentTLower $ [t1] ++ children t2
-
-    unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
-    unifyDrv' t tv@(tag -> QTVar v) = unifyv v t >> return tv
 
     -- | Top unifies with any value. Bottom unifies with only itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
