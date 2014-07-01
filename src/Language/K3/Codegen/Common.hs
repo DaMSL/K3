@@ -7,7 +7,7 @@ module Language.K3.Codegen.Common (
     annotationComboIdE,
     annotationComboIdL,
 
-    recordName,
+    recordSignature,
     signature
 ) where
 
@@ -41,9 +41,6 @@ annotationComboIdL (namedLAnnotations -> ids) = Just $ annotationComboId ids
 
 -- Record Identifiers
 
-recordName :: [(Identifier, K3 Type)] -> Identifier
-recordName its = concat $ fst $ unzip its
-
 signature :: Monad m => K3 Type -> m Identifier
 signature (tag -> TBool)        = return "P"
 signature (tag -> TByte)        = return "B"
@@ -72,6 +69,9 @@ signature (tag &&& children -> (TSource, [x]))      = signature x >>= return . (
 signature (tag &&& children -> (TTrigger, [x])) = signature x >>= return . ("G" ++)
 
 signature _ = error "unexpected"
+
+recordSignature :: [Identifier] -> Identifier
+recordSignature ids = intercalate "_" $ "R": ids
 
 sanitize :: a -> a
 sanitize = id
