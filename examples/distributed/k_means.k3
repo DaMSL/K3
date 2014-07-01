@@ -3,11 +3,11 @@ include "Annotation/Collection.k3"
 declare master: address = 127.0.0.1:40000
 
 declare k: int = 1
-declare iterations_remaining: int = 100
+declare iterations_remaining: mut int = 100
+declare requests : mut int = 0
 
 declare means: mut collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
-declare aggregates: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection }
-
+declare aggregates: mut collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection }
 
 
 declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
@@ -19,6 +19,10 @@ declare vector_add : collection { key: int, value: real } @ { Collection } -> co
 
 declare vector_sub : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \c1 -> \c2 ->
     vector_zip (\acc -> \e -> (-1 * acc) + e) c2 c1
+
+declare scalar_mult : real -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \x -> \c -> (
+  c.groupBy (\dim -> dim.key) (\acc -> \dim -> x * dim.value) 0.0
+)
 
 declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
     let diff = vector_sub p q in diff.fold (\a -> \x -> a + (x.value * x.value)) 0.0
@@ -41,21 +45,35 @@ trigger assign: collection { key: int, value: collection { key: int, value: real
             data.groupBy (\p -> nearest_neighbor p.elem current_means) (\sc -> \p -> { sum: vector_zip (\a -> \b -> a + b) sc.sum p.elem, count: sc.count + 1 }) { sum: empty { key: int, value: real } @ { Collection }, count: 0 }
 )
 
-trigger aggregate: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection } = \ags -> let f = aggregates.combine aggregates in ()
+trigger aggregate: collection { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection } = \ags -> let
+  combined = aggregates.combine ags in let
+  new_ags = combined.groupBy
+    (\ag -> ag.key)
+    (\acc -> \ag -> { sum: (vector_add acc.sum ag.sum), count: acc.count + ag.count})
+    { sum: empty { key: int, value: real } @ { Collection }, count: 0 }
+  in ((aggregates = new_ags);
+     (requests = requests - 1);
+     (if requests == 0 then ((maximize,master) <- ()) else ())
 
-trigger maximize: () = \_ -> ()
+trigger maximize: () = \_ -> (
+  means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection };
+  aggregates.iterate (\ag -> means.insert {key: ag.key, value: (scalar_mult (1.0/(ag.count)) ag.sum)});
+  aggregates = empty { key: int, value: { sum: collection { key: int, value: real } @ { Collection }, count: int } } @ { Collection };
+  iterations_remaining = iterations_remaining -1;
+  if iterations_remaining == 0 then () else peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means))
+)
 
 trigger start: () = \_ -> let
-    initial_means =
-      (data.fold
-        (\a -> \p ->
-          if a.remaining == 0
-          then a
-          else (
-            (a.means.insert p.elem);
-            {remaining: a.remaining - 1, means:  a.means}
-          )
+    e = empty {key: int, value: collection {key: int, value: real} @ { Collection }} @ {Collection} in let
+    initial_means = (data.fold
+      (\a -> \p ->
+        if a.remaining == 0
+        then a
+        else (
+          (a.means.insert p.elem);
+          {remaining: a.remaining - 1, means:  a.means}
         )
-        ({remaining: k, means: empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }})
-      ).means
-    in peers.iterate (\p -> (assign, p.addr) <- initial_means)
+      )
+      {remaining: k, means: e}
+    ).means
+    in peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- initial_means))

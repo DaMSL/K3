@@ -28,8 +28,11 @@
 #include <boost/serialization/base_object.hpp>
 
 namespace K3 {
-  template <class E> using MapReturnType = R1elem<E>;
-  template<class K, class V> using GroupByReturnType = R2key_value<K,V>;
+  // Forward Declaration
+  template <class E> class R_elem;
+  template <class K, class V> R_key_value;
+  template <class E> using MapReturnType = R_elem<E>;
+  template<class K, class V> using GroupByReturnType = R_key_value<K,V>;
 
 
   template <template <class...> class D, class E>
