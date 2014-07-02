@@ -253,8 +253,11 @@ freevars t = runIdentity $ foldMapTree extractVars [] t
 
 -- The occurs check: if v appears free in t
 occurs :: QTVarId -> K3 QType -> TVEnv -> Bool
-occurs v t@(tag -> QTCon _) tve = or $ map (flip (occurs v) tve) $ children t
-occurs v (tag -> QTVar v2)  tve = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
+occurs v t@(tag -> QTCon _)      tve = or $ map (flip (occurs v) tve) $ children t
+occurs v t@(tag -> QTOperator _) tve = or $ map (flip (occurs v) tve) $ children t
+occurs v (tag -> QTVar v2) tve
+  | v == v2   = True
+  | otherwise = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
 occurs _ _ _ = False
 
 
@@ -413,12 +416,37 @@ collectionSubRecord _ _ = return Nothing
 unifyv :: QTVarId -> K3 QType -> TInfM ()
 unifyv v1 t@(tag -> QTVar v2)
   | v1 == v2  = return ()
-  | otherwise = trace (prettyTaggedSPair "unifyv" v1 t) $ modify $ mtive $ \tve -> tvext tve v1 t
+  | otherwise = trace (prettyTaggedSPair "unifyv var" v1 t) $ modify $ mtive $ \tve -> tvext tve v1 t
 
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
-    then trace (prettyTaggedSPair "unifyv" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
-    else trace (prettyTaggedSPair "unifyv" v t) $ tvsub t >>= \t' -> left $ unwords ["occurs check:", show v, "in", show t']
+    then trace (prettyTaggedSPair "unifyv noc" v t) $ modify $ mtive $ \tve' -> tvext tve' v t
+    else tvsub t >>= unifyvMuQt tve
+
+  where 
+    {-
+    restrictedUnifyMu tve qt = 
+      case tag qt of
+        QTCon (QTRecord _) -> unifyvMuQt tve qt
+        QTCon QTFunction   -> unifyvMuQt tve qt
+        QTOperator QTLower -> unifyvMuQt tve qt
+        _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in "]] %+ prettyLines qt
+    -}
+
+    unifyvMuQt tve qt = do
+      qt' <- injectSelfQt tve qt
+      trace (prettyTaggedSPair "unifyv yoc" v qt') $ modify $ mtive $ \tve' -> tvext tve' v qt'
+
+    injectSelfQt tve qt = mapTree (inject tve) qt
+    
+    inject tve nch n@(Node (QTCon (QTRecord _) :@: anns) _)
+      | occurs v n tve = return $ foldl (@+) tself anns
+      | otherwise = return $ Node (tag n :@: anns) nch
+    
+    inject _ [(tag -> QTSelf)] (Node (QTOperator QTLower :@: anns) [Node (QTCon (QTRecord _) :@: _) _])
+      = return $ foldl (@+) tself anns
+
+    inject _ ch n = return $ Node (tag n :@: annotations n) ch
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
@@ -442,6 +470,10 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTPrimitive p1) (tag -> QTPrimitive p2)
       | p1 == p2  = return t1
       | otherwise = primitiveErr p1 p2
+
+    -- | Self type unification
+    unifyDrv' t1@(tag -> QTCon (QTCollection _)) (tag -> QTSelf) = return t1
+    unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTCollection _)) = return t2
 
     -- | Record subtyping for projection
     unifyDrv' t1@(tag -> QTCon d1@(QTRecord f1)) t2@(tag -> QTCon d2@(QTRecord f2))
@@ -489,12 +521,14 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2 = do
       lb1 <- lowerBound t1
       void $ rcr lb1 t2
-      consistentTLower $ children t1 ++ [t2]
+      r <- consistentTLower $ children t1 ++ [t2]
+      trace (boxToString $ ["consistentTLowerL "] %+ prettyLines r) $ return r
 
     unifyDrv' t1 t2@(tag -> QTOperator QTLower) = do
       lb2 <- lowerBound t2
       void $ rcr t1 lb2
-      consistentTLower $ [t1] ++ children t2
+      r <- consistentTLower $ [t1] ++ children t2
+      trace (boxToString $ ["consistentTLowerR "] %+ prettyLines r) $ return r
 
     -- | Top unifies with any value. Bottom unifies with only itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
@@ -522,7 +556,7 @@ unifyDrv preF postF qt1 qt2 = do
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
-      left $ unwords ["Invalid collection arguments", show ct, "and", show rt]
+      left $ unlines ["Invalid collection arguments:", pretty ct, "and", pretty rt]
 
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
     onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
@@ -553,9 +587,9 @@ unifyDrv preF postF qt1 qt2 = do
     lowerBound t = tvopeval QTLower $ children t
 
     primitiveErr a b = unifyErr a b "primitives" ""
-    unifyErr a b kind s = left $ unwords ["Unification mismatch on ", kind, ": ", show a, "and", show b, "(", s, ")"]
+    unifyErr a b kind s = left $ unlines [unwords ["Unification mismatch on ", kind, "(", s, "):"], pretty a, pretty b]
 
-    subSelfErr ct = left $ unwords ["Invalid self substitution, qtype is not a collection: ", show ct]
+    subSelfErr ct = left $ boxToString $ ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
 
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
@@ -568,8 +602,9 @@ unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QT
 unifyWithOverrideM qt1 qt2 errf = trace (prettyTaggedPair "unifyOvM" qt1 qt2) $ reasonM errf $ unifyDrv preChase postUnify qt1 qt2
   where preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
         postUnify (v1, v2) qt = do
+          tve <- getTVE
           let vs = catMaybes [v1, v2]
-          void $ mapM_ (flip unifyv qt) vs
+          void $ mapM_ (\v -> if occurs v qt tve then return () else unifyv v qt) vs
           return $ if null vs then qt else (foldl (@+) (tvar $ head vs) $ annotations qt)
 
 
@@ -684,14 +719,14 @@ inferProgramTypes prog = do
               Left (Just qpt') -> modify (\env -> tiexte env n qpt') >> return qpt'
               Right qpt'       -> return qpt'
 
-      case (qpt, eOpt) of
-        (QPType [] qt1, Just e) -> do
+      case eOpt of
+        Just e -> do
+          qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           substituteDeepQt e >>= return . Just
 
-        (_, Nothing) -> return Nothing
-        (_, _) -> polyTypeErr
+        Nothing -> return Nothing
 
     declF :: K3 Declaration -> TInfM (K3 Declaration)
     declF d@(tag -> DGlobal n t eOpt) = do
@@ -739,10 +774,11 @@ inferProgramTypes prog = do
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
       where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
+                           in if null spans 
+                                then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
+                                else unwords ["[", show $ head spans, "] "]
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
-    polyTypeErr     = left $ "Invalid polymorphic declaration type"
     trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
     unifyInitErrF s = "Failed to unify initializer: " ++ s
 
@@ -759,7 +795,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
       where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans then "" else unwords ["[", show $ head spans, "] "]
+                           in if null spans then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
+                                            else unwords ["[", show $ head spans, "] "]
 
     monoBinding :: Identifier -> K3 QType -> TInfM ()
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
@@ -866,7 +903,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
-      void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt) $ unifyM srcqt prjqt $ mkErrorF n ((unwords ["Invalid record projection", show srcqt, "and", show prjqt, ": "]) ++)
+      void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt)
+              $    unifyM srcqt prjqt $ mkErrorF n ((unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
@@ -874,8 +912,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       fnqt   <- qTypeOfM $ head ch
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
-      let errf = mkErrorF n (unwords ["Invalid function application ", show fnqt, "and", show (tfun argqt retqt), ":"] ++)
-      void   $  trace (prettyTaggedPair ("infer app " ++ pretty n) fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
+      let errf = mkErrorF n (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
+      void   $  trace (prettyTaggedTriple "infer app " n fnqt $ tfun argqt retqt) $ unifyWithOverrideM fnqt (tfun argqt retqt) errf
       return $  rebuildE n ch .+ retqt
 
     inferQType ch n@(tag -> EOperate OSeq) = do
@@ -1247,3 +1285,6 @@ prettyTaggedSPair s a b = boxToString $ [s ++ " " ++ show a] %+ [" and "] %+ pre
 
 prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> String
 prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] %+ prettyLines b
+
+prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> String
+prettyTaggedTriple s a b c = boxToString $ [s ++ " "] %+ prettyLines a %+ [" "] %+ prettyLines b %+ [" and "] %+ prettyLines c

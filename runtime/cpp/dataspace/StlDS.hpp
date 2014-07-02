@@ -110,7 +110,7 @@ class StlDS {
     return std::make_tuple(p1, p2);
   }
 
-  StlDS combine(StlDS other) {
+  StlDS combine(StlDS other) const {
     // copy this DS
     StlDS result = StlDS(nullptr,container.begin(), container.end());
     // copy other DS

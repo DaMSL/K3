@@ -40,6 +40,8 @@ import Data.List
 import Data.String
 import Data.Traversable hiding ( mapM )
 
+import Debug.Trace
+
 import System.FilePath
 
 import qualified Text.Parsec          as P
@@ -336,7 +338,7 @@ parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
-  fileContents  <- mapM readFile subFiles >>= return . (++ [s])
+  fileContents  <- (trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles) >>= return . (++ [s])
   return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
   where
     chainValidParse c parse = parse >>= parseAndCompose c

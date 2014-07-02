@@ -49,28 +49,31 @@ includeParser s = either (Left . show) Right $ runPreprocessor parser s
 processIncludes :: [FilePath] -> [String] -> [FilePath] -> IO [FilePath]
 processIncludes searchPaths prog excludes = do
   let includeFile s = either includeError id $ includeParser s
-  let includes      = foldl (\acc s -> maybe acc ((acc++) . (:[])) $ includeFile s) [] $ prog
-  let newExcludes   = nub $ includes++excludes
-  foldM recurAndCombine newExcludes $ includes \\ excludes
+  let includes      = foldl (\acc s -> maybe acc (\p -> acc++[p]) $ includeFile s) [] $ prog
+  newIncludes <- foldM (recurAndCombine excludes) [] $ includes \\ excludes
+  return $ nub $ newIncludes ++ excludes
 
   where includeError = error "Invalid include statement"
-        recurAndCombine acc p = preprocess searchPaths p (filter (p /=) acc)
+        recurAndCombine td acc p = preprocess searchPaths p (acc ++ td) >>= return . (acc ++)
 
 preprocess :: [FilePath] -> FilePath -> [FilePath] -> IO [FilePath]
-preprocess searchPaths (normalise -> path) excludes
-  | path `elem` excludes = return []
-
-  | otherwise = do
-    matches <- mapM matchPath searchPaths >>= return . concat
-    let actualPath = case matches of
-                        [x] -> x
-                        []  -> preprocessError $ "no matching file found for " ++ path
-                        l   -> preprocessError $ "multiple matches found for " ++ path ++ ": " ++ unlines l
-    contents <- readFile actualPath
-    (actualPath:) . filter (path /=) <$> processIncludes searchPaths (lines contents) (path:excludes)
+preprocess searchPaths (normalise -> path) excludes = searchForPath >>= \actualPath ->
+  if actualPath `elem` excludes
+    then return []
+    else do
+      contents    <- readFile actualPath
+      subIncludes <- processIncludes searchPaths (lines contents) ([actualPath, path] ++ excludes)
+      return $ if actualPath == path then subIncludes else filter (path /=) subIncludes
 
   where matchPath p = SF.find SF.always matchClause p
         matchClause = SF.fileName SF.==? (snd $ splitFileName path) SF.&&? isInDirectory
         isInDirectory = SF.directory `hasSuffix` (dropTrailingPathSeparator . fst $ splitFileName path)
         hasSuffix = SF.liftOp $ flip isSuffixOf
         preprocessError msg = error $ "Preprocessing failed: " ++ msg ++ "\nSearch paths: " ++ unlines searchPaths
+
+        searchForPath = do
+          matches <- mapM matchPath searchPaths >>= return . concat  
+          case matches of
+            [x] -> return x
+            []  -> preprocessError $ "no matching file found for " ++ path
+            l   -> preprocessError $ "multiple matches found for " ++ path ++ ": " ++ unlines l

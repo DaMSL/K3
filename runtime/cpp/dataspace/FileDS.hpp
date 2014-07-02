@@ -316,7 +316,7 @@ namespace K3
                 FileDS(engine, get<1>(halves))
                 );
       }
-      FileDS combine(FileDS other)
+      FileDS combine(FileDS other) const
       {
         return FileDS(engine,
                 combineFile(engine, file_id, other.file_id)

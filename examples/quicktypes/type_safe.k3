@@ -1,5 +1,6 @@
 include "Annotation/Collection.k3"
 declare c : collection { key: int, value: real} @ { Collection }
+declare c2 : collection { x: int } @ { Collection }
 
 // There should be no type errors here!
 
@@ -40,13 +41,12 @@ trigger foo7 : () = \_ -> (
   in ()
 )
 
-// Broken:
 trigger foo8 : () = \_ -> (
   let bar = c.fold (\a -> \p -> if (a.sum == 0) then {sum:a.sum} else {sum:a.sum}) {sum: 0}
   in ()
 )
 
-
+trigger foo9 : (collection { x: int } @ { Collection }) = \ags -> let f = (ags.combine ags) in ()
 
 source s1 : () = value ()
 feed s1 |> foo1

@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -7,15 +8,16 @@ module Language.K3.Codegen.CPP.Collections where
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
-import Data.Function (on)
 import Data.Functor
-import Data.List (nub, partition, sortBy)
+import Data.List (nub, partition, sort)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+
+import Language.K3.Codegen.Common
 
 import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Expression
@@ -66,13 +68,14 @@ composite className ans = do
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
+    let constructors'' = constructors' ++ [superConstructor p | p <- take 1 ps]
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
 
     let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
-            <$$> indent 4 (vsep $ punctuate line $ constructors' ++ [serializeDefn] ++ pubDecls)
+            <$$> indent 4 (vsep $ punctuate line $ constructors'' ++ [serializeDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
@@ -107,6 +110,12 @@ composite className ans = do
          <> parens (text $ "const " ++ className ++ "& c")
          <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
+
+    superConstructor p =
+            text className
+         <> parens (text "const" <+> p <> text "& c")
+         <> colon
+        <+> p <> parens (text "c") <+> braces empty
 
     constructors = [engineConstructor, copyConstructor]
 
@@ -152,20 +161,53 @@ annMemDecl (Lifted _ i t me _)  = do
 annMemDecl (Attribute _ i _ _ _) = return $ text i
 annMemDecl (MAnnotation _ i _) = return $ text i
 
--- Generate a struct definition for an anonymous record type.
-record :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM CPPGenR
-record rName idts = do
-    members <- vsep <$> mapM (\(i, t) -> definition i t Nothing) (sortBy (compare `on` fst) idts)
-    sD <- serializeDefn
-    let structDefn = text "struct" <+> text rName <+> hangBrace (members <$$> equalsOperator <$$> sD) <> semi
-    patcherDefn <- patcherSpec
-    addForward $ text "struct" <+> text rName <> semi
-    return $ vsep [structDefn, patcherDefn]
+record :: [Identifier] -> CPPGenM CPPGenR
+record (sort -> ids) = do
+    let templateVars = [text "_T" <> int n | _ <- ids | n <- [0..]]
+    let formalVars = [text "_" <> text i | i <- ids]
+
+    let defaultConstructor
+            = recordName <> parens empty <+> braces empty
+
+    let initConstructor
+            = recordName <> tupled (zipWith (<+>) templateVars formalVars) <> colon
+                        <+> hsep (punctuate comma $ [text i <> parens f | i <- ids | f <- formalVars])
+                        <+> braces empty
+
+    let copyConstructor
+            = recordName <> parens (text "const" <+> recordName
+                                      <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "_r")
+                                      <> colon
+                        <+> hsep (punctuate comma [text i <> parens (text "_r" <> dot <> text i) | i <- ids])
+                        <+> braces empty
+
+    let constructors = [defaultConstructor, initConstructor, copyConstructor]
+
+    let fieldEqs = text "if"
+          <+> parens (hsep $ punctuate (text "&&") [text i <+> text "==" <+> text "_r" <> dot <> text i | i <- ids])
+          <$$> indent 4 (text "return true;") <$$> text "return false;"
+
+    let equalityOperator = genCFunction Nothing (text "bool") (text "operator==") [recordName <+> text "_r"] fieldEqs
+
+    let fields = [t <+> text i <> semi | t <- templateVars | i <- ids]
+
+    serializer <- serializeDefn
+
+    let publicDefs = vsep $ constructors ++ [equalityOperator, serializer]
+    let privateDefs = vsep fields
+    let recordDefs = text "public:" <$$> indent 4 (publicDefs <$$> privateDefs)
+
+    let templateDecl = genCTemplateDecl templateVars
+    let recordStructDef = templateDecl <$$> text "class" <+> recordName <+> hangBrace recordDefs <> semi
+
+    recordPatcherDef <- patcherSpec
+
+    addForward $ templateDecl <+> text "class" <+> recordName <> semi
+
+    return $ recordStructDef <$$> recordPatcherDef
   where
-    fieldEq :: CPPGenR
-    fieldEq = text "if" <+> parens (cat $ punctuate (text "&&") [text f <+> text "==" <+> text "__other" <> dot <> text f | (f, _) <- idts]) <+> hangBrace (text "return true;") <+> hangBrace (text "return false;")
-    equalsOperator :: CPPGenR
-    equalsOperator = genCFunction Nothing (text "bool") (text "operator==") [text rName <+> text "__other"] fieldEq
+    recordName = text $ recordSignature ids
+
     oneFieldParser :: Identifier -> CPPGenM CPPGenR
     oneFieldParser i = do
         let keyParser = text "qi::lit" <> parens (dquotes $ text i)
@@ -200,16 +242,19 @@ record rName idts = do
 
     patcherSpec :: CPPGenM CPPGenR
     patcherSpec = do
-        let ids = fst $ unzip idts
         fps <- vsep <$> mapM oneFieldParser ids
         afp <- anyFieldParser ids
         lfp <- allFieldParser
         piv <- parserInvocation
+        let templateVars = [text "_T" <> int n | _ <- ids | n <- [0..]]
         let shallowDecl = genCDecl (text "shallow<string::iterator>") (text "_shallow") Nothing
         let patchFn = text "static" <+> text "void" <+> text "patch"
-                   <> parens (cat $ punctuate comma [text "string s", text rName <> text "&" <+> text "r"])
+                   <> parens (cat $ punctuate comma [text "string s", recordName
+                       <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "r"])
                   <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
-        return $ genCTemplateDecl [] <$$> text "struct patcher" <> angles (text rName) <+> hangBrace patchFn <> semi
+        return $ genCTemplateDecl templateVars
+                   <$$> text "struct patcher" <> angles (recordName <> angles (hsep $ punctuate comma templateVars))
+                    <+> hangBrace patchFn <> semi
 
     serializeDefn = do
         body <- serializeBody
@@ -221,7 +266,7 @@ record rName idts = do
                  (body <$$> parentSerialize)
 
     serializeBody = serializationMethod <$> get >>= \case
-        BoostSerialization -> return $ genCBoostSerialize (fst $ unzip idts)
+        BoostSerialization -> return $ genCBoostSerialize ids
 
     parentSerialize = empty
 

@@ -30,6 +30,5 @@ annotation Collection given type a, b {
   @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})
                              -> collection {elem : a} @ {Collection}
-                             -> collection {elem : a} @ {Collection}
 
 }
