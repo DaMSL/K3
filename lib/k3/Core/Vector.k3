@@ -1,0 +1,18 @@
+include "Annotation/Collection.k3"
+
+declare zero_vector : () -> collection { key: int, value: real } @ { Collection } = \_ -> empty { key: int, value: real } @ { Collection }
+
+declare vector_zip: (real -> real -> real) -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \f -> \v -> \w ->
+    ((v.combine w).groupBy (\i -> i.key) (\a -> \e -> f a e.value) 0.0)
+
+declare vector_add : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \x -> \y -> vector_zip (\acc -> \elem -> acc + elem) x y
+
+declare vector_sub : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \c1 -> \c2 ->
+    vector_zip (\acc -> \e -> (-1 * acc) + e) c2 c1
+
+declare scalar_mult : real -> collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } = \x -> \c -> (
+  c.groupBy (\dim -> dim.key) (\acc -> \dim -> x * dim.value) 0.0
+)
+
+declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
+    (vector_sub p q).fold (\a -> \x -> a + (x.value * x.value)) 0.0
