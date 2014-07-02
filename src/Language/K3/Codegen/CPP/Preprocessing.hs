@@ -42,7 +42,7 @@ mangleReservedNames' (Node (ELambda i :@: as) cs)
     mcs = mangleReservedNames' <$> cs
 mangleReservedNames' (Node (ELetIn i :@: as) cs)
     | i `elem` cppReservedNames = Node (ELetIn (mangleName i) :@: as) mcs
-    | otherwise = Node (EVariable i :@: as) mcs
+    | otherwise = Node (ELetIn i :@: as) mcs
   where
     mcs = mangleReservedNames' <$> cs
 mangleReservedNames' (Node (ECaseOf i :@: as) cs)
