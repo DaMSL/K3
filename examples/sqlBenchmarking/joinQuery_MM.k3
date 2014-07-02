@@ -440,7 +440,7 @@ declare getMinS: mut (int -> int -> int) = fun oldSId -> fun newSId -> (
 )
 
 declare reducerReceiveCounter: mut int = 0
-declare groupBySourceIPCollection: collection {Id: int, SourceIP: string, PageRank: collection {v: int} @ {Collection}, AdRevenue: v: real} @ {Collection}
+declare groupBySourceIPCollection: collection {Id: int, SourceIP: string, PageRank: collection {v: int} @ {Collection}, AdRevenue: real} @ {Collection}
 declare _emptyPageRanks : collection {v: int} @ {Collection}
 
 trigger accumulateOutput: (collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \reducerOutput -> (
@@ -451,7 +451,7 @@ trigger accumulateOutput: (collection {SId: int, TId: int, SourceIP: string, Pag
                 {Some existingOutput -> (
                     let newPageRank = existingOutput.PageRank in
                         newPageRank.insert {v: outputInstance.PageRank};
-                        groupBySourceIPCollection.update {Id: existingOutput.SId, SourceIP: existingOutput.SourceIP, PageRank: existingOutput.PageRank, AdRevenue: existingOutput.AdRevenue} {Id: (getMinS existingOutput.SId outputInstance.SId), SourceIP: existingOutput.SourceIP, PageRank: newPageRank, AdRevenue: existingOutput.AdRevenue + outputInstance.AdRevenue}
+                        groupBySourceIPCollection.update {Id: existingOutput.Id, SourceIP: existingOutput.SourceIP, PageRank: existingOutput.PageRank, AdRevenue: existingOutput.AdRevenue} {Id: (getMinS existingOutput.Id outputInstance.SId), SourceIP: existingOutput.SourceIP, PageRank: newPageRank, AdRevenue: existingOutput.AdRevenue + outputInstance.AdRevenue}
                 )}
                 {None -> (
                     let pageRanks = _emptyPageRanks in
@@ -465,8 +465,30 @@ trigger accumulateOutput: (collection {SId: int, TId: int, SourceIP: string, Pag
     else ()
 )
 
-trigger implementOrderBy : (collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \data -> (
-    
+declare _tmpRevenueSet: mut collection {SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}
+declare _tmpMaxAdRevenue: mut real = 0.0
+declare _tmpMaxAdRevenueIdCount: mut int = 6
+
+declare averagedPageRank: mut real = 0
+
+declare maxAdRevenueSet: collection {SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}
+
+trigger implementOrderBy : (collection {Id: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \data -> (
+    data.iterate (\sourceIPSet -> (
+        if sourceIPSet.AdRevenue >= _tmpMaxAdRevenue then
+            if sourceIPSet.Id < _tmpMaxAdRevenueIdCount then
+                _tmpMaxAdRevenue = sourceIPSet.AdRevenue;
+                _tmpRevenueSet = sourceIPSet
+            else ()
+        else ()
+    ));
+
+    let totalNumberOfPageRanks = _tmpRevenueSet.PageRank.fold (\acc -> \pageRankVal -> acc + 1) 0 in
+        let cumualtivePageRank = _tmpRevenueSet.PageRank.fold (\acc -> \pageRankVal -> acc + pageRankVal.v) 0 in
+            averagedPageRank = cumualtivePageRank/totalNumberOfPageRanks;
+
+    /* get the final revenue set order by total revenue, descending with single entry. */
+    maxAdRevenueSet.insert {SourceIP: _tmpRevenueSet.SourceIP, PageRank: averagedPageRank, AdRevenue: _tmpRevenueSet.AdRevenue}
 )
 
 
