@@ -4,6 +4,9 @@
 #include <ctime>
 #include <chrono>
 #include <climits>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <functional>
 
 namespace K3 {
@@ -77,6 +80,23 @@ namespace K3 {
     auto t = std::chrono::system_clock::now();
     auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
     return elapsed.count();
+  }
+
+  template <class Elem>
+  F<unit_t(K3::Collection<Elem>&)> loadCollection(string filepath) {
+    F<unit_t(K3::Collection<Elem>&)> r = [filepath] (K3::Collection<Elem>& c) {
+      string s;
+      std::ifstream infile(filepath);
+      cout << "hi!" << endl;
+      while (std::getline(infile,s)) {
+        Elem e;
+        do_patch<Elem>(s,e);
+        c.insert(e);
+        cout << e.pageURL << endl;
+      }
+      return unit_t();
+    };
+    return r;
   }
 }
 #endif /* K3_RUNTIME_BUILTINS_H */
