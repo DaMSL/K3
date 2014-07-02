@@ -1,0 +1,67 @@
+include "Annotation/Collection.k3"
+include "Core/CppBuiltins.k3"
+include "Core/Vector.k3"
+
+declare master: address = 127.0.0.1:40000
+declare num_peers: mut int = 1
+declare step_size: mut real = 0.9
+declare iterations_remaining: mut int = 10
+
+// Master:
+declare aggregates: mut {count: int, sum: mut collection { key: int, value: real } @ { Collection } }
+
+// All Nodes:
+declare parameters: mut collection { key: int, value: real } @ { Collection }
+declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+
+// Compute the gradient at a single point.
+// The gradient is a function of the current parameters, a global variable.
+declare point_gradient: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection }= \point -> (
+    zero_vector ()
+)
+
+// Update parameters based on a single point
+declare update_parameters: collection { key: int, value: real } @ { Collection } -> () = \point -> (
+  let update = scalar_mult step_size (point_gradient point) in
+  parameters = vector_add parameters update
+)
+
+// Run SGD on local dataset.
+// 0) Receive updated parameters from master
+// 1) Update local parameters once per data point (randomly ordered/drawn)
+// 2) Send local parameters to master for aggregation
+trigger local_sgd : collection { key: int, value: real } @ { Collection } = \new_params -> (
+  (parameters = new_params);
+  (data.iterate (\d -> update_parameters d.elem));
+  (aggregate, master) <- parameters
+)
+
+// Barrier: Stash local aggregates until all peers are finished. Then maximize.
+trigger aggregate : collection { key: int, value: real } @ { Collection } = \local_params -> (
+  let new_sum = vector_add local_params (aggregates.sum) in
+  let new_count = 1 + aggregates.count
+  in (
+    aggregates = {count: new_count, sum: new_sum};
+    if new_count == num_peers
+    then (maximize,master) <- ()
+    else ()
+  )
+)
+
+// Average local parameters from each peer, then start a new iteration.
+trigger maximize : () = \_ -> (
+  parameters = (scalar_mult (1.0 / aggregates.count) aggregates.sum);
+  aggregates = {count:0, sum: (zero_vector ())};
+  iterations_remaining = iterations_remaining - 1;
+  if iterations_remaining == 0
+  then ()
+  else peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+)
+
+// Randomly initialize parameters, and send them to each peer.
+trigger start : () = \_ -> (
+  parameters = zero_vector ();
+  peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+)
+
+
