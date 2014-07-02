@@ -292,7 +292,7 @@ namespace K3 {
         shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
         // Add the endpoint to the given endpoint state.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferMT());
+        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
 
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));

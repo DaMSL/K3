@@ -13,7 +13,7 @@ namespace K3
       shared_ptr<Value> DelimiterCodec::decode(const Value& v) {
 
         // Append to buffer
-        *buf_ = *buf_ + v;
+        buf_->append(v);
         // Determine if there is a complete value in the buffer
         shared_ptr<Value> result = shared_ptr<Value>();
         size_t pos = find_delimiter();
