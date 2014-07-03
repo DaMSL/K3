@@ -8,11 +8,12 @@ declare dataLoader : string -> collection {avgDuration: int,pageRank: int, pageU
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 10
-declare num_peers: int = 2
+declare num_workers: int = 2
+declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
-declare peers_ready: mut int = 0
-declare peers_finished: mut int = 0
+declare workers_ready: mut int = 0
+declare workers_finished: mut int = 0
 
 // Data
 declare local_rankings: collection {avgDuration: int,pageRank: int, pageURL: string} @ { Collection }
@@ -34,14 +35,14 @@ trigger q1_local : () = \_ -> (
   (finished, master) <- ()
 )
 
-// Signal to the master that a peer has finished the query locally.
+// Signal to the master that a worker has finished the query locally.
 trigger finished : () = \_ -> (
-  peers_finished = peers_finished + 1;
-  if peers_finished == num_peers
+  workers_finished = workers_finished + 1;
+  if workers_finished == num_workers
   then end_ms = now ();
        elapsed_ms = end_ms - start_ms;
        printLine (itos elapsed_ms);
-       peers.iterate (\p -> (shutdown, p.addr) <- ())
+       workers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
 
@@ -49,17 +50,17 @@ trigger shutdown : () = \_ -> (
   haltEngine ()
 )
 
-// Signal to the master that a peer is ready.
-// Once all peers are ready, the master will start the query.
+// Signal to the master that a worker is ready.
+// Once all workers are ready, the master will start the query.
 trigger ready : () = \_ -> (
-  peers_ready = peers_ready + 1;
-  if peers_ready == num_peers
-  then start_ms = now (); peers.iterate (\p -> (q1_local, p.addr) <- ())
+  workers_ready = workers_ready + 1;
+  if workers_ready == num_workers
+  then start_ms = now (); workers.iterate (\p -> (q1_local, p.addr) <- ())
   else ()
 )
 
 trigger load_all : () = \_ -> (
-  (dataLoader "/k3/data/amplab/rankings_10.k3" local_rankings);
+  (dataLoader data_file local_rankings);
   ((ready, master) <- ())
 )
 
