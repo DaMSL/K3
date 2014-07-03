@@ -53,32 +53,18 @@ namespace K3
     EnvStrFunction _get_env;
   };
 
-  // Message Processor used by generated code. Processing is done by dispatch messages using a
-  // generated table of triggers. The trigger wrapper functions perform the deserialization of the
-  // message payload themeselves.
+  // Message Processor used by generated code.
   class DispatchMessageProcessor : public NativeMessageProcessor {
     public:
-      DispatchMessageProcessor(TriggerDispatch td)
-        : NativeMessageProcessor(empty_map), table(td)
-      {}
+      DispatchMessageProcessor()
+        : NativeMessageProcessor(empty_map) {}
 
-      DispatchMessageProcessor(TriggerDispatch td, EnvStrFunction f)
-        : NativeMessageProcessor(f), table(td)
-      {}
+      DispatchMessageProcessor(EnvStrFunction f)
+        : NativeMessageProcessor(f) {}
 
       LoopStatus process(Message msg)
       {
-        TriggerWrapper tw;
-
-        // Look the trigger up in the dispatch table, error out if not present.
-        try {
-            tw = table.at(msg.id());
-        } catch (std::out_of_range e) {
-            return LoopStatus::Error;
-        }
-
-        // Call the trigger.
-        tw(msg.contents());
+        msg.dispatcher().dispatch();
 
         // Message was processed, signal the engine to continue.
         // TODO: Propagate trigger errors to engine, K3 error semantics?
@@ -86,7 +72,6 @@ namespace K3
       }
 
     private:
-      TriggerDispatch table;
       static std::map<std::string, std::string> empty_map() { return std::map<std::string, std::string>(); };
     };
 

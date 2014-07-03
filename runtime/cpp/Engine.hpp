@@ -105,9 +105,9 @@ namespace K3 {
     template <class Predicate>
     void waitForMessage(Predicate pred)
     {
-      if (  msgAvailMutex && msgAvailCondition ) {
+      if (msgAvailMutex && msgAvailCondition) {
         boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-        while ( pred() ) { msgAvailCondition->wait(lock); }
+        while (pred()) { msgAvailCondition->wait(lock); }
       } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
     }
 
@@ -163,23 +163,24 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, const Value& v);
+    void send(Address addr, Identifier triggerId, const Dispatcher& d);
 
-    void send(Address addr, shared_ptr<Value> v) {
-      send(addr, *v);
+    void send(Address addr, Identifier triggerId, shared_ptr<Dispatcher> d) {
+      send(addr, triggerId, *d);
     }
 
+    // TODO: avoid destructing tuple here
     void send(Message& m) {
-      send(m.address(), m.contents());
+      send(m.address(), m.id(), m.dispatcher());
     }
 
     void send(shared_ptr<Message> m) {
-      send(m->address(), m->contents());
+      send(m->address(), m->id(), m->dispatcher());
     }
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, shared_ptr<Value> v){ this->send(a,i,v); };
+      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
     }
 
     //---------------------------------------

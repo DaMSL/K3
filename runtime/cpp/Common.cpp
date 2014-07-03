@@ -136,5 +136,8 @@ namespace K3
         return s;
       }
 
-
+      // TODO: error reporting if not found
+      const shared_ptr<Message> RemoteMessage::toMessage() const {
+        return make_shared<Message>(address(), id(), dispatch_table[id()]);
+      }
 }

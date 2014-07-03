@@ -55,7 +55,6 @@ declaration (tag -> DGlobal i t (Just e)) = do
 declaration (tag -> DTrigger i t e) = do
     addTrigger i
     d  <- declaration (D.global i (T.function t T.unit) (Just e))
-    w  <- triggerWrapper i t
     dc <- dispatchClass i t
     return $ d <$$> w <$$> dc
 
@@ -91,29 +90,7 @@ generateDispatchPopulation = do
     return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
     genDispatch tName = return $
-        text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
-
-genDispatchName :: Identifier -> Identifier
-genDispatchName i = i ++ "_dispatch"
-
--- | TODO: delete
--- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
--- (using Boost serialization) and call the appropriate trigger.
-triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
-triggerWrapper i t = do
-  tmpDecl <- cDecl t "arg"
-  tmpType <- genCType t
-  let triggerDispatch = text i <> parens (text "arg") <> semi
-  let unpackCall = text "arg" <+> equals <+> text "*" <>
-        genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
-  return $
-    genCFunction Nothing (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
-          vsep [
-              tmpDecl,
-              unpackCall,
-              triggerDispatch,
-              text "return;"
-          ])
+        text ("dispatch_table[\"" ++ tName ++ "\"] = make_shared<" ++ genDispatchClassName tName ++ ">()") <> semi
 
 -- Generate a trigger-wrapper Dispatcher class
 dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
@@ -126,6 +103,7 @@ dispatchClass i t = do
       text $ "class " ++ className ++ " : public Dispatcher {",
       text   "  public:",
       text   "    " <> text className <> parens (sharedCType <+> text "arg") <+> text ": arg_(*arg) {}",
+      text   "    " <> text className <> text "()" <+> text "{}",
       text   "    void dispatch() {",
       text $ "        "++i++"(_arg);",
       text   "    }",

@@ -8,14 +8,22 @@
 #include "Common.hpp"
 
 namespace K3 {
-    // A TriggerWrapper is a function which wraps a trigger with the functionality necessary to
-    // deserialize the message payload, cast it to the trigger's appropriate argument type, and
-    // invoke the trigger function.
-    using TriggerWrapper = std::function<void(std::string)>;
+  
+    //------------
+    // Dispatcher class
+    //
+    // Every trigger type must have a Dispatcher that can be inserted
+    // in a queue
+    class Dispatcher {
+      public:
+        virtual void dispatch();
+        virtual string& pack(); 
+        virtual void unpack(string &msg); 
+    }
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper
     // function.
-    using TriggerDispatch = std::map<Identifier, TriggerWrapper>;
+    using TriggerDispatch = std::map<Identifier, Dispatcher>;
 }
 #endif
 

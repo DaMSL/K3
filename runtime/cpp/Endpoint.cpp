@@ -225,8 +225,8 @@ namespace K3
           if (force && empty()) { return transferred; }
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
-            Message msg = cdec->read_message(*v);
-            queues->enqueue(msg);
+            RemoteMessage rMsg = cdec->read_message(*v);
+            queues->enqueue(rMsg.toMessage());
             transferred = true;
           }
           notify(v);

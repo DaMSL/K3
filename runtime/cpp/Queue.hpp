@@ -24,34 +24,34 @@ namespace K3 {
   // Queue types.
 
   // TODO: r-ref overloads for push and pop
-  template<typename Value>
+  template<typename QueueVal>
   class MsgQueue {
   public:
-    virtual bool push(Value& v) = 0;
-    virtual bool pop(Value& v) = 0;
+    virtual bool push(QueueVal& v) = 0;
+    virtual bool pop(QueueVal& v) = 0;
     virtual bool empty() = 0;
     virtual size_t size() = 0;
   };
 
   // TODO: r-ref overloads for push and pop
-  template<typename Value>
-  class LockfreeMsgQueue : public MsgQueue<Value> {
+  template<typename QueueVal>
+  class LockfreeMsgQueue : public MsgQueue<QueueVal> {
   public:
-    LockfreeMsgQueue() {}
-    bool empty()        { return queue.empty(); }
-    bool push(Value& v) { ++qSize; return queue.push(v); }
-    bool pop(Value& v)  { --qSize; return queue.pop(v); }
-    size_t size()       { return qSize; }
+    LockfreeMsgQueue()     {}
+    bool empty()           { return queue.empty(); }
+    bool push(QueueVal& v) { ++qSize; return queue.push(v); }
+    bool pop(QueueVal& v)  { --qSize; return queue.pop(v); }
+    size_t size()          { return qSize; }
   protected:
-    boost::lockfree::queue<Value> queue;
+    boost::lockfree::queue<QueueVal> queue;
     size_t qSize; // TODO: synchronize.
   };
 
 
   // TODO: r-ref overloads for push and pop
-  template<typename Value>
+  template<typename QueueVal>
   class LockingMsgQueue
-    : public MsgQueue<Value>, public boost::basic_lockable_adapter<mutex>
+    : public MsgQueue<QueueVal>, public boost::basic_lockable_adapter<mutex>
   {
   public:
     typedef boost::basic_lockable_adapter<mutex> qlockable;
@@ -62,14 +62,14 @@ namespace K3 {
       return queue.get(guard).empty();
     }
 
-    bool push(Value& v) {
+    bool push(QueueVal& v) {
         boost::strict_lock<LockingMsgQueue> guard(*this);
       ++qSize;
       queue.get(guard).push(v);
       return true;
     }
 
-    bool pop(Value& v) {
+    bool pop(QueueVal& v) {
         boost::strict_lock<LockingMsgQueue> guard(*this);
       bool r = false;
       if ( !queue.get(guard).empty() ) {
@@ -84,7 +84,7 @@ namespace K3 {
     size_t size() { return qSize; }
 
   protected:
-    boost::externally_locked<std::queue<Value>, LockingMsgQueue> queue;
+    boost::externally_locked<std::queue<QueueVal>, LockingMsgQueue> queue;
     size_t qSize; // TODO: synchronize
   };
 
@@ -141,7 +141,7 @@ namespace K3 {
 
 
   class SinglePeerQueue
-    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, Value> > >
+    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, Dispatcher> > >
   {
   public:
     typedef Address QueueKey;
