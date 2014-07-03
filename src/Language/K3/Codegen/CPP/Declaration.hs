@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Declaration where
@@ -10,6 +11,7 @@ import Data.Functor
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Tree
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -43,6 +45,19 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
     cta <- genCType ta
     ctr <- genCType tr
     return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
+declaration (tag -> DGlobal i (tag &&& children -> (TForall _, _)) (Just e)) = do
+    te@(tag &&& children -> (TFunction, [ta, tr])) <- getKType e
+    let tvs = L.nub $ map (\(TDeclaredVar j :@: _) -> j)
+                    $ filter (\case { (TDeclaredVar _ :@: _) -> True; _ -> False })
+                    $ flatten te
+    let td = genCTemplateDecl $ map text tvs
+    let (tag &&& children -> (ELambda x, [b])) = e
+    newF <- cDecl te i
+    addForward $ td <+> newF
+    body <- reify RReturn b
+    cta <- genCType ta
+    ctr <- genCType tr
+    return $ td <$$> ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 
 declaration (tag -> DGlobal i t (Just e)) = do
     newI <- reify (RName i) e
