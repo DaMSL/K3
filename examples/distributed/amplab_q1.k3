@@ -1,0 +1,67 @@
+include "Annotation/Collection.k3"
+include "Core/CppBuiltins.k3"
+
+// Hack
+declare dataLoader : string -> collection {avgDuration: int,pageRank: int, pageURL: string} @ { Collection } -> ()
+
+
+// Constants
+declare master: address = 127.0.0.1:40000
+declare x: mut int = 10
+declare num_peers: int = 2
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+
+// Data
+declare local_rankings: collection {avgDuration: int,pageRank: int, pageURL: string} @ { Collection }
+declare local_q1_results: collection {pageRank: int,pageURL: string} @ { Collection }
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+trigger q1_local : () = \_ -> (
+  local_rankings.iterate (\row ->
+    if row.pageRank > x
+    then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
+    else ()
+  );
+  (finished, master) <- ()
+)
+
+// Signal to the master that a peer has finished the query locally.
+trigger finished : () = \_ -> (
+  peers_finished = peers_finished + 1;
+  if peers_finished == num_peers
+  then end_ms = now ();
+       elapsed_ms = end_ms - start_ms;
+       printLine (itos elapsed_ms);
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+)
+
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready : () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == num_peers
+  then start_ms = now (); peers.iterate (\p -> (q1_local, p.addr) <- ())
+  else ()
+)
+
+trigger load_all : () = \_ -> (
+  (dataLoader "/k3/data/amplab/rankings_10.k3" local_rankings);
+  ((ready, master) <- ())
+)
+
+source rows : () = value ()
+feed rows |> load_all
