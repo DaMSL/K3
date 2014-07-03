@@ -50,6 +50,7 @@ genCType (tag -> TBool) = return (text "bool")
 genCType (tag -> TByte) = return (text "unsigned char")
 genCType (tag -> TInt) = return (text "int")
 genCType (tag -> TReal) = return (text "double")
+genCType (tag -> TNumber) = return (text "double")
 genCType (tag -> TString) = return (text "string")
 genCType (tag &&& children -> (TOption, [t])) = (text "std::shared_ptr" <>) . angles <$> genCType t
 genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
