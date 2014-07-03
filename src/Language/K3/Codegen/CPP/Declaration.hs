@@ -11,6 +11,8 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+import Data.Char(toUpper)
+
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
@@ -54,9 +56,10 @@ declaration (tag -> DGlobal i t (Just e)) = do
 -- deserialization.
 declaration (tag -> DTrigger i t e) = do
     addTrigger i
-    d <- declaration (D.global i (T.function t T.unit) (Just e))
-    w <- triggerWrapper i t
-    return $ d <$$> w
+    d  <- declaration (D.global i (T.function t T.unit) (Just e))
+    w  <- triggerWrapper i t
+    dc <- dispatchClass i t
+    return $ d <$$> w <$$> dc
 
 declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
@@ -95,22 +98,53 @@ generateDispatchPopulation = do
 genDispatchName :: Identifier -> Identifier
 genDispatchName i = i ++ "_dispatch"
 
+genDispatchClassName :: Identifier -> Identifier
+genDispatchClassName i = "Dispatcher" ++ [toUpper $ head i] ++ tail i
+
+-- | TODO: delete
 -- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
 -- (using Boost serialization) and call the appropriate trigger.
 triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
 triggerWrapper i t = do
-    tmpDecl <- cDecl t "arg"
-    tmpType <- genCType t
-    let triggerDispatch = text i <> parens (text "arg") <> semi
-    let unpackCall = text "arg" <+> equals <+> text "*" <> genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
-    return $ genCFunction Nothing (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
-            vsep [
-                tmpDecl,
-                unpackCall,
-                triggerDispatch,
-                text "return;"
-            ])
+  tmpDecl <- cDecl t "arg"
+  tmpType <- genCType t
+  let triggerDispatch = text i <> parens (text "arg") <> semi
+  let unpackCall = text "arg" <+> equals <+> text "*" <>
+        genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
+  return $
+    genCFunction Nothing (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
+          vsep [
+              tmpDecl,
+              unpackCall,
+              triggerDispatch,
+              text "return;"
+          ])
 
+-- Generate a trigger-wrapper Dispatcher class
+dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
+dispatchClass i t = do
+  cType <- genCType t
+  let className = genDispatchClassName i
+      sharedCType = text "shared_ptr" <> angles cType
+  return $
+    vsep [
+      text $ "class " ++ className ++ " : public Dispatcher {",
+      text   "  public:",
+      text   "    " <> text className <> parens (sharedCType <+> text "arg") <+> text ": arg_(*arg) {}",
+      text   "    void dispatch() {",
+      text $ "        "++i++"(_arg);",
+      text   "    }",
+      text   "    void unpack(string &msg) {",
+      text   "        arg_ = unpack<" <> cType <> text ">(msg);",
+      text   "    }",
+      text   "    string& pack() {",
+      text   "        pack<" <> cType <> text ">(arg_);",
+      text   "    }",
+      text   "  private:",
+      text   "    " <> sharedCType <+> text "arg_;",
+      text   "};"
+    ]
+      
 -- Generated Builtins
 -- Interface for source builtins.
 -- Map special builtin suffix to a function that will generate the builtin.

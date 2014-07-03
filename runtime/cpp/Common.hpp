@@ -42,7 +42,7 @@ namespace K3 {
   //---------------
   // Addresses.
 
-  static inline Address make_address(const std::string& host, unsigned short port) {
+  static inline Address make_address(const std::string& host, unsigned short port)   {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
@@ -50,7 +50,7 @@ namespace K3 {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  static inline Address make_address(const std::string&& host, unsigned short port) {
+  static inline Address make_address(const std::string&& host, unsigned short port)  {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
@@ -90,34 +90,46 @@ namespace K3 {
   // TODO put the definition somewhere
   static Address defaultAddress = make_address("127.0.0.1", 40000);
 
+  //------------
+  // Dispatcher class
+  //
+  // Every trigger type must have a Dispatcher that can be inserted
+  // in a queue
+  class Dispatcher {
+    public:
+      virtual void dispatch();
+      virtual string& pack(); 
+      virtual void unpack(string &msg); 
+  }
+
 
   //-------------
   // Messages.
 
   class Message : public std::tuple<Address, Identifier, Value> {
   public:
-    Message(Address addr, Identifier id, const Value& v)
+    Message(Address addr, Identifier id, const Dispatcher& v)
       : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), v)
     {}
 
-    Message(Address addr, Identifier id, Value&& v)
-      : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), std::forward<Value>(v))
+    Message(Address addr, Identifier id, Dispatcher&& v)
+      : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), std::forward<Dispatcher>(v))
     {}
 
-    Message(Address&& addr, Identifier&& id, Value&& v)
+    Message(Address&& addr, Identifier&& id, Dispatcher&& v)
       : std::tuple<Address, Identifier, Value>(std::forward<Address>(addr),
                                           std::forward<Identifier>(id),
-                                          std::forward<Value>(v))
+                                          std::forward<Dispatcher>(v))
     {}
 
 
-    Address&    address()  { return std::get<0>(*this); }
-    Identifier& id()       { return std::get<1>(*this); }
-    Value&      contents() { return std::get<2>(*this); }
+    Address&         address()  { return std::get<0>(*this); }
+    Identifier&      id()       { return std::get<1>(*this); }
+    Dispatcher&      contents() { return std::get<2>(*this); }
     std::string      target()   { return id() + "@" + addressAsString(address()); }
     const Address&    address()  const { return std::get<0>(*this); }
     const Identifier& id()       const { return std::get<1>(*this); }
-    const Value&      contents() const { return std::get<2>(*this); }
+    const Dispatcher& contents() const { return std::get<2>(*this); }
     const std::string target()   const { return id() + "@" + addressAsString(address()); }
   };
 

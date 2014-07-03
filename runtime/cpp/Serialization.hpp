@@ -18,7 +18,7 @@ namespace K3 {
 
   namespace BoostSerializer {
       template <typename V>
-      string pack(const V& v) {
+      string& pack(const V& v) {
         ostringstream out_sstream;
         boost::archive::text_oarchive out_archive(out_sstream);
         out_archive << v;
@@ -30,9 +30,9 @@ namespace K3 {
         istringstream in_sstream(s);
         boost::archive::text_iarchive in_archive(in_sstream);
 
-        V p;
+        auto p = make_shared<V>();
         in_archive >> p;
-        return make_shared<V>(p);
+        return p;
       }
 
       template <typename V>
@@ -40,9 +40,9 @@ namespace K3 {
         istringstream in_sstream(s);
         boost::archive::text_iarchive in_archive(in_sstream);
 
-        V p(eng);
+        auto p = make_shared<V>(eng);
         in_archive >> p;
-        return make_shared<V>(p);
+        return p;
       }
   }
 }
