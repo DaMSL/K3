@@ -115,9 +115,11 @@ inline e@(tag -> EVariable v)
     attachTemplateVars g
         | isJust (lookup v g) && isJust functionType
             = do
-                let ts = snd . unzip . dedup $ matchTrees (head $ children
-                                                                $ fromJust
-                                                                $ lookup v g) (fromJust functionType)
+                signatureType <- case fromJust (lookup v g) of
+                                      t@(tag -> TFunction) -> return t
+                                      (tag &&& children -> (TForall _, [t'])) -> return t'
+                                      _ -> throwE $ CPPGenE "Unreachable Error."
+                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
                 cts <- mapM genCType ts
                 return $ if null cts
                    then (empty, text v)
