@@ -195,9 +195,36 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (be, bv) <- inline b
     bsym <- binarySymbol bop
     return (ae <//> be, av <+> bsym <+> bv)
-inline (tag &&& children -> (EProject v, [e])) = do
-    (ee, ev) <- inline e
-    return (ee, ev <> dot <> text v)
+inline e@(tag &&& children -> (EProject v, [k])) = do
+    (ke, kv) <- inline k
+    (_, vv) <- globals <$> get >>= attachTemplateVars
+    return (ke, kv <> dot <> vv)
+  where
+    functionType = case e @~ \case { EType _ -> True; _ -> False } of
+        Just (EType t@(tag -> TFunction)) -> Just t
+        _ -> Nothing
+
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars g
+        | isJust (lookup v g) && isJust functionType
+            = do
+                signatureType <- case fromJust (lookup v g) of
+                                      t@(tag -> TFunction) -> return t
+                                      (tag &&& children -> (TForall _, [t'])) -> return t'
+                                      _ -> throwE $ CPPGenE "Unreachable Error."
+                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
+                cts <- mapM genCType ts
+                return $ if null cts
+                   then (empty, text v)
+                   else (empty, text v <> angles (hsep $ punctuate comma cts))
+        | otherwise = return (empty, text v)
+
+    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
 
 inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
 
