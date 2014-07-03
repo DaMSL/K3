@@ -103,6 +103,34 @@ inline (tag -> EConstant c) = (empty,) <$> constant c
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
+inline e@(tag -> EVariable v)
+    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return (empty, text "*" <> text v)
+    | otherwise = globals <$> get >>= attachTemplateVars
+  where
+    functionType = case e @~ \case { EType _ -> True; _ -> False } of
+        Just (EType t@(tag -> TFunction)) -> Just t
+        _ -> Nothing
+
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars g
+        | isJust (lookup v g) && isJust functionType
+            = do
+                let ts = snd . unzip . dedup $ matchTrees (head $ children
+                                                                $ fromJust
+                                                                $ lookup v g) (fromJust functionType)
+                cts <- mapM genCType ts
+                return $ if null cts
+                   then (empty, text v)
+                   else (empty, text v <> angles (hsep $ punctuate comma cts))
+        | otherwise = return (empty, text v)
+
+    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
+
 inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
         then (empty, text "*" <> text v)
         else (empty, text v)
@@ -140,7 +168,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
             tr' <- genCType tr
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
-    exc <- globals <$> get
+    exc <- fst . unzip . globals <$> get
     let fvs = nub $ filter (/= arg) $ freeVariables body
     body' <- reify RReturn body
     return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')

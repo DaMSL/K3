@@ -3,6 +3,7 @@
 
 module Language.K3.Codegen.CPP.Primitives where
 
+import Data.Char
 import Data.Functor
 import Data.Maybe (maybeToList)
 
@@ -72,6 +73,8 @@ genCType (tag &&& children -> (TFunction, [ta, tr])) = do
     ctr <- genCType tr
     return $ genCQualify (text "std") $ text "function" <> angles (ctr <> parens cta)
 
+genCType (tag &&& children -> (TForall _, [t])) = genCType t
+genCType (tag -> TDeclaredVar i) = return $ text $ map toUpper i
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR
