@@ -104,6 +104,9 @@ includes = return [
         "sstream",
         "string",
 
+        -- Strtk
+        "strtk.hpp",
+
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
