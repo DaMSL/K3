@@ -72,8 +72,8 @@ namespace K3 {
     public:
       InternalCodec() : LogMT("InternalCodec") {}
 
-      virtual Message read_message(const Value&) = 0;
-      virtual Value show_message(const Message&) = 0;
+      virtual RemoteMessage read_message(const Value&) = 0;
+      virtual Value show_message(const RemoteMessage&) = 0;
   };
 
   class DelimiterCodec : public virtual Codec, public virtual LogMT {
@@ -138,9 +138,9 @@ namespace K3 {
     public:
       AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
 
-      Message read_message(const Value& v);
+      RemoteMessage read_message(const Value& v);
 
-      Value show_message(const Message& m);
+      Value show_message(const RemoteMessage& m);
   };
 
   class DefaultInternalCodec : public AbstractDefaultInternalCodec, public DefaultCodec, public virtual LogMT {
