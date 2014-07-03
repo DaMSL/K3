@@ -1,9 +1,10 @@
 #include "Common.hpp"
+#include "Codec.hpp"
 
 using namespace std;
 
-namespace K3
-{
+namespace K3 {
+
       Value DelimiterCodec::encode(const Value& v) {
         string res = string(v);
         res.push_back(delimiter_);
@@ -141,3 +142,4 @@ namespace K3
         return make_shared<Message>(address(), id(), dispatch_table[id()]);
       }
 }
+
