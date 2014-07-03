@@ -37,7 +37,7 @@ import Language.K3.Core.Type
 type ImperativeE = ()
 
 data ImperativeS = ImperativeS {
-        globals :: [Identifier],
+        globals :: [(Identifier, K3 Type)],
         patchables :: [Identifier],
         showables  :: [(Identifier, K3 Type)],
         mutables :: [Identifier]
@@ -62,8 +62,8 @@ withMutable i m = do
         [] -> left ()
     return result
 
-addGlobal :: Identifier -> ImperativeM ()
-addGlobal i = modify $ \s -> s { globals = i : globals s }
+addGlobal :: Identifier -> K3 Type -> ImperativeM ()
+addGlobal i t = modify $ \s -> s { globals = (i, t) : globals s }
 
 addPatchable :: Identifier -> ImperativeM ()
 addPatchable i = modify $ \s -> s { patchables  = i : patchables s }

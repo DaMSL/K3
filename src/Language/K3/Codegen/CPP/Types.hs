@@ -48,7 +48,7 @@ data CPPGenS = CPPGenS {
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
-        globals  :: [Identifier],
+        globals  :: [(Identifier, K3 Type)],
 
         patchables :: [Identifier],
 
