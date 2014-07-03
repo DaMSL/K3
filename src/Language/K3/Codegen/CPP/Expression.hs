@@ -150,21 +150,25 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
 
     return (fe <$$> ae, fv <> parens av)
-inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]), v])) = do
-    (te, tv) <- inline t
-    (ae, av) <- inline a
-    (ve, vv) <- inline v
-    argType <- getKType v >>= genCType
-    let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
+inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable trigNm), addr]), val])) = do
+    (te, _)  <- inline trig
+    (ae, av) <- inline addr
+    (ve, vv) <- inline val
+    let className = genDispatchClassName trigNm
+        classInst = text className <+> genCCall (text $ "d = make_shared<"++className++">") Nothing [vv]
     return (
-            vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
+            vsep [te, ae, ve, 
+                  classInst <> semi,
+                  text "engine.send" <> tupled [av, text "d"]] <> semi,
             text "unit_t()"
         )
+
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
     bsym <- binarySymbol bop
     return (ae <//> be, av <+> bsym <+> bv)
+
 inline (tag &&& children -> (EProject v, [e])) = do
     (ee, ev) <- inline e
     return (ee, ev <> dot <> text v)

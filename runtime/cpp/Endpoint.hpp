@@ -37,7 +37,7 @@ namespace K3
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
-  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+  typedef std::function<void(const Address&, shared_ptr<Value>)> SendFunctionPtr;
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;

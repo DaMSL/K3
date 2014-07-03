@@ -57,14 +57,14 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, Identifier triggerId, const Value& v)
+    void Engine::send(Address addr, const Dispatcher& d)
     {
       if (deployment) {
         bool local_address = isDeployedNode(*deployment, addr);
         bool shortCircuit =  local_address || simulation();
-        Message msg(addr, triggerId, v);
+        Message msg(addr, triggerId, d);
 
-        if ( shortCircuit ) {
+        if (shortCircuit) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the value.
           queues->enqueue(msg);
@@ -95,7 +95,7 @@ namespace K3 {
             }
           }
 
-          if ( !sent ) {
+          if (!sent) {
             string errorMsg = "Failed to send a message to " + msg.target();
             logAt(trivial::error, errorMsg);
             throw runtime_error(errorMsg);

@@ -163,23 +163,23 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, Identifier triggerId, const Value& v);
+    void send(Address addr, const Value& v);
 
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
-      send(addr, triggerId, *v);
+    void send(Address addr, shared_ptr<Value> v) {
+      send(addr, *v);
     }
 
     void send(Message& m) {
-      send(m.address(), m.id(), m.contents());
+      send(m.address(), m.contents());
     }
 
     void send(shared_ptr<Message> m) {
-      send(m->address(), m->id(), m->contents());
+      send(m->address(), m->contents());
     }
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
+      return [this](Address a, shared_ptr<Value> v){ this->send(a,i,v); };
     }
 
     //---------------------------------------

@@ -104,31 +104,51 @@ namespace K3 {
 
 
   //-------------
-  // Messages.
+  // Remote Messages (between nodes)
 
-  class Message : public std::tuple<Address, Identifier, Value> {
+  class RemoteMessage : public std::tuple<Address, Identifier, Value> {
   public:
-    Message(Address addr, Identifier id, const Dispatcher& v)
+    RemoteMessage(Address addr, Identifier id, const Value& v)
       : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), v)
     {}
 
-    Message(Address addr, Identifier id, Dispatcher&& v)
-      : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), std::forward<Dispatcher>(v))
+    RemoteMessage(Address addr, Identifier id, Value&& v)
+      : std::tuple<Address, Identifier, Value>(std::move(addr), std::move(id), std::forward<Value>(v))
     {}
 
-    Message(Address&& addr, Identifier&& id, Dispatcher&& v)
+    RemoteMessage(Address&& addr, Identifier&& id, Value&& v)
       : std::tuple<Address, Identifier, Value>(std::forward<Address>(addr),
                                           std::forward<Identifier>(id),
-                                          std::forward<Dispatcher>(v))
+                                          std::forward<Value>(v))
+    {}
+
+    const Address&    address()  const { return std::get<0>(*this); }
+    const Identifier& id()       const { return std::get<1>(*this); }
+    const Value& contents()      const { return std::get<2>(*this); }
+    const std::string target()   const { return id() + "@" + addressAsString(address()); }
+  };
+  
+  //-------------
+  // Local Messages (inside a system)
+
+  class LocalMessage : public std::tuple<Address, Dispatcher> {
+  public:
+    LocalMessage(Address addr, const Dispatcher& d)
+      : std::tuple<Address, Value>(std::move(addr), d)
+    {}
+
+    LocalMessage(Address addr, Dispatcher&& d)
+      : std::tuple<Address, Value>(std::move(addr), std::forward<Dispatcher>(d))
+    {}
+
+    LocalMessage(Address&& addr, Dispatcher&& d)
+      : std::tuple<Address, Value>(std::forward<Address>(addr),
+                                   std::forward<Dispatcher>(d))
     {}
 
 
-    Address&         address()  { return std::get<0>(*this); }
-    Identifier&      id()       { return std::get<1>(*this); }
-    Dispatcher&      contents() { return std::get<2>(*this); }
-    std::string      target()   { return id() + "@" + addressAsString(address()); }
     const Address&    address()  const { return std::get<0>(*this); }
-    const Identifier& id()       const { return std::get<1>(*this); }
+    const Identifier& id()       const { return std::get<2>(*this).targetId(); }
     const Dispatcher& contents() const { return std::get<2>(*this); }
     const std::string target()   const { return id() + "@" + addressAsString(address()); }
   };

@@ -11,8 +11,6 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Data.Char(toUpper)
-
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
@@ -97,9 +95,6 @@ generateDispatchPopulation = do
 
 genDispatchName :: Identifier -> Identifier
 genDispatchName i = i ++ "_dispatch"
-
-genDispatchClassName :: Identifier -> Identifier
-genDispatchClassName i = "Dispatcher" ++ [toUpper $ head i] ++ tail i
 
 -- | TODO: delete
 -- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
