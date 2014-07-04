@@ -141,12 +141,12 @@ namespace K3 {
 
 
   class SinglePeerQueue
-    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > >
+    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > >
   {
   public:
     typedef Address QueueKey;
     //typedef LockfreeMsgQueue<tuple<Identifier, shared_ptr <Dispatcher> > > Queue;
-    typedef LockingMsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > Queue;
+    typedef LockingMsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > Queue;
     typedef tuple<QueueKey, shared_ptr<Queue> > PeerMessages;
 
     SinglePeerQueue() : LogMT("SinglePeerQueue") {}
@@ -158,7 +158,7 @@ namespace K3 {
     size_t size() const { return get<1>(peerMsgs)->size(); }
 
   protected:
-    typedef MsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > BaseQueue;
+    typedef MsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > BaseQueue;
     PeerMessages peerMsgs;
 
     bool validTarget(const Message& m) const { return m.address() == get<0>(peerMsgs); }
@@ -177,7 +177,7 @@ namespace K3 {
 
     void enqueue(Message& m, shared_ptr<BaseQueue> q)
     {
-      tuple<Identifier, shared_ptr<Dispatcher> > entry = make_tuple(m.id(), m.dispatcher());
+      tuple<Identifier, boost::shared_ptr<Dispatcher> > entry = make_tuple(m.id(), m.dispatcher());
       if ( !(q && q->push(entry)) ) {
         BOOST_LOG(*this) << "Invalid destination queue during enqueue";
       }
@@ -186,13 +186,13 @@ namespace K3 {
     shared_ptr<Message> dequeue(const tuple<QueueKey, shared_ptr<BaseQueue> >& idxQ)
     {
       shared_ptr<Message>  r;
-      tuple<Identifier, shared_ptr<Dispatcher> > entry;
+      tuple<Identifier, boost::shared_ptr<Dispatcher> > entry;
 
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {
         const Address& addr  = get<0>(idxQ);
         const Identifier& id = get<0>(entry);
-        const shared_ptr<Dispatcher> d  = get<1>(entry);
+        const boost::shared_ptr<Dispatcher> d  = get<1>(entry);
         r = make_shared<Message>(addr, id, d);
       } else {
         BOOST_LOG(*this) << "Invalid source queue during dequeue";
@@ -205,12 +205,12 @@ namespace K3 {
   // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiPeerQueue
-    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > >
+    : public IndexedMessageQueues<Address, MsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > >
   {
   public:
     typedef Address QueueKey;
     //typedef LockfreeMsgQueue<tuple<Identifier, Value> > Queue;
-    typedef LockingMsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > Queue;
+    typedef LockingMsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > Queue;
     typedef map<QueueKey, shared_ptr<Queue> > MultiPeerMessages;
 
     MultiPeerQueue() : LogMT("MultiPeerQueue") {}
@@ -227,7 +227,7 @@ namespace K3 {
     }
 
   protected:
-    typedef MsgQueue<tuple<Identifier, shared_ptr<Dispatcher> > > BaseQueue;
+    typedef MsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > BaseQueue;
     MultiPeerMessages multiPeerMsgs;
 
     bool validTarget(const Message& m) const {
@@ -254,7 +254,7 @@ namespace K3 {
 
     void enqueue(Message& m, shared_ptr<BaseQueue> q)
     {
-      tuple<Identifier, shared_ptr<Dispatcher> > entry = make_tuple(m.id(), m.dispatcher());
+      tuple<Identifier, boost::shared_ptr<Dispatcher> > entry = make_tuple(m.id(), m.dispatcher());
       if ( !(q && q->push(entry)) ) {
         BOOST_LOG(*this) << "Invalid destination queue during enqueue";
       }
@@ -263,13 +263,13 @@ namespace K3 {
     shared_ptr<Message> dequeue(const tuple<QueueKey, shared_ptr<BaseQueue> >& idxQ)
     {
       shared_ptr<Message> r;
-      tuple<Identifier, shared_ptr<Dispatcher> > entry;
+      tuple<Identifier, boost::shared_ptr<Dispatcher> > entry;
 
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {
         const Address& addr  = get<0>(idxQ);
         const Identifier& id = get<0>(entry);
-        const shared_ptr<Dispatcher> v  = get<1>(entry);
+        const boost::shared_ptr<Dispatcher> v  = get<1>(entry);
         r = shared_ptr<Message >(new Message(addr, id, v));
       } else {
         BOOST_LOG(*this) << "Invalid source queue during dequeue";
@@ -282,12 +282,12 @@ namespace K3 {
   // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MultiTriggerQueue
-    : public IndexedMessageQueues<tuple<Address, Identifier>, MsgQueue<shared_ptr<Dispatcher> > >
+    : public IndexedMessageQueues<tuple<Address, Identifier>, MsgQueue<boost::shared_ptr<Dispatcher> > >
   {
   public:
     typedef tuple<Address, Identifier> QueueKey;
     //typedef LockfreeMsgQueue<shared_ptr<Dispatcher> > Queue;
-    typedef LockingMsgQueue<shared_ptr<Dispatcher> > Queue;
+    typedef LockingMsgQueue<boost::shared_ptr<Dispatcher> > Queue;
     typedef map<QueueKey, shared_ptr<Queue> > MultiTriggerMessages;
 
     MultiTriggerQueue() : LogMT("MultiTriggerQueue") {}
@@ -310,7 +310,7 @@ namespace K3 {
     }
 
   protected:
-    typedef MsgQueue<shared_ptr <Dispatcher> > BaseQueue;
+    typedef MsgQueue<boost::shared_ptr<Dispatcher> > BaseQueue;
     MultiTriggerMessages multiTriggerMsgs;
 
     bool validTarget(const Message& m) const {
@@ -345,7 +345,7 @@ namespace K3 {
     shared_ptr<Message> dequeue(const tuple<QueueKey, shared_ptr<BaseQueue> >& idxQ)
     {
       shared_ptr<Message> r;
-      shared_ptr<Dispatcher> entry;
+      boost::shared_ptr<Dispatcher> entry;
 
       shared_ptr<BaseQueue> q = get<1>(idxQ);
       if ( q && q->pop(entry) ) {

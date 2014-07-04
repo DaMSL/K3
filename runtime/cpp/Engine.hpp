@@ -163,9 +163,9 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, Identifier triggerId, const Dispatcher& d);
+    void send(Address addr, Identifier triggerId, Dispatcher& d);
 
-    void send(Address addr, Identifier triggerId, shared_ptr<Dispatcher> d) {
+    void send(Address addr, Identifier triggerId, boost::shared_ptr<Dispatcher> d) {
       send(addr, triggerId, *d);
     }
 
@@ -180,7 +180,7 @@ namespace K3 {
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Dispatcher> d) 
+      return [this](Address a, Identifier i, boost::shared_ptr<Dispatcher> d)
           { this->send(a, i, d); };
     }
 

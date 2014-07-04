@@ -107,6 +107,7 @@ includes = return [
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
+        "boost/make_shared.hpp",
 
         -- K3 Runtime
         "Collections.hpp",

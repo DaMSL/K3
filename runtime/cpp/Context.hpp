@@ -14,7 +14,7 @@ namespace K3 {
    public:
     __k3_context(Engine& e): __engine(e) {}
 
-    virtual void __dispatch(std::shared_ptr<Dispatcher>) {}
+    virtual void __dispatch(boost::shared_ptr<Dispatcher>) {}
     virtual std::map<std::string, std::string> __prettify() { return std::map<std::string, std::string> {}; }
     virtual void __patch(std::string) {}
 

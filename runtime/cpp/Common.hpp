@@ -173,8 +173,20 @@ namespace K3 {
 
     void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
     void logAt(boost::log::trivial::severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
-  };
+  }; // Class LogMT
 
+  // Functions to convert between boost and std shared_ptrs
+  template<class T>
+  boost::shared_ptr<T> make_shared_ptr(const std::shared_ptr<T>& ptr)
+  {
+      return boost::shared_ptr<T>(ptr.get(), [ptr](T*){});
+  }
+
+  template<class T>
+  std::shared_ptr<T> make_shared_ptr(const boost::shared_ptr<T>& ptr)
+  {
+      return std::shared_ptr<T>(ptr.get(), [ptr](T*){});
+  }
 
 }
 
