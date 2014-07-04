@@ -91,7 +91,7 @@ genKMain = do
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
               genCCall (text "DispatchMessageProcessor") Nothing
-                [text "dispatch_table", text showGlobalsName]) <> semi,
+                [text showGlobalsName]) <> semi,
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
             text "return 0" <> semi
         ]

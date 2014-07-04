@@ -10,6 +10,7 @@
 #include <boost/thread/lockable_adapter.hpp>
 
 #include <Common.hpp>
+#include <Codec.hpp>
 #include <Network.hpp>
 #include <IOHandle.hpp>
 #include <Queue.hpp>
@@ -37,7 +38,7 @@ namespace K3
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
-  typedef std::function<void(const Address&, shared_ptr<Value>)> SendFunctionPtr;
+  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Dispatcher>)> SendFunctionPtr;
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;

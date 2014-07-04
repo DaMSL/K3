@@ -64,7 +64,7 @@ namespace K3
 
       LoopStatus process(Message msg)
       {
-        msg.dispatcher().dispatch();
+        msg.dispatcher()->dispatch();
 
         // Message was processed, signal the engine to continue.
         // TODO: Propagate trigger errors to engine, K3 error semantics?
@@ -90,7 +90,7 @@ namespace K3
 
     LoopStatus process(Message msg) {
       try {
-        contexts[msg.address()]->__dispatch(msg.contents());
+        contexts[msg.address()]->__dispatch(msg.dispatcher());
       } catch(std::out_of_range e) {
         return LoopStatus::Error;
       }

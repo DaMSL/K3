@@ -1,7 +1,9 @@
-#ifndef K3_RUNTIME_COMMON_H
-#define K3_RUNTIME_COMMON_H
+#ifndef K3_RUNTIME_CODEC_H
+#define K3_RUNTIME_CODEC_H
 
 #include <string>
+
+#include "Message.hpp"
 
 namespace K3 {
 
@@ -194,4 +196,4 @@ namespace K3 {
 
 } // namespace K3
 
-#endif // K3_RUNTIME_COMMON_H
+#endif // K3_RUNTIME_CODEC_H

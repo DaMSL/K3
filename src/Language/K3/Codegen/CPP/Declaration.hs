@@ -50,13 +50,12 @@ declaration (tag -> DGlobal i t (Just e)) = do
     cDecl t i
 
 -- The generated code for a trigger is the same as that of a function with corresponding ()
--- return-type. Additionally however, we must generate a trigger-wrapper function to perform
--- deserialization.
+-- return-type. 
 declaration (tag -> DTrigger i t e) = do
     addTrigger i
-    d  <- declaration (D.global i (T.function t T.unit) (Just e))
-    dc <- dispatchClass i t
-    return $ d <$$> w <$$> dc
+    dispClass <- dispatchClass i t
+    addForward dispClass
+    declaration (D.global i (T.function t T.unit) (Just e))
 
 declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
@@ -68,7 +67,6 @@ declaration (tag &&& children -> (DRole _, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ (\(_, (unzip -> (ids, _))) -> record ids)
     tablePop <- generateDispatchPopulation
-    let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     newS <- get
 
@@ -77,7 +75,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop]
+            ++ [subDecls, i, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
@@ -97,24 +95,31 @@ dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
 dispatchClass i t = do
   cType <- genCType t
   let className = genDispatchClassName i
-      sharedCType = text "shared_ptr" <> angles cType
+      -- If we have a primitive type, we treat it somewhat differently
+      (sharedCType, deref, fromShared) =
+        if primitiveType t then (cType, text "", text "*")
+        else (text "shared_ptr" <> angles cType, text "*", text "")
   return $
     vsep [
       text $ "class " ++ className ++ " : public Dispatcher {",
       text   "  public:",
-      text   "    " <> text className <> parens (sharedCType <+> text "arg") <+> text ": arg_(*arg) {}",
+      text   "    " <> text className <> parens (sharedCType <+> text "arg") <+> text ": _arg(arg) {}",
       text   "    " <> text className <> text "()" <+> text "{}",
-      text   "    void dispatch() {",
-      text $ "        "++i++"(_arg);",
+      text   "",
+      text   "    void dispatch() const {",
+      text   "        " <> text i <> parens (deref <> text "_arg") <> semi,
       text   "    }",
-      text   "    void unpack(string &msg) {",
-      text   "        arg_ = unpack<" <> cType <> text ">(msg);",
+      text   "",
+      text   "    void unpack(const string &msg) {",
+      text   "        _arg =" <+> fromShared <> text "BoostSerializer::unpack<" <> cType <> text ">(msg);",
       text   "    }",
-      text   "    string& pack() {",
-      text   "        pack<" <> cType <> text ">(arg_);",
+      text   "",
+      text   "    shared_ptr<string> pack() const {",
+      text   "        return BoostSerializer::pack<" <> cType <> text ">(_arg);",
       text   "    }",
+      text   "",
       text   "  private:",
-      text   "    " <> sharedCType <+> text "arg_;",
+      text   "    " <> sharedCType <+> text "_arg;",
       text   "};"
     ]
       

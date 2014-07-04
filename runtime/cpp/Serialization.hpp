@@ -18,11 +18,11 @@ namespace K3 {
 
   namespace BoostSerializer {
       template <typename V>
-      string& pack(const V& v) {
+      shared_ptr<string> pack(const V& v) {
         ostringstream out_sstream;
         boost::archive::text_oarchive out_archive(out_sstream);
         out_archive << v;
-        return out_sstream.str();
+        return std::make_shared<string>(out_sstream.str());
       }
 
       template <typename V>

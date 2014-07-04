@@ -19,7 +19,6 @@
 #include <memory>
 #include <tuple>
 
-#include <Engine.hpp>
 #include <dataspace/FileDS.hpp>
 #include <dataspace/ListDS.hpp>
 #include <dataspace/SetDS.hpp>
@@ -32,6 +31,7 @@ template <class E> class R_elem;
 template <class K, class V> class R_key_value;
 
 namespace K3 {
+  class Engine;
   template <class E> using MapReturnType = R_elem<E>;
   template<class K, class V> using GroupByReturnType = R_key_value<K,V>;
 

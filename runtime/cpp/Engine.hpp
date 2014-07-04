@@ -180,7 +180,8 @@ namespace K3 {
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
+      return [this](Address a, Identifier i, shared_ptr<Dispatcher> d) 
+          { this->send(a, i, d); };
     }
 
     //---------------------------------------
@@ -246,7 +247,7 @@ namespace K3 {
       return endpoints->getExternalEndpoint(eid)->doRead();
     }
 
-    Message doReadInternal(Identifier eid) {
+    RemoteMessage doReadInternal(Identifier eid) {
       return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
@@ -262,9 +263,9 @@ namespace K3 {
       return endpoints->getExternalEndpoint(eid)->doWrite(v);
     }
 
-    void doWriteInternal(Identifier eid, Message v) {
+    void doWriteInternal(Identifier eid, RemoteMessage m) {
       return endpoints->getInternalEndpoint(eid)->doWrite(
-                make_shared<Value>(internal_codec->show_message(v)));
+                make_shared<Value>(internal_codec->show_message(m)));
     }
 
     //-----------------------
