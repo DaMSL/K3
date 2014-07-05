@@ -75,6 +75,14 @@ namespace K3 {
     return unit_t();
   }
 
+  F<F<F<string(int)>(int)>(string)> substring = [] (string s) {
+      return [=] (int i) {
+            return [=] (int n) {
+                return s.substr(i,n);
+            };
+      };
+  };
+
   // ms
   int now(unit_t) {
     auto t = std::chrono::system_clock::now();
