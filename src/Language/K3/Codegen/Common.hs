@@ -71,7 +71,7 @@ signature (tag &&& children -> (TTrigger, [x])) = signature x >>= return . ("G" 
 signature _ = error "unexpected"
 
 recordSignature :: [Identifier] -> Identifier
-recordSignature ids = intercalate "_" $ "R": ids
+recordSignature ids = intercalate "_" $ "R": sort ids
 
 sanitize :: a -> a
 sanitize = id

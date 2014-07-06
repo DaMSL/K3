@@ -8,8 +8,9 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (nub, (\\))
+import Data.List (nub, sortBy, (\\))
 import Data.Maybe
+import Data.Ord (comparing)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -146,13 +147,14 @@ inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> pare
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text "make_tuple" <> tupled vs)
-inline e@(tag &&& children -> (ERecord _, cs)) = do
+inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
+    let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (vsep es, sig <> braces (cat $ punctuate comma vs))
+            return (vsep es, sig <> braces (cat $ punctuate comma vs'))
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
@@ -164,7 +166,7 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae <$$> be, bv)
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-    (ta, _) <- getKType e >>= \case
+    (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCType ta
             tr' <- genCType tr
