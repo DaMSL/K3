@@ -175,7 +175,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     exc <- fst . unzip . globals <$> get
     let fvs = nub $ filter (/= arg) $ freeVariables body
     body' <- reify RReturn body
-    return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
+    return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> text "->" <+> tr <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
