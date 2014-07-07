@@ -352,6 +352,7 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
           lb2 <- lowerBound b'
           tvlower lb1 lb2
 
+        | a' == b'  -> return a'
         | otherwise -> lowerError a' b'
 
     mergedRecord supAsLeft supid supqt subid subqt = do
@@ -741,7 +742,7 @@ inferProgramTypes prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
+          trace (prettyTaggedPair ("unify init ") qt1 qt2) $ void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           substituteDeepQt e >>= return . Just
 
         Nothing -> return Nothing
@@ -922,7 +923,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
       void    $  trace (prettyTaggedPair ("infer prj " ++ i) srcqt prjqt)
-              $    unifyM srcqt prjqt $ mkErrorF n ((unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt]) ++)
+              $    unifyWithOverrideM srcqt prjqt $ mkErrorF n ((unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt]) ++)
       return  $  rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
