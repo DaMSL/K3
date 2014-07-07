@@ -15,10 +15,9 @@ declare aggregates: mut {count: int, sum: mut collection { key: int, value: real
 
 // All Nodes:
 declare parameters: mut collection { key: int, value: real } @ { Collection }
-declare data: collection { label: int, elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare data: collection { label: real, elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
 
-
-// SVM Loss at 1 point. 
+// SVM Loss at 1 point.
 declare svm_loss : collection { key: int, value: real } @ { Collection } -> real -> real = \x -> \y -> (
   // TODO add regularizer term
   let q = 1 - (y * (dot parameters x))

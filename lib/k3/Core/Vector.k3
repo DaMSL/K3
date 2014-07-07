@@ -18,7 +18,7 @@ declare dot : collection { key: int, value: real } @ { Collection } -> collectio
   let products =
     (p.combine q).groupBy
     (\x -> x.key)
-    (\acc -> \x -> acc * x)
+    (\acc -> \x -> acc * x.value)
     1.0
   in products.fold (\acc -> \x -> x.value + acc) 0
 
