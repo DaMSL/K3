@@ -50,7 +50,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
     cDecl t i
 
 -- The generated code for a trigger is the same as that of a function with corresponding ()
--- return-type. 
+-- return-type.
 declaration (tag -> DTrigger i t e) = do
     addTrigger i
     dispClass <- dispatchClass i t
@@ -67,7 +67,6 @@ declaration (tag &&& children -> (DRole _, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ (\(_, (unzip -> (ids, _))) -> record ids)
     tablePop <- generateDispatchPopulation
-    let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     newS <- get
 
@@ -76,7 +75,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop]
+            ++ [subDecls, i, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
@@ -88,9 +87,9 @@ generateDispatchPopulation = do
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
     return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
-    genDispatch tName = 
+    genDispatch tName =
       let className = genDispatchClassName tName in
-      return $ text $ "dispatch_table[\"" ++ tName ++ "\"] = boost::shared_ptr<" ++ className ++ ">(new " ++ className ++ "());"
+      return $ text $ "dispatch_table[\"" ++ tName ++ "\"] = make_shared<" ++ className ++ ">();"
 
 -- Generate a trigger-wrapper Dispatcher class
 dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
@@ -124,7 +123,7 @@ dispatchClass i t = do
       text   "    " <> sharedCType <+> text "_arg;",
       text   "};"
     ]
-      
+
 -- Generated Builtins
 -- Interface for source builtins.
 -- Map special builtin suffix to a function that will generate the builtin.

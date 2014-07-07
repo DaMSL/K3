@@ -35,6 +35,7 @@ program d = do
     genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
     return $ vsep $ punctuate line [
+            text "#define MAIN_PROGRAM",
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
