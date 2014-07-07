@@ -60,7 +60,7 @@ trigger start: () = \_ -> let
         if a.remaining == 0
         then a
         else (
-          (a.means.insert p.elem);
+          (a.means.insert { key: a.remaining, value: p.elem });
           {remaining: a.remaining - 1, means:  a.means}
         )
       )
