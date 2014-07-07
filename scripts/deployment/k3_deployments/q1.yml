@@ -11,7 +11,6 @@ k3_bindings: # All values are strings. String literals should have quotes!
   num_peers: "5"
   role: '"rows"'
   master: '<192.168.1.30:40000>'
-  data_file:
 
 # Peer List / Overrides
 k3_peers:

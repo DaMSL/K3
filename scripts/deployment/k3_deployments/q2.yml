@@ -1,16 +1,16 @@
 name: Amplab Query 2
 
 # Peer Bootstrap
-local_binary_path: "/temp/query2" # Optional
+local_binary_path: "/temp/q2new" # Optional
 k3_binary_path: "/temp/"
 k3_binary_name: "k3_query2"
 k3_port: "40000"
 remote_script_path: "/temp/run.sh"
-enable_logging: True # Optional
+enable_logging: False # Optional
 # Strings!
 k3_bindings:
   x: "8"
-  num_peers: "5"
+  num_peers: "1"
   data_file: 
   role: '"rows"'
   master: '<192.168.1.30:40000>'
@@ -19,19 +19,19 @@ k3_bindings:
 k3_peers:
     - ip: "192.168.1.30"
       k3_bindings:
-        data_file: "/nfs/uservisits_sf1/part1.txt"
+        data_file: '"/nfs/uservisits_sf1/part1.txt"'
     - ip: "192.168.1.31"
       k3_bindings:
-        data_file: "/nfs/uservisits_sf1/part2.txt"
+        data_file: '"/nfs/uservisits_sf1/part2.txt"'
     - ip: "192.168.1.32"
       k3_bindings:
-        data_file: "/nfs/uservisits_sf1/part3.txt"
+        data_file: '"/nfs/uservisits_sf1/part3.txt"'
     - ip: "192.168.1.33"
       k3_bindings:
-        data_file: "/nfs/uservisits_sf1/part4.txt"
+        data_file: '"/nfs/uservisits_sf1/part4.txt"'
     - ip: "192.168.1.34"
       k3_bindings:
-        data_file: "/nfs/uservisits_sf1/part5.txt"
+        data_file: '"/nfs/uservisits_sf1/part5.txt"'
 
 
 
