@@ -23,7 +23,7 @@ declare nearest_neighbor: collection { key: int, value: real } -> collection { k
                 if (squared_distance p next.value) < acc.distance
                     then {mean: next, distance: squared_distance p next.value}
                     else acc
-            ) {mean: first_mean, distance: squared_distance p first_mean.value} in nearest.key
+            ) {mean: first_mean, distance: squared_distance p first_mean.value} in nearest.mean.key
         }
         { None -> (-1) } // Error
 )
