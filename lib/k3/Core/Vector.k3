@@ -14,5 +14,16 @@ declare scalar_mult : real -> collection { key: int, value: real } @ { Collectio
   c.groupBy (\dim -> dim.key) (\acc -> \dim -> x * dim.value) 0.0
 )
 
+declare dot : collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q -> (
+  let products =
+    (p.combine q).groupBy
+    (\x -> x.key)
+    (\acc -> \x -> acc * x)
+    1.0
+  in products.fold (\acc -> \x -> x.value + acc) 0
+
+
+)
+
 declare squared_distance: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection } -> real = \p -> \q ->
     (vector_sub p q).fold (\a -> \x -> a + (x.value * x.value)) 0.0

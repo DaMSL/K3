@@ -4,25 +4,46 @@ include "Core/Vector.k3"
 
 declare master: address = 127.0.0.1:40000
 declare num_peers: mut int = 1
-declare step_size: mut real = 0.9
 declare iterations_remaining: mut int = 10
+
+// Hyperparameters
+declare step_size: mut real = 0.1
+declare lambda: mut real = 0.1
 
 // Master:
 declare aggregates: mut {count: int, sum: mut collection { key: int, value: real } @ { Collection } }
 
 // All Nodes:
 declare parameters: mut collection { key: int, value: real } @ { Collection }
-declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare data: collection { label: int, elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+
+
+// SVM Loss at 1 point. 
+declare svm_loss : collection { key: int, value: real } @ { Collection } -> real -> real = \x -> \y -> (
+  // TODO add regularizer term
+  let q = 1 - (y * (dot parameters x))
+  in if q < 0 then 0 else q
+)
+
+// SVM gradient at 1 point.
+declare svm_gradient : collection { key: int, value: real } @ { Collection } -> real -> collection { key: int, value: real } @ { Collection } = \x -> \y -> (
+  let flag = y * (dot parameters x)
+  in
+    if flag > 1
+    then scalar_mult lambda parameters
+    else vector_sub (scalar_mult lambda parameters) (scalar_mult y x)
+
+)
 
 // Compute the gradient at a single point.
 // The gradient is a function of the current parameters, a global variable.
-declare point_gradient: collection { key: int, value: real } @ { Collection } -> collection { key: int, value: real } @ { Collection }= \point -> (
-    zero_vector ()
+declare point_gradient: collection { key: int, value: real } @ { Collection } -> real -> collection { key: int, value: real } @ { Collection }= \point -> \label -> (
+    svm_gradient point label
 )
 
 // Update parameters based on a single point
-declare update_parameters: collection { key: int, value: real } @ { Collection } -> () = \point -> (
-  let update = scalar_mult step_size (point_gradient point) in
+declare update_parameters: collection { key: int, value: real } @ { Collection } -> real -> () = \point -> \label -> (
+  let update = scalar_mult step_size (point_gradient point label) in
   parameters = vector_add parameters update
 )
 
@@ -32,7 +53,7 @@ declare update_parameters: collection { key: int, value: real } @ { Collection }
 // 2) Send local parameters to master for aggregation
 trigger local_sgd : collection { key: int, value: real } @ { Collection } = \new_params -> (
   (parameters = new_params);
-  (data.iterate (\d -> update_parameters d.elem));
+  (data.iterate (\d -> update_parameters d.elem d.label));
   (aggregate, master) <- parameters
 )
 
