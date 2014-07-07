@@ -4,6 +4,7 @@ tmp
 .project
 env.bat
 *.k3
+*.pyc
 
 __build
 __build.database
