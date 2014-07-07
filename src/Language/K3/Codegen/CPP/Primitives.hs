@@ -5,6 +5,7 @@ module Language.K3.Codegen.CPP.Primitives where
 
 import Data.Char
 import Data.Functor
+import Data.List (sort)
 import Data.Maybe (maybeToList)
 
 import Control.Arrow ((&&&))
@@ -59,8 +60,9 @@ genCType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM genCType ts
 genCType t@(tag -> TRecord ids) = do
   let sig = recordSignature ids
+  let children' = snd . unzip . sort $ zip ids (children t)
   addRecord sig (zip ids (children t))
-  templateVars <- mapM genCType (children t)
+  templateVars <- mapM genCType children'
   return $ text sig <> angles (hsep $ punctuate comma templateVars)
 genCType (tag -> TDeclaredVar t) = return $ text t
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do

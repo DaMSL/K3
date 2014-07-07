@@ -6,6 +6,7 @@
 --   We use a separate tree data type to ensure no mixing of type systems.
 module Language.K3.Analysis.HMTypes.DataTypes where
 
+import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -150,7 +151,7 @@ tunit = ttup []
 
 -- | Operator constructors
 tlower :: [K3 QType] -> K3 QType
-tlower ch = Node (QTOperator QTLower :@: []) ch
+tlower ch = Node (QTOperator QTLower :@: []) $ nub ch
 
 
 -- | Annotation predicates
