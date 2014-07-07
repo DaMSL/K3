@@ -332,6 +332,20 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
       (QTVar _, _) -> return a'
       (_, QTVar _) -> return b'
 
+      -- | Function type lower bounds
+      (QTCon QTFunction, QTCon QTFunction) -> do
+        arga  <- tvsub $ head $ children a'
+        argb  <- tvsub $ head $ children b'
+        retlb <- tvlower (last $ children a') $ last $ children b'
+        if arga /= argb
+          then lowerError a' b'
+          else annLower a' b' >>= return . foldl (@+) (tfun (head $ children a') retlb)
+
+      -- | Self type lower bounds
+      (QTSelf, QTSelf)                 -> return a'
+      (QTCon (QTCollection _), QTSelf) -> return a'
+      (QTSelf, QTCon (QTCollection _)) -> return b'
+
       (_, _)
         | (isQTLower a' && isQTLower b') || isQTLower a' || isQTLower b' -> do
           lb1 <- lowerBound a'
@@ -369,7 +383,7 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
     lowerBound t@(tag -> QTOperator QTLower) = tvopeval QTLower $ children t
     lowerBound t = return t
 
-    lowerError x y = left $ unwords $ ["Invalid lower bound operands: ", show x, "and", show y]
+    lowerError x y = left $ boxToString $ ["Invalid lower bound on: "] %+ prettyLines x %+ [" and "] %+ prettyLines y
 
 -- | Type operator evaluation.
 tvopeval :: QTOp -> [K3 QType] -> TInfM (K3 QType)
@@ -386,10 +400,17 @@ consistentTLower ch =
       (_, _)   -> tvopeval QTLower nonvarCh >>= unifiedLower varCh
   where
     unifiedLower vch lb = do
-      void $ mapM_ (extractAndUnifyV lb) vch
-      return $ tlower $ [lb]++vch
+      nvch <- mapM (extractAndUnifyV lb) vch
+      return $ tlower $ [lb]++nvch
 
-    extractAndUnifyV t (tag -> QTVar v) = unifyv v t
+    --extractAndUnifyV t (tag -> QTVar v) = unifyv v t
+    extractAndUnifyV t t2@(tag -> QTVar _) = do
+      tve <- getTVE
+      let tchased = tvchase tve t2
+      case tag tchased of
+        QTVar v2 -> unifyv v2 t >> return t
+        _ -> return tchased
+
     extractAndUnifyV _ _ = left "Invalid type var during lower qtype merge"
 
 -- Unification helpers.
@@ -424,15 +445,6 @@ unifyv v t = getTVE >>= \tve -> do
     else tvsub t >>= unifyvMuQt tve
 
   where 
-    {-
-    restrictedUnifyMu tve qt = 
-      case tag qt of
-        QTCon (QTRecord _) -> unifyvMuQt tve qt
-        QTCon QTFunction   -> unifyvMuQt tve qt
-        QTOperator QTLower -> unifyvMuQt tve qt
-        _ -> left $ boxToString $ [unwords ["occurs check:", show v, "in "]] %+ prettyLines qt
-    -}
-
     unifyvMuQt tve qt = do
       qt' <- injectSelfQt tve qt
       trace (prettyTaggedSPair "unifyv yoc" v qt') $ modify $ mtive $ \tve' -> tvext tve' v qt'
@@ -504,10 +516,16 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2@(tag -> QTOperator QTLower) = do
       lb1 <- lowerBound t1
       lb2 <- lowerBound t2
-      lbs <- case (tag lb1, tag lb2) of
-               (QTCon (QTRecord _), QTCon (QTRecord _)) ->
-                 tvlower lb1 lb2 >>= \lb' -> return $ if lb' `elem` [lb1, lb2] then [lb1,lb2] else [lb',lb1,lb2]
+      lbs <- case (lb1, lb2) of
+               (Node (QTCon (QTRecord _) :@: _) _, Node (QTCon (QTRecord _) :@: _) _) -> 
+                 --tvlower lb1 lb2 >>= \lb -> return $ if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
+                do
+                  tienv <- get
+                  let (lbE, _) = runTInfM tienv $ tvlower lb1 lb2
+                  return $ either (const $ [lb1,lb2]) (\lb -> if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]) lbE
+               
                (_,_) -> return [lb1, lb2]
+      
       void $ foldM rcr (head $ lbs) $ tail lbs
       consistentTLower $ children t1 ++ children t2
 
@@ -530,7 +548,7 @@ unifyDrv preF postF qt1 qt2 = do
       r <- consistentTLower $ [t1] ++ children t2
       trace (boxToString $ ["consistentTLowerR "] %+ prettyLines r) $ return r
 
-    -- | Top unifies with any value. Bottom unifies with only itself.
+    -- | Top unifies with any value. Bottom unifies with only itself. Self unifies with itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
       | tg1 == QTTop = return t2
       | tg2 == QTTop = return t1
@@ -1222,7 +1240,7 @@ translateQType qt = mapTree translateWithMutability qt
           | QTFinal      <- tag qt' = return $ TC.builtIn TStructure
           | QTSelf       <- tag qt' = return $ TC.builtIn TSelf
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
-          | QTOperator _ <- tag qt' = Left $ "Invalid qtype translation for qtype operator"
+          | QTOperator _ <- tag qt' = Left $ boxToString $ ["Invalid qtype translation for qtype operator "] %+ prettyLines qt'
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
