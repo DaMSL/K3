@@ -155,11 +155,11 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ae, av) <- inline addr
     (ve, vv) <- inline val
     let className = genDispatchClassName trigNm
-        classInst = genCCall (text $ "auto d = boost::make_shared<"++className++">") Nothing [vv]
+        classInst = genCCall (text $ "auto d = new "++className) Nothing [vv]
     return (
             vsep [te, ae, ve,
                   classInst <> semi,
-                  text "engine.send" <> tupled [av, dquotes tv, text "d"]] <> semi,
+                  text "engine.send" <> tupled [av, dquotes tv, text "boost::shared_ptr" <> angles (text className) <> parens (text "d")]] <> semi,
             text "unit_t()"
         )
 

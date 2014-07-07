@@ -16,14 +16,15 @@ namespace K3 {
     // in a queue
     class Dispatcher {
       public:
-        virtual void dispatch() const;
-        virtual std::shared_ptr<std::string> pack() const; 
-        virtual void unpack(const std::string &msg); 
+        virtual void dispatch() const = 0;
+        virtual std::string pack() const = 0; 
+        virtual void unpack(const std::string &msg) = 0;
+        virtual ~Dispatcher() {}
     };
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper
     // function.
-    using TriggerDispatch = std::map<Identifier, std::shared_ptr<Dispatcher> >;
+    using TriggerDispatch = std::map<Identifier, boost::shared_ptr<Dispatcher> >;
 
     // Forward declare the global
     TriggerDispatch dispatch_table;

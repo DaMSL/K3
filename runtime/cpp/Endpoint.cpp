@@ -72,7 +72,7 @@ namespace K3
         shared_ptr<Value> v = contents.get(guard);
         contents.get(guard).reset();
         if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
+          Message msg = *(cdec->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -140,7 +140,7 @@ namespace K3
       if(!this->empty()) {
         shared_ptr<Value> v = this->pop();
         if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
+          Message msg = *(cdec->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -226,7 +226,7 @@ namespace K3
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
             RemoteMessage rMsg = cdec->read_message(*v);
-            queues->enqueue(rMsg.toMessage());
+            queues->enqueue(*(rMsg.toMessage()));
             transferred = true;
           }
           notify(v);

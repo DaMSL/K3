@@ -12,7 +12,8 @@
 #include <boost/thread/lockable_adapter.hpp>
 #include <boost/thread/externally_locked.hpp>
 
-#include <Common.hpp>
+#include "Common.hpp"
+#include "Message.hpp"
 
 namespace K3 {
 
@@ -29,7 +30,7 @@ namespace K3 {
   public:
     virtual bool push(const QueueVal& v) = 0;
     virtual bool pop(QueueVal& v) = 0;
-    virtual bool empty() const = 0;
+    virtual bool empty() = 0;
     virtual size_t size() const = 0;
   };
 
@@ -57,7 +58,7 @@ namespace K3 {
     typedef boost::basic_lockable_adapter<mutex> qlockable;
     LockingMsgQueue () : qlockable(), queue(*this) {}
 
-    bool empty() const {
+    bool empty() {
       boost::strict_lock<LockingMsgQueue> guard(*this);
       return queue.get(guard).empty();
     }
@@ -145,7 +146,7 @@ namespace K3 {
   {
   public:
     typedef Address QueueKey;
-    //typedef LockfreeMsgQueue<tuple<Identifier, shared_ptr <Dispatcher> > > Queue;
+    //typedef LockfreeMsgQueue<tuple<Identifier, boost::shared_ptr <Dispatcher> > > Queue;
     typedef LockingMsgQueue<tuple<Identifier, boost::shared_ptr<Dispatcher> > > Queue;
     typedef tuple<QueueKey, shared_ptr<Queue> > PeerMessages;
 
@@ -286,7 +287,7 @@ namespace K3 {
   {
   public:
     typedef tuple<Address, Identifier> QueueKey;
-    //typedef LockfreeMsgQueue<shared_ptr<Dispatcher> > Queue;
+    //typedef LockfreeMsgQueue<boost::shared_ptr<Dispatcher> > Queue;
     typedef LockingMsgQueue<boost::shared_ptr<Dispatcher> > Queue;
     typedef map<QueueKey, shared_ptr<Queue> > MultiTriggerMessages;
 

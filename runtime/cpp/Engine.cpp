@@ -125,7 +125,7 @@ namespace K3 {
         // Log Message
         if (log_enabled) {
           std::string target = next_message->target();
-          std::string contents = next_message->contents();
+          std::string contents = next_message->dispatcher()->pack();
           std::string sep = "======================================";
           logAt(trivial::trace, sep);
           logAt(trivial::trace, "Message for: " + target);

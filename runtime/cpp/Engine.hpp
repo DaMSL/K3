@@ -8,11 +8,12 @@
 #include <memory>
 #include <tuple>
 
-#include <Common.hpp>
-#include <Endpoint.hpp>
-#include <Listener.hpp>
-#include <MessageProcessor.hpp>
-#include <Options.hpp>
+#include "Common.hpp"
+#include "Endpoint.hpp"
+#include "Listener.hpp"
+#include "Message.hpp"
+#include "MessageProcessor.hpp"
+#include "Options.hpp"
 
 namespace K3 {
 
@@ -180,8 +181,8 @@ namespace K3 {
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, boost::shared_ptr<Dispatcher> d)
-          { this->send(a, i, d); };
+      return [this](Address a, Identifier i, shared_ptr<Value> v)
+          { send(RemoteMessage(a, i, *v).toMessage()); };
     }
 
     //---------------------------------------

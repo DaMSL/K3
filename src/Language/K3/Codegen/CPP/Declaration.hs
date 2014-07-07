@@ -67,6 +67,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ (\(_, (unzip -> (ids, _))) -> record ids)
     tablePop <- generateDispatchPopulation
+    let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     newS <- get
 
@@ -75,7 +76,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tablePop]
+            ++ [subDecls, i, tableDecl, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
@@ -87,8 +88,9 @@ generateDispatchPopulation = do
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
     return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
-    genDispatch tName = return $
-        text ("dispatch_table[\"" ++ tName ++ "\"] = make_shared<" ++ genDispatchClassName tName ++ ">()") <> semi
+    genDispatch tName = 
+      let className = genDispatchClassName tName in
+      return $ text $ "dispatch_table[\"" ++ tName ++ "\"] = boost::shared_ptr<" ++ className ++ ">(new " ++ className ++ "());"
 
 -- Generate a trigger-wrapper Dispatcher class
 dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
@@ -114,7 +116,7 @@ dispatchClass i t = do
       text   "        _arg =" <+> fromShared <> text "BoostSerializer::unpack<" <> cType <> text ">(msg);",
       text   "    }",
       text   "",
-      text   "    shared_ptr<string> pack() const {",
+      text   "    string pack() const {",
       text   "        return BoostSerializer::pack<" <> cType <> text ">(_arg);",
       text   "    }",
       text   "",
