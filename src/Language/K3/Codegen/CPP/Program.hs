@@ -105,10 +105,13 @@ includes = return [
         "sstream",
         "string",
 
+        -- Strtk
+        "strtk.hpp",
+
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
-        "boost/serialization/shared_ptr.hpp",
+        "boost/serialization/vector.hpp",
 
         -- K3 Runtime
         "Collections.hpp",

@@ -3,7 +3,9 @@
 
 module Language.K3.Codegen.CPP.Primitives where
 
+import Data.Char
 import Data.Functor
+import Data.List (sort)
 import Data.Maybe (maybeToList)
 
 import Control.Arrow ((&&&))
@@ -49,6 +51,7 @@ genCType (tag -> TBool) = return (text "bool")
 genCType (tag -> TByte) = return (text "unsigned char")
 genCType (tag -> TInt) = return (text "int")
 genCType (tag -> TReal) = return (text "double")
+genCType (tag -> TNumber) = return (text "double")
 genCType (tag -> TString) = return (text "string")
 genCType (tag &&& children -> (TOption, [t])) = (text "std::shared_ptr" <>) . angles <$> genCType t
 genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
@@ -57,8 +60,9 @@ genCType (tag &&& children -> (TTuple, ts))
     = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM genCType ts
 genCType t@(tag -> TRecord ids) = do
   let sig = recordSignature ids
+  let children' = snd . unzip . sort $ zip ids (children t)
   addRecord sig (zip ids (children t))
-  templateVars <- mapM genCType (children t)
+  templateVars <- mapM genCType children'
   return $ text sig <> angles (hsep $ punctuate comma templateVars)
 genCType (tag -> TDeclaredVar t) = return $ text t
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
@@ -72,6 +76,8 @@ genCType (tag &&& children -> (TFunction, [ta, tr])) = do
     ctr <- genCType tr
     return $ genCQualify (text "std") $ text "function" <> angles (ctr <> parens cta)
 
+genCType (tag &&& children -> (TForall _, [t])) = genCType t
+genCType (tag -> TDeclaredVar i) = return $ text $ map toUpper i
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR

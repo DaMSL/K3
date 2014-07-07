@@ -120,7 +120,7 @@ composite className ans = do
     constructors = [engineConstructor, copyConstructor]
 
     patcherSpec :: CPPGenR
-    patcherSpec = genCTemplateDecl [text "E"] <$$> patcherSpecStruct
+    patcherSpec = text "namespace K3" <+> (hangBrace $ genCTemplateDecl [text "E"] <$$> patcherSpecStruct)
 
     patcherSpecStruct :: CPPGenR
     patcherSpecStruct = text "struct patcher"
@@ -252,9 +252,10 @@ record (sort -> ids) = do
                    <> parens (cat $ punctuate comma [text "string s", recordName
                        <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "r"])
                   <+> hangBrace (vsep [shallowDecl <> semi, fps, afp, lfp, piv])
-        return $ genCTemplateDecl templateVars
-                   <$$> text "struct patcher" <> angles (recordName <> angles (hsep $ punctuate comma templateVars))
-                    <+> hangBrace patchFn <> semi
+        return $ text "namespace K3" <+> (hangBrace $ genCTemplateDecl templateVars
+                   <$$> text "struct patcher"
+                            <> angles (recordName <> angles (hsep $ punctuate comma templateVars))
+                    <+> hangBrace patchFn <> semi)
 
     serializeDefn = do
         body <- serializeBody

@@ -25,4 +25,6 @@ declare haltEngine : () -> ()
 
 declare now : () -> int
 
+declare substring : string -> int -> int -> string
+
 

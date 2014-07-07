@@ -164,9 +164,7 @@ namespace K3 {
      public:
       Collection(Engine * e) : Super(e) {};
 
-      Collection(const Collection<E>& other) : Super(other)  {}
-
-      Collection(Super other) : Super(other) {}
+      Collection(const Super& other) : Super(other) {}
 
       template<class Iterator>
       Collection(Engine * e, Iterator start, Iterator finish)

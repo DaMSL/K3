@@ -14,27 +14,27 @@ namespace K3
   using namespace std;
 
   template <typename Elem>
-  class ListDS : public StlDS<Elem, std::list> {
-    typedef StlDS<Elem, std::list> super;
+  class ListDS : public StlDS<Elem, std::vector> {
+    typedef StlDS<Elem, std::vector> super;
 
     public:
       // Constructors
-      ListDS(Engine * eng) : StlDS<Elem, std::list>(eng) {}
+      ListDS(Engine * eng) : StlDS<Elem, std::vector>(eng) {}
 
       template<typename Iterator>
       ListDS(Engine * eng, Iterator start, Iterator finish)
-        : StlDS<Elem, std::list>(eng, start, finish) {}
+        : StlDS<Elem, std::vector>(eng, start, finish) {}
 
-      ListDS(const ListDS& other) : StlDS<Elem,std::list>(other) {}
+      ListDS(const ListDS& other) : StlDS<Elem,std::vector>(other) {}
 
-      ListDS(StlDS<Elem,std::list> other) : StlDS<Elem,std::list>(other) {}
+      ListDS(StlDS<Elem,std::vector> other) : StlDS<Elem,std::vector>(other) {}
 
-      ListDS(std::list<Elem> container) : StlDS<Elem, std::list>(container) {}
+      ListDS(std::vector<Elem> container) : StlDS<Elem, std::vector>(container) {}
 
     // Need to convert from StlDS to ListDS
     template<typename NewElem>
     ListDS<NewElem> map(F<NewElem(Elem)> f) {
-      StlDS<NewElem, std::list> s = super::map(f);
+      StlDS<NewElem, std::vector> s = super::map(f);
       return ListDS<NewElem>(s);
     }
 
@@ -56,7 +56,7 @@ namespace K3
     }
 
     ListDS sort(F<F<int(Elem)>(Elem)> comp) {
-      std::list<Elem> l = std::list<Elem>(super::getContainer());
+      std::vector<Elem> l = std::vector<Elem>(super::getContainer());
       std::function<bool(Elem,Elem)> f = [&] (Elem a, Elem b) { return comp(a)(b) < 0; };
       l.sort(f);
       return ListDS(l);

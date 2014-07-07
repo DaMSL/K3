@@ -1,0 +1,97 @@
+include "Annotation/Collection.k3"
+include "Core/CppBuiltins.k3"
+
+// Hack
+declare dataLoader : string -> collection {
+    adRevenue: real,
+    countryCode: string,
+    destURL: string,
+    duration: int,
+    languageCode: string,
+    searchWord: string,
+    sourceIP: string,
+    userAgent: string,
+    visitDate: string
+    } @ { Collection } -> ()
+
+
+// Constants
+declare master: address = 127.0.0.1:40000
+declare x: mut int = 3
+declare num_peers: int = 2
+declare data_file : string = "/k3/data/amplab/rankings_10.k3"
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+
+// Data
+declare local_uservisits: collection {
+    adRevenue: real,
+    countryCode: string,
+    destURL: string,
+    duration: int,
+    languageCode: string,
+    searchWord: string,
+    sourceIP: string,
+    userAgent: string,
+    visitDate: string
+    } @ { Collection }
+
+declare local_q2_results: mut collection {key: string, value: real} @ { Collection }
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+trigger q2_local : () = \_ -> (
+  let agg_vals =
+    local_uservisits.groupBy
+      (\r -> substring r.sourceIP 0 x) //TODO index by 0 or 1?
+      (\acc -> \r ->
+        acc + r.adRevenue)
+      0.0
+  in
+  (aggregate, master) <- agg_vals
+)
+
+
+trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
+  let new_agg = (local_q2_results.combine vals).groupBy
+        (\r -> r.key)
+        (\acc -> \r -> acc + r.value)
+        0.0
+  in
+  local_q2_results = new_agg;
+  peers_finished = peers_finished + 1;
+  if peers_finished == num_peers
+  then end_ms = now ();
+       elapsed_ms = end_ms - start_ms;
+       printLine (itos elapsed_ms);
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+)
+
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready : () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == num_peers
+  then start_ms = now (); peers.iterate (\p -> (q2_local, p.addr) <- ())
+  else ()
+)
+
+trigger load_all : () = \_ -> (
+  (dataLoader data_file local_uservisits);
+  ((ready, master) <- ())
+)
+
+source rows : () = value ()
+feed rows |> load_all

@@ -8,8 +8,9 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (nub, (\\))
+import Data.List (nub, sortBy, (\\))
 import Data.Maybe
+import Data.Ord (comparing)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -103,6 +104,36 @@ inline (tag -> EConstant c) = (empty,) <$> constant c
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
+inline e@(tag -> EVariable v)
+    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return (empty, text "*" <> text v)
+    | otherwise = globals <$> get >>= attachTemplateVars
+  where
+    functionType = case e @~ \case { EType _ -> True; _ -> False } of
+        Just (EType t@(tag -> TFunction)) -> Just t
+        _ -> Nothing
+
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars g
+        | isJust (lookup v g) && isJust functionType
+            = do
+                signatureType <- case fromJust (lookup v g) of
+                                      t@(tag -> TFunction) -> return t
+                                      (tag &&& children -> (TForall _, [t'])) -> return t'
+                                      _ -> throwE $ CPPGenE "Unreachable Error."
+                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
+                cts <- mapM genCType ts
+                return $ if null cts
+                   then (empty, text v)
+                   else (empty, text v <> angles (hsep $ punctuate comma cts))
+        | otherwise = return (empty, text v)
+
+    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
+
 inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
         then (empty, text "*" <> text v)
         else (empty, text v)
@@ -116,13 +147,14 @@ inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> pare
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     return (vsep es, text "make_tuple" <> tupled vs)
-inline e@(tag &&& children -> (ERecord _, cs)) = do
+inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
+    let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (vsep es, sig <> braces (cat $ punctuate comma vs))
+            return (vsep es, sig <> braces (cat $ punctuate comma vs'))
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
@@ -134,16 +166,16 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae <$$> be, bv)
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-    (ta, _) <- getKType e >>= \case
+    (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCType ta
             tr' <- genCType tr
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
-    exc <- globals <$> get
+    exc <- fst . unzip . globals <$> get
     let fvs = nub $ filter (/= arg) $ freeVariables body
     body' <- reify RReturn body
-    return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> hangBrace body')
+    return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> text "->" <+> tr <+> hangBrace body')
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
@@ -168,10 +200,36 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (be, bv) <- inline b
     bsym <- binarySymbol bop
     return (ae <//> be, av <+> bsym <+> bv)
+inline e@(tag &&& children -> (EProject v, [k])) = do
+    (ke, kv) <- inline k
+    (_, vv) <- globals <$> get >>= attachTemplateVars
+    return (ke, kv <> dot <> vv)
+  where
+    functionType = case e @~ \case { EType _ -> True; _ -> False } of
+        Just (EType t@(tag -> TFunction)) -> Just t
+        _ -> Nothing
 
-inline (tag &&& children -> (EProject v, [e])) = do
-    (ee, ev) <- inline e
-    return (ee, ev <> dot <> text v)
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars g
+        | isJust (lookup v g) && isJust functionType
+            = do
+                signatureType <- case fromJust (lookup v g) of
+                                      t@(tag -> TFunction) -> return t
+                                      (tag &&& children -> (TForall _, [t'])) -> return t'
+                                      _ -> throwE $ CPPGenE "Unreachable Error."
+                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
+                cts <- mapM genCType ts
+                return $ if null cts
+                   then (empty, text v)
+                   else (empty, text v <> angles (hsep $ punctuate comma cts))
+        | otherwise = return (empty, text v)
+
+    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
 
 inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
 

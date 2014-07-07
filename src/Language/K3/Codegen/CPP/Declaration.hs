@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Declaration where
@@ -10,6 +11,7 @@ import Data.Functor
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Tree
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -43,6 +45,19 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
     cta <- genCType ta
     ctr <- genCType tr
     return $ ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
+declaration (tag -> DGlobal i (tag &&& children -> (TForall _, _)) (Just e)) = do
+    te@(tag &&& children -> (TFunction, [ta, tr])) <- getKType e
+    let tvs = L.nub $ map (\(TDeclaredVar j :@: _) -> j)
+                    $ filter (\case { (TDeclaredVar _ :@: _) -> True; _ -> False })
+                    $ flatten te
+    let td = genCTemplateDecl $ map text tvs
+    let (tag &&& children -> (ELambda x, [b])) = e
+    newF <- cDecl te i
+    addForward $ td <+> newF
+    body <- reify RReturn b
+    cta <- genCType ta
+    ctr <- genCType tr
+    return $ td <$$> ctr <+> text i <> parens (cta <+> text x) <+> hangBrace body
 
 declaration (tag -> DGlobal i t (Just e)) = do
     newI <- reify (RName i) e
@@ -124,7 +139,7 @@ dispatchClass i t = do
 -- Interface for source builtins.
 -- Map special builtin suffix to a function that will generate the builtin.
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM CPPGenR))]
-source_builtin_map = [("HasRead", genHasRead), ("Read", genDoRead)]
+source_builtin_map = [("HasRead", genHasRead), ("Read", genDoRead),("Loader",genLoader)]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -156,6 +171,38 @@ genDoRead suf typ name = do
     forward <- return $ ret_type <+> text name <> parens (text "unit_t") <> semi
     addForward forward
     return $ genCFunction Nothing ret_type (text name) [text "unit_t"] body
+
+genLoader :: String -> K3 Type -> String -> CPPGenM CPPGenR
+genLoader _ (children -> [_,f]) name = do
+    rec <- getRecordType
+    rec_type <- genCType rec
+    fields <- getRecFields rec
+    proj_str <- return $ text $ concat $ L.intersperse "," $ map (\q -> "rec." ++ q) fields
+    c_type <- return $ text "K3::Collection<" <> rec_type <> text">"
+    header1 <- return $ text "F<unit_t(" <> c_type <> text "&)>"<> text name <> text "(string filepath)"
+    header2 <- return $ text "F<unit_t(" <> c_type <> text "&)> r = [filepath] (" <> c_type <> text" & c)"
+    ifs <- return   $ text "if (strtk::parse(str,\",\"," <> proj_str <> text "))" <> (hangBrace (text "c.insert(rec)" <> semi))
+    elses <- return $ text "else" <> (hangBrace $ text "std::cout << \"Failed to parse a row\" << std::endl;")
+    body <- return $ vsep [rec_type <+> text "rec" <> semi,
+                           text "strtk::for_each_line(filepath,",
+                           text "[&](const std::string& str)" <> (hangBrace (vsep [ifs,elses]) <> text ");"),
+                           text "return unit_t();"]
+    return $ header1 <> (hangBrace $ (header2 <> vsep [hangBrace body <> semi, text "return r;"]))
+  where
+    getRecordType = case children f of
+                     ([c,_])  -> (case children c of
+                                   [r] -> return r
+                                   _  -> type_mismatch)
+                     _        ->  type_mismatch
+    getRecFields r = case tag r of
+                     (TRecord ids) -> return ids
+                     _             -> type_mismatch
+    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
+
+
+genLoader _ _ _ =  error "1. Invalid type for loader function"
+
+
 
 stripSuffix :: String -> String -> String
 stripSuffix suffix name = maybe (error "not a suffix!") reverse $ L.stripPrefix (reverse suffix) (reverse name)
