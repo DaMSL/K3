@@ -96,31 +96,27 @@ dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
 dispatchClass i t = do
   cType <- genCType t
   let className = genDispatchClassName i
-      -- If we have a primitive type, we treat it somewhat differently
-      (sharedCType, ptrDeref, primDeref) =
-        if primitiveType t then (cType, text "", text "*")
-        else (text "shared_ptr" <> angles cType, text "*", text "")
   return $
     vsep [
       text $ "class " ++ className ++ " : public Dispatcher {",
       text   "  public:",
-      text   "    " <> text className <> parens (sharedCType <+> text "arg") <+> text ": _arg(arg) {}",
+      text   "    " <> text className <> parens (cType <+> text "arg") <+> text ": _arg(arg) {}",
       text   "    " <> text className <> text "()" <+> text "{}",
       text   "",
       text   "    void dispatch() const {",
-      text   "        " <> text i <> parens (ptrDeref <> text "_arg") <> semi,
+      text   "        " <> text i <> parens (text "_arg") <> semi,
       text   "    }",
       text   "",
       text   "    void unpack(const string &msg) {",
-      text   "        _arg =" <+> primDeref <> text "BoostSerializer::unpack<" <> cType <> text ">(msg);",
+      text   "        _arg =" <+> text "*BoostSerializer::unpack<" <> cType <> text " >(msg);",
       text   "    }",
       text   "",
       text   "    string pack() const {",
-      text   "        return BoostSerializer::pack<" <> cType <> text ">(" <> ptrDeref <> text "_arg);",
+      text   "        return BoostSerializer::pack<" <> cType <> text " >(" <> text "_arg);",
       text   "    }",
       text   "",
       text   "  private:",
-      text   "    " <> sharedCType <+> text "_arg;",
+      text   "    " <> cType <+> text "_arg;",
       text   "};"
     ]
 

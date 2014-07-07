@@ -151,7 +151,7 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
 
     return (fe <$$> ae, fv <> parens av)
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable trigNm), addr]), val])) = do
-    (te, tv)  <- inline trig
+    (te, tv) <- inline trig
     (ae, av) <- inline addr
     (ve, vv) <- inline val
     let className = genDispatchClassName trigNm
