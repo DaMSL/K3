@@ -97,7 +97,7 @@ dispatchClass i t = do
   cType <- genCType t
   let className = genDispatchClassName i
       -- If we have a primitive type, we treat it somewhat differently
-      (sharedCType, deref, fromShared) =
+      (sharedCType, ptrDeref, primDeref) =
         if primitiveType t then (cType, text "", text "*")
         else (text "shared_ptr" <> angles cType, text "*", text "")
   return $
@@ -108,15 +108,15 @@ dispatchClass i t = do
       text   "    " <> text className <> text "()" <+> text "{}",
       text   "",
       text   "    void dispatch() const {",
-      text   "        " <> text i <> parens (deref <> text "_arg") <> semi,
+      text   "        " <> text i <> parens (ptrDeref <> text "_arg") <> semi,
       text   "    }",
       text   "",
       text   "    void unpack(const string &msg) {",
-      text   "        _arg =" <+> fromShared <> text "BoostSerializer::unpack<" <> cType <> text ">(msg);",
+      text   "        _arg =" <+> primDeref <> text "BoostSerializer::unpack<" <> cType <> text ">(msg);",
       text   "    }",
       text   "",
       text   "    string pack() const {",
-      text   "        return BoostSerializer::pack<" <> cType <> text ">(_arg);",
+      text   "        return BoostSerializer::pack<" <> cType <> text ">(" <> ptrDeref <> text "_arg);",
       text   "    }",
       text   "",
       text   "  private:",
