@@ -12,21 +12,17 @@ namespace K3 {
   //-------------
   // Local Messages (inside a system)
 
-  class Message : public std::tuple<Address, Identifier, boost::shared_ptr<Dispatcher> > {
+  class Message : public std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> > {
   public:
     Message(Address addr, Identifier id, Dispatcher& d)
-      : std::tuple<Address, Identifier, boost::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), boost::shared_ptr<Dispatcher>(&d)) {}
+      : std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), std::shared_ptr<Dispatcher>(&d)) {}
 
     Message(Address addr, Identifier id, std::shared_ptr<Dispatcher> d)
-      : std::tuple<Address, Identifier, boost::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), make_shared_ptr(d)) {}
-
-    Message(Address addr, Identifier id, boost::shared_ptr<Dispatcher> d)
-      : std::tuple<Address, Identifier, boost::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), d) {}
-
+      : std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), d) {}
 
     const Address&    address()    const { return std::get<0>(*this); }
     const Identifier& id()         const { return std::get<1>(*this); }
-    const boost::shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
+    const std::shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
     const std::string target()     const { return id() + "@" + addressAsString(address()); }
   };
 

@@ -24,9 +24,11 @@ namespace K3 {
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper
     // function.
-    using TriggerDispatch = std::map<Identifier, boost::shared_ptr<Dispatcher> >;
+    using TriggerDispatch = std::map<Identifier, std::shared_ptr<Dispatcher> >;
 
-    // Forward declare the global
+#ifndef MAIN_PROGRAM
+    extern
+#endif
     TriggerDispatch dispatch_table;
 
 } // namespace K3

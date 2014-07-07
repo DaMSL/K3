@@ -166,7 +166,7 @@ namespace K3 {
     // TODO: rvalue-ref overload for value argument.
     void send(Address addr, Identifier triggerId, Dispatcher& d);
 
-    void send(Address addr, Identifier triggerId, boost::shared_ptr<Dispatcher> d) {
+    void send(Address addr, Identifier triggerId, std::shared_ptr<Dispatcher> d) {
       send(addr, triggerId, *d);
     }
 
