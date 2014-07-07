@@ -1,0 +1,5 @@
+include "Annotation/Collection.k3"
+declare d: collection { key: int, value: real } @ { Collection }
+declare f: () -> int = \_ ->
+    let c = d.fold (\a -> \n -> { key: a.key, value: n.value }) { key: 0, value: 0.0 }
+    in c.error
