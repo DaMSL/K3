@@ -1,0 +1,7 @@
+include "Annotation/Collection.k3"
+
+declare f: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
+        -> int = \c ->
+    case c.peek () of
+        { Some k -> k.key }
+        { None -> -1 }

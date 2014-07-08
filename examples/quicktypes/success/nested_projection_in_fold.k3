@@ -1,0 +1,9 @@
+include "Annotation/Collection.k3"
+
+declare k: int = 1
+declare c1 : collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare c2 : collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+
+trigger start: () = \_ ->
+  let x = c1.fold (\a -> \b -> (a.x.insert {elem: empty {key:int, value:real} @ {Collection}}; a)) { x : c2 } in
+  ()
