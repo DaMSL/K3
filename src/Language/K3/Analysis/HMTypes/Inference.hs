@@ -527,7 +527,10 @@ unifyDrv preF postF qt1 qt2 = do
                (_,_) -> return [lb1, lb2]
       
       void $ foldM rcr (head $ lbs) $ tail lbs
-      consistentTLower $ children t1 ++ children t2
+      r <- consistentTLower $ children t1 ++ children t2
+      case tag r of
+        QTOperator QTLower -> return r
+        _ -> return $ tlower [r]
 
     unifyDrv' tv@(tag -> QTVar v) t = unifyv v t >> return tv
     unifyDrv' t tv@(tag -> QTVar v) = unifyv v t >> return tv
