@@ -82,7 +82,8 @@ data InterpretOptions
 
 -- | Typechecking options
 data TypecheckOptions
-    = TypecheckOptions {noQuickTypes :: Bool}
+    = TypecheckOptions { noQuickTypes    :: Bool 
+                       , printQuickTypes :: Bool }
   deriving (Eq, Read, Show)
 
 -- | Analyze Options.
@@ -360,14 +361,20 @@ printConfigOpt = choosePC <$> verbosePrintFlag <*> simplePrintFlag
 
 
 -- | Typecheck options
+typecheckOptions :: Parser Mode
+typecheckOptions = Typecheck <$> (TypecheckOptions <$> noQuickTypesOpt <*> printQuickTypesOpt)
+
 noQuickTypesOpt :: Parser Bool
 noQuickTypesOpt = switch (
                        long    "no-quicktypes"
-                    <> help    "Use Subtypes"
+                    <> help    "Use constraint-based typesystem"
                 )
 
-typecheckOptions :: Parser Mode
-typecheckOptions = Typecheck <$> (TypecheckOptions <$> noQuickTypesOpt)
+printQuickTypesOpt :: Parser Bool
+printQuickTypesOpt = switch (
+                         long    "print-quicktypes"
+                      <> help    "Show quicktypes as typechecker output"
+                   )
 
 -- | Analyze options
 analyzeOptions :: Parser Mode

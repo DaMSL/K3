@@ -67,9 +67,8 @@ run opts = do
     chooseTypechecker opts' p =
       if noQuickTypes opts'
         then typecheck p
-        else inferProgramTypes p >>= translateProgramTypes >>= inferProgramUsageProperties
-                                 >>= Simplification.inferFusableProgramApplies
-                                 >>= Simplification.fuseProgramTransformers
+        else do { qtp <- inferProgramTypes p;
+                  if printQuickTypes opts' then return qtp else translateProgramTypes qtp }
 
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
@@ -117,6 +116,12 @@ run opts = do
 
     parseError    s = putStrLn $ "Could not parse input: " ++ s
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
+
+    -- Temporary testing function.
+    testProperties p = inferProgramUsageProperties p
+                         >>= Simplification.inferFusableProgramApplies
+                         >>= Simplification.fuseProgramTransformers
+
 
 -- | Top-Level.
 main :: IO ()
