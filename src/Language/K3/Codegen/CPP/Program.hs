@@ -2,7 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Codegen.CPP.Program where
 
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), first)
 import Control.Monad.State
 
 import qualified Data.List as L
@@ -20,6 +20,17 @@ import Language.K3.Codegen.CPP.Declaration
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
+import qualified Language.K3.Codegen.Imperative as I
+
+-- | Copy state elements from the imperative transformation to CPP code generation.
+-- | Also mangle the lists for C++
+transitionCPPGenS :: I.ImperativeS -> CPPGenS
+transitionCPPGenS is = defaultCPPGenS 
+    { 
+      globals    = map (first mangleReservedId) $ I.globals is,
+      patchables = map mangleReservedId $ I.patchables is,
+      showables  = map (first mangleReservedId) $ I.showables is
+    }
 
 -- Top-level program generation.
 --  - Process the __main role.
@@ -31,10 +42,13 @@ program d = do
     s <- showGlobals
     staticGlobals' <- staticGlobals
     program' <- declaration preprocessed
-    genNamespaces <- namespaces >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
-    genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
+    genNamespaces <- namespaces  >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
+    genIncludes2  <- sysIncludes >>= \is -> return [text "#include" <+> angles (text f) | f <- is]
+    genIncludes   <- includes    >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
     return $ vsep $ punctuate line [
+            text "#define MAIN_PROGRAM",
+            vsep genIncludes2,
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
@@ -91,13 +105,13 @@ genKMain = do
             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
               genCCall (text "DispatchMessageProcessor") Nothing
-                [text "dispatch_table", text showGlobalsName]) <> semi,
+                [text showGlobalsName]) <> semi,
             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
             text "return 0" <> semi
         ]
 
-includes :: CPPGenM [Identifier]
-includes = return [
+sysIncludes :: CPPGenM [Identifier]
+sysIncludes = return [
         -- Standard Library
         "functional",
         "memory",
@@ -110,8 +124,11 @@ includes = return [
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
-        "boost/serialization/vector.hpp",
+        "boost/serialization/vector.hpp"
+      ]
 
+includes :: CPPGenM [Identifier]
+includes = return [
         -- K3 Runtime
         "Collections.hpp",
         "Common.hpp",
@@ -120,7 +137,7 @@ includes = return [
         "Literals.hpp",
         "MessageProcessor.hpp",
         "Serialization.hpp"
-    ]
+      ]
 
 namespaces :: CPPGenM [Identifier]
 namespaces = do

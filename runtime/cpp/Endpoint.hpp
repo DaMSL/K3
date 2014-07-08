@@ -10,6 +10,7 @@
 #include <boost/thread/lockable_adapter.hpp>
 
 #include <Common.hpp>
+#include <Codec.hpp>
 #include <Network.hpp>
 #include <IOHandle.hpp>
 #include <Queue.hpp>

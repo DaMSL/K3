@@ -8,11 +8,12 @@
 #include <memory>
 #include <tuple>
 
-#include <Common.hpp>
-#include <Endpoint.hpp>
-#include <Listener.hpp>
-#include <MessageProcessor.hpp>
-#include <Options.hpp>
+#include "Common.hpp"
+#include "Endpoint.hpp"
+#include "Listener.hpp"
+#include "Message.hpp"
+#include "MessageProcessor.hpp"
+#include "Options.hpp"
 
 namespace K3 {
 
@@ -105,9 +106,9 @@ namespace K3 {
     template <class Predicate>
     void waitForMessage(Predicate pred)
     {
-      if (  msgAvailMutex && msgAvailCondition ) {
+      if (msgAvailMutex && msgAvailCondition) {
         boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-        while ( pred() ) { msgAvailCondition->wait(lock); }
+        while (pred()) { msgAvailCondition->wait(lock); }
       } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
     }
 
@@ -163,23 +164,21 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, Identifier triggerId, const Value& v);
+    void send(Address addr, Identifier triggerId, std::shared_ptr<Dispatcher> d);
 
-    void send(Address addr, Identifier triggerId, shared_ptr<Value> v) {
-      send(addr, triggerId, *v);
-    }
-
+    // TODO: avoid destructing tuple here
     void send(Message& m) {
-      send(m.address(), m.id(), m.contents());
+      send(m.address(), m.id(), m.dispatcher());
     }
 
     void send(shared_ptr<Message> m) {
-      send(m->address(), m->id(), m->contents());
+      send(m->address(), m->id(), m->dispatcher());
     }
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Value> v){ this->send(a,i,v); };
+      return [this](Address a, Identifier i, shared_ptr<Value> v)
+          { send(RemoteMessage(a, i, *v).toMessage()); };
     }
 
     //---------------------------------------
@@ -245,7 +244,7 @@ namespace K3 {
       return endpoints->getExternalEndpoint(eid)->doRead();
     }
 
-    Message doReadInternal(Identifier eid) {
+    RemoteMessage doReadInternal(Identifier eid) {
       return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
@@ -261,9 +260,9 @@ namespace K3 {
       return endpoints->getExternalEndpoint(eid)->doWrite(v);
     }
 
-    void doWriteInternal(Identifier eid, Message v) {
+    void doWriteInternal(Identifier eid, RemoteMessage m) {
       return endpoints->getInternalEndpoint(eid)->doWrite(
-                make_shared<Value>(internal_codec->show_message(v)));
+                make_shared<Value>(internal_codec->show_message(m)));
     }
 
     //-----------------------

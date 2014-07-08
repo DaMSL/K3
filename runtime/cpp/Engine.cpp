@@ -57,19 +57,22 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, Identifier triggerId, const Value& v)
+    void Engine::send(Address addr, Identifier triggerId, shared_ptr<Dispatcher> disp)
     {
       if (deployment) {
         bool local_address = isDeployedNode(*deployment, addr);
         bool shortCircuit =  local_address || simulation();
-        Message msg(addr, triggerId, v);
 
-        if ( shortCircuit ) {
+        if (shortCircuit) {
           // Directly enqueue.
-          // TODO: ensure we avoid copying the value.
+          // TODO: ensure we avoid copying the dispatcher
+          Message msg(addr, triggerId, disp);
           queues->enqueue(msg);
           control->messageAvail();
+
         } else {
+          RemoteMessage rMsg(addr, triggerId, disp->pack());
+
           // Get connection and send a message on it.
           Identifier eid = connectionId(addr);
           bool sent = false;
@@ -78,7 +81,7 @@ namespace K3 {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
 
             if ( ep && ep->hasWrite() ) {
-              shared_ptr<Value> v = make_shared<Value>(internal_codec->show_message(msg));
+              shared_ptr<Value> v = make_shared<Value>(internal_codec->show_message(rMsg));
               ep->doWrite(v);
               ep->flushBuffer();
               sent = true;
@@ -95,8 +98,8 @@ namespace K3 {
             }
           }
 
-          if ( !sent ) {
-            string errorMsg = "Failed to send a message to " + msg.target();
+          if (!sent) {
+            string errorMsg = "Failed to send a message to " + rMsg.target();
             logAt(trivial::error, errorMsg);
             throw runtime_error(errorMsg);
           }
@@ -122,7 +125,8 @@ namespace K3 {
         // Log Message
         if (log_enabled) {
           std::string target = next_message->target();
-          std::string contents = next_message->contents();
+          std::shared_ptr<Dispatcher> d = next_message->dispatcher();
+          std::string contents = d->pack();
           std::string sep = "======================================";
           logAt(trivial::trace, sep);
           logAt(trivial::trace, "Message for: " + target);

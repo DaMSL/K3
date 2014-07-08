@@ -6,8 +6,9 @@
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/line.hpp>
 
-#include <Common.hpp>
-#include <Network.hpp>
+#include "Common.hpp"
+#include "Codec.hpp"
+#include "Network.hpp"
 
 namespace K3
 {

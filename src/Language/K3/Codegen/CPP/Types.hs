@@ -15,8 +15,6 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Declaration
 
-import qualified Language.K3.Codegen.Imperative as I
-
 -- | The C++ code generation monad. Provides access to various configuration values and error
 -- reporting.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
@@ -66,7 +64,7 @@ data CPPGenS = CPPGenS {
         composites :: S.Set (S.Set Identifier),
 
         -- | The set of triggers declared in a program, used to populate the dispatch table.
-        triggers :: S.Set Identifier,
+        triggers :: S.Set (Identifier, K3 Type),
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
@@ -82,10 +80,6 @@ refreshCPPGenS = do
     gs <- globals <$> get
     rs <- patchables <$> get
     put defaultCPPGenS { globals = gs, patchables = rs }
-
--- | Copy state elements from the imperative transformation to CPP code generation.
-transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is, showables = I.showables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -110,7 +104,7 @@ addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
 addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
 
 -- | Add a new trigger specification to the code generation state.
-addTrigger :: Identifier -> CPPGenM ()
+addTrigger :: (Identifier, K3 Type) -> CPPGenM ()
 addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
 
 data SerializationMethod
