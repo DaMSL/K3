@@ -126,8 +126,8 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
 
         pruneBadSubDirs = filter (not . hasBadSubDir)
 
-        compilePrefix = ["-I", "-D", "-f", "-w", "-O", "-pg"]
-        linkPrefix = ["-l", "-L", "-f", "-w", "-pg"]
+        compilePrefix = ["-I", "-D", "-f", "-w", "-O", "-pg", "-g"]
+        linkPrefix = ["-l", "-L", "-f", "-w", "-O", "-pg", "-g"]
 
         hasPrefixIn l x = foldr (\pre acc -> acc || pre `L.isPrefixOf` x) False l
 
