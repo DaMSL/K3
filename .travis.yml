@@ -10,7 +10,7 @@ install:
   - mkdir -p ~/software/nanomsg
   - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
   - wget http://www.partow.net/downloads/strtk.zip
-  - mv strtk.zip ~/software/ && - unzip ~/software/strtk.zip
+  - mv strtk.zip ~/software/ && unzip ~/software/strtk.zip
   - cabal install cabal-install && cabal --version
   - export PATH=~/.cabal/bin:$PATH
   - mkdir ../K3-Driver
