@@ -1,0 +1,20 @@
+include "Annotation/Collection.k3"
+
+declare k: int = 1
+declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+
+trigger assign: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } = \c -> ()
+
+trigger start: () = \_ ->
+    let e = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } in
+    let initial_means = (
+        data.fold (
+            \a -> \p ->
+                if a.remaining == 0
+                    then a
+                    else (
+                        (a.means.insert { key: a.remaining, value: p.elem });
+                        {remaining: a.remaining - 1, means:  a.means}
+                    )
+        ) { remaining: 1, means: e }
+    ).means in (peers.iterate (\p -> (assign, p.addr) <- initial_means))

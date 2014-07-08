@@ -1,0 +1,62 @@
+include "Annotation/Collection.k3"
+
+declare lowerDate: int
+declare upperDate: int
+
+declare userVisits_raw: collection {
+    sourceIP: string,
+    destURL: string,
+    visitDate: string,
+    adRevenue: real,
+    userAgent: string,
+    countryCode: string,
+    languageCode: string,
+    searchWord: string,
+    duration: int
+} @ { Collection }
+
+declare userVisits: collection {
+    sourceIP: string,
+    destURL: string,
+    visitDate: int,
+    adRevenue: real,
+    userAgent: string,
+    countryCode: string,
+    languageCode: string,
+    searchWord: string,
+    duration: int
+} @ { Collection }
+
+declare rankings: collection {
+    pageURL: string,
+    pageRank: int,
+    avgDuration: int
+} @ { Collection }
+
+declare local_aggregate: collection {
+    key: string,
+    value: collection { count: int, total: int, revenue: int } @ { Collection }
+} @ { Collection }
+
+declare matches: collection {
+    sourceIP: string,
+    pageRank: int,
+    adRevenue: real
+} @ { Collection }
+
+trigger aggregate_local: () = \_ -> (
+    userVisits.iterate (
+        \u -> rankings.iterate (
+            \r -> if u.destURL == r.pageURL and lowerDate < u.visitDate and u.visitDate < upperDate
+                    then matches.insert { sourceIP: u.sourceIP, pageRank: r.pageRank, adRevenue: u.adRevenue }
+                    else ()
+        )
+    );
+
+    local_aggregate = matches.groupBy
+        (\r -> r.sourceIP)
+        (\a -> \r -> { count: a.count + 1, total: a.total + r.pageRank, revenue: a.revenue + r.adRevenue })
+        { count: 0, total: 0, revenue: 0 };
+
+    (aggregate_global, master) <- local_aggregate
+)

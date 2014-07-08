@@ -1,0 +1,47 @@
+annotation Collection given type a, b {
+  provides lifted peek    : () -> option content
+
+  provides lifted insert  : content -> ()
+  provides lifted delete  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  @:Transformer
+  provides lifted combine : self -> self
+
+  @:Transformer
+  provides lifted split   : self -> (self, self)
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+
+  @:Transformer
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+
+  @:Transformer
+  provides lifted filter  : (content -> bool) -> self
+
+  @:Transformer
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+
+  @:Transformer
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {Collection}
+
+  @:Transformer
+  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
+                             -> collection {elem : a} @ {Collection}
+                             -> collection {elem : a} @ {Collection}
+
+}
+
+declare myCollection : mut collection { x : int } @ { Collection }
+declare c1           : mut collection { elem : int } @ { Collection } 
+
+trigger t : int = \i -> (
+  myCollection.insert {x:i};
+  c1 = ((myCollection.map (\r -> r.x + 1)).map (\r -> r.elem + 1)).filter (\r -> r.elem > 2)
+)
+
+source s1 : int = value 5
+
+feed s1 |> t

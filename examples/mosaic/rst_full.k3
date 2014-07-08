@@ -1,3 +1,27 @@
+include "Core/Builtins.k3"
+include "Annotation/Set.k3"
+include "Annotation/Seq.k3"
+
+declare my_peers : collection { _r1_ : address, _r2_ : string, _r3_ : string} @ {Set} 
+
+ = {|_r1_:address,_r2_:string,_r3_:string| 
+    {_r1_:127.0.0.1:40000, _r2_: "switch", _r3_:""},
+    {_r1_:127.0.0.1:50000, _r2_: "node",   _r3_:""}
+  |} @ {Set}
+declare pmap_input : collection {
+  key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
+  {| key:string, value:collection { key:int, value:int } @ { Seq } |
+  {key:"ATIMESD_mT1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mT1_mR1", value:{| key:int, value:int | {key:0, value:4},
+   {key:1, value:4}|} @ { Seq }},
+  {key:"ATIMESD_mS1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mS2", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"ATIMESD_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }}|} @ { Seq }
+
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
   } @ { Collection } = {| _r1_:int, _r2_:string, _r3_:int |
   {_r1_:1, _r2_:"ATIMESD", _r3_:1}, {_r1_:2, _r2_:"ATIMESD_mT1", _r3_:2},
@@ -5894,6 +5918,6 @@ key:int, value:int }, _r4_:option { key:int, value:int }
 source s1 : {
 _r1_:string, _r2_:option { key:int, value:int }, _r3_:option {
 key:int, value:int }, _r4_:option { key:int, value:int }
-} = file "rst.csv" k3
+} = file "/Users/yotambarnoy/source/k3_2/K3-Core/examples/mosaic/rst.csv" k3
 feed s1 |> switch_main
 

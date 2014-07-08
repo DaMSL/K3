@@ -1,0 +1,10 @@
+include "Core/Builtins.k3"
+include "Annotation/Seq.k3"
+
+declare x : mut int = 0
+
+trigger t : () = \_ -> x = 5
+
+source s1 : () = value ()
+
+feed s1 |> t
