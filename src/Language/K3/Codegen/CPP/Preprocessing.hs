@@ -111,6 +111,7 @@ cppReservedNames =
     , "reinterpret_cast"
     , "return"
     , "short"
+    , "shutdown"
     , "signed"
     , "sizeof"
     , "static"
