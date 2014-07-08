@@ -66,7 +66,7 @@ data CPPGenS = CPPGenS {
         composites :: S.Set (S.Set Identifier),
 
         -- | The set of triggers declared in a program, used to populate the dispatch table.
-        triggers :: S.Set Identifier,
+        triggers :: S.Set (Identifier, K3 Type),
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
@@ -110,7 +110,7 @@ addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
 addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
 
 -- | Add a new trigger specification to the code generation state.
-addTrigger :: Identifier -> CPPGenM ()
+addTrigger :: (Identifier, K3 Type) -> CPPGenM ()
 addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
 
 data SerializationMethod

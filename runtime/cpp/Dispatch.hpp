@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "Common.hpp"
+#include "Serialization.hpp"
 
 namespace K3 {
   
@@ -20,6 +21,25 @@ namespace K3 {
         virtual std::string pack() const = 0; 
         virtual void unpack(const std::string &msg) = 0;
         virtual ~Dispatcher() {}
+    };
+
+    template<typename T>
+    class DispatcherImpl : public Dispatcher {
+      public:
+        typedef unit_t (*trigFunc)(T);
+
+        DispatcherImpl(trigFunc f, T arg) : _func(f), _arg(arg) {}
+        DispatcherImpl(trigFunc f) : _func(f) {}
+
+        void dispatch() const { _func(_arg); }
+
+        void unpack(const std::string &msg) { _arg = *BoostSerializer::unpack<T>(msg); }
+
+        string pack() const { return BoostSerializer::pack<T>(_arg); }
+
+      private:
+        T _arg;
+        trigFunc _func;
     };
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper

@@ -182,12 +182,13 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
 
     return (fe <$$> ae, fv <> parens av)
-inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable trigNm), addr]), val])) = do
+inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable _), addr]), val])) = do
     (te, tv) <- inline trig
     (ae, av) <- inline addr
     (ve, vv) <- inline val
-    let className = genDispatchClassName trigNm
-        classInst = genCCall (text $ "auto d = make_shared<"++className++">") Nothing [vv]
+    trigTypes <- getKType val >>= genCType
+    let className = text "DispatcherImpl<" <> trigTypes <> text ">"
+        classInst = genCCall (text "auto d = make_shared" <> angles className) Nothing [tv, vv]
     return (
             vsep [te, ae, ve,
                   classInst <> semi,

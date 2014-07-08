@@ -188,12 +188,6 @@ namespace K3 {
 
   using ExternalCodec = Codec;
 
-  class unit_t {
-   public:
-    template <class archive>
-    void serialize(archive&, const unsigned int) {}
-  };
-
 } // namespace K3
 
 #endif // K3_RUNTIME_CODEC_H

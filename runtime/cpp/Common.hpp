@@ -34,6 +34,12 @@ namespace K3 {
 
   typedef uint32_t fixed_int;
 
+  class unit_t {
+   public:
+    template <class archive>
+    void serialize(archive&, const unsigned int) {}
+  };
+
   typedef std::tuple<boost::asio::ip::address, unsigned short> Address;
 
   enum class Builtin { Stdin, Stdout, Stderr };

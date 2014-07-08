@@ -16,6 +16,8 @@ namespace K3 {
   using std::shared_ptr;
   using std::string;
 
+  class Engine;
+
   namespace BoostSerializer {
       template <typename V>
       string pack(const V& v) {

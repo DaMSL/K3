@@ -31,11 +31,13 @@ program d = do
     s <- showGlobals
     staticGlobals' <- staticGlobals
     program' <- declaration preprocessed
-    genNamespaces <- namespaces >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
-    genIncludes <- includes >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
+    genNamespaces <- namespaces  >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
+    genIncludes2  <- sysIncludes >>= \is -> return [text "#include" <+> angles (text f) | f <- is]
+    genIncludes   <- includes    >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
     main <- genKMain
     return $ vsep $ punctuate line [
             text "#define MAIN_PROGRAM",
+            vsep genIncludes2,
             vsep genIncludes,
             vsep genNamespaces,
             vsep genAliases,
@@ -97,8 +99,8 @@ genKMain = do
             text "return 0" <> semi
         ]
 
-includes :: CPPGenM [Identifier]
-includes = return [
+sysIncludes :: CPPGenM [Identifier]
+sysIncludes = return [
         -- Standard Library
         "functional",
         "memory",
@@ -111,8 +113,11 @@ includes = return [
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
-        "boost/serialization/vector.hpp",
+        "boost/serialization/vector.hpp"
+      ]
 
+includes :: CPPGenM [Identifier]
+includes = return [
         -- K3 Runtime
         "Collections.hpp",
         "Common.hpp",
@@ -121,7 +126,7 @@ includes = return [
         "Literals.hpp",
         "MessageProcessor.hpp",
         "Serialization.hpp"
-    ]
+      ]
 
 namespaces :: CPPGenM [Identifier]
 namespaces = do

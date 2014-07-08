@@ -67,9 +67,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
 -- The generated code for a trigger is the same as that of a function with corresponding ()
 -- return-type.
 declaration (tag -> DTrigger i t e) = do
-    addTrigger i
-    dispClass <- dispatchClass i t
-    addForward dispClass
+    addTrigger (i, t)
     declaration (D.global i (T.function t T.unit) (Just e))
 
 declaration (tag &&& children -> (DRole _, cs)) = do
@@ -102,38 +100,10 @@ generateDispatchPopulation = do
     dispatchStatements <- mapM genDispatch (S.toList triggerS)
     return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
   where
-    genDispatch tName =
-      let className = genDispatchClassName tName in
-      return $ text $ "dispatch_table[\"" ++ tName ++ "\"] = make_shared<" ++ className ++ ">();"
-
--- Generate a trigger-wrapper Dispatcher class
-dispatchClass :: Identifier -> K3 Type -> CPPGenM CPPGenR
-dispatchClass i t = do
-  cType <- genCType t
-  let className = genDispatchClassName i
-  return $
-    vsep [
-      text $ "class " ++ className ++ " : public Dispatcher {",
-      text   "  public:",
-      text   "    " <> text className <> parens (cType <+> text "arg") <+> text ": _arg(arg) {}",
-      text   "    " <> text className <> text "()" <+> text "{}",
-      text   "",
-      text   "    void dispatch() const {",
-      text   "        " <> text i <> parens (text "_arg") <> semi,
-      text   "    }",
-      text   "",
-      text   "    void unpack(const string &msg) {",
-      text   "        _arg =" <+> text "*BoostSerializer::unpack<" <> cType <> text " >(msg);",
-      text   "    }",
-      text   "",
-      text   "    string pack() const {",
-      text   "        return BoostSerializer::pack<" <> cType <> text " >(" <> text "_arg);",
-      text   "    }",
-      text   "",
-      text   "  private:",
-      text   "    " <> cType <+> text "_arg;",
-      text   "};"
-    ]
+    genDispatch (tName, tType) = do
+      kType <- genCType tType
+      let className = text "DispatcherImpl" <> angles kType
+      return $ text "dispatch_table[\"" <> text tName <> text "\"] = make_shared" <> angles className <> parens (text tName) <> semi
 
 -- Generated Builtins
 -- Interface for source builtins.

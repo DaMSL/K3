@@ -14,7 +14,7 @@ hangBrace :: Doc -> Doc
 hangBrace d = text "{" <$$> indent 4 d <$$> text "}"
 
 genDispatchClassName :: Identifier -> Identifier
-genDispatchClassName i = "Dispatcher" ++ [toUpper $ head i] ++ tail i
+genDispatchClassName i = "DispatcherImpl<" ++ i ++ ">"
 
 -- Whether the type is a primitive in C++
 primitiveType :: K3 Type -> Bool
