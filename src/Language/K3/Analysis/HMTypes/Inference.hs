@@ -396,8 +396,7 @@ consistentTLower ch =
     let (varCh, nonvarCh) = partition isQTVar $ nub ch in
     case (varCh, nonvarCh) of
       ([], []) -> left "Invalid lower qtype"
-      ([], _)  -> --return $ tlower $ nonvarCh
-                  tvopeval QTLower nonvarCh 
+      ([], _)  -> tvopeval QTLower nonvarCh 
       (_, [])  -> getTVE >>= \tve -> unifiedLower (tail varCh) (tvchase tve $ head varCh)
       (_, _)   -> tvopeval QTLower nonvarCh >>= unifiedLower varCh
   where
@@ -405,7 +404,6 @@ consistentTLower ch =
       nvch <- mapM (extractAndUnifyV lb) vch
       return $ tlower $ [lb]++nvch
 
-    --extractAndUnifyV t (tag -> QTVar v) = unifyv v t
     extractAndUnifyV t t2@(tag -> QTVar _) = do
       tve <- getTVE
       let tchased = tvchase tve t2
@@ -541,13 +539,13 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2 = do
       lb1 <- lowerBound t1
       nlb <- rcr lb1 t2
-      r <- consistentTLower $ children t1 ++ [nlb] --[t2]
+      r <- consistentTLower $ children t1 ++ [nlb]
       trace (boxToString $ ["consistentTLowerL "] %+ prettyLines r) $ return r
 
     unifyDrv' t1 t2@(tag -> QTOperator QTLower) = do
       lb2 <- lowerBound t2
       nlb <- rcr t1 lb2
-      r <- consistentTLower $ {-[t1]-} [nlb] ++ children t2
+      r <- consistentTLower $ [nlb] ++ children t2
       trace (boxToString $ ["consistentTLowerR "] %+ prettyLines r) $ return r
 
     -- | Top unifies with any value. Bottom unifies with only itself. Self unifies with itself.
