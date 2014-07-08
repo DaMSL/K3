@@ -8,6 +8,10 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
+mangleReservedId :: Identifier -> Identifier
+mangleReservedId i | i `elem` cppReservedNames = mangleName i
+mangleReservedId i = i
+
 mangleReservedNames :: K3 Declaration -> K3 Declaration
 mangleReservedNames (Node (DGlobal i t me :@: as) cs)
     | i `elem` cppReservedNames = Node (DGlobal (mangleName i) t mme :@: as) mcs

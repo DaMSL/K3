@@ -15,8 +15,6 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Declaration
 
-import qualified Language.K3.Codegen.Imperative as I
-
 -- | The C++ code generation monad. Provides access to various configuration values and error
 -- reporting.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
@@ -82,10 +80,6 @@ refreshCPPGenS = do
     gs <- globals <$> get
     rs <- patchables <$> get
     put defaultCPPGenS { globals = gs, patchables = rs }
-
--- | Copy state elements from the imperative transformation to CPP code generation.
-transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is, showables = I.showables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier

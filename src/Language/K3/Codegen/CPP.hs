@@ -3,9 +3,10 @@
 -- binary.
 module Language.K3.Codegen.CPP (
     module Language.K3.Codegen.CPP.Types,
-
-    program
+    program,
+    transitionCPPGenS
 ) where
 
 import Language.K3.Codegen.CPP.Types
-import Language.K3.Codegen.CPP.Program (program)
+import Language.K3.Codegen.CPP.Program(program, transitionCPPGenS)
+

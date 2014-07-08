@@ -2,7 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Codegen.CPP.Program where
 
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), first)
 import Control.Monad.State
 
 import qualified Data.List as L
@@ -20,6 +20,17 @@ import Language.K3.Codegen.CPP.Declaration
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
+import qualified Language.K3.Codegen.Imperative as I
+
+-- | Copy state elements from the imperative transformation to CPP code generation.
+-- | Also mangle the lists for C++
+transitionCPPGenS :: I.ImperativeS -> CPPGenS
+transitionCPPGenS is = defaultCPPGenS 
+    { 
+      globals    = map (first mangleReservedId) $ I.globals is,
+      patchables = map mangleReservedId $ I.patchables is,
+      showables  = map (first mangleReservedId) $ I.showables is
+    }
 
 -- Top-level program generation.
 --  - Process the __main role.
