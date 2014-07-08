@@ -37,7 +37,6 @@ namespace K3 {
 
         string pack() const { return BoostSerializer::pack<T>(_arg); }
 
-      private:
         T _arg;
         trigFunc _func;
     };

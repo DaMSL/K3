@@ -14,9 +14,6 @@ namespace K3 {
 
   class Message : public std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> > {
   public:
-    Message(Address addr, Identifier id, Dispatcher& d)
-      : std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), std::shared_ptr<Dispatcher>(&d)) {}
-
     Message(Address addr, Identifier id, std::shared_ptr<Dispatcher> d)
       : std::tuple<Address, Identifier, std::shared_ptr<Dispatcher> >(std::move(addr), std::move(id), d) {}
 
