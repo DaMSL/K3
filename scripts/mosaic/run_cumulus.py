@@ -60,9 +60,10 @@ def main():
 
     # Create short pre.k3 string
     pre_s = 'include "Core/Builtins.k3"\n' +  \
-            'include "Core/Triggers.k3"\n' + \
             'include "Annotation/Set.k3"\n' + \
-            'include "Annotation/Seq.k3"\n\n'
+            'include "Annotation/Seq.k3"\n' + \
+            'include "Core/Time.k3"\n' +  \
+            '\n'
 
     # parse the peers file to create a peer command line string
     reg = r'declare my_peers[^=]+= \{\|[^|]+\|(.+)\|\} @.+'
