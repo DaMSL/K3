@@ -102,6 +102,9 @@ namespace K3 {
 
       if (qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), r)) {
         t = r;
+      } else if 
+        (qi::parse(begin(s), end(s), ('\'' >> *(('\\' >> qi::char_) | (qi::char_ - '\'')) >> '\''), r)) {
+        t = r;
       }
     }
   };
