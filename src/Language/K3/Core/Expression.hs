@@ -145,19 +145,21 @@ instance Pretty (K3 Expression) where
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
-  let (typeAnns, anns) = partition isETypeOrBound as
+  let (typeAnns, anns) = partition (\a -> isETypeOrBound a || isEQType a) as
       prettyTypeAnns   = case typeAnns of
-                          []        -> []
-                          [EType t] -> drawETypeAnnotation $ EType t
-                          [t, l, u] -> drawETypeAnnotation t
-                                        %+ indent 2 (drawETypeAnnotation l
-                                        %+ indent 2 (drawETypeAnnotation u))
+                          []         -> []
+                          [EType t]  -> drawETypeAnnotation $ EType t
+                          [EQType t] -> drawETypeAnnotation $ EQType t
+                          [t, l, u]  -> drawETypeAnnotation t
+                                         %+ indent 2 (drawETypeAnnotation l
+                                         %+ indent 2 (drawETypeAnnotation u))
                           _     -> error "Invalid type bound annotations"
   in (drawAnnotations anns, prettyTypeAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
         drawETypeAnnotation (EType   t) = ["EType   "] %+ prettyLines t
+        drawETypeAnnotation (EQType  t) = ["EQType  "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
 
