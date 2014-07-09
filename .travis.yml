@@ -11,6 +11,8 @@ install:
   - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
   - wget http://www.partow.net/downloads/strtk.zip
   - mv strtk.zip ~/software/ && cd ~/software && unzip strtk.zip && ls && cd -
+  - wget http://www.codeproject.com/script/articles/download.aspx?file=/KB/recipes/JSON_Spirit/json_spirit_v4.08.zip
+  - mv json_spirit_v4.08.zip ~/software/json_spirit.zip && cd ~/software && unzip json_spirit.zip && ls ** cd -
   - cabal install cabal-install && cabal --version
   - export PATH=~/.cabal/bin:$PATH
   - mkdir ../K3-Driver
@@ -26,4 +28,4 @@ script:
   - cabal configure
   - cabal build
   - scripts/tests/tests.py -l scripts/tests/passed_tests.txt
-  - ./dist/build/k3/k3 -I ../K3-Core/lib/k3 compile -l cpp --clang --runtime '../K3-Core/runtime' --cpp-flags='-DBOOST_LOG_DYN_LINK -I../K3-Core/runtime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lpthread -lboost_log_setup -lboost_log -lboost_program_options -I/home/travis/software/nanomsg/include -I/home/travis/software/strtk' ../K3-Core/examples/fibonacci.k3
+  - ./dist/build/k3/k3 -I ../K3-Core/lib/k3 compile -l cpp --clang --runtime '../K3-Core/runtime' --cpp-flags='-DBOOST_LOG_DYN_LINK -I../K3-Core/runtime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lpthread -lboost_log_setup -lboost_log -lboost_program_options -I/home/travis/software/nanomsg/include -I/home/travis/software/strtk -I/home/travis/software/json_spirit/json_spirit' ../K3-Core/examples/fibonacci.k3
