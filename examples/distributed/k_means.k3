@@ -5,10 +5,9 @@ include "Core/Vector.k3"
 declare master: address = 127.0.0.1:40000
 
 declare k: int = 1
-declare num_points: mut int = 100
 declare num_peers: mut int = 1
 
-declare iterations_remaining: mut int = 100
+declare iterations_remaining: mut int = 10
 declare requests: mut int = 0
 
 declare means: mut collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
@@ -52,7 +51,7 @@ trigger maximize: () = \_ -> (
   (means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection });
   (aggregates.iterate (\x -> means.insert {key: x.key, value: scalar_mult (1.0/(x.value.count)) (x.value.sum)}));
   (iterations_remaining = iterations_remaining - 1);
-  (if iterations_remaining == 0 then () else peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
+  (if iterations_remaining == 0 then () else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
 )
 
 
@@ -79,17 +78,9 @@ trigger ready : () = \_ -> (
   )
 )
 
-trigger load : { elem: collection { key: int, value: real } @ { Collection } } = \p -> (
-  (data.insert p);
-  (num_points = num_points - 1);
-  (if num_points == 0
-   then (ready, master) <- ()
-   else ()
-  )
-)
-
 trigger load_all : () = \_ -> (
-  LoaderVector "/Users/joshwheeler/foo.vector" data
+  LoaderVector "/Users/joshwheeler/foo.vector" data;
+  (ready, master) <- ()
 )
 
 source points : () = value ()
