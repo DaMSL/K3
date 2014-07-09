@@ -113,7 +113,7 @@ generateDispatchPopulation = do
 -- Interface for source builtins.
 -- Map special builtin suffix to a function that will generate the builtin.
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM CPPGenR))]
-source_builtin_map = [("HasRead", genHasRead), ("Read", genDoRead),("Loader",genLoader),("LoaderJSON",genJSONLoader)]
+source_builtin_map = [("HasRead", genHasRead), ("Read", genDoRead),("Loader",genLoader),("LoaderJSON",genJSONLoader),("LoaderVector", genVectorLoader)]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -269,6 +269,42 @@ parseJSON value base_t =
       c   <- parseJSON (new_val val) t
       bod <- return $ rname <> dot <> text i <> text "=" <+> c <> semi
       return $ iff <> hangBrace (vsep [bod, text "continue;"])
+
+genVectorLoader :: String -> K3 Type -> String -> CPPGenM CPPGenR
+genVectorLoader _ (children -> [_,f]) name = do
+    rec      <- getRecordType
+    rec_type <- genCType rec
+    c_type   <- return $ text "K3::Collection<" <> rec_type <> text">"
+    -- Function definition
+    header1  <- return $ text "F<unit_t(" <> c_type <> text "&)>"<> text name <> text "(string filepath)"
+    header2  <- return $ text "F<unit_t(" <> c_type <> text "&)> r = [filepath] (" <> c_type <> text" & c)"
+    inits    <- return $ vsep  [text "std::string line;",
+                               text "std::ifstream infile(filepath);"]
+    loop     <- return $ vsep [ text "char * pch;",
+                                text "int i = 0;",
+                                text "pch = strtok (&line[0],\",\");",
+                                text "_Collection<R_key_value<int,double>> c2 = _Collection<R_key_value<int,double>>();",
+                                text "while (pch != NULL)" <> hangBrace (vsep [text "R_key_value<int,double> rec;",
+                                                                              text "i++;",
+                                                                              text "rec.key = i;",
+                                                                              text "rec.value = std::atof(pch);",
+                                                                              text "c2.insert(rec);",
+                                                                              text "pch = strtok (NULL,\",\");"]),
+                                text "R_elem<_Collection<R_key_value<int,double>>> rec2;",
+                                text "rec2.elem = c2;",
+                                text "c.insert(rec2);"]
+    body     <- return $ vsep [inits,
+                               text "while (std::getline(infile, line))" <> hangBrace (loop),
+                               text "return unit_t();"]
+
+    return $ header1 <> (hangBrace $ (header2 <> vsep [hangBrace body <> semi, text "return r;"]))
+  where
+    getRecordType = case children f of
+                     ([c,_])  -> (case children c of
+                                   [r] -> return r
+                                   _   -> type_mismatch)
+                     _        ->  type_mismatch
+    type_mismatch = error "Invalid type for Vecotr Loader function."
 
 stripSuffix :: String -> String -> String
 stripSuffix suffix name = maybe (error "not a suffix!") reverse $ L.stripPrefix (reverse suffix) (reverse name)

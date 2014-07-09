@@ -16,6 +16,9 @@ declare aggregates: mut collection { key: int, value: { count: int, sum: collect
 
 declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
 
+declare LoaderVector : string -> collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection } -> ()
+
+
 declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \means -> (
     case means.peek () of
         { Some first_mean ->
@@ -53,20 +56,20 @@ trigger maximize: () = \_ -> (
 )
 
 
-trigger start: () = \_ -> let
-    e = empty {key: int, value: collection {key: int, value: real} @ { Collection }} @ {Collection} in let
-    initial_means = (data.fold
-      (\a -> \p ->
-        if a.remaining == 0
-        then a
-        else (
-          (a.means.insert { key: a.remaining, value: p.elem });
-          {remaining: a.remaining - 1, means:  a.means}
-        )
+trigger start: () = \_ -> (
+  let foo = (data.fold
+    (\a -> \p ->
+      if a == 0
+      then a
+      else (
+        (means.insert {key: a, value: p.elem});
+        (a - 1)
       )
-      {remaining: k, means: e}
-    ).means
-    in peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- initial_means))
+    )
+    k
+  ) in
+  (peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
+)
 
 trigger ready : () = \_ -> (
   (num_peers = num_peers - 1);
@@ -85,5 +88,9 @@ trigger load : { elem: collection { key: int, value: real } @ { Collection } } =
   )
 )
 
-source points : {elem: collection {key: int, value: real} @ {Collection}} = file "/k3/data/points.txt" k3
-feed points |> load
+trigger load_all : () = \_ -> (
+  LoaderVector "/Users/joshwheeler/foo.vector" data
+)
+
+source points : () = value ()
+feed points |> load_all
