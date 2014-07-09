@@ -21,6 +21,8 @@ declare printLine : string -> ()
 
 declare itos : int -> string
 
+declare rtos : real -> string
+
 declare haltEngine : () -> ()
 
 declare now : () -> int

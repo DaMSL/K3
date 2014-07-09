@@ -70,6 +70,10 @@ namespace K3 {
     return to_string(i);
   }
 
+  string rtos(double d) {
+    return to_string(d);
+  }
+
   unit_t haltEngine(unit_t) {
     engine.forceTerminateEngine();
     return unit_t();

@@ -4,6 +4,7 @@ include "Core/Vector.k3"
 
 declare master: address = 127.0.0.1:40000
 declare num_peers: mut int = 1
+declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
 
 // Hyperparameters
@@ -28,6 +29,13 @@ declare svm_loss : collection { key: int, value: real } @ { Collection } -> real
   in (lambda * (dot parameters parameters) + (if q < 0 then 0 else q))
 )
 
+// SVM Loss averaged over data
+declare svm_loss_avg : () -> real = \_ -> (
+let stats =
+  data.fold (\acc -> \d -> {count: acc.count +1, sum: acc.sum + (svm_loss d.elem d.label)}) {count:0, sum:0.0}
+in stats.sum / stats.count
+)
+
 // SVM gradient at 1 point.
 declare svm_gradient : collection { key: int, value: real } @ { Collection } -> real -> collection { key: int, value: real } @ { Collection } = \x -> \y -> (
   let flag = y * (dot parameters x)
@@ -47,7 +55,7 @@ declare point_gradient: collection { key: int, value: real } @ { Collection } ->
 // Update parameters based on a single point
 declare update_parameters: collection { key: int, value: real } @ { Collection } -> real -> () = \point -> \label -> (
   let update = scalar_mult step_size (point_gradient point label) in
-  parameters = vector_add parameters update
+  parameters = vector_sub parameters update
 )
 
 // Run SGD on local dataset.
@@ -75,6 +83,8 @@ trigger aggregate : collection { key: int, value: real } @ { Collection } = \loc
 // Average local parameters from each peer, then start a new iteration.
 trigger maximize : () = \_ -> (
   parameters = (scalar_mult (1.0 / aggregates.count) aggregates.sum);
+  printLine "Loss:";
+  printLine (rtos (svm_loss_avg ()));
   aggregates = {count:0, sum: (zero_vector ())};
   iterations_remaining = iterations_remaining - 1;
   if iterations_remaining == 0
@@ -88,10 +98,19 @@ trigger start : () = \_ -> (
   peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
 )
 
+trigger ready : () = \_ -> (
+  (peers_ready = peers_ready + 1);
+  (if peers_ready == num_peers
+   then (start, master) <- ()
+   else ()
+  )
+)
+
 trigger shutdown : () = \_ -> haltEngine ()
 
 trigger load_all : () = \_ -> (
-  LoaderVectorLabel "/Users/joshwheeler/foo.lvector" data
+  LoaderVectorLabel "/Users/joshwheeler/foo.lvector" data;
+  (ready, master) <- ()
 )
 
 source points : () = value ()

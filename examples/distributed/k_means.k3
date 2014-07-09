@@ -53,7 +53,7 @@ trigger maximize: () = \_ -> (
   (iterations_remaining = iterations_remaining - 1);
   (if iterations_remaining == 0
   then (peers.iterate (\p -> (shutdown, p.addr) <- ()))
-  else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
+  else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))fg
 )
 
 
