@@ -5,8 +5,8 @@
 #include <sstream>
 #include <string>
 
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
 
 namespace K3 {
 
@@ -16,11 +16,13 @@ namespace K3 {
   using std::shared_ptr;
   using std::string;
 
+  class Engine;
+
   namespace BoostSerializer {
       template <typename V>
       string pack(const V& v) {
         ostringstream out_sstream;
-        boost::archive::text_oarchive out_archive(out_sstream);
+        boost::archive::binary_oarchive out_archive(out_sstream);
         out_archive << v;
         return out_sstream.str();
       }
@@ -28,7 +30,7 @@ namespace K3 {
       template <typename V>
       shared_ptr<V> unpack(const string& s) {
         istringstream in_sstream(s);
-        boost::archive::text_iarchive in_archive(in_sstream);
+        boost::archive::binary_iarchive in_archive(in_sstream);
 
         V p;
         in_archive >> p;
@@ -38,7 +40,7 @@ namespace K3 {
       template <typename V>
       shared_ptr<V> unpack_with_engine(const string& s, Engine * eng) {
         istringstream in_sstream(s);
-        boost::archive::text_iarchive in_archive(in_sstream);
+        boost::archive::binary_iarchive in_archive(in_sstream);
 
         V p(eng);
         in_archive >> p;

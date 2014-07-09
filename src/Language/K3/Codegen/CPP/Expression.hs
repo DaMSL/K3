@@ -182,16 +182,21 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
 
     return (fe <$$> ae, fv <> parens av)
-inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [t, a]), v])) = do
-    (te, tv) <- inline t
-    (ae, av) <- inline a
-    (ve, vv) <- inline v
-    argType <- getKType v >>= genCType
-    let serializationCall = genCCall (text "pack") (Just [argType]) [vv]
-    return (
-            vsep [te, ae, ve, text "engine.send" <> tupled [av, dquotes tv, serializationCall]] <> semi,
-            text "unit_t()"
-        )
+inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
+    (te, tv)  <- inline trig
+    (ae, av)  <- inline addr
+    (ve, vv)  <- inline val
+    trigList  <- triggers <$> get
+    trigTypes <- getKType val >>= genCType
+    let className = text "DispatcherImpl<" <> trigTypes <> text ">"
+        classInst = genCCall (text "auto d = make_shared" <> angles className) Nothing [tv, vv]
+        (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
+                         tName `lookup` trigList
+    return (vsep [te, ae, ve,
+                  classInst <> semi,
+                  text "engine.send" <> tupled [av, int trigId, text "d"]] <> semi,
+            text "unit_t()")
+
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b

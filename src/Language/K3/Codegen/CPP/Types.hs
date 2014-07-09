@@ -15,8 +15,6 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Declaration
 
-import qualified Language.K3.Codegen.Imperative as I
-
 -- | The C++ code generation monad. Provides access to various configuration values and error
 -- reporting.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
@@ -65,8 +63,8 @@ data CPPGenS = CPPGenS {
         -- | Set of annotation combinations actually encountered during the program.
         composites :: S.Set (S.Set Identifier),
 
-        -- | The set of triggers declared in a program, used to populate the dispatch table.
-        triggers :: S.Set Identifier,
+        -- | List of triggers declared in a program, used to populate the dispatch table.
+        triggers :: [(Identifier, (K3 Type, Int))],
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
@@ -75,17 +73,13 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty [] [] [] [] M.empty M.empty S.empty S.empty BoostSerialization
+defaultCPPGenS = CPPGenS 0 empty [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
     gs <- globals <$> get
     rs <- patchables <$> get
     put defaultCPPGenS { globals = gs, patchables = rs }
-
--- | Copy state elements from the imperative transformation to CPP code generation.
-transitionCPPGenS :: I.ImperativeS -> CPPGenS
-transitionCPPGenS is = defaultCPPGenS { globals = I.globals is, patchables = I.patchables is, showables = I.showables is}
 
 -- | Generate a new unique symbol, required for temporary reification.
 genSym :: CPPGenM Identifier
@@ -108,10 +102,6 @@ addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (compo
 -- | Add a new record specification to the code generation state.
 addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()
 addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
-
--- | Add a new trigger specification to the code generation state.
-addTrigger :: Identifier -> CPPGenM ()
-addTrigger i = modify (\s -> s { triggers = S.insert i (triggers s) })
 
 data SerializationMethod
     = BoostSerialization

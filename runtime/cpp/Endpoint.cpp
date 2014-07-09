@@ -72,7 +72,7 @@ namespace K3
         shared_ptr<Value> v = contents.get(guard);
         contents.get(guard).reset();
         if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
+          Message msg = *(cdec->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -140,7 +140,7 @@ namespace K3
       if(!this->empty()) {
         shared_ptr<Value> v = this->pop();
         if (queues && cdec) {
-          Message msg = cdec->read_message(*v);
+          Message msg = *(cdec->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -225,8 +225,8 @@ namespace K3
           if (force && empty()) { return transferred; }
           shared_ptr<Value> v = this->pop();
           if (queues && cdec) {
-            Message msg = cdec->read_message(*v);
-            queues->enqueue(msg);
+            RemoteMessage rMsg = cdec->read_message(*v);
+            queues->enqueue(*(rMsg.toMessage()));
             transferred = true;
           }
           notify(v);
@@ -237,7 +237,7 @@ namespace K3
 
     void EndpointBindings::attachNotifier(EndpointNotification nt,
                                           Address sub_addr,
-                                          Identifier sub_id) {
+                                          TriggerId sub_id) {
       shared_ptr<Subscribers> s = eventSubscriptions[nt];
       if (!s) {
         s = shared_ptr<Subscribers>(new Subscribers());
@@ -249,13 +249,13 @@ namespace K3
 
     void EndpointBindings::detachNotifier(EndpointNotification nt,
                                           Address sub_addr,
-                                          Identifier sub_id) {
+                                          TriggerId sub_id) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
           s->remove_if(
-            [&sub_id, &sub_addr](const tuple<Address, Identifier>& t){
+            [&sub_id, &sub_addr](const tuple<Address, TriggerId>& t){
               return get<0>(t) == sub_addr && get<1>(t) == sub_id;
             });
         }
@@ -267,7 +267,7 @@ namespace K3
       if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
-          for (tuple<Address, Identifier> t : *s) {
+          for (tuple<Address, TriggerId> t : *s) {
             sendFn(get<0>(t), get<1>(t), payload);
           }
         }

@@ -1,9 +1,11 @@
+#include <cstdlib>
 #include "Common.hpp"
+#include "Codec.hpp"
 
 using namespace std;
 
-namespace K3
-{
+namespace K3 {
+
       Value DelimiterCodec::encode(const Value& v) {
         string res = string(v);
         res.push_back(delimiter_);
@@ -96,7 +98,7 @@ namespace K3
         *buf_ = buf_->substr(header_size);
       }
 
-      Message AbstractDefaultInternalCodec::read_message(const Value& v) {
+      RemoteMessage AbstractDefaultInternalCodec::read_message(const Value& v) {
         // Values are of the form: "(Address, Identifier, Payload)"
         // Split value into components:
         static const boost::regex value_regex("\\( *(.+) *, *(.+) *, *(.+) *\\)");
@@ -119,22 +121,23 @@ namespace K3
           }
 
           // Parse Identifier
-          Identifier m = value_match[2];
+          string temp2 = value_match[2];
+          TriggerId id = atoi(temp2.c_str());
+
           // Parse Payload
           Value payload = value_match[3];
-          return Message(a,m,payload);
+          return RemoteMessage(a, id, payload);
          }
         else {
           throw CodecException("Invalid Format for Value:" + v);
         }
       }
 
-      Value AbstractDefaultInternalCodec::show_message(const Message& m) {
+      Value AbstractDefaultInternalCodec::show_message(const RemoteMessage& m) {
         ostringstream os;
         os << "(" << addressAsString(m.address()) << "," << m.id() << "," << m.contents() << ")";
         string s = os.str();
         return s;
       }
-
-
 }
+

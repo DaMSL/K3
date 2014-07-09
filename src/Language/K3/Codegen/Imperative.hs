@@ -38,6 +38,7 @@ type ImperativeE = ()
 
 data ImperativeS = ImperativeS {
         globals :: [(Identifier, K3 Type)],
+        triggers :: [(Identifier, K3 Type)],
         patchables :: [Identifier],
         showables  :: [(Identifier, K3 Type)],
         mutables :: [Identifier]
@@ -49,7 +50,7 @@ runImperativeM :: ImperativeM a -> ImperativeS -> (Either ImperativeE a, Imperat
 runImperativeM m s = flip runState s $ runEitherT m
 
 defaultImperativeS :: ImperativeS
-defaultImperativeS = ImperativeS { globals = [], patchables = [], mutables = [], showables = []}
+defaultImperativeS = ImperativeS { globals = [], patchables = [], mutables = [], showables = [], triggers = []}
 
 withMutable :: Identifier -> ImperativeM a -> ImperativeM a
 withMutable i m = do
@@ -64,6 +65,9 @@ withMutable i m = do
 
 addGlobal :: Identifier -> K3 Type -> ImperativeM ()
 addGlobal i t = modify $ \s -> s { globals = (i, t) : globals s }
+
+addTrigger :: Identifier -> K3 Type -> ImperativeM ()
+addTrigger i t = modify $ \s -> s { triggers = (i, t) : triggers s }
 
 addPatchable :: Identifier -> ImperativeM ()
 addPatchable i = modify $ \s -> s { patchables  = i : patchables s }
@@ -94,6 +98,7 @@ declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     return $ Node (DGlobal i t (Just me') :@: as) cs'
 declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i t
+    addTrigger i t
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DTrigger i t ne' :@: as) cs'

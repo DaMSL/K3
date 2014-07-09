@@ -65,13 +65,9 @@ declaration (tag -> DGlobal i t (Just e)) = do
     cDecl t i
 
 -- The generated code for a trigger is the same as that of a function with corresponding ()
--- return-type. Additionally however, we must generate a trigger-wrapper function to perform
--- deserialization.
-declaration (tag -> DTrigger i t e) = do
-    addTrigger i
-    d <- declaration (D.global i (T.function t T.unit) (Just e))
-    w <- triggerWrapper i t
-    return $ d <$$> w
+-- return-type.
+declaration (tag -> DTrigger i t e) = 
+    declaration (D.global i (T.function t T.unit) (Just e))
 
 declaration (tag &&& children -> (DRole _, cs)) = do
     subDecls <- vsep . punctuate line <$> mapM declaration cs
@@ -83,7 +79,6 @@ declaration (tag &&& children -> (DRole _, cs)) = do
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
     recordDecls <- forM (M.toList $ recordMap currentS) $ (\(_, (unzip -> (ids, _))) -> record ids)
     tablePop <- generateDispatchPopulation
-    let tableDecl = text "TriggerDispatch" <+> text "dispatch_table" <> semi
 
     newS <- get
 
@@ -92,7 +87,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
-            ++ [subDecls, i, tableDecl, tablePop]
+            ++ [subDecls, i, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 declaration _ = return empty
@@ -101,30 +96,18 @@ declaration _ = return empty
 generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
-    dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
+    dispatchStatements <- mapM genDispatch triggerS
+    let dispatchInit = text "dispatch_table.resize" <> parens(int $ length triggerS) <> semi
+    return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] $
+             vsep $ dispatchInit:dispatchStatements
   where
-    genDispatch tName = return $
-        text ("dispatch_table[\"" ++ tName ++ "\"] = " ++ genDispatchName tName) <> semi
-
-genDispatchName :: Identifier -> Identifier
-genDispatchName i = i ++ "_dispatch"
-
--- | Generate a trigger-wrapper function, which performs deserialization of an untyped message
--- (using Boost serialization) and call the appropriate trigger.
-triggerWrapper :: Identifier -> K3 Type -> CPPGenM CPPGenR
-triggerWrapper i t = do
-    tmpDecl <- cDecl t "arg"
-    tmpType <- genCType t
-    let triggerDispatch = text i <> parens (text "arg") <> semi
-    let unpackCall = text "arg" <+> equals <+> text "*" <> genCCall (text "unpack") (Just [tmpType]) [text "msg"] <> semi
-    return $ genCFunction Nothing (text "void") (text i <> text "_dispatch") [text "string msg"] $ hangBrace (
-            vsep [
-                tmpDecl,
-                unpackCall,
-                triggerDispatch,
-                text "return;"
-            ])
+    genDispatch (tName, (tType, tNum)) = do
+      kType <- genCType tType
+      let className = text "DispatcherImpl" <> angles kType
+      return $ text "dispatch_table[" <> int tNum <> text "] =" <+>
+        text "make_tuple" <> parens (
+          text "make_shared" <> angles className <> parens (text tName) <> comma <+> dquotes (text tName))
+        <> semi
 
 -- Generated Builtins
 -- Interface for source builtins.

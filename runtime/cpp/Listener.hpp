@@ -243,9 +243,9 @@ namespace K3 {
                 // Exhaust the codec's buffer
                 while (v) {
 
-                  bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
+                  bool t = endpoint_->do_push(v, queues, transfer_codec);
                   if (t) {
-                    this->control_->messageAvailable();
+                    control_->messageAvailable();
                   }
                   // Attempt to decode a buffered value
                   v = cdec->decode("");
