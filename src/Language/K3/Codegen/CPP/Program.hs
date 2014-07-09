@@ -126,7 +126,6 @@ sysIncludes = return [
         "strtk.hpp",
 
         -- Boost
-        "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
         "boost/serialization/vector.hpp"
       ]

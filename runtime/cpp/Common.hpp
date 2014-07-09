@@ -13,8 +13,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/any.hpp>
 #include <boost/asio.hpp>
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/sources/severity_channel_logger.hpp>
