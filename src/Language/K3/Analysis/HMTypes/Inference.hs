@@ -78,7 +78,7 @@ qTypeOfM e = case e @~ isEQType of
               _ -> left $ "Untyped expression: " ++ show e
 
 projectNamedPairs :: [Identifier] -> [(Identifier, a)] -> [a]
-projectNamedPairs ids idv = snd $ unzip $ filter (\(k,_) -> k `elem` ids) idv
+projectNamedPairs ids idv = [v | i <- ids, let (Just v) = lookup i idv]
 
 rebuildNamedPairs :: [(Identifier, a)] -> [Identifier] -> [a] -> [a]
 rebuildNamedPairs oldIdv newIds newVs = map (replaceNewPair $ zip newIds newVs) oldIdv
@@ -317,9 +317,11 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
         | p1 == p2 -> return a'
 
       (QTCon (QTRecord i1), QTCon (QTRecord i2))
-        | i1 `intersect` i2 == i1 -> mergedRecord True  i1 a' i2 b'
-        | i1 `intersect` i2 == i2 -> mergedRecord False i2 b' i1 a'
-        | otherwise -> annLower a' b' >>= return . foldl (@+) (trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b'))
+        | i1 `contains` i2 -> traceShow (i1, i2) $ mergedRecord True  i1 a' i2 b'
+        | i2 `contains` i1 -> traceShow (i1, i2) $ mergedRecord False i2 b' i1 a'
+        | otherwise -> trace "!!" (traceShow (i1, i2) (return ())) >> annLower a' b' >>= return . foldl (@+) (trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b'))
+       where
+        contains xs ys = xs `union` ys == xs
 
       (QTCon (QTCollection _), QTCon (QTRecord _)) -> coveringCollection a' b'
       (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b' a'
@@ -489,8 +491,10 @@ unifyDrv preF postF qt1 qt2 = do
 
     -- | Record subtyping for projection
     unifyDrv' t1@(tag -> QTCon d1@(QTRecord f1)) t2@(tag -> QTCon d2@(QTRecord f2))
-      | f1 `intersect` f2 == f1 = onRecord (t1,d1,f1) (t2,d2,f2)
-      | f1 `intersect` f2 == f2 = onRecord (t2,d2,f2) (t1,d1,f1)
+      | f2 `contains` f1 = onRecord (t1,d1,f1) (t2,d2,f2)
+      | f1 `contains` f2 = onRecord (t2,d2,f2) (t1,d1,f1)
+     where
+       contains xs ys = xs `union` ys == xs
 
     -- | Collection-as-record subtyping for projection
     unifyDrv' t1@(tag -> QTCon (QTCollection _)) t2@(tag -> QTCon (QTRecord _))

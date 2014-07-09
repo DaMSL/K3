@@ -1,0 +1,35 @@
+annotation Map given type a,b {
+  provides lifted peek    : () -> option content
+
+  provides lifted insert  : content -> ()
+  provides lifted erase  : content -> ()
+  provides lifted update  : content -> (content -> ())
+
+  @:Transformer
+  provides lifted combine : self -> self
+
+  @:Transformer
+  provides lifted split   : () -> (self, self)
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+
+  @:Transformer
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+
+  @:Transformer
+  provides lifted filter  : (content -> bool) -> self
+
+  @:Transformer
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+
+  @:Transformer
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {Map}
+
+  @:Transformer
+  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
+                             -> collection {elem : a} @ {Collection}
+}
+
+declare lookup: forall a, b. a -> collection { key: a, value: b } -> option b

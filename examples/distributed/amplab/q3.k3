@@ -3,6 +3,8 @@ include "Annotation/Collection.k3"
 declare lowerDate: int
 declare upperDate: int
 
+declare master: address = localhost:90000
+
 declare userVisits_raw: collection {
     sourceIP: string,
     destURL: string,
@@ -33,11 +35,6 @@ declare rankings: collection {
     avgDuration: int
 } @ { Collection }
 
-declare local_aggregate: collection {
-    key: string,
-    value: collection { count: int, total: int, revenue: int } @ { Collection }
-} @ { Collection }
-
 declare matches: collection {
     sourceIP: string,
     pageRank: int,
@@ -53,10 +50,15 @@ trigger aggregate_local: () = \_ -> (
         )
     );
 
-    local_aggregate = matches.groupBy
+    let local_aggregate = matches.groupBy
         (\r -> r.sourceIP)
         (\a -> \r -> { count: a.count + 1, total: a.total + r.pageRank, revenue: a.revenue + r.adRevenue })
-        { count: 0, total: 0, revenue: 0 };
+        { count: 0, total: 0, revenue: 0 }
 
-    (aggregate_global, master) <- local_aggregate
+    in (aggregate_global, master) <- local_aggregate
 )
+
+trigger aggregate_global: collection {
+    key: string,
+    value: collection { count: int, total: int, revenue: int } @ { Collection }
+} @ { Collection } = \c -> ()
