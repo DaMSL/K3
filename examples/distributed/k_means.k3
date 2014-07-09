@@ -51,7 +51,9 @@ trigger maximize: () = \_ -> (
   (means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection });
   (aggregates.iterate (\x -> means.insert {key: x.key, value: scalar_mult (1.0/(x.value.count)) (x.value.sum)}));
   (iterations_remaining = iterations_remaining - 1);
-  (if iterations_remaining == 0 then () else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
+  (if iterations_remaining == 0
+  then (peers.iterate (\p -> (shutdown, p.addr) <- ()))
+  else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
 )
 
 
@@ -77,6 +79,8 @@ trigger ready : () = \_ -> (
    else ()
   )
 )
+
+trigger shutdown : () = \_ -> haltEngine ()
 
 trigger load_all : () = \_ -> (
   LoaderVector "/Users/joshwheeler/foo.vector" data;
