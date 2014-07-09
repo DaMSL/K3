@@ -15,13 +15,17 @@ declare aggregates: mut {count: int, sum: mut collection { key: int, value: real
 
 // All Nodes:
 declare parameters: mut collection { key: int, value: real } @ { Collection }
-declare data: collection { label: real, elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
+declare data: collection { elem: collection { key: int, value: real } @ { Collection }, label: real } @ { Collection }
+
+
+// Loader
+declare LoaderVectorLabel : string -> collection { elem: collection { key: int, value: real } @ { Collection }, label: real } @ { Collection } -> ()
 
 // SVM Loss at 1 point.
 declare svm_loss : collection { key: int, value: real } @ { Collection } -> real -> real = \x -> \y -> (
   // TODO add regularizer term
   let q = 1 - (y * (dot parameters x))
-  in (lambda * (dot parameters parameters) + (if q < 0 then 0 else q)
+  in (lambda * (dot parameters parameters) + (if q < 0 then 0 else q))
 )
 
 // SVM gradient at 1 point.
@@ -74,7 +78,7 @@ trigger maximize : () = \_ -> (
   aggregates = {count:0, sum: (zero_vector ())};
   iterations_remaining = iterations_remaining - 1;
   if iterations_remaining == 0
-  then peers.iterate (\p -> (shutdown, p.addr)) <- ()
+  then peers.iterate (\p -> (shutdown, p.addr) <- ())
   else peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
 )
 
@@ -86,3 +90,9 @@ trigger start : () = \_ -> (
 
 trigger shutdown : () = \_ -> haltEngine ()
 
+trigger load_all : () = \_ -> (
+  LoaderVectorLabel "/Users/joshwheeler/foo.lvector" data
+)
+
+source points : () = value ()
+feed points |> load_all
