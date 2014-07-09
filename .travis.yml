@@ -11,7 +11,7 @@ install:
   - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
   - wget http://www.partow.net/downloads/strtk.zip
   - mv strtk.zip ~/software/ && cd ~/software && unzip strtk.zip && ls && cd -
-  - cd ~/software && git clone git://gitorious.org/json-spirit/json-spirit.git
+  - cd ~/software && git clone git://gitorious.org/json-spirit/json-spirit.git && cd -
   - cabal install cabal-install && cabal --version
   - export PATH=~/.cabal/bin:$PATH
   - mkdir ../K3-Driver
