@@ -107,6 +107,9 @@ includes = return [
         -- Strtk
         "strtk.hpp",
 
+        -- JSON
+        "json_spirit_reader_template.h",
+
         -- Boost
         "boost/archive/text_iarchive.hpp",
         "boost/serialization/list.hpp",
