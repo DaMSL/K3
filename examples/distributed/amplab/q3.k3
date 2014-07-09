@@ -74,7 +74,29 @@ declare global_result: collection {
 } @ { Collection }
 
 declare insertWith: forall a, b. a -> b -> (b -> b) -> collection { key: a, value: b } @ { Collection } -> ()
+
 trigger aggregate_global: collection {
     key: string,
-    value: collection { count: int, total: int, revenue: int } @ { Collection }
-} @ { Collection } = \c -> ()
+    value: { count: int, total: int, revenue: int }
+} @ { Collection } = \c -> (
+    (c.iterate (
+        \r -> insertWith r.key {count: r.value.count, total: r.value.total, revenue: r.value.revenue}
+                (\u -> {
+                    count: u.count + r.value.count,
+                    total: u.total + r.value.total,
+                    revenue: u.revenue + r.value.revenue
+                })
+                global_partial_result
+    ));
+    (local_aggregate_complete = local_aggregate_complete + 1);
+    (if local_aggregate_complete == peer_count
+        then global_partial_result.iterate (
+                \g -> global_result.insert {
+                        sourceIP: g.key,
+                        avgRank: g.value.total / g.value.count,
+                        totalRevenue: g.value.revenue
+                }
+            )
+        else ()
+    )
+)
