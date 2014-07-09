@@ -26,6 +26,7 @@ namespace K3 {
 
   template <class r> using F = std::function<r>;
   typedef std::string Identifier;
+  typedef int TriggerId;
   typedef std::string Value;
 
   typedef std::string Value;

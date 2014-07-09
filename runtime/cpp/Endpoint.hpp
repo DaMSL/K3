@@ -38,7 +38,7 @@ namespace K3
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
-  typedef std::function<void(const Address&, const Identifier&, shared_ptr<Value>)> SendFunctionPtr;
+  typedef std::function<void(const Address&, const TriggerId, shared_ptr<Value>)> SendFunctionPtr;
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
@@ -202,14 +202,14 @@ namespace K3
   class EndpointBindings : public LogMT {
   public:
 
-    typedef list<tuple<Address, Identifier>> Subscribers;
+    typedef list<tuple<Address, TriggerId>> Subscribers;
     typedef map<EndpointNotification, shared_ptr<Subscribers>> Subscriptions;
 
     EndpointBindings(SendFunctionPtr f) : LogMT("EndpointBindings"), sendFn(f) {}
 
-    void attachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id);
+    void attachNotifier(EndpointNotification nt, Address sub_addr, TriggerId sub_id);
 
-    void detachNotifier(EndpointNotification nt, Address sub_addr, Identifier sub_id);
+    void detachNotifier(EndpointNotification nt, Address sub_addr, TriggerId sub_id);
 
     void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload);
 

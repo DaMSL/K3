@@ -237,7 +237,7 @@ namespace K3
 
     void EndpointBindings::attachNotifier(EndpointNotification nt,
                                           Address sub_addr,
-                                          Identifier sub_id) {
+                                          TriggerId sub_id) {
       shared_ptr<Subscribers> s = eventSubscriptions[nt];
       if (!s) {
         s = shared_ptr<Subscribers>(new Subscribers());
@@ -249,13 +249,13 @@ namespace K3
 
     void EndpointBindings::detachNotifier(EndpointNotification nt,
                                           Address sub_addr,
-                                          Identifier sub_id) {
+                                          TriggerId sub_id) {
       auto it = eventSubscriptions.find(nt);
       if ( it != eventSubscriptions.end() ) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
           s->remove_if(
-            [&sub_id, &sub_addr](const tuple<Address, Identifier>& t){
+            [&sub_id, &sub_addr](const tuple<Address, TriggerId>& t){
               return get<0>(t) == sub_addr && get<1>(t) == sub_id;
             });
         }
@@ -267,7 +267,7 @@ namespace K3
       if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
         if (s) {
-          for (tuple<Address, Identifier> t : *s) {
+          for (tuple<Address, TriggerId> t : *s) {
             sendFn(get<0>(t), get<1>(t), payload);
           }
         }

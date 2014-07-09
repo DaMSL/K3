@@ -57,7 +57,7 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, Identifier triggerId, shared_ptr<Dispatcher> disp)
+    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp)
     {
       if (deployment) {
         bool local_address = isDeployedNode(*deployment, addr);

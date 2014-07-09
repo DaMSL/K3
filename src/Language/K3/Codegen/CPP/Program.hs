@@ -26,11 +26,15 @@ import qualified Language.K3.Codegen.Imperative as I
 -- | Also mangle the lists for C++
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
 transitionCPPGenS is = defaultCPPGenS 
-    { 
-      globals    = map (first mangleReservedId) $ I.globals is,
-      patchables = map mangleReservedId $ I.patchables is,
-      showables  = map (first mangleReservedId) $ I.showables is
-    }
+  { 
+    globals    = convert $ I.globals is,
+    patchables = map mangleReservedId $ I.patchables is,
+    showables  = convert $ I.showables is,
+    triggers   = add_numbers $ convert $ I.triggers is
+  }
+  where
+    convert = map (first mangleReservedId)
+    add_numbers l = zipWith (\(x,t) i -> (x,(t,i))) l [0..length l]
 
 -- Top-level program generation.
 --  - Process the __main role.

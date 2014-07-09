@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "Common.hpp"
 #include "Codec.hpp"
 
@@ -120,10 +121,12 @@ namespace K3 {
           }
 
           // Parse Identifier
-          Identifier m = value_match[2];
+          string temp2 = value_match[2];
+          TriggerId id = atoi(temp2.c_str());
+
           // Parse Payload
           Value payload = value_match[3];
-          return RemoteMessage(a, m, payload);
+          return RemoteMessage(a, id, payload);
          }
         else {
           throw CodecException("Invalid Format for Value:" + v);

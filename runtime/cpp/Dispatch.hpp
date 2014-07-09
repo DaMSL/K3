@@ -43,7 +43,7 @@ namespace K3 {
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper
     // function.
-    using TriggerDispatch = std::map<Identifier, std::shared_ptr<Dispatcher> >;
+    using TriggerDispatch = std::vector<std::tuple<std::shared_ptr<Dispatcher>, Identifier> >;
 
 #ifndef MAIN_PROGRAM
     extern

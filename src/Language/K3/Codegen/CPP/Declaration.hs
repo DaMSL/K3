@@ -66,8 +66,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
 
 -- The generated code for a trigger is the same as that of a function with corresponding ()
 -- return-type.
-declaration (tag -> DTrigger i t e) = do
-    addTrigger (i, t)
+declaration (tag -> DTrigger i t e) = 
     declaration (D.global i (T.function t T.unit) (Just e))
 
 declaration (tag &&& children -> (DRole _, cs)) = do
@@ -97,13 +96,18 @@ declaration _ = return empty
 generateDispatchPopulation :: CPPGenM CPPGenR
 generateDispatchPopulation = do
     triggerS <- triggers <$> get
-    dispatchStatements <- mapM genDispatch (S.toList triggerS)
-    return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] (vsep dispatchStatements)
+    dispatchStatements <- mapM genDispatch triggerS
+    let dispatchInit = text "dispatch_table.resize" <> parens(int $ length triggerS) <> semi
+    return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] $
+             vsep $ dispatchInit:dispatchStatements
   where
-    genDispatch (tName, tType) = do
+    genDispatch (tName, (tType, tNum)) = do
       kType <- genCType tType
       let className = text "DispatcherImpl" <> angles kType
-      return $ text "dispatch_table[\"" <> text tName <> text "\"] = make_shared" <> angles className <> parens (text tName) <> semi
+      return $ text "dispatch_table[" <> int tNum <> text "] =" <+>
+        text "make_tuple" <> parens (
+          text "make_shared" <> angles className <> parens (text tName) <> comma <+> dquotes (text tName))
+        <> semi
 
 -- Generated Builtins
 -- Interface for source builtins.

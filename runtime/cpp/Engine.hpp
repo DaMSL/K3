@@ -164,7 +164,7 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, Identifier triggerId, std::shared_ptr<Dispatcher> d);
+    void send(Address addr, TriggerId triggerId, std::shared_ptr<Dispatcher> d);
 
     // TODO: avoid destructing tuple here
     void send(Message& m) {
@@ -177,7 +177,7 @@ namespace K3 {
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, Identifier i, shared_ptr<Value> v)
+      return [this](Address a, TriggerId i, shared_ptr<Value> v)
           { send(RemoteMessage(a, i, *v).toMessage()); };
     }
 
