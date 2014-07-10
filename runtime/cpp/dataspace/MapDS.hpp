@@ -3,10 +3,12 @@
 
 #include <algorithm>
 #include <iostream>
-#include <set>
+#include <unordered_map>
 #include <string>
 #include <functional>
+
 // K3
+#include <dataspace/ListDS.hpp>
 #include <Engine.hpp>
 
 namespace K3 {
@@ -17,30 +19,33 @@ using std::tuple;
 
 using std::unordered_map;
 
-template<class K, class V>
-class R_key_value<K,V>;
+
+template <class _T0,class _T1> class R_key_value;
 
 template<class Key, class Value>
 class MapDS {
-  using  R_key_value<Key,Value> = RecType;
+  using RecType = R_key_value<Key,Value>;
+  using iterator_type = typename unordered_map<Key,Value>::iterator;
+  using const_iterator_type = typename unordered_map<Key, Value>::const_iterator;
+
  public:
     // Constructors
-  MapDS(Engine * eng) : map() {}
+  MapDS(Engine * eng) : container() {}
 
   template<typename Iterator>
   MapDS(Engine * eng, Iterator start, Iterator finish)
-      : map(start,finish) {}
+      : container(start,finish) {}
 
-  MapDS(const MapDS& other) : map(other.map) {}
+  MapDS(const MapDS& other) : container(other.container) {}
 
-  MapDS(map<Key,Value>& con) : map(con) {}
+  MapDS(unordered_map<Key,Value>& con) : container(con) {}
 
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<RecType> peek() const {
     shared_ptr<RecType> res;
-    const_iterator_type it = map.begin();
-    if (it != map.end()) {
+    const_iterator_type it = container.begin();
+    if (it != container.end()) {
       RecType rec;
       rec.key = it->first;
       rec.value = it->second;
@@ -50,25 +55,26 @@ class MapDS {
   }
 
   void insert(const RecType& rec) {
-    map.insert(make_pair(rec.key,rec.value));
+    container.insert(make_pair(rec.key,rec.value));
   }
 
   void erase(const RecType& rec) {
     iterator_type it;
-    it = map.find(rec.key);
-    if (it != map.end()) {
-      if (it->second == map.value) {
-        map.erase(it);
+    it = container.find(rec.key);
+    if (it != container.end()) {
+      if (it->second == container.value) {
+        container.erase(it);
       }
     }
   }
 
+  // TODO: verify semantics. Currently: update((1,1), (2,2)) results in (1,2)!
   void update(const RecType& rec1, const RecType& rec2) {
     iterator_type it;
-    it = map.find(rec1.key);
-    if (it != map.end()) {
+    it = container.find(rec1.key);
+    if (it != container.end()) {
       if (rec1.value == it->second) {
-        map[rec1.key] = rec2.value;
+        container[rec1.key] = rec2.value;
       }
     }
   }
@@ -76,7 +82,7 @@ class MapDS {
   template<typename Acc>
   Acc fold(F<F<Acc(RecType)>(Acc)> f, Acc init_acc) {
     Acc acc = init_acc;
-    for (std::pair<Key,Value> p : map) {
+    for (std::pair<Key,Value> p : container) {
       RecType rec;
       rec.key = p->first;
       rec.value = p->second;
@@ -86,9 +92,9 @@ class MapDS {
   }
 
   template<typename NewElem>
-  ListDS<NewElem, Container> map(F<NewElem(Elem)> f) {
+  ListDS<NewElem> map(F<NewElem(RecType)> f) {
     ListDS<NewElem> result = ListDS<NewElem>(getEngine());
-    for (std::pair<Key,Value> p : map) {
+    for (std::pair<Key,Value> p : container) {
       RecType rec;
       rec.key = p->first;
       rec.value = p->second;
@@ -98,14 +104,19 @@ class MapDS {
     return result;
   }
 
-  unit_t iterate(F<unit_t(Elem)> f) {
-    for (Elem e : container) { f(e); }
+  unit_t iterate(F<unit_t(RecType)> f) {
+    for (std::pair<Key,Value> p : container) {
+      RecType rec;
+      rec.key = p->first;
+      rec.value = p->second;
+      f(rec);
+    }
     return unit_t();
   }
 
   MapDS<Key,Value> filter(F<bool(RecType)> predicate) {
     MapDS<Key, Value> result = MapDS<Key, Value>(getEngine());
-    for (std::pair<Key,Value> p : map) {
+    for (std::pair<Key,Value> p : container) {
       RecType rec;
       rec.key = p->first;
       rec.value = p->second;
@@ -118,13 +129,13 @@ class MapDS {
 
   tuple< MapDS, MapDS > split() {
     // Find midpoint
-    size_t size = map.size();
+    size_t size = container.size();
     size_t half = size / 2;
     // Setup iterators
-    const_iterator_type beg = map.begin();
-    const_iterator_type mid = map.begin();
+    const_iterator_type beg = container.begin();
+    const_iterator_type mid = container.begin();
     std::advance(mid, half);
-    const_iterator_type end = map.end();
+    const_iterator_type end = container.end();
     // Construct DS from iterators
     MapDS p1 = MapDS(nullptr, beg, mid);
     MapDS p2 = MapDS(nullptr, mid, end);
@@ -133,17 +144,16 @@ class MapDS {
 
   MapDS combine(MapDS other) const {
     // copy this DS
-    MapDS result = MapDS(nullptr,map.begin(), map.end());
+    MapDS result = MapDS(nullptr,container.begin(), container.end());
     // copy other DS
-    for (std::pair<Key,Value> p: other.map) {
-      result.map.insert(p);
+    for (std::pair<Key,Value> p: other.container) {
+      result.container.insert(p);
     }
     return result;
   }
 
- //Container<Elem> getContainer() { return container; }
  protected:
-  unordered_map<Key,Value> map;
+  unordered_map<Key,Value> container;
 
   // In-memory Dataspaces do not keep a handle to an engine
   Engine* getEngine() {return nullptr; }
@@ -152,8 +162,9 @@ class MapDS {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int version) {
-    ar & map;
+    ar & container;
   }
 };
 
 }
+#endif // K3_RUNTIME_DATASPACE_MAPDS_H
