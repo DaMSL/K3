@@ -8,7 +8,6 @@
 #include <functional>
 
 // K3
-#include <dataspace/ListDS.hpp>
 #include <Engine.hpp>
 
 namespace K3 {
@@ -19,12 +18,11 @@ using std::tuple;
 
 using std::unordered_map;
 
-
-template <class _T0,class _T1> class R_key_value;
-
-template<class Key, class Value>
+// MapDS only works on R_key_value
+template<class R>
 class MapDS {
-  using RecType = R_key_value<Key,Value>;
+  using Key = typename R::KeyType;
+  using Value = typename R::ValueType;
   using iterator_type = typename unordered_map<Key,Value>::iterator;
   using const_iterator_type = typename unordered_map<Key, Value>::const_iterator;
 
@@ -42,23 +40,23 @@ class MapDS {
 
   // DS Operations:
   // Maybe return the first element in the DS
-  shared_ptr<RecType> peek() const {
-    shared_ptr<RecType> res;
+  shared_ptr<R> peek() const {
+    shared_ptr<R> res;
     const_iterator_type it = container.begin();
     if (it != container.end()) {
-      RecType rec;
+      R rec;
       rec.key = it->first;
       rec.value = it->second;
-      res = std::make_shared<RecType>(rec);
+      res = std::make_shared<R>(rec);
     }
     return res;
   }
 
-  void insert(const RecType& rec) {
+  void insert(const R& rec) {
     container.insert(make_pair(rec.key,rec.value));
   }
 
-  void erase(const RecType& rec) {
+  void erase(const R& rec) {
     iterator_type it;
     it = container.find(rec.key);
     if (it != container.end()) {
@@ -69,7 +67,7 @@ class MapDS {
   }
 
   // TODO: verify semantics. Currently: update((1,1), (2,2)) results in (1,2)!
-  void update(const RecType& rec1, const RecType& rec2) {
+  void update(const R& rec1, const R& rec2) {
     iterator_type it;
     it = container.find(rec1.key);
     if (it != container.end()) {
@@ -80,46 +78,46 @@ class MapDS {
   }
 
   template<typename Acc>
-  Acc fold(F<F<Acc(RecType)>(Acc)> f, Acc init_acc) {
+  Acc fold(F<F<Acc(R)>(Acc)> f, Acc init_acc) {
     Acc acc = init_acc;
     for (std::pair<Key,Value> p : container) {
-      RecType rec;
-      rec.key = p->first;
-      rec.value = p->second;
+      R rec;
+      rec.key = p.first;
+      rec.value = p.second;
       acc = f(acc)(rec);
     }
     return acc;
   }
 
   template<typename NewElem>
-  ListDS<NewElem> map(F<NewElem(RecType)> f) {
+  ListDS<NewElem> map(F<NewElem(R)> f) {
     ListDS<NewElem> result = ListDS<NewElem>(getEngine());
     for (std::pair<Key,Value> p : container) {
-      RecType rec;
-      rec.key = p->first;
-      rec.value = p->second;
+      R rec;
+      rec.key = p.first;
+      rec.value = p.second;
       NewElem new_e = f(rec);
       result.insert(new_e);
     }
     return result;
   }
 
-  unit_t iterate(F<unit_t(RecType)> f) {
+  unit_t iterate(F<unit_t(R)> f) {
     for (std::pair<Key,Value> p : container) {
-      RecType rec;
-      rec.key = p->first;
-      rec.value = p->second;
+      R rec;
+      rec.key = p.first;
+      rec.value = p.second;
       f(rec);
     }
     return unit_t();
   }
 
-  MapDS<Key,Value> filter(F<bool(RecType)> predicate) {
-    MapDS<Key, Value> result = MapDS<Key, Value>(getEngine());
+  MapDS<R> filter(F<bool(R)> predicate) {
+    MapDS<R> result = MapDS<R>(getEngine());
     for (std::pair<Key,Value> p : container) {
-      RecType rec;
-      rec.key = p->first;
-      rec.value = p->second;
+      R rec;
+      rec.key = p.first;
+      rec.value = p.second;
       if (predicate(rec)) {
         result.insert(rec);
       }

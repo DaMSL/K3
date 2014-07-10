@@ -19,11 +19,13 @@
 #include <memory>
 #include <tuple>
 
+#include <Engine.hpp>
 #include <dataspace/FileDS.hpp>
 #include <dataspace/ListDS.hpp>
 #include <dataspace/SetDS.hpp>
 #include <dataspace/SortedDS.hpp>
 #include <dataspace/StlDS.hpp>
+#include <dataspace/MapDS.hpp>
 #include <boost/serialization/base_object.hpp>
 
 // Forward Declarations
@@ -34,7 +36,6 @@ namespace K3 {
   class Engine;
   template <class E> using MapReturnType = R_elem<E>;
   template<class K, class V> using GroupByReturnType = R_key_value<K,V>;
-
 
   template <template <class...> class D, class E>
   class BaseCollection: public D<E> {
@@ -164,7 +165,9 @@ namespace K3 {
      public:
       Collection(Engine * e) : Super(e) {};
 
-      Collection(const Super& other) : Super(other) {}
+      Collection(const Collection<E>& other) : Super(other)  {}
+
+      Collection(Super other) : Super(other) {}
 
       template<class Iterator>
       Collection(Engine * e, Iterator start, Iterator finish)
@@ -497,6 +500,78 @@ namespace K3 {
       }
 
   };
+
+  template <class E>
+  class Map : public BaseCollection<MapDS, E> {
+    typedef BaseCollection<MapDS, E>  Super;
+     public:
+      Map(Engine * e) : Super(e) {}
+
+      Map(const Collection<E>& other) : Super(other)  {}
+
+      Map(Super other) : Super(other) {}
+
+      template<class Iterator>
+      Map(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
+
+      std::tuple<Map<E>, Map<E>> split() {
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
+        return std::make_tuple(Map<E>(ds1), Map<E>(ds2));
+      }
+
+      std::tuple<Map<E>, Map<E>> split(unit_t) {
+        auto tup = Super::split();
+        Super ds1 = get<0>(tup);
+        Super ds2 = get<1>(tup);
+        return std::make_tuple(Map<E>(ds1), Map<E>(ds2));
+      }
+
+      Map<E> combine(const Map<E>& other) const {
+       return Map<E>(Super::combine(other));
+      }
+
+      template <class T>
+      Map<MapReturnType<T>> map(F<T(E)> f) {
+       return Map<MapReturnType<T>>(Super::template map<T>(f));
+      }
+
+      Map<E> filter(F<bool(E)> f) {
+       return Map<E>(Super::filter(f));
+      }
+
+      // TODO: specialize groupBy (don't user super::groupBy). Maybe even a different type signature.
+      // i.e group by key automatically, without using a user specified lambda.
+      template <class K, class Z>
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
+          };
+          return r2;
+        };
+        return r;
+      }
+
+      // TODO: correct type signature?
+      template <class T>
+      Map<T> ext(F<Map<T>(E)> expand) {
+        BaseCollection<MapDS, T> result = Super::template ext<T>(expand);
+        return Map<T>(result);
+      }
+
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int version) {
+      ar & boost::serialization::base_object<BaseCollection<ListDS, E>>(*this);
+    }
+
+  };
 }
+
+
 
 #endif
