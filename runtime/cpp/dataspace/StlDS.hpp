@@ -119,13 +119,15 @@ class StlDS {
     }
     return result;
   }
- Container<Elem> getContainer() { return container; }
+
+ Container<Elem> getContainer() const { return container; }
+ Engine* getEngine() {return nullptr; }
  protected:
   Container<Elem> container;
 
 
   // In-memory Dataspaces do not keep a handle to an engine
-  Engine* getEngine() {return nullptr; }
+
 
  private:
   friend class boost::serialization::access;

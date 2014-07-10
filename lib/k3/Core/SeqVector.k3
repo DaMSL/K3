@@ -1,0 +1,13 @@
+include "Annotation/Collection.k3"
+
+declare zero_vector : int -> collection {elem:real } @ { Collection }
+
+declare vector_add : collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection}
+
+declare vector_sub : collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection}
+
+declare scalar_mult : real -> collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection}
+
+declare dot : collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection} -> real
+
+declare squared_distance: collection {elem: real} @ {Collection} -> collection {elem: real} @ {Collection} -> real

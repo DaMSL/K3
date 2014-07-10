@@ -9,6 +9,8 @@
 #include <string>
 #include <functional>
 
+template <class R> class R_elem;
+
 namespace K3 {
   //class Builtins: public __k3_context {
   //  public:
@@ -85,6 +87,115 @@ namespace K3 {
                 return s.substr(i,n);
             };
       };
+  };
+
+
+  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> vector_add =
+    [] (const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
+        using namespace K3;
+        vector<R_elem<double>> v1 = c1.getContainer();
+        vector<R_elem<double>> v2 = c2.getContainer();
+
+        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+
+        for (auto i = 0; i < v1.size(); ++i) {
+          cout << "I is" << i << endl;
+          cout << "v1:" << v1[i].elem << endl;
+          cout << "v2:" << v2[i].elem << endl;
+          double d = v1[i].elem + v2[i].elem;
+          cout << "d:" << d << endl;
+          R_elem<double> r;
+          r.elem = d;
+          result.insert(r);
+        }
+
+        return result;
+      };
+
+  };
+
+  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> vector_sub =
+    [] (const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
+        using namespace K3;
+        vector<R_elem<double>> v1 = c1.getContainer();
+        vector<R_elem<double>> v2 = c2.getContainer();
+        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+        for (auto i = 0; i < v1.size(); ++i) {
+          double d = v1[i].elem + v2[i].elem;
+          R_elem<double> r;
+          r.elem = d;
+          result.insert(r);
+        }
+
+        return result;
+      };
+
+  };
+
+  F<F<double(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> dot =
+    [] (const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
+        using namespace K3;
+        double ans = 0;
+        vector<R_elem<double>> v1 = c1.getContainer();
+        vector<R_elem<double>> v2 = c2.getContainer();
+        for (auto i = 0; i < v1.size(); ++i) {
+          double d = v1[i].elem * v2[i].elem;
+          ans += d;
+        }
+
+        return ans;
+      };
+
+  };
+
+  F<F<double(const Collection<R_elem<double>>)>(const Collection<R_elem<double>>&)> squared_distance =
+    [] (const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
+        using namespace K3;
+        double ans = 0;
+        vector<R_elem<double>> v1 = c1.getContainer();
+        vector<R_elem<double>> v2 = c2.getContainer();
+        for (auto i = 0; i < v1.size(); ++i) {
+          double d = v1[i].elem - v2[i].elem;
+          ans += d * d;
+        }
+
+        return ans;
+      };
+
+  };
+
+  Collection<R_elem<double>> zero_vector(int n) {
+    Collection<R_elem<double>> c = Collection<R_elem<double>>(nullptr);
+    for (auto i = 0; i < n; ++i) {
+      R_elem<double> rec;
+      rec.elem = 0.0;
+      c.insert(rec);
+    }
+    return c;
+  }
+
+  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const double&)> scalar_mult =
+    [] (const double& d) {
+      return [&] (const Collection<R_elem<double>>& c) {
+        using namespace K3;
+        vector<R_elem<double>> v1 = c.getContainer();
+        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+        for (auto i = 0; i < v1.size(); ++i) {
+          cout << "d is :" << d << endl;
+          cout << "elem: " << v1[i].elem << endl;
+          double d2 = d * v1[i].elem;
+          R_elem<double> r;
+          r.elem = d2;
+          result.insert(r);
+        }
+
+        return result;
+      };
+
   };
 
   // ms

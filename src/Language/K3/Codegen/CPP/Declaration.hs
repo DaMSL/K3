@@ -87,6 +87,7 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
+            ++ [(text "#include" <+> (dquotes (text "Builtins.hpp")))]
             ++ [subDecls, i, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
@@ -286,16 +287,13 @@ genVectorLoader _ (children -> [_,f]) name = do
     inits    <- return $ vsep  [text "std::string line;",
                                text "std::ifstream infile(filepath);"]
     loop     <- return $ vsep [ text "char * pch;",
-                                text "int i = 0;",
                                 text "pch = strtok (&line[0],\",\");",
-                                text "_Collection<R_key_value<int,double>> c2 = _Collection<R_key_value<int,double>>();",
-                                text "while (pch != NULL)" <> hangBrace (vsep [text "R_key_value<int,double> rec;",
-                                                                              text "i++;",
-                                                                              text "rec.key = i;",
-                                                                              text "rec.value = std::atof(pch);",
+                                text "_Collection<R_elem<double>> c2 = _Collection<R_elem<double>>();",
+                                text "while (pch != NULL)" <> hangBrace (vsep [text "R_elem<double> rec;",
+                                                                              text "rec.elem = std::atof(pch);",
                                                                               text "c2.insert(rec);",
                                                                               text "pch = strtok (NULL,\",\");"]),
-                                text "R_elem<_Collection<R_key_value<int,double>>> rec2;",
+                                text "R_elem<_Collection<R_elem<double>>> rec2;",
                                 text "rec2.elem = c2;",
                                 text "c.insert(rec2);"]
     body     <- return $ vsep [inits,
@@ -323,19 +321,17 @@ genVectorLabelLoader _ (children -> [_,f]) name = do
     inits    <- return $ vsep  [text "std::string line;",
                                text "std::ifstream infile(filepath);"]
     loop     <- return $ vsep [ text "char * pch;",
-                                text "int i = 0;",
                                 text "pch = strtok (&line[0],\",\");",
-                                text "_Collection<R_key_value<int,double>> c2 = _Collection<R_key_value<int,double>>();",
+                                text "_Collection<R_elem<double>> c2 = _Collection<R_elem<double>>();",
                                 text "double d;",
-                                text "while (pch != NULL)" <> hangBrace (vsep [text "R_key_value<int,double> rec;",
+                                text "while (pch != NULL)" <> hangBrace (vsep [text "R_elem<double> rec;",
                                                                               text "i++;",
                                                                               text "d = std::atof(pch);",
                                                                                (text "if (i > 1)" <> (hangBrace $ vsep [
-                                                                                text "rec.key = i-1;",
-                                                                                text "rec.value = d;",
+                                                                                text "rec.elem = d;",
                                                                                 text "c2.insert(rec);"])),
                                                                               text "pch = strtok (NULL,\",\");"]),
-                                text "R_elem_label<_Collection<R_key_value<int,double>>, double> rec2;",
+                                text "R_elem_label<_Collection<R_elem<double>>, double> rec2;",
                                 text "rec2.elem = c2;",
                                 text "rec2.label = d;",
                                 text "c.insert(rec2);"]
@@ -350,7 +346,7 @@ genVectorLabelLoader _ (children -> [_,f]) name = do
                                    [r] -> return r
                                    _   -> type_mismatch)
                      _        ->  type_mismatch
-    type_mismatch = error "Invalid type for Vecotr Loader function."
+    type_mismatch = error "Invalid type for Vector Loader function."
 genVectorLabelLoader _ _ _ = error "Invalid type for Vector Label Loader"
 
 stripSuffix :: String -> String -> String

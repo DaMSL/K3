@@ -5,6 +5,7 @@ include "Core/Vector.k3"
 declare master: address = 127.0.0.1:40000
 
 declare k: int = 1
+declare dimensionality: 3
 declare num_peers: mut int = 1
 
 declare iterations_remaining: mut int = 10
