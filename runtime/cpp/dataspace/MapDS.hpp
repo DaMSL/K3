@@ -59,20 +59,17 @@ class MapDS {
   void erase(const R& rec) {
     iterator_type it;
     it = container.find(rec.key);
-    if (it != container.end()) {
-      if (it->second == container.value) {
+    if (it != container.end() && it->second == rec.value) {
         container.erase(it);
-      }
     }
   }
 
-  // TODO: verify semantics. Currently: update((1,1), (2,2)) results in (1,2)!
   void update(const R& rec1, const R& rec2) {
     iterator_type it;
     it = container.find(rec1.key);
     if (it != container.end()) {
       if (rec1.value == it->second) {
-        container[rec1.key] = rec2.value;
+        container[rec2.key] = rec2.value;
       }
     }
   }
