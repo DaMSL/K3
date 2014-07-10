@@ -67,11 +67,8 @@ declare global_partial_result: collection {
     value: { count: int, total: int, revenue: int }
 } @ { Collection }
 
-declare global_result: collection {
-    sourceIP: string,
-    avgRank: real,
-    totalRevenue: int
-} @ { Collection }
+declare global_result: mut { sourceIP: string, avgRank: real, totalRevenue: int }
+    = { sourceIP: "", avgRank: 0.0, totalRevenue: 0 }
 
 declare insertWith: forall a, b. a -> b -> (b -> b) -> collection { key: a, value: b } @ { Collection } -> ()
 
@@ -93,11 +90,13 @@ trigger aggregate_global: collection {
     (if local_aggregate_complete == peer_count
         then global_partial_result.iterate (
                 \g -> bind g as { key: k, value: v } in
-                        global_result.insert {
-                            sourceIP: k,
-                            avgRank: v.total / v.count,
-                            totalRevenue: v.revenue
-                }
+                        if v.revenue > global_result.totalRevenue
+                            then global_result = {
+                                sourceIP: k,
+                                avgRank: v.total / v.count,
+                                totalRevenue: v.revenue
+                            }
+                            else ()
             )
         else ()
     )
