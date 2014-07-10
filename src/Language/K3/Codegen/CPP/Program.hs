@@ -123,10 +123,10 @@ sysIncludes = return [
         "string",
 
         -- Strtk
-        "strtk.hpp",
+        "external/strtk.hpp",
 
         -- JSON
-        "json_spirit_reader_template.h",
+        "external/json_spirit_reader_template.h",
 
         -- Boost
         "boost/serialization/list.hpp",
