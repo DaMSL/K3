@@ -301,7 +301,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
                 ds <- zipWithM cDecl ts is
                 return $ vsep ds <$$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
             BRecord iis -> return $ vsep
-                [text i <+> equals <+> g <> dot <> text v <> semi | (i, v) <- iis]
+                [text v <+> equals <+> g <> dot <> text i <> semi | (i, v) <- iis]
 
     let bindWriteback = case b of
             BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
