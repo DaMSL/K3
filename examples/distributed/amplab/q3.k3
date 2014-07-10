@@ -80,21 +80,23 @@ trigger aggregate_global: collection {
     value: { count: int, total: int, revenue: int }
 } @ { Collection } = \c -> (
     (c.iterate (
-        \r -> insertWith r.key {count: r.value.count, total: r.value.total, revenue: r.value.revenue}
+        \r -> bind r as { key: k, value: v } in (
+                insertWith k {count: v.count, total: v.total, revenue: v.revenue}
                 (\u -> {
-                    count: u.count + r.value.count,
-                    total: u.total + r.value.total,
-                    revenue: u.revenue + r.value.revenue
+                    count: u.count + v.count,
+                    total: u.total + v.total,
+                    revenue: u.revenue + v.revenue
                 })
-                global_partial_result
+                global_partial_result)
     ));
     (local_aggregate_complete = local_aggregate_complete + 1);
     (if local_aggregate_complete == peer_count
         then global_partial_result.iterate (
-                \g -> global_result.insert {
-                        sourceIP: g.key,
-                        avgRank: g.value.total / g.value.count,
-                        totalRevenue: g.value.revenue
+                \g -> bind g as { key: k, value: v } in
+                        global_result.insert {
+                            sourceIP: k,
+                            avgRank: v.total / v.count,
+                            totalRevenue: v.revenue
                 }
             )
         else ()
