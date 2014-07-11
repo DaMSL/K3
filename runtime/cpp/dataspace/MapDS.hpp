@@ -38,6 +38,8 @@ class MapDS {
 
   MapDS(unordered_map<Key,Value>& con) : container(con) {}
 
+  const unordered_map<Key, Value>& getContainer() const { return container; }
+
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek() const {
