@@ -23,15 +23,15 @@ class StlDS {
 
  public:
   // Constructors
-  StlDS(Engine * eng) : container() {}
+  StlDS(Engine* eng) {}
 
   template<typename Iterator>
-  StlDS(Engine * eng, Iterator start, Iterator finish)
+  StlDS(Engine* eng, Iterator start, Iterator finish)
       : container(start,finish) {}
 
   StlDS(const StlDS& other) : container(other.container) {}
 
-  StlDS(Container<Elem>& con) : container(con) {}
+  StlDS(const Container<Elem>& con) : container(con) {}
 
   // DS Operations:
   // Maybe return the first element in the DS
@@ -64,30 +64,31 @@ class StlDS {
   }
 
   template<typename Acc>
-  Acc fold(F<F<Acc(Elem)>(Acc)> f, Acc init_acc) {
+  Acc fold(F<F<Acc(Elem)>(Acc)> f, const Acc& init_acc) {
     Acc acc = init_acc;
-    for (Elem e : container) { acc = f(acc)(e); }
+    for (const Elem &e : container) { acc = f(acc)(e); }
     return acc;
   }
 
   template<typename NewElem>
-  StlDS<NewElem, Container> map(F<NewElem(Elem)> f) {
-    StlDS<NewElem, Container> result = StlDS<NewElem, Container>(getEngine());
-    for (Elem e : container) {
-      NewElem new_e = f(e);
-      result.insert(new_e);
+  StlDS<NewElem, Container> map(const F<NewElem(Elem)>& f) {
+    StlDS<NewElem, Container> result(getEngine());
+    for (const Elem &e : container) {
+      result.insert(f(e));
     }
     return result;
   }
 
-  unit_t iterate(F<unit_t(Elem)> f) {
-    for (Elem e : container) { f(e); }
+  unit_t iterate(const F<unit_t(Elem)>& f) {
+    for (const Elem& e : container) {
+      f(e);
+    }
     return unit_t();
   }
 
-  StlDS filter(F<bool(Elem)> predicate) {
-    StlDS<Elem, Container> result = StlDS<Elem, Container>(getEngine());
-    for (Elem e : container) {
+  StlDS filter(const F<bool(Elem)>& predicate) {
+    StlDS<Elem, Container> result(getEngine());
+    for (const Elem &e : container) {
       if (predicate(e)) {
         result.insert(e);
       }
@@ -95,32 +96,33 @@ class StlDS {
     return result;
   }
 
-  tuple< StlDS, StlDS > split() {
+  tuple<StlDS, StlDS> split() {
     // Find midpoint
-    size_t size = container.size();
-    size_t half = size / 2;
+    const size_t size = container.size();
+    const size_t half = size / 2;
     // Setup iterators
     const_iterator_type beg = container.begin();
     const_iterator_type mid = container.begin();
     std::advance(mid, half);
     const_iterator_type end = container.end();
     // Construct DS from iterators
-    StlDS p1 = StlDS(nullptr, beg, mid);
-    StlDS p2 = StlDS(nullptr, mid, end);
+    StlDS p1(nullptr, beg, mid);
+    StlDS p2(nullptr, mid, end);
     return std::make_tuple(p1, p2);
   }
 
-  StlDS combine(StlDS other) const {
+  StlDS combine(const StlDS& other) const {
     // copy this DS
-    StlDS result = StlDS(nullptr,container.begin(), container.end());
+    StlDS result = StlDS(nullptr, container.begin(), container.end());
     // copy other DS
-    for (Elem e : other.container) {
+    for (const Elem &e : other.container) {
       result.insert(e);
     }
     return result;
   }
 
- Container<Elem> getContainer() const { return container; }
+ const Container<Elem>& getContainer() const { return container; }
+
  Engine* getEngine() {return nullptr; }
  protected:
   Container<Elem> container;

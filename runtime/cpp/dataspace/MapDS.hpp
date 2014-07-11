@@ -36,7 +36,7 @@ class MapDS {
 
   MapDS(const MapDS& other) : container(other.container) {}
 
-  MapDS(unordered_map<Key,Value>& con) : container(con) {}
+  MapDS(const unordered_map<Key,Value>& con) : container(con) {}
 
   const unordered_map<Key, Value>& getContainer() const { return container; }
 
@@ -46,10 +46,9 @@ class MapDS {
     shared_ptr<R> res;
     const_iterator_type it = container.begin();
     if (it != container.end()) {
-      R rec;
-      rec.key = it->first;
-      rec.value = it->second;
-      res = std::make_shared<R>(rec);
+      res = std::make_shared<R>();
+      res->key = it->first;
+      res->value = it->second;
     }
     return res;
   }
@@ -76,10 +75,11 @@ class MapDS {
     }
   }
 
+  // TODO: try to eliminate extra copy
   template<typename Acc>
-  Acc fold(F<F<Acc(R)>(Acc)> f, Acc init_acc) {
+  Acc fold(F<F<Acc(R)>(Acc)> f, const Acc& init_acc) {
     Acc acc = init_acc;
-    for (std::pair<Key,Value> p : container) {
+    for (const std::pair<Key, Value>& p : container) {
       R rec;
       rec.key = p.first;
       rec.value = p.second;
@@ -89,9 +89,9 @@ class MapDS {
   }
 
   template<typename NewElem>
-  ListDS<NewElem> map(F<NewElem(R)> f) {
-    ListDS<NewElem> result = ListDS<NewElem>(getEngine());
-    for (std::pair<Key,Value> p : container) {
+  ListDS<NewElem> map(const F<NewElem(R)>& f) {
+    ListDS<NewElem> result(getEngine());
+    for (const std::pair<Key,Value>& p : container) {
       R rec;
       rec.key = p.first;
       rec.value = p.second;
@@ -101,8 +101,8 @@ class MapDS {
     return result;
   }
 
-  unit_t iterate(F<unit_t(R)> f) {
-    for (std::pair<Key,Value> p : container) {
+  unit_t iterate(const F<unit_t(R)>& f) {
+    for (const std::pair<Key,Value>& p : container) {
       R rec;
       rec.key = p.first;
       rec.value = p.second;
@@ -111,9 +111,9 @@ class MapDS {
     return unit_t();
   }
 
-  MapDS<R> filter(F<bool(R)> predicate) {
+  MapDS<R> filter(const F<bool(R)>& predicate) {
     MapDS<R> result = MapDS<R>(getEngine());
-    for (std::pair<Key,Value> p : container) {
+    for (const std::pair<Key,Value>& p : container) {
       R rec;
       rec.key = p.first;
       rec.value = p.second;
@@ -124,26 +124,26 @@ class MapDS {
     return result;
   }
 
-  tuple< MapDS, MapDS > split() {
+  tuple<MapDS, MapDS> split() {
     // Find midpoint
-    size_t size = container.size();
-    size_t half = size / 2;
+    const size_t size = container.size();
+    const size_t half = size / 2;
     // Setup iterators
     const_iterator_type beg = container.begin();
     const_iterator_type mid = container.begin();
     std::advance(mid, half);
     const_iterator_type end = container.end();
     // Construct DS from iterators
-    MapDS p1 = MapDS(nullptr, beg, mid);
-    MapDS p2 = MapDS(nullptr, mid, end);
+    MapDS& p1 = MapDS(nullptr, beg, mid);
+    MapDS& p2 = MapDS(nullptr, mid, end);
     return std::make_tuple(p1, p2);
   }
 
-  MapDS combine(MapDS other) const {
+  MapDS combine(const MapDS& other) const {
     // copy this DS
-    MapDS result = MapDS(nullptr,container.begin(), container.end());
+    MapDS result = MapDS(nullptr, container.begin(), container.end());
     // copy other DS
-    for (std::pair<Key,Value> p: other.container) {
+    for (const std::pair<Key,Value>& p: other.container) {
       result.container.insert(p);
     }
     return result;

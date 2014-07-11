@@ -35,23 +35,21 @@ template <class K, class V> class R_key_value;
 namespace K3 {
   class Engine;
   template <class E> using MapReturnType = R_elem<E>;
-  template<class K, class V> using GroupByReturnType = R_key_value<K,V>;
+  template <class K, class V> using GroupByReturnType = R_key_value<K,V>;
 
   template <template <class...> class D, class E>
   class BaseCollection: public D<E> {
     public:
-      BaseCollection(Engine * e) : D<E>(e) {}
+      BaseCollection(Engine* e) : D<E>(e) {}
 
       template <template <class> class F>
       BaseCollection(const BaseCollection<F, E>& other) : D<E>(other)  {}
 
       template <template <class> class F>
-      BaseCollection(BaseCollection<F, E>&& other) : D<E>(other) {}
-
-      BaseCollection(D<E> other) : D<E>(other) {}
+      BaseCollection(BaseCollection<F, E>& other) : D<E>(other) {}
 
       template<class Iterator>
-      BaseCollection(Engine * e, Iterator start, Iterator finish)
+      BaseCollection(Engine* e, Iterator start, Iterator finish)
         : D<E>(e, start, finish)
       { }
 
@@ -96,26 +94,26 @@ namespace K3 {
        return result;
       }
 
-      BaseCollection<D, E> filter(F<bool(E)> f) {
+      BaseCollection<D, E> filter(const F<bool(E)>& f) {
        return BaseCollection<D,E>(D<E>::filter(f));
       }
 
       template <class Z>
-      F<Z(Z)> fold(F<F<Z(E)>(Z)> f) {
-           F<Z(Z)> r = [=] (Z init) {
+      F<Z(Z)> fold(const F<F<Z(E)>(Z)>& f) {
+           F<Z(Z)> r = [&] (Z& init) {
              return D<E>::template fold<Z>(f, init);
            };
            return r;
       }
 
       template <class K, class Z>
-      F<F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+      F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
               // Create a map to hold partial results
               std::unordered_map<K, Z> accs = std::unordered_map<K,Z>();
               // lambda to apply to each element
-              F<unit_t(E)> f = [&] (E elem) {
+              F<unit_t(E)> f = [&] (E& elem) {
                 K key = grouper(elem);
                 if (accs.find(key) == accs.end()) {
                   accs[key] = init;
@@ -125,7 +123,7 @@ namespace K3 {
               };
               D<E>::iterate(f);
               // Build BaseCollection result
-              BaseCollection<D, GroupByReturnType<K,Z>> result = BaseCollection<D, GroupByReturnType<K,Z>>(D<E>::getEngine());
+              BaseCollection<MapDS, GroupByReturnType<K,Z>> result(D<E>::getEngine());
               typename std::unordered_map<K,Z>::iterator it;
               for (it = accs.begin(); it != accs.end(); ++it) {
                 GroupByReturnType<K,Z> r;
@@ -142,10 +140,13 @@ namespace K3 {
 
       // Requires same dataspace
       template <class T>
-      BaseCollection<D, T> ext(F<BaseCollection<D, T>(E)> expand) {
-        BaseCollection<D, T> result = BaseCollection<D,T>(D<E>::getEngine());
-        auto add_to_result = [&] (T elem) {result.insert(elem); return unit_t(); };
-        std::function<unit_t(E)> fun = [&] (E elem) {
+      BaseCollection<D, T> ext(const F<BaseCollection<D, T>(E)>& expand) {
+        BaseCollection<D, T> result(D<E>::getEngine());
+        auto add_to_result = [&] (T& elem) {
+          result.insert(elem); 
+          return unit_t();
+        };
+        std::function<unit_t(E)> fun = [&] (E& elem) {
           expand(elem).iterate(add_to_result);
           return unit_t();
         };
@@ -162,6 +163,75 @@ namespace K3 {
 
   };
 
+  template <class E>
+  class Map : public BaseCollection<MapDS, E> {
+    typedef BaseCollection<MapDS, E>  Super;
+     public:
+      Map(Engine * e) : Super(e) {}
+
+      Map(const Map<E>& other) : Super(other)  {}
+
+      Map(Map<E>& other) : Super(other)  {}
+
+      Map(Super other) : Super(other) {}
+
+      template<class Iterator>
+      Map(Engine * e, Iterator start, Iterator finish)
+        : Super(e, start, finish)
+      { }
+
+      std::tuple<Map<E>, Map<E>> split() {
+        auto tup = Super::split();
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
+        return std::make_tuple(Map<E>(ds1), Map<E>(ds2));
+      }
+
+      std::tuple<Map<E>, Map<E>> split(unit_t) {
+        return split();
+      }
+
+      Map<E> combine(const Map<E>& other) const {
+       return Map<E>(Super::combine(other));
+      }
+
+      template <class T>
+      Map<MapReturnType<T>> map(const F<T(E)>& f) {
+       return Map<MapReturnType<T>>(Super::template map<T>(f));
+      }
+
+      Map<E> filter(const F<bool(E)>& f) {
+       return Map<E>(Super::filter(f));
+      }
+
+      // TODO: specialize groupBy (don't user super::groupBy). Maybe even a different type signature.
+      // i.e group by key automatically, without using a user specified lambda.
+      template <class K, class Z>
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
+          };
+          return r2;
+        };
+        return r;
+      }
+
+      // TODO: correct type signature?
+      template <class T>
+      Map<T> ext(const F<Map<T>(E)>& expand) {
+        BaseCollection<MapDS, T> result = Super::template ext<T>(expand);
+        return Map<T>(result);
+      }
+
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int version) {
+      ar & boost::serialization::base_object<BaseCollection<ListDS, E>>(*this);
+    }
+
+  };
+
   template <typename E>
   class Collection : public BaseCollection<ListDS, E> {
     typedef BaseCollection<ListDS, E> Super;
@@ -169,6 +239,8 @@ namespace K3 {
       Collection(Engine * e) : Super(e) {};
 
       Collection(const Collection<E>& other) : Super(other)  {}
+
+      Collection(Collection& other) : Super(other)  {}
 
       Collection(Super other) : Super(other) {}
 
@@ -178,18 +250,17 @@ namespace K3 {
       { }
 
       // Convert from BaseCollection<ListDS, E> to Collection<E>
+      // TODO: this should be cleaned up and not duplicated
+      //       Also, check if converting to Collection hurts performance
       std::tuple<Collection<E>, Collection<E>> split() {
         auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
         return std::make_tuple(Collection<E>(ds1), Collection<E>(ds2));
       }
 
       std::tuple<Collection<E>, Collection<E>> split(unit_t) {
-        auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
-        return std::make_tuple(Collection<E>(ds1), Collection<E>(ds2));
+        return split();
       }
 
       Collection<E> combine(const Collection<E>& other) const {
@@ -197,20 +268,20 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<MapReturnType<T>> map(F<T(E)> f) {
+      Collection<MapReturnType<T>> map(const F<T(E)>& f) {
        return Collection<MapReturnType<T>>(Super::template map<T>(f));
       }
 
-      Collection<E> filter(F<bool(E)> f) {
+      Collection<E> filter(const F<bool(E)>& f) {
        return Collection<E>(Super::filter(f));
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,Z>>(s);
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -218,7 +289,7 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<T> ext(F<Collection<T>(E)> expand) {
+      Collection<T> ext(const F<Collection<T>(E)>& expand) {
         BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
         return Collection<T>(result);
       }
@@ -238,6 +309,8 @@ namespace K3 {
 
       Seq(const Seq<E>& other) : Super(other)  {}
 
+      Seq(Seq<E>&& other) : Super(other)  {}
+
       Seq(Super other) : Super(other) {}
 
       template<class Iterator>
@@ -248,8 +321,8 @@ namespace K3 {
       // Convert from BaseCollection<ListDS, E> to Seq<E>
       std::tuple<Seq<E>, Seq<E>> split() {
         auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
         return std::make_tuple(Seq<E>(ds1), Seq<E>(ds2));
       }
 
@@ -258,21 +331,21 @@ namespace K3 {
       }
 
       template <class T>
-      Seq<MapReturnType<T>> map(F<T(E)> f) {
+      Seq<MapReturnType<T>> map(const F<T(E)>& f) {
        return Seq<MapReturnType<T>>(Super::template map<T>(f));
       }
 
 
-      Seq<E> filter(F<bool(E)> f) {
+      Seq<E> filter(const F<bool(E)>& f) {
        return Seq<E>(Super::filter(f));
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,Z>>(s);
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -280,13 +353,13 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<T> ext(F<Collection<T>(E)> expand) {
+      Collection<T> ext(const F<Collection<T>(E)>& expand) {
         BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
         return Collection<T>(result);
       }
 
-      Seq<E> sort(F<F<int(E)>(E)> f) {
-        Super s = Super(ListDS<E>::sort(f));
+      Seq<E> sort(const F<F<int(E)>(E)>& f) {
+        Super s(ListDS<E>::sort(f));
         return Seq<E>(s);
       }
 
@@ -302,7 +375,9 @@ namespace K3 {
 
       Set(const Set<E>& other) : Super(other)  {}
 
-      Set(Super other) : Super(other) {}
+      Set(Set<E>& other) : Super(other)  {}
+
+      Set(Super& other) : Super(other) {}
 
       template<class Iterator>
       Set(Engine * e, Iterator start, Iterator finish)
@@ -312,8 +387,8 @@ namespace K3 {
       // Convert from BaseCollection<ListDS, E> to Set<E>
       std::tuple<Set<E>, Set<E>> split() {
         auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
         return std::make_tuple(Set<E>(ds1), Set<E>(ds2));
       }
 
@@ -322,20 +397,20 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<MapReturnType<T>> map(F<T(E)> f) {
+      Collection<MapReturnType<T>> map(const F<T(E)>& f) {
        return Collection<MapReturnType<T>>(Super::template map<T>(f));
       }
 
-      Set<E> filter(F<bool(E)> f) {
+      Set<E> filter(const F<bool(E)>& f) {
        return Set<E>(Super::filter(f));
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,Z>>(s);
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -343,32 +418,32 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<T> ext(F<Collection<T>(E)> expand) {
+      Collection<T> ext(const F<Collection<T>(E)>& expand) {
         BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
         return Collection<T>(result);
       }
 
-      bool member(E e) {
+      bool member(const E& e) {
         return dataspace::member(e);
       }
 
-      bool isSubsetOf(SetDS<E> other) {
+      bool isSubsetOf(const SetDS<E>& other) {
         return dataspace::isSubsetOf(other);
       }
 
       // TODO union is a reserved word
-      Set union1(Set<E> other) {
-        Super s = Super(dataspace::union1(other));
+      Set union1(const Set<E>& other) {
+        Super s(dataspace::union1(other));
         return Set<E>(s);
       }
 
-      Set intersect(Set<E> other) {
-        Super s = Super(dataspace::intersect(other));
+      Set intersect(const Set<E>& other) {
+        Super s(dataspace::intersect(other));
         return Set<E>(s);
       }
 
-      Set difference(Set<E> other) {
-        Super s = Super(dataspace::difference(other));
+      Set difference(const Set<E>& other) {
+        Super s(dataspace::difference(other));
         return Set<E>(s);
       }
 
@@ -379,11 +454,11 @@ namespace K3 {
     typedef BaseCollection<SortedDS, E> Super;
     typedef SortedDS<E> dataspace;
      public:
-      Sorted(Engine * e) : Super(e) {};
+      Sorted(Engine* e) : Super(e) {};
 
       Sorted(const Sorted<E>& other) : Super(other)  {}
 
-      Sorted(Super other) : Super(other) {}
+      Sorted(Super& other) : Super(other) {}
 
       template<class Iterator>
       Sorted(Engine * e, Iterator start, Iterator finish)
@@ -393,8 +468,8 @@ namespace K3 {
       // Convert from BaseCollection<ListDS, E> to Sorted<E>
       std::tuple<Sorted<E>, Sorted<E>> split() {
         auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
+        Super& ds1 = get<0>(tup);
+        Super& ds2 = get<1>(tup);
         return std::make_tuple(Sorted<E>(ds1), Sorted<E>(ds2));
       }
 
@@ -403,20 +478,20 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<MapReturnType<T>> map(F<T(E)> f) {
+      Collection<MapReturnType<T>> map(const F<T(E)>& f) {
        return Collection<MapReturnType<T>>(Super::template map<T>(f));
       }
 
-      Sorted<E> filter(F<bool(E)> f) {
+      Sorted<E> filter(const F<bool(E)>& f) {
        return Sorted<E>(Super::filter(f));
       }
 
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,Z>>(s);
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+            BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
+            return Map<GroupByReturnType<K,Z>>(s);
           };
           return r2;
         };
@@ -424,7 +499,7 @@ namespace K3 {
       }
 
       template <class T>
-      Collection<T> ext(F<Collection<T>(E)> expand) {
+      Collection<T> ext(const F<Collection<T>(E)>& expand) {
         BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
         return Collection<T>(result);
       }
@@ -433,11 +508,11 @@ namespace K3 {
 
       shared_ptr<E> max() { return dataspace::max(); }
 
-      shared_ptr<E> lowerBound(E a) { return dataspace::lowerBound(a); }
+      shared_ptr<E> lowerBound(const E& a) { return dataspace::lowerBound(a); }
 
-      shared_ptr<E> upperBound(E a) { return dataspace::upperBound(a); }
+      shared_ptr<E> upperBound(const E& a) { return dataspace::upperBound(a); }
 
-      Sorted<E> slice(E a, E b) {
+      Sorted<E> slice(const E& a, const E& b) {
         Super s = Super(dataspace::slice(a,b));
         return Sorted<E>(s);
       }
@@ -455,7 +530,8 @@ namespace K3 {
       ExternalCollection(const ExternalCollection<E>& other) : Super(other)  {}
 
       ExternalCollection(const Super& other) : Super(other) {}
-      ExternalCollection(Super other) : Super(other) {}
+
+      ExternalCollection(Super& other) : Super(other) {}
 
       template<class Iterator>
       ExternalCollection(Engine * e, Iterator start, Iterator finish)
@@ -475,83 +551,19 @@ namespace K3 {
       }
 
       template <class T>
-      ExternalCollection<MapReturnType<T>> map(F<T(E)> f) {
+      ExternalCollection<MapReturnType<T>> map(const F<T(E)>& f) {
        return ExternalCollection<MapReturnType<T>>(Super::template map<T>(f));
       }
 
-      ExternalCollection<E> filter(F<bool(E)> f) {
+      ExternalCollection<E> filter(const F<bool(E)>& f) {
        return ExternalCollection<E>(Super::filter(f));
       }
 
       // TODO: reconcile types with Annotation/External.k3
       template <class K, class Z>
-      F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Collection<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Collection<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
-            BaseCollection<ListDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
-            return Collection<GroupByReturnType<K,Z>>(s);
-          };
-          return r2;
-        };
-        return r;
-      }
-
-      template <class T>
-      Collection<T> ext(F<Collection<T>(E)> expand) {
-        BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
-        return Collection<T>(result);
-      }
-
-  };
-
-  template <class E>
-  class Map : public BaseCollection<MapDS, E> {
-    typedef BaseCollection<MapDS, E>  Super;
-     public:
-      Map(Engine * e) : Super(e) {}
-
-      Map(const Collection<E>& other) : Super(other)  {}
-
-      Map(Super other) : Super(other) {}
-
-      template<class Iterator>
-      Map(Engine * e, Iterator start, Iterator finish)
-        : Super(e, start, finish)
-      { }
-
-      std::tuple<Map<E>, Map<E>> split() {
-        auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
-        return std::make_tuple(Map<E>(ds1), Map<E>(ds2));
-      }
-
-      std::tuple<Map<E>, Map<E>> split(unit_t) {
-        auto tup = Super::split();
-        Super ds1 = get<0>(tup);
-        Super ds2 = get<1>(tup);
-        return std::make_tuple(Map<E>(ds1), Map<E>(ds2));
-      }
-
-      Map<E> combine(const Map<E>& other) const {
-       return Map<E>(Super::combine(other));
-      }
-
-      template <class T>
-      Map<MapReturnType<T>> map(F<T(E)> f) {
-       return Map<MapReturnType<T>>(Super::template map<T>(f));
-      }
-
-      Map<E> filter(F<bool(E)> f) {
-       return Map<E>(Super::filter(f));
-      }
-
-      // TODO: specialize groupBy (don't user super::groupBy). Maybe even a different type signature.
-      // i.e group by key automatically, without using a user specified lambda.
-      template <class K, class Z>
-      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
-        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
-          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
             BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
             return Map<GroupByReturnType<K,Z>>(s);
           };
@@ -560,21 +572,14 @@ namespace K3 {
         return r;
       }
 
-      // TODO: correct type signature?
       template <class T>
-      Map<T> ext(F<Map<T>(E)> expand) {
-        BaseCollection<MapDS, T> result = Super::template ext<T>(expand);
-        return Map<T>(result);
+      Collection<T> ext(const F<Collection<T>(E)>& expand) {
+        BaseCollection<ListDS, T> result = Super::template ext<T>(expand);
+        return Collection<T>(result);
       }
 
-    template<class Archive>
-    void serialize(Archive &ar, const unsigned int version) {
-      ar & boost::serialization::base_object<BaseCollection<ListDS, E>>(*this);
-    }
-
   };
-}
 
-
+} // namespace K3
 
 #endif
