@@ -724,14 +724,26 @@ unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<in
           R_count_revenue_total<int, double, int> v = r.value;
             unit_t __0;
 
-            __0 = insertWith<string, R_count_revenue_total<int, double, double>>(k)(R_count_revenue_total<int, double, double>{v.count,
-            v.revenue,
-                  double(v.total)})([v] (R_count_revenue_total<int, double, double> u) -> R_count_revenue_total<int, double, double> {
+            shared_ptr<R_count_revenue_total<int, double, double>> found = lookup(global_partial_result)(r.key);
 
-                return R_count_revenue_total<int, double, double>{u.count + v.count,
-                u.revenue + v.revenue,
-                u.total + v.total};
-            })(global_partial_result);
+            if (found == nullptr) {
+              global_partial_result.insert(
+                  R_key_value<string, R_count_revenue_total<int, double, double>> {
+                    r.key, R_count_revenue_total<int, double, double> { r.value.count, r.value.revenue, double(r.value.total) }
+                  }
+              );
+            } else {
+              global_partial_result.insert(
+                  R_key_value<string, R_count_revenue_total<int, double, double>> {
+                    r.key, R_count_revenue_total<int, double, double> {
+                      found->count + r.value.count,
+                      found->revenue + r.value.revenue,
+                      found->total + double(r.value.total)
+                    }
+                  }
+              );
+            }
+
             r.key = k;
             r.value = v;
             return __0;
