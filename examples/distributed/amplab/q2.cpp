@@ -6,8 +6,6 @@
 #include <string>
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
-#include <boost/serialization/list.hpp>
-#include <boost/serialization/vector.hpp>
 
 #include "Collections.hpp"
 #include "Common.hpp"
@@ -27,8 +25,6 @@ using std::end;
 
 Engine engine = Engine();
 
-#include "Builtins.hpp"
-
 using K3::Collection;
 
 template <class _T0,class _T1> class R_key_value;
@@ -38,6 +34,8 @@ template <class _T0> class R_arg;
 template <class _T0> class R_addr;
 
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8> class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate;
+
+template <class CONTENT> class _Map;
 
 template <class CONTENT> class _Collection;
 
@@ -57,7 +55,7 @@ unit_t ready(unit_t);
 
 unit_t shutdown_(unit_t);
 
-unit_t aggregate(_Collection<R_key_value<string, double>>);
+unit_t aggregate(_Map<R_key_value<string, double>>);
 
 unit_t q2_local(unit_t);
 
@@ -86,6 +84,33 @@ namespace K3 {
     };
 }
 
+template <class CONTENT>
+class _Map: public K3::Map<CONTENT> {
+    public:
+        _Map(): K3::Map<CONTENT>(&engine) {}
+        
+        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
+        
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+    
+};
+namespace K3 {
+    template <class E>
+    struct patcher<_Map<E>> {
+        static void patch(string s,_Map<E>& c) {
+            collection_patcher<_Map,E>::patch(s,c);
+        }
+    };
+}
+
+#ifndef K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
+#define K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
 class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate {
     public:
@@ -128,6 +153,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
         _T7 userAgent;
         _T8 visitDate;
 };
+#endif K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 namespace K3 {
     template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
     struct patcher<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8>> {
@@ -167,6 +193,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_addr
+#define K3_R_addr
 template <class _T0>
 class R_addr {
     public:
@@ -185,6 +213,7 @@ class R_addr {
         }
         _T0 addr;
 };
+#endif K3_R_addr
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -199,6 +228,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_arg
+#define K3_R_arg
 template <class _T0>
 class R_arg {
     public:
@@ -217,6 +248,7 @@ class R_arg {
         }
         _T0 arg;
 };
+#endif K3_R_arg
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -231,6 +263,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_key_value
+#define K3_R_key_value
 template <class _T0,class _T1>
 class R_key_value {
     public:
@@ -251,6 +285,7 @@ class R_key_value {
         _T0 key;
         _T1 value;
 };
+#endif K3_R_key_value
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -266,6 +301,12 @@ namespace K3 {
         }
     };
 }
+
+#include "Builtins.hpp"
+
+
+
+
 
 
 
@@ -338,7 +379,7 @@ int peers_finished;
 
 _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> local_uservisits;
 
-_Collection<R_key_value<string, double>> local_q2_results;
+_Map<R_key_value<string, double>> local_q2_results;
 
 int start_ms;
 
@@ -348,7 +389,7 @@ int elapsed_ms;
 
 unit_t q2_local(unit_t _) {
     {
-        _Collection<R_key_value<string, double>> agg_vals;
+        _Map<R_key_value<string, double>> agg_vals;
         
         
         
@@ -367,15 +408,14 @@ unit_t q2_local(unit_t _) {
         
         
         
-        auto d = make_shared<DispatcherImpl<_Collection<R_key_value<string, double>>>>(aggregate
-                                                                                      ,agg_vals);
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate,agg_vals);
         engine.send(master,3,d);return unit_t();
     }
 }
 
-unit_t aggregate(_Collection<R_key_value<string, double>> vals) {
+unit_t aggregate(_Map<R_key_value<string, double>> vals) {
     {
-        _Collection<R_key_value<string, double>> new_agg;
+        _Map<R_key_value<string, double>> new_agg;
         
         
         
@@ -494,7 +534,7 @@ void populate_dispatch() {
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<string, double>>>>(aggregate), "aggregate");
+    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
     dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q2_local), "q2_local");
 }
 
@@ -503,7 +543,7 @@ map<string,string> show_globals() {
     result["elapsed_ms"] = to_string(elapsed_ms);
     result["end_ms"] = to_string(end_ms);
     result["start_ms"] = to_string(start_ms);
-    result["local_q2_results"] = ([] (_Collection<R_key_value<string, double>> coll) {
+    result["local_q2_results"] = ([] (_Map<R_key_value<string, double>> coll) {
         ostringstream oss;
         auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
         return unit_t();};
