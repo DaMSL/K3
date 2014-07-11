@@ -43,7 +43,7 @@ namespace K3 {
       BaseCollection(Engine * e) : D<E>(e) {}
 
       template <template <class> class F>
-      BaseCollection(const BaseCollection<F, E> other) : D<E>(other)  {}
+      BaseCollection(const BaseCollection<F, E>& other) : D<E>(other)  {}
 
       template <template <class> class F>
       BaseCollection(BaseCollection<F, E>&& other) : D<E>(other) {}
@@ -68,16 +68,13 @@ namespace K3 {
 
       std::tuple<BaseCollection<D, E>, BaseCollection<D, E>> split() {
         auto tup = D<E>::split();
-        D<E> ds1 = get<0>(tup);
-        D<E> ds2 = get<1>(tup);
+        D<E>& ds1 = get<0>(tup);
+        D<E>& ds2 = get<1>(tup);
         return std::make_tuple(BaseCollection<D,E>(ds1), BaseCollection<D,E>(ds2));
       }
 
       std::tuple<BaseCollection<D, E>, BaseCollection<D, E>> split(unit_t) {
-        auto tup = D<E>::split();
-        D<E> ds1 = get<0>(tup);
-        D<E> ds2 = get<1>(tup);
-        return std::make_tuple(BaseCollection<D,E>(ds1), BaseCollection<D,E>(ds2));
+        return split();
       }
 
       template <template <class> class F>
@@ -86,9 +83,15 @@ namespace K3 {
       }
 
       template <class T>
-      BaseCollection<D, MapReturnType<T>> map(F<T(E)> f) {
-       BaseCollection<D, MapReturnType<T>> result = BaseCollection<D, MapReturnType<T>>(D<E>::getEngine());
-       std::function<unit_t(E)> wrap = [&] (E e) { MapReturnType<T> r; T t = f(e); r.elem = t; result.insert(r);return unit_t(); };
+      BaseCollection<D, MapReturnType<T>> map(const F<T(E)>& f) {
+       BaseCollection<D, MapReturnType<T>> result(D<E>::getEngine());
+       std::function<unit_t(E)> wrap = [&] (const E& e) {
+         MapReturnType<T> r;
+         r.elem = f(e);
+         result.insert(r);
+
+         return unit_t();
+       };
        D<E>::iterate(wrap);
        return result;
       }
@@ -110,7 +113,7 @@ namespace K3 {
         F<F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
           F<BaseCollection<D, GroupByReturnType<K,Z>>(Z)> r2 = [=] (Z init) {
               // Create a map to hold partial results
-              std::map<K, Z> accs = std::map<K,Z>();
+              std::unordered_map<K, Z> accs = std::unordered_map<K,Z>();
               // lambda to apply to each element
               F<unit_t(E)> f = [&] (E elem) {
                 K key = grouper(elem);
@@ -123,7 +126,7 @@ namespace K3 {
               D<E>::iterate(f);
               // Build BaseCollection result
               BaseCollection<D, GroupByReturnType<K,Z>> result = BaseCollection<D, GroupByReturnType<K,Z>>(D<E>::getEngine());
-              typename std::map<K,Z>::iterator it;
+              typename std::unordered_map<K,Z>::iterator it;
               for (it = accs.begin(); it != accs.end(); ++it) {
                 GroupByReturnType<K,Z> r;
                 r.key = it->first;
