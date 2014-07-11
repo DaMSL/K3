@@ -292,4 +292,4 @@ definition i t (Just e) = do
 definition i t Nothing = cDecl t i
 
 reservedAnnotations :: [Identifier]
-reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted"]
+reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map"]
