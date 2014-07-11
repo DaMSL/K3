@@ -3,16 +3,16 @@ import os
 
 class K3Peer:
   def __init__(self,config):
-    self.local_binary_path = config.get("local_binary_path", None)
-    self.remote_binary_path = config["k3_binary_path"]
-    self.binary_name = config["k3_binary_name"]
+    self.local_binary_path = config.get("local_binary_path")
     self.ip = config["ip"]
     self.port = config["k3_port"]
-    self.remote_script_path = config["remote_script_path"]
+    self.remote_binary_path = "/temp/"
+    self.binary_name = "k3_" + str(self.ip) + str(self.port)  
+    self.remote_script_path = "/temp/" + self.binary_name + ".txt"
     self.k3_bindings = config.get("k3_bindings",{})
     self.loggingEnabled = bool(config.get("enable_logging", False))
     # Constants
-    self.local_script_path =  "%s.txt" % self.ip
+    self.local_script_path =  "%s.txt" % self.binary_name
     self.host = "root@%s" % self.ip
   
   def deployBinary(self):
