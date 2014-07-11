@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
 include "Core/CppBuiltins.k3"
 
 // Hack
@@ -38,7 +39,7 @@ declare local_uservisits: collection {
     visitDate: string
     } @ { Collection }
 
-declare local_q2_results: mut collection {key: string, value: real} @ { Collection }
+declare local_q2_results: mut collection {key: string, value: real} @ { Map }
 
 // Time
 declare start_ms : mut int = 0
@@ -59,7 +60,7 @@ trigger q2_local : () = \_ -> (
 )
 
 
-trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
+trigger aggregate : collection { key: string, value: real } @ {Map} = \vals -> (
   let new_agg = (local_q2_results.combine vals).groupBy
         (\r -> r.key)
         (\acc -> \r -> acc + r.value)
