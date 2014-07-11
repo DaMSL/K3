@@ -16,10 +16,28 @@ class K3Peer:
     self.host = "root@%s" % self.ip
   
   def deployBinary(self):
-    if(self.local_binary_path != None):
-      remote_file = self.remote_binary_path + self.binary_name
+    # Kill any running instance of the binary to unlock all files
+    local_kill_file = "kill_" + self.binary_name + ".txt"
+    remote_kill_file = self.remote_binary_path + "kill_" + self.binary_name;    
+    script = ("""#!/bin/bash\n"""
+              """kill -9 $(pidof %(bn)s)\n""" % {"bn": self.binary_name })
+
+
+    # Dump to a local file
+    with open(local_kill_file,"wb") as script_file:
+      script_file.write(script)
+  
+    # copy local to remote 
+    scpTo(self.host, local_kill_file, remote_kill_file)
+ 
+    # chmod +x remote_script
+    chmod_cmd = "chmod +x %s" % remote_kill_file
+    ssh(self.host, chmod_cmd)
+
+    # copy run script over to remote
+    remote_file = self.remote_binary_path + self.binary_name
       
-      scpTo(self.host, self.local_binary_path, remote_file) # TODO use rsync
+    scpTo(self.host, self.local_binary_path, remote_file) # TODO use rsync
 
   def generateScript(self):
     k3_bindings = self.k3_bindings
@@ -28,9 +46,8 @@ class K3Peer:
     logStr = ""
     if self.loggingEnabled:
       logStr = "-l some"
-    # Generate a script to kill existing k3 program if running, then run program.
+    # Generate a script to run program.
     script = ("""#!/bin/bash\n"""
-              """kill -9 $(pidof %(bn)s)\n"""
               """%(bp)s%(bn)s %(ls)s -p %(bs)s\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr}
     
     # Dump to a local file
