@@ -77,7 +77,8 @@ declaration (tag &&& children -> (DRole _, cs)) = do
     let amp = annotationMap currentS
     compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
-    recordDecls <- forM (M.toList $ recordMap currentS) $ (\(_, (unzip -> (ids, _))) -> record ids)
+    recordDecls <- forM (M.toList $ recordMap currentS) $
+                     \(_, unzip -> (ids, _)) -> record ids
     tablePop <- generateDispatchPopulation
 
     newS <- get

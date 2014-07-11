@@ -204,8 +204,17 @@ record (sort -> ids) = do
 
     addForward $ templateDecl <+> text "class" <+> recordName <> semi
 
-    return $ recordStructDef <$$> recordPatcherDef
+    return $ defineProtect recordStructDef <$$> recordPatcherDef
   where
+    defineProtect t = vsep[
+                        text "",
+                        text "#ifndef" <+> recordName,
+                        text "#define" <+> recordName <+> recordName,
+                        t,
+                        text "#endif //" <> recordName,
+                        text ""
+                        ]
+
     recordName = text $ recordSignature ids
 
     oneFieldParser :: Identifier -> CPPGenM CPPGenR

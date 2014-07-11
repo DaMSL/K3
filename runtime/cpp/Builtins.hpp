@@ -9,7 +9,7 @@
 #include <string>
 #include <functional>
 
-template <class R> class R_elem;
+#include "BaseTypes.hpp"
 
 namespace K3 {
   //class Builtins: public __k3_context {
