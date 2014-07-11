@@ -676,7 +676,7 @@ _Collection<R_avgDuration_pageRank_pageURL<int, int, string>> rankings;
 _Collection<R_adRevenue_pageRank_sourceIP<double, int, string>> matches;
 
 unit_t aggregate_local(unit_t _) {
-    userVisits.iterate([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int> u) -> unit_t {
+    userVisits.iterate([] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>& u) -> unit_t {
         return rankings.iterate([u] (R_avgDuration_pageRank_pageURL<int, int, string> r) -> unit_t {
             if (u.destURL == r.pageURL && lowerDate < u.visitDate && u.visitDate < upperDate) {
 
@@ -691,11 +691,11 @@ unit_t aggregate_local(unit_t _) {
     {
         _Collection<R_key_value<string, R_count_revenue_total<int, double, int>>> local_aggregate;
 
-        local_aggregate = matches.groupBy<string, R_count_revenue_total<int, double, int>>([] (R_adRevenue_pageRank_sourceIP<double, int, string> r) -> string {
+        local_aggregate = matches.groupBy<string, R_count_revenue_total<int, double, int>>([] (const R_adRevenue_pageRank_sourceIP<double, int, string>& r) -> string {
             return r.sourceIP;
-          })([] (R_count_revenue_total<int, double, int> a) -> std::function<R_count_revenue_total<int, double, int>(R_adRevenue_pageRank_sourceIP<double, int, string>)> {
+          })([] (const R_count_revenue_total<int, double, int>& a) -> std::function<R_count_revenue_total<int, double, int>(R_adRevenue_pageRank_sourceIP<double, int, string>)> {
 
-              return [a] (R_adRevenue_pageRank_sourceIP<double, int, string> r) -> R_count_revenue_total<int, double, int> {
+              return [a] (const R_adRevenue_pageRank_sourceIP<double, int, string>& r) -> R_count_revenue_total<int, double, int> {
 
                 return R_count_revenue_total<int, double, int>{a.count + 1,
                 a.revenue + r.adRevenue,
@@ -717,12 +717,9 @@ R_avgRank_sourceIP_totalRevenue<double, string, double> global_result;
 
 unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>> c) {
 
-    c.iterate([] (R_key_value<string, R_count_revenue_total<int, double, int>> r) -> unit_t {
+    c.iterate([] (const R_key_value<string, R_count_revenue_total<int, double, int>>& r) -> unit_t {
 
-        {
-          string k = r.key;
-          R_count_revenue_total<int, double, int> v = r.value;
-            unit_t __0;
+                    unit_t __0;
 
             shared_ptr<R_count_revenue_total<int, double, double>> found = lookup(global_partial_result)(r.key);
 
@@ -744,32 +741,23 @@ unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<in
               );
             }
 
-            r.key = k;
-            r.value = v;
             return __0;
-        }
     });
     local_aggregate_complete = local_aggregate_complete + 1;
     if (local_aggregate_complete == peer_count) {
 
-        return global_partial_result.iterate([] (R_key_value<string, R_count_revenue_total<int, double, double>> g) -> unit_t {
+        return global_partial_result.iterate([] (const R_key_value<string, R_count_revenue_total<int, double, double>>& g) -> unit_t {
 
-            {
-              string k = g.key;
-              R_count_revenue_total<int, double, double> v = g.value;
-                unit_t __1;
-                if (v.revenue > global_result.totalRevenue) {
+                            unit_t __1;
+                if (g.value.revenue > global_result.totalRevenue) {
 
-                    global_result = R_avgRank_sourceIP_totalRevenue<double, string, double>{v.total / v.count,
-                    k,
-                    v.revenue};__1 = unit_t();
+                    global_result = R_avgRank_sourceIP_totalRevenue<double, string, double>{g.value.total / g.value.count,
+                    g.key,
+                    g.value.revenue};__1 = unit_t();
                 } else {
                     __1 = unit_t();
                 }
-                g.key = k;
-                g.value = v;
                 return __1;
-            }
         });
     } else {
         return unit_t();
