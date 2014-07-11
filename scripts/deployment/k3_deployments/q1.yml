@@ -4,8 +4,8 @@ name: Amplab Query 1
 local_binary_path: "/temp/q1" #Mandatory
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
-  x: "10"
-  num_peers: "5"
+  x: "1000"
+  num_peers: "20"
   role: '"rows"'
   master: '<192.168.1.41:40000>'
 
@@ -14,23 +14,85 @@ k3_peers:
     - ip: "192.168.1.41"
       k3_port: "40000"
       k3_bindings:
-        data_file: '"/nfs/rankings_sf5/part11.txt"'
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part01.txt"'
     - ip: "192.168.1.41"
       k3_port: "40001"
       k3_bindings:
-        data_file: '"/nfs/rankings_sf5/part12.txt"'
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part02.txt"'
     - ip: "192.168.1.41"
       k3_port: "40002"
       k3_bindings:
-        data_file: '"/nfs/rankings_sf5/part13.txt"'
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part03.txt"'
     - ip: "192.168.1.41"
       k3_port: "40003"
       k3_bindings:
-        data_file: '"/nfs/rankings_sf5/part14.txt"'
-    - ip: "192.168.1.41"
-      k3_port: "40004"
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part04.txt"'
+
+    - ip: "192.168.1.40"
+      k3_port: "40000"
       k3_bindings:
-        data_file: '"/nfs/rankings_sf5/part15.txt"'
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part05.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40001"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part06.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40002"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part07.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40003"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part08.txt"'
+
+    - ip: "192.168.1.39"
+      k3_port: "39000"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part09.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "39001"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part10.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "39002"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part11.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "39003"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part12.txt"'
 
 
+    - ip: "192.168.1.38"
+      k3_port: "38000"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part13.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "38001"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part14.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "38002"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part15.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "38003"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part16.txt"'
 
+    - ip: "192.168.1.37"
+      k3_port: "37000"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part17.txt"'
+    - ip: "192.168.1.37"
+      k3_port: "37001"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part18.txt"'
+    - ip: "192.168.1.37"
+      k3_port: "37002"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part19.txt"'
+    - ip: "192.168.1.37"
+      k3_port: "37003"
+      k3_bindings:
+        data_file: '"/nfs/rankings_sf5/sf5_4PeerPerNode/part20.txt"'
