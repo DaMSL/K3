@@ -208,11 +208,11 @@ namespace K3 {
   // Map-specific template function to look up
   template <class E>
   F<shared_ptr<typename E::ValueType>(const typename E::KeyType&)> lookup(const Map<E>& map) {
-    return [&] (const typename E::KeyType& key) {
-      unordered_map<typename E::KeyType, typename E::ValueType> it =
-        map.getContainer().find(key);
-      if (it != map.end()) {
-        return make_shared<E::ValueType>(it->second);
+    return [&] (const typename E::KeyType& key) -> shared_ptr<typename E::ValueType> {
+      auto container = map.getContainer();
+      auto it = container.find(key);
+      if (it != container.end()) {
+        return make_shared<typename E::ValueType>(it->second);
       } else {
         return nullptr;
       }
