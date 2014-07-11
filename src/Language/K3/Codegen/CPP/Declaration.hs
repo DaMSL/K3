@@ -36,6 +36,7 @@ declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return empty
 declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (\y -> y `L.isSuffixOf` name) source_builtins = genSourceBuiltin t name
                                                                | otherwise = return empty
+declaration (tag -> DGlobal _ (tag -> TForall _) Nothing) = return empty
 declaration (tag -> DGlobal i t Nothing) = cDecl t i
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
             (Just (tag &&& children -> (ELambda x, [b])))) = do
@@ -66,7 +67,7 @@ declaration (tag -> DGlobal i t (Just e)) = do
 
 -- The generated code for a trigger is the same as that of a function with corresponding ()
 -- return-type.
-declaration (tag -> DTrigger i t e) = 
+declaration (tag -> DTrigger i t e) =
     declaration (D.global i (T.function t T.unit) (Just e))
 
 declaration (tag &&& children -> (DRole _, cs)) = do

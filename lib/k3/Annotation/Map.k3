@@ -31,5 +31,3 @@ annotation Map given type a,b {
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})
                              -> collection {elem : a} @ {Collection}
 }
-
-declare lookup: forall a, b. a -> collection { key: a, value: b } -> option b
