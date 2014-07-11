@@ -6,7 +6,7 @@
 namespace K3 {
 
 #ifndef R_elem
-#define R_elem
+#define R_elem R_elem
 
 template <class _T0>
 class R_elem {
