@@ -715,10 +715,6 @@ _Collection<R_key_value<string, R_count_revenue_total<int, double, double>>> glo
 
 R_avgRank_sourceIP_totalRevenue<double, string, double> global_result;
 
-template <class a, class b>
-std::function<std::function<std::function<unit_t(_Collection<R_key_value<a, b>>)>(std::function<b(b)>)>(b)> insertWith(a);
-
-
 unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>> c) {
 
     c.iterate([] (R_key_value<string, R_count_revenue_total<int, double, int>> r) -> unit_t {
