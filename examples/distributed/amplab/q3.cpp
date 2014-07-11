@@ -711,7 +711,7 @@ unit_t aggregate_local(unit_t _) {
 
 int local_aggregate_complete;
 
-_Collection<R_key_value<string, R_count_revenue_total<int, double, double>>> global_partial_result;
+_Map<R_key_value<string, R_count_revenue_total<int, double, double>>> global_partial_result;
 
 R_avgRank_sourceIP_totalRevenue<double, string, double> global_result;
 
@@ -813,7 +813,7 @@ void populate_dispatch() {
 map<string,string> show_globals() {
     map<string,string> result;
     result["global_result"] = "{" + ("sourceIP:" + global_result.sourceIP + "," + "avgRank:" + to_string(global_result.avgRank) + "," + "totalRevenue:" + to_string(global_result.totalRevenue) + "}");
-    result["global_partial_result"] = ([] (_Collection<R_key_value<string, R_count_revenue_total<int, double, double>>> coll) {
+    result["global_partial_result"] = ([] (_Map<R_key_value<string, R_count_revenue_total<int, double, double>>> coll) {
         ostringstream oss;
         auto f = [&] (R_key_value<string, R_count_revenue_total<int, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "total:" + to_string(elem.value.total) + "," + "revenue:" + to_string(elem.value.revenue) + "}") + "}") << ",";
         return unit_t();};
