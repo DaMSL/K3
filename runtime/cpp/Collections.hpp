@@ -18,8 +18,11 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/map.hpp"
+#include "boost/serialization/set.hpp"
 
-#include <Engine.hpp>
+#include <BaseTypes.hpp>
 #include <dataspace/FileDS.hpp>
 #include <dataspace/ListDS.hpp>
 #include <dataspace/SetDS.hpp>
@@ -27,10 +30,6 @@
 #include <dataspace/StlDS.hpp>
 #include <dataspace/MapDS.hpp>
 #include <boost/serialization/base_object.hpp>
-
-// Forward Declarations
-template <class E> class R_elem;
-template <class K, class V> class R_key_value;
 
 namespace K3 {
   class Engine;
@@ -47,6 +46,8 @@ namespace K3 {
 
       template <template <class> class F>
       BaseCollection(BaseCollection<F, E>& other) : D<E>(other) {}
+
+      BaseCollection(D<E> other) : D<E>(other) {}
 
       template<class Iterator>
       BaseCollection(Engine* e, Iterator start, Iterator finish)
@@ -75,8 +76,7 @@ namespace K3 {
         return split();
       }
 
-      template <template <class> class F>
-      BaseCollection<D, E> combine(const BaseCollection<F, E>& other) const {
+      BaseCollection<D, E> combine(const BaseCollection<D, E>& other) const {
        return BaseCollection<D,E>(D<E>::combine(other));
       }
 
@@ -111,9 +111,9 @@ namespace K3 {
         F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
           F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
               // Create a map to hold partial results
-              std::unordered_map<K, Z> accs = std::unordered_map<K,Z>();
+              std::map<K, Z> accs;
               // lambda to apply to each element
-              F<unit_t(E)> f = [&] (E& elem) {
+              F<unit_t(const E&)> f = [&] (const E& elem) {
                 K key = grouper(elem);
                 if (accs.find(key) == accs.end()) {
                   accs[key] = init;
@@ -124,7 +124,7 @@ namespace K3 {
               D<E>::iterate(f);
               // Build BaseCollection result
               BaseCollection<MapDS, GroupByReturnType<K,Z>> result(D<E>::getEngine());
-              typename std::unordered_map<K,Z>::iterator it;
+              typename std::map<K,Z>::iterator it;
               for (it = accs.begin(); it != accs.end(); ++it) {
                 GroupByReturnType<K,Z> r;
                 r.key = it->first;
@@ -227,7 +227,7 @@ namespace K3 {
 
     template<class Archive>
     void serialize(Archive &ar, const unsigned int version) {
-      ar & boost::serialization::base_object<BaseCollection<ListDS, E>>(*this);
+      ar & boost::serialization::base_object<BaseCollection<MapDS, E>>(*this);
     }
 
   };

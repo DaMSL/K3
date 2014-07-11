@@ -206,7 +206,7 @@ record (sort -> ids) = do
 
     return $ defineProtect recordStructDef <$$> recordPatcherDef
   where
-    sigil = cat (punctuate (text "_") [text "K3", recordName])
+    sigil = hcat (punctuate (text "_") [text "K3", recordName])
     defineProtect t = text "#ifndef" <+> sigil <$$> text "#define" <+> sigil <$$> t <$$> text "#endif" <+> sigil
 
     recordName = text $ recordSignature ids

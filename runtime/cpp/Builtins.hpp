@@ -225,7 +225,7 @@ namespace K3 {
     return [&] (const typename E::KeyType& key) {
       return [&] (const typename E::ValueType& value) {
         return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
-          unordered_map<typename E::KeyType, typename E::ValueType> it = map.getContainer().find(key);
+          auto it = map.getContainer().find(key);
           if (it == map.end()) {
             map.insert(E(key, value));
           } else {

@@ -126,10 +126,6 @@ sysIncludes = return [
 
         -- JSON
         "external/json_spirit_reader_template.h",
-
-        -- Boost
-        "boost/serialization/list.hpp",
-        "boost/serialization/vector.hpp"
       ]
 
 includes :: CPPGenM [Identifier]
