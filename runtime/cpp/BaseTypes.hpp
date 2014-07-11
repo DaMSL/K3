@@ -5,8 +5,8 @@
 
 namespace K3 {
 
-#ifndef R_elem
-#define R_elem R_elem
+#ifndef K3_R_elem
+#define K3_R_elem
 
 template <class _T0>
 class R_elem {
@@ -22,12 +22,11 @@ class R_elem {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & elem;
-            
         }
         _T0 elem;
 };
 
-#endif // R_elem
+#endif // K3_R_elem
 
 } // namespace K3
 

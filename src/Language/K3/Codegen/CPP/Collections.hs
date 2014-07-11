@@ -206,14 +206,8 @@ record (sort -> ids) = do
 
     return $ defineProtect recordStructDef <$$> recordPatcherDef
   where
-    defineProtect t = vsep[
-                        text "",
-                        text "#ifndef" <+> recordName,
-                        text "#define" <+> recordName <+> recordName,
-                        t,
-                        text "#endif //" <> recordName,
-                        text ""
-                        ]
+    sigil = cat (punctuate (text "_") [text "K3", recordName])
+    defineProtect t = text "#ifndef" <+> sigil <$$> text "#define" <+> sigil <$$> t <$$> text "#endif" <+> sigil
 
     recordName = text $ recordSignature ids
 
