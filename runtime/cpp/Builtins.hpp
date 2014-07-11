@@ -81,9 +81,9 @@ namespace K3 {
     return unit_t();
   }
 
-  F<F<F<string(int)>(int)>(string)> substring = [] (string s) {
-      return [=] (int i) {
-            return [=] (int n) {
+  F<F<F<string(int)>(int)>(string)> substring = [] (string& s) {
+      return [&] (int& i) {
+            return [&] (int& n) {
                 return s.substr(i,n);
             };
       };
