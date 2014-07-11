@@ -85,6 +85,30 @@ class _Collection: public K3::Collection<CONTENT> {
         }
 
 };
+template <class CONTENT>
+class _Map: public K3::Map<CONTENT> {
+    public:
+        _Map(): K3::Map<CONTENT>(&engine) {}
+
+        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
+
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
+
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+
+};
+
+namespace K3 {
+    template <class E>
+    struct patcher<_Map<E>> {
+        static void patch(string s,_Map<E>& c) {
+            collection_patcher<_Map,E>::patch(s,c);
+        }
+    };
+}
 namespace K3 {
     template <class E>
     struct patcher<_Collection<E>> {
@@ -507,7 +531,10 @@ class R_key_value {
         }
         _T0 key;
         _T1 value;
+  using KeyType = _T0;
+  using ValueType = _T1;
 };
+
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
