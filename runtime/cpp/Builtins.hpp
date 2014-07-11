@@ -208,17 +208,35 @@ namespace K3 {
   // Map-specific template function to look up
   template <class E>
   F<shared_ptr<typename E::ValueType>(const typename E::KeyType&)> lookup(const Map<E>& map) {
-      return [&] (const typename E::KeyType& key) {
-        unordered_map<typename E::KeyType, typename E::ValueType> it =
-          map.getContainer().find(key);
-        if (it != map.end()) {
-          return make_shared<E::ValueType>(it->second);
-        } else {
-          return nullptr;
-        }
-      };
+    return [&] (const typename E::KeyType& key) {
+      unordered_map<typename E::KeyType, typename E::ValueType> it =
+        map.getContainer().find(key);
+      if (it != map.end()) {
+        return make_shared<E::ValueType>(it->second);
+      } else {
+        return nullptr;
+      }
+    };
   }
 
+  template <class E>
+  F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>
+  insert_with(const Map<E>& map) {
+    return [&] (const typename E::KeyType& key) {
+      return [&] (const typename E::ValueType& value) {
+        return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
+          unordered_map<typename E::KeyType, typename E::ValueType> it = map.getContainer().find(key);
+          if (it == map.end()) {
+            map.insert(E(key, value));
+          } else {
+            map.insert(E(key, f(value)));
+          }
+
+          return unit_t();
+        };
+      };
+    };
+  }
 } // namespace K3
 
 #endif /* K3_RUNTIME_BUILTINS_H */
