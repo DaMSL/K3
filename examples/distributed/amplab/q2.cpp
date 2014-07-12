@@ -153,7 +153,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
         _T7 userAgent;
         _T8 visitDate;
 };
-#endif K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
+#endif
 namespace K3 {
     template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
     struct patcher<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8>> {
@@ -213,7 +213,7 @@ class R_addr {
         }
         _T0 addr;
 };
-#endif K3_R_addr
+#endif
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -248,7 +248,7 @@ class R_arg {
         }
         _T0 arg;
 };
-#endif K3_R_arg
+#endif
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -285,7 +285,7 @@ class R_key_value {
         _T0 key;
         _T1 value;
 };
-#endif K3_R_key_value
+#endif
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
