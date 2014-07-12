@@ -512,6 +512,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_key_value
+#define K3_R_key_value
 template <class _T0,class _T1>
 class R_key_value {
     public:
@@ -534,6 +536,7 @@ class R_key_value {
   using KeyType = _T0;
   using ValueType = _T1;
 };
+#endif
 
 namespace K3 {
     template <class _T0,class _T1>
