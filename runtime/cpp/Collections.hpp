@@ -107,9 +107,9 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
-        F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
-          F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+      F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)> r2 = [=] (const Z& init) {
               // Create a map to hold partial results
               std::map<K, Z> accs;
               // lambda to apply to each element
@@ -207,9 +207,9 @@ namespace K3 {
       // TODO: specialize groupBy (don't user super::groupBy). Maybe even a different type signature.
       // i.e group by key automatically, without using a user specified lambda.
       template <class K, class Z>
-      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
-        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
-          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [=] (const Z& init) {
             BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
             return Map<GroupByReturnType<K,Z>>(s);
           };
@@ -277,9 +277,9 @@ namespace K3 {
       }
 
       template <class K, class Z>
-      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(const F<K(E)>& grouper) {
-        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [&] (const F<F<Z(E)>(Z)>& folder) {
-          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [&] (const Z& init) {
+      F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> groupBy(F<K(E)> grouper) {
+        F<F<Map<GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
+          F<Map<GroupByReturnType<K,Z>>(Z)> r2 = [=] (const Z& init) {
             BaseCollection<MapDS, GroupByReturnType<K,Z>> s = Super::template groupBy<K,Z>(grouper)(folder)(init);
             return Map<GroupByReturnType<K,Z>>(s);
           };
