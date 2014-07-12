@@ -51,6 +51,6 @@ class R_key_value {
         typedef _T0 KeyType;
         typedef _T1 ValueType;
 };
-#endif K3_R_key_value
+#endif
 
 #endif // K3_RUNTIME_BASETYPES_H
