@@ -788,7 +788,7 @@ unit_t atExit(unit_t _) {
 
 unit_t initGlobalDecls() {
 
-    master = make_address(string("localhost"),20000);peer_count = 5;local_aggregate_complete = 0;
+    master = make_address(string("127.0.0.1"),20000);peer_count = 5;local_aggregate_complete = 0;
 
     global_result = R_avgRank_sourceIP_totalRevenue<double, string, double>{0.0,
     string(""),
