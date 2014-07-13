@@ -56,6 +56,7 @@ template <class _T0,class _T1> class R_adRevenue_pageRank;
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8> class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate;
 
 template <class CONTENT> class _Collection;
+template <class CONTENT> class _Map;
 
 unit_t atExit(unit_t);
 
@@ -65,7 +66,7 @@ unit_t processRole(unit_t);
 
 unit_t initDecls(unit_t);
 
-unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>>);
+unit_t aggregate_global(_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>);
 
 unit_t aggregate_local(unit_t);
 
@@ -692,7 +693,7 @@ unit_t aggregate_local(unit_t _) {
         });
     });
     {
-        _Collection<R_key_value<string, R_count_revenue_total<int, double, int>>> local_aggregate;
+        _Map<R_key_value<string, R_count_revenue_total<int, double, int>>> local_aggregate;
 
         local_aggregate = matches.groupBy<string, R_count_revenue_total<int, double, int>>([] (const R_adRevenue_pageRank_sourceIP<double, int, string>& r) -> string {
             return r.sourceIP;
@@ -706,8 +707,7 @@ unit_t aggregate_local(unit_t _) {
             };
         })(R_count_revenue_total<int, double, int>{0,0,0});
 
-        auto d = make_shared<DispatcherImpl<_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global
-                                                                                                                       ,local_aggregate);
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global, local_aggregate);
         engine.send(master,0,d);return unit_t();
     }
 }
@@ -718,7 +718,7 @@ _Map<R_key_value<string, R_count_revenue_total<int, double, double>>> global_par
 
 R_avgRank_sourceIP_totalRevenue<double, string, double> global_result;
 
-unit_t aggregate_global(_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>> c) {
+unit_t aggregate_global(_Map<R_key_value<string, R_count_revenue_total<int, double, int>>> c) {
 
     c.iterate([] (const R_key_value<string, R_count_revenue_total<int, double, int>>& r) -> unit_t {
 
@@ -797,7 +797,7 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(2);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global), "aggregate_global");
+    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global), "aggregate_global");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(aggregate_local), "aggregate_local");
 }
 
