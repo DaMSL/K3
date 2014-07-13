@@ -125,7 +125,7 @@ sysIncludes = return [
         "external/strtk.hpp",
 
         -- JSON
-        "external/json_spirit_reader_template.h",
+        "external/json_spirit_reader_template.h"
       ]
 
 includes :: CPPGenM [Identifier]
