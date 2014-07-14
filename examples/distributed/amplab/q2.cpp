@@ -59,21 +59,23 @@ unit_t aggregate(_Map<R_key_value<string, double>>);
 
 unit_t q2_local(unit_t);
 
+unit_t merge_results(_Map<R_key_value<string, double>>);
+
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-        
+
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-        
+
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -88,17 +90,17 @@ template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
         _Map(): K3::Map<CONTENT>(&engine) {}
-        
+
         _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-        
+
         _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -141,7 +143,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
             _archive & sourceIP;
             _archive & userAgent;
             _archive & visitDate;
-            
+
         }
         _T0 adRevenue;
         _T1 countryCode;
@@ -178,14 +180,14 @@ namespace K3 {
                                                                                                                                               ,r.userAgent);})];
             qi::rule<string::iterator, qi::space_type> _visitDate = (qi::lit("visitDate") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
                                                                                                                                               ,r.visitDate);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | 
-            _countryCode | 
-            _destURL | 
-            _duration | 
-            _languageCode | 
-            _searchWord | 
-            _sourceIP | 
-            _userAgent | 
+            qi::rule<string::iterator, qi::space_type> _field = _adRevenue |
+            _countryCode |
+            _destURL |
+            _duration |
+            _languageCode |
+            _searchWord |
+            _sourceIP |
+            _userAgent |
             _visitDate;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
@@ -209,7 +211,7 @@ class R_addr {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-            
+
         }
         _T0 addr;
 };
@@ -244,7 +246,7 @@ class R_arg {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-            
+
         }
         _T0 arg;
 };
@@ -280,7 +282,7 @@ class R_key_value {
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-            
+
         }
         _T0 key;
         _T1 value;
@@ -387,85 +389,87 @@ int end_ms;
 
 int elapsed_ms;
 
+unit_t merge_results(_Map<R_key_value<string, double>> m) {
+  m.iterate(
+    [] (const R_key_value<string, double>& v) -> unit_t {
+      shared_ptr<double> pa = lookup<R_key_value<string, double>>(local_q2_results)(v.key);
+      if (pa != nullptr) {
+        local_q2_results.insert(R_key_value<string, double> { v.key, *pa + v.value });
+      } else {
+        local_q2_results.insert(v);
+      }
+
+      return unit_t();
+    }
+  );
+
+  return unit_t();
+}
+
 unit_t q2_local(unit_t _) {
     {
         _Map<R_key_value<string, double>> agg_vals;
-        
-        
-        
-        
+
+
+
+
         agg_vals = local_uservisits.groupBy<string, double>([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> string {
-            
-            
-            
+
+
+
             return substring(r.sourceIP)(0)(x);
         })([] (double acc) -> std::function<double(R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>)> {
-            
+
             return [acc] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> double {
                 return acc + r.adRevenue;
             };
         })(0.0);
-        
-        
-        
+
+
+
         auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate,agg_vals);
         engine.send(master,3,d);return unit_t();
     }
 }
 
 unit_t aggregate(_Map<R_key_value<string, double>> vals) {
-    {
-        _Map<R_key_value<string, double>> new_agg;
-        
-        
-        
-        
-        
-        new_agg = local_q2_results.combine(vals).groupBy<string, double>([] (R_key_value<string, double> r) -> string {
-            return r.key;
-        })([] (double acc) -> std::function<double(R_key_value<string, double>)> {
-            return [acc] (R_key_value<string, double> r) -> double {
-                return acc + r.value;
-            };
-        })(0.0);
-        local_q2_results = new_agg;
-        peers_finished = peers_finished + 1;
-        if (peers_finished == num_peers) {
-            
-            end_ms = now(unit_t());
-            elapsed_ms = end_ms - start_ms;
-            
-            
-            printLine(itos(elapsed_ms));
-            
-            return peers.iterate([] (R_addr<Address> p) -> unit_t {
-                
-                
-                
-                auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
-                engine.send(p.addr,2,d);return unit_t();
-            });
-        } else {
-            return unit_t();
-        }
-    }
+  merge_results(vals);
+  peers_finished = peers_finished + 1;
+  if (peers_finished == num_peers) {
+
+    end_ms = now(unit_t());
+    elapsed_ms = end_ms - start_ms;
+
+
+    printLine(itos(elapsed_ms));
+
+    return peers.iterate([] (R_addr<Address> p) -> unit_t {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+        engine.send(p.addr,2,d);return unit_t();
+      });
+  } else {
+    return unit_t();
+  }
 }
 
 unit_t shutdown_(unit_t _) {
-    
+
     return haltEngine(unit_t());
 }
 
 unit_t ready(unit_t _) {
     peers_ready = peers_ready + 1;
     if (peers_ready == num_peers) {
-        
+
         start_ms = now(unit_t());
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
+
+
+
             auto d = make_shared<DispatcherImpl<unit_t>>(q2_local,unit_t());
             engine.send(p.addr,4,d);return unit_t();
         });
@@ -475,12 +479,12 @@ unit_t ready(unit_t _) {
 }
 
 unit_t load_all(unit_t _) {
-    
-    
+
+
     dataLoader(data_file)(local_uservisits);
-    
-    
-    
+
+
+
     auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
 }
@@ -488,11 +492,11 @@ unit_t load_all(unit_t _) {
 
 
 unit_t rowsProcess(unit_t _) {
-    
+
     return [] (unit_t next) -> unit_t {
-        
-        
-        
+
+
+
         auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
@@ -504,7 +508,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("rows")) {
-        
+
         return rowsProcess(unit_t());
     } else {
         return unit_t();
@@ -512,9 +516,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-    
+
     initDecls(unit_t());
-    
+
     return processRole(unit_t());
 }
 
@@ -523,7 +527,7 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-    
+
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
     data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
     start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
