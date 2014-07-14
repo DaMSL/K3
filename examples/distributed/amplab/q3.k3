@@ -151,7 +151,7 @@ trigger do_groupBy: () = \_ -> (
         in uc.value.iterate (
             \sar -> local_group.insert
                         {key: sar.key,
-                         value: {pageRank_total: rk.pageRank_total
+                         value: {pageRank_total: rk.pageRank_total,
                                  pageRank_count: rk.pageRank_count,
                                  adRevenue_total: sar.value}}
         )));
@@ -169,7 +169,7 @@ trigger global_group_receive: () = \_ -> (
     (if global_received == peer_count then do_global_groupBy else ())
 )
 
-declare global_groupBy_result collection {
+declare global_groupBy_result: collection {
     key: string,
     value: {
         pageRank_total: real,
@@ -185,7 +185,7 @@ trigger do_global_groupBy: {
         pageRank_count: real,
         adRevenue_total: real
     }
-} @ { Map } = \r -> (
+} = \r -> (
     (modify_with global_groupBy_result r.key
         { pageRank_total: 0.0, pageRank_count: 0.0, adRevenue_total: 0.0 }
         (\w -> {pageRank_total: w.pageRank_total + r.value.pageRank_total,
@@ -193,8 +193,8 @@ trigger do_global_groupBy: {
                 adRevenue_total: w.adRevenue_total + r.value.adRevenue_total}));
     ((global_max, master) <- global_groupBy_result.fold
         (\a -> \r -> if r.adRevenue_total > a.adRevenue_total
-                        then {sourceIP: r.sourceIP
-                              pageRank_avg: r.pageRank_total / r.pageRank_count
+                        then {sourceIP: r.sourceIP,
+                              pageRank_avg: r.pageRank_total / r.pageRank_count,
                               adRevenue_total: r.adRevenue_total}
                         else a)
         { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0})
