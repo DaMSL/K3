@@ -14,13 +14,14 @@
 #define K3_RUNTIME_COLLECTIONS_H
 
 #include <functional>
-#include <list>
-#include <map>
 #include <memory>
 #include <tuple>
+#include <boost/tr1/unordered_map.hpp>
+#include <boost/tr1/unordered_set.hpp>
 #include "boost/serialization/vector.hpp"
-#include "boost/serialization/map.hpp"
 #include "boost/serialization/set.hpp"
+#include "external/boost_ext/unordered_set.hpp"
+#include "external/boost_ext/unordered_map.hpp"
 
 #include <BaseTypes.hpp>
 #include <dataspace/FileDS.hpp>
@@ -81,7 +82,7 @@ namespace K3 {
       }
 
       template <class T>
-      BaseCollection<D, MapReturnType<T>> map(const F<T(E)>& f) {
+      BaseCollection<D, MapReturnType<T>> map(F<T(E)> f) {
        BaseCollection<D, MapReturnType<T>> result(D<E>::getEngine());
        std::function<unit_t(E)> wrap = [&] (const E& e) {
          MapReturnType<T> r;
@@ -111,7 +112,7 @@ namespace K3 {
         F<F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)>(F<F<Z(E)>(Z)>)> r = [=] (F<F<Z(E)>(Z)> folder) {
           F<BaseCollection<MapDS, GroupByReturnType<K,Z>>(Z)> r2 = [=] (const Z& init) {
               // Create a map to hold partial results
-              std::map<K, Z> accs;
+              std::tr1::unordered_map<K, Z> accs;
               // lambda to apply to each element
               F<unit_t(const E&)> f = [&] (const E& elem) {
                 K key = grouper(elem);
@@ -124,7 +125,7 @@ namespace K3 {
               D<E>::iterate(f);
               // Build BaseCollection result
               BaseCollection<MapDS, GroupByReturnType<K,Z>> result(D<E>::getEngine());
-              typename std::map<K,Z>::iterator it;
+              typename std::tr1::unordered_map<K,Z>::iterator it;
               for (it = accs.begin(); it != accs.end(); ++it) {
                 GroupByReturnType<K,Z> r;
                 r.key = it->first;
@@ -143,7 +144,7 @@ namespace K3 {
       BaseCollection<D, T> ext(const F<BaseCollection<D, T>(E)>& expand) {
         BaseCollection<D, T> result(D<E>::getEngine());
         auto add_to_result = [&] (T& elem) {
-          result.insert(elem); 
+          result.insert(elem);
           return unit_t();
         };
         std::function<unit_t(E)> fun = [&] (E& elem) {

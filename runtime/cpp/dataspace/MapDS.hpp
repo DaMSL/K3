@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <map>
 #include <string>
 #include <functional>
 
@@ -16,15 +15,15 @@ using K3::Engine;
 using std::shared_ptr;
 using std::tuple;
 
-using std::map;
+using std::tr1::unordered_map;
 
 // MapDS only works on R_key_value
 template<class R>
 class MapDS {
   using Key = typename R::KeyType;
   using Value = typename R::ValueType;
-  using iterator_type = typename map<Key,Value>::iterator;
-  using const_iterator_type = typename map<Key, Value>::const_iterator;
+  using iterator_type = typename unordered_map<Key,Value>::iterator;
+  using const_iterator_type = typename unordered_map<Key, Value>::const_iterator;
 
  public:
     // Constructors
@@ -36,9 +35,9 @@ class MapDS {
 
   MapDS(const MapDS& other) : container(other.container) {}
 
-  MapDS(const map<Key,Value>& con) : container(con) {}
+  MapDS(const unordered_map<Key,Value>& con) : container(con) {}
 
-  const map<Key, Value>& getContainer() const { return container; }
+  const unordered_map<Key, Value>& getContainer() const { return container; }
 
   // DS Operations:
   // Maybe return the first element in the DS
@@ -150,7 +149,7 @@ class MapDS {
   }
 
  protected:
-  std::map<Key,Value> container;
+  unordered_map<Key,Value> container;
 
   // In-memory Dataspaces do not keep a handle to an engine
   Engine* getEngine() {return nullptr; }
