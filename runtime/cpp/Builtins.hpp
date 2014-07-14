@@ -209,7 +209,7 @@ namespace K3 {
   template <class E>
   F<shared_ptr<typename E::ValueType>(const typename E::KeyType&)> lookup(const Map<E>& map) {
     return [&] (const typename E::KeyType& key) -> shared_ptr<typename E::ValueType> {
-      auto container = map.getContainer();
+      auto &container = map.getContainer();
       auto it = container.find(key);
       if (it != container.end()) {
         return make_shared<typename E::ValueType>(it->second);
