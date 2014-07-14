@@ -1,25 +1,12 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Core/CppBuiltins.k3"
 
-declare lowerDate: int
-declare upperDate: int
+declare peer_by_hash: string -> address
 
-declare master: address = localhost:90000
+// Raw Data
 
-declare peer_count: int = 5
-
-declare userVisits_raw: collection {
-    sourceIP: string,
-    destURL: string,
-    visitDate: string,
-    adRevenue: real,
-    userAgent: string,
-    countryCode: string,
-    languageCode: string,
-    searchWord: string,
-    duration: int
-} @ { Collection }
-
-declare userVisits: collection {
+declare user_visits: collection {
     sourceIP: string,
     destURL: string,
     visitDate: int,
@@ -37,67 +24,65 @@ declare rankings: collection {
     avgDuration: int
 } @ { Collection }
 
-declare matches: collection {
-    sourceIP: string,
-    pageRank: int,
-    adRevenue: real
-} @ { Collection }
+// Phase #1: Partition data items by join key.
 
-trigger aggregate_local: () = \_ -> (
-    userVisits.iterate (
-        \u -> rankings.iterate (
-            \r -> if u.destURL == r.pageURL and lowerDate < u.visitDate and u.visitDate < upperDate
-                    then matches.insert { sourceIP: u.sourceIP, pageRank: r.pageRank, adRevenue: u.adRevenue }
-                    else ()
-        )
-    );
-
-    let local_aggregate = matches.groupBy
-        (\r -> r.sourceIP)
-        (\a -> \r -> { count: a.count + 1, total: a.total + r.pageRank, revenue: a.revenue + r.adRevenue })
-        { count: 0, total: 0, revenue: 0 }
-
-    in (aggregate_global, master) <- local_aggregate
-)
-
-declare local_aggregate_complete: mut int = 0
-
-declare global_partial_result: collection {
+declare uv_partitions: collection {
     key: string,
-    value: { count: int, total: int, revenue: int }
-} @ { Collection }
+    value: collection {
+        destURL: string,
+        sourceIP: string,
+        adRevenue: real
+    } @ { Collection }
+} @ { Map }
 
-declare global_result: mut { sourceIP: string, avgRank: real, totalRevenue: int }
-    = { sourceIP: "", avgRank: 0.0, totalRevenue: 0 }
-
-declare insertWith: forall a, b. a -> b -> (b -> b) -> collection { key: a, value: b } @ { Collection } -> ()
-
-trigger aggregate_global: collection {
-    key: string,
-    value: { count: int, total: int, revenue: int }
-} @ { Collection } = \c -> (
-    (c.iterate (
-        \r -> bind r as { key: k, value: v } in (
-                insertWith k {count: v.count, total: v.total, revenue: v.revenue}
-                (\u -> {
-                    count: u.count + v.count,
-                    total: u.total + v.total,
-                    revenue: u.revenue + v.revenue
-                })
-                global_partial_result)
+trigger uv_partition: () = \_ -> (
+    // Partition `user_vists' by destURL, store partitions in `uv_partitions'.
+    // Also project out attributes not necessary for further computation.
+    (user_visits.iterate (
+        \u -> (case lookup uv_partitions u.destURL of
+                { Some v -> v.insert { destURL: u.destURL, sourceIP: u.sourceIP, adRevenue: u.adRevenue }}
+                { None -> let v = empty {destURL: string, sourceIP: string, adRevenue: real} @ { Collection }
+                          in ((v.insert {destURL: u.destURL, sourceIP: u.sourceIP, adRevenue: u.adRevenue});
+                              (uv_partitions.insert { key: u.destURL, value: v }))}
+              )
     ));
-    (local_aggregate_complete = local_aggregate_complete + 1);
-    (if local_aggregate_complete == peer_count
-        then global_partial_result.iterate (
-                \g -> bind g as { key: k, value: v } in
-                        if v.revenue > global_result.totalRevenue
-                            then global_result = {
-                                sourceIP: k,
-                                avgRank: v.total / v.count,
-                                totalRevenue: v.revenue
-                            }
-                            else ()
-            )
-        else ()
-    )
+
+    // Send partitions to peers by hashing `destURL'.
+    (uv_partitions.iterate (
+        \up -> (uv_partition_receive, peer_by_hash up.key) <- up.value
+    ))
 )
+
+declare rk_partitions: collection {
+    key: string,
+    value: collection {
+        pageURL: string,
+        pageRank: real
+    } @ { Collection }
+} @ { Map }
+
+trigger rk_partition: () = \_ -> (
+    // Partition `rankings' by `pageURL', store partitions in `rk_partitions'.
+    // Also project out attributes not necessary for further computation.
+    (rankings.iterate (
+        \r -> (case lookup rk_partitions r.pageURL of
+                { Some v -> v.insert { pageURL: r.pageURL, pageRank: r.pageRank }}
+                { None -> let v = empty { pageURL: string, pageRank: real } @ { Collection }
+                          in ((v.insert { pageURL: r.pageURL, pageRank: r.pageRank });
+                              (rk_partitions.insert { key: r.pageRank, value: v }))}
+              )
+    ));
+
+    // Send partitions to peers by hashing `pageURL'.
+    (rk_partitions.iterate (
+        \rp -> (rk_partition_receive, peer_by_hash rp.key) <- rp.value
+    ))
+)
+
+// Receive `user_visit' partition.
+trigger uv_partition_receive:
+    collection { key: string, value: { destURL: string, sourceIP: string, adRevenue: real } } @ { Map } = \c -> ()
+
+// Receive `rankings' partition.
+trigger rk_partition_receive:
+    collection { key: string, value: { pageURL: string, pageRank: real } } @ { Map } = \c -> ()
