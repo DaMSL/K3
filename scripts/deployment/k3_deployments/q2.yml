@@ -1,37 +1,100 @@
+
 name: Amplab Query 2
 
 # Peer Bootstrap
-local_binary_path: "/temp/q2new" # Optional
-k3_binary_path: "/temp/"
-k3_binary_name: "k3_query2"
+enable_logging: True
+local_binary_path: "/temp/q2" #Mandatory
 k3_port: "40000"
-remote_script_path: "/temp/run.sh"
-enable_logging: False # Optional
-# Strings!
-k3_bindings:
+k3_bindings: # All values are strings. String literals should have quotes!
   x: "8"
-  num_peers: "1"
-  data_file: 
+  num_peers: "2"
   role: '"rows"'
-  master: '<192.168.1.30:40000>'
+  master: '<192.168.1.41:40000>'
 
 # Peer List / Overrides
 k3_peers:
-    - ip: "192.168.1.30"
+    - ip: "192.168.1.41"
+      k3_port: "40000"
       k3_bindings:
-        data_file: '"/nfs/uservisits_sf1/part1.txt"'
-    - ip: "192.168.1.31"
+        data_file: '"/nfs/uservisits_sf5/4peers/01.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40001"
       k3_bindings:
-        data_file: '"/nfs/uservisits_sf1/part2.txt"'
-    - ip: "192.168.1.32"
-      k3_bindings:
-        data_file: '"/nfs/uservisits_sf1/part3.txt"'
-    - ip: "192.168.1.33"
-      k3_bindings:
-        data_file: '"/nfs/uservisits_sf1/part4.txt"'
-    - ip: "192.168.1.34"
-      k3_bindings:
-        data_file: '"/nfs/uservisits_sf1/part5.txt"'
-
-
-
+        data_file: '"/nfs/uservisits_sf5/4peers/02.txt"'
+#    - ip: "192.168.1.41"
+#      k3_port: "40002"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/03.txt"'
+#    - ip: "192.168.1.41"
+#      k3_port: "40003"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/04.txt"'
+#
+#    - ip: "192.168.1.40"
+#      k3_port: "40000"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/05.txt"'
+#    - ip: "192.168.1.40"
+#      k3_port: "40001"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/06.txt"'
+#    - ip: "192.168.1.40"
+#      k3_port: "40002"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/07.txt"'
+#    - ip: "192.168.1.40"
+#      k3_port: "40003"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/08.txt"'
+#
+#    - ip: "192.168.1.39"
+#      k3_port: "39000"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/09.txt"'
+#    - ip: "192.168.1.39"
+#      k3_port: "39001"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/10.txt"'
+#    - ip: "192.168.1.39"
+#      k3_port: "39002"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/11.txt"'
+#    - ip: "192.168.1.39"
+#      k3_port: "39003"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/12.txt"'
+#
+#
+#    - ip: "192.168.1.38"
+#      k3_port: "38000"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/13.txt"'
+#    - ip: "192.168.1.38"
+#      k3_port: "38001"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/14.txt"'
+#    - ip: "192.168.1.38"
+#      k3_port: "38002"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/15.txt"'
+#    - ip: "192.168.1.38"
+#      k3_port: "38003"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/16.txt"'
+#
+#    - ip: "192.168.1.37"
+#      k3_port: "37000"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/17.txt"'
+#    - ip: "192.168.1.37"
+#      k3_port: "37001"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/18.txt"'
+#    - ip: "192.168.1.37"
+#      k3_port: "37002"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/19.txt"'
+#    - ip: "192.168.1.37"
+#      k3_port: "37003"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/20.txt"'
