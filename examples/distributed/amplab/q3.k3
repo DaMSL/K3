@@ -158,10 +158,6 @@ trigger do_groupBy: () = \_ -> (
 
     (local_group.iterate (\g -> (global_group, peer_by_host g.key) <- g));
     (peers.iterate (\p -> (global_group_receive, p.addr) <- ()));
-    // Send master the max of local results.
-    ((global_max, master) <- local_group.fold
-            (\a -> \r -> if r.adRevenue_total > a.adRevenue_total then r else a)
-            { key: "", value: {pageRank_avg: 0, adRevenue_total: 0 }}))
 
 declare global_received: mut int = 0
 trigger global_group_receive: () = \_ -> (
@@ -191,11 +187,12 @@ trigger do_global_groupBy: {
         (\w -> {pageRank_total: w.pageRank_total + r.value.pageRank_total,
                 pageRank_count: w.pageRank_count + r.value.pageRank_count,
                 adRevenue_total: w.adRevenue_total + r.value.adRevenue_total}));
+
     ((global_max, master) <- global_groupBy_result.fold
-        (\a -> \r -> if r.adRevenue_total > a.adRevenue_total
-                        then {sourceIP: r.sourceIP,
-                              pageRank_avg: r.pageRank_total / r.pageRank_count,
-                              adRevenue_total: r.adRevenue_total}
+        (\a -> \r -> if r.value.adRevenue_total > a.adRevenue_total
+                        then {sourceIP: r.key,
+                              pageRank_avg: r.value.pageRank_total / r.value.pageRank_count,
+                              adRevenue_total: r.value.adRevenue_total}
                         else a)
         { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0})
 )
