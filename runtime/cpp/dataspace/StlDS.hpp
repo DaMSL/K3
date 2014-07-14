@@ -121,6 +121,10 @@ class StlDS {
     return result;
   }
 
+  int size(unit_t) const {
+    return container.size();
+  }
+
  const Container<Elem>& getContainer() const { return container; }
 
  Engine* getEngine() {return nullptr; }

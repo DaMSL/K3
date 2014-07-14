@@ -61,6 +61,11 @@ namespace K3
       return ListDS(l);
     }
 
+    Elem at(int i) {
+      std::vector<Elem> v = Super::getContainer();
+      return v[i];
+    }
+
   };
 }
 
