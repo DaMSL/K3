@@ -136,7 +136,8 @@ trigger rk_partitions_received: () = \_ ->
 declare local_group: collection {
     key: string,
     value: {
-        pageRank_avg: real,
+        pageRank_total: real,
+        pageRank_count: real,
         adRevenue_total: real
     }
 } @ { Map }
@@ -150,14 +151,54 @@ trigger do_groupBy: () = \_ -> (
         in uc.value.iterate (
             \sar -> local_group.insert
                         {key: sar.key,
-                         value: {pageRank_avg: rk.pageRank_total / rk.pageRank_count,
+                         value: {pageRank_total: rk.pageRank_total
+                                 pageRank_count: rk.pageRank_count,
                                  adRevenue_total: sar.value}}
         )));
 
+    (local_group.iterate (\g -> (global_group, peer_by_host g.key) <- g));
+    (peers.iterate (\p -> (global_group_receive, p.addr) <- ()));
     // Send master the max of local results.
     ((global_max, master) <- local_group.fold
             (\a -> \r -> if r.adRevenue_total > a.adRevenue_total then r else a)
             { key: "", value: {pageRank_avg: 0, adRevenue_total: 0 }}))
+
+declare global_received: mut int = 0
+trigger global_group_receive: () = \_ -> (
+    (global_received = global_received + 1);
+    (if global_received == peer_count then do_global_groupBy else ())
+)
+
+declare global_groupBy_result collection {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} @ { Map }
+
+trigger do_global_groupBy: {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} @ { Map } = \r -> (
+    (modify_with global_groupBy_result r.key
+        { pageRank_total: 0.0, pageRank_count: 0.0, adRevenue_total: 0.0 }
+        (\w -> {pageRank_total: w.pageRank_total + r.value.pageRank_total,
+                pageRank_count: w.pageRank_count + r.value.pageRank_count,
+                adRevenue_total: w.adRevenue_total + r.value.adRevenue_total}));
+    ((global_max, master) <- global_groupBy_result.fold
+        (\a -> \r -> if r.adRevenue_total > a.adRevenue_total
+                        then {sourceIP: r.sourceIP
+                              pageRank_avg: r.pageRank_total / r.pageRank_count
+                              adRevenue_total: r.adRevenue_total}
+                        else a)
+        { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0})
+)
 
 // Final global max aggregation.
 declare max_result: mut { key: string, value: {pageRank_avg: real, adRevenue_total: real }}
