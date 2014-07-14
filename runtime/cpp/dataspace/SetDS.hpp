@@ -1,17 +1,18 @@
 #ifndef K3_RUNTIME_DATASPACE_SETDS_H
 #define K3_RUNTIME_DATASPACE_SETDS_H
 
-#include <unordered_set>
+#include <boost/tr1/unordered_set.hpp>
 #include <dataspace/StlDS.hpp>
 
 namespace K3 {
+using std::tr1::unordered_set;
 
 template <typename Elem>
-class SetDS : public StlDS<Elem, std::unordered_set> {
+class SetDS : public StlDS<Elem, unordered_set> {
   // Iterator Types
-  typedef typename std::unordered_set<Elem>::iterator iterator_type;
-  typedef typename std::unordered_set<Elem>::const_iterator const_iterator_type;
-  typedef StlDS<Elem, std::unordered_set> Super;
+  typedef typename unordered_set<Elem>::iterator iterator_type;
+  typedef typename unordered_set<Elem>::const_iterator const_iterator_type;
+  typedef StlDS<Elem, unordered_set> Super;
 
   public:
     SetDS(Engine * eng) : Super(eng) {}
@@ -24,12 +25,12 @@ class SetDS : public StlDS<Elem, std::unordered_set> {
 
     SetDS(const Super& other) : Super(other) {}
 
-    SetDS(const std::unordered_set<Elem>& container) : Super(container) {}
+    SetDS(const unordered_set<Elem>& container) : Super(container) {}
 
      // Need to convert from StlDS to SetDS
     template<typename NewElem>
     SetDS<NewElem> map(const F<NewElem(Elem)>& f) {
-      StlDS<NewElem, std::unordered_set> s = Super::map(f);
+      StlDS<NewElem, unordered_set> s = Super::map(f);
       return SetDS<NewElem>(s);
     }
 
