@@ -101,7 +101,7 @@ class MapDS {
     return result;
   }
 
-  unit_t iterate(const F<unit_t(R)>& f) {
+  unit_t iterate(F<unit_t(R)> f) {
     for (const std::pair<Key,Value>& p : container) {
       R rec;
       rec.key = p.first;
