@@ -326,6 +326,7 @@ genVectorLabelLoader _ (children -> [_,f]) name = do
                                 text "pch = strtok (&line[0],\",\");",
                                 text "_Collection<R_elem<double>> c2 = _Collection<R_elem<double>>();",
                                 text "double d;",
+                                text "int i = 0;",
                                 text "while (pch != NULL)" <> hangBrace (vsep [text "R_elem<double> rec;",
                                                                               text "i++;",
                                                                               text "d = std::atof(pch);",

@@ -96,7 +96,6 @@ namespace K3 {
         using namespace K3;
         vector<R_elem<double>> v1 = c1.getContainer();
         vector<R_elem<double>> v2 = c2.getContainer();
-
         Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
 
         for (auto i = 0; i < v1.size(); ++i) {
@@ -119,7 +118,7 @@ namespace K3 {
         vector<R_elem<double>> v2 = c2.getContainer();
         Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
         for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem + v2[i].elem;
+          double d = v1[i].elem - v2[i].elem;
           R_elem<double> r;
           r.elem = d;
           result.insert(r);
