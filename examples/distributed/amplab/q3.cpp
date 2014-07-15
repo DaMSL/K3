@@ -1110,6 +1110,40 @@ map<string,string> show_globals() {
     return result;
 }
 
+F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rankingsLoader(string filepath){
+    F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)> r = [filepath] (K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>> & c){
+        R_avgDuration_pageRank_pageURL<int, int, string> rec;
+        strtk::for_each_line(filepath,
+        [&](const std::string& str){
+            if (strtk::parse(str,",",rec.avgDuration,rec.pageRank,rec.pageURL)){
+                c.insert(rec);
+            }
+            else{
+                std::cout << "Failed to parse a row" << std::endl;
+            }
+        });
+        return unit_t();
+    };
+    return r;
+}
+
+F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)>uservisitsLoader(string filepath){
+    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> & c){
+        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> rec;
+        strtk::for_each_line(filepath,
+        [&](const std::string& str){
+            if (strtk::parse(str,",",rec.sourceIP,rec.destURL,rec.visitDate,rec.adRevenue,rec.userAgent,rec.countryCode,rec.languageCode,rec.searchWord,rec.duration)){
+                c.insert(rec);
+            }
+            else{
+                std::cout << "Failed to parse a row" << std::endl;
+            }
+        });
+        return unit_t();
+    };
+    return r;
+}
+
 int main(int argc,char** argv) {
     initGlobalDecls();
     Options opt;
