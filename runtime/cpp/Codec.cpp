@@ -50,7 +50,7 @@ namespace K3 {
       shared_ptr<Value> LengthHeaderCodec::decode(const Value& v) {
 
         if (v != "") {
-        *buf_ = *buf_ + v;
+          buf_->append(v);
         }
 
         if (!next_size_) {
