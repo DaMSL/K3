@@ -5,7 +5,6 @@ annotation Collection given type a, b {
   provides lifted erase  : content -> ()
   provides lifted update  : content -> (content -> ())
   provides lifted size : () -> int
-  provides lifted at : int -> content
 
   @:Transformer
   provides lifted combine : self -> self

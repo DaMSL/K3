@@ -43,4 +43,5 @@ annotation Set given type a, b {
 
   provides lifted difference   : self -> self
 
+  provides lifted size : () -> int
 }

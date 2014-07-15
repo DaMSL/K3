@@ -40,4 +40,6 @@ annotation Sorted given type a, b {
   provides lifted upperBound  : content -> option content
 
   provides lifted slice       : content -> (content -> self)
+
+  provides lifted size : () -> int
 }

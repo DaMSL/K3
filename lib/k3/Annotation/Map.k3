@@ -30,4 +30,6 @@ annotation Map given type a,b {
   @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})
                              -> collection {elem : a} @ {Collection}
+
+  provides lifted size : () -> int
 }
