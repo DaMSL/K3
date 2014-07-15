@@ -41,13 +41,13 @@ declare get_line : string -> () = \line -> (
        url_counts_partial.insert
          {sourcePage:cur_page, destPage:v.key, count:v.value});
      // Empty url_count
-     url_count.iterate (\v -> url_count.erase v);
-     url_regex.iterate (\r -> 
-       case lookup url_count r.key of
-       {Some x -> url_count.insert {key:r.key, value:x + 1} }
-       {None   -> url_count.insert {key:r.key, value:0}}
-     )
-   else ())
+     url_count.iterate (\v -> url_count.erase v)
+   else ());
+   url_regex.iterate (\r -> 
+     case lookup url_count r.key of
+     {Some x -> url_count.insert {key:r.key, value:x + 1} }
+     {None   -> url_count.insert {key:r.key, value:0}}
+   )
 )
 
 trigger local : () = \_ -> (

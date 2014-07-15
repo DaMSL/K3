@@ -446,38 +446,36 @@ unit_t get_line(string line) {
             
             url_count.iterate([] (R_key_value<string, int> v) -> unit_t {
                 
-                
-                
-                
                 return url_counts_partial.insert(R_count_destPage_sourcePage<int, string, string>{v.value,
                 v.key,
                 cur_page});
             });
             
             url_count.iterate([] (R_key_value<string, int> v) -> unit_t {
-                
                 return url_count.erase(v);
             });
-            
-            regex_search(line, regex_results, regex_query, std::regex_constants::match_any);
 
-            for (int i=1; i<regex_results.size(); i++) {
-              string s = regex_results[i];
-              std::shared_ptr<int> __0;
-
-              __0 = lookup(url_count)(s);
-              if (__0) {
-                int x;
-                x = *__0;
-                return url_count.insert(R_key_value<string, int>{s, x + 1});
-              } else {
-                return url_count.insert(R_key_value<string, int>{s, 0});
-              }
-
-            }
         } else {
-            return unit_t();
+          return unit_t();
         }
+            
+        regex_search(line, regex_results, regex_query, std::regex_constants::match_any);
+
+        for (int i=1; i<regex_results.size(); i++) {
+          string s = regex_results[i];
+          std::shared_ptr<int> __0;
+
+          __0 = lookup(url_count)(s);
+          if (__0) {
+            int x;
+            x = *__0;
+            return url_count.insert(R_key_value<string, int>{s, x + 1});
+          } else {
+            return url_count.insert(R_key_value<string, int>{s, 1});
+          }
+
+        }
+        return unit_t();
     }
 }
 
@@ -532,10 +530,8 @@ unit_t aggregate(_Map<R_key_value<string, int>> newVals) {
         if (__1) {
             int x;
             x = *__1;
-            
             return url_counts_agg.insert(R_key_value<string, int>{v.key,v.value + x});
         } else {
-            
             return url_counts_agg.insert(v);
         }
     });
