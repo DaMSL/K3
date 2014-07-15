@@ -2,7 +2,9 @@ include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/CppBuiltins.k3"
 
+declare master: address = 127.0.0.1:30001
 declare peer_by_hash: string -> address
+declare peer_count: int = 0
 
 declare insert_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> b) -> ()
 declare modify_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> ()) -> ()
@@ -48,9 +50,7 @@ trigger uv_partition: () = \_ -> (
     (user_visits.iterate (
         \u -> modify_with uv_partitions u.destURL
                 (empty { key: string, value: real } @ { Map })
-                (\v -> modify_with v u.sourceIP
-                        ({ key: u.sourceIP, value: 0.0 })
-                        (\w -> { key: w.sourceIP, value: w.value + u.adRevenue }))
+                (\v -> insert_with v u.sourceIP 0.0 (\w -> w + u.adRevenue))
     ));
 
     // Send partitions to peers by hashing `destURL'.
@@ -74,10 +74,10 @@ trigger rk_partition: () = \_ -> (
     // Partition `rankings' by `pageURL', store partitions in `rk_partitions'.
     // Also project out attributes not necessary for further computation.
     (rankings.iterate (
-        \r -> modify_with rk_partitions r.pageURL
-                (empty { pageURL: string, pageRank: real } @ { Collection })
-                (\v -> v.insert {pageRank_total: v.pageRank_total + r.pageRank,
-                                 pageRank_count: v.pageRank_count + 1})
+        \r -> insert_with rk_partitions r.pageURL
+                { pageRank_total: 0.0, pageRank_count: 0.0 }
+                (\v -> {pageRank_total: v.pageRank_total + r.pageRank,
+                        pageRank_count: v.pageRank_count + 1})
     ));
 
     // Send partitions to peers by hashing `pageURL'.
@@ -106,15 +106,23 @@ trigger uv_partition_receive: {
     } @ { Map }
 } = \up ->
     modify_with uv_candidates up.key
-        (empty { key: string, value: real })
-        (\v -> modify_with v up.value.sourceIP
-                { key: up.value.key, value: 0 }
-                (\w -> { key: w.key, value: w.value + up.value.value }))
+        (empty { key: string, value: real } @ { Map })
+        (\v -> up.value.iterate (\uc -> insert_with v uc.key 0.0 (\w -> w + 0.0)))
 
 declare uv_received: mut int = 0
-trigger uv_partitions_received: () = \_ ->
+declare rk_received: mut int = 0
+
+trigger uv_partitions_received: () = \_ -> (
     ((uv_received = uv_received + 1);
-     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ()))
+     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ())))
+
+declare rk_candidates: collection {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real
+    }
+} @ { Map }
 
 trigger rk_partition_receive: {
     key: string,
@@ -122,16 +130,15 @@ trigger rk_partition_receive: {
         pageRank_total: real,
         pageRank_count: real
     }
-} = \rp ->
-    modify_with rk_candidates rk.key
+} = \rp -> (
+    insert_with rk_candidates rp.key
         { pageRank_total: 0, pageRank_count: 0 }
-        (\v -> {pageRank_total: v.pageRank_total + rk.value.pageRank_total,
-                pageRank_count: v.pageRank_count + 1})
+        (\v -> {pageRank_total: v.pageRank_total + rp.value.pageRank_total,
+                pageRank_count: v.pageRank_count + 1}))
 
-declare rk_received: mut int = 0
-trigger rk_partitions_received: () = \_ ->
+trigger rk_partitions_received: () = \_ -> (
     ((rk_received = rk_received + 1);
-     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ()))
+     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ())))
 
 declare local_group: collection {
     key: string,
@@ -156,14 +163,31 @@ trigger do_groupBy: () = \_ -> (
                                  adRevenue_total: sar.value}}
         )));
 
-    (local_group.iterate (\g -> (global_group, peer_by_host g.key) <- g));
+    (local_group.iterate (\g -> (global_group, peer_by_hash g.key) <- g));
     (peers.iterate (\p -> (global_group_receive, p.addr) <- ())))
+
+declare global_groups: collection {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} @ { Map }
+
+trigger global_group: {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} = \g -> global_groups.insert g
 
 declare global_received: mut int = 0
 trigger global_group_receive: () = \_ -> (
     (global_received = global_received + 1);
-    (if global_received == peer_count then do_global_groupBy else ())
-)
+    (if global_received == peer_count then ((do_global_groupBy, me) <- ()) else ()))
 
 declare global_groupBy_result: collection {
     key: string,
@@ -174,33 +198,26 @@ declare global_groupBy_result: collection {
     }
 } @ { Map }
 
-trigger do_global_groupBy: {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real,
-        adRevenue_total: real
-    }
-} = \r -> (
-    (modify_with global_groupBy_result r.key
+trigger do_global_groupBy: () = \_ -> (global_groups.iterate ( \r ->
+    (insert_with global_groupBy_result r.key
         { pageRank_total: 0.0, pageRank_count: 0.0, adRevenue_total: 0.0 }
         (\w -> {pageRank_total: w.pageRank_total + r.value.pageRank_total,
                 pageRank_count: w.pageRank_count + r.value.pageRank_count,
-                adRevenue_total: w.adRevenue_total + r.value.adRevenue_total}));
+                adRevenue_total: w.adRevenue_total + r.value.adRevenue_total})));
 
-    ((global_max, master) <- global_groupBy_result.fold
+    ((global_max, master) <- (global_groupBy_result.fold
         (\a -> \r -> if r.value.adRevenue_total > a.adRevenue_total
                         then {sourceIP: r.key,
                               pageRank_avg: r.value.pageRank_total / r.value.pageRank_count,
                               adRevenue_total: r.value.adRevenue_total}
                         else a)
-        { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0})
+        { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0}))
 )
 
 // Final global max aggregation.
-declare max_result: mut { key: string, value: {pageRank_avg: real, adRevenue_total: real }}
-    = { key: "", value: {pageRank_avg: 0, adRevenue_total: 0 }}
-trigger global_max: { key: string, value: {pageRank_avg: real, adRevenue_total: real }} = \r ->
-    if r.value.adRevenue_total > max_result.adRevenue_total
+declare max_result: mut { sourceIP: string, adRevenue_total: real, pageRank_avg: real}
+    = { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0 }
+trigger global_max: { sourceIP: string, pageRank_avg: real, adRevenue_total: real } = \r ->
+    if r.adRevenue_total > max_result.adRevenue_total
         then max_result = r
         else ()
