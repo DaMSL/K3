@@ -13,4 +13,4 @@ script:
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
-  - scripts/tests/tests.py -l scripts/tests/passed_tests.txt
+    #- scripts/tests/tests.py -l scripts/tests/passed_tests.txt
