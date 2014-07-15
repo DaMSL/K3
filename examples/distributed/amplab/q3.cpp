@@ -629,7 +629,8 @@ string role;
 
 Address master;
 
-
+int lower_date;
+int upper_date;
 
 int peer_count;
 
@@ -677,7 +678,8 @@ unit_t uv_partition(unit_t _) {
 
 
 
-        return modify_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> unit_t {
+        if (lower_date < u.visitDate && u.visitDate < upper_date) {
+          return modify_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> unit_t {
 
 
 
@@ -686,6 +688,9 @@ unit_t uv_partition(unit_t _) {
                 return w + u.adRevenue;
             });
         });
+        } else {
+          return unit_t();
+        }
     });
 
     uv_partitions.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> up) -> unit_t {
