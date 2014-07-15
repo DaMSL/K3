@@ -24,7 +24,6 @@ namespace K3
   using namespace std;
 
   using namespace boost::iostreams;
-  using namespace boost::asio;
 
   using boost::thread_group;
   using std::bind;
@@ -68,6 +67,7 @@ namespace K3
 
   namespace Asio
   {
+    using namespace boost::asio;
     // Boost implementation of a network context.
     class NContext
     {
