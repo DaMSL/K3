@@ -100,11 +100,7 @@ namespace K3 {
         Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
 
         for (auto i = 0; i < v1.size(); ++i) {
-          cout << "I is" << i << endl;
-          cout << "v1:" << v1[i].elem << endl;
-          cout << "v2:" << v2[i].elem << endl;
           double d = v1[i].elem + v2[i].elem;
-          cout << "d:" << d << endl;
           R_elem<double> r;
           r.elem = d;
           result.insert(r);
@@ -185,8 +181,6 @@ namespace K3 {
         vector<R_elem<double>> v1 = c.getContainer();
         Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
         for (auto i = 0; i < v1.size(); ++i) {
-          cout << "d is :" << d << endl;
-          cout << "elem: " << v1[i].elem << endl;
           double d2 = d * v1[i].elem;
           R_elem<double> r;
           r.elem = d2;
