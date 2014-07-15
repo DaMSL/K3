@@ -53,7 +53,7 @@ class MapDS {
   }
 
   void insert(const R& rec) {
-    container.insert(make_pair(rec.key,rec.value));
+    container[rec.key] = rec.value;
   }
 
   void erase(const R& rec) {
@@ -143,7 +143,7 @@ class MapDS {
     MapDS result = MapDS(nullptr, container.begin(), container.end());
     // copy other DS
     for (const std::pair<Key,Value>& p: other.container) {
-      result.container.insert(p);
+      result.container[p.first] = p.second;
     }
     return result;
   }
