@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cstdlib>
 #include "Common.hpp"
 #include "Codec.hpp"
@@ -99,43 +100,30 @@ namespace K3 {
       }
 
       RemoteMessage AbstractDefaultInternalCodec::read_message(const Value& v) {
-        // Values are of the form: "(Address, Identifier, Payload)"
+        // Values are of the form: "Address, Identifier, Payload"
         // Split value into components:
-        static const boost::regex value_regex("\\( *(.+) *, *(.+) *, *(.+) *\\)");
-        //logAt(trivial::trace, v);
-        boost::cmatch value_match;
-        if(boost::regex_match(v.c_str(), value_match, value_regex)){
-          // Parse Address
-          static const boost::regex address_regex("(.+):(.+)");
-          boost::cmatch address_match;
-          Address a;
-          string temp = value_match[1];
-          if(boost::regex_match(temp.c_str(), address_match, address_regex)) {
-            string ip = address_match[1];
-            temp = address_match[2];
-            unsigned short port = (unsigned short) std::strtoul(temp.c_str(), NULL, 0);
-            a = make_address(ip, port);
-          }
-          else {
-            throw CodecException("Invalid Format for Value's Address: " + value_match[1]);
-          }
+        string::const_iterator scanner = begin(v);
 
-          // Parse Identifier
-          string temp2 = value_match[2];
-          TriggerId id = atoi(temp2.c_str());
+        for (; *scanner != ':'; ++scanner);
+        string::const_iterator host_it = scanner;
 
-          // Parse Payload
-          Value payload = value_match[3];
-          return RemoteMessage(a, id, payload);
-         }
-        else {
-          throw CodecException("Invalid Format for Value:" + v);
-        }
+        for (; *scanner != ','; ++scanner);
+        string::const_iterator port_it = scanner++;
+
+        for (; *scanner != ','; ++scanner);
+        string::const_iterator id_it = scanner++;
+
+        string host = string(begin(v), host_it);
+        unsigned short port = std::stoul(string(host_it + 1, port_it));
+        TriggerId id = std::stoi(string(port_it + 1, id_it));
+        string contents = string(id_it + 1, end(v));
+
+        return RemoteMessage(make_address(host, port), id, contents);
       }
 
       Value AbstractDefaultInternalCodec::show_message(const RemoteMessage& m) {
         ostringstream os;
-        os << "(" << addressAsString(m.address()) << "," << m.id() << "," << m.contents() << ")";
+        os << addressAsString(m.address()) << "," << m.id() << "," << m.contents();
         string s = os.str();
         return s;
       }
