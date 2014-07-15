@@ -100,11 +100,10 @@ namespace K3 {
       }
 
       template <class Z>
-      F<Z(Z)> fold(const F<F<Z(E)>(Z)>& f) {
-           F<Z(Z)> r = [&] (Z& init) {
+      F<Z(const Z&)> fold(F<F<Z(E)>(Z)> f) {
+           return [&] (const Z& init) {
              return D<E>::template fold<Z>(f, init);
            };
-           return r;
       }
 
       template <class K, class Z>
