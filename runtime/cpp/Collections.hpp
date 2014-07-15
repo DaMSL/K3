@@ -309,8 +309,6 @@ namespace K3 {
 
       Seq(const Seq<E>& other) : Super(other)  {}
 
-      Seq(Seq<E>&& other) : Super(other)  {}
-
       Seq(Super other) : Super(other) {}
 
       template<class Iterator>
