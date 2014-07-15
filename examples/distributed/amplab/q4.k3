@@ -1,0 +1,102 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Core/CppBuiltins.k3"
+
+declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
+
+// Constants
+declare master: address = 127.0.0.1:40000
+declare x: mut int = 3
+declare num_peers: int = 2
+declare data_file : string = "/k3/data/amplab/rankings_10.k3"
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
+declare file_name : string = "data.txt"
+
+declare inputData : collection {elem:string} @ {Seq}
+
+declare url_count : collection {key:string, value:int} @ {Map}
+
+declare url_regex : collection {key:string, value:int} @ {Map}
+
+declare cur_page : mut string = "NONE"
+
+declare url_counts_partial :
+  collection {sourcePage:string, destPage:string, count:int} @ {Collection} 
+
+declare get_line : string -> () = \line -> (
+  let sp = splitString line " " in  
+  (if substring line 0 4 == "http" and sp.size () == 5 then
+     cur_page = (sp.at 0).elem;
+     url_count.iterate(\v ->
+       url_counts_partial.insert
+         {sourcePage:cur_page, destPage:v.key, count:v.value});
+     // Empty url_count
+     url_count.iterate (\v -> url_count.erase v);
+     url_regex.iterate (\r -> 
+       case lookup url_count r.key of
+       {Some x -> url_count.insert {key:r.key, value:x + 1} }
+       {None   -> url_count.insert {key:r.key, value:0}}
+     )
+   else ())
+)
+
+trigger local : () = \_ -> (
+  inputData.iterate (\s -> get_line s.elem);
+  url_count.iterate (\v ->
+    url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
+  let url_counts_total = url_counts_partial.groupBy
+    (\v -> v.destPage)
+    (\acc -> \v -> acc + v.count)
+    0
+  in
+  (aggregate, master) <- url_counts_total
+)
+
+declare url_counts_agg : collection {key: string, value: int} @ {Map}
+declare received : mut int = 0
+
+trigger aggregate : collection {key: string, value: int} @ {Map} = \newVals -> (
+  newVals.iterate (\v ->
+    case lookup url_counts_agg v.key of
+    { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x} }
+    { None   -> url_counts_agg.insert v }
+    );
+  peers_finished = peers_finished + 1;
+  if peers_finished == num_peers
+  then end_ms = now ();
+       elapsed_ms = end_ms - start_ms;
+       printLine (itos elapsed_ms);
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+)
+
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready : () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == num_peers
+  then start_ms = now (); peers.iterate (\p -> (local, p.addr) <- ())
+  else ()
+)
+
+trigger load_all : () = \_ -> (
+  stringLoader file_name inputData;
+  ((ready, master) <- ())
+)
+
+source rows : () = value ()
+feed rows |> load_all
