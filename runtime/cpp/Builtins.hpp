@@ -230,6 +230,21 @@ namespace K3 {
       };
     };
   }
+
+  // Split a string by substrings
+  F<Seq<R_elem<string> >(const string&)> splitString(const string& s) {
+    return [&] (const string& splitter) {
+      std::vector<string> words;
+      boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
+
+      // Transfer to R_elems
+      Seq<R_elem<string> > results(nullptr);
+      for (const auto &elem : words) {
+        results.insert(elem);
+      }
+      return results;
+    };
+  }
 } // namespace K3
 
 #endif /* K3_RUNTIME_BUILTINS_H */

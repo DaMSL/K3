@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
 
 ///////////////////////
 //
@@ -28,5 +29,8 @@ declare haltEngine : () -> ()
 declare now : () -> int
 
 declare substring : string -> int -> int -> string
+
+// 1. target string 2. split text
+declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
 declare lookup : forall a, b. collection {key:a, value:b} @ {Map} -> a -> option b
