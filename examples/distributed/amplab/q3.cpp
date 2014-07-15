@@ -4,10 +4,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <strtk.hpp>
-#include <json_spirit_reader_template.h>
-#include <boost/serialization/list.hpp>
-#include <boost/serialization/vector.hpp>
+#include <external/strtk.hpp>
+#include <external/json_spirit_reader_template.h>
 
 #include "Collections.hpp"
 #include "Common.hpp"
@@ -23,23 +21,17 @@ using namespace K3::BoostSerializer;
 using std::begin;
 using std::end;
 
-Engine engine = Engine();
 
-#include "Builtins.hpp"
+
+Engine engine = Engine();
 
 using K3::Collection;
 
-template <class _T0> class R_sourceIP;
-
-template <class _T0> class R_revenue;
-
-template <class _T0,class _T1> class R_pageRank_pageURL;
+template <class _T0,class _T1> class R_pageRank_count_pageRank_total;
 
 template <class _T0,class _T1> class R_key_value;
 
-template <class _T0,class _T1,class _T2> class R_count_revenue_total;
-
-template <class _T0,class _T1,class _T2> class R_avgRank_sourceIP_totalRevenue;
+template <class _T0> class R_key;
 
 template <class _T0,class _T1,class _T2> class R_avgDuration_pageRank_pageURL;
 
@@ -47,16 +39,15 @@ template <class _T0> class R_arg;
 
 template <class _T0> class R_addr;
 
-template <class _T0,class _T1,class _T2> class R_adRevenue_sourceIP_visitDate;
+template <class _T0,class _T1,class _T2> class R_adRevenue_total_pageRank_count_pageRank_total;
 
-template <class _T0,class _T1,class _T2> class R_adRevenue_pageRank_sourceIP;
-
-template <class _T0,class _T1> class R_adRevenue_pageRank;
+template <class _T0,class _T1,class _T2> class R_adRevenue_total_pageRank_avg_sourceIP;
 
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8> class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate;
 
-template <class CONTENT> class _Collection;
 template <class CONTENT> class _Map;
+
+template <class CONTENT> class _Collection;
 
 unit_t atExit(unit_t);
 
@@ -66,9 +57,29 @@ unit_t processRole(unit_t);
 
 unit_t initDecls(unit_t);
 
-unit_t aggregate_global(_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>);
+unit_t global_max(R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>);
 
-unit_t aggregate_local(unit_t);
+unit_t do_global_groupBy(unit_t);
+
+unit_t global_group_receive(unit_t);
+
+unit_t global_group(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>);
+
+unit_t do_groupBy(unit_t);
+
+unit_t rk_partitions_received(unit_t);
+
+unit_t rk_partition_receive(R_key_value<string, R_pageRank_count_pageRank_total<double, double>>);
+
+unit_t uv_partitions_received(unit_t);
+
+unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>>>);
+
+unit_t rk_partition(unit_t);
+
+unit_t uv_partition(unit_t);
+
+template <class v61,class v67> std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map<R_key_value<v61, v67>>);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
@@ -86,6 +97,15 @@ class _Collection: public K3::Collection<CONTENT> {
         }
 
 };
+namespace K3 {
+    template <class E>
+    struct patcher<_Collection<E>> {
+        static void patch(string s,_Collection<E>& c) {
+            collection_patcher<_Collection,E>::patch(s,c);
+        }
+    };
+}
+
 template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
@@ -97,11 +117,11 @@ class _Map: public K3::Map<CONTENT> {
 
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
+
             _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
         }
 
 };
-
 namespace K3 {
     template <class E>
     struct patcher<_Map<E>> {
@@ -110,15 +130,47 @@ namespace K3 {
         }
     };
 }
-namespace K3 {
-    template <class E>
-    struct patcher<_Collection<E>> {
-        static void patch(string s,_Collection<E>& c) {
-            collection_patcher<_Collection,E>::patch(s,c);
+
+template <class K, class V>
+std::function<std::function<std::function<unit_t(std::function<const V&(const V&)>)>(const V&)>(const K&)>
+insert_with(_Map<R_key_value<K, V>>& m) {
+  return [&] (const K& key) {
+    return [&] (const V& value) {
+      return [&] (std::function<const V&(const V&)> f) {
+        shared_ptr<V> vp = lookup(m)(key);
+        if (vp != nullptr) {
+          m.insert(R_key_value<K, V> { key, f(*vp) });
+        } else {
+          m.insert(R_key_value<K, V> { key, f(value) });
         }
+
+        return unit_t();
+      };
     };
+  };
 }
 
+template <class K, class V>
+std::function<std::function<std::function<unit_t(std::function<unit_t(const V&)>)>(const V&)>(const K&)>
+modify_with(const _Map<R_key_value<K, V>>& m) {
+  return [&] (const K& key) {
+    return [&] (const V& value) {
+      return [&] (std::function<unit_t(const V&)> f) {
+        shared_ptr<V> vp = lookup(m)(key);
+        if (vp != nullptr) {
+          f(*vp);
+        } else {
+          f(value);
+        }
+
+        return unit_t();
+      };
+    };
+  };
+}
+
+#ifndef K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
+#define K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
 class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate {
     public:
@@ -161,6 +213,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
         _T7 userAgent;
         _T8 visitDate;
 };
+#endif // K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 namespace K3 {
     template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
     struct patcher<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8>> {
@@ -200,127 +253,103 @@ namespace K3 {
     };
 }
 
-template <class _T0,class _T1>
-class R_adRevenue_pageRank {
-    public:
-        R_adRevenue_pageRank() {}
-        R_adRevenue_pageRank(_T0 _adRevenue
-                            ,_T1 _pageRank): adRevenue(_adRevenue), pageRank(_pageRank) {}
-        R_adRevenue_pageRank(const R_adRevenue_pageRank<_T0, _T1>& _r): adRevenue(_r.adRevenue), pageRank(_r.pageRank) {}
-        bool operator==(R_adRevenue_pageRank _r) {
-            if (adRevenue == _r.adRevenue&& pageRank == _r.pageRank)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & adRevenue;
-            _archive & pageRank;
-
-        }
-        _T0 adRevenue;
-        _T1 pageRank;
-};
-namespace K3 {
-    template <class _T0,class _T1>
-    struct patcher<R_adRevenue_pageRank<_T0, _T1>> {
-        static void patch(string s,R_adRevenue_pageRank<_T0, _T1>& r) {
-            shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _adRevenue = (qi::lit("adRevenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                              ,r.adRevenue);})];
-            qi::rule<string::iterator, qi::space_type> _pageRank = (qi::lit("pageRank") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.pageRank);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | _pageRank;
-            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
-            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
-        }
-    };
-}
-
+#ifndef K3_R_adRevenue_total_pageRank_avg_sourceIP
+#define K3_R_adRevenue_total_pageRank_avg_sourceIP
 template <class _T0,class _T1,class _T2>
-class R_adRevenue_pageRank_sourceIP {
+class R_adRevenue_total_pageRank_avg_sourceIP {
     public:
-        R_adRevenue_pageRank_sourceIP() {}
-        R_adRevenue_pageRank_sourceIP(_T0 _adRevenue
-                                     ,_T1 _pageRank
-                                     ,_T2 _sourceIP): adRevenue(_adRevenue), pageRank(_pageRank), sourceIP(_sourceIP) {}
-        R_adRevenue_pageRank_sourceIP(const R_adRevenue_pageRank_sourceIP<_T0, _T1, _T2>& _r): adRevenue(_r.adRevenue), pageRank(_r.pageRank), sourceIP(_r.sourceIP) {}
-        bool operator==(R_adRevenue_pageRank_sourceIP _r) {
-            if (adRevenue == _r.adRevenue&& pageRank == _r.pageRank&& sourceIP == _r.sourceIP)
+        R_adRevenue_total_pageRank_avg_sourceIP() {}
+        R_adRevenue_total_pageRank_avg_sourceIP(_T0 _adRevenue_total
+                                               ,_T1 _pageRank_avg
+                                               ,_T2 _sourceIP): adRevenue_total(_adRevenue_total), pageRank_avg(_pageRank_avg), sourceIP(_sourceIP) {}
+        R_adRevenue_total_pageRank_avg_sourceIP(const R_adRevenue_total_pageRank_avg_sourceIP<_T0, _T1, _T2>& _r): adRevenue_total(_r.adRevenue_total), pageRank_avg(_r.pageRank_avg), sourceIP(_r.sourceIP) {}
+        bool operator==(R_adRevenue_total_pageRank_avg_sourceIP _r) {
+            if (adRevenue_total == _r.adRevenue_total&& pageRank_avg == _r.pageRank_avg&& sourceIP == _r.sourceIP)
                 return true;
             return false;
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            _archive & adRevenue;
-            _archive & pageRank;
+            _archive & adRevenue_total;
+            _archive & pageRank_avg;
             _archive & sourceIP;
 
         }
-        _T0 adRevenue;
-        _T1 pageRank;
+        _T0 adRevenue_total;
+        _T1 pageRank_avg;
         _T2 sourceIP;
 };
+#endif // K3_R_adRevenue_total_pageRank_avg_sourceIP
 namespace K3 {
     template <class _T0,class _T1,class _T2>
-    struct patcher<R_adRevenue_pageRank_sourceIP<_T0, _T1, _T2>> {
-        static void patch(string s,R_adRevenue_pageRank_sourceIP<_T0, _T1, _T2>& r) {
+    struct patcher<R_adRevenue_total_pageRank_avg_sourceIP<_T0, _T1, _T2>> {
+        static void patch(string s,R_adRevenue_total_pageRank_avg_sourceIP<_T0, _T1, _T2>& r) {
             shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _adRevenue = (qi::lit("adRevenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                              ,r.adRevenue);})];
-            qi::rule<string::iterator, qi::space_type> _pageRank = (qi::lit("pageRank") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.pageRank);})];
+            qi::rule<string::iterator, qi::space_type> _adRevenue_total = (qi::lit("adRevenue_total") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                          ,r.adRevenue_total);})];
+            qi::rule<string::iterator, qi::space_type> _pageRank_avg = (qi::lit("pageRank_avg") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                    ,r.pageRank_avg);})];
             qi::rule<string::iterator, qi::space_type> _sourceIP = (qi::lit("sourceIP") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
                                                                                                                                             ,r.sourceIP);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | _pageRank | _sourceIP;
+            qi::rule<string::iterator, qi::space_type> _field = _adRevenue_total |
+            _pageRank_avg |
+            _sourceIP;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
         }
     };
 }
 
+#ifndef K3_R_adRevenue_total_pageRank_count_pageRank_total
+#define K3_R_adRevenue_total_pageRank_count_pageRank_total
 template <class _T0,class _T1,class _T2>
-class R_adRevenue_sourceIP_visitDate {
+class R_adRevenue_total_pageRank_count_pageRank_total {
     public:
-        R_adRevenue_sourceIP_visitDate() {}
-        R_adRevenue_sourceIP_visitDate(_T0 _adRevenue
-                                      ,_T1 _sourceIP
-                                      ,_T2 _visitDate): adRevenue(_adRevenue), sourceIP(_sourceIP), visitDate(_visitDate) {}
-        R_adRevenue_sourceIP_visitDate(const R_adRevenue_sourceIP_visitDate<_T0, _T1, _T2>& _r): adRevenue(_r.adRevenue), sourceIP(_r.sourceIP), visitDate(_r.visitDate) {}
-        bool operator==(R_adRevenue_sourceIP_visitDate _r) {
-            if (adRevenue == _r.adRevenue&& sourceIP == _r.sourceIP&& visitDate == _r.visitDate)
+        R_adRevenue_total_pageRank_count_pageRank_total() {}
+        R_adRevenue_total_pageRank_count_pageRank_total(_T0 _adRevenue_total
+                                                       ,_T1 _pageRank_count
+                                                       ,_T2 _pageRank_total): adRevenue_total(_adRevenue_total), pageRank_count(_pageRank_count), pageRank_total(_pageRank_total) {}
+        R_adRevenue_total_pageRank_count_pageRank_total(const R_adRevenue_total_pageRank_count_pageRank_total<_T0, _T1, _T2>& _r): adRevenue_total(_r.adRevenue_total), pageRank_count(_r.pageRank_count), pageRank_total(_r.pageRank_total) {}
+        bool operator==(R_adRevenue_total_pageRank_count_pageRank_total _r) {
+            if (adRevenue_total == _r.adRevenue_total&& pageRank_count == _r.pageRank_count&& pageRank_total == _r.pageRank_total)
                 return true;
             return false;
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            _archive & adRevenue;
-            _archive & sourceIP;
-            _archive & visitDate;
+            _archive & adRevenue_total;
+            _archive & pageRank_count;
+            _archive & pageRank_total;
 
         }
-        _T0 adRevenue;
-        _T1 sourceIP;
-        _T2 visitDate;
+        _T0 adRevenue_total;
+        _T1 pageRank_count;
+        _T2 pageRank_total;
 };
+#endif // K3_R_adRevenue_total_pageRank_count_pageRank_total
 namespace K3 {
     template <class _T0,class _T1,class _T2>
-    struct patcher<R_adRevenue_sourceIP_visitDate<_T0, _T1, _T2>> {
-        static void patch(string s,R_adRevenue_sourceIP_visitDate<_T0, _T1, _T2>& r) {
+    struct patcher<R_adRevenue_total_pageRank_count_pageRank_total<_T0, _T1, _T2>> {
+        static void patch(string s,
+        R_adRevenue_total_pageRank_count_pageRank_total<_T0, _T1, _T2>& r) {
             shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _adRevenue = (qi::lit("adRevenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                              ,r.adRevenue);})];
-            qi::rule<string::iterator, qi::space_type> _sourceIP = (qi::lit("sourceIP") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.sourceIP);})];
-            qi::rule<string::iterator, qi::space_type> _visitDate = (qi::lit("visitDate") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                              ,r.visitDate);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | _sourceIP | _visitDate;
+            qi::rule<string::iterator, qi::space_type> _adRevenue_total = (qi::lit("adRevenue_total") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                          ,r.adRevenue_total);})];
+            qi::rule<string::iterator, qi::space_type> _pageRank_count = (qi::lit("pageRank_count") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                        ,r.pageRank_count);})];
+            qi::rule<string::iterator, qi::space_type> _pageRank_total = (qi::lit("pageRank_total") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                        ,r.pageRank_total);})];
+            qi::rule<string::iterator, qi::space_type> _field = _adRevenue_total |
+            _pageRank_count |
+            _pageRank_total;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
         }
     };
 }
 
+#ifndef K3_R_addr
+#define K3_R_addr
 template <class _T0>
 class R_addr {
     public:
@@ -339,6 +368,7 @@ class R_addr {
         }
         _T0 addr;
 };
+#endif // K3_R_addr
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -353,6 +383,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_arg
+#define K3_R_arg
 template <class _T0>
 class R_arg {
     public:
@@ -371,6 +403,7 @@ class R_arg {
         }
         _T0 arg;
 };
+#endif // K3_R_arg
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -385,6 +418,8 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_avgDuration_pageRank_pageURL
+#define K3_R_avgDuration_pageRank_pageURL
 template <class _T0,class _T1,class _T2>
 class R_avgDuration_pageRank_pageURL {
     public:
@@ -409,6 +444,7 @@ class R_avgDuration_pageRank_pageURL {
         _T1 pageRank;
         _T2 pageURL;
 };
+#endif // K3_R_avgDuration_pageRank_pageURL
 namespace K3 {
     template <class _T0,class _T1,class _T2>
     struct patcher<R_avgDuration_pageRank_pageURL<_T0, _T1, _T2>> {
@@ -427,86 +463,35 @@ namespace K3 {
     };
 }
 
-template <class _T0,class _T1,class _T2>
-class R_avgRank_sourceIP_totalRevenue {
+#ifndef K3_R_key
+#define K3_R_key
+template <class _T0>
+class R_key {
     public:
-        R_avgRank_sourceIP_totalRevenue() {}
-        R_avgRank_sourceIP_totalRevenue(_T0 _avgRank
-                                       ,_T1 _sourceIP
-                                       ,_T2 _totalRevenue): avgRank(_avgRank), sourceIP(_sourceIP), totalRevenue(_totalRevenue) {}
-        R_avgRank_sourceIP_totalRevenue(const R_avgRank_sourceIP_totalRevenue<_T0, _T1, _T2>& _r): avgRank(_r.avgRank), sourceIP(_r.sourceIP), totalRevenue(_r.totalRevenue) {}
-        bool operator==(R_avgRank_sourceIP_totalRevenue _r) {
-            if (avgRank == _r.avgRank&& sourceIP == _r.sourceIP&& totalRevenue == _r.totalRevenue)
+        R_key() {}
+        R_key(_T0 _key): key(_key) {}
+        R_key(const R_key<_T0>& _r): key(_r.key) {}
+        bool operator==(R_key _r) {
+            if (key == _r.key)
                 return true;
             return false;
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            _archive & avgRank;
-            _archive & sourceIP;
-            _archive & totalRevenue;
+            _archive & key;
 
         }
-        _T0 avgRank;
-        _T1 sourceIP;
-        _T2 totalRevenue;
+        _T0 key;
 };
+#endif // K3_R_key
 namespace K3 {
-    template <class _T0,class _T1,class _T2>
-    struct patcher<R_avgRank_sourceIP_totalRevenue<_T0, _T1, _T2>> {
-        static void patch(string s,R_avgRank_sourceIP_totalRevenue<_T0, _T1, _T2>& r) {
+    template <class _T0>
+    struct patcher<R_key<_T0>> {
+        static void patch(string s,R_key<_T0>& r) {
             shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _avgRank = (qi::lit("avgRank") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                          ,r.avgRank);})];
-            qi::rule<string::iterator, qi::space_type> _sourceIP = (qi::lit("sourceIP") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.sourceIP);})];
-            qi::rule<string::iterator, qi::space_type> _totalRevenue = (qi::lit("totalRevenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                                    ,r.totalRevenue);})];
-            qi::rule<string::iterator, qi::space_type> _field = _avgRank |
-            _sourceIP |
-            _totalRevenue;
-            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
-            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
-        }
-    };
-}
-
-template <class _T0,class _T1,class _T2>
-class R_count_revenue_total {
-    public:
-        R_count_revenue_total() {}
-        R_count_revenue_total(_T0 _count
-                             ,_T1 _revenue
-                             ,_T2 _total): count(_count), revenue(_revenue), total(_total) {}
-        R_count_revenue_total(const R_count_revenue_total<_T0, _T1, _T2>& _r): count(_r.count), revenue(_r.revenue), total(_r.total) {}
-        bool operator==(R_count_revenue_total _r) {
-            if (count == _r.count&& revenue == _r.revenue&& total == _r.total)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & count;
-            _archive & revenue;
-            _archive & total;
-
-        }
-        _T0 count;
-        _T1 revenue;
-        _T2 total;
-};
-namespace K3 {
-    template <class _T0,class _T1,class _T2>
-    struct patcher<R_count_revenue_total<_T0, _T1, _T2>> {
-        static void patch(string s,R_count_revenue_total<_T0, _T1, _T2>& r) {
-            shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _count = (qi::lit("count") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                      ,r.count);})];
-            qi::rule<string::iterator, qi::space_type> _revenue = (qi::lit("revenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                          ,r.revenue);})];
-            qi::rule<string::iterator, qi::space_type> _total = (qi::lit("total") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                      ,r.total);})];
-            qi::rule<string::iterator, qi::space_type> _field = _count | _revenue | _total;
+            qi::rule<string::iterator, qi::space_type> _key = (qi::lit("key") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                  ,r.key);})];
+            qi::rule<string::iterator, qi::space_type> _field = _key;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
         }
@@ -534,11 +519,8 @@ class R_key_value {
         }
         _T0 key;
         _T1 value;
-  using KeyType = _T0;
-  using ValueType = _T1;
 };
-#endif
-
+#endif // K3_R_key_value
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -555,105 +537,83 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_pageRank_count_pageRank_total
+#define K3_R_pageRank_count_pageRank_total
 template <class _T0,class _T1>
-class R_pageRank_pageURL {
+class R_pageRank_count_pageRank_total {
     public:
-        R_pageRank_pageURL() {}
-        R_pageRank_pageURL(_T0 _pageRank,_T1 _pageURL): pageRank(_pageRank), pageURL(_pageURL) {}
-        R_pageRank_pageURL(const R_pageRank_pageURL<_T0, _T1>& _r): pageRank(_r.pageRank), pageURL(_r.pageURL) {}
-        bool operator==(R_pageRank_pageURL _r) {
-            if (pageRank == _r.pageRank&& pageURL == _r.pageURL)
+        R_pageRank_count_pageRank_total() {}
+        R_pageRank_count_pageRank_total(_T0 _pageRank_count
+                                       ,_T1 _pageRank_total): pageRank_count(_pageRank_count), pageRank_total(_pageRank_total) {}
+        R_pageRank_count_pageRank_total(const R_pageRank_count_pageRank_total<_T0, _T1>& _r): pageRank_count(_r.pageRank_count), pageRank_total(_r.pageRank_total) {}
+        bool operator==(R_pageRank_count_pageRank_total _r) {
+            if (pageRank_count == _r.pageRank_count&& pageRank_total == _r.pageRank_total)
                 return true;
             return false;
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            _archive & pageRank;
-            _archive & pageURL;
+            _archive & pageRank_count;
+            _archive & pageRank_total;
 
         }
-        _T0 pageRank;
-        _T1 pageURL;
+        _T0 pageRank_count;
+        _T1 pageRank_total;
 };
+#endif // K3_R_pageRank_count_pageRank_total
 namespace K3 {
     template <class _T0,class _T1>
-    struct patcher<R_pageRank_pageURL<_T0, _T1>> {
-        static void patch(string s,R_pageRank_pageURL<_T0, _T1>& r) {
+    struct patcher<R_pageRank_count_pageRank_total<_T0, _T1>> {
+        static void patch(string s,R_pageRank_count_pageRank_total<_T0, _T1>& r) {
             shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _pageRank = (qi::lit("pageRank") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.pageRank);})];
-            qi::rule<string::iterator, qi::space_type> _pageURL = (qi::lit("pageURL") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                          ,r.pageURL);})];
-            qi::rule<string::iterator, qi::space_type> _field = _pageRank | _pageURL;
+            qi::rule<string::iterator, qi::space_type> _pageRank_count = (qi::lit("pageRank_count") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                        ,r.pageRank_count);})];
+            qi::rule<string::iterator, qi::space_type> _pageRank_total = (qi::lit("pageRank_total") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                                        ,r.pageRank_total);})];
+            qi::rule<string::iterator, qi::space_type> _field = _pageRank_count | _pageRank_total;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
         }
     };
 }
 
-template <class _T0>
-class R_revenue {
-    public:
-        R_revenue() {}
-        R_revenue(_T0 _revenue): revenue(_revenue) {}
-        R_revenue(const R_revenue<_T0>& _r): revenue(_r.revenue) {}
-        bool operator==(R_revenue _r) {
-            if (revenue == _r.revenue)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & revenue;
+#include "Builtins.hpp"
 
-        }
-        _T0 revenue;
-};
-namespace K3 {
-    template <class _T0>
-    struct patcher<R_revenue<_T0>> {
-        static void patch(string s,R_revenue<_T0>& r) {
-            shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _revenue = (qi::lit("revenue") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                          ,r.revenue);})];
-            qi::rule<string::iterator, qi::space_type> _field = _revenue;
-            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
-            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
-        }
-    };
-}
 
-template <class _T0>
-class R_sourceIP {
-    public:
-        R_sourceIP() {}
-        R_sourceIP(_T0 _sourceIP): sourceIP(_sourceIP) {}
-        R_sourceIP(const R_sourceIP<_T0>& _r): sourceIP(_r.sourceIP) {}
-        bool operator==(R_sourceIP _r) {
-            if (sourceIP == _r.sourceIP)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & sourceIP;
 
-        }
-        _T0 sourceIP;
-};
-namespace K3 {
-    template <class _T0>
-    struct patcher<R_sourceIP<_T0>> {
-        static void patch(string s,R_sourceIP<_T0>& r) {
-            shallow<string::iterator> _shallow;;
-            qi::rule<string::iterator, qi::space_type> _sourceIP = (qi::lit("sourceIP") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
-                                                                                                                                            ,r.sourceIP);})];
-            qi::rule<string::iterator, qi::space_type> _field = _sourceIP;
-            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
-            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
-        }
-    };
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Address me;
 
@@ -663,105 +623,332 @@ tuple<_Collection<R_arg<string>>, _Collection<R_key_value<string, string>>> args
 
 string role;
 
-int lowerDate;
-
-int upperDate;
-
 Address master;
+
+
 
 int peer_count;
 
-_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> userVisits_raw;
 
-_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>> userVisits;
+Address peer_by_hash(const string& s) {
+  auto& container = peers.getContainer();
+  size_t h = std::hash<string>()(s); 
+  return container[h % container.size()].addr;
+}
 
-_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> rankings;
 
-_Collection<R_adRevenue_pageRank_sourceIP<double, int, string>> matches;
 
-unit_t aggregate_local(unit_t _) {
-    userVisits.iterate([] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>& u) -> unit_t {
-        return rankings.iterate([u] (R_avgDuration_pageRank_pageURL<int, int, string> r) -> unit_t {
-            if (u.destURL == r.pageURL && lowerDate < u.visitDate && u.visitDate < upperDate) {
 
-                return matches.insert(R_adRevenue_pageRank_sourceIP<double, int, string>{u.adRevenue,
-                r.pageRank,
-                u.sourceIP});
+template <class v61,class v67>
+std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map<R_key_value<v61, v67>> c) {
+    return [c] (v61 a) -> std::function<unit_t(std::function<unit_t(v67)>)> {
+        return [c,a] (std::function<unit_t(v67)> f) -> unit_t {
+            std::shared_ptr<v67> __0;
+
+
+            __0 = lookup<v61, v67>(c)(a);
+            if (__0) {
+                v67 k;
+                k = *__0;
+                return f(k);
             } else {
                 return unit_t();
             }
+        };
+    };
+}
+
+_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>> user_visits;
+
+_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> rankings;
+
+_Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_partitions;
+
+unit_t uv_partition(unit_t _) {
+
+
+    user_visits.iterate([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int> u) -> unit_t {
+
+
+
+
+
+        return modify_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> unit_t {
+
+
+
+
+            return insert_with<string, double>(v)(u.sourceIP)(0.0)([u] (double w) -> double {
+                return w + u.adRevenue;
+            });
         });
     });
-    {
-        _Map<R_key_value<string, R_count_revenue_total<int, double, int>>> local_aggregate;
 
-        local_aggregate = matches.groupBy<string, R_count_revenue_total<int, double, int>>([] (const R_adRevenue_pageRank_sourceIP<double, int, string>& r) -> string {
-            return r.sourceIP;
-          })([] (const R_count_revenue_total<int, double, int>& a) -> std::function<R_count_revenue_total<int, double, int>(R_adRevenue_pageRank_sourceIP<double, int, string>)> {
+    uv_partitions.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> up) -> unit_t {
 
-              return [a] (const R_adRevenue_pageRank_sourceIP<double, int, string>& r) -> R_count_revenue_total<int, double, int> {
 
-                return R_count_revenue_total<int, double, int>{a.count + 1,
-                a.revenue + r.adRevenue,
-                a.total + r.pageRank};
-            };
-        })(R_count_revenue_total<int, double, int>{0,0,0});
 
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global, local_aggregate);
-        engine.send(master,0,d);return unit_t();
+
+        auto d = make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive
+                                                                                                    ,up);
+        engine.send(peer_by_hash(up.key),8,d);return unit_t();
+    });
+
+    return peers.iterate([] (R_addr<Address> a) -> unit_t {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(uv_partitions_received,unit_t());
+        engine.send(a.addr,7,d);return unit_t();
+    });
+}
+
+_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rk_partitions;
+
+unit_t rk_partition(unit_t _) {
+
+    rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> r) -> unit_t {
+
+
+
+
+
+
+        return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_partitions)(r.pageURL)(R_pageRank_count_pageRank_total<double, double>{0.0,
+        0.0})([r] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
+
+            return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
+            v.pageRank_total + r.pageRank};
+        });
+    });
+
+
+    rk_partitions.iterate([] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) -> unit_t {
+
+
+
+
+        auto d = make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive
+                                                                                                                  ,rp);
+        engine.send(peer_by_hash(rp.key),6,d);return unit_t();
+    });
+
+    return peers.iterate([] (R_addr<Address> a) -> unit_t {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(rk_partitions_received,unit_t());
+        engine.send(a.addr,5,d);return unit_t();
+    });
+}
+
+_Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_candidates;
+
+unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>>> up) {
+
+
+
+
+
+    return modify_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> unit_t {
+
+        return up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
+
+
+
+
+            return insert_with<string, double>(v)(uc.key)(0.0)([] (double w) -> double {
+                return w + 0.0;
+            });
+        });
+    });
+}
+
+int uv_received;
+
+int rk_received;
+
+unit_t uv_partitions_received(unit_t _) {
+    uv_received = uv_received + 1;
+    if (uv_received == peer_count && rk_received == peer_count) {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(do_groupBy,unit_t());
+        engine.send(me,4,d);return unit_t();
+    } else {
+        return unit_t();
     }
 }
 
-int local_aggregate_complete;
+_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rk_candidates;
 
-_Map<R_key_value<string, R_count_revenue_total<int, double, double>>> global_partial_result;
+unit_t rk_partition_receive(R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) {
 
-R_avgRank_sourceIP_totalRevenue<double, string, double> global_result;
 
-unit_t aggregate_global(_Map<R_key_value<string, R_count_revenue_total<int, double, int>>> c) {
 
-    c.iterate([] (const R_key_value<string, R_count_revenue_total<int, double, int>>& r) -> unit_t {
 
-                    unit_t __0;
 
-            shared_ptr<R_count_revenue_total<int, double, double>> found = lookup(global_partial_result)(r.key);
 
-            if (found == nullptr) {
-              global_partial_result.insert(
-                  R_key_value<string, R_count_revenue_total<int, double, double>> {
-                    r.key, R_count_revenue_total<int, double, double> { r.value.count, r.value.revenue, double(r.value.total) }
-                  }
-              );
+  return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(rp.key)(R_pageRank_count_pageRank_total<double, double>{0,
+    0})([rp] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
+
+        return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
+        v.pageRank_total + rp.value.pageRank_total};
+    });
+}
+
+unit_t rk_partitions_received(unit_t _) {
+    rk_received = rk_received + 1;
+    if (uv_received == peer_count && rk_received == peer_count) {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(do_groupBy,unit_t());
+        engine.send(me,4,d);return unit_t();
+    } else {
+        return unit_t();
+    }
+}
+
+_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> local_group;
+
+unit_t do_groupBy(unit_t _) {
+
+    uv_candidates.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> uc) -> unit_t {
+        {
+            R_pageRank_count_pageRank_total<double, double> rk;
+            std::shared_ptr<R_pageRank_count_pageRank_total<double, double>> __1;
+
+
+
+            __1 = lookup<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>(rk_candidates)(uc.key);
+            if (__1) {
+                R_pageRank_count_pageRank_total<double, double> r;
+                r = *__1;rk = r;
             } else {
-              global_partial_result.insert(
-                  R_key_value<string, R_count_revenue_total<int, double, double>> {
-                    r.key, R_count_revenue_total<int, double, double> {
-                      found->count + r.value.count,
-                      found->revenue + r.value.revenue,
-                      found->total + double(r.value.total)
-                    }
-                  }
-              );
+
+                rk = R_pageRank_count_pageRank_total<double, double>{0,0};
             }
 
-            return __0;
+            return uc.value.iterate([rk] (R_key_value<string, double> sar) -> unit_t {
+
+
+
+
+
+                return local_group.insert(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>{sar.key,
+                R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{sar.value,
+                rk.pageRank_count,
+                rk.pageRank_total}});
+            });
+        }
     });
-    local_aggregate_complete = local_aggregate_complete + 1;
-    if (local_aggregate_complete == peer_count) {
 
-        return global_partial_result.iterate([] (const R_key_value<string, R_count_revenue_total<int, double, double>>& g) -> unit_t {
 
-                            unit_t __1;
-                if (g.value.revenue > global_result.totalRevenue) {
+    local_group.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) -> unit_t {
 
-                    global_result = R_avgRank_sourceIP_totalRevenue<double, string, double>{g.value.total / g.value.count,
-                    g.key,
-                    g.value.revenue};__1 = unit_t();
-                } else {
-                    __1 = unit_t();
-                }
-                return __1;
+
+
+
+        auto d = make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group
+                                                                                                                                          ,g);
+        engine.send(peer_by_hash(g.key),3,d);return unit_t();
+    });
+
+    return peers.iterate([] (R_addr<Address> p) -> unit_t {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(global_group_receive,unit_t());
+        engine.send(p.addr,2,d);return unit_t();
+    });
+}
+
+_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> global_groups;
+
+unit_t global_group(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) {
+
+    return global_groups.insert(g);
+}
+
+int global_received;
+
+unit_t global_group_receive(unit_t _) {
+    global_received = global_received + 1;
+    if (global_received == peer_count) {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(do_global_groupBy,unit_t());
+        engine.send(me,1,d);return unit_t();
+    } else {
+        return unit_t();
+    }
+}
+
+_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> global_groupBy_result;
+
+unit_t do_global_groupBy(unit_t _) {
+
+
+    global_groups.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) -> unit_t {
+
+
+
+
+
+
+
+        return insert_with<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>(global_groupBy_result)(r.key)(R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{0.0,
+        0.0,
+        0.0})([r] (R_adRevenue_total_pageRank_count_pageRank_total<double, double, double> w) -> R_adRevenue_total_pageRank_count_pageRank_total<double, double, double> {
+
+
+
+            return R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{w.adRevenue_total + r.value.adRevenue_total,
+            w.pageRank_count + r.value.pageRank_count,
+            w.pageRank_total + r.value.pageRank_total};
         });
+    });
+
+
+
+
+
+
+
+    auto d = make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max
+                                                                                                         ,global_groupBy_result.fold<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>([] (R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> a) -> std::function<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>)> {
+
+                                                                                                             return [a] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) -> R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> {
+
+
+                                                                                                                 if (r.value.adRevenue_total > a.adRevenue_total) {
+
+
+
+
+                                                                                                                     return R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>{r.value.adRevenue_total,
+                                                                                                                     r.value.pageRank_total / r.value.pageRank_count,
+                                                                                                                     r.key};
+                                                                                                                 }
+                                                                                                                 else {
+
+                                                                                                                     return a;
+                                                                                                                 }
+                                                                                                             };
+                                                                                                         })(R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>{0.0,
+                                                                                                         0.0,
+                                                                                                         string("")}));
+    engine.send(master,0,d);return unit_t();
+}
+
+R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> max_result;
+
+unit_t global_max(R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> r) {
+    if (r.adRevenue_total > max_result.adRevenue_total) {
+        max_result = r;return unit_t();
     } else {
         return unit_t();
     }
@@ -788,37 +975,96 @@ unit_t atExit(unit_t _) {
 
 unit_t initGlobalDecls() {
 
-    master = make_address(string("127.0.0.1"),20000);peer_count = 5;local_aggregate_complete = 0;
+    master = make_address(string("127.0.0.1"),30001);peer_count = 0;uv_received = 0;rk_received = 0;
+    global_received = 0;
 
-    global_result = R_avgRank_sourceIP_totalRevenue<double, string, double>{0.0,
-    string(""),
-    0};return unit_t();
+    max_result = R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>{0.0,
+    0.0,
+    string("")};return unit_t();
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(2);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, R_count_revenue_total<int, double, int>>>>>(aggregate_global), "aggregate_global");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(aggregate_local), "aggregate_local");
+    dispatch_table.resize(11);
+    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max), "global_max");
+    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_global_groupBy), "do_global_groupBy");
+    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(global_group_receive), "global_group_receive");
+    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group), "global_group");
+    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_groupBy), "do_groupBy");
+    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partitions_received), "rk_partitions_received");
+    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive), "rk_partition_receive");
+    dispatch_table[7] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partitions_received), "uv_partitions_received");
+    dispatch_table[8] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive), "uv_partition_receive");
+    dispatch_table[9] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partition), "rk_partition");
+    dispatch_table[10] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partition), "uv_partition");
 }
 
 map<string,string> show_globals() {
     map<string,string> result;
-    result["global_result"] = "{" + ("sourceIP:" + global_result.sourceIP + "," + "avgRank:" + to_string(global_result.avgRank) + "," + "totalRevenue:" + to_string(global_result.totalRevenue) + "}");
-    result["global_partial_result"] = ([] (_Map<R_key_value<string, R_count_revenue_total<int, double, double>>> coll) {
+    result["max_result"] = "{" + ("sourceIP:" + max_result.sourceIP + "," + "adRevenue_total:" + to_string(max_result.adRevenue_total) + "," + "pageRank_avg:" + to_string(max_result.pageRank_avg) + "}");
+    result["global_groupBy_result"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
         ostringstream oss;
-        auto f = [&] (R_key_value<string, R_count_revenue_total<int, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "total:" + to_string(elem.value.total) + "," + "revenue:" + to_string(elem.value.revenue) + "}") + "}") << ",";
+        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
         return unit_t();};
         coll.iterate(f);
         return "[" + oss.str() + "]";
-    }(global_partial_result));
-    result["local_aggregate_complete"] = to_string(local_aggregate_complete);
-    result["matches"] = ([] (_Collection<R_adRevenue_pageRank_sourceIP<double, int, string>> coll) {
+    }(global_groupBy_result));
+    result["global_received"] = to_string(global_received);
+    result["global_groups"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
         ostringstream oss;
-        auto f = [&] (R_adRevenue_pageRank_sourceIP<double, int, string> elem) {oss << "{" + ("sourceIP:" + elem.sourceIP + "," + "pageRank:" + to_string(elem.pageRank) + "," + "adRevenue:" + to_string(elem.adRevenue) + "}") << ",";
+        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
         return unit_t();};
         coll.iterate(f);
         return "[" + oss.str() + "]";
-    }(matches));
+    }(global_groups));
+    result["local_group"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(local_group));
+    result["rk_candidates"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(rk_candidates));
+    result["rk_received"] = to_string(rk_received);
+    result["uv_received"] = to_string(uv_received);
+    result["uv_candidates"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
+            ostringstream oss;
+            auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+            return unit_t();};
+            coll.iterate(f);
+            return "[" + oss.str() + "]";
+        }(elem.value)) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(uv_candidates));
+    result["rk_partitions"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(rk_partitions));
+    result["uv_partitions"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
+            ostringstream oss;
+            auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+            return unit_t();};
+            coll.iterate(f);
+            return "[" + oss.str() + "]";
+        }(elem.value)) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(uv_partitions));
     result["rankings"] = ([] (_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> coll) {
         ostringstream oss;
         auto f = [&] (R_avgDuration_pageRank_pageURL<int, int, string> elem) {oss << "{" + ("pageURL:" + elem.pageURL + "," + "pageRank:" + to_string(elem.pageRank) + "," + "avgDuration:" + to_string(elem.avgDuration) + "}") << ",";
@@ -826,24 +1072,15 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(rankings));
-    result["userVisits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>> coll) {
+    result["user_visits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>> coll) {
         ostringstream oss;
         auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int> elem) {oss << "{" + ("sourceIP:" + elem.sourceIP + "," + "destURL:" + elem.destURL + "," + "visitDate:" + to_string(elem.visitDate) + "," + "adRevenue:" + to_string(elem.adRevenue) + "," + "userAgent:" + elem.userAgent + "," + "countryCode:" + elem.countryCode + "," + "languageCode:" + elem.languageCode + "," + "searchWord:" + elem.searchWord + "," + "duration:" + to_string(elem.duration) + "}") << ",";
         return unit_t();};
         coll.iterate(f);
         return "[" + oss.str() + "]";
-    }(userVisits));
-    result["userVisits_raw"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> elem) {oss << "{" + ("sourceIP:" + elem.sourceIP + "," + "destURL:" + elem.destURL + "," + "visitDate:" + elem.visitDate + "," + "adRevenue:" + to_string(elem.adRevenue) + "," + "userAgent:" + elem.userAgent + "," + "countryCode:" + elem.countryCode + "," + "languageCode:" + elem.languageCode + "," + "searchWord:" + elem.searchWord + "," + "duration:" + to_string(elem.duration) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(userVisits_raw));
+    }(user_visits));
     result["peer_count"] = to_string(peer_count);
     result["master"] = addressAsString(master);
-    result["upperDate"] = to_string(upperDate);
-    result["lowerDate"] = to_string(lowerDate);
     result["role"] = role;
     result["args"] = "("
     +
@@ -879,17 +1116,21 @@ int main(int argc,char** argv) {
     if (opt.parse(argc,argv)) return 0;
     populate_dispatch();
     map<string,std::function<void(string)>> matchers;
-    matchers["global_result"] = [] (string _s) {do_patch(_s,global_result);};
-    matchers["global_partial_result"] = [] (string _s) {do_patch(_s,global_partial_result);};
-    matchers["local_aggregate_complete"] = [] (string _s) {do_patch(_s,local_aggregate_complete);};
-    matchers["matches"] = [] (string _s) {do_patch(_s,matches);};
+    matchers["max_result"] = [] (string _s) {do_patch(_s,max_result);};
+    matchers["global_groupBy_result"] = [] (string _s) {do_patch(_s,global_groupBy_result);};
+    matchers["global_received"] = [] (string _s) {do_patch(_s,global_received);};
+    matchers["global_groups"] = [] (string _s) {do_patch(_s,global_groups);};
+    matchers["local_group"] = [] (string _s) {do_patch(_s,local_group);};
+    matchers["rk_candidates"] = [] (string _s) {do_patch(_s,rk_candidates);};
+    matchers["rk_received"] = [] (string _s) {do_patch(_s,rk_received);};
+    matchers["uv_received"] = [] (string _s) {do_patch(_s,uv_received);};
+    matchers["uv_candidates"] = [] (string _s) {do_patch(_s,uv_candidates);};
+    matchers["rk_partitions"] = [] (string _s) {do_patch(_s,rk_partitions);};
+    matchers["uv_partitions"] = [] (string _s) {do_patch(_s,uv_partitions);};
     matchers["rankings"] = [] (string _s) {do_patch(_s,rankings);};
-    matchers["userVisits"] = [] (string _s) {do_patch(_s,userVisits);};
-    matchers["userVisits_raw"] = [] (string _s) {do_patch(_s,userVisits_raw);};
+    matchers["user_visits"] = [] (string _s) {do_patch(_s,user_visits);};
     matchers["peer_count"] = [] (string _s) {do_patch(_s,peer_count);};
     matchers["master"] = [] (string _s) {do_patch(_s,master);};
-    matchers["upperDate"] = [] (string _s) {do_patch(_s,upperDate);};
-    matchers["lowerDate"] = [] (string _s) {do_patch(_s,lowerDate);};
     matchers["role"] = [] (string _s) {do_patch(_s,role);};
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
