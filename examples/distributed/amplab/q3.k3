@@ -157,7 +157,7 @@ trigger do_groupBy: () = \_ -> (
         )));
 
     (local_group.iterate (\g -> (global_group, peer_by_host g.key) <- g));
-    (peers.iterate (\p -> (global_group_receive, p.addr) <- ()));
+    (peers.iterate (\p -> (global_group_receive, p.addr) <- ())))
 
 declare global_received: mut int = 0
 trigger global_group_receive: () = \_ -> (
