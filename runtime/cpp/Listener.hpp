@@ -234,12 +234,7 @@ namespace K3 {
                 if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
                 // Add network data to the codec's buffer.
                 // We assume the processor notifies subscribers regarding socket data events.
-                string * s = new string(buffer_->c_array(), bytes_transferred);
-                ostringstream os2;
-                size_t len = s->length();
-
-                shared_ptr<Value> v = cdec->decode(*s);
-                delete s;
+                shared_ptr<Value> v(cdec->decode(buffer_->c_array(), bytes_transferred));
                 // Exhaust the codec's buffer
                 while (v) {
 
@@ -253,6 +248,7 @@ namespace K3 {
 
                 // Recursive invocation for the next message.
                 receiveMessages(c, cdec);
+
               } else {
                 deregisterConnection(c);
                 listenerLog->logAt(boost::log::trivial::error, string("Connection error: ")+ec.message());
