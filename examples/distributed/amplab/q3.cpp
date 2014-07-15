@@ -79,6 +79,8 @@ unit_t rk_partition(unit_t);
 
 unit_t uv_partition(unit_t);
 
+unit_t load_all(unit_t);
+
 template <class v61,class v67> std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map<R_key_value<v61, v67>>);
 
 template <class CONTENT>
@@ -613,6 +615,8 @@ namespace K3 {
 
 
 
+string user_visits_file = "";
+string rankings_file = "";
 
 
 Address me;
@@ -984,7 +988,7 @@ unit_t initGlobalDecls() {
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(11);
+    dispatch_table.resize(12);
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max), "global_max");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_global_groupBy), "do_global_groupBy");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(global_group_receive), "global_group_receive");
@@ -996,6 +1000,7 @@ void populate_dispatch() {
     dispatch_table[8] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive), "uv_partition_receive");
     dispatch_table[9] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partition), "rk_partition");
     dispatch_table[10] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partition), "uv_partition");
+    dispatch_table[11] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
 }
 
 map<string,string> show_globals() {
@@ -1110,7 +1115,7 @@ map<string,string> show_globals() {
     return result;
 }
 
-F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rankingsLoader(string filepath){
+F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rankings_loader(string filepath){
     F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)> r = [filepath] (K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>> & c){
         R_avgDuration_pageRank_pageURL<int, int, string> rec;
         strtk::for_each_line(filepath,
@@ -1127,9 +1132,9 @@ F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rank
     return r;
 }
 
-F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)>uservisitsLoader(string filepath){
-    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> & c){
-        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> rec;
+F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>>&)>user_visits_loader(string filepath){
+    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int>> & c){
+        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, int> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
             if (strtk::parse(str,",",rec.sourceIP,rec.destURL,rec.visitDate,rec.adRevenue,rec.userAgent,rec.countryCode,rec.languageCode,rec.searchWord,rec.duration)){
@@ -1142,6 +1147,21 @@ F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_se
         return unit_t();
     };
     return r;
+}
+
+unit_t load_all(unit_t _) {
+
+
+    user_visits_loader(user_visits_file)(user_visits);
+    rankings_loader(rankings_file)(rankings);
+
+
+
+    auto d = make_shared<DispatcherImpl<unit_t>>(uv_partition,unit_t());
+    engine.send(master,10,d);return unit_t();
+
+    auto e = make_shared<DispatcherImpl<unit_t>>(rk_partition,unit_t());
+    engine.send(master,9,e);return unit_t();
 }
 
 int main(int argc,char** argv) {
@@ -1169,6 +1189,8 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["user_visits_file"] = [] (string _s) {do_patch(_s,user_visits_file);};
+    matchers["rankings_file"] = [] (string _s) {do_patch(_s,rankings_file);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
