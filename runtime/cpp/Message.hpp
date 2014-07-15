@@ -38,9 +38,7 @@ namespace K3 {
     {}
 
     RemoteMessage(Address&& addr, TriggerId id, Value&& v)
-      : std::tuple<Address, TriggerId, Value>(std::forward<Address>(addr),
-                                          id,
-                                          std::forward<Value>(v))
+      : std::tuple<Address, TriggerId, Value>(std::forward<Address>(addr), id, std::forward<Value>(v))
     {}
 
     const Address&    address()  const { return std::get<0>(*this); }
@@ -52,7 +50,9 @@ namespace K3 {
 
     // TODO: error reporting if not found
     const std::shared_ptr<Message> toMessage() const {
-      return std::make_shared<Message>(address(), id(), std::get<0>(dispatch_table[id()]));
+      auto *d = std::get<0>(dispatch_table[id()])->clone();
+      d->unpack(contents());
+      return std::make_shared<Message>(address(), id(), std::shared_ptr<Dispatcher>(d));
     }
   };
 
