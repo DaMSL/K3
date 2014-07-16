@@ -14,6 +14,7 @@
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
+#include "Builtins.hpp"
 
 using namespace std;
 using namespace K3;
@@ -22,8 +23,6 @@ using std::begin;
 using std::end;
 
 
-
-Engine engine = Engine();
 
 using K3::Collection;
 
@@ -124,6 +123,7 @@ class _Map: public K3::Map<CONTENT> {
         }
 
 };
+
 namespace K3 {
     template <class E>
     struct patcher<_Map<E>> {
@@ -559,8 +559,6 @@ namespace K3 {
         }
     };
 }
-
-#include "Builtins.hpp"
 
 
 
