@@ -823,11 +823,6 @@ unit_t do_groupBy(unit_t _) {
             if (__1) {
                 R_pageRank_count_pageRank_total<double, double> r;
                 r = *__1;rk = r;
-            } else {
-
-                rk = R_pageRank_count_pageRank_total<double, double>{0,0};
-            }
-
             return uc.value.iterate([rk] (R_key_value<string, double> sar) -> unit_t {
 
 
@@ -839,6 +834,13 @@ unit_t do_groupBy(unit_t _) {
                 rk.pageRank_count,
                 rk.pageRank_total}});
             });
+            } else {
+
+                rk = R_pageRank_count_pageRank_total<double, double>{0,0};
+            }
+
+            return unit_t {};
+
         }
     });
 
