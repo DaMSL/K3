@@ -152,25 +152,6 @@ insert_with(_Map<R_key_value<K, V>>& m) {
   };
 }
 
-template <class K, class V>
-std::function<std::function<std::function<unit_t(std::function<unit_t(const V&)>)>(const V&)>(const K&)>
-modify_with(const _Map<R_key_value<K, V>>& m) {
-  return [&] (const K& key) {
-    return [&] (const V& value) {
-      return [&] (std::function<unit_t(const V&)> f) {
-        shared_ptr<V> vp = lookup(m)(key);
-        if (vp != nullptr) {
-          f(*vp);
-        } else {
-          f(value);
-        }
-
-        return unit_t();
-      };
-    };
-  };
-}
-
 #ifndef K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 #define K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
