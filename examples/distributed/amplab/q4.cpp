@@ -4,7 +4,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <regex>
+#include <boost/regex.hpp>
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
 
@@ -427,8 +427,8 @@ string cur_page;
 
 _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial;
 
-std::regex regex_query("(https?://[^\\s]+)");
-std::smatch regex_results;
+boost::regex regex_query("(https?://[^\\s]+)");
+boost::smatch regex_results;
 
 unit_t get_line(string line) {
     {
@@ -459,7 +459,7 @@ unit_t get_line(string line) {
           return unit_t();
         }
             
-        regex_search(line, regex_results, regex_query, std::regex_constants::match_any);
+        regex_search(line, regex_results, regex_query, boost::regex_constants::match_default);
 
         for (int i=1; i<regex_results.size(); i++) {
           string s = regex_results[i];
