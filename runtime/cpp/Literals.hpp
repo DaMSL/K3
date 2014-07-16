@@ -90,6 +90,12 @@ namespace K3 {
     }
   };
 
+  template <> struct patcher<long> {
+    static void patch(string s, long& i) {
+      qi::parse(begin(s), end(s), qi::long_[([&i] (int j) { i = j; })]);
+    }
+  };
+
   template <> struct patcher<double> {
     static void patch(string s, double& d) {
       qi::parse(begin(s), end(s), qi::double_[([&d] (double f) { d = f; })]);
