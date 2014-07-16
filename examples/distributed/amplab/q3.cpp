@@ -968,6 +968,10 @@ unit_t initDecls(unit_t _) {
 }
 
 unit_t processRole(unit_t _) {
+    if (role == "rows") {
+        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,unit_t());
+        engine.send(me,11,d);
+    }
     return unit_t();
 }
 
@@ -1125,7 +1129,7 @@ F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rank
         R_avgDuration_pageRank_pageURL<int, int, string> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.avgDuration,rec.pageRank,rec.pageURL)){
+            if (strtk::parse(str,",",rec.pageURL,rec.pageRank,rec.avgDuration)){
                 c.insert(rec);
             }
             else{
@@ -1163,10 +1167,11 @@ unit_t load_all(unit_t _) {
 
 
     auto d = make_shared<DispatcherImpl<unit_t>>(uv_partition,unit_t());
-    engine.send(master,10,d);return unit_t();
+    engine.send(master,10,d);
 
     auto e = make_shared<DispatcherImpl<unit_t>>(rk_partition,unit_t());
-    engine.send(master,9,e);return unit_t();
+    engine.send(master,9,e);
+    return unit_t();
 }
 
 int main(int argc,char** argv) {
