@@ -23,7 +23,6 @@ using std::end;
 
 
 
-Engine engine = Engine();
 
 using K3::Collection;
 
@@ -572,7 +571,7 @@ unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<d
         std::shared_ptr<R_count_sum<int, _Collection<R_elem<double>>>> __0;
 
 
-        __0 = lookup<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>(aggregates)(v.key);
+        __0 = lookup<int, R_count_sum<int, _Collection<R_elem<double>>>>(aggregates)(v.key);
         if (__0) {
             R_count_sum<int, _Collection<R_elem<double>>> a;
             a = *__0;
@@ -617,18 +616,18 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
 
         __1 = means.peek(unit_t());
         if (__1) {
-            R_key_value<int, _Collection<R_elem<double>>> first_mean;
+            R_key_value<int, _Collection<R_elem<double>> > first_mean;
             first_mean = *__1;{
-                R_mean<R_key<int>> nearest;
+                R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> nearest;
 
 
 
 
 
 
-                nearest = means.fold<R_distance_mean<double, R_value<_Collection<R_elem<double>>>>>([p] (R_distance_mean<double, R_value<_Collection<R_elem<double>>>> acc) -> std::function<R_distance_mean<double, R_value<_Collection<R_elem<double>>>>(R_value<_Collection<R_elem<double>>>)> {
+                nearest = means.fold<R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>>([p] (R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> acc) -> std::function<R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>(R_key_value<int,_Collection<R_elem<double>>>)> {
                     return [p
-                           ,acc] (R_value<_Collection<R_elem<double>>> next) -> R_distance_mean<double, R_value<_Collection<R_elem<double>>>> {
+                           ,acc] (R_key_value<int,_Collection<R_elem<double>>> next) -> R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> {
 
 
                         if (squared_distance(p)(next.value) < acc.distance) {
@@ -636,7 +635,7 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
 
 
 
-                            return R_distance_mean<double, R_value<_Collection<R_elem<double>>>>{squared_distance(p)(next.value),
+                            return R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>{squared_distance(p)(next.value),
                             next};
                         } else {
                             return acc;
