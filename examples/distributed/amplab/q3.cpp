@@ -945,10 +945,12 @@ R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> max_result;
 
 unit_t global_max(R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> r) {
     if (r.adRevenue_total > max_result.adRevenue_total) {
-        max_result = r;return unit_t();
-    } else {
-        return unit_t();
+        max_result = r;
     }
+
+    auto d = make_shared<DispatcherImpl<unit_t>>(done,unit_t());
+    engine.send(master,13,d);
+    return unit_t {};
 }
 
 unit_t initDecls(unit_t _) {
