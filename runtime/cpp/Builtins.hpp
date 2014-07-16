@@ -94,14 +94,13 @@ namespace K3 {
     [] (const Collection<R_elem<double>>& c1) {
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
-        vector<R_elem<double>> v1 = c1.getContainer();
-        vector<R_elem<double>> v2 = c2.getContainer();
-        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+        vector<R_elem<double>> &v1 = c1.getContainer();
+        vector<R_elem<double>> &v2 = c2.getContainer();
+        Collection<R_elem<double>> result;
 
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem + v2[i].elem;
-          R_elem<double> r;
-          r.elem = d;
+          R_elem<double> r(d);
           result.insert(r);
         }
 
@@ -114,13 +113,12 @@ namespace K3 {
     [] (const Collection<R_elem<double>>& c1) {
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
-        vector<R_elem<double>> v1 = c1.getContainer();
-        vector<R_elem<double>> v2 = c2.getContainer();
-        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+        vector<R_elem<double>>& v1 = c1.getContainer();
+        vector<R_elem<double>>& v2 = c2.getContainer();
+        Collection<R_elem<double>> result;
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem - v2[i].elem;
-          R_elem<double> r;
-          r.elem = d;
+          R_elem<double> r(d);
           result.insert(r);
         }
 
@@ -134,8 +132,8 @@ namespace K3 {
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
         double ans = 0;
-        vector<R_elem<double>> v1 = c1.getContainer();
-        vector<R_elem<double>> v2 = c2.getContainer();
+        vector<R_elem<double>>& v1 = c1.getContainer();
+        vector<R_elem<double>>& v2 = c2.getContainer();
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem * v2[i].elem;
           ans += d;
@@ -151,8 +149,8 @@ namespace K3 {
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
         double ans = 0;
-        vector<R_elem<double>> v1 = c1.getContainer();
-        vector<R_elem<double>> v2 = c2.getContainer();
+        vector<R_elem<double>>& v1 = c1.getContainer();
+        vector<R_elem<double>>& v2 = c2.getContainer();
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem - v2[i].elem;
           ans += d * d;
@@ -164,25 +162,18 @@ namespace K3 {
   };
 
   Collection<R_elem<double>> zero_vector(int n) {
-    Collection<R_elem<double>> c = Collection<R_elem<double>>(nullptr);
-    for (auto i = 0; i < n; ++i) {
-      R_elem<double> rec;
-      rec.elem = 0.0;
-      c.insert(rec);
-    }
-    return c;
+    return Collection<R_elem<double>> c(n, 0);
   }
 
   F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const double&)> scalar_mult =
     [] (const double& d) {
       return [&] (const Collection<R_elem<double>>& c) {
         using namespace K3;
-        vector<R_elem<double>> v1 = c.getContainer();
-        Collection<R_elem<double>> result = Collection<R_elem<double>>(nullptr);
+        vector<R_elem<double>>& v1 = c.getContainer();
+        Collection<R_elem<double>> result;
         for (auto i = 0; i < v1.size(); ++i) {
           double d2 = d * v1[i].elem;
-          R_elem<double> r;
-          r.elem = d2;
+          R_elem<double> r(d2);
           result.insert(r);
         }
 
@@ -218,7 +209,8 @@ namespace K3 {
     return [&] (const typename E::KeyType& key) {
       return [&] (const typename E::ValueType& value) {
         return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
-          auto it = map.getContainer().find(key);
+          auto &c = map.getContainer();
+          c.find(key);
           if (it == map.end()) {
             map.insert(E(key, value));
           } else {
@@ -238,7 +230,7 @@ namespace K3 {
       boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
 
       // Transfer to R_elems
-      Seq<R_elem<string> > results(nullptr);
+      Seq<R_elem<string> > results(words.size());
       for (const auto &elem : words) {
         results.insert(elem);
       }

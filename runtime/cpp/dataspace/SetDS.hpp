@@ -57,7 +57,7 @@ class SetDS : public StlDS<Elem, unordered_set> {
     }
 
     bool isSubsetOf(const SetDS<Elem>& other) {
-      for (auto &x : Super::getContainer()) {
+      for (const auto &x : Super::getContainer()) {
         if (!other.member(x)) { return false; }
       }
       return true;
@@ -66,10 +66,10 @@ class SetDS : public StlDS<Elem, unordered_set> {
     // TODO union is a reserved word
     SetDS union1(const SetDS<Elem>& other) {
       SetDS<Elem> result(Super::getEngine());
-      for (auto &x : Super::getContainer()) {
+      for (const auto &x : Super::getContainer()) {
         result.insert(x);
       }
-      for (auto &x : other.getContainer()) {
+      for (const auto &x : other.getContainer()) {
         result.insert(x);
       }
       return result;
@@ -77,7 +77,7 @@ class SetDS : public StlDS<Elem, unordered_set> {
 
     SetDS intersect(const SetDS<Elem>& other) {
       SetDS<Elem> result(Super::getEngine());
-      for (auto &x : Super::getContainer()) {
+      for (const auto &x : Super::getContainer()) {
         if(other.member(x)) {
           result.insert(x);
         }
@@ -88,7 +88,7 @@ class SetDS : public StlDS<Elem, unordered_set> {
 
     SetDS difference(const SetDS<Elem>& other) {
       SetDS<Elem> result(Super::getEngine());
-      for (auto &x : Super::getContainer()) {
+      for (const auto &x : Super::getContainer()) {
         if(!other.member(x)) {
           result.insert(x);
         }

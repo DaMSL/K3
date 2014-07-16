@@ -51,7 +51,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
     }
 
     std::shared_ptr<Elem> min() {
-      std::multiset<Elem>& x = Super::getContainer();
+      const std::multiset<Elem>& x = Super::getContainer();
       auto it = std::min_element(x.begin(), x.end());
       std::shared_ptr<Elem> result = nullptr;
       if (it != x.end()) {
@@ -62,7 +62,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
     }
 
     std::shared_ptr<Elem> max() {
-      std::multiset<Elem>& x = Super::getContainer();
+      const std::multiset<Elem>& x = Super::getContainer();
       auto it = std::max_element(x.begin(), x.end());
       std::shared_ptr<Elem> result = nullptr;
       if (it != x.end()) {
@@ -73,7 +73,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
     }
 
     std::shared_ptr<Elem> lowerBound(const Elem& e) {
-      std::multiset<Elem>& x = Super::getContainer();
+      const std::multiset<Elem>& x = Super::getContainer();
       auto it = std::lower_bound(x.begin(), x.end(), e);
       std::shared_ptr<Elem> result = nullptr;
       if (it != x.end()) {
@@ -84,7 +84,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
     }
 
     std::shared_ptr<Elem> upperBound(const Elem& e) {
-      std::multiset<Elem>& x = Super::getContainer();
+      const std::multiset<Elem>& x = Super::getContainer();
       auto it = std::upper_bound(x.begin(), x.end(), e);
       std::shared_ptr<Elem> result = nullptr;
       if (it != x.end()) {
@@ -95,7 +95,7 @@ class SortedDS : public StlDS<Elem, std::multiset> {
     }
 
     SortedDS slice(const Elem& a, const Elem& b) {
-      std::multiset<Elem>& x = Super::getContainer();
+      const std::multiset<Elem>& x = Super::getContainer();
       SortedDS<Elem> result = SortedDS<Elem>(Super::getEngine());
       for (Elem e : x) {
         if (e >= a && e <= b) {

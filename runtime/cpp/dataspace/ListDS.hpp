@@ -53,7 +53,7 @@ namespace K3
     }
 
     ListDS sort(const F<F<int(Elem)>(Elem)>& comp) {
-      std::vector<Elem> l(Super::getContainer());
+      std::vector<Elem>& l(Super::getContainer());
       auto f = [&] (Elem& a, Elem& b) {
         return comp(a)(b) < 0;
       };
@@ -62,7 +62,7 @@ namespace K3
     }
 
     Elem at(int i) {
-      std::vector<Elem> v = Super::getContainer();
+      std::vector<Elem>& v = Super::getContainer();
       return v[i];
     }
 
