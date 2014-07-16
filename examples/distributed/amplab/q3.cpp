@@ -79,6 +79,9 @@ unit_t rk_partition(unit_t);
 unit_t uv_partition(unit_t);
 
 unit_t load_all(unit_t);
+unit_t ready(unit_t);
+unit_t done(unit_t);
+unit_t shutdown_(unit_t);
 
 template <class v61,class v67> std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map<R_key_value<v61, v67>>);
 
@@ -982,7 +985,7 @@ unit_t initGlobalDecls() {
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(12);
+    dispatch_table.resize(15);
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max), "global_max");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_global_groupBy), "do_global_groupBy");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(global_group_receive), "global_group_receive");
@@ -995,6 +998,9 @@ void populate_dispatch() {
     dispatch_table[9] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partition), "rk_partition");
     dispatch_table[10] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partition), "uv_partition");
     dispatch_table[11] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
+    dispatch_table[12] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
+    dispatch_table[13] = make_tuple(make_shared<DispatcherImpl<unit_t>>(done), "done");
+    dispatch_table[14] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
 }
 
 map<string,string> show_globals() {
@@ -1146,20 +1152,48 @@ F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_se
     return r;
 }
 
+int ready_received = 0;
+unit_t ready(unit_t _) {
+  ready_received += 1;
+  if (ready_received == peer_count) {
+    peers.iterate([] (R_addr<Address> r) {
+        auto d = make_shared<DispatcherImpl<unit_t>>(uv_partition,unit_t());
+        auto e = make_shared<DispatcherImpl<unit_t>>(rk_partition,unit_t());
+        engine.send(r.addr,10,d);
+        engine.send(r.addr,9,e);
+        return unit_t {};
+      }
+    );
+  }
+
+  return unit_t {};
+}
+
 unit_t load_all(unit_t _) {
 
 
     user_visits_loader(user_visits_file)(user_visits);
     rankings_loader(rankings_file)(rankings);
 
+    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+    engine.send(master,12,d);
 
-
-    auto d = make_shared<DispatcherImpl<unit_t>>(uv_partition,unit_t());
-    engine.send(master,10,d);
-
-    auto e = make_shared<DispatcherImpl<unit_t>>(rk_partition,unit_t());
-    engine.send(master,9,e);
     return unit_t();
+}
+
+int done_received = 0;
+unit_t done(unit_t _) {
+  done_received += 1;
+  if (done_received == peer_count) {
+    auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+    peers.iterate([&d] (R_addr<Address> r) { engine.send(r.addr,14,d); return unit_t {}; });
+  }
+
+  return unit_t {};
+}
+
+unit_t shutdown_(unit_t _) {
+  return haltEngine(unit_t());
 }
 
 int main(int argc,char** argv) {
