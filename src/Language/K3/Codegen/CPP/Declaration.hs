@@ -89,7 +89,6 @@ declaration (tag &&& children -> (DRole _, cs)) = do
             ++ forwards newS
             ++ compositeDecls
             ++ recordDecls
-            ++ [(text "#include" <+> (dquotes (text "Builtins.hpp")))]
             ++ [subDecls, i, tablePop]
 
 declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty

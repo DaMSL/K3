@@ -397,7 +397,13 @@ namespace K3 {
 
     shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m);
   };
-}
 
+#ifndef MAIN_PROGRAM
+  extern
 #endif
+  Engine engine;
+
+} // namespace K3
+
+#endif // K3_RUNTIME_ENGINE_H
 // vim: set sts=2 ts=2 sw=2:

@@ -137,7 +137,8 @@ includes = return [
         "Engine.hpp",
         "Literals.hpp",
         "MessageProcessor.hpp",
-        "Serialization.hpp"
+        "Serialization.hpp",
+        "Builtins.hpp"
       ]
 
 namespaces :: CPPGenM [Identifier]
@@ -156,7 +157,7 @@ aliases = [
     ]
 
 staticGlobals :: CPPGenM CPPGenR
-staticGlobals = return $ text "Engine engine = Engine()" <> semi
+staticGlobals = return $ text ""
 
 -- | Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
