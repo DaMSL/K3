@@ -60,11 +60,11 @@ namespace K3 {
   }
 
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_add(Collection<R_elem<double>>& c1) {
-      return [&] (Collection<R_elem<double>>& c2) {
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
-        const vector<R_elem<double>> &v1 = c1.getContainer();
-        const vector<R_elem<double>> &v2 = c2.getContainer();
+        const vector<R_elem<double>> &v1 = c1.getConstContainer();
+        const vector<R_elem<double>> &v2 = c2.getConstContainer();
         Collection<R_elem<double>> result(nullptr);
 
         for (auto i = 0; i < v1.size(); ++i) {
@@ -78,11 +78,11 @@ namespace K3 {
 
   }
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_sub(Collection<R_elem<double>>& c1) {
-      return [&] (Collection<R_elem<double>>& c2) {
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
-        const auto &v1 = c1.getContainer();
-        const auto &v2 = c2.getContainer();
+        const auto &v1 = c1.getConstContainer();
+        const auto &v2 = c2.getConstContainer();
         Collection<R_elem<double>> result(nullptr);
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem - v2[i].elem;
@@ -95,12 +95,12 @@ namespace K3 {
 
   }
 
-  F<double(Collection<R_elem<double>>&)> dot(Collection<R_elem<double>>& c1) {
-      return [&] (Collection<R_elem<double>>& c2) {
+  F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
         double ans = 0;
-        const auto &v1 = c1.getContainer();
-        const auto &v2 = c2.getContainer();
+        const auto &v1 = c1.getConstContainer();
+        const auto &v2 = c2.getConstContainer();
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem * v2[i].elem;
           ans += d;
@@ -110,12 +110,12 @@ namespace K3 {
       };
   }
 
-  F<double(Collection<R_elem<double>>&)> squared_distance(Collection<R_elem<double>>& c1) {
-      return [&] (Collection<R_elem<double>>& c2) {
+  F<double(const Collection<R_elem<double>>&)> squared_distance(const Collection<R_elem<double>>& c1) {
+      return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
         double ans = 0;
-        const auto &v1 = c1.getContainer();
-        const auto &v2 = c2.getContainer();
+        const auto &v1 = c1.getConstContainer();
+        const auto &v2 = c2.getConstContainer();
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem - v2[i].elem;
           ans += d * d;
@@ -132,10 +132,10 @@ namespace K3 {
     return c;
   }
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> scalar_mult(const double& d) {
-      return [&] (Collection<R_elem<double>>& c) {
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d) {
+      return [&] (const Collection<R_elem<double>>& c) {
         using namespace K3;
-        const auto& v1 = c.getContainer();
+        const auto& v1 = c.getConstContainer();
         Collection<R_elem<double>> result(nullptr);
         for (auto i = 0; i < v1.size(); ++i) {
           double d2 = d * v1[i].elem;

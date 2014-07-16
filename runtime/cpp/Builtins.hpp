@@ -51,9 +51,9 @@ namespace K3 {
 
   F<F<string(const int&)>(const int&)> substring(const string& s);
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1);
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1);
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1);
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1);
   
   F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1);
   
@@ -61,7 +61,7 @@ namespace K3 {
 
   Collection<R_elem<double>> zero_vector(int n);
 
-  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> scalar_mult(const double& d);
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
   
   // ms
   int now(unit_t);
