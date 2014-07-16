@@ -660,14 +660,17 @@ unit_t uv_partition(unit_t _) {
 
 
         if (lower_date < u.visitDate && u.visitDate < upper_date) {
-          return modify_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> unit_t {
+          return insert_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
 
 
 
 
-            return insert_with<string, double>(v)(u.sourceIP)(0.0)([u] (double w) -> double {
+            insert_with<string, double>(v)(u.sourceIP)(0.0)([u] (double w) -> double {
                 return w + u.adRevenue;
             });
+
+            return v;
+
         });
         } else {
           return unit_t();
@@ -740,9 +743,9 @@ unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>
 
 
 
-    return modify_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> unit_t {
+  return insert_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
 
-        return up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
+        up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
 
 
 
@@ -750,7 +753,10 @@ unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>
             return insert_with<string, double>(v)(uc.key)(0.0)([] (double w) -> double {
                 return w + 0.0;
             });
+
         });
+
+        return v;
     });
 }
 
