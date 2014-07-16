@@ -169,8 +169,6 @@ namespace K3 {
      public:
       Map(Engine * e) : Super(e) {}
 
-      Map(const Map<E>& other) : Super(other)  {}
-
       Map(Map<E>& other) : Super(other)  {}
 
       Map(Super other) : Super(other) {}
