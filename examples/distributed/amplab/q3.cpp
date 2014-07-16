@@ -134,16 +134,16 @@ namespace K3 {
 }
 
 template <class K, class V>
-std::function<std::function<std::function<unit_t(std::function<const V&(const V&)>)>(const V&)>(const K&)>
+std::function<std::function<std::function<unit_t(std::function<V(const V&)>)>(const V&)>(const K&)>
 insert_with(_Map<R_key_value<K, V>>& m) {
   return [&] (const K& key) {
     return [&] (const V& value) {
-      return [&] (std::function<const V&(const V&)> f) {
-        shared_ptr<V> vp = lookup(m)(key);
-        if (vp != nullptr) {
-          m.insert(R_key_value<K, V> { key, f(*vp) });
+      return [&] (std::function<V(V)> f) {
+        shared_ptr<V> vp = lookup<K, V>(m)(key);
+        if (vp) {
+          m.insert(R_key_value<K, V> { key, f(*vp)});
         } else {
-          m.insert(R_key_value<K, V> { key, f(value) });
+          m.insert(R_key_value<K, V> { key, f(value)});
         }
 
         return unit_t();
