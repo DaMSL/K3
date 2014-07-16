@@ -24,6 +24,10 @@ using std::end;
 
 
 
+int start_ms;
+int end_ms;
+int elapsed_ms;
+
 using K3::Collection;
 
 template <class _T0,class _T1> class R_pageRank_count_pageRank_total;
@@ -1160,6 +1164,7 @@ int ready_received = 0;
 unit_t ready(unit_t _) {
   ready_received += 1;
   if (ready_received == peer_count) {
+    start_ms = now(unit_t());
     peers.iterate([] (R_addr<Address> r) {
         auto d = make_shared<DispatcherImpl<unit_t>>(uv_partition,unit_t());
         auto e = make_shared<DispatcherImpl<unit_t>>(rk_partition,unit_t());
@@ -1189,6 +1194,12 @@ int done_received = 0;
 unit_t done(unit_t _) {
   done_received += 1;
   if (done_received == peer_count) {
+    end_ms = now(unit_t());
+    elapsed_ms = end_ms - start_ms;
+    printLine("time:" + itos(elapsed_ms));
+    
+    string res = "{" + ("sourceIP:" + max_result.sourceIP + "," + "adRevenue_total:" + to_string(max_result.adRevenue_total) + "," + "pageRank_avg:" + to_string(max_result.pageRank_avg) + "}");
+    printLine(res);
     auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
     peers.iterate([&d] (R_addr<Address> r) { engine.send(r.addr,14,d); return unit_t {}; });
   }
