@@ -818,7 +818,7 @@ unit_t do_groupBy(unit_t _) {
 
 
 
-            __1 = lookup<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>(rk_candidates)(uc.key);
+            __1 = lookup<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(uc.key);
             if (__1) {
                 R_pageRank_count_pageRank_total<double, double> r;
                 r = *__1;rk = r;
