@@ -1,6 +1,7 @@
 #define MAIN_PROGRAM
 
 #include <functional>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -382,16 +383,15 @@ string role;
 
 F<unit_t(_Seq<R_elem<string>>&)>stringLoader(string filepath){
     F<unit_t(_Seq<R_elem<string>>&)> r = [filepath] (_Seq<R_elem<string>> & c){
-        R_elem<string> rec;
-        strtk::for_each_line(filepath,
-        [&](const std::string& str){
-            if (strtk::parse(str,",",rec.elem)){
-                c.insert(rec);
-            }
-            else{
-                std::cout << "Failed to parse a row" << std::endl;
-            }
-        });
+        std::ifstream infile(filepath);
+        std::string line;
+        while (std::getline(infile, line))
+        {
+        
+          R_elem<string> rec;
+          rec.elem = line;
+          c.insert(rec);
+        }
         return unit_t();
     };
     return r;
@@ -542,7 +542,7 @@ unit_t aggregate(_Map<R_key_value<string, int>> newVals) {
         elapsed_ms = end_ms - start_ms;
         
         
-        printLine(itos(elapsed_ms));
+        printLine("time:" + itos(elapsed_ms));
         
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             
@@ -676,13 +676,6 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(url_count));
-    result["inputData"] = ([] (_Seq<R_elem<string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_elem<string> elem) {oss << "{" + ("elem:" + elem.elem + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(inputData));
     result["file_name"] = file_name;
     result["elapsed_ms"] = to_string(elapsed_ms);
     result["end_ms"] = to_string(end_ms);
