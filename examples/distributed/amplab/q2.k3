@@ -16,7 +16,8 @@ declare dataLoader : string -> collection {
 
 // Constants
 declare master: address = 127.0.0.1:40000
-declare peer_by_hash: string -> address
+declare index_by_hash: string -> int
+declare peer_by_index: int -> address
 declare x: mut int = 3
 declare num_peers: int = 2
 declare data_file : string = "/k3/data/amplab/rankings_10.k3"
@@ -46,30 +47,31 @@ declare start_ms : mut int = 0
 declare end_ms : mut int = 0
 declare elapsed_ms : mut int = 0
 
+declare agg_vals : mut collection {key:string, value:real} @ {Map}
+declare peer_aggs : mut collection {key: int, value:
+                   collection {key: string, value: real} @ {Map}
+                   } @ {Map}
+
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 trigger q2_local : () = \_ -> (
-  let agg_vals =
+  agg_vals =
     local_uservisits.groupBy
       (\r -> substring r.sourceIP 0 x) //TODO index by 0 or 1?
       (\acc -> \r ->
         acc + r.adRevenue)
-      0.0
-  in
+      0.0;
   // Group by destination peer address
-  let peer_aggs =
-    agg_vals.groupby
-      (\v -> peer_by_hash v.key)
-      (\acc -> \v -> acc.insert(v))
-      empty {key: address, value:
-              collection {key: string, value: real} @ {Map}} @ {Map}
-  in 
-  peers.iterate (\p ->
-    // If peer doesn't have any messages, send an empty collection
-    case lookup peer_aggs p.addr of
-    { Some x -> (aggregate, p.addr) <- x }
-    { None   -> (aggregate, p.addr) <- empty {key: string, value: real} @ {Map}}
-  )
+  peer_aggs =
+    agg_vals.groupBy
+      (\v -> index_by_hash v.key)
+      (\acc -> \v -> acc.insert(v); acc)
+      (empty {key: string, value: real} @ {Map});
+  // Send punctuation: we're done
+  peer_aggs.iterate (\v ->
+    (aggregate, peer_by_index v.key) <- v.value
+  );
+  peers.iterate(\p -> (peer_barrier, p.addr) <- ())
 )
 
 declare merge_results: collection { key: string, value: real } @ { Map } -> () = \vals -> (
@@ -81,7 +83,10 @@ declare merge_results: collection { key: string, value: real } @ { Map } -> () =
 )
 
 trigger aggregate : collection { key: string, value: real } @ {Map} = \vals -> (
-  merge_results vals;
+  merge_results vals
+)
+
+trigger peer_barrier : () = \_ -> (
   peers_finished = peers_finished + 1;
   if peers_finished == num_peers
   then (master_done, master) <- ()

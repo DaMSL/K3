@@ -14,6 +14,7 @@
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
+#include "Builtins.hpp"
 
 using namespace std;
 using namespace K3;
@@ -23,7 +24,7 @@ using std::end;
 
 
 
-Engine engine = Engine();
+
 
 using K3::Collection;
 
@@ -55,27 +56,31 @@ unit_t ready(unit_t);
 
 unit_t shutdown_(unit_t);
 
+unit_t master_done(unit_t);
+
+unit_t peer_barrier(unit_t);
+
 unit_t aggregate(_Map<R_key_value<string, double>>);
 
-unit_t q2_local(unit_t);
-
 unit_t merge_results(_Map<R_key_value<string, double>>);
+
+unit_t q2_local(unit_t);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-
+        
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-
+        
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-
+        
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-
+            
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-
+    
 };
 namespace K3 {
     template <class E>
@@ -90,17 +95,17 @@ template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
         _Map(): K3::Map<CONTENT>(&engine) {}
-
+        
         _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-
+        
         _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-
+        
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-
+            
             _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
         }
-
+    
 };
 namespace K3 {
     template <class E>
@@ -143,7 +148,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
             _archive & sourceIP;
             _archive & userAgent;
             _archive & visitDate;
-
+            
         }
         _T0 adRevenue;
         _T1 countryCode;
@@ -155,7 +160,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
         _T7 userAgent;
         _T8 visitDate;
 };
-#endif
+#endif // K3_R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate
 namespace K3 {
     template <class _T0,class _T1,class _T2,class _T3,class _T4,class _T5,class _T6,class _T7,class _T8>
     struct patcher<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8>> {
@@ -180,14 +185,14 @@ namespace K3 {
                                                                                                                                               ,r.userAgent);})];
             qi::rule<string::iterator, qi::space_type> _visitDate = (qi::lit("visitDate") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
                                                                                                                                               ,r.visitDate);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue |
-            _countryCode |
-            _destURL |
-            _duration |
-            _languageCode |
-            _searchWord |
-            _sourceIP |
-            _userAgent |
+            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | 
+            _countryCode | 
+            _destURL | 
+            _duration | 
+            _languageCode | 
+            _searchWord | 
+            _sourceIP | 
+            _userAgent | 
             _visitDate;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
@@ -211,11 +216,11 @@ class R_addr {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-
+            
         }
         _T0 addr;
 };
-#endif
+#endif // K3_R_addr
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -246,11 +251,11 @@ class R_arg {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-
+            
         }
         _T0 arg;
 };
-#endif
+#endif // K3_R_arg
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -282,12 +287,12 @@ class R_key_value {
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-
+            
         }
         _T0 key;
         _T1 value;
 };
-#endif
+#endif // K3_R_key_value
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -304,7 +309,9 @@ namespace K3 {
     };
 }
 
-#include "Builtins.hpp"
+
+
+
 
 
 
@@ -350,12 +357,23 @@ tuple<_Collection<R_arg<string>>, _Collection<R_key_value<string, string>>> args
 
 string role;
 
-F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)>dataLoader(string filepath){
-    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> & c){
+int index_by_hash(const string& s) {
+  auto& container = peers.getContainer();
+  size_t h = std::hash<string>()(s); 
+  return h % container.size();
+}
+
+Address peer_by_index(const int i) {
+  auto& container = peers.getContainer();
+  return container[i].addr;
+}
+
+F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)>dataLoader(string filepath){
+    F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)> r = [filepath] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> & c){
         R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.sourceIP,rec.destURL,rec.visitDate,rec.adRevenue,rec.userAgent,rec.countryCode,rec.languageCode,rec.searchWord,rec.duration)){
+            if (strtk::parse(str,",",rec.adRevenue,rec.countryCode,rec.destURL,rec.duration,rec.languageCode,rec.searchWord,rec.sourceIP,rec.userAgent,rec.visitDate)){
                 c.insert(rec);
             }
             else{
@@ -369,6 +387,10 @@ F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_se
 
 Address master;
 
+
+
+
+
 int x;
 
 int num_peers;
@@ -378,6 +400,8 @@ string data_file;
 int peers_ready;
 
 int peers_finished;
+
+int master_peers_finished;
 
 _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> local_uservisits;
 
@@ -389,89 +413,134 @@ int end_ms;
 
 int elapsed_ms;
 
-unit_t merge_results(_Map<R_key_value<string, double>> m) {
-  m.iterate(
-    [] (const R_key_value<string, double>& v) -> unit_t {
-      shared_ptr<double> pa = lookup<R_key_value<string, double>>(local_q2_results)(v.key);
-      if (pa != nullptr) {
-        local_q2_results.insert(R_key_value<string, double> { v.key, *pa + v.value });
-      } else {
-        local_q2_results.insert(v);
-      }
+_Map<R_key_value<string, double>> agg_vals;
 
-      return unit_t();
-    }
-  );
-
-  return unit_t();
-}
+_Map<R_key_value<int, _Map<R_key_value<string, double>>>> peer_aggs;
 
 unit_t q2_local(unit_t _) {
-    {
-        _Map<R_key_value<string, double>> agg_vals;
+    
+    
+    
+    
+    agg_vals = local_uservisits.groupBy<string, double>([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> string {
+        
+        
+        
+        return substring(r.sourceIP)(0)(x);
+    })([] (double acc) -> std::function<double(R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>)> {
+        
+        return [acc] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> double {
+            return acc + r.adRevenue;
+        };
+    })(0.0);
+    
+    
+    
+    
+    peer_aggs = agg_vals.groupBy<int, _Map<R_key_value<string, double>>>([] (R_key_value<string, double> v) -> int {
+        
+        return index_by_hash(v.key);
+    })([] (_Map<R_key_value<string, double>> acc) -> std::function<_Map<R_key_value<string, double>>(R_key_value<string, double>)> {
+        return [acc] (R_key_value<string, double> v) mutable -> _Map<R_key_value<string, double>> {
+            
+            acc.insert(v); return acc;
+        };
+    })(_Map<R_key_value<string, double>>());
+    
+    peer_aggs.iterate([] (R_key_value<int, _Map<R_key_value<string, double>>> v) -> unit_t {
+        
+        
+        
+        
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate,v.value);
+        engine.send(peer_by_index(v.key),5,d);return unit_t();
+    });
+    
+    return peers.iterate([] (R_addr<Address> p) -> unit_t {
+        
+        
+        
+        auto d = make_shared<DispatcherImpl<unit_t>>(peer_barrier,unit_t());
+        engine.send(p.addr,4,d);return unit_t();
+    });
+}
 
-
-
-
-        agg_vals = local_uservisits.groupBy<string, double>([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> string {
-
-
-
-            return substring(r.sourceIP)(0)(x);
-        })([] (double acc) -> std::function<double(R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>)> {
-
-            return [acc] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> double {
-                return acc + r.adRevenue;
-            };
-        })(0.0);
-
-
-
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate,agg_vals);
-        engine.send(master,3,d);return unit_t();
-    }
+unit_t merge_results(_Map<R_key_value<string, double>> vals) {
+    
+    return vals.iterate([] (R_key_value<string, double> v) -> unit_t {
+        std::shared_ptr<double> __0;
+        
+        
+        __0 = lookup<string, double>(local_q2_results)(v.key);
+        if (__0) {
+            double a;
+            a = *__0;
+            
+            return local_q2_results.insert(R_key_value<string, double>{v.key,a + v.value});
+        } else {
+            
+            return local_q2_results.insert(v);
+        }
+    });
 }
 
 unit_t aggregate(_Map<R_key_value<string, double>> vals) {
-  merge_results(vals);
-  peers_finished = peers_finished + 1;
-  if (peers_finished == num_peers) {
+    
+    return merge_results(vals);
+}
 
-    end_ms = now(unit_t());
-    elapsed_ms = end_ms - start_ms;
+unit_t peer_barrier(unit_t _) {
+    peers_finished = peers_finished + 1;
+    if (peers_finished == num_peers) {
+        
+        
+        
+        auto d = make_shared<DispatcherImpl<unit_t>>(master_done,unit_t());
+        engine.send(master,3,d);return unit_t();
+    } else {
+        return unit_t();
+    }
+}
 
-
-    printLine(itos(elapsed_ms));
-
-    return peers.iterate([] (R_addr<Address> p) -> unit_t {
-
-
-
-        auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
-        engine.send(p.addr,2,d);return unit_t();
-      });
-  } else {
-    return unit_t();
-  }
+unit_t master_done(unit_t _) {
+    master_peers_finished = master_peers_finished + 1;
+    if (master_peers_finished == num_peers) {
+        
+        end_ms = now(unit_t());
+        elapsed_ms = end_ms - start_ms;
+        
+        
+        printLine(itos(elapsed_ms));
+        
+        return peers.iterate([] (R_addr<Address> p) -> unit_t {
+            
+            
+            
+            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+            engine.send(p.addr,2,d);return unit_t();
+        });
+    } else {
+        return unit_t();
+    }
 }
 
 unit_t shutdown_(unit_t _) {
-
+    
     return haltEngine(unit_t());
 }
 
 unit_t ready(unit_t _) {
     peers_ready = peers_ready + 1;
     if (peers_ready == num_peers) {
-
+        
         start_ms = now(unit_t());
-
+        
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-
-
-
+            
+            
+            
             auto d = make_shared<DispatcherImpl<unit_t>>(q2_local,unit_t());
-            engine.send(p.addr,4,d);return unit_t();
+            engine.send(p.addr,6,d);return unit_t();
         });
     } else {
         return unit_t();
@@ -479,12 +548,12 @@ unit_t ready(unit_t _) {
 }
 
 unit_t load_all(unit_t _) {
-
-
+    
+    
     dataLoader(data_file)(local_uservisits);
-
-
-
+    
+    
+    
     auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
 }
@@ -492,11 +561,11 @@ unit_t load_all(unit_t _) {
 
 
 unit_t rowsProcess(unit_t _) {
-
+    
     return [] (unit_t next) -> unit_t {
-
-
-
+        
+        
+        
         auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
@@ -508,7 +577,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("rows")) {
-
+        
         return rowsProcess(unit_t());
     } else {
         return unit_t();
@@ -516,9 +585,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-
+    
     initDecls(unit_t());
-
+    
     return processRole(unit_t());
 }
 
@@ -527,23 +596,45 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-
+    
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
     data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
-    start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
+    master_peers_finished = 0;start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(5);
+    dispatch_table.resize(7);
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q2_local), "q2_local");
+    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(master_done), "master_done");
+    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(peer_barrier), "peer_barrier");
+    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q2_local), "q2_local");
 }
 
 map<string,string> show_globals() {
     map<string,string> result;
+    result["peer_aggs"] = ([] (_Map<R_key_value<int, _Map<R_key_value<string, double>>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<int, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
+            ostringstream oss;
+            auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+            return unit_t();};
+            coll.iterate(f);
+            return "[" + oss.str() + "]";
+        }(elem.value)) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(peer_aggs));
+    result["agg_vals"] = ([] (_Map<R_key_value<string, double>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(agg_vals));
     result["elapsed_ms"] = to_string(elapsed_ms);
     result["end_ms"] = to_string(end_ms);
     result["start_ms"] = to_string(start_ms);
@@ -561,6 +652,7 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(local_uservisits));
+    result["master_peers_finished"] = to_string(master_peers_finished);
     result["peers_finished"] = to_string(peers_finished);
     result["peers_ready"] = to_string(peers_ready);
     result["data_file"] = data_file;
@@ -602,11 +694,14 @@ int main(int argc,char** argv) {
     if (opt.parse(argc,argv)) return 0;
     populate_dispatch();
     map<string,std::function<void(string)>> matchers;
+    matchers["peer_aggs"] = [] (string _s) {do_patch(_s,peer_aggs);};
+    matchers["agg_vals"] = [] (string _s) {do_patch(_s,agg_vals);};
     matchers["elapsed_ms"] = [] (string _s) {do_patch(_s,elapsed_ms);};
     matchers["end_ms"] = [] (string _s) {do_patch(_s,end_ms);};
     matchers["start_ms"] = [] (string _s) {do_patch(_s,start_ms);};
     matchers["local_q2_results"] = [] (string _s) {do_patch(_s,local_q2_results);};
     matchers["local_uservisits"] = [] (string _s) {do_patch(_s,local_uservisits);};
+    matchers["master_peers_finished"] = [] (string _s) {do_patch(_s,master_peers_finished);};
     matchers["peers_finished"] = [] (string _s) {do_patch(_s,peers_finished);};
     matchers["peers_ready"] = [] (string _s) {do_patch(_s,peers_ready);};
     matchers["data_file"] = [] (string _s) {do_patch(_s,data_file);};
