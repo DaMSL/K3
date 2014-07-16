@@ -1,10 +1,11 @@
 #define MAIN_PROGRAM
 
 #include <functional>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <regex>
+#include <boost/regex.hpp>
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
 
@@ -382,16 +383,15 @@ string role;
 
 F<unit_t(_Seq<R_elem<string>>&)>stringLoader(string filepath){
     F<unit_t(_Seq<R_elem<string>>&)> r = [filepath] (_Seq<R_elem<string>> & c){
-        R_elem<string> rec;
-        strtk::for_each_line(filepath,
-        [&](const std::string& str){
-            if (strtk::parse(str,",",rec.elem)){
-                c.insert(rec);
-            }
-            else{
-                std::cout << "Failed to parse a row" << std::endl;
-            }
-        });
+        std::ifstream infile(filepath);
+        std::string line;
+        while (std::getline(infile, line))
+        {
+        
+          R_elem<string> rec;
+          rec.elem = line;
+          c.insert(rec);
+        }
         return unit_t();
     };
     return r;
@@ -427,8 +427,8 @@ string cur_page;
 
 _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial;
 
-std::regex regex_query("(https?://[^\\s]+)");
-std::smatch regex_results;
+boost::regex regex_query("(https?://[^\\s]+)");
+boost::smatch regex_results;
 
 unit_t get_line(string line) {
     {
@@ -459,7 +459,7 @@ unit_t get_line(string line) {
           return unit_t();
         }
             
-        regex_search(line, regex_results, regex_query, std::regex_constants::match_any);
+        regex_search(line, regex_results, regex_query, boost::regex_constants::match_default);
 
         for (int i=1; i<regex_results.size(); i++) {
           string s = regex_results[i];
@@ -542,7 +542,7 @@ unit_t aggregate(_Map<R_key_value<string, int>> newVals) {
         elapsed_ms = end_ms - start_ms;
         
         
-        printLine(itos(elapsed_ms));
+        printLine("time:" + itos(elapsed_ms));
         
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             
@@ -676,13 +676,6 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(url_count));
-    result["inputData"] = ([] (_Seq<R_elem<string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_elem<string> elem) {oss << "{" + ("elem:" + elem.elem + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(inputData));
     result["file_name"] = file_name;
     result["elapsed_ms"] = to_string(elapsed_ms);
     result["end_ms"] = to_string(end_ms);
