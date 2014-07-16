@@ -6,8 +6,6 @@
 #include <string>
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
-#include <boost/serialization/list.hpp>
-#include <boost/serialization/vector.hpp>
 
 #include "Collections.hpp"
 #include "Common.hpp"
@@ -29,17 +27,25 @@ Engine engine = Engine();
 
 using K3::Collection;
 
+template <class _T0> class R_value;
+
+template <class _T0> class R_mean;
 
 template <class _T0,class _T1> class R_key_value;
 
+template <class _T0> class R_key;
 
 template <class _T0> class R_elem;
+
+template <class _T0,class _T1> class R_distance_mean;
 
 template <class _T0,class _T1> class R_count_sum;
 
 template <class _T0> class R_arg;
 
 template <class _T0> class R_addr;
+
+template <class CONTENT> class _Map;
 
 template <class CONTENT> class _Collection;
 
@@ -63,37 +69,62 @@ unit_t ready(unit_t);
 
 unit_t maximize(unit_t);
 
-unit_t aggregate(_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
+unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
 unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>>);
 
 std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>>);
 
-unit_t print_means(unit_t);
+unit_t print_results(unit_t);
 
-unit_t foo(unit_t);
+unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-        
+
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-        
+
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
     struct patcher<_Collection<E>> {
         static void patch(string s,_Collection<E>& c) {
             collection_patcher<_Collection,E>::patch(s,c);
+        }
+    };
+}
+
+template <class CONTENT>
+class _Map: public K3::Map<CONTENT> {
+    public:
+        _Map(): K3::Map<CONTENT>(&engine) {}
+
+        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
+
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
+
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+
+};
+namespace K3 {
+    template <class E>
+    struct patcher<_Map<E>> {
+        static void patch(string s,_Map<E>& c) {
+            collection_patcher<_Map,E>::patch(s,c);
         }
     };
 }
@@ -114,11 +145,11 @@ class R_addr {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-            
+
         }
         _T0 addr;
 };
-#endif K3_R_addr
+#endif // K3_R_addr
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -149,11 +180,11 @@ class R_arg {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-            
+
         }
         _T0 arg;
 };
-#endif K3_R_arg
+#endif // K3_R_arg
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -185,12 +216,12 @@ class R_count_sum {
         void serialize(archive& _archive,const unsigned int) {
             _archive & count;
             _archive & sum;
-            
+
         }
         _T0 count;
         _T1 sum;
 };
-#endif K3_R_count_sum
+#endif // K3_R_count_sum
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_count_sum<_T0, _T1>> {
@@ -201,6 +232,45 @@ namespace K3 {
             qi::rule<string::iterator, qi::space_type> _sum = (qi::lit("sum") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
                                                                                                                                   ,r.sum);})];
             qi::rule<string::iterator, qi::space_type> _field = _count | _sum;
+            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
+            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
+        }
+    };
+}
+
+#ifndef K3_R_distance_mean
+#define K3_R_distance_mean
+template <class _T0,class _T1>
+class R_distance_mean {
+    public:
+        R_distance_mean() {}
+        R_distance_mean(_T0 _distance,_T1 _mean): distance(_distance), mean(_mean) {}
+        R_distance_mean(const R_distance_mean<_T0, _T1>& _r): distance(_r.distance), mean(_r.mean) {}
+        bool operator==(R_distance_mean _r) {
+            if (distance == _r.distance&& mean == _r.mean)
+                return true;
+            return false;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & distance;
+            _archive & mean;
+
+        }
+        _T0 distance;
+        _T1 mean;
+};
+#endif // K3_R_distance_mean
+namespace K3 {
+    template <class _T0,class _T1>
+    struct patcher<R_distance_mean<_T0, _T1>> {
+        static void patch(string s,R_distance_mean<_T0, _T1>& r) {
+            shallow<string::iterator> _shallow;;
+            qi::rule<string::iterator, qi::space_type> _distance = (qi::lit("distance") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                            ,r.distance);})];
+            qi::rule<string::iterator, qi::space_type> _mean = (qi::lit("mean") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                    ,r.mean);})];
+            qi::rule<string::iterator, qi::space_type> _field = _distance | _mean;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
         }
@@ -223,11 +293,11 @@ class R_elem {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & elem;
-            
+
         }
         _T0 elem;
 };
-#endif K3_R_elem
+#endif // K3_R_elem
 namespace K3 {
     template <class _T0>
     struct patcher<R_elem<_T0>> {
@@ -242,6 +312,40 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_key
+#define K3_R_key
+template <class _T0>
+class R_key {
+    public:
+        R_key() {}
+        R_key(_T0 _key): key(_key) {}
+        R_key(const R_key<_T0>& _r): key(_r.key) {}
+        bool operator==(R_key _r) {
+            if (key == _r.key)
+                return true;
+            return false;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & key;
+
+        }
+        _T0 key;
+};
+#endif // K3_R_key
+namespace K3 {
+    template <class _T0>
+    struct patcher<R_key<_T0>> {
+        static void patch(string s,R_key<_T0>& r) {
+            shallow<string::iterator> _shallow;;
+            qi::rule<string::iterator, qi::space_type> _key = (qi::lit("key") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                  ,r.key);})];
+            qi::rule<string::iterator, qi::space_type> _field = _key;
+            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
+            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
+        }
+    };
+}
 
 #ifndef K3_R_key_value
 #define K3_R_key_value
@@ -260,12 +364,12 @@ class R_key_value {
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-            
+
         }
         _T0 key;
         _T1 value;
 };
-#endif K3_R_key_value
+#endif // K3_R_key_value
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -282,8 +386,83 @@ namespace K3 {
     };
 }
 
+#ifndef K3_R_mean
+#define K3_R_mean
+template <class _T0>
+class R_mean {
+    public:
+        R_mean() {}
+        R_mean(_T0 _mean): mean(_mean) {}
+        R_mean(const R_mean<_T0>& _r): mean(_r.mean) {}
+        bool operator==(R_mean _r) {
+            if (mean == _r.mean)
+                return true;
+            return false;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & mean;
+
+        }
+        _T0 mean;
+};
+#endif // K3_R_mean
+namespace K3 {
+    template <class _T0>
+    struct patcher<R_mean<_T0>> {
+        static void patch(string s,R_mean<_T0>& r) {
+            shallow<string::iterator> _shallow;;
+            qi::rule<string::iterator, qi::space_type> _mean = (qi::lit("mean") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                    ,r.mean);})];
+            qi::rule<string::iterator, qi::space_type> _field = _mean;
+            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
+            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
+        }
+    };
+}
+
+#ifndef K3_R_value
+#define K3_R_value
+template <class _T0>
+class R_value {
+    public:
+        R_value() {}
+        R_value(_T0 _value): value(_value) {}
+        R_value(const R_value<_T0>& _r): value(_r.value) {}
+        bool operator==(R_value _r) {
+            if (value == _r.value)
+                return true;
+            return false;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & value;
+
+        }
+        _T0 value;
+};
+#endif // K3_R_value
+namespace K3 {
+    template <class _T0>
+    struct patcher<R_value<_T0>> {
+        static void patch(string s,R_value<_T0>& r) {
+            shallow<string::iterator> _shallow;;
+            qi::rule<string::iterator, qi::space_type> _value = (qi::lit("value") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
+                                                                                                                                      ,r.value);})];
+            qi::rule<string::iterator, qi::space_type> _field = _value;
+            qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
+            qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
+        }
+    };
+}
 
 #include "Builtins.hpp"
+
+
+
+
+
+
 
 
 
@@ -351,6 +530,12 @@ int iterations_remaining;
 
 int requests;
 
+int start_ms;
+
+int end_ms;
+
+int elapsed_ms;
+
 F<unit_t(K3::Collection<R_elem<_Collection<R_elem<double>>>>&)>LoaderVector(string filepath){
     F<unit_t(K3::Collection<R_elem<_Collection<R_elem<double>>>>&)> r = [filepath] (K3::Collection<R_elem<_Collection<R_elem<double>>>> & c){
         std::string line;
@@ -376,55 +561,90 @@ F<unit_t(K3::Collection<R_elem<_Collection<R_elem<double>>>>&)>LoaderVector(stri
 
 _Collection<R_key_value<int, _Collection<R_elem<double>>>> means;
 
-_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> aggregates;
+_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> aggregates;
 
 _Collection<R_elem<_Collection<R_elem<double>>>> data;
 
-unit_t foo(unit_t _) {
-    return unit_t();
+unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> vals) {
+
+
+    return vals.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> v) -> unit_t {
+        std::shared_ptr<R_count_sum<int, _Collection<R_elem<double>>>> __0;
+
+
+        __0 = lookup<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>(aggregates)(v.key);
+        if (__0) {
+            R_count_sum<int, _Collection<R_elem<double>>> a;
+            a = *__0;
+
+
+
+
+
+            return aggregates.insert(R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>{v.key,
+            R_count_sum<int, _Collection<R_elem<double>>>{v.value.count + a.count,
+            vector_add(v.value.sum)(a.sum)}});
+        } else {
+
+            return aggregates.insert(v);
+        }
+    });
 }
 
-unit_t print_means(unit_t _) {
-    
+unit_t print_results(unit_t _) {
+
     return means.iterate([] (R_key_value<int, _Collection<R_elem<double>>> m) -> unit_t {
-        
+
+        end_ms = now(unit_t());
+        elapsed_ms = end_ms - start_ms;
+
         printLine(string("Mean: "));
-        
-        return m.value.iterate([] (R_elem<double> p) -> unit_t {
-            
-            
+
+        m.value.iterate([] (R_elem<double> p) -> unit_t {
+
+
             return printLine(rtos(p.elem));
         });
+
+
+        return printLine(itos(elapsed_ms));
     });
 }
 
 std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>> p) {
     return [p] (_Collection<R_key_value<int, _Collection<R_elem<double>>>> means) -> int {
-        std::shared_ptr<R_key_value<int, _Collection<R_elem<double>>>> __0;
-        
-        __0 = means.peek(unit_t());
-        if (__0) {
+        std::shared_ptr<R_key_value<int, _Collection<R_elem<double>>>> __1;
+
+        __1 = means.peek(unit_t());
+        if (__1) {
             R_key_value<int, _Collection<R_elem<double>>> first_mean;
-            first_mean = *__0;{
-                R_key_value<int,_Collection<R_elem<double>>> nearest;
-                
-                
-                
-                nearest = means.fold<R_key_value<int,_Collection<R_elem<double>>>>([p] (R_key_value<int,_Collection<R_elem<double>>> acc) -> std::function<R_key_value<int,_Collection<R_elem<double>>>(R_key_value<int,_Collection<R_elem<double>>>)> {
+            first_mean = *__1;{
+                R_mean<R_key<int>> nearest;
+
+
+
+
+
+
+                nearest = means.fold<R_distance_mean<double, R_value<_Collection<R_elem<double>>>>>([p] (R_distance_mean<double, R_value<_Collection<R_elem<double>>>> acc) -> std::function<R_distance_mean<double, R_value<_Collection<R_elem<double>>>>(R_value<_Collection<R_elem<double>>>)> {
                     return [p
-                           ,acc] (R_key_value<int,_Collection<R_elem<double>>> next) -> R_key_value<int,_Collection<R_elem<double>>> {
-                        
-                        
-                        
-                        
-                        if (squared_distance(p)(next.value) < squared_distance(p)(acc.value)) {
-                            return next;
+                           ,acc] (R_value<_Collection<R_elem<double>>> next) -> R_distance_mean<double, R_value<_Collection<R_elem<double>>>> {
+
+
+                        if (squared_distance(p)(next.value) < acc.distance) {
+
+
+
+
+                            return R_distance_mean<double, R_value<_Collection<R_elem<double>>>>{squared_distance(p)(next.value),
+                            next};
                         } else {
                             return acc;
                         }
                     };
-                })(first_mean);
-                return nearest.key;
+                })(R_distance_mean<double, R_key_value<int, _Collection<R_elem<double>>>>{squared_distance(p)(first_mean.value),
+                first_mean});
+                return nearest.mean.key;
             }
         } else {
             return -1;
@@ -433,108 +653,83 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
 }
 
 unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current_means) {
-    
-    
-    
-    
-    
-    
-    
-    
-    auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
-                                                                                                                      ,data.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([current_means] (R_elem<_Collection<R_elem<double>>> p) -> int {
-                                                                                                                          
-                                                                                                                          
-                                                                                                                          
-                                                                                                                          return nearest_neighbor(p.elem)(current_means);
-                                                                                                                      })([] (R_count_sum<int, _Collection<R_elem<double>>> sc) -> std::function<R_count_sum<int, _Collection<R_elem<double>>>(R_elem<_Collection<R_elem<double>>>)> {
-                                                                                                                          
-                                                                                                                          return [sc] (R_elem<_Collection<R_elem<double>>> p) -> R_count_sum<int, _Collection<R_elem<double>>> {
-                                                                                                                              
-                                                                                                                              
-                                                                                                                              
-                                                                                                                              
-                                                                                                                              
-                                                                                                                              return R_count_sum<int, _Collection<R_elem<double>>>{sc.count + 1,
-                                                                                                                              vector_add(sc.sum)(p.elem)};
-                                                                                                                          };
-                                                                                                                      })(R_count_sum<int, _Collection<R_elem<double>>>{0,
-                                                                                                                      zero_vector(dimensionality)}));
+
+
+
+
+
+
+
+
+    auto d = make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
+                                                                                                               ,data.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([current_means] (R_elem<_Collection<R_elem<double>>> p) -> int {
+
+
+
+                                                                                                                   return nearest_neighbor(p.elem)(current_means);
+                                                                                                               })([] (R_count_sum<int, _Collection<R_elem<double>>> sc) -> std::function<R_count_sum<int, _Collection<R_elem<double>>>(R_elem<_Collection<R_elem<double>>>)> {
+
+                                                                                                                   return [sc] (R_elem<_Collection<R_elem<double>>> p) -> R_count_sum<int, _Collection<R_elem<double>>> {
+
+
+
+
+
+                                                                                                                       return R_count_sum<int, _Collection<R_elem<double>>>{sc.count + 1,
+                                                                                                                       vector_add(sc.sum)(p.elem)};
+                                                                                                                   };
+                                                                                                               })(R_count_sum<int, _Collection<R_elem<double>>>{0,
+                                                                                                               zero_vector(dimensionality)}));
     engine.send(master,5,d);return unit_t();
 }
 
-unit_t aggregate(_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> ags) {
-    {
-        _Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> combined;
-        
-        combined = aggregates.combine(ags);
-        {
-            _Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> new_ags;
-            
-            
-            
-            
-            
-            
-            new_ags = combined.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> ag) -> int {
-                return ag.key;
-            })([] (R_count_sum<int, _Collection<R_elem<double>>> acc) -> std::function<R_count_sum<int, _Collection<R_elem<double>>>(R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>)> {
-                
-                return [acc] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> ag) -> R_count_sum<int, _Collection<R_elem<double>>> {
-                    
-                    
-                    
-                    return R_count_sum<int, _Collection<R_elem<double>>>{acc.count + ag.value.count,
-                    vector_add(acc.sum)(ag.value.sum)};
-                };
-            })(R_count_sum<int, _Collection<R_elem<double>>>{0,zero_vector(dimensionality)});
-            aggregates = new_ags;
-            requests = requests - 1;
-            if (requests == 0) {
-                
-                
-                
-                auto d = make_shared<DispatcherImpl<unit_t>>(maximize,unit_t());
-                engine.send(master,4,d);return unit_t();
-            } else {
-                return unit_t();
-            }
-        }
+unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> ags) {
+
+    merge_results(ags);
+    requests = requests - 1;
+    if (requests == 0) {
+
+
+
+        auto d = make_shared<DispatcherImpl<unit_t>>(maximize,unit_t());
+        engine.send(master,4,d);return unit_t();
+    } else {
+        return unit_t();
     }
 }
 
 unit_t maximize(unit_t _) {
     means = _Collection<R_key_value<int, _Collection<R_elem<double>>>>();
-    
-    
+
+
     aggregates.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> x) -> unit_t {
-        
-        
-        
-        
+
+
+
+
         return means.insert(R_key_value<int, _Collection<R_elem<double>>>{x.key,
         scalar_mult(1.0 / x.value.count)(x.value.sum)});
     });
     iterations_remaining = iterations_remaining - 1;
     if (iterations_remaining == 0) {
-        
-        print_means(unit_t());
-        
+
+        print_results(unit_t());
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
+
+
+
             auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,1,d);return unit_t();
         });
     } else {
-        aggregates = _Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>();
-        
+        aggregates = _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>();
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             requests = requests + 1;
-            
-            
-            
+
+
+
             auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
                                                                                                             ,means);
             engine.send(p.addr,6,d);return unit_t();
@@ -545,9 +740,11 @@ unit_t maximize(unit_t _) {
 unit_t ready(unit_t _) {
     num_peers = num_peers - 1;
     if (num_peers == 0) {
-        
-        
-        
+
+        start_ms = now(unit_t());
+
+
+
         auto d = make_shared<DispatcherImpl<unit_t>>(start,unit_t());
         engine.send(master,2,d);return unit_t();
     } else {
@@ -558,26 +755,26 @@ unit_t ready(unit_t _) {
 unit_t start(unit_t _) {
     {
         int foo;
-        
-        
+
+
         foo = data.fold<int>([] (int a) -> std::function<int(R_elem<_Collection<R_elem<double>>>)> {
             return [a] (R_elem<_Collection<R_elem<double>>> p) -> int {
                 if (a == 0) {
                     return a;
                 } else {
-                    
-                    
+
+
                     means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
                     return a - 1;
                 }
             };
         })(k);
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             requests = requests + 1;
-            
-            
-            
+
+
+
             auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
                                                                                                             ,means);
             engine.send(p.addr,6,d);return unit_t();
@@ -586,17 +783,17 @@ unit_t start(unit_t _) {
 }
 
 unit_t shutdown_(unit_t _) {
-    
+
     return haltEngine(unit_t());
 }
 
 unit_t load_all(unit_t _) {
-    
-    
+
+
     LoaderVector(string("/Users/joshwheeler/foo.vector"))(data);
-    
-    
-    
+
+
+
     auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
     engine.send(master,3,d);return unit_t();
 }
@@ -604,11 +801,11 @@ unit_t load_all(unit_t _) {
 
 
 unit_t pointsProcess(unit_t _) {
-    
+
     return [] (unit_t next) -> unit_t {
-        
-        
-        
+
+
+
         auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
@@ -620,7 +817,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("points")) {
-        
+
         return pointsProcess(unit_t());
     } else {
         return unit_t();
@@ -628,9 +825,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-    
+
     initDecls(unit_t());
-    
+
     return processRole(unit_t());
 }
 
@@ -639,21 +836,20 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-    
+
     master = make_address(string("127.0.0.1"),40000);k = 1;dimensionality = 3;num_peers = 1;
     iterations_remaining = 10;requests = 0;return unit_t();
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(8);
+    dispatch_table.resize(7);
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(start), "start");
     dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
     dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(maximize), "maximize");
-    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
+    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
     dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign), "assign");
-    dispatch_table[7] = make_tuple(make_shared<DispatcherImpl<unit_t>>(foo), "foo");
 }
 
 map<string,string> show_globals() {
@@ -671,7 +867,7 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(data));
-    result["aggregates"] = ([] (_Collection<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
+    result["aggregates"] = ([] (_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
         ostringstream oss;
         auto f = [&] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
             ostringstream oss;
@@ -697,6 +893,9 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(means));
+    result["elapsed_ms"] = to_string(elapsed_ms);
+    result["end_ms"] = to_string(end_ms);
+    result["start_ms"] = to_string(start_ms);
     result["requests"] = to_string(requests);
     result["iterations_remaining"] = to_string(iterations_remaining);
     result["num_peers"] = to_string(num_peers);
@@ -741,6 +940,9 @@ int main(int argc,char** argv) {
     matchers["data"] = [] (string _s) {do_patch(_s,data);};
     matchers["aggregates"] = [] (string _s) {do_patch(_s,aggregates);};
     matchers["means"] = [] (string _s) {do_patch(_s,means);};
+    matchers["elapsed_ms"] = [] (string _s) {do_patch(_s,elapsed_ms);};
+    matchers["end_ms"] = [] (string _s) {do_patch(_s,end_ms);};
+    matchers["start_ms"] = [] (string _s) {do_patch(_s,start_ms);};
     matchers["requests"] = [] (string _s) {do_patch(_s,requests);};
     matchers["iterations_remaining"] = [] (string _s) {do_patch(_s,iterations_remaining);};
     matchers["num_peers"] = [] (string _s) {do_patch(_s,num_peers);};
