@@ -16,16 +16,13 @@
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
+#include "Builtins.hpp"
 
 using namespace std;
 using namespace K3;
 using namespace K3::BoostSerializer;
 using std::begin;
 using std::end;
-
-
-
-Engine engine = Engine();
 
 using K3::Collection;
 
@@ -331,7 +328,6 @@ namespace K3 {
     };
 }
 
-#include "Builtins.hpp"
 
 
 
@@ -430,7 +426,7 @@ _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial
 boost::regex regex_query("(https?://[^\\s]+)");
 boost::smatch regex_results;
 
-unit_t get_line(string line) {
+unit_t get_line(string& line) {
     {
         _Seq<R_elem<string>> sp;
         

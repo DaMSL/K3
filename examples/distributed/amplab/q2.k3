@@ -2,7 +2,6 @@ include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/CppBuiltins.k3"
 
-// Hack
 declare dataLoader : string -> collection {
     adRevenue: real,
     countryCode: string,
@@ -15,9 +14,9 @@ declare dataLoader : string -> collection {
     visitDate: string
     } @ { Collection } -> ()
 
-
 // Constants
 declare master: address = 127.0.0.1:40000
+declare peer_by_hash: string -> address
 declare x: mut int = 3
 declare num_peers: int = 2
 declare data_file : string = "/k3/data/amplab/rankings_10.k3"
@@ -25,6 +24,7 @@ declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 // Globals
 declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
+declare master_peers_finished: mut int = 0
 
 // Data
 declare local_uservisits: collection {
@@ -56,7 +56,20 @@ trigger q2_local : () = \_ -> (
         acc + r.adRevenue)
       0.0
   in
-  (aggregate, master) <- agg_vals
+  // Group by destination peer address
+  let peer_aggs =
+    agg_vals.groupby
+      (\v -> peer_by_hash v.key)
+      (\acc -> \v -> acc.insert(v))
+      empty {key: address, value:
+              collection {key: string, value: real} @ {Map}} @ {Map}
+  in 
+  peers.iterate (\p ->
+    // If peer doesn't have any messages, send an empty collection
+    case lookup peer_aggs p.addr of
+    { Some x -> (aggregate, p.addr) <- x }
+    { None   -> (aggregate, p.addr) <- empty {key: string, value: real} @ {Map}}
+  )
 )
 
 declare merge_results: collection { key: string, value: real } @ { Map } -> () = \vals -> (
@@ -71,12 +84,20 @@ trigger aggregate : collection { key: string, value: real } @ {Map} = \vals -> (
   merge_results vals;
   peers_finished = peers_finished + 1;
   if peers_finished == num_peers
+  then (master_done, master) <- ()
+  else ()
+)
+
+trigger master_done : () = \_ -> (
+  master_peers_finished = master_peers_finished + 1;
+  if master_peers_finished == num_peers
   then end_ms = now ();
        elapsed_ms = end_ms - start_ms;
        printLine (itos elapsed_ms);
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
+  
 
 trigger shutdown : () = \_ -> (
   haltEngine ()
