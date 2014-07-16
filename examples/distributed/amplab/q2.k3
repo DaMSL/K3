@@ -59,7 +59,7 @@ trigger q2_local : () = \_ -> (
   (aggregate, master) <- agg_vals
 )
 
-declare merge_results: collection { key: string, value: real } @ { Map } = \vals -> (
+declare merge_results: collection { key: string, value: real } @ { Map } -> () = \vals -> (
     vals.iterate (
         \v -> case lookup local_q2_results v.key of
             { Some a -> local_q2_results.insert { key: v.key, value: a + v.value } }
