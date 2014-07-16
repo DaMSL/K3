@@ -35,166 +35,43 @@ namespace K3 {
   //};
 
 
-  F<F<F<unit_t(string)>(string)>(string)> openBuiltin =
-    [] (string chan_id) {
-      return [=] (string builtin_chan_id) {
-        return [=] (string format) {
-          engine.openBuiltin(chan_id, builtin_chan_id);
-          return unit_t();
-        };
-      };
-    };
+  F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id);
 
-  F<F<F<F<unit_t(string)>(string)>(string)>(string)> openFile =
-    [] (string chan_id) {
-      return [=] (string path) {
-          return [=] (string fmt) {
-              return [=] (string mode) {
-                  IOMode iomode = engine.ioMode(mode);
-                  engine.openFile(chan_id, path, iomode);
-                  return unit_t();
-              };
-          };
-      };
-  };
+  F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id);
 
-  unit_t close(string chan_id) {
-      engine.close(chan_id);
-      return unit_t();
-  }
+  unit_t close(std::string chan_id);
 
-  unit_t printLine(string message) {
-    std::cout << message << endl;
-    return unit_t();
-  }
+  unit_t printLine(std::string message);
 
-  string itos(int i) {
-    return to_string(i);
-  }
+  std::string itos(int i);
 
-  string rtos(double d) {
-    return to_string(d);
-  }
+  std::string rtos(double d);
 
-  unit_t haltEngine(unit_t) {
-    engine.forceTerminateEngine();
-    return unit_t();
-  }
+  unit_t haltEngine(unit_t);
 
-  F<F<F<string(const int&)>(const int&)>(const string&)> substring = [] (const string& s) {
-      return [&] (const int& i) {
-            return [&] (const int& n) {
-                return s.substr(i,n);
-            };
-      };
-  };
+  F<F<string(const int&)>(const int&)> substring(const string& s);
 
+  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1);
 
-  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> vector_add =
-    [] (const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        vector<R_elem<double>> &v1 = c1.getContainer();
-        vector<R_elem<double>> &v2 = c2.getContainer();
-        Collection<R_elem<double>> result;
+  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1);
+  
+  F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1);
+  
+  F<double(const Collection<R_elem<double>>&)> squared_distance(const Collection<R_elem<double>>& c1);
 
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem + v2[i].elem;
-          R_elem<double> r(d);
-          result.insert(r);
-        }
+  Collection<R_elem<double>> zero_vector(int n);
 
-        return result;
-      };
-
-  };
-
-  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> vector_sub =
-    [] (const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        vector<R_elem<double>>& v1 = c1.getContainer();
-        vector<R_elem<double>>& v2 = c2.getContainer();
-        Collection<R_elem<double>> result;
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem - v2[i].elem;
-          R_elem<double> r(d);
-          result.insert(r);
-        }
-
-        return result;
-      };
-
-  };
-
-  F<F<double(const Collection<R_elem<double>>&)>(const Collection<R_elem<double>>&)> dot =
-    [] (const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        double ans = 0;
-        vector<R_elem<double>>& v1 = c1.getContainer();
-        vector<R_elem<double>>& v2 = c2.getContainer();
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem * v2[i].elem;
-          ans += d;
-        }
-
-        return ans;
-      };
-
-  };
-
-  F<F<double(const Collection<R_elem<double>>)>(const Collection<R_elem<double>>&)> squared_distance =
-    [] (const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        double ans = 0;
-        vector<R_elem<double>>& v1 = c1.getContainer();
-        vector<R_elem<double>>& v2 = c2.getContainer();
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem - v2[i].elem;
-          ans += d * d;
-        }
-
-        return ans;
-      };
-
-  };
-
-  Collection<R_elem<double>> zero_vector(int n) {
-    return Collection<R_elem<double>> c(n, 0);
-  }
-
-  F<F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)>(const double&)> scalar_mult =
-    [] (const double& d) {
-      return [&] (const Collection<R_elem<double>>& c) {
-        using namespace K3;
-        vector<R_elem<double>>& v1 = c.getContainer();
-        Collection<R_elem<double>> result;
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d2 = d * v1[i].elem;
-          R_elem<double> r(d2);
-          result.insert(r);
-        }
-
-        return result;
-      };
-
-  };
-
+  F<Collection<R_elem<double>>(Collection<R_elem<double>>&)> scalar_mult(const double& d);
+  
   // ms
-  int now(unit_t) {
-    auto t = std::chrono::system_clock::now();
-    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
-    return elapsed.count();
-  }
+  int now(unit_t);
 
   // Map-specific template function to look up
   template <class Key, class Value>
-  F<shared_ptr<Value>(const Key&)> lookup(const Map<R_key_value<Key, Value> >& map) {
+  F<shared_ptr<Value>(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
     return [&] (const Key& key) {
-      auto &container = map.getContainer();
-      auto it = container.find(key);
+      const auto &container(map.getContainer());
+      const auto it(container.find(key));
       if (it != container.end()) {
         return make_shared<Value>(it->second);
       } else {
@@ -205,12 +82,12 @@ namespace K3 {
 
   template <class E>
   F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>
-  insert_with(const Map<E>& map) {
+  insert_with(Map<E>& map) {
     return [&] (const typename E::KeyType& key) {
       return [&] (const typename E::ValueType& value) {
         return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
           auto &c = map.getContainer();
-          c.find(key);
+          auto it(c.find(key));
           if (it == map.end()) {
             map.insert(E(key, value));
           } else {
@@ -223,20 +100,9 @@ namespace K3 {
     };
   }
 
-  // Split a string by substrings
-  F<Seq<R_elem<string> >(const string&)> splitString(const string& s) {
-    return [&] (const string& splitter) {
-      std::vector<string> words;
-      boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
+  // Split a std::string by substrings
+  F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
 
-      // Transfer to R_elems
-      Seq<R_elem<string> > results(words.size());
-      for (const auto &elem : words) {
-        results.insert(elem);
-      }
-      return results;
-    };
-  }
 } // namespace K3
 
 #endif /* K3_RUNTIME_BUILTINS_H */

@@ -125,7 +125,7 @@ class StlDS {
     return container.size();
   }
 
- const Container<Elem>& getContainer() const { return container; }
+ Container<Elem>& getContainer() { return container; }
 
  Engine* getEngine() {return nullptr; }
  protected:
