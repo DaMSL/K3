@@ -750,8 +750,8 @@ unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>
 
 
 
-            return insert_with<string, double>(v)(uc.key)(0.0)([] (double w) -> double {
-                return w + 0.0;
+            return insert_with<string, double>(v)(uc.key)(0.0)([&uc] (double w) -> double {
+                return w + uc.value;
             });
 
         });
@@ -1031,6 +1031,9 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(rk_candidates));
+
+    result["lower_date"] = to_string(lower_date);
+    result["upper_date"] = to_string(upper_date);
     result["rk_received"] = to_string(rk_received);
     result["uv_received"] = to_string(uv_received);
     result["uv_candidates"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
@@ -1188,6 +1191,9 @@ int main(int argc,char** argv) {
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
     matchers["user_visits_file"] = [] (string _s) {do_patch(_s,user_visits_file);};
     matchers["rankings_file"] = [] (string _s) {do_patch(_s,rankings_file);};
+    matchers["lower_date"] = [] (string _s) {do_patch(_s,lower_date);};
+    matchers["upper_date"] = [] (string _s) {do_patch(_s,upper_date);};
+    
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);

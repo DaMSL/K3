@@ -1,0 +1,10 @@
+182.163.112.4,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,253843800,0.332717,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.2),BGR,BGR-BG,seismoscopic,10
+146.97.78.95,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,727056360,0.9109504,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.2),PRT,PRT-PT,hallmarks,3
+227.209.164.46,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,663465960,0.115967035,Mozilla/5.0 (iPhone; U; CPU like Mac OS X)AppleWebKit/420.1 (KHTML like Gecko) Version/3.0 Mobile/4A93Safari/419.3,YEM,YEM-AR,tetanolysin,1
+35.143.225.164,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,823046700,0.8792629,Mozilla/5.0 (Windows; U; Windows NT 5.2) AppleWebKit/525.13 (KHTML like Gecko) Chrome/0.2.149.27 Safari/525.13,PRT,PRT-PT,macrolecithal,8
+34.57.45.175,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,980726760,0.14202267,Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1),DOM,DOM-ES,Assidaean,7
+224.98.214.109,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,347760480,0.19020218,Opera/8.0 (Macintosh; PPC Mac OS X; U; en),LTU,LTU-LT,overhold,7
+145.79.170.187,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,695520660,0.973834,Mozilla/4.0 (compatible; MSIE 5.5; Windows 98; Win 9x 4.90),SLV,SLV-ES,blackband,3
+58.66.122.55,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,1263686580,0.52077913,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.2),ROU,ROU-RO,harmonicas,6
+50.210.132.5,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,160012860,0.65247667,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1),VEN,VEN-ES,oxidizes,7
+213.114.82.239,nbizrgdziebsaecsecujfjcqtvnpcnxxwiopmddorcxnlijdizgoi,1168300980,0.29073215,Netscape 2.02 (Win 95): Mozilla/2.02E (Win95; U),IND,IND-EN,two-pole,8
