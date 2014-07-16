@@ -66,17 +66,17 @@ unit_t do_global_groupBy(unit_t);
 
 unit_t global_group_receive(unit_t);
 
-unit_t global_group(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>);
+unit_t global_group(_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>);
 
 unit_t do_groupBy(unit_t);
 
 unit_t rk_partitions_received(unit_t);
 
-unit_t rk_partition_receive(R_key_value<string, R_pageRank_count_pageRank_total<double, double>>);
+unit_t rk_partition_receive(_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>);
 
 unit_t uv_partitions_received(unit_t);
 
-unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>>>);
+unit_t uv_partition_receive(_Map<R_key_value<string, _Map<R_key_value<string, double>>>>);
 
 unit_t rk_partition(unit_t);
 
@@ -621,14 +621,15 @@ time_t upper_date;
 int peer_count;
 
 
-Address peer_by_hash(const string& s) {
+size_t index_by_hash(const string& s) {
   auto& container = peers.getContainer();
-  size_t h = std::hash<string>()(s); 
-  return container[h % container.size()].addr;
+  size_t h = std::hash<string>()(s);
+  return h % container.size();
 }
 
-
-
+Address peer_by_index(size_t i) {
+  return peers.getContainer()[i].addr;
+}
 
 template <class v61,class v67>
 std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map<R_key_value<v61, v67>> c) {
@@ -657,18 +658,10 @@ _Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_partitions;
 
 unit_t uv_partition(unit_t _) {
 
-
     user_visits.iterate([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t> u) -> unit_t {
-
-
-
-
 
         if (lower_date < u.visitDate && u.visitDate < upper_date) {
           return insert_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
-
-
-
 
             insert_with<string, double>(v)(u.sourceIP)(0.0)([u] (double w) -> double {
                 return w + u.adRevenue;
@@ -682,15 +675,30 @@ unit_t uv_partition(unit_t _) {
         }
     });
 
-    uv_partitions.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> up) -> unit_t {
+    _Map<R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>> m;
+
+    m = uv_partitions.groupBy<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>([] (R_key_value<string, _Map<R_key_value<string, double>>> r) -> int {
+        return index_by_hash(r.key);
+      })([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> a) -> std::function<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>(R_key_value<string, _Map<R_key_value<string, double>>>)> {
+          return [a] (R_key_value<string, _Map<R_key_value<string, double>>> q) mutable {
+            a.insert(q);
+            return a;
+          };
+      })(_Map<R_key_value<string, _Map<R_key_value<string, double>>>> {});
+
+    m.iterate([] (const R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>> r) {
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>>>(uv_partition_receive ,r.value);
+        engine.send(peer_by_index(r.key),8,d);return unit_t();
+      });
+    // uv_partitions.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> up) -> unit_t {
 
 
 
 
-        auto d = make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive
-                                                                                                    ,up);
-        engine.send(peer_by_hash(up.key),8,d);return unit_t();
-    });
+    //     auto d = make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive
+    //                                                                                                 ,up);
+    //     engine.send(peer_by_hash(up.key),8,d);return unit_t();
+    // });
 
     return peers.iterate([] (R_addr<Address> a) -> unit_t {
 
@@ -721,20 +729,39 @@ unit_t rk_partition(unit_t _) {
     });
 
 
-    rk_partitions.iterate([] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) -> unit_t {
+    // rk_partitions.iterate([] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) -> unit_t {
+    //     auto d = make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive ,rp);
+    //     engine.send(peer_by_hash(rp.key),6,d);return unit_t();
+    // });
+
+    // Cluster partitions by peer index.
+    _Map<R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>> m;
+
+    auto key_fn = [] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> r) -> int {
+        return index_by_hash(r.key);
+    };
+
+    auto group_fn = [] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> a)
+      {
+        return [a] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> q) mutable -> _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>{
+          a.insert(q);
+          return a;
+        };
+    };
+    m = rk_partitions.groupBy<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>
+      (key_fn)
+      (group_fn)
+      (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> {});
+
+    // Send partitions out to peers.
+    m.iterate([] (R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>> q) {
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>>(rk_partition_receive,q.value);
+        engine.send(peer_by_index(q.key),6,d);return unit_t();
+      });
 
 
-
-
-        auto d = make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive
-                                                                                                                  ,rp);
-        engine.send(peer_by_hash(rp.key),6,d);return unit_t();
-    });
-
+    // Notify all peers that rk partitions have been sent out from this peer.
     return peers.iterate([] (R_addr<Address> a) -> unit_t {
-
-
-
         auto d = make_shared<DispatcherImpl<unit_t>>(rk_partitions_received,unit_t());
         engine.send(a.addr,5,d);return unit_t();
     });
@@ -742,27 +769,30 @@ unit_t rk_partition(unit_t _) {
 
 _Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_candidates;
 
-unit_t uv_partition_receive(R_key_value<string, _Map<R_key_value<string, double>>> up) {
+unit_t uv_partition_receive(_Map<R_key_value<string, _Map<R_key_value<string, double>>>> up) {
 
 
 
 
 
-  return insert_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
+  // return insert_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
 
-        up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
-
-
+  //       up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
 
 
-            return insert_with<string, double>(v)(uc.key)(0.0)([&uc] (double w) -> double {
-                return w + uc.value;
-            });
 
-        });
 
-        return v;
-    });
+  //           return insert_with<string, double>(v)(uc.key)(0.0)([&uc] (double w) -> double {
+  //               return w + uc.value;
+  //           });
+
+  //       });
+
+  //       return v;
+  //   })
+    // ;
+  uv_candidates = uv_candidates.combine(up);
+  return unit_t {};
 }
 
 int uv_received;
@@ -772,9 +802,6 @@ int rk_received;
 unit_t uv_partitions_received(unit_t _) {
     uv_received = uv_received + 1;
     if (uv_received == peer_count && rk_received == peer_count) {
-
-
-
         auto d = make_shared<DispatcherImpl<unit_t>>(do_groupBy,unit_t());
         engine.send(me,4,d);return unit_t();
     } else {
@@ -784,27 +811,19 @@ unit_t uv_partitions_received(unit_t _) {
 
 _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rk_candidates;
 
-unit_t rk_partition_receive(R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) {
-
-
-
-
-
-
-  return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(rp.key)(R_pageRank_count_pageRank_total<double, double>{0,
-    0})([rp] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
-
-        return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
-        v.pageRank_total + rp.value.pageRank_total};
-    });
+unit_t rk_partition_receive(_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rp) {
+  rk_candidates = rk_candidates.combine(rp);
+  // return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(rp.key)(R_pageRank_count_pageRank_total<double, double>{0,
+  //   0})([rp] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
+  //       return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
+  //       v.pageRank_total + rp.value.pageRank_total};
+  //   });
+  return unit_t {};
 }
 
 unit_t rk_partitions_received(unit_t _) {
     rk_received = rk_received + 1;
     if (uv_received == peer_count && rk_received == peer_count) {
-
-
-
         auto d = make_shared<DispatcherImpl<unit_t>>(do_groupBy,unit_t());
         engine.send(me,4,d);return unit_t();
     } else {
@@ -848,21 +867,32 @@ unit_t do_groupBy(unit_t _) {
         }
     });
 
+    _Map<R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>> m;
+    m = local_group.groupBy<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>
+      ([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) {
+        return index_by_hash(r.key);
+      })
+      ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> a) {
+        return [a] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> q) mutable {
+          a.insert(q);
+          return a;
+        };
+      })
+      (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> {});
 
-    local_group.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) -> unit_t {
-
-
-
-
-        auto d = make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group
-                                                                                                                                          ,g);
-        engine.send(peer_by_hash(g.key),3,d);return unit_t();
+    m.iterate([] (R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>> g) {
+        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>>(global_group ,g.value);
+        engine.send(peer_by_index(g.key),3,d);return unit_t();
     });
 
+    // local_group.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) -> unit_t {
+    //     auto d = make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group
+    //                                                                                                                                       ,g);
+    //     engine.send(peer_by_hash(g.key),3,d);return unit_t();
+    // });
+
+    // Notify all peers that local groupBy results have been sent out.
     return peers.iterate([] (R_addr<Address> p) -> unit_t {
-
-
-
         auto d = make_shared<DispatcherImpl<unit_t>>(global_group_receive,unit_t());
         engine.send(p.addr,2,d);return unit_t();
     });
@@ -870,9 +900,9 @@ unit_t do_groupBy(unit_t _) {
 
 _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> global_groups;
 
-unit_t global_group(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) {
-
-    return global_groups.insert(g);
+unit_t global_group(_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> g) {
+  global_groups = global_groups.combine(g);
+  return unit_t {};
 }
 
 int global_received;
@@ -896,13 +926,6 @@ unit_t do_global_groupBy(unit_t _) {
 
 
     global_groups.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) -> unit_t {
-
-
-
-
-
-
-
         return insert_with<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>(global_groupBy_result)(r.key)(R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{0.0,
         0.0,
         0.0})([r] (R_adRevenue_total_pageRank_count_pageRank_total<double, double, double> w) -> R_adRevenue_total_pageRank_count_pageRank_total<double, double, double> {
@@ -914,12 +937,6 @@ unit_t do_global_groupBy(unit_t _) {
             w.pageRank_total + r.value.pageRank_total};
         });
     });
-
-
-
-
-
-
 
     auto d = make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max
                                                                                                          ,global_groupBy_result.fold<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>([] (R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> a) -> std::function<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>)> {
@@ -997,12 +1014,12 @@ void populate_dispatch() {
     dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max), "global_max");
     dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_global_groupBy), "do_global_groupBy");
     dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(global_group_receive), "global_group_receive");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group), "global_group");
+    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>>(global_group), "global_group");
     dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(do_groupBy), "do_groupBy");
     dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partitions_received), "rk_partitions_received");
-    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive), "rk_partition_receive");
+    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>>(rk_partition_receive), "rk_partition_receive");
     dispatch_table[7] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partitions_received), "uv_partitions_received");
-    dispatch_table[8] = make_tuple(make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive), "uv_partition_receive");
+    dispatch_table[8] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>>>(uv_partition_receive), "uv_partition_receive");
     dispatch_table[9] = make_tuple(make_shared<DispatcherImpl<unit_t>>(rk_partition), "rk_partition");
     dispatch_table[10] = make_tuple(make_shared<DispatcherImpl<unit_t>>(uv_partition), "uv_partition");
     dispatch_table[11] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
@@ -1014,115 +1031,115 @@ void populate_dispatch() {
 map<string,string> show_globals() {
     map<string,string> result;
     result["max_result"] = "{" + ("sourceIP:" + max_result.sourceIP + "," + "adRevenue_total:" + to_string(max_result.adRevenue_total) + "," + "pageRank_avg:" + to_string(max_result.pageRank_avg) + "}");
-    result["global_groupBy_result"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(global_groupBy_result));
-    result["global_received"] = to_string(global_received);
-    result["global_groups"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(global_groups));
-    result["local_group"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(local_group));
-    result["rk_candidates"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(rk_candidates));
+    // result["global_groupBy_result"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(global_groupBy_result));
+    // result["global_received"] = to_string(global_received);
+    // result["global_groups"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(global_groups));
+    // result["local_group"] = ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "," + "adRevenue_total:" + to_string(elem.value.adRevenue_total) + "}") + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(local_group));
+    // result["rk_candidates"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(rk_candidates));
 
-    result["lower_date"] = to_string(lower_date);
-    result["upper_date"] = to_string(upper_date);
-    result["rk_received"] = to_string(rk_received);
-    result["uv_received"] = to_string(uv_received);
-    result["uv_candidates"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
-            ostringstream oss;
-            auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
-            return unit_t();};
-            coll.iterate(f);
-            return "[" + oss.str() + "]";
-        }(elem.value)) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(uv_candidates));
-    result["rk_partitions"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(rk_partitions));
-    result["uv_partitions"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
-            ostringstream oss;
-            auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
-            return unit_t();};
-            coll.iterate(f);
-            return "[" + oss.str() + "]";
-        }(elem.value)) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(uv_partitions));
-    result["rankings"] = ([] (_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_avgDuration_pageRank_pageURL<int, int, string> elem) {oss << "{" + ("pageURL:" + elem.pageURL + "," + "pageRank:" + to_string(elem.pageRank) + "," + "avgDuration:" + to_string(elem.avgDuration) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(rankings));
-    result["user_visits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t> elem) {oss << "{" + ("sourceIP:" + elem.sourceIP + "," + "destURL:" + elem.destURL + "," + "visitDate:" + to_string(elem.visitDate) + "," + "adRevenue:" + to_string(elem.adRevenue) + "," + "userAgent:" + elem.userAgent + "," + "countryCode:" + elem.countryCode + "," + "languageCode:" + elem.languageCode + "," + "searchWord:" + elem.searchWord + "," + "duration:" + to_string(elem.duration) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(user_visits));
-    result["peer_count"] = to_string(peer_count);
-    result["master"] = addressAsString(master);
-    result["role"] = role;
-    result["args"] = "("
-    +
-    ([] (_Collection<R_arg<string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_arg<string> elem) {oss << "{" + ("arg:" + elem.arg + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(get<0>(args))) + "," + ([] (_Collection<R_key_value<string, string>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<string, string> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + elem.value + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(get<1>(args)))
-    +
-    ")";
-    result["peers"] = ([] (_Collection<R_addr<Address>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_addr<Address> elem) {oss << "{" + ("addr:" + addressAsString(elem.addr) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(peers));
-    result["me"] = addressAsString(me);
+    // result["lower_date"] = to_string(lower_date);
+    // result["upper_date"] = to_string(upper_date);
+    // result["rk_received"] = to_string(rk_received);
+    // result["uv_received"] = to_string(uv_received);
+    // result["uv_candidates"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
+    //         ostringstream oss;
+    //         auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+    //         return unit_t();};
+    //         coll.iterate(f);
+    //         return "[" + oss.str() + "]";
+    //     }(elem.value)) + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(uv_candidates));
+    // result["rk_partitions"] = ([] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + "{" + ("pageRank_total:" + to_string(elem.value.pageRank_total) + "," + "pageRank_count:" + to_string(elem.value.pageRank_count) + "}") + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(rk_partitions));
+    // result["uv_partitions"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
+    //         ostringstream oss;
+    //         auto f = [&] (R_key_value<string, double> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + to_string(elem.value) + "}") << ",";
+    //         return unit_t();};
+    //         coll.iterate(f);
+    //         return "[" + oss.str() + "]";
+    //     }(elem.value)) + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(uv_partitions));
+    // result["rankings"] = ([] (_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_avgDuration_pageRank_pageURL<int, int, string> elem) {oss << "{" + ("pageURL:" + elem.pageURL + "," + "pageRank:" + to_string(elem.pageRank) + "," + "avgDuration:" + to_string(elem.avgDuration) + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(rankings));
+    // result["user_visits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t> elem) {oss << "{" + ("sourceIP:" + elem.sourceIP + "," + "destURL:" + elem.destURL + "," + "visitDate:" + to_string(elem.visitDate) + "," + "adRevenue:" + to_string(elem.adRevenue) + "," + "userAgent:" + elem.userAgent + "," + "countryCode:" + elem.countryCode + "," + "languageCode:" + elem.languageCode + "," + "searchWord:" + elem.searchWord + "," + "duration:" + to_string(elem.duration) + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(user_visits));
+    // result["peer_count"] = to_string(peer_count);
+    // result["master"] = addressAsString(master);
+    // result["role"] = role;
+    // result["args"] = "("
+    // +
+    // ([] (_Collection<R_arg<string>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_arg<string> elem) {oss << "{" + ("arg:" + elem.arg + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(get<0>(args))) + "," + ([] (_Collection<R_key_value<string, string>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_key_value<string, string> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + elem.value + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(get<1>(args)))
+    // +
+    // ")";
+    // result["peers"] = ([] (_Collection<R_addr<Address>> coll) {
+    //     ostringstream oss;
+    //     auto f = [&] (R_addr<Address> elem) {oss << "{" + ("addr:" + addressAsString(elem.addr) + "}") << ",";
+    //     return unit_t();};
+    //     coll.iterate(f);
+    //     return "[" + oss.str() + "]";
+    // }(peers));
+    // result["me"] = addressAsString(me);
     return result;
 }
 
