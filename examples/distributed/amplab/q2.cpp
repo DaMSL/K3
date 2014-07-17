@@ -60,7 +60,9 @@ unit_t master_done(unit_t);
 
 unit_t peer_barrier(unit_t);
 
-unit_t aggregate(_Map<R_key_value<string, double>>&);
+unit_t aggregate(const _Map<R_key_value<string, double>>&);
+
+unit_t aggregate(const shared_ptr<_Map<R_key_value<string, double>>>);
 
 unit_t merge_results(_Map<R_key_value<string, double>>&);
 
@@ -421,9 +423,7 @@ unit_t q2_local(unit_t _) {
       int key = index_by_hash(v.first);
       auto *val = lookup(peer_aggs)(key);
       if (val) {
-        peer_aggs.getContainer()[key] = 
-        // doesn't work because read only
-        // val->insert(R_key_value<string, double>(v.first, v.second));
+        val->insert(R_key_value<string, double>(v.first, v.second));
       }
       else {
         // just init the inner map
@@ -434,7 +434,7 @@ unit_t q2_local(unit_t _) {
     for (const auto &v : peer_aggs.getConstContainer()) {
       auto disp =
         make_shared<RefDispatcher<_Map<R_key_value<string, double>>>>
-          (aggregate, v.second);
+          ((unit_t (*) (const _Map<R_key_value<string, double>>&)) &aggregate, v.second);
       engine.send(peer_by_index(v.first), 5, disp);
     }
     // send punctuation
@@ -445,7 +445,7 @@ unit_t q2_local(unit_t _) {
     return unit_t();
 }
 
-unit_t merge_results(_Map<R_key_value<string, double>>& vals) {
+unit_t merge_results(const _Map<R_key_value<string, double>>& vals) {
     for (auto &v : vals.getConstContainer()) {
       auto *val = lookup(local_q2_results)(v.first);
       if (val) {
@@ -458,7 +458,11 @@ unit_t merge_results(_Map<R_key_value<string, double>>& vals) {
     return unit_t();
 }
 
-unit_t aggregate(_Map<R_key_value<string, double>>& vals) {
+unit_t aggregate(const shared_ptr<_Map<R_key_value<string, double>>> vals) {
+    return aggregate(*vals);
+}
+
+unit_t aggregate(const _Map<R_key_value<string, double>>& vals) {
 
     return merge_results(vals);
 }
@@ -506,8 +510,6 @@ unit_t ready(unit_t _) {
         start_ms = now(unit_t());
 
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-
-
 
             auto d = make_shared<ValDispatcher<unit_t>>(q2_local,unit_t());
             engine.send(p.addr,6,d);
@@ -576,7 +578,8 @@ void populate_dispatch() {
     dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
     dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(master_done), "master_done");
     dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(peer_barrier), "peer_barrier");
-    dispatch_table[5] = make_tuple(make_shared<RefDispatcher<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
+    dispatch_table[5] = make_tuple(make_shared<SharedDispatcher<_Map<R_key_value<string, double>>>>
+    ((unit_t (*)(const shared_ptr<_Map<R_key_value<string, double>>>)) aggregate), "aggregate");
     dispatch_table[6] = make_tuple(make_shared<ValDispatcher<unit_t>>(q2_local), "q2_local");
 }
 
