@@ -1,6 +1,7 @@
 from utils.ssh import *
 import os
 import time
+
 class K3Peer:
   def __init__(self,config):
     self.local_binary_path = config.get("local_binary_path")
@@ -36,6 +37,10 @@ class K3Peer:
 
     # call kill command
     ssh(self.host, remote_kill_file)
+    
+    # give the poor process time to die in peace (and unlock the script file)
+    time.sleep(3) 
+  
     # copy run script over to remote
     remote_file = self.remote_binary_path + self.binary_name
       
