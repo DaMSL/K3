@@ -405,16 +405,19 @@ _Map<R_key_value<string, double>> agg_vals;
 _Map<R_key_value<int, _Map<R_key_value<string, double>>>> peer_aggs;
 
 unit_t q2_local(unit_t _) {
+    // XXX: For some reason, this optimization causes some slowdown in small tested datasets, even
+    // though it is theoretically strictly more efficient.
     // do 1st groupby
     for (const auto &r : local_uservisits.getConstContainer()) {
       string key = r.sourceIP.substr(0,x);
-      agg_vals.getContainer()[key] += r.adRevenue;
+      // agg_vals.getContainer()[key] += r.adRevenue;
+      peer_aggs.getContainer()[index_by_hash(key)].getContainer()[key] += r.adRevenue;
     }
     // do 2nd groupby
-    for (const auto &v : agg_vals.getConstContainer()) {
-      int key = index_by_hash(v.first);
-      peer_aggs.getContainer()[key].getContainer()[v.first] = v.second;
-    }
+    // for (const auto &v : agg_vals.getConstContainer()) {
+    //   int key = index_by_hash(v.first);
+    //   peer_aggs.getContainer()[key].getContainer()[v.first] = v.second;
+    // }
     // send to all peers needed
     for (const auto &v : peer_aggs.getConstContainer()) {
       auto disp =
