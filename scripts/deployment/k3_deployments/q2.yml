@@ -2,25 +2,25 @@
 name: Amplab Query 2
 
 # Peer Bootstrap
-enable_logging: True
 local_binary_path: "/temp/q2" #Mandatory
+enable_logging: True
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
   x: "8" # substring width
-  num_peers: "2"
+  num_peers: "1"
   role: '"rows"'
-  master: '<192.168.1.41:40000>'
+  master: '<192.168.1.44:40000>'
 
 # Peer List / Overrides
 k3_peers:
-    - ip: "192.168.1.41"
+    - ip: "192.168.1.44"
       k3_port: "40000"
       k3_bindings:
-        data_file: '"/nfs/uservisits_sf5/4peers/01.txt"'
-    - ip: "192.168.1.41"
-      k3_port: "40001"
-      k3_bindings:
-        data_file: '"/nfs/uservisits_sf5/4peers/02.txt"'
+        data_file: '"/nfs/tiny/uservisits_tiny.txt"'
+#    - ip: "192.168.1.41"
+#      k3_port: "40001"
+#      k3_bindings:
+#        data_file: '"/nfs/uservisits_sf5/4peers/02.txt"'
 #    - ip: "192.168.1.41"
 #      k3_port: "40002"
 #      k3_bindings:
