@@ -360,7 +360,7 @@ F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searc
         R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.adRevenue,rec.countryCode,rec.destURL,rec.duration,rec.languageCode,rec.searchWord,rec.sourceIP,rec.userAgent,rec.visitDate)){
+            if (strtk::parse(str,",",rec.sourceIP, rec.destURL, rec.visitDate, rec.adRevenue, rec.userAgent, rec.countryCode, rec.languageCode, rec.searchWord, rec.duration)) {
                 c.insert(rec);
             }
             else{
@@ -408,27 +408,12 @@ unit_t q2_local(unit_t _) {
     // do 1st groupby
     for (const auto &r : local_uservisits.getConstContainer()) {
       string key = r.sourceIP.substr(0,x);
-      auto *val = lookup(agg_vals)(key);
-      // TODO: figure out if this can be done directly via an iterator
-      // in some way that makes sense
-      if (val) {
-        agg_vals.getContainer()[key] = *val + r.adRevenue;
-      }
-      else {
-        agg_vals.getContainer()[key] = 0;
-      }
+      agg_vals.getContainer()[key] += r.adRevenue;
     }
     // do 2nd groupby
     for (const auto &v : agg_vals.getConstContainer()) {
       int key = index_by_hash(v.first);
-      auto *val = lookup(peer_aggs)(key);
-      if (val) {
-        val->insert(R_key_value<string, double>(v.first, v.second));
-      }
-      else {
-        // just init the inner map
-        peer_aggs.getContainer()[key];
-      }
+      peer_aggs.getContainer()[key].getContainer()[v.first] = v.second;
     }
     // send to all peers needed
     for (const auto &v : peer_aggs.getConstContainer()) {
@@ -447,14 +432,9 @@ unit_t q2_local(unit_t _) {
 
 unit_t merge_results(const _Map<R_key_value<string, double>>& vals) {
     for (auto &v : vals.getConstContainer()) {
-      auto *val = lookup(local_q2_results)(v.first);
-      if (val) {
-        *val = *val + v.second;
-      }
-      else {
-        local_q2_results.insert(R_key_value<string, double>(v.first, v.second));
-      }
+      local_q2_results.getContainer()[v.first] += v.second;
     }
+
     return unit_t();
 }
 
