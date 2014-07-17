@@ -58,27 +58,28 @@ unit_t ready(unit_t);
 
 unit_t shutdown_(unit_t);
 
-unit_t aggregate(_Map<R_key_value<string, int>>);
+unit_t aggregateShared(const shared_ptr<_Map<R_key_value<string, int>>>);
+unit_t aggregate(const _Map<R_key_value<string, int>> &);
 
 unit_t local(unit_t);
 
-unit_t get_line(string);
+unit_t get_line(const string&);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-        
+
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-        
+
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -93,17 +94,17 @@ template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
         _Map(): K3::Map<CONTENT>(&engine) {}
-        
+
         _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-        
+
         _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -118,17 +119,17 @@ template <class CONTENT>
 class _Seq: public K3::Seq<CONTENT> {
     public:
         _Seq(): K3::Seq<CONTENT>(&engine) {}
-        
+
         _Seq(const _Seq& c): K3::Seq<CONTENT>(c) {}
-        
+
         _Seq(const K3::Seq<CONTENT>& c): K3::Seq<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Seq<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -147,19 +148,14 @@ class R_addr {
         R_addr() {}
         R_addr(_T0 _addr): addr(_addr) {}
         R_addr(const R_addr<_T0>& _r): addr(_r.addr) {}
-        bool operator==(R_addr _r) {
-            if (addr == _r.addr)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-            
+
         }
         _T0 addr;
 };
-#endif K3_R_addr
+#endif // K3_R_addr
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -182,19 +178,14 @@ class R_arg {
         R_arg() {}
         R_arg(_T0 _arg): arg(_arg) {}
         R_arg(const R_arg<_T0>& _r): arg(_r.arg) {}
-        bool operator==(R_arg _r) {
-            if (arg == _r.arg)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-            
+
         }
         _T0 arg;
 };
-#endif K3_R_arg
+#endif // K3_R_arg
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -219,23 +210,18 @@ class R_count_destPage_sourcePage {
                                    ,_T1 _destPage
                                    ,_T2 _sourcePage): count(_count), destPage(_destPage), sourcePage(_sourcePage) {}
         R_count_destPage_sourcePage(const R_count_destPage_sourcePage<_T0, _T1, _T2>& _r): count(_r.count), destPage(_r.destPage), sourcePage(_r.sourcePage) {}
-        bool operator==(R_count_destPage_sourcePage _r) {
-            if (count == _r.count&& destPage == _r.destPage&& sourcePage == _r.sourcePage)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & count;
             _archive & destPage;
             _archive & sourcePage;
-            
+
         }
         _T0 count;
         _T1 destPage;
         _T2 sourcePage;
 };
-#endif K3_R_count_destPage_sourcePage
+#endif // K3_R_count_destPage_sourcePage
 namespace K3 {
     template <class _T0,class _T1,class _T2>
     struct patcher<R_count_destPage_sourcePage<_T0, _T1, _T2>> {
@@ -262,19 +248,14 @@ class R_elem {
         R_elem() {}
         R_elem(_T0 _elem): elem(_elem) {}
         R_elem(const R_elem<_T0>& _r): elem(_r.elem) {}
-        bool operator==(R_elem _r) {
-            if (elem == _r.elem)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & elem;
-            
+
         }
         _T0 elem;
 };
-#endif K3_R_elem
+#endif // K3_R_elem
 namespace K3 {
     template <class _T0>
     struct patcher<R_elem<_T0>> {
@@ -297,21 +278,16 @@ class R_key_value {
         R_key_value() {}
         R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
         R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(R_key_value _r) {
-            if (key == _r.key&& value == _r.value)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-            
+
         }
         _T0 key;
         _T1 value;
 };
-#endif K3_R_key_value
+#endif // K3_R_key_value
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -328,47 +304,6 @@ namespace K3 {
     };
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Address me;
 
 _Collection<R_addr<Address>> peers;
@@ -383,7 +318,6 @@ F<unit_t(_Seq<R_elem<string>>&)>stringLoader(string filepath){
         std::string line;
         while (std::getline(infile, line))
         {
-        
           R_elem<string> rec;
           rec.elem = line;
           c.insert(rec);
@@ -426,125 +360,82 @@ _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial
 boost::regex regex_query("(https?://[^\\s]+)");
 boost::smatch regex_results;
 
-unit_t get_line(string& line) {
-    {
-        _Seq<R_elem<string>> sp;
-        
-        
-        sp = splitString(line)(string(" "));
-        
-        
-        
-        
-        if (substring(line)(0)(4) == string("http") && sp.size(unit_t()) == 5) {
-            
-            cur_page = sp.at(0).elem;
-            
-            url_count.iterate([] (R_key_value<string, int> v) -> unit_t {
-                
-                return url_counts_partial.insert(R_count_destPage_sourcePage<int, string, string>{v.value,
-                v.key,
-                cur_page});
-            });
-            
-            url_count.iterate([] (R_key_value<string, int> v) -> unit_t {
-                return url_count.erase(v);
-            });
+unit_t get_line(const string& line) {
+  _Seq<R_elem<string>> sp;
 
-        } else {
-          return unit_t();
-        }
-            
-        regex_search(line, regex_results, regex_query, boost::regex_constants::match_default);
+  sp = splitString(line)(string(" "));
 
-        for (int i=1; i<regex_results.size(); i++) {
-          string s = regex_results[i];
-          std::shared_ptr<int> __0;
+  if (substring(line)(0)(4) == string("http") && sp.size(unit_t()) == 5) {
 
-          __0 = lookup(url_count)(s);
-          if (__0) {
-            int x;
-            x = *__0;
-            return url_count.insert(R_key_value<string, int>{s, x + 1});
-          } else {
-            return url_count.insert(R_key_value<string, int>{s, 1});
-          }
+      cur_page = sp.at(0).elem;
 
-        }
-        return unit_t();
-    }
+      for (const auto &v : url_count.getConstContainer()) {
+          url_counts_partial.insert(
+              R_count_destPage_sourcePage<int, string, string>{v.second, v.first, cur_page});
+      }
+
+      url_count.getContainer().clear();
+
+  }
+
+  regex_search(line, regex_results, regex_query, boost::regex_constants::match_default);
+
+  for (int i=1; i<regex_results.size(); i++) {
+    const string& s = regex_results[i];
+    url_count.getContainer()[s] += 1;
+  }
+
+  return unit_t();
 }
 
+_Map<R_key_value<string, int>> url_counts_total;
+
 unit_t local(unit_t _) {
-    
-    inputData.iterate([] (R_elem<string> s) -> unit_t {
-        
-        return get_line(s.elem);
-    });
-    
-    url_count.iterate([] (R_key_value<string, int> v) -> unit_t {
-        
-        
-        
-        return url_counts_partial.insert(R_count_destPage_sourcePage<int, string, string>{v.value,
-        v.key,
-        cur_page});
-    });
-    {
-        _Map<R_key_value<string, int>> url_counts_total;
-        
-        
-        
-        
-        url_counts_total = url_counts_partial.groupBy<string, int>([] (R_count_destPage_sourcePage<int, string, string> v) -> string {
-            return v.destPage;
-        })([] (int acc) -> std::function<int(R_count_destPage_sourcePage<int, string, string>)> {
-            return [acc] (R_count_destPage_sourcePage<int, string, string> v) -> int {
-                return acc + v.count;
-            };
-        })(0);
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, int>>>>(aggregate
-                                                                            ,url_counts_total);
-        engine.send(master,3,d);return unit_t();
+
+    for (const auto &s : inputData.getConstContainer()) {
+        get_line(s.elem);
     }
+
+    for (const auto &v : url_count.getConstContainer()) {
+        url_counts_partial.insert(
+            R_count_destPage_sourcePage<int, string, string>{v.second, v.first, cur_page});
+    }
+
+    for (const auto &v : url_counts_partial.getConstContainer()) {
+      url_counts_total.getContainer()[v.destPage] += v.count;
+    }
+
+    auto d = make_shared<RefDispatcher<_Map<R_key_value<string, int>>>>
+               (aggregate, url_counts_total);
+    engine.send(master,3,d);
+    return unit_t();
 }
 
 _Map<R_key_value<string, int>> url_counts_agg;
 
 int received;
 
-unit_t aggregate(_Map<R_key_value<string, int>> newVals) {
-    
-    newVals.iterate([] (R_key_value<string, int> v) -> unit_t {
-        std::shared_ptr<int> __1;
-        
-        
-        __1 = lookup(url_counts_agg)(v.key);
-        if (__1) {
-            int x;
-            x = *__1;
-            return url_counts_agg.insert(R_key_value<string, int>{v.key,v.value + x});
-        } else {
-            return url_counts_agg.insert(v);
-        }
-    });
+unit_t aggregateShared(const shared_ptr<_Map<R_key_value<string, int>>> newVals) {
+  return aggregate(*newVals);
+}
+
+unit_t aggregate(const _Map<R_key_value<string, int>>& newVals) {
+
+    for (const auto &v : newVals.getConstContainer()) {
+      url_counts_agg.getContainer()[v.first] += v.second;
+    }
+
     peers_finished = peers_finished + 1;
     if (peers_finished == num_peers) {
-        
+
         end_ms = now(unit_t());
         elapsed_ms = end_ms - start_ms;
-        
-        
+
         printLine("time:" + itos(elapsed_ms));
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+
+            auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,2,d);return unit_t();
         });
     } else {
@@ -553,21 +444,21 @@ unit_t aggregate(_Map<R_key_value<string, int>> newVals) {
 }
 
 unit_t shutdown_(unit_t _) {
-    
+
     return haltEngine(unit_t());
 }
 
 unit_t ready(unit_t _) {
     peers_ready = peers_ready + 1;
     if (peers_ready == num_peers) {
-        
+
         start_ms = now(unit_t());
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
-            auto d = make_shared<DispatcherImpl<unit_t>>(local,unit_t());
+
+
+
+            auto d = make_shared<ValDispatcher<unit_t>>(local,unit_t());
             engine.send(p.addr,4,d);return unit_t();
         });
     } else {
@@ -576,25 +467,25 @@ unit_t ready(unit_t _) {
 }
 
 unit_t load_all(unit_t _) {
-    
-    
+
+
     stringLoader(file_name)(inputData);
-    
-    
-    
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+
+
+
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
 }
 
 
 
 unit_t rowsProcess(unit_t _) {
-    
+
     return [] (unit_t next) -> unit_t {
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
+
+
+
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
 }
@@ -605,7 +496,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("rows")) {
-        
+
         return rowsProcess(unit_t());
     } else {
         return unit_t();
@@ -613,9 +504,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-    
+
     initDecls(unit_t());
-    
+
     return processRole(unit_t());
 }
 
@@ -624,7 +515,7 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-    
+
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
     data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
     start_ms = 0;end_ms = 0;elapsed_ms = 0;file_name = string("data.txt");cur_page = string("NONE");
@@ -633,11 +524,11 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(5);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, int>>>>(aggregate), "aggregate");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(local), "local");
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[3] = make_tuple(make_shared<SharedDispatcher<_Map<R_key_value<string, int>>>>(aggregateShared), "aggregate");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(local), "local");
 }
 
 map<string,string> show_globals() {
