@@ -67,10 +67,10 @@ trigger q2_local : () = \_ -> (
       (\v -> index_by_hash v.key)
       (\acc -> \v -> acc.insert(v); acc)
       (empty {key: string, value: real} @ {Map});
-  // Send punctuation: we're done
   peer_aggs.iterate (\v ->
     (aggregate, peer_by_index v.key) <- v.value
   );
+  // Send punctuation: we're done
   peers.iterate(\p -> (peer_barrier, p.addr) <- ())
 )
 

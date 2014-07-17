@@ -60,9 +60,9 @@ unit_t master_done(unit_t);
 
 unit_t peer_barrier(unit_t);
 
-unit_t aggregate(_Map<R_key_value<string, double>>);
+unit_t aggregate(_Map<R_key_value<string, double>>&);
 
-unit_t merge_results(_Map<R_key_value<string, double>>);
+unit_t merge_results(_Map<R_key_value<string, double>>&);
 
 unit_t q2_local(unit_t);
 
@@ -70,17 +70,17 @@ template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-        
+
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-        
+
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -95,17 +95,17 @@ template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
         _Map(): K3::Map<CONTENT>(&engine) {}
-        
+
         _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-        
+
         _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -148,7 +148,7 @@ class R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_
             _archive & sourceIP;
             _archive & userAgent;
             _archive & visitDate;
-            
+
         }
         _T0 adRevenue;
         _T1 countryCode;
@@ -185,14 +185,14 @@ namespace K3 {
                                                                                                                                               ,r.userAgent);})];
             qi::rule<string::iterator, qi::space_type> _visitDate = (qi::lit("visitDate") >> ':' >> _shallow)[([&r] (string _string) {do_patch(_string
                                                                                                                                               ,r.visitDate);})];
-            qi::rule<string::iterator, qi::space_type> _field = _adRevenue | 
-            _countryCode | 
-            _destURL | 
-            _duration | 
-            _languageCode | 
-            _searchWord | 
-            _sourceIP | 
-            _userAgent | 
+            qi::rule<string::iterator, qi::space_type> _field = _adRevenue |
+            _countryCode |
+            _destURL |
+            _duration |
+            _languageCode |
+            _searchWord |
+            _sourceIP |
+            _userAgent |
             _visitDate;
             qi::rule<string::iterator, qi::space_type> _parser = '{' >> (_field % ',') >> '}';
             qi::phrase_parse(std::begin(s),std::end(s),_parser,qi::space);
@@ -208,15 +208,10 @@ class R_addr {
         R_addr() {}
         R_addr(_T0 _addr): addr(_addr) {}
         R_addr(const R_addr<_T0>& _r): addr(_r.addr) {}
-        bool operator==(R_addr _r) {
-            if (addr == _r.addr)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-            
+
         }
         _T0 addr;
 };
@@ -243,15 +238,10 @@ class R_arg {
         R_arg() {}
         R_arg(_T0 _arg): arg(_arg) {}
         R_arg(const R_arg<_T0>& _r): arg(_r.arg) {}
-        bool operator==(R_arg _r) {
-            if (arg == _r.arg)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-            
+
         }
         _T0 arg;
 };
@@ -278,16 +268,11 @@ class R_key_value {
         R_key_value() {}
         R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
         R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(R_key_value _r) {
-            if (key == _r.key&& value == _r.value)
-                return true;
-            return false;
-        }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-            
+
         }
         _T0 key;
         _T1 value;
@@ -359,11 +344,11 @@ string role;
 
 int index_by_hash(const string& s) {
   auto& container = peers.getContainer();
-  size_t h = std::hash<string>()(s); 
+  size_t h = std::hash<string>()(s);
   return h % container.size();
 }
 
-Address peer_by_index(const int i) {
+Address& peer_by_index(const int i) {
   auto& container = peers.getContainer();
   return container[i].addr;
 }
@@ -418,85 +403,72 @@ _Map<R_key_value<string, double>> agg_vals;
 _Map<R_key_value<int, _Map<R_key_value<string, double>>>> peer_aggs;
 
 unit_t q2_local(unit_t _) {
-    
-    
-    
-    
-    agg_vals = local_uservisits.groupBy<string, double>([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> string {
-        
-        
-        
-        return substring(r.sourceIP)(0)(x);
-    })([] (double acc) -> std::function<double(R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>)> {
-        
-        return [acc] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> r) -> double {
-            return acc + r.adRevenue;
-        };
-    })(0.0);
-    
-    
-    
-    
-    peer_aggs = agg_vals.groupBy<int, _Map<R_key_value<string, double>>>([] (R_key_value<string, double> v) -> int {
-        
-        return index_by_hash(v.key);
-    })([] (_Map<R_key_value<string, double>> acc) -> std::function<_Map<R_key_value<string, double>>(R_key_value<string, double>)> {
-        return [acc] (R_key_value<string, double> v) mutable -> _Map<R_key_value<string, double>> {
-            
-            acc.insert(v); return acc;
-        };
-    })(_Map<R_key_value<string, double>>());
-    
-    peer_aggs.iterate([] (R_key_value<int, _Map<R_key_value<string, double>>> v) -> unit_t {
-        
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate,v.value);
-        engine.send(peer_by_index(v.key),5,d);return unit_t();
-    });
-    
-    return peers.iterate([] (R_addr<Address> p) -> unit_t {
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<unit_t>>(peer_barrier,unit_t());
-        engine.send(p.addr,4,d);return unit_t();
-    });
+    // do 1st groupby
+    for (const auto &r : local_uservisits.getConstContainer()) {
+      string key = r.sourceIP.substr(0,x);
+      auto *val = lookup(agg_vals)(key);
+      // TODO: figure out if this can be done directly via an iterator
+      // in some way that makes sense
+      if (val) {
+        agg_vals.getContainer()[key] = *val + r.adRevenue;
+      }
+      else {
+        agg_vals.getContainer()[key] = 0;
+      }
+    }
+    // do 2nd groupby
+    for (const auto &v : agg_vals.getConstContainer()) {
+      int key = index_by_hash(v.first);
+      auto *val = lookup(peer_aggs)(key);
+      if (val) {
+        peer_aggs.getContainer()[key] = 
+        // doesn't work because read only
+        // val->insert(R_key_value<string, double>(v.first, v.second));
+      }
+      else {
+        // just init the inner map
+        peer_aggs.getContainer()[key];
+      }
+    }
+    // send to all peers needed
+    for (const auto &v : peer_aggs.getConstContainer()) {
+      auto disp =
+        make_shared<RefDispatcher<_Map<R_key_value<string, double>>>>
+          (aggregate, v.second);
+      engine.send(peer_by_index(v.first), 5, disp);
+    }
+    // send punctuation
+    for (const auto &p : peers.getConstContainer()) {
+      auto disp = make_shared<ValDispatcher<unit_t>>(peer_barrier,unit_t());
+      engine.send(p.addr, 4, disp);
+    }
+    return unit_t();
 }
 
-unit_t merge_results(_Map<R_key_value<string, double>> vals) {
-    
-    return vals.iterate([] (R_key_value<string, double> v) -> unit_t {
-        std::shared_ptr<double> __0;
-        
-        
-        __0 = lookup<string, double>(local_q2_results)(v.key);
-        if (__0) {
-            double a;
-            a = *__0;
-            
-            return local_q2_results.insert(R_key_value<string, double>{v.key,a + v.value});
-        } else {
-            
-            return local_q2_results.insert(v);
-        }
-    });
+unit_t merge_results(_Map<R_key_value<string, double>>& vals) {
+    for (auto &v : vals.getConstContainer()) {
+      auto *val = lookup(local_q2_results)(v.first);
+      if (val) {
+        *val = *val + v.second;
+      }
+      else {
+        local_q2_results.insert(R_key_value<string, double>(v.first, v.second));
+      }
+    }
+    return unit_t();
 }
 
-unit_t aggregate(_Map<R_key_value<string, double>> vals) {
-    
+unit_t aggregate(_Map<R_key_value<string, double>>& vals) {
+
     return merge_results(vals);
 }
 
 unit_t peer_barrier(unit_t _) {
     peers_finished = peers_finished + 1;
     if (peers_finished == num_peers) {
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<unit_t>>(master_done,unit_t());
-        engine.send(master,3,d);return unit_t();
+        auto d = make_shared<ValDispatcher<unit_t>>(master_done, unit_t());
+        engine.send(master, 3, d);
+        return unit_t();
     } else {
         return unit_t();
     }
@@ -505,19 +477,17 @@ unit_t peer_barrier(unit_t _) {
 unit_t master_done(unit_t _) {
     master_peers_finished = master_peers_finished + 1;
     if (master_peers_finished == num_peers) {
-        
+
         end_ms = now(unit_t());
         elapsed_ms = end_ms - start_ms;
-        
-        
+
         printLine(itos(elapsed_ms));
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
-            engine.send(p.addr,2,d);return unit_t();
+
+        auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
+        engine.send(p.addr, 2, d);
+        return unit_t();
         });
     } else {
         return unit_t();
@@ -525,22 +495,23 @@ unit_t master_done(unit_t _) {
 }
 
 unit_t shutdown_(unit_t _) {
-    
+
     return haltEngine(unit_t());
 }
 
 unit_t ready(unit_t _) {
     peers_ready = peers_ready + 1;
     if (peers_ready == num_peers) {
-        
+
         start_ms = now(unit_t());
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
-            auto d = make_shared<DispatcherImpl<unit_t>>(q2_local,unit_t());
-            engine.send(p.addr,6,d);return unit_t();
+
+
+
+            auto d = make_shared<ValDispatcher<unit_t>>(q2_local,unit_t());
+            engine.send(p.addr,6,d);
+            return unit_t();
         });
     } else {
         return unit_t();
@@ -548,26 +519,22 @@ unit_t ready(unit_t _) {
 }
 
 unit_t load_all(unit_t _) {
-    
-    
     dataLoader(data_file)(local_uservisits);
-    
-    
-    
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
-    engine.send(master,1,d);return unit_t();
+
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
+    engine.send(master,1,d);
+    return unit_t();
 }
 
 
 
 unit_t rowsProcess(unit_t _) {
-    
+
     return [] (unit_t next) -> unit_t {
-        
-        
-        
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
-        engine.send(me,0,d);return unit_t();
+
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
+        engine.send(me,0,d);
+        return unit_t();
     }(unit_t());
 }
 
@@ -577,7 +544,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("rows")) {
-        
+
         return rowsProcess(unit_t());
     } else {
         return unit_t();
@@ -585,9 +552,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-    
+
     initDecls(unit_t());
-    
+
     return processRole(unit_t());
 }
 
@@ -596,7 +563,7 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-    
+
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
     data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
     master_peers_finished = 0;start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
@@ -604,13 +571,13 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(7);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(master_done), "master_done");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(peer_barrier), "peer_barrier");
-    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
-    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q2_local), "q2_local");
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(master_done), "master_done");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(peer_barrier), "peer_barrier");
+    dispatch_table[5] = make_tuple(make_shared<RefDispatcher<_Map<R_key_value<string, double>>>>(aggregate), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<ValDispatcher<unit_t>>(q2_local), "q2_local");
 }
 
 map<string,string> show_globals() {

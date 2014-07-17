@@ -59,12 +59,13 @@ namespace K3 {
       std::shared_ptr<E> peek(unit_t) { return D<E>::peek(); }
 
       unit_t insert(const E& elem) { D<E>::insert(elem); return unit_t();}
-      unit_t insert(E&& elem) { D<E>::insert(elem); return unit_t();}
+      unit_t insert(E&& elem) { D<E>::insert(std::forward<E>(elem)); return unit_t();}
 
       unit_t erase(const E& elem)  { D<E>::erase(elem); return unit_t();}
+      unit_t erase(E&& elem)  { D<E>::erase(std::forward<E>(elem)); return unit_t();}
 
-      unit_t update(const E& v1, const E& v2) { D<E>::update(v1,v2); return unit_t();}
-      unit_t update(const E& v1, E&& v2) { D<E>::update(v1,v2); return unit_t();}
+      unit_t update(const E& v1, const E& v2) { D<E>::update(v1, v2); return unit_t();}
+      unit_t update(E&& v1, E&& v2) { D<E>::update(std::forward<E>(v1),std::forward<E>(v2)); return unit_t();}
 
       std::tuple<BaseCollection<D, E>, BaseCollection<D, E>> split() {
         auto tup = D<E>::split();
