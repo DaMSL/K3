@@ -53,9 +53,10 @@ class K3Peer:
     logStr = ""
     if self.loggingEnabled:
       logStr = "-l some"
+    #perf record -g -o /temp/perf/%(bn)s.data 
     # Generate a script to run program.
     script = ("""#!/bin/bash\n"""
-              """perf record -g -o /temp/perf/%(bn)s.data %(bp)s%(bn)s %(ls)s -p %(bs)s\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr}
+              """%(bp)s%(bn)s %(ls)s -p %(bs)s\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr}
     
     # Dump to a local file
     with open(self.local_script_path,"wb") as script_file:
