@@ -1,5 +1,6 @@
 #define MAIN_PROGRAM
 
+#include <unordered_map>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -654,143 +655,67 @@ _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sou
 
 _Collection<R_avgDuration_pageRank_pageURL<int, int, string>> rankings;
 
-_Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_partitions;
-
 unit_t uv_partition(unit_t _) {
 
-    user_visits.iterate([] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t> u) -> unit_t {
+  _Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_partitions;
 
-        if (lower_date < u.visitDate && u.visitDate < upper_date) {
-          return insert_with<string, _Map<R_key_value<string, double>>>(uv_partitions)(u.destURL)(_Map<R_key_value<string, double>>())([u] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
+  _Map<R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>> m;
+  auto& mc = m.getContainer();
 
-            insert_with<string, double>(v)(u.sourceIP)(0.0)([u] (double w) -> double {
-                return w + u.adRevenue;
-            });
+  // Sort input data into adRevenue aggregate per sourceIP per peer.
+  for (auto& u: user_visits.getContainer()) {
+    if (lower_date < u.visitDate && u.visitDate < upper_date) {
+      mc[index_by_hash(u.destURL)].getContainer()[u.destURL].getContainer()[u.sourceIP] += u.adRevenue;
+    }
+  }
 
-            return v;
+  // Send out per-peer data partitions.
+  for (auto& mp: mc) {
+      auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>>>
+        (uv_partition_receive ,mp.second);
+      engine.send(peer_by_index(mp.first),8,d);
+  }
 
-        });
-        } else {
-          return unit_t();
-        }
-    });
+  // Send out punctuation.
+  for (auto& p: peers.getContainer()) {
+      auto d = make_shared<DispatcherImpl<unit_t>>(uv_partitions_received,unit_t());
+      engine.send(p.addr,7,d);
+  }
 
-    _Map<R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>> m;
-
-    m = uv_partitions.groupBy<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>([] (R_key_value<string, _Map<R_key_value<string, double>>> r) -> int {
-        return index_by_hash(r.key);
-      })([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> a) -> std::function<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>(R_key_value<string, _Map<R_key_value<string, double>>>)> {
-          return [a] (R_key_value<string, _Map<R_key_value<string, double>>> q) mutable {
-            a.insert(q);
-            return a;
-          };
-      })(_Map<R_key_value<string, _Map<R_key_value<string, double>>>> {});
-
-    m.iterate([] (const R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>> r) {
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, _Map<R_key_value<string, double>>>>>>(uv_partition_receive ,r.value);
-        engine.send(peer_by_index(r.key),8,d);return unit_t();
-      });
-    // uv_partitions.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> up) -> unit_t {
-
-
-
-
-    //     auto d = make_shared<DispatcherImpl<R_key_value<string, _Map<R_key_value<string, double>>>>>(uv_partition_receive
-    //                                                                                                 ,up);
-    //     engine.send(peer_by_hash(up.key),8,d);return unit_t();
-    // });
-
-    return peers.iterate([] (R_addr<Address> a) -> unit_t {
-
-
-
-        auto d = make_shared<DispatcherImpl<unit_t>>(uv_partitions_received,unit_t());
-        engine.send(a.addr,7,d);return unit_t();
-    });
+  return unit_t {};
 }
-
-_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rk_partitions;
 
 unit_t rk_partition(unit_t _) {
 
-    rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> r) -> unit_t {
+  _Map<R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>> m;
+  auto& mc = m.getContainer();
+
+  for (auto& rk: rankings.getContainer()) {
+    auto& v = mc[index_by_hash(rk.pageURL)].getContainer()[rk.pageURL];
+    v.pageRank_count += 1;
+    v.pageRank_total += rk.pageRank;
+  }
+
+  // Send partitions out to peers.
+  for (auto& q: mc) {
+    auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>>
+      (rk_partition_receive,q.second);
+    engine.send(peer_by_index(q.first),6,d);
+  }
 
 
+  // Notify all peers that rk partitions have been sent out from this peer.
+  for (auto& p: peers.getContainer()) {
+    auto d = make_shared<DispatcherImpl<unit_t>>(rk_partitions_received,unit_t());
+    engine.send(p.addr,5,d);
+  }
 
-
-
-
-        return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_partitions)(r.pageURL)(R_pageRank_count_pageRank_total<double, double>{0.0,
-        0.0})([r] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
-
-            return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
-            v.pageRank_total + r.pageRank};
-        });
-    });
-
-
-    // rk_partitions.iterate([] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> rp) -> unit_t {
-    //     auto d = make_shared<DispatcherImpl<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>(rk_partition_receive ,rp);
-    //     engine.send(peer_by_hash(rp.key),6,d);return unit_t();
-    // });
-
-    // Cluster partitions by peer index.
-    _Map<R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>> m;
-
-    auto key_fn = [] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> r) -> int {
-        return index_by_hash(r.key);
-    };
-
-    auto group_fn = [] (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> a)
-      {
-        return [a] (R_key_value<string, R_pageRank_count_pageRank_total<double, double>> q) mutable -> _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>{
-          a.insert(q);
-          return a;
-        };
-    };
-    m = rk_partitions.groupBy<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>
-      (key_fn)
-      (group_fn)
-      (_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> {});
-
-    // Send partitions out to peers.
-    m.iterate([] (R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>> q) {
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>>>>(rk_partition_receive,q.value);
-        engine.send(peer_by_index(q.key),6,d);return unit_t();
-      });
-
-
-    // Notify all peers that rk partitions have been sent out from this peer.
-    return peers.iterate([] (R_addr<Address> a) -> unit_t {
-        auto d = make_shared<DispatcherImpl<unit_t>>(rk_partitions_received,unit_t());
-        engine.send(a.addr,5,d);return unit_t();
-    });
+    return unit_t {};
 }
 
 _Map<R_key_value<string, _Map<R_key_value<string, double>>>> uv_candidates;
 
 unit_t uv_partition_receive(_Map<R_key_value<string, _Map<R_key_value<string, double>>>> up) {
-
-
-
-
-
-  // return insert_with<string, _Map<R_key_value<string, double>>>(uv_candidates)(up.key)(_Map<R_key_value<string, double>>())([&up] (_Map<R_key_value<string, double>> v) -> _Map<R_key_value<string, double>> {
-
-  //       up.value.iterate([&v] (R_key_value<string,double> uc) -> unit_t {
-
-
-
-
-  //           return insert_with<string, double>(v)(uc.key)(0.0)([&uc] (double w) -> double {
-  //               return w + uc.value;
-  //           });
-
-  //       });
-
-  //       return v;
-  //   })
-    // ;
   uv_candidates = uv_candidates.combine(up);
   return unit_t {};
 }
@@ -813,11 +738,6 @@ _Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rk_ca
 
 unit_t rk_partition_receive(_Map<R_key_value<string, R_pageRank_count_pageRank_total<double, double>>> rp) {
   rk_candidates = rk_candidates.combine(rp);
-  // return insert_with<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(rp.key)(R_pageRank_count_pageRank_total<double, double>{0,
-  //   0})([rp] (R_pageRank_count_pageRank_total<double, double> v) -> R_pageRank_count_pageRank_total<double, double> {
-  //       return R_pageRank_count_pageRank_total<double, double>{v.pageRank_count + 1,
-  //       v.pageRank_total + rp.value.pageRank_total};
-  //   });
   return unit_t {};
 }
 
@@ -831,59 +751,68 @@ unit_t rk_partitions_received(unit_t _) {
     }
 }
 
-_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> local_group;
-
 unit_t do_groupBy(unit_t _) {
 
-    uv_candidates.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> uc) -> unit_t {
-        {
-            R_pageRank_count_pageRank_total<double, double> rk;
-            std::shared_ptr<R_pageRank_count_pageRank_total<double, double>> __1;
+  _Map<R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>> m;
+
+  for (auto& rc: rk_candidates.getContainer()) {
+    for (auto& uc: uv_candidates.getContainer()[rc.first].getContainer()) {
+      auto& k = m.getContainer()[index_by_hash(uc.first)].getContainer()[uc.first];
+      k.adRevenue_total += uc.second;
+      k.pageRank_count += rc.second.pageRank_count;
+      k.pageRank_total += rc.second.pageRank_total;
+    }
+  }
+
+    // uv_candidates.iterate([] (R_key_value<string, _Map<R_key_value<string, double>>> uc) -> unit_t {
+    //     {
+    //         R_pageRank_count_pageRank_total<double, double> rk;
+    //         std::shared_ptr<R_pageRank_count_pageRank_total<double, double>> __1;
 
 
 
-            __1 = lookup<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(uc.key);
-            if (__1) {
-                R_pageRank_count_pageRank_total<double, double> r;
-                r = *__1;rk = r;
-            return uc.value.iterate([rk] (R_key_value<string, double> sar) -> unit_t {
+    //         __1 = lookup<string, R_pageRank_count_pageRank_total<double, double>>(rk_candidates)(uc.key);
+    //         if (__1) {
+    //             R_pageRank_count_pageRank_total<double, double> r;
+    //             r = *__1;rk = r;
+    //         return uc.value.iterate([rk] (R_key_value<string, double> sar) -> unit_t {
 
 
 
 
 
-                return local_group.insert(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>{sar.key,
-                R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{sar.value,
-                rk.pageRank_count,
-                rk.pageRank_total}});
-            });
-            } else {
+    //             return local_group.insert(R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>{sar.key,
+    //             R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>{sar.value,
+    //             rk.pageRank_count,
+    //             rk.pageRank_total}});
+    //         });
+    //         }
+    //         return unit_t {};
 
-                rk = R_pageRank_count_pageRank_total<double, double>{0,0};
-            }
+    //     }
+    // });
 
-            return unit_t {};
+    // m = local_group.groupBy<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>
+    //   ([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) {
+    //     return index_by_hash(r.key);
+    //   })
+    //   ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> a) {
+    //     return [a] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> q) mutable {
+    //       a.insert(q);
+    //       return a;
+    //     };
+    //   })
+    //   (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> {});
 
-        }
-    });
+  for (auto& g: m.getContainer()) {
+    auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>>(global_group ,g.second);
+    engine.send(peer_by_index(g.first),3,d);
+  }
 
-    _Map<R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>> m;
-    m = local_group.groupBy<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>
-      ([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> r) {
-        return index_by_hash(r.key);
-      })
-      ([] (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> a) {
-        return [a] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> q) mutable {
-          a.insert(q);
-          return a;
-        };
-      })
-      (_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>> {});
-
-    m.iterate([] (R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>> g) {
-        auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>>(global_group ,g.value);
-        engine.send(peer_by_index(g.key),3,d);return unit_t();
-    });
+    // m.iterate([] (R_key_value<int, _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>> g) {
+    //     auto d = make_shared<DispatcherImpl<_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>>(global_group ,g.value);
+    //     engine.send(peer_by_index(g.key),3,d);return unit_t();
+    // });
 
     // local_group.iterate([] (R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>> g) -> unit_t {
     //     auto d = make_shared<DispatcherImpl<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>>(global_group
@@ -1061,10 +990,10 @@ map<string,string> show_globals() {
     //     return "[" + oss.str() + "]";
     // }(rk_candidates));
 
-    // result["lower_date"] = to_string(lower_date);
-    // result["upper_date"] = to_string(upper_date);
-    // result["rk_received"] = to_string(rk_received);
-    // result["uv_received"] = to_string(uv_received);
+    result["lower_date"] = to_string(lower_date);
+    result["upper_date"] = to_string(upper_date);
+    result["rk_received"] = to_string(rk_received);
+    result["uv_received"] = to_string(uv_received);
     // result["uv_candidates"] = ([] (_Map<R_key_value<string, _Map<R_key_value<string, double>>>> coll) {
     //     ostringstream oss;
     //     auto f = [&] (R_key_value<string, _Map<R_key_value<string, double>>> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + ([] (_Map<R_key_value<string, double>> coll) {
@@ -1112,34 +1041,34 @@ map<string,string> show_globals() {
     //     coll.iterate(f);
     //     return "[" + oss.str() + "]";
     // }(user_visits));
-    // result["peer_count"] = to_string(peer_count);
-    // result["master"] = addressAsString(master);
-    // result["role"] = role;
-    // result["args"] = "("
-    // +
-    // ([] (_Collection<R_arg<string>> coll) {
-    //     ostringstream oss;
-    //     auto f = [&] (R_arg<string> elem) {oss << "{" + ("arg:" + elem.arg + "}") << ",";
-    //     return unit_t();};
-    //     coll.iterate(f);
-    //     return "[" + oss.str() + "]";
-    // }(get<0>(args))) + "," + ([] (_Collection<R_key_value<string, string>> coll) {
-    //     ostringstream oss;
-    //     auto f = [&] (R_key_value<string, string> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + elem.value + "}") << ",";
-    //     return unit_t();};
-    //     coll.iterate(f);
-    //     return "[" + oss.str() + "]";
-    // }(get<1>(args)))
-    // +
-    // ")";
-    // result["peers"] = ([] (_Collection<R_addr<Address>> coll) {
-    //     ostringstream oss;
-    //     auto f = [&] (R_addr<Address> elem) {oss << "{" + ("addr:" + addressAsString(elem.addr) + "}") << ",";
-    //     return unit_t();};
-    //     coll.iterate(f);
-    //     return "[" + oss.str() + "]";
-    // }(peers));
-    // result["me"] = addressAsString(me);
+    result["peer_count"] = to_string(peer_count);
+    result["master"] = addressAsString(master);
+    result["role"] = role;
+    result["args"] = "("
+    +
+    ([] (_Collection<R_arg<string>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_arg<string> elem) {oss << "{" + ("arg:" + elem.arg + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(get<0>(args))) + "," + ([] (_Collection<R_key_value<string, string>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<string, string> elem) {oss << "{" + ("key:" + elem.key + "," + "value:" + elem.value + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(get<1>(args)))
+    +
+    ")";
+    result["peers"] = ([] (_Collection<R_addr<Address>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_addr<Address> elem) {oss << "{" + ("addr:" + addressAsString(elem.addr) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(peers));
+    result["me"] = addressAsString(me);
     return result;
 }
 
@@ -1238,13 +1167,11 @@ int main(int argc,char** argv) {
     matchers["global_groupBy_result"] = [] (string _s) {do_patch(_s,global_groupBy_result);};
     matchers["global_received"] = [] (string _s) {do_patch(_s,global_received);};
     matchers["global_groups"] = [] (string _s) {do_patch(_s,global_groups);};
-    matchers["local_group"] = [] (string _s) {do_patch(_s,local_group);};
+    // matchers["local_group"] = [] (string _s) {do_patch(_s,local_group);};
     matchers["rk_candidates"] = [] (string _s) {do_patch(_s,rk_candidates);};
     matchers["rk_received"] = [] (string _s) {do_patch(_s,rk_received);};
     matchers["uv_received"] = [] (string _s) {do_patch(_s,uv_received);};
     matchers["uv_candidates"] = [] (string _s) {do_patch(_s,uv_candidates);};
-    matchers["rk_partitions"] = [] (string _s) {do_patch(_s,rk_partitions);};
-    matchers["uv_partitions"] = [] (string _s) {do_patch(_s,uv_partitions);};
     matchers["rankings"] = [] (string _s) {do_patch(_s,rankings);};
     matchers["user_visits"] = [] (string _s) {do_patch(_s,user_visits);};
     matchers["peer_count"] = [] (string _s) {do_patch(_s,peer_count);};
