@@ -6,7 +6,7 @@ enable_logging: True
 local_binary_path: "/temp/q2" #Mandatory
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
-  x: "8"
+  x: "8" # substring width
   num_peers: "2"
   role: '"rows"'
   master: '<192.168.1.41:40000>'

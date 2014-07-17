@@ -1,0 +1,102 @@
+name: Kmeans bpti
+
+# Peer Bootstrap
+local_binary_path: "/temp/kmeans" #Mandatory
+k3_port: "40000"
+k3_bindings: # All values are strings. String literals should have quotes!
+  dimensionality: "42"
+  iterations_remaining: "1"
+  k: "1"
+  num_peers: "2"
+  role: '"points"'
+  master: '<192.168.1.44:40000>'
+
+# Peer List / Overrides
+k3_peers:
+    - ip: "192.168.1.44"
+      k3_port: "40000"
+      enable_logging: True
+      k3_bindings:
+        data_file: '"/nfs/bpti-tiny.txt"'
+
+    - ip: "192.168.1.44"
+      k3_port: "40001"
+      k3_bindings:
+        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.44"
+#      k3_port: "40002"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.44"
+#      k3_port: "40003"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#
+#    - ip: "192.168.1.45"
+#      k3_port: "45000"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.45"
+#      k3_port: "45001"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.45"
+#      k3_port: "45002"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.45"
+#      k3_port: "45003"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#
+#    - ip: "192.168.1.46"
+#      k3_port: "46000"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.46"
+#      k3_port: "46001"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.46"
+#      k3_port: "46002"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.46"
+#      k3_port: "46003"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#
+#
+#    - ip: "192.168.1.47"
+#      k3_port: "47000"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.47"
+#      k3_port: "47001"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.47"
+#      k3_port: "47002"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.47"
+#      k3_port: "47003"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#
+#    - ip: "192.168.1.48"
+#      k3_port: "48000"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.48"
+#      k3_port: "48001"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.48"
+#      k3_port: "48002"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
+#    - ip: "192.168.1.48"
+#      k3_port: "48003"
+#      k3_bindings:
+#        data_file: '"/nfs/bpti-tiny.txt"'
