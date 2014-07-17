@@ -68,10 +68,10 @@ namespace K3 {
 
   // Map-specific template function to look up
   template <class Key, class Value>
-  F<const Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-    return [&] (const Key& key) -> const Value* {
-      const auto &container(map.getContainer());
-      const auto it(container.find(key));
+  F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
+    return [&] (const Key& key) -> Value* {
+      auto &container(map.getContainer());
+      auto it(container.find(key));
       if (it != container.end()) {
         return &(it->second);
       } else {
