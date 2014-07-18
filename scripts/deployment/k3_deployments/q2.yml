@@ -136,77 +136,77 @@ k3_peers:
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xay"' 
         rankings_file: '"/local_data/rankings_sf5/xay"'
-    - ip: "192.168.1.34"
+    - ip: "192.168.1.39"
       k3_port: "40025"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xaz"' 
         rankings_file: '"/local_data/rankings_sf5/xaz"'
-    - ip: "192.168.1.35"
+    - ip: "192.168.1.39"
       k3_port: "40026"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xba"' 
         rankings_file: '"/local_data/rankings_sf5/xba"'
-    - ip: "192.168.1.36"
+    - ip: "192.168.1.39"
       k3_port: "40027"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbb"' 
         rankings_file: '"/local_data/rankings_sf5/xbb"'
-    - ip: "192.168.1.37"
+    - ip: "192.168.1.39"
       k3_port: "40028"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbc"' 
         rankings_file: '"/local_data/rankings_sf5/xbc"'
-    - ip: "192.168.1.38"
+    - ip: "192.168.1.39"
       k3_port: "40029"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbd"' 
         rankings_file: '"/local_data/rankings_sf5/xbd"'
-    - ip: "192.168.1.34"
+    - ip: "192.168.1.40"
       k3_port: "40030"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbe"' 
         rankings_file: '"/local_data/rankings_sf5/xbe"'
-    - ip: "192.168.1.35"
+    - ip: "192.168.1.40"
       k3_port: "40031"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbf"' 
         rankings_file: '"/local_data/rankings_sf5/xbf"'
-    - ip: "192.168.1.36"
+    - ip: "192.168.1.40"
       k3_port: "40032"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbg"' 
         rankings_file: '"/local_data/rankings_sf5/xbg"'
-    - ip: "192.168.1.37"
+    - ip: "192.168.1.40"
       k3_port: "40033"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbh"' 
         rankings_file: '"/local_data/rankings_sf5/xbh"'
-    - ip: "192.168.1.38"
+    - ip: "192.168.1.40"
       k3_port: "40034"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbi"' 
         rankings_file: '"/local_data/rankings_sf5/xbi"'
-    - ip: "192.168.1.34"
+    - ip: "192.168.1.41"
       k3_port: "40035"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbj"' 
         rankings_file: '"/local_data/rankings_sf5/xbj"'
-    - ip: "192.168.1.35"
+    - ip: "192.168.1.41"
       k3_port: "40036"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbk"' 
         rankings_file: '"/local_data/rankings_sf5/xbk"'
-    - ip: "192.168.1.36"
+    - ip: "192.168.1.41"
       k3_port: "40037"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbl"' 
         rankings_file: '"/local_data/rankings_sf5/xbl"'
-    - ip: "192.168.1.37"
+    - ip: "192.168.1.41"
       k3_port: "40038"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbm"' 
         rankings_file: '"/local_data/rankings_sf5/xbm"'
-    - ip: "192.168.1.38"
+    - ip: "192.168.1.41"
       k3_port: "40039"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbn"' 
