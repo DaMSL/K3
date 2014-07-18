@@ -5,9 +5,9 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <boost/regex.hpp>
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
+#include <re2/re2.h>
 
 #include "Collections.hpp"
 #include "Common.hpp"
@@ -357,17 +357,29 @@ string cur_page;
 
 _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial;
 
-boost::regex regex_query("(https?://[^\\s]+)");
-boost::smatch regex_results;
+RE2 regex_query("(https?://[^\\s]+)");
+vector<string> regex_results;
 
 unit_t get_line(const string& line) {
-  _Seq<R_elem<string>> sp;
 
-  sp = splitString(line)(string(" "));
+  std::vector<string> words;
+  auto it = line.begin();
+  auto last = line.begin();
+  // do split ourselves
+  for (; it != line.end(); it++) {
+    if (*it == ' ') {
+      words.push_back(string(last, it));
+      last = it + 1;
+    }
+  }
+  // get the last string
+  if (last != line.end()) {
+    words.push_back(string(last, line.end()));
+  }
 
-  if (substring(line)(0)(4) == string("http") && sp.size(unit_t()) == 5) {
+  if (line.substr(0,4) == "http" && words.size() == 5) {
 
-      cur_page = sp.at(0).elem;
+      cur_page = words[0];
 
       for (const auto &v : url_count.getConstContainer()) {
           url_counts_partial.insert(
@@ -375,10 +387,13 @@ unit_t get_line(const string& line) {
       }
 
       url_count.getContainer().clear();
-
   }
 
-  regex_search(line, regex_results, regex_query, boost::regex_constants::match_default);
+  re2::StringPiece sp(line);
+  string word;
+  while (RE2::FindAndConsume(&sp, regex_query, &word)) {
+      regex_results.push_back(word);
+  }
 
   for (int i=1; i<regex_results.size(); i++) {
     const string& s = regex_results[i];
@@ -470,8 +485,6 @@ unit_t load_all(unit_t _) {
 
 
     stringLoader(file_name)(inputData);
-
-
 
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
