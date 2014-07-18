@@ -413,6 +413,8 @@ unit_t q2_local(unit_t _) {
       // agg_vals.getContainer()[key] += r.adRevenue;
       peer_aggs.getContainer()[index_by_hash(key)].getContainer()[key] += r.adRevenue;
     }
+    local_uservisits.getContainer().clear();
+
     // do 2nd groupby
     // for (const auto &v : agg_vals.getConstContainer()) {
     //   int key = index_by_hash(v.first);
@@ -425,6 +427,7 @@ unit_t q2_local(unit_t _) {
           ((unit_t (*) (const _Map<R_key_value<string, double>>&)) &aggregate, v.second);
       engine.send(peer_by_index(v.first), 5, disp);
     }
+
     // send punctuation
     for (const auto &p : peers.getConstContainer()) {
       auto disp = make_shared<ValDispatcher<unit_t>>(peer_barrier,unit_t());
