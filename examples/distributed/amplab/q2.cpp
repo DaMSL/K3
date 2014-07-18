@@ -23,6 +23,17 @@ using std::begin;
 using std::end;
 
 
+class Str {
+  public:
+  Str() : _buf(nullptr) {}
+  Str(char *b) : _buf(strdup(b)) {}
+  Str(string &s) : _buf(strdup(s.c_str())) {}
+  char *c_str() { return _buf; }
+  ~Str() { free(_buf); }
+
+  char *_buf;
+};
+
 
 
 
@@ -355,12 +366,26 @@ Address& peer_by_index(const int i) {
   return container[i].addr;
 }
 
-F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)>dataLoader(string filepath){
-    F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>>&)> r = [filepath] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> & c){
-        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> rec;
+F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str>>&)>dataLoader(string filepath){
+    F<unit_t(_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str>>&)> r = [filepath] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str>> & c){
+        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.sourceIP, rec.destURL, rec.visitDate, rec.adRevenue, rec.userAgent, rec.countryCode, rec.languageCode, rec.searchWord, rec.duration)) {
+            string sourceIP;
+            string destURL;
+            string visitDate;
+            string userAgent;
+            string countryCode;
+            string languageCode;
+            string searchWord;
+            if (strtk::parse(str,",",sourceIP, destURL, visitDate, rec.adRevenue, userAgent, countryCode, languageCode, searchWord, rec.duration)) {
+                rec.sourceIP = Str(sourceIP);
+                rec.destURL = Str(destURL);
+                rec.visitDate = Str(visitDate);
+                rec.userAgent = Str(userAgent);
+                rec.countryCode = Str(countryCode);
+                rec.languageCode = Str(languageCode);
+                rec.searchWord = Str(searchWord);
                 c.insert(rec);
             }
             else{
@@ -390,7 +415,7 @@ int peers_finished;
 
 int master_peers_finished;
 
-_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> local_uservisits;
+_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str>> local_uservisits;
 
 _Map<R_key_value<string, double>> local_q2_results;
 
@@ -409,7 +434,7 @@ unit_t q2_local(unit_t _) {
     // though it is theoretically strictly more efficient.
     // do 1st groupby
     for (const auto &r : local_uservisits.getConstContainer()) {
-      string key = r.sourceIP.substr(0,x);
+      string key = string(r.sourceIP._buf).substr(0,x);
       // agg_vals.getContainer()[key] += r.adRevenue;
       peer_aggs.getContainer()[index_by_hash(key)].getContainer()[key] += r.adRevenue;
     }
@@ -601,9 +626,9 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(local_q2_results));
-    result["local_uservisits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string>> coll) {
+    result["local_uservisits"] = ([] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str>> coll) {
         ostringstream oss;
-        auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, string> elem) {oss << "{" + ("adRevenue:" + to_string(elem.adRevenue) + "," + "countryCode:" + elem.countryCode + "," + "destURL:" + elem.destURL + "," + "duration:" + to_string(elem.duration) + "," + "languageCode:" + elem.languageCode + "," + "searchWord:" + elem.searchWord + "," + "sourceIP:" + elem.sourceIP + "," + "userAgent:" + elem.userAgent + "," + "visitDate:" + elem.visitDate + "}") << ",";
+        auto f = [&] (R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, Str> elem) {oss << "{" + ("adRevenue:" + to_string(elem.adRevenue) + "," + "countryCode:" + string(elem.countryCode.c_str()) + "," + "destURL:" + string(elem.destURL.c_str()) + "," + "duration:" + to_string(elem.duration) + "," + "languageCode:" + string(elem.languageCode.c_str()) + "," + "searchWord:" + string(elem.searchWord.c_str()) + "," + "sourceIP:" + string(elem.sourceIP.c_str()) + "," + "userAgent:" + string(elem.userAgent.c_str()) + "," + "visitDate:" + string(elem.visitDate.c_str()) + "}") << ",";
         return unit_t();};
         coll.iterate(f);
         return "[" + oss.str() + "]";
