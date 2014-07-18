@@ -23,20 +23,6 @@ using std::begin;
 using std::end;
 
 
-class Str {
-  public:
-  Str() : _buf(nullptr) {}
-  Str(char *b) : _buf(strdup(b)) {}
-  Str(string &s) : _buf(strdup(s.c_str())) {}
-  char *c_str() { return _buf; }
-  ~Str() { free(_buf); }
-
-  char *_buf;
-};
-
-
-
-
 using K3::Collection;
 
 template <class _T0,class _T1> class R_key_value;

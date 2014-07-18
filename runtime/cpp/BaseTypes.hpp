@@ -6,6 +6,18 @@
 #ifndef K3_R_elem
 #define K3_R_elem
 
+class Str {
+  public:
+  Str() : _buf(nullptr) {}
+  Str(char *b) : _buf(strdup(b)) {}
+  Str(const std::string &s) : _buf(strdup(s.c_str())) {}
+  char *c_str() { return _buf; }
+  ~Str() { free(_buf); }
+
+  char *_buf;
+};
+
+
 template <class _T0>
 class R_elem {
     public:

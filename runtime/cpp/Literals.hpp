@@ -102,6 +102,13 @@ namespace K3 {
     }
   };
 
+  template <> struct patcher<Str> {
+    static void patch(string s, Str st) {
+      string s2(st.c_str());
+      patch(s, s2);
+    }
+  };
+
   template <> struct patcher<string> {
     static void patch(string s, string& t) {
       string r;
