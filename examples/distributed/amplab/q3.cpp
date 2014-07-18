@@ -23,8 +23,6 @@ using namespace K3::BoostSerializer;
 using std::begin;
 using std::end;
 
-
-
 int start_ms;
 int end_ms;
 int elapsed_ms;
@@ -637,9 +635,9 @@ std::function<std::function<unit_t(std::function<unit_t(v67)>)>(v61)> getAt(_Map
     };
 }
 
-_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>> user_visits;
+_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, time_t>> user_visits;
 
-_Collection<R_avgDuration_pageRank_pageURL<int, int, string>> rankings;
+_Collection<R_avgDuration_pageRank_pageURL<int, int, Str>> rankings;
 
 _Map<R_key_value<int, _Map<R_key_value<string, _Map<R_key_value<string, double>>>>>> uv_m;
 
@@ -648,7 +646,7 @@ unit_t uv_partition(unit_t _) {
   // Sort input data into adRevenue aggregate per sourceIP per peer.
   for (auto& u: user_visits.getContainer()) {
     if (lower_date < u.visitDate && u.visitDate < upper_date) {
-      uv_m.getContainer()[index_by_hash(u.destURL)].getContainer()[u.destURL].getContainer()[u.sourceIP] += u.adRevenue;
+      uv_m.getContainer()[index_by_hash(string(u.destURL.c_str()))].getContainer()[string(u.destURL.c_str())].getContainer()[string(u.sourceIP.c_str())] += u.adRevenue;
     }
   }
   user_visits.getContainer().clear();
@@ -674,7 +672,7 @@ _Map<R_key_value<int, _Map<R_key_value<string, R_pageRank_count_pageRank_total<d
 unit_t rk_partition(unit_t _) {
 
   for (auto& rk: rankings.getContainer()) {
-    auto& v = rk_m.getContainer()[index_by_hash(rk.pageURL)].getContainer()[rk.pageURL];
+    auto& v = rk_m.getContainer()[index_by_hash(string(rk.pageURL.c_str()))].getContainer()[string(rk.pageURL.c_str())];
     v.pageRank_count += 1;
     v.pageRank_total += rk.pageRank;
   }
@@ -830,7 +828,7 @@ unit_t global_groupShared(shared_ptr<_Map<R_key_value<string, R_adRevenue_total_
   return global_group(*g);
 }
 
-unit_t global_group(_Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>& g) {
+unit_t global_group(const _Map<R_key_value<string, R_adRevenue_total_pageRank_count_pageRank_total<double, double, double>>>& g) {
   global_groups = global_groups.combine(g);
   return unit_t {};
 }
@@ -1056,12 +1054,14 @@ map<string,string> show_globals() {
     return result;
 }
 
-F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rankings_loader(string filepath){
-    F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)> r = [filepath] (K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>> & c){
-        R_avgDuration_pageRank_pageURL<int, int, string> rec;
+F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, Str>>&)>rankings_loader(string filepath){
+    F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, Str>>&)> r = [filepath] (K3::Collection<R_avgDuration_pageRank_pageURL<int, int, Str>> & c){
+        R_avgDuration_pageRank_pageURL<int, int, Str> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.pageURL,rec.pageRank,rec.avgDuration)){
+            string pageURL;
+            if (strtk::parse(str,",",pageURL,rec.pageRank,rec.avgDuration)){
+                rec.pageURL = Str(pageURL);
                 c.insert(rec);
             }
             else{
@@ -1073,12 +1073,24 @@ F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>rank
     return r;
 }
 
-F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>>&)>user_visits_loader(string filepath){
-    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t>> & c){
-        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, string, string, int, string, string, string, string, time_t> rec;
+F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, time_t>>&)>user_visits_loader(string filepath){
+    F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, time_t>>&)> r = [filepath] (K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, time_t>> & c){
+        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double, Str, Str, int, Str, Str, Str, Str, time_t> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.sourceIP,rec.destURL,rec.visitDate,rec.adRevenue,rec.userAgent,rec.countryCode,rec.languageCode,rec.searchWord,rec.duration)){
+            string sourceIP;
+            string destURL;
+            string userAgent;
+            string countryCode;
+            string languageCode;
+            string searchWord;
+            if (strtk::parse(str,",",sourceIP, destURL, rec.visitDate, rec.adRevenue, userAgent, countryCode, languageCode, searchWord, rec.duration)) {
+                rec.sourceIP = Str(sourceIP);
+                rec.destURL = Str(destURL);
+                rec.userAgent = Str(userAgent);
+                rec.countryCode = Str(countryCode);
+                rec.languageCode = Str(languageCode);
+                rec.searchWord = Str(searchWord);
                 c.insert(rec);
             }
             else{
@@ -1127,7 +1139,7 @@ unit_t done(unit_t _) {
     end_ms = now(unit_t());
     elapsed_ms = end_ms - start_ms;
     printLine("time:" + itos(elapsed_ms));
-    
+
     string res = "{" + ("sourceIP:" + max_result.sourceIP + "," + "adRevenue_total:" + to_string(max_result.adRevenue_total) + "," + "pageRank_avg:" + to_string(max_result.pageRank_avg) + "}");
     printLine(res);
     auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
@@ -1168,7 +1180,7 @@ int main(int argc,char** argv) {
     matchers["rankings_file"] = [] (string _s) {do_patch(_s,rankings_file);};
     matchers["lower_date"] = [] (string _s) {do_patch(_s,lower_date);};
     matchers["upper_date"] = [] (string _s) {do_patch(_s,upper_date);};
-    
+
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
