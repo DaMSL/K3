@@ -162,32 +162,6 @@ k3_peers:
         data_file: '"/local_data/uservisits_sf5_pp/xbd"' 
         rankings_file: '"/local_data/rankings_sf5/xbd"'
     - ip: "192.168.1.34"
-      k3_port: "40025"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xaz"' 
-        rankings_file: '"/local_data/rankings_sf5/xaz"'
-    - ip: "192.168.1.35"
-      k3_port: "40026"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xba"' 
-        rankings_file: '"/local_data/rankings_sf5/xba"'
-    - ip: "192.168.1.36"
-      k3_port: "40027"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xbb"' 
-        rankings_file: '"/local_data/rankings_sf5/xbb"'
-    - ip: "192.168.1.37"
-      k3_port: "40028"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xbc"' 
-        rankings_file: '"/local_data/rankings_sf5/xbc"'
-    - ip: "192.168.1.38"
-      k3_port: "40029"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xbd"' 
-        rankings_file: '"/local_data/rankings_sf5/xbd"'
-
-    - ip: "192.168.1.34"
       k3_port: "40030"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xbe"' 
