@@ -128,7 +128,7 @@ namespace K3 {
   Collection<R_elem<double>> zero_vector(int n) {
     Collection<R_elem<double>> c(nullptr);
     auto &cc(c.getContainer());
-    cc.resize(n);
+    cc.resize(n, R_elem<double> { 0.0 });
     return c;
   }
 
