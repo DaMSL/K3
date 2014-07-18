@@ -4,51 +4,53 @@ name: Amplab Query 3
 local_binary_path: "/temp/q3" #Mandatory
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
-  peer_count: "1" 
+  peer_count: "5" 
   role: '"rows"'
-  master: '<192.168.1.41:40000>'
+  master: '<192.168.1.34:40000>'
   lower_date: "315532860"
   upper_date: "315533040"  
 
 # Peer List / Overrides
 k3_peers:
- 
-    - ip: "192.168.1.41"
+    - ip: "192.168.1.34"
       k3_port: "40000"
       k3_bindings:
-        user_visits_file: '"/nfs/uservisits_sf1_pp/xaa"' 
-        rankings_file: '"/nfs/rankings_sf1/xaa"'
-#    - ip: "192.168.1.41"
-#      k3_port: "40001"
-#      k3_bindings:
-#        user_visits_file: '"/nfs/uservisits_sf1_pp/xaa"' 
-#        rankings_file: '"/nfs/rankings_sf1/xaa"'
-##    - ip: "192.168.1.41"
-#      k3_port: "40002"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/03.txt"'
-#    - ip: "192.168.1.41"
-#      k3_port: "40003"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/04.txt"'
-#
-#    - ip: "192.168.1.40"
-#      k3_port: "40000"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/05.txt"'
-#    - ip: "192.168.1.40"
-#      k3_port: "40001"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/06.txt"'
-#    - ip: "192.168.1.40"
-#      k3_port: "40002"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/07.txt"'
-#    - ip: "192.168.1.40"
-#      k3_port: "40003"
-#      k3_bindings:
-#        data_file: '"/nfs/uservisits_sf5/4peers/08.txt"'
-#
+        user_visits_file: '"/local_data/uservisits_sf5_pp/xaa"' 
+        rankings_file: '"/local_data/rankings_sf5/xaa"'
+    - ip: "192.168.1.35"
+      k3_port: "40001"
+      k3_bindings:
+        user_visits_file: '"/local_data/uservisits_sf5_pp/xab"' 
+        rankings_file: '"/local_data/rankings_sf5/xab"'
+    - ip: "192.168.1.36"
+      k3_port: "40002"
+      k3_bindings:
+        user_visits_file: '"/local_data/uservisits_sf5_pp/xac"' 
+        rankings_file: '"/local_data/rankings_sf5/xac"'
+    - ip: "192.168.1.37"
+      k3_port: "40003"
+      k3_bindings:
+        user_visits_file: '"/local_data/uservisits_sf5_pp/xad"' 
+        rankings_file: '"/local_data/rankings_sf5/xad"'
+    - ip: "192.168.1.38"
+      k3_port: "40000"
+      k3_bindings:
+        user_visits_file: '"/local_data/uservisits_sf5_pp/xae"' 
+        rankings_file: '"/local_data/rankings_sf5/xae"'
+##    - ip: "192.168.1.40"
+##      k3_port: "40001"
+##      k3_bindings:
+##        user_visits_file: '"/local_data/uservisits_sf5_pp/xaa"' 
+##        rankings_file: '"/local_data/rankings_sf5/xaa"'
+###    - ip: "192.168.1.40"
+##      k3_port: "40002"
+##      k3_bindings:
+##        data_file: '"/nfs/uservisits_sf5/4peers/07.txt"'
+##    - ip: "192.168.1.40"
+##      k3_port: "40003"
+##      k3_bindings:
+##        data_file: '"/nfs/uservisits_sf5/4peers/08.txt"'
+##
 #    - ip: "192.168.1.39"
 #      k3_port: "39000"
 #      k3_bindings:
