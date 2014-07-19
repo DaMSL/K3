@@ -25,7 +25,6 @@ using std::end;
 
 
 
-Engine engine = Engine();
 
 #include "Builtins.hpp"
 
@@ -194,26 +193,6 @@ namespace K3 {
     };
 }
 
-template <class _T0,class _T1>
-class R_key_value {
-    public:
-        R_key_value() {}
-        R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
-        R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(R_key_value _r) {
-            if (key == _r.key&& value == _r.value)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & key;
-            _archive & value;
-            
-        }
-        _T0 key;
-        _T1 value;
-};
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -311,7 +290,7 @@ F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>data
         R_avgDuration_pageRank_pageURL<int, int, string> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.avgDuration,rec.pageRank,rec.pageURL)){
+            if (strtk::parse(str,",",rec.pageURL, rec.pageRank, rec.avgDuration)){
                 c.insert(rec);
             }
             else{
@@ -360,7 +339,7 @@ unit_t q1_local(unit_t _) {
     
     
     
-    auto d = make_shared<DispatcherImpl<unit_t>>(finished,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(finished,unit_t());
     engine.send(master,3,d);return unit_t();
 }
 
@@ -372,13 +351,13 @@ unit_t finished(unit_t _) {
         elapsed_ms = end_ms - start_ms;
         
         
-        printLine(itos(elapsed_ms));
+        printLine("time:" + itos(elapsed_ms));
         
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             
             
             
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,2,d);return unit_t();
         });
     } else {
@@ -401,7 +380,7 @@ unit_t ready(unit_t _) {
             
             
             
-            auto d = make_shared<DispatcherImpl<unit_t>>(q1_local,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(q1_local,unit_t());
             engine.send(p.addr,4,d);return unit_t();
         });
     } else {
@@ -416,7 +395,7 @@ unit_t load_all(unit_t _) {
     
     
     
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
 }
 
@@ -428,7 +407,7 @@ unit_t rowsProcess(unit_t _) {
         
         
         
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
 }
@@ -466,11 +445,11 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(5);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(finished), "finished");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q1_local), "q1_local");
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(finished), "finished");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(q1_local), "q1_local");
 }
 
 map<string,string> show_globals() {
