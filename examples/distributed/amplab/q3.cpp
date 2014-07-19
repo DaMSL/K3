@@ -859,19 +859,18 @@ unit_t do_global_groupBy(unit_t _) {
     }
 
     // get max
-    const auto *max_r = &(*(global_groupBy_result.getConstContainer().begin()));
+    auto max_r = R_adRevenue_total_pageRank_avg_sourceIP<double, double, string> {-1.0, -1.0, "" };
 
     for (const auto &r : global_groupBy_result.getConstContainer()) {
-      if (r.second.adRevenue_total > max_r->second.adRevenue_total) {
-        max_r = &r;
+      if (r.second.adRevenue_total > max_r.adRevenue_total) {
+        max_r.adRevenue_total = r.second.adRevenue_total;
+        max_r.pageRank_avg = r.second.pageRank_total / r.second.pageRank_count;
+        max_r.sourceIP = r.first;
       }
     }
-    auto max =
-    R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>
-      {max_r->second.adRevenue_total, max_r->second.pageRank_total / max_r->second.pageRank_count, max_r->first};
 
     // send
-    auto d = make_shared<ValDispatcher<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max, max);
+    auto d = make_shared<ValDispatcher<R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>>>(global_max, max_r);
     engine.send(master,0,d);
     return unit_t();
 }
