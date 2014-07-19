@@ -6,13 +6,18 @@
 #ifndef K3_R_elem
 #define K3_R_elem
 
+char *sdup (const char *s);
+
 class Str {
   public:
   Str() : _buf(nullptr) {}
-  Str(char *b) : _buf(strdup(b)) {}
-  Str(const std::string &s) : _buf(strdup(s.c_str())) {}
+  Str(char *b) : _buf(sdup(b)) {}
+  Str(const std::string &s) : _buf(sdup(s.c_str())) {}
+  Str(Str &&other) : _buf(other._buf) {other._buf=nullptr;}
+  Str(const Str &other) : _buf(sdup(other._buf)) {}
+  Str& operator=(const Str& other) { _buf = (sdup(other._buf)); return *this;}
   char *c_str() { return _buf; }
-  ~Str() { free(_buf); }
+  ~Str() { if (_buf) free(_buf); }
 
   char *_buf;
 };
