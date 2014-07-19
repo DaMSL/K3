@@ -14,17 +14,20 @@ k3_peers:
       k3_port: "40000"
       k3_bindings:
         user_visits_file: '"/local_data/uservisits_sf5_pp/xaa"' 
+#        file_name: '"/nfs/tiny/crawl_tiny.txt"' 
         file_name: '"/local_data/crawl_sf5/xaa"'
     - ip: "192.168.1.35"
       k3_port: "40001"
       k3_bindings:
         user_visits_file: '"/local_data/uservisits_sf5_pp/xab"' 
+#        file_name: '"/nfs/tiny/crawl_tiny.txt"' 
         file_name: '"/local_data/crawl_sf5/xab"'
     - ip: "192.168.1.36"
       k3_port: "40002"
       k3_bindings:
         user_visits_file: '"/local_data/uservisits_sf5_pp/xac"' 
         file_name: '"/local_data/crawl_sf5/xac"'
+#        file_name: '"/nfs/tiny/crawl_tiny.txt"' 
     - ip: "192.168.1.37"
       k3_port: "40003"
       k3_bindings:
