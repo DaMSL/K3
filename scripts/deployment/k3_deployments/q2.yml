@@ -13,11 +13,6 @@ k3_bindings: # All values are strings. String literals should have quotes!
 # Peer List / Overrides
 k3_peers:
     - ip: "192.168.1.34"
-      k3_port: "40040"
-      k3_bindings:
-        data_file: '"/local_data/uservisits_sf5_pp/xaa"' 
-        rankings_file: '"/local_data/rankings_sf5/xaa"'
-    - ip: "192.168.1.34"
       k3_port: "40000"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xaa"' 
@@ -117,6 +112,7 @@ k3_peers:
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xat"' 
         rankings_file: '"/local_data/rankings_sf5/xat"'
+    - ip: "192.168.1.34"
       k3_port: "40020"
       k3_bindings:
         data_file: '"/local_data/uservisits_sf5_pp/xau"' 
