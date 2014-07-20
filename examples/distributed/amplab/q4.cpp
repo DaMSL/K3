@@ -312,14 +312,14 @@ tuple<_Collection<R_arg<string>>, _Collection<R_key_value<string, string>>> args
 
 string role;
 
-F<unit_t(_Seq<R_elem<string>>&)>stringLoader(string filepath){
-    F<unit_t(_Seq<R_elem<string>>&)> r = [filepath] (_Seq<R_elem<string>> & c){
+F<unit_t(_Seq<R_elem<Str>>&)>stringLoader(string filepath){
+    F<unit_t(_Seq<R_elem<Str>>&)> r = [filepath] (_Seq<R_elem<Str>> & c){
         std::ifstream infile(filepath);
+
         std::string line;
         while (std::getline(infile, line))
         {
-          R_elem<string> rec;
-          rec.elem = line;
+          R_elem<Str> rec(line);
           c.insert(rec);
         }
         return unit_t();
@@ -346,7 +346,7 @@ int elapsed_ms;
 
 string crawl_file;
 
-_Seq<R_elem<string>> inputData;
+_Seq<R_elem<Str>> inputData;
 
 _Map<R_key_value<string, int>> url_count;
 
@@ -357,26 +357,38 @@ string cur_page;
 _Collection<R_count_destPage_sourcePage<int, string, string>> url_counts_partial;
 
 RE2 regex_query("(https?://[^\\s]+)");
-vector<string> regex_results;
 
-unit_t get_line(const string& line) {
+int time_pre_split = 0;
+int time_split = 0;
+int time_http_do = 0;
+int time_regex = 0;
+int time_local_last = 0;
+
+unit_t get_line(Str& line) {
+  int time_start = now();
 
   std::vector<string> words;
-  auto it = line.begin();
-  auto last = line.begin();
+  string s(line.c_str());
+  auto it = s.begin();
+  auto last = s.begin();
+
+  int time_split_start = now();
+
   // do split ourselves
-  for (; it != line.end(); it++) {
+  for (; it != s.end(); it++) {
     if (*it == ' ') {
       words.push_back(string(last, it));
       last = it + 1;
     }
   }
   // get the last string
-  if (last != line.end()) {
-    words.push_back(string(last, line.end()));
+  if (last != s.end()) {
+    words.push_back(string(last, s.end()));
   }
 
-  if (line.substr(0,4) == "http" && words.size() == 5) {
+  int time_split_end = now();
+
+  if (s.substr(0,4) == "http" && words.size() == 5) {
 
       cur_page = words[0];
 
@@ -388,16 +400,24 @@ unit_t get_line(const string& line) {
       url_count.getContainer().clear();
   }
 
-  re2::StringPiece sp(line);
+  int time_http_do_end = now();
+
+  re2::StringPiece sp(s);
   string word;
   while (RE2::FindAndConsume(&sp, regex_query, &word)) {
-      regex_results.push_back(word);
+      url_count.getContainer()[word] += 1;
   }
 
-  for (int i=1; i<regex_results.size(); i++) {
-    const string& s = regex_results[i];
-    url_count.getContainer()[s] += 1;
-  }
+  int time_regex_end = now();
+
+  int time_local_end = now();
+
+  // Calculate times
+  time_pre_split += time_split_start - time_start;
+  time_split += time_split_end - time_split_start;
+  time_http_do += time_http_do_end - time_split_end;
+  time_regex += time_regex_end - time_http_do_end;
+  time_local_last += time_local_end - time_regex_end;
 
   return unit_t();
 }
@@ -406,8 +426,20 @@ _Map<R_key_value<string, int>> url_counts_total;
 
 unit_t local(unit_t _) {
 
-    for (const auto &s : inputData.getConstContainer()) {
+    int count = 0;
+    for (auto &s : inputData.getContainer()) {
         get_line(s.elem);
+        s = Str("");
+        count++;
+        /*if (!(count % 1000)) {
+          printf("pre_split[%d], split[%d], http_do[%d], regex[%d], last[%d]\n",
+                 time_pre_split, time_split, time_http_do, time_regex, time_local_last);
+          time_pre_split=0;
+          time_split=0;
+          time_http_do=0;
+          time_regex=0;
+          time_local_last=0;
+        } */
     }
 
     for (const auto &v : url_count.getConstContainer()) {
@@ -480,13 +512,17 @@ unit_t ready(unit_t _) {
     }
 }
 
+int load_time = 0;
+
 unit_t load_all(unit_t _) {
 
-
+    int last = now(unit_t());
     stringLoader(crawl_file)(inputData);
+    load_time = now(unit_t()) - last;
 
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
-    engine.send(master,1,d);return unit_t();
+    engine.send(master,1,d);
+    return unit_t();
 }
 
 
