@@ -333,7 +333,6 @@ int x;
 
 int num_peers;
 
-string data_file;
 
 int peers_ready;
 
@@ -345,7 +344,7 @@ int end_ms;
 
 int elapsed_ms;
 
-string file_name;
+string crawl_file;
 
 _Seq<R_elem<string>> inputData;
 
@@ -484,7 +483,7 @@ unit_t ready(unit_t _) {
 unit_t load_all(unit_t _) {
 
 
-    stringLoader(file_name)(inputData);
+    stringLoader(crawl_file)(inputData);
 
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
@@ -530,8 +529,7 @@ unit_t atExit(unit_t _) {
 unit_t initGlobalDecls() {
 
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
-    data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
-    start_ms = 0;end_ms = 0;elapsed_ms = 0;file_name = string("data.txt");cur_page = string("NONE");
+    start_ms = 0;end_ms = 0;elapsed_ms = 0;crawl_file = string("data.txt");cur_page = string("NONE");
     received = 0;return unit_t();
 }
 
@@ -576,13 +574,12 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(url_count));
-    result["file_name"] = file_name;
+    result["crawl_file"] = crawl_file;
     result["elapsed_ms"] = to_string(elapsed_ms);
     result["end_ms"] = to_string(end_ms);
     result["start_ms"] = to_string(start_ms);
     result["peers_finished"] = to_string(peers_finished);
     result["peers_ready"] = to_string(peers_ready);
-    result["data_file"] = data_file;
     result["num_peers"] = to_string(num_peers);
     result["x"] = to_string(x);
     result["master"] = addressAsString(master);
@@ -628,13 +625,12 @@ int main(int argc,char** argv) {
     matchers["url_regex"] = [] (string _s) {do_patch(_s,url_regex);};
     matchers["url_count"] = [] (string _s) {do_patch(_s,url_count);};
     matchers["inputData"] = [] (string _s) {do_patch(_s,inputData);};
-    matchers["file_name"] = [] (string _s) {do_patch(_s,file_name);};
+    matchers["crawl_file"] = [] (string _s) {do_patch(_s,crawl_file);};
     matchers["elapsed_ms"] = [] (string _s) {do_patch(_s,elapsed_ms);};
     matchers["end_ms"] = [] (string _s) {do_patch(_s,end_ms);};
     matchers["start_ms"] = [] (string _s) {do_patch(_s,start_ms);};
     matchers["peers_finished"] = [] (string _s) {do_patch(_s,peers_finished);};
     matchers["peers_ready"] = [] (string _s) {do_patch(_s,peers_ready);};
-    matchers["data_file"] = [] (string _s) {do_patch(_s,data_file);};
     matchers["num_peers"] = [] (string _s) {do_patch(_s,num_peers);};
     matchers["x"] = [] (string _s) {do_patch(_s,x);};
     matchers["master"] = [] (string _s) {do_patch(_s,master);};

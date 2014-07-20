@@ -393,7 +393,7 @@ int x;
 
 int num_peers;
 
-string data_file;
+string user_visits_file;
 
 int peers_ready;
 
@@ -518,7 +518,7 @@ unit_t ready(unit_t _) {
 }
 
 unit_t load_all(unit_t _) {
-    dataLoader(data_file)(local_uservisits);
+    dataLoader(user_visits_file)(local_uservisits);
 
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);
@@ -564,7 +564,7 @@ unit_t atExit(unit_t _) {
 unit_t initGlobalDecls() {
 
     master = make_address(string("127.0.0.1"),40000);x = 3;num_peers = 2;
-    data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
+    user_visits_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
     master_peers_finished = 0;start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
 }
 
@@ -622,7 +622,7 @@ map<string,string> show_globals() {
     result["master_peers_finished"] = to_string(master_peers_finished);
     result["peers_finished"] = to_string(peers_finished);
     result["peers_ready"] = to_string(peers_ready);
-    result["data_file"] = data_file;
+    result["user_visits_file"] = user_visits_file;
     result["num_peers"] = to_string(num_peers);
     result["x"] = to_string(x);
     result["master"] = addressAsString(master);
@@ -671,7 +671,7 @@ int main(int argc,char** argv) {
     matchers["master_peers_finished"] = [] (string _s) {do_patch(_s,master_peers_finished);};
     matchers["peers_finished"] = [] (string _s) {do_patch(_s,peers_finished);};
     matchers["peers_ready"] = [] (string _s) {do_patch(_s,peers_ready);};
-    matchers["data_file"] = [] (string _s) {do_patch(_s,data_file);};
+    matchers["user_visits_file"] = [] (string _s) {do_patch(_s,user_visits_file);};
     matchers["num_peers"] = [] (string _s) {do_patch(_s,num_peers);};
     matchers["x"] = [] (string _s) {do_patch(_s,x);};
     matchers["master"] = [] (string _s) {do_patch(_s,master);};
