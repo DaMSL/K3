@@ -603,7 +603,7 @@ Address master;
 time_t lower_date;
 time_t upper_date;
 
-int peer_count;
+int num_peers;
 
 
 size_t index_by_hash(const string& s) {
@@ -714,7 +714,7 @@ int rk_received;
 
 unit_t uv_partitions_received(unit_t _) {
     uv_received = uv_received + 1;
-    if (uv_received == peer_count && rk_received == peer_count) {
+    if (uv_received == num_peers && rk_received == num_peers) {
         auto d = make_shared<ValDispatcher<unit_t>>(do_groupBy,unit_t());
         engine.send(me,4,d);return unit_t();
     } else {
@@ -735,7 +735,7 @@ unit_t rk_partition_receive(const _Map<R_key_value<string, R_pageRank_count_page
 
 unit_t rk_partitions_received(unit_t _) {
     rk_received = rk_received + 1;
-    if (uv_received == peer_count && rk_received == peer_count) {
+    if (uv_received == num_peers && rk_received == num_peers) {
         auto d = make_shared<ValDispatcher<unit_t>>(do_groupBy,unit_t());
         engine.send(me,4,d);
         return unit_t();
@@ -837,7 +837,7 @@ int global_received;
 
 unit_t global_group_receive(unit_t _) {
     global_received = global_received + 1;
-    if (global_received == peer_count) {
+    if (global_received == num_peers) {
 
         auto d = make_shared<ValDispatcher<unit_t>>(do_global_groupBy,unit_t());
         engine.send(me,1,d);return unit_t();
@@ -912,7 +912,7 @@ unit_t atExit(unit_t _) {
 
 unit_t initGlobalDecls() {
 
-    master = make_address(string("127.0.0.1"),30001);peer_count = 0;uv_received = 0;rk_received = 0;
+    master = make_address(string("127.0.0.1"),30001);num_peers = 0;uv_received = 0;rk_received = 0;
     global_received = 0;
 
     max_result = R_adRevenue_total_pageRank_avg_sourceIP<double, double, string>{0.0, 0.0, string("")};
@@ -1022,7 +1022,7 @@ map<string,string> show_globals() {
     //     coll.iterate(f);
     //     return "[" + oss.str() + "]";
     // }(user_visits));
-    result["peer_count"] = to_string(peer_count);
+    result["num_peers"] = to_string(num_peers);
     result["master"] = addressAsString(master);
     result["role"] = role;
     result["args"] = "("
@@ -1104,7 +1104,7 @@ F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_se
 int ready_received = 0;
 unit_t ready(unit_t _) {
   ready_received += 1;
-  if (ready_received == peer_count) {
+  if (ready_received == num_peers) {
     start_ms = now(unit_t());
     peers.iterate([] (R_addr<Address> r) {
         auto d = make_shared<ValDispatcher<unit_t>>(uv_partition,unit_t());
@@ -1134,7 +1134,7 @@ unit_t load_all(unit_t _) {
 int done_received = 0;
 unit_t done(unit_t _) {
   done_received += 1;
-  if (done_received == peer_count) {
+  if (done_received == num_peers) {
     end_ms = now(unit_t());
     elapsed_ms = end_ms - start_ms;
     printLine("time:" + itos(elapsed_ms));
@@ -1169,7 +1169,7 @@ int main(int argc,char** argv) {
     matchers["uv_candidates"] = [] (string _s) {do_patch(_s,uv_candidates);};
     matchers["rankings"] = [] (string _s) {do_patch(_s,rankings);};
     matchers["user_visits"] = [] (string _s) {do_patch(_s,user_visits);};
-    matchers["peer_count"] = [] (string _s) {do_patch(_s,peer_count);};
+    matchers["num_peers"] = [] (string _s) {do_patch(_s,num_peers);};
     matchers["master"] = [] (string _s) {do_patch(_s,master);};
     matchers["role"] = [] (string _s) {do_patch(_s,role);};
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
