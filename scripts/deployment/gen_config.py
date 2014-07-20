@@ -8,7 +8,7 @@ crawl_prefix = "/local/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_"
 
 # Configuration
 num_files = 128
-num_machines = 8
+num_machines = 6
 peers_per_machine = 16
 start_addr = 34
 start_port = 40000
@@ -31,14 +31,16 @@ def gen_peers(handle):
 
 
 
-      ip_line   = '  - ip: "%s"' % addr
-      port_line = '    k3_port: "%s"' % port
-      uv_line   = """      user_visits_file: '"%s"'""" % uv_file
-      rankings_line   = """      rankings_file: '"%s"'""" % rankings_file
-      crawl_line   = """      crawl_file: '"%s"'""" % crawl_file
+      ip_line         = '    - ip: "%s"' % addr
+      port_line       = '      k3_port: "%s"' % port
+      bindings_line   = '      k3_bindings:'
+      uv_line       = """        user_visits_file: '"%s"'""" % uv_file
+      rankings_line = """        rankings_file: '"%s"'""" % rankings_file
+      crawl_line    = """        crawl_file: '"%s"'""" % crawl_file
 
       handle.write(ip_line + "\n")
       handle.write(port_line + "\n")
+      handle.write(bindings_line + "\n")
       handle.write(uv_line + "\n")
       handle.write(rankings_line + "\n")
       handle.write(crawl_line + "\n")
