@@ -2,23 +2,25 @@ import sys
 
 # Constants
 addr_prefix = "192.168.1."
-uv_prefix = "/local/sf5/128l/uservisits_sf5_pp_128l/uservisits_sf5_pp_128l_"
-rankings_prefix = "/local/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_"
-crawl_prefix = "/local/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_"
+uv_prefix = "/local_data/sf5/128l/uservisits_sf5_pp_128l/uservisits_sf5_pp_128l_"
+rankings_prefix = "/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_"
+crawl_prefix = "/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_"
 
 # Configuration
 num_files = 128
-num_machines = 6
 peers_per_machine = 16
 start_addr = 34
 start_port = 40000
 
 # Script
 
-def gen_peers(handle):
+def gen_peers(handle, num_machines):
+  num_peers = num_machines * peers_per_machine
   curr_addr = start_addr
   curr_port = start_port
   curr_file = 0
+  handle.write('  num_peers: "%s"' % str(num_peers))
+
   handle.write("\n\n")
   handle.write("k3_peers:\n")
   for i in range(num_machines):
@@ -51,12 +53,13 @@ def gen_peers(handle):
 
 if __name__ == "__main__":
   if len(sys.argv) < 3:
-    print("usage %s template_file out_file" % sys.argv[0])
+    print("usage %s num_machines template_file out_file" % sys.argv[0])
 
-  template = sys.argv[1]
-  out_path = sys.argv[2]
+  num_machines = int(sys.argv[1])
+  template = sys.argv[2]
+  out_path = sys.argv[3]
 
   with open(template, "r") as in_f:
     with open(out_path, "w") as out_f:
       out_f.write(in_f.read())
-      gen_peers(out_f)
+      gen_peers(out_f, num_machines)

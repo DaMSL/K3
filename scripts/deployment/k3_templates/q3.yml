@@ -4,7 +4,6 @@ name: Amplab Query 3
 local_binary_path: "/temp/q3" #Mandatory
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
-  peer_count: "128" 
   role: '"rows"'
   master: '<192.168.1.34:40000>'
   lower_date: "315532860"
