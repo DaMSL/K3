@@ -65,6 +65,10 @@ unit_t local(unit_t);
 
 unit_t get_line(const string&);
 
+unit_t peer_barrier(unit_t);
+
+unit_t master_done(unit_t);
+
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
@@ -312,6 +316,17 @@ tuple<_Collection<R_arg<string>>, _Collection<R_key_value<string, string>>> args
 
 string role;
 
+int index_by_hash(const string& s) {
+  auto& container = peers.getContainer();
+  size_t h = std::hash<string>()(s);
+  return h % container.size();
+}
+
+Address& peer_by_index(const int i) {
+  auto& container = peers.getContainer();
+  return container[i].addr;
+}
+
 F<unit_t(_Seq<R_elem<Str>>&)>stringLoader(string filepath){
     F<unit_t(_Seq<R_elem<Str>>&)> r = [filepath] (_Seq<R_elem<Str>> & c){
         std::ifstream infile(filepath);
@@ -422,7 +437,7 @@ unit_t get_line(Str& line) {
   return unit_t();
 }
 
-_Map<R_key_value<string, int>> url_counts_total;
+_Map<R_key_value<int, _Map<R_key_value<string, int>>>> url_counts_total;
 
 unit_t local(unit_t _) {
 
@@ -448,12 +463,22 @@ unit_t local(unit_t _) {
     }
 
     for (const auto &v : url_counts_partial.getConstContainer()) {
-      url_counts_total.getContainer()[v.destPage] += v.count;
+      url_counts_total.getContainer()[index_by_hash(v.destPage)].getContainer()[v.destPage] += v.count;
     }
 
-    auto d = make_shared<RefDispatcher<_Map<R_key_value<string, int>>>>
-               (aggregate, url_counts_total);
-    engine.send(master,3,d);
+    for (const auto &v : url_counts_total.getConstContainer()) {
+
+      auto d = make_shared<RefDispatcher<_Map<R_key_value<string, int>>>>
+                (aggregate, v.second);
+      engine.send(peer_by_index(v.first), 5, d);
+    }
+
+    // send punctuation
+    for (const auto &p : peers.getConstContainer()) {
+      auto disp = make_shared<ValDispatcher<unit_t>>(peer_barrier,unit_t());
+      engine.send(p.addr, 4, disp);
+    }
+
     return unit_t();
 }
 
@@ -470,11 +495,25 @@ unit_t aggregate(const _Map<R_key_value<string, int>>& newVals) {
     for (const auto &v : newVals.getConstContainer()) {
       url_counts_agg.getContainer()[v.first] += v.second;
     }
+    return unit_t();
+}
+
+unit_t peer_barrier(unit_t _) {
 
     peers_finished = peers_finished + 1;
     if (peers_finished == num_peers) {
+        auto d = make_shared<ValDispatcher<unit_t>>(master_done, unit_t());
+        engine.send(master, 3, d);
+    }
+    return unit_t();
+}
 
-        end_ms = now(unit_t());
+int master_peers_finished = 0;
+
+unit_t master_done(unit_t _) {
+    master_peers_finished = master_peers_finished + 1;
+    if (master_peers_finished == num_peers) {
+        end_ms = now();
         elapsed_ms = end_ms - start_ms;
 
         printLine("time:" + itos(elapsed_ms));
@@ -482,7 +521,8 @@ unit_t aggregate(const _Map<R_key_value<string, int>>& newVals) {
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
 
             auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
-            engine.send(p.addr,2,d);return unit_t();
+            engine.send(p.addr,2,d);
+            return unit_t();
         });
     } else {
         return unit_t();
@@ -505,7 +545,7 @@ unit_t ready(unit_t _) {
 
 
             auto d = make_shared<ValDispatcher<unit_t>>(local,unit_t());
-            engine.send(p.addr,4,d);return unit_t();
+            engine.send(p.addr,6,d);return unit_t();
         });
     } else {
         return unit_t();
@@ -516,9 +556,11 @@ int load_time = 0;
 
 unit_t load_all(unit_t _) {
 
+    cout << "Loading data" << endl;
     int last = now(unit_t());
     stringLoader(crawl_file)(inputData);
     load_time = now(unit_t()) - last;
+    cout << "Done loading data" << endl;
 
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);
@@ -570,12 +612,14 @@ unit_t initGlobalDecls() {
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(5);
+    dispatch_table.resize(7);
     dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
     dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
     dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<SharedDispatcher<_Map<R_key_value<string, int>>>>(aggregateShared), "aggregate");
-    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(local), "local");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(master_done), "master_done");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(peer_barrier), "peer_barrier");
+    dispatch_table[5] = make_tuple(make_shared<SharedDispatcher<_Map<R_key_value<string, int>>>>(aggregateShared), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<ValDispatcher<unit_t>>(local), "local");
 }
 
 map<string,string> show_globals() {
