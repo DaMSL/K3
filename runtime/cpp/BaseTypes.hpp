@@ -11,13 +11,33 @@ char *sdup (const char *s);
 class Str {
   public:
   Str() : _buf(nullptr) {}
-  Str(char *b) : _buf(sdup(b)) {}
-  Str(const std::string &s) : _buf(sdup(s.c_str())) {}
-  Str(Str &&other) : _buf(other._buf) {other._buf=nullptr;}
+
+  // Move constructor
+  Str(Str &&other) : Str() {
+    swap(*this, other);
+  }
+
+  // Copy constructor
   Str(const Str &other) : _buf(sdup(other._buf)) {}
-  Str& operator=(const Str& other) { _buf = (sdup(other._buf)); return *this;}
-  char *c_str() { return _buf; }
+
+  Str& operator=(Str other) {
+    // rely on copy for by-value
+    swap(*this, other);
+    return *this;
+  }
+
   ~Str() { if (_buf) free(_buf); }
+
+  Str(const char *b) : _buf(sdup(b)) {}
+  Str(const std::string &s) : _buf(sdup(s.c_str())) {}
+
+  char *c_str() { return _buf; }
+
+  friend void swap(Str& first, Str& second) {
+    using std::swap;
+
+    swap(first._buf, second._buf);
+  }
 
   char *_buf;
 };

@@ -154,13 +154,6 @@ namespace K3 {
       };
   }
 
-  // ms
-  int now(unit_t) {
-    auto t = std::chrono::system_clock::now();
-    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
-    return elapsed.count();
-  }
-
   // Split a string by substrings
   F<Seq<R_elem<string> >(const string&)> splitString(const string& s) {
     return [&] (const string& splitter) {
