@@ -752,18 +752,18 @@ unit_t start(unit_t _) {
         int foo;
 
         int a = k;
-        for (auto &p : data) {
+        for (const auto &p : data.getConstContainer()) {
           if (a > 0) {
             means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
             a = a - 1;
           }
         }
               
-        for (auto &peer : peers) {
+        for (const auto &peer : peers.getConstContainer()) {
           requests = requests + 1;
           auto d = make_shared<RefDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>
             (assign ,means);
-            engine.send(p.addr,6,d);
+            engine.send(peer.addr,6,d);
         }
 
         return unit_t();
