@@ -22,7 +22,7 @@ using std::begin;
 using std::end;
 
 
-
+string bpti_file;
 
 using K3::Collection;
 
@@ -568,15 +568,11 @@ unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<d
 
 
     return vals.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> v) -> unit_t {
-        std::shared_ptr<R_count_sum<int, _Collection<R_elem<double>>>> __0;
-
-
+        R_count_sum<int, _Collection<R_elem<double>>>* __0;
         __0 = lookup<int, R_count_sum<int, _Collection<R_elem<double>>>>(aggregates)(v.key);
         if (__0) {
             R_count_sum<int, _Collection<R_elem<double>>> a;
             a = *__0;
-
-
 
 
 
@@ -660,7 +656,7 @@ unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current
 
 
 
-    auto d = make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
+    auto d = make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
                                                                                                                ,data.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([current_means] (R_elem<_Collection<R_elem<double>>> p) -> int {
 
 
@@ -690,7 +686,7 @@ unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<doubl
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(maximize,unit_t());
+        auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
         engine.send(master,4,d);return unit_t();
     } else {
         return unit_t();
@@ -718,7 +714,7 @@ unit_t maximize(unit_t _) {
 
 
 
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,1,d);return unit_t();
         });
     } else {
@@ -729,7 +725,7 @@ unit_t maximize(unit_t _) {
 
 
 
-            auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
+            auto d = make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
                                                                                                             ,means);
             engine.send(p.addr,6,d);return unit_t();
         });
@@ -744,7 +740,7 @@ unit_t ready(unit_t _) {
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(start,unit_t());
+        auto d = make_shared<ValDispatcher<unit_t>>(start,unit_t());
         engine.send(master,2,d);return unit_t();
     } else {
         return unit_t();
@@ -774,7 +770,7 @@ unit_t start(unit_t _) {
 
 
 
-            auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
+            auto d = make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
                                                                                                             ,means);
             engine.send(p.addr,6,d);return unit_t();
         });
@@ -789,11 +785,11 @@ unit_t shutdown_(unit_t _) {
 unit_t load_all(unit_t _) {
 
 
-    LoaderVector(string("/Users/joshwheeler/foo.vector"))(data);
+    LoaderVector(string(bpti_file))(data);
 
 
 
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,3,d);return unit_t();
 }
 
@@ -805,7 +801,7 @@ unit_t pointsProcess(unit_t _) {
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
 }
@@ -842,43 +838,44 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(7);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(start), "start");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(maximize), "maximize");
-    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
-    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign), "assign");
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(start), "start");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(maximize), "maximize");
+    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign), "assign");
 }
 
 map<string,string> show_globals() {
     map<string,string> result;
-    result["data"] = ([] (_Collection<R_elem<_Collection<R_elem<double>>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_elem<_Collection<R_elem<double>>> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
-            ostringstream oss;
-            auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-            return unit_t();};
-            coll.iterate(f);
-            return "[" + oss.str() + "]";
-        }(elem.elem)) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(data));
-    result["aggregates"] = ([] (_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
-            ostringstream oss;
-            auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-            return unit_t();};
-            coll.iterate(f);
-            return "[" + oss.str() + "]";
-        }(elem.value.sum)) + "}") + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(aggregates));
+    result["bpti_file"] = bpti_file;
+    //result["data"] = ([] (_Collection<R_elem<_Collection<R_elem<double>>>> coll) {
+    //    ostringstream oss;
+    //    auto f = [&] (R_elem<_Collection<R_elem<double>>> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
+    //        ostringstream oss;
+    //        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+    //        return unit_t();};
+    //        coll.iterate(f);
+    //        return "[" + oss.str() + "]";
+    //    }(elem.elem)) + "}") << ",";
+    //    return unit_t();};
+    //    coll.iterate(f);
+    //    return "[" + oss.str() + "]";
+    //}(data));
+    //result["aggregates"] = ([] (_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
+    //    ostringstream oss;
+    //    auto f = [&] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
+    //        ostringstream oss;
+    //        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+    //        return unit_t();};
+    //        coll.iterate(f);
+    //        return "[" + oss.str() + "]";
+    //    }(elem.value.sum)) + "}") + "}") << ",";
+    //    return unit_t();};
+    //    coll.iterate(f);
+    //    return "[" + oss.str() + "]";
+    //}(aggregates));
     result["means"] = ([] (_Collection<R_key_value<int, _Collection<R_elem<double>>>> coll) {
         ostringstream oss;
         auto f = [&] (R_key_value<int, _Collection<R_elem<double>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + ([] (_Collection<R_elem<double>> coll) {
@@ -952,6 +949,7 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["bpti_file"] = [] (string _s) {do_patch(_s,bpti_file);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
