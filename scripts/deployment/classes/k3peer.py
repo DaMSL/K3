@@ -39,7 +39,7 @@ class K3Peer:
     ssh(self.host, remote_kill_file)
 
     # give the poor process time to die in peace (and unlock the script file)
-    time.sleep(3)
+    time.sleep(10)
 
     # copy run script over to remote
     remote_file = self.remote_binary_path + self.binary_name
