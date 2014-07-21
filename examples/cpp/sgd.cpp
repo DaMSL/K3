@@ -475,12 +475,12 @@ unit_t print_results(unit_t _) {
 unit_t local_sgd(_Collection<R_elem<double>> new_params) {
     parameters = new_params;
     for (const auto &r : data.getConstContainer()) {
-      _Collection<R_elem<double>> update = scalar_mult(step_size)(point_gradient(r.elem)(r.label));
+      _Collection<R_elem<double>> unscaled_update = point_gradient(r.elem)(r.label);
       auto pp = parameters.getContainer().begin();
-      auto up = update.getContainer().begin();
+      auto up = unscaled_update.getContainer().begin();
 
-      for (; pp != end(parameters.getContainer()) && up != end(update.getContainer()); ++pp, ++up) {
-        pp->elem -= up->elem;
+      for (; pp != end(parameters.getContainer()) && up != end(unscaled_update.getContainer()); ++pp, ++up) {
+        pp->elem -= step_size * up->elem;
       }
 
     }
