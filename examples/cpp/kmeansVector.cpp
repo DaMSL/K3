@@ -615,15 +615,15 @@ int nearest_neighbor(_Collection<R_elem<double>>& p,
 
     auto first_mean = *(means.getCollection().begin());
     auto nearest = squared_distance(p)(first_mean.value);
-    auto nearestMean = first_mean;
+    auto *nearestMean = &first_mean;
 
     for (auto &m : means) {
       if (squared_distance(p)(m.value) < nearest) {
          nearest = squared_distance(p)(m.value);
-         nearestMean = p
+         nearestMean = &m;
       }
     }
-    return nearestMean.key;
+    return nearestMean->key;
 }
 
 unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>> current_means) {
