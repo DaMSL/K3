@@ -9,12 +9,11 @@ crawl_prefix = "/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_"
 # Configuration
 num_files = 128
 peers_per_machine = 16
-start_addr = 34
 start_port = 40000
 
 # Script
 
-def gen_peers(handle, num_machines):
+def gen_peers(handle, num_machines, start_addr):
   num_peers = num_machines * peers_per_machine
   curr_addr = start_addr
   curr_port = start_port
@@ -53,13 +52,14 @@ def gen_peers(handle, num_machines):
 
 if __name__ == "__main__":
   if len(sys.argv) < 3:
-    print("usage %s num_machines template_file out_file" % sys.argv[0])
+    print("usage %s num_machines start_addr template_file out_file" % sys.argv[0])
 
   num_machines = int(sys.argv[1])
-  template = sys.argv[2]
-  out_path = sys.argv[3]
+  start_addr = int(sys.argv[2])
+  template = sys.argv[3]
+  out_path = sys.argv[4]
 
   with open(template, "r") as in_f:
     with open(out_path, "w") as out_f:
       out_f.write(in_f.read())
-      gen_peers(out_f, num_machines)
+      gen_peers(out_f, num_machines, start_addr)
