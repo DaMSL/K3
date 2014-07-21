@@ -58,17 +58,19 @@ unit_t start(unit_t);
 
 unit_t maximize(unit_t);
 
-unit_t aggregate(_Collection<R_elem<double>>);
+unit_t aggregateShared(const shared_ptr<_Collection<R_elem<double>>> local_params);
+unit_t aggregate(const _Collection<R_elem<double>>&);
 
-unit_t local_sgd(_Collection<R_elem<double>>);
+unit_t local_sgdShared(const shared_ptr<_Collection<R_elem<double>>>);
+unit_t local_sgd(const _Collection<R_elem<double>>&);
 
 unit_t print_results(unit_t);
 
-std::function<unit_t(double)> update_parameters(const _Collection<R_elem<double>>&);
+unit_t update_parameters(const _Collection<R_elem<double>>&, double);
 
-std::function<_Collection<R_elem<double>>(double)> point_gradient(const _Collection<R_elem<double>>&);
+unit_t point_gradient(const _Collection<R_elem<double>>&, double, _Collection<R_elem<double>>& out);
 
-std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collection<R_elem<double>>&);
+unit_t svm_gradient(const _Collection<R_elem<double>>& x, double y, _Collection<R_elem<double>> &out);
 
 double svm_loss_avg(unit_t);
 
@@ -424,38 +426,37 @@ double svm_loss_avg(unit_t _) {
     }
 }
 
-std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collection<R_elem<double>>& x) {
-    return [&] (double y) -> _Collection<R_elem<double>> {
-        {
-            double flag;
-            flag = y * dot(parameters)(x);
-            if (flag > 1) {
-                return scalar_mult(lambda)(parameters);
-            } else {
-
-                return vector_sub(scalar_mult(lambda)(parameters))(scalar_mult(y)(x));
-            }
+unit_t svm_gradient(const _Collection<R_elem<double>>& x, double y, _Collection<R_elem<double>> &out) {
+    double flag = y * dot(parameters)(x);
+    if (flag > 1) {
+        for (int i=0; i<dimensionality; i++) {
+          out.getContainer()[i].elem = lambda * parameters.getContainer()[i].elem;
         }
-    };
+    } else {
+        for (int i=0; i<dimensionality; i++) {
+          out.getContainer()[i].elem = lambda * parameters.getContainer()[i].elem;
+          out.getContainer()[i].elem -= y * x.getConstContainer()[i].elem;
+        }
+    }
+    return unit_t();
 }
 
-std::function<_Collection<R_elem<double>>(double)> point_gradient(const _Collection<R_elem<double>>& point) {
-    return [&] (double label) -> _Collection<R_elem<double>> {
-        return svm_gradient(point)(label);
-    };
+unit_t point_gradient(const _Collection<R_elem<double>>& point, double label, _Collection<R_elem<double>> &out) {
+  return svm_gradient(point, label, out);
 }
 
-std::function<unit_t(double)> update_parameters(const _Collection<R_elem<double>>& point) {
-    return [&] (double label) -> unit_t {
-            _Collection<R_elem<double>> update;
+unit_t update_parameters(const _Collection<R_elem<double>>& point, double label) {
+    _Collection<R_elem<double>> update;
+    update.getContainer().resize(dimensionality, R_elem<double> {0.0});
 
-            update = scalar_mult(step_size)(point_gradient(point)(label));
+    point_gradient(point, label, update);
 
-            for (int i=0; i<dimensionality; i++) {
-              parameters.getContainer()[i].elem -= update.getContainer()[i].elem;
-            }
-            return unit_t();
-    };
+    for (int i=0; i<dimensionality; i++) {
+      double upd = update.getContainer()[i].elem * step_size;
+      parameters.getContainer()[i].elem -= upd;
+    }
+
+    return unit_t();
 }
 
 unit_t print_results(unit_t _) {
@@ -465,26 +466,37 @@ unit_t print_results(unit_t _) {
     return printLine(itos(elapsed_ms));
 }
 
-unit_t local_sgd(_Collection<R_elem<double>> new_params) {
-    parameters = new_params;
-    for (const auto &r : data.getConstContainer()) {
-      _Collection<R_elem<double>> unscaled_update = point_gradient(r.elem)(r.label);
-      auto pp = parameters.getContainer().begin();
-      auto up = unscaled_update.getContainer().begin();
-
-      for (; pp != end(parameters.getContainer()) && up != end(unscaled_update.getContainer()); ++pp, ++up) {
-        pp->elem -= step_size * up->elem;
-      }
-
-    }
-
-    auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(aggregate,parameters);
-    engine.send(master,5,d);return unit_t();
+unit_t local_sgdShared(const shared_ptr<_Collection<R_elem<double>>> new_params) {
+  return local_sgd(*new_params);
 }
 
-unit_t aggregate(_Collection<R_elem<double>> local_params) {
+unit_t local_sgd(const _Collection<R_elem<double>>& new_params) {
+    parameters = new_params;
+    _Collection<R_elem<double>> unscaled_update;
+    unscaled_update.getContainer().resize(dimensionality, R_elem<double> {0.0});
+
+    for (const auto &r : data.getConstContainer()) {
+
+      // This deletes the update values
+      point_gradient(r.elem, r.label, unscaled_update);
+
+      for (int i=0; i<dimensionality; i++) {
+        parameters.getContainer()[i].elem -= step_size * unscaled_update.getContainer()[i].elem;
+      }
+    }
+
+    auto d = make_shared<RefDispatcher<_Collection<R_elem<double>>>>(aggregate,parameters);
+    engine.send(master,5,d);
+    return unit_t();
+}
+
+unit_t aggregateShared(const shared_ptr<_Collection<R_elem<double>>> local_params) {
+  return aggregate(*local_params);
+}
+
+unit_t aggregate(const _Collection<R_elem<double>>& local_params) {
     for (int i=0; i<dimensionality; i++) {
-      aggregates.sum.getContainer()[i].elem += local_params.getContainer()[i].elem;
+      aggregates.sum.getContainer()[i].elem += local_params.getConstContainer()[i].elem;
     }
     aggregates.count++;
 
@@ -497,7 +509,9 @@ unit_t aggregate(_Collection<R_elem<double>> local_params) {
 }
 
 unit_t maximize(unit_t _) {
-    parameters = scalar_mult(1.0 / aggregates.count)(aggregates.sum);
+    for (int i=0; i<dimensionality; i++) {
+      parameters.getContainer()[i].elem = (1.0/aggregates.count) * aggregates.sum.getContainer()[i].elem;
+    }
 
     //printLine(string("Loss:"));
 
@@ -518,8 +532,7 @@ unit_t maximize(unit_t _) {
     } else {
 
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-
-            auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
+            auto d = make_shared<RefDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
             engine.send(p.addr,6,d);
             return unit_t();
         });
@@ -535,7 +548,7 @@ unit_t start(unit_t _) {
 
     return peers.iterate([] (R_addr<Address> p) -> unit_t {
 
-        auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
+        auto d = make_shared<RefDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
         engine.send(p.addr,6,d);return unit_t();
     });
 }
@@ -609,8 +622,8 @@ void populate_dispatch() {
     dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
     dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(start), "start");
     dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(maximize), "maximize");
-    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<_Collection<R_elem<double>>>>(aggregate), "aggregate");
-    dispatch_table[6] = make_tuple(make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd), "local_sgd");
+    dispatch_table[5] = make_tuple(make_shared<SharedDispatcher<_Collection<R_elem<double>>>>(aggregateShared), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<SharedDispatcher<_Collection<R_elem<double>>>>(local_sgdShared), "local_sgd");
 }
 
 map<string,string> show_globals() {
