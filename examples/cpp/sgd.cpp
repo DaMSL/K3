@@ -704,19 +704,19 @@ void populate_dispatch() {
 
 map<string,string> show_globals() {
     map<string,string> result;
-    result["data"] = ([] (_Collection<R_elem_label<_Collection<R_elem<double>>, double>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_elem_label<_Collection<R_elem<double>>, double> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
-            ostringstream oss;
-            auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-            return unit_t();};
-            coll.iterate(f);
-            return "[" + oss.str() + "]";
-        }(elem.elem)) + "," + "label:" + to_string(elem.label) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(data));
+    //result["data"] = ([] (_Collection<R_elem_label<_Collection<R_elem<double>>, double>> coll) {
+    //    ostringstream oss;
+    //    auto f = [&] (R_elem_label<_Collection<R_elem<double>>, double> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
+    //        ostringstream oss;
+    //        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+    //        return unit_t();};
+    //        coll.iterate(f);
+    //        return "[" + oss.str() + "]";
+    //    }(elem.elem)) + "," + "label:" + to_string(elem.label) + "}") << ",";
+    //    return unit_t();};
+    //    coll.iterate(f);
+    //    return "[" + oss.str() + "]";
+    //}(data));
     result["parameters"] = ([] (_Collection<R_elem<double>> coll) {
         ostringstream oss;
         auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
@@ -724,13 +724,13 @@ map<string,string> show_globals() {
         coll.iterate(f);
         return "[" + oss.str() + "]";
     }(parameters));
-    result["aggregates"] = "{" + ("count:" + to_string(aggregates.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
-        ostringstream oss;
-        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-        return unit_t();};
-        coll.iterate(f);
-        return "[" + oss.str() + "]";
-    }(aggregates.sum)) + "}");
+    //result["aggregates"] = "{" + ("count:" + to_string(aggregates.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
+    //    ostringstream oss;
+    //    auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+    //    return unit_t();};
+    //    coll.iterate(f);
+    //    return "[" + oss.str() + "]";
+    //}(aggregates.sum)) + "}");
     result["lambda"] = to_string(lambda);
     result["step_size"] = to_string(step_size);
     result["elapsed_ms"] = to_string(elapsed_ms);
