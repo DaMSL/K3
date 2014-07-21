@@ -647,8 +647,9 @@ unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>& 
      // Update aggregates for this mean
      auto &agg = local_aggs.getContainer()[which_k];
      agg.count += 1;
-     agg.sum = vector_add(agg.sum)(r.elem);
-      
+     for (int i=0; i<dimensionality; i++) {
+       agg.sum[i] += r.elem;
+     }
    }
 
     auto d = make_shared<RefDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate, local_aggs);
@@ -675,7 +676,6 @@ unit_t aggregate(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem
 
 unit_t maximize(unit_t _) {
     means = _Collection<R_key_value<int, _Collection<R_elem<double>>>>();
-
 
     aggregates.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> x) -> unit_t {
 
