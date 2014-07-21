@@ -72,7 +72,7 @@ std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collectio
 
 double svm_loss_avg(unit_t);
 
-std::function<double(double)> svm_loss(_Collection<R_elem<double>>);
+double svm_loss(_Collection<R_elem<double>>&, double);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
@@ -401,18 +401,12 @@ F<unit_t(K3::Collection<R_elem_label<_Collection<R_elem<double>>, double>>&)>Loa
     return r;
 }
 
-std::function<double(double)> svm_loss(_Collection<R_elem<double>> x) {
-    return [x] (double y) -> double {
-        {
-            double q;
-            q = 1 - y * dot(parameters)(x);
-            double __0;if (q < 0) {
-                __0 = 0;
-            } else {
-                __0 = q;
-            }return lambda * dot(parameters)(parameters) + __0;
-        }
-    };
+double svm_loss(_Collection<R_elem<double>>& x, double y) {
+    double q;
+    q = 1 - y * dot(parameters)(x);
+    double z = 0;
+    if (q >= 0) { z = q; }
+    return lambda * dot(parameters)(parameters) + z;
 }
 
 double svm_loss_avg(unit_t _) {
@@ -424,7 +418,7 @@ double svm_loss_avg(unit_t _) {
 
             return [acc] (R_elem_label<_Collection<R_elem<double>>, double> d) -> R_count_sum<int, double> {
 
-                return R_count_sum<int, double>{acc.count + 1,acc.sum + svm_loss(d.elem)(d.label)};
+                return R_count_sum<int, double>{acc.count + 1,acc.sum + svm_loss(d.elem, d.label)};
             };
         })(R_count_sum<int, double>{0,0.0});
         return stats.sum / stats.count;
