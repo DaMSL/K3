@@ -1,5 +1,7 @@
 #define MAIN_PROGRAM
 
+#include <chrono>
+#include <thread>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -54,6 +56,7 @@ unit_t rowsProcess(unit_t);
 
 unit_t load_all(unit_t);
 
+unit_t hello(unit_t);
 unit_t ready(unit_t);
 
 unit_t shutdown_(unit_t);
@@ -392,7 +395,14 @@ unit_t load_all(unit_t _) {
     
     
     dataLoader(rankings_file)(local_rankings);
-    
+ 
+    std::chrono::milliseconds dura( 10000 );
+    std::this_thread::sleep_for( dura );
+
+    for (const auto& p : peers.getConstContainer()) {
+      auto d = make_shared<ValDispatcher<unit_t>>(hello,unit_t());
+      engine.send(p.addr,5,d);
+    } 
     
     
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
@@ -400,6 +410,9 @@ unit_t load_all(unit_t _) {
 }
 
 
+unit_t hello(unit_t _) {
+    return unit_t();
+}
 
 unit_t rowsProcess(unit_t _) {
     
@@ -444,12 +457,13 @@ unit_t initGlobalDecls() {
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(5);
+    dispatch_table.resize(6);
     dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
     dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
     dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
     dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(finished), "finished");
     dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(q1_local), "q1_local");
+    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<unit_t>>(hello), "hello");
 }
 
 map<string,string> show_globals() {
