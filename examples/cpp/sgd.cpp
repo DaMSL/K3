@@ -490,23 +490,17 @@ unit_t local_sgd(_Collection<R_elem<double>> new_params) {
 }
 
 unit_t aggregate(_Collection<R_elem<double>> local_params) {
-    {
-        _Collection<R_elem<double>> new_sum;
-        new_sum = vector_add(local_params)(aggregates.sum);
-        {
-            int new_count;
-            new_count = 1 + aggregates.count;
-
-            aggregates = R_count_sum<int, _Collection<R_elem<double>>>{new_count,new_sum};
-            if (new_count == num_peers) {
-
-                auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
-                engine.send(master,4,d);return unit_t();
-            } else {
-                return unit_t();
-            }
-        }
+    for (int i=0; i<dimensionality; i++) {
+      aggregates.sum[i] += local_params.elem[i];
     }
+    aggregates.count++;
+
+    if (aggregates.count == num_peers) {
+      auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
+      engine.send(master,4,d);
+    }
+
+    return unit_t();
 }
 
 unit_t maximize(unit_t _) {
@@ -525,14 +519,16 @@ unit_t maximize(unit_t _) {
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
 
             auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
-            engine.send(p.addr,1,d);return unit_t();
+            engine.send(p.addr,1,d);
+            return unit_t();
         });
     } else {
 
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
 
             auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
-            engine.send(p.addr,6,d);return unit_t();
+            engine.send(p.addr,6,d);
+            return unit_t();
         });
     }
 }
