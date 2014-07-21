@@ -68,18 +68,16 @@ unit_t ready(unit_t);
 
 unit_t maximize(unit_t);
 
-unit_t aggregate(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>&);
-unit_t aggregateShared(const shared_ptr<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>);
+unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
 unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>&);
 unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>);
 
-int nearest_neighbor(_Collection<R_elem<double>>&, 
-    _Collection<R_key_value<int, _Collection<R_elem<double>>>>&);
+std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>>);
 
 unit_t print_results(unit_t);
 
-unit_t merge_results(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>&);
+unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
@@ -567,7 +565,7 @@ _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> aggregates
 
 _Collection<R_elem<_Collection<R_elem<double>>>> data;
 
-unit_t merge_results(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>& vals) {
+unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> vals) {
 
 
     return vals.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> v) -> unit_t {
@@ -609,21 +607,45 @@ unit_t print_results(unit_t _) {
     });
 }
 
-int nearest_neighbor(_Collection<R_elem<double>>& p, 
-  _Collection<R_key_value<int, _Collection<R_elem<double>>>>& means) {
-    if (means.getCollection().empty()) { return -1; }
+std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>> p) {
+    return [p] (_Collection<R_key_value<int, _Collection<R_elem<double>>>> means) -> int {
+        std::shared_ptr<R_key_value<int, _Collection<R_elem<double>>>> __1;
 
-    auto first_mean = *(means.getCollection().begin());
-    auto nearest = squared_distance(p)(first_mean.value);
-    auto *nearestMean = &first_mean;
+        __1 = means.peek(unit_t());
+        if (__1) {
+            R_key_value<int, _Collection<R_elem<double>> > first_mean;
+            first_mean = *__1;{
+                R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> nearest;
 
-    for (auto &m : means) {
-      if (squared_distance(p)(m.value) < nearest) {
-         nearest = squared_distance(p)(m.value);
-         nearestMean = &m;
-      }
-    }
-    return nearestMean->key;
+
+
+
+
+
+                nearest = means.fold<R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>>([p] (R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> acc) -> std::function<R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>(R_key_value<int,_Collection<R_elem<double>>>)> {
+                    return [p
+                           ,acc] (R_key_value<int,_Collection<R_elem<double>>> next) -> R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>> {
+
+
+                        if (squared_distance(p)(next.value) < acc.distance) {
+
+
+
+
+                            return R_distance_mean<double, R_key_value<int,_Collection<R_elem<double>>>>{squared_distance(p)(next.value),
+                            next};
+                        } else {
+                            return acc;
+                        }
+                    };
+                })(R_distance_mean<double, R_key_value<int, _Collection<R_elem<double>>>>{squared_distance(p)(first_mean.value),
+                first_mean});
+                return nearest.mean.key;
+            }
+        } else {
+            return -1;
+        }
+    };
 }
 
 unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>> current_means) {
@@ -643,29 +665,26 @@ unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>& 
 
    for (const auto &r : data.getConstContainer()) {
      // Assign each data point to the closest mean.
-     int which_k = nearest_neighbor(r.elem, current_means);
+     int which_k = nearest_neighbor(r.elem)(current_means);
      // Update aggregates for this mean
      auto &agg = local_aggs.getContainer()[which_k];
      agg.count += 1;
-     for (int i=0; i<dimensionality; i++) {
-       agg.sum[i] += r.elem;
-     }
+     agg.sum = vector_add(agg.sum)(r.elem);
+      
    }
 
-    auto d = make_shared<RefDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate, local_aggs);
-    engine.send(master,5,d);
-    return unit_t();
+
+    auto d = make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate, local_aggs);
+    engine.send(master,5,d);return unit_t();
 }
 
-unit_t aggregateShared(const shared_ptr<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>> ags) {
-  return aggregate(*ags);
-}
-
-unit_t aggregate(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> &ags) {
+unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> ags) {
 
     merge_results(ags);
     requests = requests - 1;
     if (requests == 0) {
+
+
 
         auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
         engine.send(master,4,d);return unit_t();
@@ -676,6 +695,7 @@ unit_t aggregate(const _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem
 
 unit_t maximize(unit_t _) {
     means = _Collection<R_key_value<int, _Collection<R_elem<double>>>>();
+
 
     aggregates.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> x) -> unit_t {
 
@@ -816,7 +836,7 @@ void populate_dispatch() {
     dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(start), "start");
     dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
     dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(maximize), "maximize");
-    dispatch_table[5] = make_tuple(make_shared<SharedDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregateShared), "aggregate");
+    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
     dispatch_table[6] = make_tuple(make_shared<SharedDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assignShared), "assign");
 }
 
