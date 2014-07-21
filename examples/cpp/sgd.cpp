@@ -491,7 +491,7 @@ unit_t local_sgd(_Collection<R_elem<double>> new_params) {
 
 unit_t aggregate(_Collection<R_elem<double>> local_params) {
     for (int i=0; i<dimensionality; i++) {
-      aggregates.sum[i] += local_params.elem[i];
+      aggregates.sum.getContainer()[i].elem += local_params.getContainer()[i].elem;
     }
     aggregates.count++;
 
