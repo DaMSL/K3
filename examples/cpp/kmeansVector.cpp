@@ -602,7 +602,7 @@ unit_t print_results(unit_t _) {
         });
 
 
-        return printLine(itos(elapsed_ms));
+        return printLine("time:" + itos(elapsed_ms));
     });
 }
 
@@ -655,16 +655,16 @@ unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current
      R_count_sum<int, _Collection<R_elem<double>>> r;
      r.count = 0;
      r.sum = zero_vector(dimensionality);
-     local_aggs.getContainer[i] = r;
+     local_aggs.getContainer()[i] = r;
    }   
 
    for (const auto &r : data.getConstContainer()) {
      // Assign each data point to the closest mean.
-     int which_k = nearest_neighbor(p.elem)(current_means);
+     int which_k = nearest_neighbor(r.elem)(current_means);
      // Update aggregates for this mean
      auto &agg = local_aggs.getContainer()[which_k];
      agg.count += 1;
-     agg.sum = vector_add(agg.sum)(p.elem);
+     agg.sum = vector_add(agg.sum)(r.elem);
       
    }
 
@@ -845,32 +845,32 @@ void populate_dispatch() {
 map<string,string> show_globals() {
     map<string,string> result;
     result["bpti_file"] = bpti_file;
-    //result["data"] = ([] (_Collection<R_elem<_Collection<R_elem<double>>>> coll) {
-    //    ostringstream oss;
-    //    auto f = [&] (R_elem<_Collection<R_elem<double>>> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
-    //        ostringstream oss;
-    //        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-    //        return unit_t();};
-    //        coll.iterate(f);
-    //        return "[" + oss.str() + "]";
-    //    }(elem.elem)) + "}") << ",";
-    //    return unit_t();};
-    //    coll.iterate(f);
-    //    return "[" + oss.str() + "]";
-    //}(data));
-    //result["aggregates"] = ([] (_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
-    //    ostringstream oss;
-    //    auto f = [&] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
-    //        ostringstream oss;
-    //        auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
-    //        return unit_t();};
-    //        coll.iterate(f);
-    //        return "[" + oss.str() + "]";
-    //    }(elem.value.sum)) + "}") + "}") << ",";
-    //    return unit_t();};
-    //    coll.iterate(f);
-    //    return "[" + oss.str() + "]";
-    //}(aggregates));
+    result["data"] = ([] (_Collection<R_elem<_Collection<R_elem<double>>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_elem<_Collection<R_elem<double>>> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
+            ostringstream oss;
+            auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+            return unit_t();};
+            coll.iterate(f);
+            return "[" + oss.str() + "]";
+        }(elem.elem)) + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(data));
+    result["aggregates"] = ([] (_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> coll) {
+        ostringstream oss;
+        auto f = [&] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + "{" + ("count:" + to_string(elem.value.count) + "," + "sum:" + ([] (_Collection<R_elem<double>> coll) {
+            ostringstream oss;
+            auto f = [&] (R_elem<double> elem) {oss << "{" + ("elem:" + to_string(elem.elem) + "}") << ",";
+            return unit_t();};
+            coll.iterate(f);
+            return "[" + oss.str() + "]";
+        }(elem.value.sum)) + "}") + "}") << ",";
+        return unit_t();};
+        coll.iterate(f);
+        return "[" + oss.str() + "]";
+    }(aggregates));
     result["means"] = ([] (_Collection<R_key_value<int, _Collection<R_elem<double>>>> coll) {
         ostringstream oss;
         auto f = [&] (R_key_value<int, _Collection<R_elem<double>>> elem) {oss << "{" + ("key:" + to_string(elem.key) + "," + "value:" + ([] (_Collection<R_elem<double>> coll) {
