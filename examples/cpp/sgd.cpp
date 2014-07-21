@@ -413,7 +413,6 @@ double svm_loss_avg(unit_t _) {
     {
         R_count_sum<int, double> stats;
 
-
         stats = data.fold<R_count_sum<int, double>>([] (R_count_sum<int, double> acc) -> std::function<R_count_sum<int, double>(R_elem_label<_Collection<R_elem<double>>, double>)> {
 
             return [acc] (R_elem_label<_Collection<R_elem<double>>, double> d) -> R_count_sum<int, double> {
@@ -434,7 +433,6 @@ std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collectio
                 return scalar_mult(lambda)(parameters);
             } else {
 
-
                 return vector_sub(scalar_mult(lambda)(parameters))(scalar_mult(y)(x));
             }
         }
@@ -449,13 +447,14 @@ std::function<_Collection<R_elem<double>>(double)> point_gradient(const _Collect
 
 std::function<unit_t(double)> update_parameters(const _Collection<R_elem<double>>& point) {
     return [&] (double label) -> unit_t {
-        {
             _Collection<R_elem<double>> update;
 
             update = scalar_mult(step_size)(point_gradient(point)(label));
 
-            parameters = vector_sub(parameters)(update);return unit_t();
-        }
+            for (int i=0; i<dimensionality; i++) {
+              parameters.getContainer()[i].elem -= update.getContainer()[i].elem;
+            }
+            return unit_t();
     };
 }
 
