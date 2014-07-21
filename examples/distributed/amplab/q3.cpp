@@ -583,9 +583,9 @@ int round_up_to_mult(int m, int x) {
 
 
 // sets up the mmap
-bool local_master = true;
+bool local_master = false;
 const char *shared_name = "shared_rankings";
-boost::interprocess::mapped_region shared_region;
+boost::interprocess::mapped_region* shared_region;
 int ranking_lines = 0;
 
 
@@ -641,13 +641,20 @@ unit_t uv_partition(unit_t _) {
   user_visits.getContainer().clear();
 
   // Do a join with the local memory-mapped rankings file
-  int *ptr = (int *)shared_region.get_address();
+  int *ptr = (int *)shared_region->get_address();
+  char *shared_edge = (char *)shared_region->get_address() + shared_region->get_size();
+
   int line = 0;
   for (int line = 0; line < ranking_lines; line++) {
-    int pageRank = *ptr++;
-    int size = *ptr++;
+    if ((char *)ptr >= shared_edge) {
+      printf("uh-oh! shared out of bounds: ptr[%p], edge[%p]\n", ptr, shared_edge);
+      exit(1);
+    }
+    int pageRank = *(ptr++);
+    int size = *(ptr++);
     string url((char *)ptr, size);
-    ptr += round_up_to_mult(sizeof(int), size) / sizeof(int);
+    ptr += round_up_to_mult(sizeof(int), size + 1) / sizeof(int);
+    // printf("pageRank[%d], size[%d], url[%s]\n", pageRank, size, url.c_str()); // debug
 
     // Get rid of url as a level in the map:
     // we've selected based on the join already
@@ -660,6 +667,7 @@ unit_t uv_partition(unit_t _) {
       k.pageRank_total += pageRank;
     }
   }
+
 
   // Send out per-peer data partitions (by sourceIP)
   for (auto& mp: g_m.getContainer()) {
@@ -988,6 +996,7 @@ F<unit_t(K3::Collection<R_adRevenue_countryCode_destURL_duration_languageCode_se
 int ready_received = 0;
 unit_t ready(unit_t _) {
   ready_received += 1;
+
   if (ready_received == num_peers) {
     start_ms = now(unit_t());
     peers.iterate([] (R_addr<Address> r) {
@@ -1008,14 +1017,6 @@ unit_t load_all(unit_t _) {
     // Everybosy loads a portion of user_visits
     user_visits_loader(user_visits_file)(user_visits);
 
-    // Figure out if we need to mmap the file
-    // Lowest port on an IP is the local_master
-    for (const auto &peer: peers.getConstContainer()) {
-      if (get<1>(peer.addr) < get<1>(me)) {
-        local_master = false;
-      }
-    }
-
     if (local_master) {
       cout << "local master: loading and mapping rankings" << endl;
 
@@ -1023,8 +1024,8 @@ unit_t load_all(unit_t _) {
       // calculate how much memory we need, dropping avgDuration
       size_t amount = 0;
       for (auto &v : rankings.getContainer()) {
-        printf("size is %d\n", string(v.pageURL.c_str()).length());
-        amount += round_up_to_mult(sizeof(int), string(v.pageURL.c_str()).length() + 1);
+        int s = round_up_to_mult(sizeof(int), string(v.pageURL.c_str()).length() + 1);
+        amount += s;
         amount += sizeof(int) * 2; // pageRank and size
       }
       using namespace boost::interprocess;
@@ -1033,21 +1034,22 @@ unit_t load_all(unit_t _) {
       // Set size
       shm.truncate(amount);
       // Map the memory in this process
-      shared_region = mapped_region(shm, read_write);
+      shared_region = new mapped_region(shm, read_write);
 
       //debug
-      cout << "local master: " << amount << "bytes shared" << endl; 
+      //cout << "local master: " << amount << "bytes shared" << endl; 
 
       cout << "local master: copying into shared memory" << endl;
 
       // Copy the rankings data into the shared memory
-      int *ptr = (int *)shared_region.get_address();
+      int *ptr = (int *)shared_region->get_address();
       ranking_lines = rankings.getContainer().size();
 
-      //debug
-      printf("ptr[%x], ranking_lines[%d]\n", ptr, ranking_lines);
-
       for (auto &v : rankings.getContainer()) {
+        if ((char *)ptr > (char *)shared_region->get_address() + shared_region->get_size()) {
+          cout << "uh-oh! shared problem" << endl;
+          exit(1);
+        }
         string pageURL(v.pageURL.c_str());
         size_t len = round_up_to_mult(sizeof(int), pageURL.length() + 1);
         *(ptr++) = v.pageRank;
@@ -1060,6 +1062,10 @@ unit_t load_all(unit_t _) {
         v.pageURL = string("");
       }
       rankings.getContainer().clear();
+      
+      //debug
+      // printf("size is %lu\n", shared_region->get_size());
+      //std::memset(shared_region->get_address(), 'a', shared_region->get_size());
 
       cout << "local master: done loading and mapping" << endl;
 
@@ -1083,13 +1089,24 @@ unit_t load_all(unit_t _) {
 unit_t load_shared_mem(unit_t _) {
 
   cout << "local slave: mapping memory" << endl;
+  //debug
+  //cout << "local_master: " << local_master << endl;
+
   using namespace boost::interprocess;
 
   // Open the already created shared memory object
   shared_memory_object shm(open_only, shared_name, read_only);
 
   // Map the whole shared memory in this process
-  shared_region = mapped_region(shm, read_only);
+  shared_region = new mapped_region(shm, read_only);
+
+  //debug
+  /*
+  char *ptr = (char *)shared_region->get_address();
+  for (int i=0; i<shared_region->get_size(); i++) {
+    printf("%c", *ptr);
+    ptr++;
+  }*/
 
   // Tell master we're ready
   auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
@@ -1123,12 +1140,6 @@ unit_t shutdown_(unit_t _) {
 int main(int argc,char** argv) {
     //Remove shared memory on construction and destruction
     using namespace boost::interprocess;
-    struct shm_remove
-    {
-        shm_remove() { shared_memory_object::remove(shared_name); }
-        ~shm_remove(){ shared_memory_object::remove(shared_name); }
-    } remover;
-
     initGlobalDecls();
     Options opt;
     if (opt.parse(argc,argv)) return 0;
@@ -1160,6 +1171,24 @@ int main(int argc,char** argv) {
                     ,se
                     ,make_shared<DefaultInternalCodec>(DefaultInternalCodec())
                     ,opt.log_level);
+
+    // Figure out if we need to mmap the file
+    // Lowest port on an IP is the local_master
+    bool me_local_master = true;
+    for (const auto &peer: peers.getConstContainer()) {
+      if (get<1>(peer.addr) < get<1>(me)) {
+        me_local_master = false;
+      }
+    }
+    local_master = me_local_master;
+
+    struct shm_remove
+    {
+        shm_remove() { if(local_master) shared_memory_object::remove(shared_name); }
+        ~shm_remove(){ if(local_master) shared_memory_object::remove(shared_name); }
+    } remover;
+
+
     processRole(unit_t());
     DispatchMessageProcessor dmp = DispatchMessageProcessor(show_globals);;
     engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));
