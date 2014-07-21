@@ -70,7 +70,8 @@ unit_t maximize(unit_t);
 
 unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
-unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>>);
+unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>&);
+unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>);
 
 std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>>);
 
@@ -647,7 +648,11 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
     };
 }
 
-unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current_means) {
+unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>> current_means) {
+  return assign(*current_means);
+}
+
+unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>& current_means) {
 
    _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> local_aggs;
    // Initialize local aggs
@@ -720,9 +725,10 @@ unit_t maximize(unit_t _) {
 
 
 
-            auto d = make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
-                                                                                                            ,means);
-            engine.send(p.addr,6,d);return unit_t();
+            auto d = make_shared<RefDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>
+                     (assign, means);
+            engine.send(p.addr,6,d);
+            return unit_t();
         });
     }
 }
@@ -743,34 +749,26 @@ unit_t ready(unit_t _) {
 }
 
 unit_t start(unit_t _) {
-    {
         int foo;
 
+        int a = k;
+        for (auto &p : data) {
+          if (a > 0) {
+            means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
+            a = a - 1;
+          }
+        }
+              
+        for (auto &peer : peers) {
+          requests = requests + 1;
+          auto d = make_shared<RefDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>
+            (assign ,means);
+            engine.send(p.addr,6,d);
+        }
 
-        foo = data.fold<int>([] (int a) -> std::function<int(R_elem<_Collection<R_elem<double>>>)> {
-            return [a] (R_elem<_Collection<R_elem<double>>> p) -> int {
-                if (a == 0) {
-                    return a;
-                } else {
-
-
-                    means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
-                    return a - 1;
-                }
-            };
-        })(k);
-
-        return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            requests = requests + 1;
-
-
-
-            auto d = make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
-                                                                                                            ,means);
-            engine.send(p.addr,6,d);return unit_t();
-        });
-    }
+        return unit_t();
 }
+
 
 unit_t shutdown_(unit_t _) {
 
@@ -839,7 +837,7 @@ void populate_dispatch() {
     dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
     dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(maximize), "maximize");
     dispatch_table[5] = make_tuple(make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
-    dispatch_table[6] = make_tuple(make_shared<ValDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign), "assign");
+    dispatch_table[6] = make_tuple(make_shared<SharedDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assignShared), "assign");
 }
 
 map<string,string> show_globals() {
