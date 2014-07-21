@@ -5,6 +5,7 @@ addr_prefix = "192.168.1."
 uv_prefix = "/local_data/sf5/128l/uservisits_sf5_pp_128l/uservisits_sf5_pp_128l_"
 rankings_prefix = "/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_"
 crawl_prefix = "/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_"
+bpti_file = "/local_data/bpti_labelled/bpti_labelled_1G.txt" 
 
 # Configuration
 num_files = 128
@@ -38,13 +39,14 @@ def gen_peers(handle, num_machines, start_addr):
       uv_line       = """        user_visits_file: '"%s"'""" % uv_file
       rankings_line = """        rankings_file: '"%s"'""" % rankings_file
       crawl_line    = """        crawl_file: '"%s"'""" % crawl_file
-
+      bpti_line     = """        bpti_file: '"%s"'""" % bpti_file
       handle.write(ip_line + "\n")
       handle.write(port_line + "\n")
       handle.write(bindings_line + "\n")
       handle.write(uv_line + "\n")
       handle.write(rankings_line + "\n")
       handle.write(crawl_line + "\n")
+      handle.write(bpti_line + "\n")
       curr_port = curr_port + 1
       curr_file = curr_file + 1
 
