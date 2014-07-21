@@ -21,8 +21,6 @@ using namespace K3::BoostSerializer;
 using std::begin;
 using std::end;
 
-
-
 string bpti_file;
 using K3::Collection;
 
@@ -80,17 +78,17 @@ template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
         _Collection(): K3::Collection<CONTENT>(&engine) {}
-        
+
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-        
+
         _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-        
+
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
-            
+
             _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
         }
-    
+
 };
 namespace K3 {
     template <class E>
@@ -117,11 +115,11 @@ class R_addr {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & addr;
-            
+
         }
         _T0 addr;
 };
-#endif K3_R_addr
+#endif
 namespace K3 {
     template <class _T0>
     struct patcher<R_addr<_T0>> {
@@ -152,11 +150,11 @@ class R_arg {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & arg;
-            
+
         }
         _T0 arg;
 };
-#endif K3_R_arg
+#endif
 namespace K3 {
     template <class _T0>
     struct patcher<R_arg<_T0>> {
@@ -188,12 +186,12 @@ class R_count_sum {
         void serialize(archive& _archive,const unsigned int) {
             _archive & count;
             _archive & sum;
-            
+
         }
         _T0 count;
         _T1 sum;
 };
-#endif K3_R_count_sum
+#endif
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_count_sum<_T0, _T1>> {
@@ -226,11 +224,11 @@ class R_elem {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & elem;
-            
+
         }
         _T0 elem;
 };
-#endif K3_R_elem
+#endif
 namespace K3 {
     template <class _T0>
     struct patcher<R_elem<_T0>> {
@@ -262,12 +260,12 @@ class R_elem_label {
         void serialize(archive& _archive,const unsigned int) {
             _archive & elem;
             _archive & label;
-            
+
         }
         _T0 elem;
         _T1 label;
 };
-#endif K3_R_elem_label
+#endif
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_elem_label<_T0, _T1>> {
@@ -301,12 +299,12 @@ class R_key_value {
         void serialize(archive& _archive,const unsigned int) {
             _archive & key;
             _archive & value;
-            
+
         }
         _T0 key;
         _T1 value;
 };
-#endif K3_R_key_value
+#endif
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -324,38 +322,6 @@ namespace K3 {
 }
 
 #include "Builtins.hpp"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -439,11 +405,7 @@ std::function<double(double)> svm_loss(_Collection<R_elem<double>> x) {
     return [x] (double y) -> double {
         {
             double q;
-            
-            
             q = 1 - y * dot(parameters)(x);
-            
-            
             double __0;if (q < 0) {
                 __0 = 0;
             } else {
@@ -456,16 +418,12 @@ std::function<double(double)> svm_loss(_Collection<R_elem<double>> x) {
 double svm_loss_avg(unit_t _) {
     {
         R_count_sum<int, double> stats;
-        
-        
-        
-        
+
+
         stats = data.fold<R_count_sum<int, double>>([] (R_count_sum<int, double> acc) -> std::function<R_count_sum<int, double>(R_elem_label<_Collection<R_elem<double>>, double>)> {
-            
+
             return [acc] (R_elem_label<_Collection<R_elem<double>>, double> d) -> R_count_sum<int, double> {
-                
-                
-                
+
                 return R_count_sum<int, double>{acc.count + 1,acc.sum + svm_loss(d.elem)(d.label)};
             };
         })(R_count_sum<int, double>{0,0.0});
@@ -477,20 +435,12 @@ std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collectio
     return [&] (double y) -> _Collection<R_elem<double>> {
         {
             double flag;
-            
-            
             flag = y * dot(parameters)(x);
             if (flag > 1) {
-                
-                
                 return scalar_mult(lambda)(parameters);
             } else {
-                
-                
-                
-                
-                
-                
+
+
                 return vector_sub(scalar_mult(lambda)(parameters))(scalar_mult(y)(x));
             }
         }
@@ -499,8 +449,6 @@ std::function<_Collection<R_elem<double>>(double)> svm_gradient(const _Collectio
 
 std::function<_Collection<R_elem<double>>(double)> point_gradient(const _Collection<R_elem<double>>& point) {
     return [&] (double label) -> _Collection<R_elem<double>> {
-        
-        
         return svm_gradient(point)(label);
     };
 }
@@ -509,32 +457,34 @@ std::function<unit_t(double)> update_parameters(const _Collection<R_elem<double>
     return [&] (double label) -> unit_t {
         {
             _Collection<R_elem<double>> update;
-            
+
             update = scalar_mult(step_size)(point_gradient(point)(label));
-            
+
             parameters = vector_sub(parameters)(update);return unit_t();
         }
     };
 }
 
 unit_t print_results(unit_t _) {
-    
+
     end_ms = now(unit_t());
     elapsed_ms = end_ms - start_ms;
-    
-    
     return printLine(itos(elapsed_ms));
 }
 
 unit_t local_sgd(_Collection<R_elem<double>> new_params) {
     parameters = new_params;
     for (const auto &r : data.getConstContainer()) {
-      update_parameters(r.elem)(r.label);
-    }   
- 
-    
-    
-    
+      _Collection<R_elem<double>> update = scalar_mult(step_size)(point_gradient(r.elem)(r.label));
+      auto pp = parameters.getContainer().begin();
+      auto up = update.getContainer().begin();
+
+      for (; pp != end(parameters.getContainer()) && up != end(update.getContainer()); ++pp, ++up) {
+        pp->elem -= up->elem;
+      }
+
+    }
+
     auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(aggregate,parameters);
     engine.send(master,5,d);return unit_t();
 }
@@ -542,18 +492,14 @@ unit_t local_sgd(_Collection<R_elem<double>> new_params) {
 unit_t aggregate(_Collection<R_elem<double>> local_params) {
     {
         _Collection<R_elem<double>> new_sum;
-        
-        
         new_sum = vector_add(local_params)(aggregates.sum);
         {
             int new_count;
             new_count = 1 + aggregates.count;
-            
+
             aggregates = R_count_sum<int, _Collection<R_elem<double>>>{new_count,new_sum};
             if (new_count == num_peers) {
-                
-                
-                
+
                 auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
                 engine.send(master,4,d);return unit_t();
             } else {
@@ -564,37 +510,27 @@ unit_t aggregate(_Collection<R_elem<double>> local_params) {
 }
 
 unit_t maximize(unit_t _) {
-    
-    
     parameters = scalar_mult(1.0 / aggregates.count)(aggregates.sum);
-    
+
     //printLine(string("Loss:"));
-    
-    
-    
+
     //printLine(rtos(svm_loss_avg(unit_t())));
     step_size = 0.95 * step_size;
-    
-    
     aggregates = R_count_sum<int, _Collection<R_elem<double>>>{0,zero_vector(dimensionality)};
     iterations_remaining = iterations_remaining - 1;
     if (iterations_remaining == 0) {
-        
+
         print_results(unit_t());
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
+
             auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,1,d);return unit_t();
         });
     } else {
-        
+
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            
-            
-            
+
             auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
             engine.send(p.addr,6,d);return unit_t();
         });
@@ -602,18 +538,14 @@ unit_t maximize(unit_t _) {
 }
 
 unit_t start(unit_t _) {
-    
-    
     aggregates = R_count_sum<int, _Collection<R_elem<double>>>{0,zero_vector(dimensionality)};
-    
+
     start_ms = now(unit_t());
-    
+
     parameters = zero_vector(dimensionality);
-    
+
     return peers.iterate([] (R_addr<Address> p) -> unit_t {
-        
-        
-        
+
         auto d = make_shared<ValDispatcher<_Collection<R_elem<double>>>>(local_sgd,parameters);
         engine.send(p.addr,6,d);return unit_t();
     });
@@ -622,9 +554,7 @@ unit_t start(unit_t _) {
 unit_t ready(unit_t _) {
     peers_ready = peers_ready + 1;
     if (peers_ready == num_peers) {
-        
-        
-        
+
         auto d = make_shared<ValDispatcher<unit_t>>(start,unit_t());
         engine.send(master,3,d);return unit_t();
     } else {
@@ -633,29 +563,21 @@ unit_t ready(unit_t _) {
 }
 
 unit_t shutdown_(unit_t _) {
-    
+
     return haltEngine(unit_t());
 }
 
 unit_t load_all(unit_t _) {
-    
-    
     LoaderVectorLabel(string(bpti_file))(data);
-    
-    
-    
+
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,2,d);return unit_t();
 }
 
-
-
 unit_t pointsProcess(unit_t _) {
-    
+
     return [] (unit_t next) -> unit_t {
-        
-        
-        
+
         auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
@@ -667,7 +589,7 @@ unit_t initDecls(unit_t _) {
 
 unit_t processRole(unit_t _) {
     if (role == string("points")) {
-        
+
         return pointsProcess(unit_t());
     } else {
         return unit_t();
@@ -675,9 +597,9 @@ unit_t processRole(unit_t _) {
 }
 
 unit_t atInit(unit_t _) {
-    
+
     initDecls(unit_t());
-    
+
     return processRole(unit_t());
 }
 
@@ -686,7 +608,7 @@ unit_t atExit(unit_t _) {
 }
 
 unit_t initGlobalDecls() {
-    
+
     master = make_address(string("127.0.0.1"),40000);num_peers = 1;peers_ready = 0;
     iterations_remaining = 10;dimensionality = 2;step_size = 0.1;lambda = 0.1;return unit_t();
 }
