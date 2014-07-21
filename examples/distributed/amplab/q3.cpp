@@ -1052,11 +1052,15 @@ unit_t load_all(unit_t _) {
         }
         string pageURL(v.pageURL.c_str());
         size_t len = round_up_to_mult(sizeof(int), pageURL.length() + 1);
+        if ((unsigned long)ptr % (sizeof(int))) { printf("oop1: ptr[%p]\n", ptr); }
         *(ptr++) = v.pageRank;
+        if ((unsigned long)ptr % (sizeof(int))) { printf("oop2: ptr[%p]\n", ptr); }
         *(ptr++) = pageURL.length();
+        if ((unsigned long)ptr % (sizeof(int))) { printf("oop3: ptr[%p]\n", ptr); }
         memset(ptr, 0, len);
         memcpy(ptr, v.pageURL.c_str(), pageURL.length());
         ptr += len / sizeof(int);
+        if ((unsigned long)ptr % (sizeof(int))) { printf("oop4: ptr[%p]\n", ptr); }
 
         // start deallocating
         v.pageURL = string("");
