@@ -649,32 +649,27 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
 
 unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current_means) {
 
+   _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> local_aggs;
+   // Initialize local aggs
+   for (int i =1; i<= k; i++) {
+     R_count_sum<int, _Collection<R_elem<double>>> r;
+     r.count = 0;
+     r.sum = zero_vector(dimensionality);
+     local_aggs.getContainer[i] = r;
+   }   
+
+   for (const auto &r : data.getConstContainer()) {
+     // Assign each data point to the closest mean.
+     int which_k = nearest_neighbor(p.elem)(current_means);
+     // Update aggregates for this mean
+     auto &agg = local_aggs.getContainer()[which_k];
+     agg.count += 1;
+     agg.sum = vector_add(agg.sum)(p.elem);
+      
+   }
 
 
-
-
-
-
-
-    auto d = make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
-                                                                                                               ,data.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([current_means] (R_elem<_Collection<R_elem<double>>> p) -> int {
-
-
-
-                                                                                                                   return nearest_neighbor(p.elem)(current_means);
-                                                                                                               })([] (R_count_sum<int, _Collection<R_elem<double>>> sc) -> std::function<R_count_sum<int, _Collection<R_elem<double>>>(R_elem<_Collection<R_elem<double>>>)> {
-
-                                                                                                                   return [sc] (R_elem<_Collection<R_elem<double>>> p) -> R_count_sum<int, _Collection<R_elem<double>>> {
-
-
-
-
-
-                                                                                                                       return R_count_sum<int, _Collection<R_elem<double>>>{sc.count + 1,
-                                                                                                                       vector_add(sc.sum)(p.elem)};
-                                                                                                                   };
-                                                                                                               })(R_count_sum<int, _Collection<R_elem<double>>>{0,
-                                                                                                               zero_vector(dimensionality)}));
+    auto d = make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate, local_aggs);
     engine.send(master,5,d);return unit_t();
 }
 
