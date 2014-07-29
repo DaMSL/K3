@@ -104,11 +104,7 @@ data instance Annotation Expression
     | EQType  (K3 QType)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
-    | EImplementationType Identifier
     | EEmbedding EmbeddingAnnotation
-    | ERead Identifier UID
-    | EWrite Identifier UID
-    | EConflict Conflict
   deriving (Eq, Read, Show)
 
 instance HasUID (Annotation Expression) where

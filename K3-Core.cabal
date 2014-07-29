@@ -108,7 +108,6 @@ library
         Language.K3.Transform.Profiling,
         Language.K3.Transform.RemoveROBinds,
         Language.K3.Analysis.Common,
-        Language.K3.Analysis.Conflicts,
         Language.K3.Analysis.Effect,
         Language.K3.Analysis.HMTypes.DataTypes,
         Language.K3.Analysis.HMTypes.Inference,
