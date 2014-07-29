@@ -2,6 +2,13 @@
 #include <string>
 #include "Common.hpp"
 #include "Collections.hpp"
+
+char *sdup (const char *s) {
+    char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
+    if (d != NULL) strcpy (d,s);         // Copy string if okay
+    return d;                            // Return new memory
+}
+
 #include "Builtins.hpp"
 
 namespace K3 {
@@ -145,13 +152,6 @@ namespace K3 {
 
         return result;
       };
-  }
-
-  // ms
-  int now(unit_t) {
-    auto t = std::chrono::system_clock::now();
-    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
-    return elapsed.count();
   }
 
   // Split a string by substrings

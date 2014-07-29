@@ -64,18 +64,24 @@ namespace K3 {
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
   
   // ms
-  int now(unit_t);
+  inline int now(unit_t) {
+    auto t = std::chrono::system_clock::now();
+    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
+    return elapsed.count();
+  }
+
+  inline int now() { return now(unit_t()); }
 
   // Map-specific template function to look up
   template <class Key, class Value>
-  F<shared_ptr<Value>(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-    return [&] (const Key& key) {
-      const auto &container(map.getContainer());
-      const auto it(container.find(key));
+  F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
+    return [&] (const Key& key) -> Value* {
+      auto &container(map.getContainer());
+      auto it(container.find(key));
       if (it != container.end()) {
-        return make_shared<Value>(it->second);
+        return &(it->second);
       } else {
-        return shared_ptr<Value>();
+        return nullptr; 
       }
     };
   }

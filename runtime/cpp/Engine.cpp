@@ -183,7 +183,7 @@ namespace K3 {
                 return;
             }
 
-            logAt(trivial::trace, "Waiting for Messages...");
+            if (log_enabled) { logAt(trivial::trace, "Waiting for Messages..."); }
             control->waitForMessage(
               [=] () {
                 return !control->terminate() && queues->size() < 1;
