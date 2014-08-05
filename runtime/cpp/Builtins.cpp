@@ -1,7 +1,10 @@
 #include <functional>
 #include <string>
+#include "BaseTypes.hpp"
 #include "Common.hpp"
-#include "Collections.hpp"
+#include "Engine.hpp"
+#include "dataspace/Dataspace.hpp"
+
 
 char *sdup (const char *s) {
     char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
@@ -9,10 +12,14 @@ char *sdup (const char *s) {
     return d;                            // Return new memory
 }
 
+
+
 #include "Builtins.hpp"
 
 namespace K3 {
   using std::string;
+  using std::endl;
+  using std::to_string;
 
   F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
       return [&] (const string& builtin_chan_id) {
@@ -72,7 +79,7 @@ namespace K3 {
         using namespace K3;
         const vector<R_elem<double>> &v1 = c1.getConstContainer();
         const vector<R_elem<double>> &v2 = c2.getConstContainer();
-        Collection<R_elem<double>> result(nullptr);
+        Collection<R_elem<double>> result;
 
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem + v2[i].elem;
@@ -90,7 +97,7 @@ namespace K3 {
         using namespace K3;
         const auto &v1 = c1.getConstContainer();
         const auto &v2 = c2.getConstContainer();
-        Collection<R_elem<double>> result(nullptr);
+        Collection<R_elem<double>> result;
         for (auto i = 0; i < v1.size(); ++i) {
           double d = v1[i].elem - v2[i].elem;
           R_elem<double> r(d);
@@ -133,7 +140,7 @@ namespace K3 {
   }
 
   Collection<R_elem<double>> zero_vector(int n) {
-    Collection<R_elem<double>> c(nullptr);
+    Collection<R_elem<double>> c;
     auto &cc(c.getContainer());
     cc.resize(n, R_elem<double> { 0.0 });
     return c;
@@ -143,7 +150,7 @@ namespace K3 {
       return [&] (const Collection<R_elem<double>>& c) {
         using namespace K3;
         const auto& v1 = c.getConstContainer();
-        Collection<R_elem<double>> result(nullptr);
+        Collection<R_elem<double>> result;
         for (auto i = 0; i < v1.size(); ++i) {
           double d2 = d * v1[i].elem;
           R_elem<double> r(d2);
@@ -161,7 +168,7 @@ namespace K3 {
       boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
 
       // Transfer to R_elems
-      Seq<R_elem<string>> results(nullptr);
+      Seq<R_elem<string>> results;
       auto &c = results.getContainer();
       c.resize(words.size());
       for (const auto &elem : words) {

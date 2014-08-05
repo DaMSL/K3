@@ -35,6 +35,7 @@ namespace K3 {
   //};
 
 
+  using std::string;
   F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id);
 
   F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id);

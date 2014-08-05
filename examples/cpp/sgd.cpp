@@ -482,7 +482,7 @@ unit_t local_sgd(const _Collection<R_elem<double>>& new_params) {
 
       for (int i=0; i<dimensionality; i++) {
         parameters.getContainer()[i].elem -= step_size * unscaled_update.getContainer()[i].elem;
-      }
+     } 
     }
 
     auto d = make_shared<RefDispatcher<_Collection<R_elem<double>>>>(aggregate,parameters);

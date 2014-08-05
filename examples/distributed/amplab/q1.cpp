@@ -11,7 +11,7 @@
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 
-#include "Collections.hpp"
+#include "dataspace/dataspace.hpp"
 #include "Common.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
@@ -68,7 +68,7 @@ unit_t q1_local(unit_t);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
+        _Collection(): K3::Collection<CONTENT>() {}
         
         _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
         
