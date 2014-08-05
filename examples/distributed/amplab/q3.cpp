@@ -10,20 +10,22 @@
 #include <boost/interprocess/shared_memory_object.hpp>
 #include <boost/interprocess/mapped_region.hpp>
 
-#include "Collections.hpp"
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
-#include "Builtins.hpp"
 
 using namespace std;
 using namespace K3;
 using namespace K3::BoostSerializer;
 using std::begin;
 using std::end;
+
+#include "Builtins.hpp"
 
 int start_ms;
 int end_ms;
@@ -85,18 +87,33 @@ unit_t load_shared_mem(unit_t _);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
-
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        _Collection() : K3::Collection<CONTENT>() { }
+        
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
+        
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -110,20 +127,34 @@ namespace K3 {
 template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
-        _Map(): K3::Map<CONTENT>(&engine) {}
-
-        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-
-        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        _Map() : K3::Map<CONTENT>() { }
+        
+        _Map(const _Map& c): K3::Map<CONTENT>(c) { }
+        
+        _Map(_Map&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+       
+        _Map& operator=(const _Map& other) {
+          K3::Map<CONTENT>::operator=(other);
+          return *this;
         }
 
-};
+        _Map& operator=(_Map&& other) {
+          K3::Map<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) { }
 
+        _Map(K3::Map<CONTENT>&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+    
+};
 namespace K3 {
     template <class E>
     struct patcher<_Map<E>> {

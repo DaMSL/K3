@@ -11,8 +11,9 @@
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 
-#include "dataspace/dataspace.hpp"
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
@@ -68,11 +69,26 @@ unit_t q1_local(unit_t);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>() {}
+        _Collection() : K3::Collection<CONTENT>() { }
         
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
         
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
+        }
+
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
         
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
@@ -328,17 +344,25 @@ int end_ms;
 int elapsed_ms;
 
 unit_t q1_local(unit_t _) {
-    
-    local_rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> row) -> unit_t {
+   
+    // the lambda in iterate() copies its arguments (pass-by-value).
+    // so let's use a for-loop instead 
+    //local_rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> row) -> unit_t {
+    //    if (row.pageRank > x) {
+    //        
+    //        
+    //        return local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank,
+    //        row.pageURL});
+    //    } else {
+    //        return unit_t();
+    //    }
+    //});
+
+   for (const auto& row : local_rankings.getConstContainer()) {
         if (row.pageRank > x) {
-            
-            
-            return local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank,
-            row.pageURL});
-        } else {
-            return unit_t();
-        }
-    });
+            local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank, row.pageURL});
+        } 
+   }
     
     
     

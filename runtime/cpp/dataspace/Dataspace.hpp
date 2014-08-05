@@ -55,28 +55,24 @@ class MapDS {
   // Default Constructor
   MapDS() 
     : container() 
-  { std::cout << "Default Constructed an MapDS" << std::endl; }
+  {  }
   
   // Copy Constructor
   MapDS(const MapDS& other) 
     : container(other.container) 
-  { std::cout << "Copy Constructed an MapDS" << std::endl; }
-  
+  { } 
   // Move Constructor
   MapDS(MapDS&& other)
     : container(std::move(other.container))
-  { std::cout << "Move Constructed an MapDS" << std::endl; }
-  
+  { } 
   // Copy Assign Operator
   MapDS& operator=(const MapDS& other) {
-    std::cout << "Copy assigned an MapDS" << std::endl;
     container = other.container;
     return *this;
   }
 
   // Move Assign Operator
   MapDS& operator=(MapDS&& other) {
-    std::cout << "Move Assigned an MapDS" << std::endl;
     container = std::move(other.container);
     //other.container = NULL;
     return *this;
@@ -96,13 +92,11 @@ class MapDS {
   // Copy Constructor from container
   MapDS(const unordered_map<Key,Value>& con) 
     : container(con) 
-  { std::cout << "Copy constructed a MapDS from a container" << std::endl; }
-
+  { }
   // Move Constructor from container
   MapDS(unordered_map<Key, Value>&& con) 
     : container(std::move(con))
-  { std::cout << "Move constructed a MapDS from a container" << std::endl; } 
-
+  { }
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(unit_t) const {
@@ -117,13 +111,11 @@ class MapDS {
   }
 
   unit_t insert(const R& rec) {
-    std::cout << "Copied an element into the MapDS" << std::endl;
     container[rec.key] = rec.value;
     return unit_t();
   }
 
   unit_t insert(R&& rec) {
-    std::cout << "Moved an element into the MapDS" << std::endl;
     container[rec.key] = std::move(rec.value);
     return unit_t();
   }
@@ -294,28 +286,26 @@ class StlDS {
     // Default Constructor
   	StlDS() 
       : container() 
-    { std::cout << "Default Constructed an StlDS" << std::endl; }
-    
+    { } 
+
     // Copy Constructor
     StlDS(const StlDS& other) 
       : container(other.container) 
-    { std::cout << "Copy Constructed an StlDS" << std::endl; }
-    
+    { }
+ 
     // Move Constructor
     StlDS(StlDS&& other)
       : container(std::move(other.container))
-    { std::cout << "Move Constructed an StlDS" << std::endl; }
-    
+    { }
+ 
     // Copy Assign Operator
     StlDS& operator=(const StlDS& other) {
-      std::cout << "Copy assigned an StlDS" << std::endl;
       container = other.container;
       return *this;
     }
 
     // Move Assign Operator
     StlDS& operator=(StlDS&& other) {
-      std::cout << "Move Assigned an StlDS" << std::endl;
       container = std::move(other.container);
       //other.container = NULL;
       return *this;
@@ -344,14 +334,12 @@ class StlDS {
 
      // Insert by move
     unit_t insert(Elem &&e) {
-      std::cout << "Moved an element into an StlDS" << std::endl;
       container.insert(container.end(), std::move(e));
       return unit_t();
     }
 
     // Insert by copy
     unit_t insert(const Elem& e) {
-      std::cout << "Copied an element into an StlDS" << std::endl;
       // Create a copy, then delegate to a insert-by-move
       return insert(Elem(e));
     }

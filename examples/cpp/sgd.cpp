@@ -7,14 +7,14 @@
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
 
-#include "Collections.hpp"
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
-
 using namespace std;
 using namespace K3;
 using namespace K3::BoostSerializer;
@@ -79,18 +79,33 @@ double svm_loss(_Collection<R_elem<double>>&, double);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
-
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        _Collection() : K3::Collection<CONTENT>() { }
+        
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
+        
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -421,7 +436,7 @@ double svm_loss_avg(unit_t _) {
 
                 return R_count_sum<int, double>{acc.count + 1,acc.sum + svm_loss(d.elem, d.label)};
             };
-        })(R_count_sum<int, double>{0,0.0});
+        },R_count_sum<int, double>{0,0.0});
         return stats.sum / stats.count;
     }
 }
