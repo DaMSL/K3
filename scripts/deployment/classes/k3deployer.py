@@ -11,6 +11,7 @@ class K3Deployer:
     self.parallelize(K3Peer.generateScript)
     self.parallelize(K3Peer.deployScript)
     self.parallelize(K3Peer.runRemoteScript)
+    self.parallelize(K3Peer.collectResults)
 
   def parallelize(self,f):
     ts = []

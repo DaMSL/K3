@@ -1,6 +1,7 @@
 import yaml
 import copy
 from classes.k3peer import K3Peer
+import datetime
 
 def loadYmlFile(path):
   with open(path,"r") as f:
@@ -12,7 +13,9 @@ def genK3Peers(path):
   if peers == None:
     print("No peers!")
     return # TODO error!
-    
+
+  i = datetime.datetime.now()
+  config["output_dir"] = "./logs/%s/" % i.isoformat()
   configs = []
   peer_strs = []
   for peer in peers:
