@@ -364,7 +364,7 @@ namespace K3 {
 
 
 
-
+string output_dir = "";
 Address me;
 
 _Collection<R_addr<Address>> peers;
@@ -687,6 +687,16 @@ map<string,string> show_globals() {
     return result;
 }
 
+using std::string;
+void output_results(string path) {
+  std::cout << path << std::endl;
+  ofstream f;
+  f.open (path);
+  for (const auto& r: local_q2_results.getConstContainer()) {
+    f << r.first << "," << r.second << "\n"; 
+  }
+  f.close();
+}
 int main(int argc,char** argv) {
     initGlobalDecls();
     Options opt;
@@ -711,6 +721,7 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["output_dir"] = [] (string _s) {do_patch(_s,output_dir);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
@@ -724,5 +735,6 @@ int main(int argc,char** argv) {
     processRole(unit_t());
     DispatchMessageProcessor dmp = DispatchMessageProcessor(show_globals);;
     engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));
+    output_results(output_dir + "q2_results.log");
     return 0;
 }

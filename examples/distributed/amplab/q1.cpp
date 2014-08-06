@@ -294,7 +294,7 @@ namespace K3 {
 
 
 
-
+string output_dir = "";
 
 Address me;
 
@@ -423,11 +423,13 @@ unit_t load_all(unit_t _) {
     std::chrono::milliseconds dura( 10000 );
     std::this_thread::sleep_for( dura );
 
-    for (const auto& p : peers.getConstContainer()) {
-      auto d = make_shared<ValDispatcher<unit_t>>(hello,unit_t());
-      engine.send(p.addr,5,d);
-    } 
-    
+
+    if (me == master) {
+      for (const auto& p : peers.getConstContainer()) {
+        auto d = make_shared<ValDispatcher<unit_t>>(hello,unit_t());
+        engine.send(p.addr,5,d);
+      } 
+    }
     
     auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
@@ -544,6 +546,17 @@ map<string,string> show_globals() {
     return result;
 }
 
+using std::string;
+void output_results(string path) {
+  std::cout << path << std::endl;
+  ofstream f;
+  f.open (path);
+  for (const auto& r: local_q1_results.getConstContainer()) {
+    f << r.pageRank << "," << r.pageURL << "\n"; 
+  }
+  f.close();
+}
+
 int main(int argc,char** argv) {
     initGlobalDecls();
     Options opt;
@@ -565,6 +578,7 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["output_dir"] = [] (string _s) {do_patch(_s,output_dir);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
@@ -578,5 +592,6 @@ int main(int argc,char** argv) {
     processRole(unit_t());
     DispatchMessageProcessor dmp = DispatchMessageProcessor(show_globals);;
     engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));
+    output_results(output_dir + "q1_results.csv");
     return 0;
 }
