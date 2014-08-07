@@ -9,13 +9,18 @@
 #include <external/json_spirit_reader_template.h>
 #include <re2/re2.h>
 
-#include "Collections.hpp"
+
+
+
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
+
 #include "Builtins.hpp"
 
 using namespace std;
@@ -72,18 +77,33 @@ unit_t master_done(unit_t);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
-
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        _Collection() : K3::Collection<CONTENT>() { }
+        
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
+        
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -97,18 +117,33 @@ namespace K3 {
 template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
-        _Map(): K3::Map<CONTENT>(&engine) {}
-
-        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-
-        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        _Map() : K3::Map<CONTENT>() { }
+        
+        _Map(const _Map& c): K3::Map<CONTENT>(c) { }
+        
+        _Map(_Map&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+       
+        _Map& operator=(const _Map& other) {
+          K3::Map<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Map& operator=(_Map&& other) {
+          K3::Map<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) { }
+
+        _Map(K3::Map<CONTENT>&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -122,18 +157,33 @@ namespace K3 {
 template <class CONTENT>
 class _Seq: public K3::Seq<CONTENT> {
     public:
-        _Seq(): K3::Seq<CONTENT>(&engine) {}
-
-        _Seq(const _Seq& c): K3::Seq<CONTENT>(c) {}
-
-        _Seq(const K3::Seq<CONTENT>& c): K3::Seq<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Seq<CONTENT>>(*this);
+        _Seq() : K3::Seq<CONTENT>() { }
+        
+        _Seq(const _Seq& c): K3::Seq<CONTENT>(c) { }
+        
+        _Seq(_Seq&& c): K3::Seq<CONTENT>(std::move(c)) { }
+        
+       
+        _Seq& operator=(const _Seq& other) {
+          K3::Seq<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Seq& operator=(_Seq&& other) {
+          K3::Seq<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Seq(const K3::Seq<CONTENT>& c): K3::Seq<CONTENT>(c) { }
+
+        _Seq(K3::Seq<CONTENT>&& c): K3::Seq<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Seq<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -308,6 +358,7 @@ namespace K3 {
     };
 }
 
+string output_dir = "";
 Address me;
 
 _Collection<R_addr<Address>> peers;
@@ -692,12 +743,25 @@ map<string,string> show_globals() {
     return result;
 }
 
+
+using std::string;
+void output_results(string path) {
+  std::cout << path << std::endl;
+  ofstream f;
+  f.open (path);
+  for (const auto& r: url_counts_agg.getConstContainer()) {
+    f << r.first << "," << r.second << "\n"; 
+  }
+  f.close();
+}
+
 int main(int argc,char** argv) {
     initGlobalDecls();
     Options opt;
     if (opt.parse(argc,argv)) return 0;
     populate_dispatch();
     map<string,std::function<void(string)>> matchers;
+    matchers["output_dir"] = [] (string _s) {do_patch(_s,output_dir);};
     matchers["received"] = [] (string _s) {do_patch(_s,received);};
     matchers["url_counts_agg"] = [] (string _s) {do_patch(_s,url_counts_agg);};
     matchers["url_counts_partial"] = [] (string _s) {do_patch(_s,url_counts_partial);};
@@ -731,5 +795,6 @@ int main(int argc,char** argv) {
     processRole(unit_t());
     DispatchMessageProcessor dmp = DispatchMessageProcessor(show_globals);;
     engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));
+    output_results(output_dir + "q3_results.csv");
     return 0;
 }
