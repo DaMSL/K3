@@ -69,7 +69,7 @@ class K3Peer:
     #perf record -g -o /temp/perf/%(bn)s.data
     # Generate a script to run program.
     script = ("""#!/bin/bash\n"""
-              """mkdir -p %(logdir)s\nnice -n 19 %(bp)s%(bn)s %(ls)s -p %(bs)s >%(sf)s 2>&1\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr, "sf": self.remote_log_file, "logdir": self.remote_log_dir}
+              """mkdir -p %(logdir)s\nrm -rf %(logdir)s/*\nnice -n 19 %(bp)s%(bn)s %(ls)s -p %(bs)s >%(sf)s 2>&1\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr, "sf": self.remote_log_file, "logdir": self.remote_log_dir}
 
     # Dump to a local file
     with open(self.local_script_path,"wb") as script_file:
