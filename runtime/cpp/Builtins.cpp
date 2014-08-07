@@ -59,8 +59,11 @@ namespace K3 {
       };
   }
 
+// Ricky's attempt to understand extending builtins. The comments are here for Josh to look over to check that I understood his explanations correctly.
+// I will remove them as soon as I am done.
 
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1) {
+      //vector_add is written in curried form (this requirement is expected to be lifted in the near future)
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
         const vector<R_elem<double>> &v1 = c1.getConstContainer();
