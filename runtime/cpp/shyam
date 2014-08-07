@@ -1,0 +1,41 @@
+// Ricky's attempt to understand extending builtins. The comments are here for Josh to look over to check that I understood his explanations correctly.
+// I will remove them as soon as I am done.
+
+  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1) {
+      //vector_add is written in curried form (this requirement is expected to be lifted in the near future)
+      //Not sure what F is
+      //F<Collection<R_elem<double>> is what can be typedef'd to vector?
+      //F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> is the return type which is a function (in this case a lambda)
+      //that has the type:
+      // const reference to a vector -> vector
+
+      return [&] (const Collection<R_elem<double>>& c2) {
+      // [&] is lambda syntax with variable capture (we need to capture c1 or both c1 and c2?)
+        using namespace K3;
+      // needed for using containers
+        const vector<R_elem<double>> &v1 = c1.getConstContainer();
+        const vector<R_elem<double>> &v2 = c2.getConstContainer();
+      // I could probably answer some of the questions below myself by digging into the included headers
+      // getConstContainer() usage above suggests that containers in K3 are always represented as vector 
+      // (is this STL? or something defined in K3 somewhere?)
+        Collection<R_elem<double>> result(nullptr);
+      //a little confused by this line, it seems like it works like a declaration of a variable called result
+      // the form is:
+      // Collection<R_elem<double>> result(nullptr)
+      // how does this work???           
+
+        for (auto i = 0; i < v1.size(); ++i) {
+          //does not prevent adding two vectors of different dimensions (Josh knows this already)
+          double d = v1[i].elem + v2[i].elem;
+          //add corresponding coordinates
+          R_elem<double> r(d);
+          //this pattern again! 
+          result.insert(r);
+          //since we are simply doing an insert into a collection what allows distinguishing between x coordinates and y coordinates
+        }
+
+        return result;
+        // returns result of type "vector"
+      };
+      //ends lambda
+  }
