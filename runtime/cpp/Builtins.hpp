@@ -62,6 +62,14 @@ namespace K3 {
   Collection<R_elem<double>> zero_vector(int n);
 
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
+    
+  //*********Ricky's Eigen stuff**********
+  // F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add_eigen(const Collection<R_elem<double>>& c1);  //
+  //F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub_eigen(const Collection<R_elem<double>>& c1);
+  //  F<double(const Collection<R_elem<double>>&)> dot_eigen(const Collection<R_elem<double>>& c1);
+  //  F<double(const Collection<R_elem<double>>&)> squared_distance_eigen(const Collection<R_elem<double>>& c1);
+  //  Collection<R_elem<double>> zero_vector_eigen(int n);
+  //  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult_eigen(const double& d);
   
   // ms
   int now(unit_t);
