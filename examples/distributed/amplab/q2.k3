@@ -65,7 +65,7 @@ trigger q2_local : () = \_ -> (
   peer_aggs =
     agg_vals.groupBy
       (\v -> index_by_hash v.key)
-      (\acc -> \v -> acc.insert(v); acc)
+      (\acc -> \v -> (acc.insert(v); acc))
       (empty {key: string, value: real} @ {Map});
   // Send punctuation: we're done
   peer_aggs.iterate (\v ->
