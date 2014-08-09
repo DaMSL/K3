@@ -1,0 +1,51 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Core/CppBuiltins.k3"
+
+declare master: address = 127.0.0.1:30001
+
+declare insert_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> b) -> ()
+declare modify_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> ()) -> ()
+
+declare v1: collection {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} @ { Map }
+
+declare v2: collection {
+    key: string,
+    value: {
+        pageRank_total: real,
+        pageRank_count: real,
+        adRevenue_total: real
+    }
+} @ { Map }
+
+declare max_result: mut { sourceIP: string, adRevenue_total: real, pageRank_avg: real}
+    = { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0 }
+
+trigger do_global_groupBy: () = \_ -> (
+  v1.iterate ( \e1 ->
+    (insert_with v2 e1.key
+        { pageRank_total: 0.0, pageRank_count: 0.0, adRevenue_total: 0.0 }
+        (\w -> {pageRank_total  : w.pageRank_total  + e1.value.pageRank_total,
+                pageRank_count  : w.pageRank_count  + e1.value.pageRank_count,
+                adRevenue_total : w.adRevenue_total + e1.value.adRevenue_total})));
+
+    ((global_max, master) <- (v2.fold
+        (\a -> \e2 -> if e2.value.adRevenue_total > a.adRevenue_total
+                        then {sourceIP        : e2.key,
+                              pageRank_avg    : e2.value.pageRank_total / e2.value.pageRank_count,
+                              adRevenue_total : e2.value.adRevenue_total}
+                        else a)
+        { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0}))
+)
+
+trigger global_max: { sourceIP: string, pageRank_avg: real, adRevenue_total: real } = \r ->
+    if r.adRevenue_total > max_result.adRevenue_total
+        then max_result = r
+        else ()
