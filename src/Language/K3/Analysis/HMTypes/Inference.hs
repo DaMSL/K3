@@ -331,7 +331,9 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
       (QTCon (QTRecord i1), QTCon (QTRecord i2))
         | i1 `contains` i2 -> mergedRecord False i1 a' i2 b'
         | i2 `contains` i1 -> mergedRecord True  i2 b' i1 a'
-        | otherwise -> annLower a' b' >>= return . foldl (@+) (trec $ nub $ zip (i1 ++ i2) $ (children a') ++ (children b'))
+        | otherwise ->
+            let idChPairs = zip (i1 ++ i2) $ children a' ++ children b'
+            in annLower a' b' >>= return . foldl (@+) (trec $ nub idChPairs)
        where
         contains xs ys = xs `union` ys == xs
 
@@ -401,7 +403,8 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
     lowerBound t@(tag -> QTOperator QTLower) = tvopeval QTLower $ children t
     lowerBound t = return t
 
-    lowerError x y = left $ boxToString $ ["Invalid lower bound on: "] %+ prettyLines x %+ [" and "] %+ prettyLines y
+    lowerError x y = left $ boxToString $
+      ["Invalid lower bound on: "] %+ prettyLines x %+ [" and "] %+ prettyLines y
 
 -- | Type operator evaluation.
 tvopeval :: QTOp -> [K3 QType] -> TInfM (K3 QType)
@@ -548,7 +551,8 @@ unifyDrv preF postF qt1 qt2 = do
                 do
                   tienv <- get
                   let (lbE, _) = runTInfM tienv $ tvlower lb1 lb2
-                  return $ either (const $ [lb1,lb2]) (\lb -> if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]) lbE
+                  let validLB lb = if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
+                  return $ either (const $ [lb1,lb2]) validLB lbE
 
                (_,_) -> return [lb1, lb2]
 
@@ -587,7 +591,8 @@ unifyDrv preF postF qt1 qt2 = do
     rcr a b = unifyDrv preF postF a b
 
     onCollectionPair :: [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
-    onCollectionPair annIds t1 t2 = rcr (head $ children t1) (head $ children t2) >>= return . flip tcol annIds
+    onCollectionPair annIds t1 t2 =
+      rcr (head $ children t1) (head $ children t2) >>= return . flip tcol annIds
 
     onCollection :: K3 QType -> [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
     onCollection sQt liftedAttrIds
@@ -612,12 +617,14 @@ unifyDrv preF postF qt1 qt2 = do
           recCtor nch = tdata subCon $ rebuildNamedPairs subPairs supIds nch
       in onChildren supCon supCon errk (children supT) subProjT recCtor
 
-    onChildren :: QTData -> QTData -> String -> [K3 QType] -> [K3 QType] -> QTypeCtor -> TInfM (K3 QType)
+    onChildren :: QTData -> QTData -> String -> [K3 QType] -> [K3 QType] -> QTypeCtor
+               -> TInfM (K3 QType)
     onChildren tga tgb kind a b ctor
       | tga == tgb = onList a b ctor $ \s -> unifyErr tga tgb kind s
       | otherwise  = unifyErr tga tgb kind ""
 
-    onList :: [K3 QType] -> [K3 QType] -> QTypeCtor -> (String -> TInfM (K3 QType)) -> TInfM (K3 QType)
+    onList :: [K3 QType] -> [K3 QType] -> QTypeCtor -> (String -> TInfM (K3 QType))
+           -> TInfM (K3 QType)
     onList a b ctor errf =
       if length a == length b
         then mapM (uncurry rcr) (zip a b) >>= return . ctor
@@ -633,8 +640,12 @@ unifyDrv preF postF qt1 qt2 = do
     lowerBound t = tvopeval QTLower $ children t
 
     primitiveErr a b = unifyErr a b "primitives" ""
-    unifyErr a b kind s = left $ unlines [unwords ["Unification mismatch on ", kind, "(", s, "):"], pretty a, pretty b]
-    subSelfErr ct = left $ boxToString $ ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
+
+    unifyErr a b kind s = left $ unlines
+      [unwords ["Unification mismatch on ", kind, "(", s, "):"], pretty a, pretty b]
+
+    subSelfErr ct = left $ boxToString $
+      ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
 
     unaryLowerMsgF _ Nothing = Nothing
     unaryLowerMsgF suffix (Just r) =
@@ -774,7 +785,8 @@ inferProgramTypes prog = do
     initExprF :: K3 Expression -> TInfM (K3 Expression)
     initExprF expr = return expr
 
-    unifyInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression) -> TInfM (Maybe (K3 Expression))
+    unifyInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression)
+                     -> TInfM (Maybe (K3 Expression))
     unifyInitializer n qptE eOpt = do
       qpt <- case qptE of
               Left (Nothing)   -> get >>= \env -> liftEitherM (tilkupe env n)
@@ -803,9 +815,10 @@ inferProgramTypes prog = do
     declF d@(tag -> DTrigger n t e) =
       get >>= \env -> liftEitherM (tilkupe env n) >>= \(QPType qtvars qt) ->
         case tag qt of
-          QTCon QTTrigger -> let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-                             in unifyInitializer n nqptE (Just e) >>= \neOpt ->
-                                  return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
+          QTCon QTTrigger ->
+            let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
+            in unifyInitializer n nqptE (Just e) >>= \neOpt ->
+                 return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
           _ -> trigTypeErr n
 
     declF d@(tag -> DAnnotation n tvars mems) =
@@ -1098,12 +1111,16 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
                            in if null spans then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
                                             else unwords ["[", show $ head spans, "] "]
 
-    projectErrF    srcqt prjqt = (unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt] ++)
-    applyErrF fnqt argqt retqt = (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
-
+    -- | Error printing functions for unification cases
     assignErrF i = (("Invalid assignment to " ++ i ++ ": ") ++)
     seqErrF      = (("Invalid left sequence operand: ") ++)
     caseErrF     = (("Mismatched case-of branch types: ") ++)
+
+    projectErrF srcqt prjqt =
+      (unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt] ++)
+
+    applyErrF fnqt argqt retqt =
+      (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
 
     lookupError j reason      = left $ unwords ["No type environment binding for ", j, ":", reason]
     lambdaBindingErr i reason = left $ unwords ["Could not find typevar for lambda binding: ", i, reason]
@@ -1122,6 +1139,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     uminusError reason = "Invalid unary minus operand: " ++ reason
     negateError reason = "Invalid negation operand: " ++ reason
 
+    -- | Type judgement stringification, given a tag, premise expressions and a conclusion expression.
     showTInfRule :: String -> [K3 Expression] -> K3 Expression -> String
     showTInfRule rtag ch n =
       boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
@@ -1311,7 +1329,9 @@ translateQType qt = mapTree translateWithMutability qt
           | QTFinal      <- tag qt' = return $ TC.builtIn TStructure
           | QTSelf       <- tag qt' = return $ TC.builtIn TSelf
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
-          | QTOperator _ <- tag qt' = Left $ boxToString $ ["Invalid qtype translation for qtype operator "] %+ prettyLines qt'
+          | QTOperator _ <- tag qt' =
+              Left $ boxToString $
+                ["Invalid qtype translation for qtype operator "] %+ prettyLines qt'
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
@@ -1376,4 +1396,6 @@ prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> String
 prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] %+ prettyLines b
 
 prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> String
-prettyTaggedTriple s a b c = boxToString $ [s ++ " "] %+ (intersperseBoxes [" , "] [prettyLines a, prettyLines b, prettyLines c])
+prettyTaggedTriple s a b c =
+  boxToString $ [s ++ " "] %+
+    (intersperseBoxes [" , "] [prettyLines a, prettyLines b, prettyLines c])
