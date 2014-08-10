@@ -1,5 +1,5 @@
-# Base image is Ubuntu 14.04
-FROM ubuntu:14.04
+# Use phusion/baseimage for Ubuntu 14.04 + init
+FROM phusion/baseimage:0.9.12
 
 # Add configuration files from the Docker context
 ADD config /root/config
