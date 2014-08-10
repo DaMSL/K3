@@ -47,7 +47,7 @@ RUN git clone https://github.com/tpope/vim-sensible.git /.vim/bundle
 # Update cabal
 RUN cabal update
 RUN cabal install cabal-install
-ENV PATH /.cabal/bin/:$PATH
+ENV PATH /root/.cabal/bin/:$PATH
 
 # Clone K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Mosaic
