@@ -7,14 +7,15 @@
 #include <external/strtk.hpp>
 #include <external/json_spirit_reader_template.h>
 
-#include "Collections.hpp"
+
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
 #include "MessageProcessor.hpp"
 #include "Serialization.hpp"
-
 using namespace std;
 using namespace K3;
 using namespace K3::BoostSerializer;
@@ -22,7 +23,7 @@ using std::begin;
 using std::end;
 
 
-
+string bpti_file;
 
 using K3::Collection;
 
@@ -70,7 +71,8 @@ unit_t maximize(unit_t);
 
 unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>);
 
-unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>>);
+unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>&);
+unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>);
 
 std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> nearest_neighbor(_Collection<R_elem<double>>);
 
@@ -81,18 +83,33 @@ unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<d
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
-
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
-
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        _Collection() : K3::Collection<CONTENT>() { }
+        
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
+        
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -106,18 +123,33 @@ namespace K3 {
 template <class CONTENT>
 class _Map: public K3::Map<CONTENT> {
     public:
-        _Map(): K3::Map<CONTENT>(&engine) {}
-
-        _Map(const _Map& c): K3::Map<CONTENT>(c) {}
-
-        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) {}
-
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-
-            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        _Map() : K3::Map<CONTENT>() { }
+        
+        _Map(const _Map& c): K3::Map<CONTENT>(c) { }
+        
+        _Map(_Map&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+       
+        _Map& operator=(const _Map& other) {
+          K3::Map<CONTENT>::operator=(other);
+          return *this;
         }
 
+        _Map& operator=(_Map&& other) {
+          K3::Map<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Map(const K3::Map<CONTENT>& c): K3::Map<CONTENT>(c) { }
+
+        _Map(K3::Map<CONTENT>&& c): K3::Map<CONTENT>(std::move(c)) { }
+        
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            
+            _archive & boost::serialization::base_object<K3::Map<CONTENT>>(*this);
+        }
+    
 };
 namespace K3 {
     template <class E>
@@ -568,15 +600,11 @@ unit_t merge_results(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<d
 
 
     return vals.iterate([] (R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>> v) -> unit_t {
-        std::shared_ptr<R_count_sum<int, _Collection<R_elem<double>>>> __0;
-
-
+        R_count_sum<int, _Collection<R_elem<double>>>* __0;
         __0 = lookup<int, R_count_sum<int, _Collection<R_elem<double>>>>(aggregates)(v.key);
         if (__0) {
             R_count_sum<int, _Collection<R_elem<double>>> a;
             a = *__0;
-
-
 
 
 
@@ -606,7 +634,7 @@ unit_t print_results(unit_t _) {
         });
 
 
-        return printLine(itos(elapsed_ms));
+        return printLine("time:" + itos(elapsed_ms));
     });
 }
 
@@ -641,7 +669,7 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
                             return acc;
                         }
                     };
-                })(R_distance_mean<double, R_key_value<int, _Collection<R_elem<double>>>>{squared_distance(p)(first_mean.value),
+                }, R_distance_mean<double, R_key_value<int, _Collection<R_elem<double>>>>{squared_distance(p)(first_mean.value),
                 first_mean});
                 return nearest.mean.key;
             }
@@ -651,34 +679,33 @@ std::function<int(_Collection<R_key_value<int, _Collection<R_elem<double>>>>)> n
     };
 }
 
-unit_t assign(_Collection<R_key_value<int, _Collection<R_elem<double>>>> current_means) {
+unit_t assignShared(const shared_ptr<_Collection<R_key_value<int, _Collection<R_elem<double>>>>> current_means) {
+  return assign(*current_means);
+}
+
+unit_t assign(const _Collection<R_key_value<int, _Collection<R_elem<double>>>>& current_means) {
+
+   _Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>> local_aggs;
+   // Initialize local aggs
+   for (int i =1; i<= k; i++) {
+     R_count_sum<int, _Collection<R_elem<double>>> r;
+     r.count = 0;
+     r.sum = zero_vector(dimensionality);
+     local_aggs.getContainer()[i] = r;
+   }   
+
+   for (const auto &r : data.getConstContainer()) {
+     // Assign each data point to the closest mean.
+     int which_k = nearest_neighbor(r.elem)(current_means);
+     // Update aggregates for this mean
+     auto &agg = local_aggs.getContainer()[which_k];
+     agg.count += 1;
+     agg.sum = vector_add(agg.sum)(r.elem);
+      
+   }
 
 
-
-
-
-
-
-
-    auto d = make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate
-                                                                                                               ,data.groupBy<int, R_count_sum<int, _Collection<R_elem<double>>>>([current_means] (R_elem<_Collection<R_elem<double>>> p) -> int {
-
-
-
-                                                                                                                   return nearest_neighbor(p.elem)(current_means);
-                                                                                                               })([] (R_count_sum<int, _Collection<R_elem<double>>> sc) -> std::function<R_count_sum<int, _Collection<R_elem<double>>>(R_elem<_Collection<R_elem<double>>>)> {
-
-                                                                                                                   return [sc] (R_elem<_Collection<R_elem<double>>> p) -> R_count_sum<int, _Collection<R_elem<double>>> {
-
-
-
-
-
-                                                                                                                       return R_count_sum<int, _Collection<R_elem<double>>>{sc.count + 1,
-                                                                                                                       vector_add(sc.sum)(p.elem)};
-                                                                                                                   };
-                                                                                                               })(R_count_sum<int, _Collection<R_elem<double>>>{0,
-                                                                                                               zero_vector(dimensionality)}));
+    auto d = make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate, local_aggs);
     engine.send(master,5,d);return unit_t();
 }
 
@@ -690,7 +717,7 @@ unit_t aggregate(_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<doubl
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(maximize,unit_t());
+        auto d = make_shared<ValDispatcher<unit_t>>(maximize,unit_t());
         engine.send(master,4,d);return unit_t();
     } else {
         return unit_t();
@@ -718,7 +745,7 @@ unit_t maximize(unit_t _) {
 
 
 
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,1,d);return unit_t();
         });
     } else {
@@ -729,9 +756,10 @@ unit_t maximize(unit_t _) {
 
 
 
-            auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
-                                                                                                            ,means);
-            engine.send(p.addr,6,d);return unit_t();
+            auto d = make_shared<RefDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>
+                     (assign, means);
+            engine.send(p.addr,6,d);
+            return unit_t();
         });
     }
 }
@@ -744,7 +772,7 @@ unit_t ready(unit_t _) {
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(start,unit_t());
+        auto d = make_shared<ValDispatcher<unit_t>>(start,unit_t());
         engine.send(master,2,d);return unit_t();
     } else {
         return unit_t();
@@ -752,34 +780,26 @@ unit_t ready(unit_t _) {
 }
 
 unit_t start(unit_t _) {
-    {
         int foo;
 
+        int a = k;
+        for (const auto &p : data.getConstContainer()) {
+          if (a > 0) {
+            means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
+            a = a - 1;
+          }
+        }
+              
+        for (const auto &peer : peers.getConstContainer()) {
+          requests = requests + 1;
+          auto d = make_shared<RefDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>
+            (assign ,means);
+            engine.send(peer.addr,6,d);
+        }
 
-        foo = data.fold<int>([] (int a) -> std::function<int(R_elem<_Collection<R_elem<double>>>)> {
-            return [a] (R_elem<_Collection<R_elem<double>>> p) -> int {
-                if (a == 0) {
-                    return a;
-                } else {
-
-
-                    means.insert(R_key_value<int, _Collection<R_elem<double>>>{a,p.elem});
-                    return a - 1;
-                }
-            };
-        })(k);
-
-        return peers.iterate([] (R_addr<Address> p) -> unit_t {
-            requests = requests + 1;
-
-
-
-            auto d = make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign
-                                                                                                            ,means);
-            engine.send(p.addr,6,d);return unit_t();
-        });
-    }
+        return unit_t();
 }
+
 
 unit_t shutdown_(unit_t _) {
 
@@ -789,11 +809,11 @@ unit_t shutdown_(unit_t _) {
 unit_t load_all(unit_t _) {
 
 
-    LoaderVector(string("/Users/joshwheeler/foo.vector"))(data);
+    LoaderVector(string(bpti_file))(data);
 
 
 
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,3,d);return unit_t();
 }
 
@@ -805,7 +825,7 @@ unit_t pointsProcess(unit_t _) {
 
 
 
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
 }
@@ -842,17 +862,18 @@ unit_t initGlobalDecls() {
 
 void populate_dispatch() {
     dispatch_table.resize(7);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(start), "start");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(maximize), "maximize");
-    dispatch_table[5] = make_tuple(make_shared<DispatcherImpl<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
-    dispatch_table[6] = make_tuple(make_shared<DispatcherImpl<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assign), "assign");
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(start), "start");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(maximize), "maximize");
+    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<_Map<R_key_value<int, R_count_sum<int, _Collection<R_elem<double>>>>>>>(aggregate), "aggregate");
+    dispatch_table[6] = make_tuple(make_shared<SharedDispatcher<_Collection<R_key_value<int, _Collection<R_elem<double>>>>>>(assignShared), "assign");
 }
 
 map<string,string> show_globals() {
     map<string,string> result;
+    result["bpti_file"] = bpti_file;
     result["data"] = ([] (_Collection<R_elem<_Collection<R_elem<double>>>> coll) {
         ostringstream oss;
         auto f = [&] (R_elem<_Collection<R_elem<double>>> elem) {oss << "{" + ("elem:" + ([] (_Collection<R_elem<double>> coll) {
@@ -952,6 +973,7 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["bpti_file"] = [] (string _s) {do_patch(_s,bpti_file);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);

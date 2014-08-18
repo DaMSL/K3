@@ -1,5 +1,7 @@
 #define MAIN_PROGRAM
 
+#include <chrono>
+#include <thread>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -9,8 +11,9 @@
 #include <boost/serialization/list.hpp>
 #include <boost/serialization/vector.hpp>
 
-#include "Collections.hpp"
+#include "BaseTypes.hpp"
 #include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 #include "Dispatch.hpp"
 #include "Engine.hpp"
 #include "Literals.hpp"
@@ -25,7 +28,6 @@ using std::end;
 
 
 
-Engine engine = Engine();
 
 #include "Builtins.hpp"
 
@@ -55,6 +57,7 @@ unit_t rowsProcess(unit_t);
 
 unit_t load_all(unit_t);
 
+unit_t hello(unit_t);
 unit_t ready(unit_t);
 
 unit_t shutdown_(unit_t);
@@ -66,11 +69,26 @@ unit_t q1_local(unit_t);
 template <class CONTENT>
 class _Collection: public K3::Collection<CONTENT> {
     public:
-        _Collection(): K3::Collection<CONTENT>(&engine) {}
+        _Collection() : K3::Collection<CONTENT>() { }
         
-        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) {}
+        _Collection(const _Collection& c): K3::Collection<CONTENT>(c) { }
         
-        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) {}
+        _Collection(_Collection&& c): K3::Collection<CONTENT>(std::move(c)) { }
+        
+       
+        _Collection& operator=(const _Collection& other) {
+          K3::Collection<CONTENT>::operator=(other);
+          return *this;
+        }
+
+        _Collection& operator=(_Collection&& other) {
+          K3::Collection<CONTENT>::operator=(std::move(other));
+          return *this;
+        }
+        
+        _Collection(const K3::Collection<CONTENT>& c): K3::Collection<CONTENT>(c) { }
+
+        _Collection(K3::Collection<CONTENT>&& c): K3::Collection<CONTENT>(std::move(c)) { }
         
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
@@ -194,26 +212,6 @@ namespace K3 {
     };
 }
 
-template <class _T0,class _T1>
-class R_key_value {
-    public:
-        R_key_value() {}
-        R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
-        R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(R_key_value _r) {
-            if (key == _r.key&& value == _r.value)
-                return true;
-            return false;
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & key;
-            _archive & value;
-            
-        }
-        _T0 key;
-        _T1 value;
-};
 namespace K3 {
     template <class _T0,class _T1>
     struct patcher<R_key_value<_T0, _T1>> {
@@ -296,7 +294,7 @@ namespace K3 {
 
 
 
-
+string output_dir = "";
 
 Address me;
 
@@ -311,7 +309,7 @@ F<unit_t(K3::Collection<R_avgDuration_pageRank_pageURL<int, int, string>>&)>data
         R_avgDuration_pageRank_pageURL<int, int, string> rec;
         strtk::for_each_line(filepath,
         [&](const std::string& str){
-            if (strtk::parse(str,",",rec.avgDuration,rec.pageRank,rec.pageURL)){
+            if (strtk::parse(str,",",rec.pageURL, rec.pageRank, rec.avgDuration)){
                 c.insert(rec);
             }
             else{
@@ -329,7 +327,7 @@ int x;
 
 int num_peers;
 
-string data_file;
+string rankings_file;
 
 int peers_ready;
 
@@ -346,21 +344,29 @@ int end_ms;
 int elapsed_ms;
 
 unit_t q1_local(unit_t _) {
-    
-    local_rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> row) -> unit_t {
+   
+    // the lambda in iterate() copies its arguments (pass-by-value).
+    // so let's use a for-loop instead 
+    //local_rankings.iterate([] (R_avgDuration_pageRank_pageURL<int, int, string> row) -> unit_t {
+    //    if (row.pageRank > x) {
+    //        
+    //        
+    //        return local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank,
+    //        row.pageURL});
+    //    } else {
+    //        return unit_t();
+    //    }
+    //});
+
+   for (const auto& row : local_rankings.getConstContainer()) {
         if (row.pageRank > x) {
-            
-            
-            return local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank,
-            row.pageURL});
-        } else {
-            return unit_t();
-        }
-    });
+            local_q1_results.insert(R_pageRank_pageURL<int, string>{row.pageRank, row.pageURL});
+        } 
+   }
     
     
     
-    auto d = make_shared<DispatcherImpl<unit_t>>(finished,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(finished,unit_t());
     engine.send(master,3,d);return unit_t();
 }
 
@@ -372,13 +378,13 @@ unit_t finished(unit_t _) {
         elapsed_ms = end_ms - start_ms;
         
         
-        printLine(itos(elapsed_ms));
+        printLine("time:" + itos(elapsed_ms));
         
         return peers.iterate([] (R_addr<Address> p) -> unit_t {
             
             
             
-            auto d = make_shared<DispatcherImpl<unit_t>>(shutdown_,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(shutdown_,unit_t());
             engine.send(p.addr,2,d);return unit_t();
         });
     } else {
@@ -401,7 +407,7 @@ unit_t ready(unit_t _) {
             
             
             
-            auto d = make_shared<DispatcherImpl<unit_t>>(q1_local,unit_t());
+            auto d = make_shared<ValDispatcher<unit_t>>(q1_local,unit_t());
             engine.send(p.addr,4,d);return unit_t();
         });
     } else {
@@ -412,15 +418,27 @@ unit_t ready(unit_t _) {
 unit_t load_all(unit_t _) {
     
     
-    dataLoader(data_file)(local_rankings);
+    dataLoader(rankings_file)(local_rankings);
+ 
+    std::chrono::milliseconds dura( 10000 );
+    std::this_thread::sleep_for( dura );
+
+
+    if (me == master) {
+      for (const auto& p : peers.getConstContainer()) {
+        auto d = make_shared<ValDispatcher<unit_t>>(hello,unit_t());
+        engine.send(p.addr,5,d);
+      } 
+    }
     
-    
-    
-    auto d = make_shared<DispatcherImpl<unit_t>>(ready,unit_t());
+    auto d = make_shared<ValDispatcher<unit_t>>(ready,unit_t());
     engine.send(master,1,d);return unit_t();
 }
 
 
+unit_t hello(unit_t _) {
+    return unit_t();
+}
 
 unit_t rowsProcess(unit_t _) {
     
@@ -428,7 +446,7 @@ unit_t rowsProcess(unit_t _) {
         
         
         
-        auto d = make_shared<DispatcherImpl<unit_t>>(load_all,next);
+        auto d = make_shared<ValDispatcher<unit_t>>(load_all,next);
         engine.send(me,0,d);return unit_t();
     }(unit_t());
 }
@@ -460,17 +478,18 @@ unit_t atExit(unit_t _) {
 unit_t initGlobalDecls() {
     
     master = make_address(string("127.0.0.1"),40000);x = 10;num_peers = 2;
-    data_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
+    rankings_file = string("/k3/data/amplab/rankings_10.k3");peers_ready = 0;peers_finished = 0;
     start_ms = 0;end_ms = 0;elapsed_ms = 0;return unit_t();
 }
 
 void populate_dispatch() {
-    dispatch_table.resize(5);
-    dispatch_table[0] = make_tuple(make_shared<DispatcherImpl<unit_t>>(load_all), "load_all");
-    dispatch_table[1] = make_tuple(make_shared<DispatcherImpl<unit_t>>(ready), "ready");
-    dispatch_table[2] = make_tuple(make_shared<DispatcherImpl<unit_t>>(shutdown_), "shutdown_");
-    dispatch_table[3] = make_tuple(make_shared<DispatcherImpl<unit_t>>(finished), "finished");
-    dispatch_table[4] = make_tuple(make_shared<DispatcherImpl<unit_t>>(q1_local), "q1_local");
+    dispatch_table.resize(6);
+    dispatch_table[0] = make_tuple(make_shared<ValDispatcher<unit_t>>(load_all), "load_all");
+    dispatch_table[1] = make_tuple(make_shared<ValDispatcher<unit_t>>(ready), "ready");
+    dispatch_table[2] = make_tuple(make_shared<ValDispatcher<unit_t>>(shutdown_), "shutdown_");
+    dispatch_table[3] = make_tuple(make_shared<ValDispatcher<unit_t>>(finished), "finished");
+    dispatch_table[4] = make_tuple(make_shared<ValDispatcher<unit_t>>(q1_local), "q1_local");
+    dispatch_table[5] = make_tuple(make_shared<ValDispatcher<unit_t>>(hello), "hello");
 }
 
 map<string,string> show_globals() {
@@ -494,7 +513,7 @@ map<string,string> show_globals() {
     }(local_rankings));
     result["peers_finished"] = to_string(peers_finished);
     result["peers_ready"] = to_string(peers_ready);
-    result["data_file"] = data_file;
+    result["rankings_file"] = rankings_file;
     result["num_peers"] = to_string(num_peers);
     result["x"] = to_string(x);
     result["master"] = addressAsString(master);
@@ -527,6 +546,17 @@ map<string,string> show_globals() {
     return result;
 }
 
+using std::string;
+void output_results(string path) {
+  std::cout << path << std::endl;
+  ofstream f;
+  f.open (path);
+  for (const auto& r: local_q1_results.getConstContainer()) {
+    f << r.pageRank << "," << r.pageURL << "\n"; 
+  }
+  f.close();
+}
+
 int main(int argc,char** argv) {
     initGlobalDecls();
     Options opt;
@@ -540,7 +570,7 @@ int main(int argc,char** argv) {
     matchers["local_rankings"] = [] (string _s) {do_patch(_s,local_rankings);};
     matchers["peers_finished"] = [] (string _s) {do_patch(_s,peers_finished);};
     matchers["peers_ready"] = [] (string _s) {do_patch(_s,peers_ready);};
-    matchers["data_file"] = [] (string _s) {do_patch(_s,data_file);};
+    matchers["rankings_file"] = [] (string _s) {do_patch(_s,rankings_file);};
     matchers["num_peers"] = [] (string _s) {do_patch(_s,num_peers);};
     matchers["x"] = [] (string _s) {do_patch(_s,x);};
     matchers["master"] = [] (string _s) {do_patch(_s,master);};
@@ -548,6 +578,7 @@ int main(int argc,char** argv) {
     matchers["args"] = [] (string _s) {do_patch(_s,args);};
     matchers["peers"] = [] (string _s) {do_patch(_s,peers);};
     matchers["me"] = [] (string _s) {do_patch(_s,me);};
+    matchers["output_dir"] = [] (string _s) {do_patch(_s,output_dir);};
     string parse_arg = opt.peer_strings[0];;
     map<string,string> bindings = parse_bindings(parse_arg);
     match_patchers(bindings,matchers);
@@ -561,5 +592,6 @@ int main(int argc,char** argv) {
     processRole(unit_t());
     DispatchMessageProcessor dmp = DispatchMessageProcessor(show_globals);;
     engine.runEngine(make_shared<DispatchMessageProcessor>(dmp));
+    output_results(output_dir + "q1_results.csv");
     return 0;
 }

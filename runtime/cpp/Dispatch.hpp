@@ -25,24 +25,65 @@ namespace K3 {
     };
 
     template<typename T>
-    class DispatcherImpl : public Dispatcher {
+    class ValDispatcher : public Dispatcher {
       public:
         typedef unit_t (*trigFunc)(T);
 
-        DispatcherImpl(const trigFunc& f, const T& arg) : _func(f), _arg(arg) {}
-        DispatcherImpl(const trigFunc& f) : _func(f) {}
+        ValDispatcher(trigFunc f, const T& arg) : _func(f), _arg(arg) {}
+        ValDispatcher(trigFunc f) : _func(f) {}
 
         void dispatch() const { _func(_arg); }
 
         void unpack(const Value &msg) { _arg = *BoostSerializer::unpack<T>(msg); }
 
-        Dispatcher* clone() { return new DispatcherImpl<T>(_func, _arg); }
+        Dispatcher* clone() { return new ValDispatcher<T>(_func, _arg); }
 
         Value pack() const { return BoostSerializer::pack<T>(_arg); }
 
         T _arg;
         trigFunc _func;
     };
+
+    template<typename T>
+    class RefDispatcher : public Dispatcher {
+      public:
+        typedef unit_t (*trigFunc)(const T&);
+
+        RefDispatcher(trigFunc f, const T& arg) : _func(f), _arg(arg) {}
+        RefDispatcher(trigFunc f) : _func(f) {}
+
+        void dispatch() const { _func(_arg); }
+
+        void unpack(const Value &msg) { throw std::runtime_error("RefDispatcher cannot unpack"); }
+
+        Dispatcher* clone() { return new RefDispatcher<T>(_func, _arg); }
+
+        Value pack() const { return BoostSerializer::pack<T>(_arg); }
+
+        const T &_arg;
+        trigFunc _func;
+    };
+
+    template<typename T>
+    class SharedDispatcher : public Dispatcher {
+      public:
+        typedef unit_t (*trigFunc)(const std::shared_ptr<T>);
+
+        SharedDispatcher(trigFunc f, std::shared_ptr<T> arg) : _func(f), _arg(arg) {}
+        SharedDispatcher(trigFunc f) : _func(f) {}
+
+        void dispatch() const { _func(_arg); }
+
+        void unpack(const Value &msg) { _arg = std::shared_ptr<T>(BoostSerializer::unpack<T>(msg)); }
+
+        Dispatcher* clone() { return new SharedDispatcher<T>(_func, _arg); }
+
+        Value pack() const { return BoostSerializer::pack<T>(*_arg); }
+
+        std::shared_ptr<T> _arg;
+        trigFunc _func;
+    };
+
 
     // A TriggerDispatch table maps trigger names to the corresponding generated TriggerWrapper
     // function.

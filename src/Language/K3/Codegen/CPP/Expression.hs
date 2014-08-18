@@ -188,7 +188,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = text "DispatcherImpl<" <> trigTypes <> text ">"
+    let className = text "ValDispatcher<" <> trigTypes <> text ">"
         classInst = genCCall (text "auto d = make_shared" <> angles className) Nothing [tv, vv]
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList

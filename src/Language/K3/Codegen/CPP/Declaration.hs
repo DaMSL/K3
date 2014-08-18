@@ -105,7 +105,7 @@ generateDispatchPopulation = do
   where
     genDispatch (tName, (tType, tNum)) = do
       kType <- genCType tType
-      let className = text "DispatcherImpl" <> angles kType
+      let className = text "ValDispatcher" <> angles kType
       return $ text "dispatch_table[" <> int tNum <> text "] =" <+>
         text "make_tuple" <> parens (
           text "make_shared" <> angles className <> parens (text tName) <> comma <+> dquotes (text tName))
