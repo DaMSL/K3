@@ -118,7 +118,7 @@ source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM CPPGenR)
 source_builtin_map = [("HasRead", genHasRead),
                       ("Read", genDoRead),
                       ("Loader",genLoader),
-                      ("LoaderJSON",genJSONLoader),
+                      ("genJSON",genJSONLoader),
                       ("LoaderVector", genVectorLoader),
                       ("LoaderVectorLabel", genVectorLabelLoader)]
 
@@ -176,9 +176,8 @@ genLoader _ (children -> [_,f]) name = do
                                    _   -> type_mismatch
                      _        -> type_mismatch
 
-    getRecFields r = case tag r of
-                     (TRecord ids) -> return ids
-                     _             -> type_mismatch
+    getRecFields (tag -> TRecord ids)  = return ids
+    getRecFields _ = error "Cannot get fields for non-record type"
 
     type_mismatch = error "Invalid type for Loader function. Should Be String -> BaseCollection R -> ()"
 

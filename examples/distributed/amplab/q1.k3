@@ -2,7 +2,7 @@ include "Annotation/Collection.k3"
 include "Core/CppBuiltins.k3"
 
 // Hack
-declare dataLoader : string -> collection {avgDuration: int,pageRank: int, pageURL: string} @ { Collection } -> ()
+declare dataLoader : string -> collection {pageRank: int, pageURL: string,avgDuration: int} @ { Collection } -> ()
 
 
 // Constants
