@@ -131,8 +131,9 @@ sysIncludes = return [
 includes :: CPPGenM [Identifier]
 includes = return [
         -- K3 Runtime
-        "Collections.hpp",
+        "BaseTypes.hpp",
         "Common.hpp",
+        "dataspace/Dataspace.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
         "Literals.hpp",

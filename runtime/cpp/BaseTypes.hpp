@@ -26,7 +26,7 @@ class Str {
     return *this;
   }
 
-  ~Str() { if (_buf) free(_buf); }
+  ~Str() { if (_buf) delete(_buf); }
 
   Str(const char *b) : _buf(sdup(b)) {}
   Str(const std::string &s) : _buf(sdup(s.c_str())) {}

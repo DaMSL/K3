@@ -68,14 +68,17 @@ composite className ans = do
     let ps = punctuate comma $ map (\(fst -> p) -> genCQualify (text "K3") $ text p <> angles (text "CONTENT")) ras
 
     constructors' <- mapM ($ ps) constructors
-    let constructors'' = constructors' ++ [superConstructor p | p <- take 1 ps]
+
+    let constructors'' = constructors' ++ [sc p | p <- take 1 ps, sc <- superConstructors]
+
+    aoperators' <- mapM ($ ps) assignOperators
 
     pubDecls <- mapM annMemDecl methDecls
     prvDecls <- mapM annMemDecl dataDecls
 
     let classBody = text "class" <+> text className <> colon <+> hsep (map (text "public" <+>) ps)
             <+> hangBrace (text "public:"
-            <$$> indent 4 (vsep $ punctuate line $ constructors'' ++ [serializeDefn] ++ pubDecls)
+            <$$> indent 4 (vsep $ punctuate line $ constructors'' ++ aoperators' ++ [serializeDefn] ++ pubDecls)
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
@@ -97,11 +100,11 @@ composite className ans = do
     isDataDecl (Attribute _ _ (tag -> TFunction) _ _) = False
     isDataDecl _ = True
 
-    engineConstructor ps = return $
+    defaultConstructor ps = return $
             text className
          <> parens empty
          <> colon
-        <+> hsep (punctuate comma $ map (<> parens (text "&engine")) ps)
+        <+> hsep (punctuate comma $ map (<> parens empty) ps) -- initialize superclasses
         <+> braces empty
 
     -- TODO: Generate copy statements for remaining data members.
@@ -111,13 +114,46 @@ composite className ans = do
          <> colon
         <+> hsep (punctuate comma $ map (<> parens (text "c")) ps) <+> braces empty
 
-    superConstructor p =
+    moveConstructor ps = return $
+            text className
+         <> parens (text $ className ++ "&& c")
+         <> colon
+        <+> hsep (punctuate comma $ map (<> parens (text "std::move(c)")) ps) <+> braces empty
+
+    superCopyConstructor p =
             text className
          <> parens (text "const" <+> p <> text "& c")
          <> colon
         <+> p <> parens (text "c") <+> braces empty
 
-    constructors = [engineConstructor, copyConstructor]
+    superMoveConstructor p =
+            text className
+         <> parens (p <> text "&& c")
+         <> colon
+        <+> p <> parens (text "std::move(c)") <+> braces empty
+
+    constructors = [defaultConstructor, copyConstructor, moveConstructor]
+    superConstructors = [superCopyConstructor, superMoveConstructor]
+
+    assignOperator ps = return $
+            text (className ++ "&")
+        <+> text "operator="
+         <> parens (text $ "const " ++ className ++ "& other")
+         <> hangBrace (vsep $
+              (map (<> text "::operator=(other);") ps)
+              ++ [text "return *this;"]
+            )
+
+    moveAssignOperator ps = return $
+            text (className ++ "&")
+        <+> text "operator="
+         <> parens (text $ "const " ++ className ++ "&& other")
+         <> hangBrace (vsep $
+              (map (<> text "::operator=(std::move(other));") ps)
+              ++ [text "return *this;"]
+            )
+
+    assignOperators = [assignOperator, moveAssignOperator]
 
     patcherSpec :: CPPGenR
     patcherSpec = text "namespace K3" <+> (hangBrace $ genCTemplateDecl [text "E"] <$$> patcherSpecStruct)
