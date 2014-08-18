@@ -118,8 +118,9 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
         runtimePre     = "runtime"
 
         badSubDirs = [
-                        "dataspace"
-                      , "test"
+                        "Eigen",
+                        "dataspace",
+                        "test"
                       ]
 
         hasBadSubDir s = foldr (\bad acc -> acc || bad `L.isInfixOf` s) False badSubDirs
