@@ -208,7 +208,7 @@ showVar base_t name =
     ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t name
     ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts name
     ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts name
-    ((tag &&& children) -> (TCollection, [et])) -> coll_to_string base_t et name
+    ((tag &&& children) -> (TCollection, [et]))  -> coll_to_string base_t et name
     _                                           -> return $ str "Cant Show!"
   where
     -- Utils
@@ -216,7 +216,7 @@ showVar base_t name =
     deref = (++) "*"
     getTup i n = "get<" ++ (show i) ++ ">(" ++ n ++ ")"
     project field n = n ++ "." ++ field
-    inner_comma = text "+" <+> str "," <+> text "+"
+    inner_comma = line <> text "+" <+> str "," <> line <> text "+"
     -- Use std::to_string for basic types
     std_to_string n = text "to_string" <> parens (text n)
     -- Option
@@ -234,21 +234,19 @@ showVar base_t name =
         ct_is <- return $ zip cts ([0..] :: [Integer])
         cs    <- mapM (\(ct,i) -> showVar ct (getTup i n)) ct_is
         done  <- return $ L.intersperse inner_comma cs
-        return $ vsep $ [str "(", text "+", (hsep done), text "+", str ")"]
+        return $ vsep $ [empty, str "(" <> text "+" <> (hsep done), text "+", str ")"]
     -- Record
     rec_to_string ids cts n = do
         ct_ids <- return $ zip cts ids
-        cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ str (field ++ ":") <+> text "+" <+>  v) ct_ids
+        cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ str (field ++ ":") <+> text "+" <+>  v <> line) ct_ids
         done   <- return $ L.intersperse inner_comma cs
-        return $ str "{" <+> text "+" <+> parens (hsep done <+> text "+" <+> str "}")
+        return $ str "{" <> line <> text "+" <+> parens (hsep done <+> text "+" <> line <> str "}")
     -- Collection
     coll_to_string t et n = do
         rvar <- return $ text "ostringstream oss;"
         t_n  <- genCType t
-        et_n <- genCType et
         v    <- showVar et "elem"
-        fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
-        iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
+        for  <- return $ text "for" <+> parens (text "auto& elem : coll.getConstContainer()") <> hangBrace  (text "oss <<" <+> v <+> text "<< \",\";")
         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
         -- wrap in lambda, then call it
-        return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)
+        return $ parens $ line <> text "[]" <+> parens (text "const" <+> t_n <+> text "& coll") <> (hangBrace (vsep [rvar,for,result]) <> parens (text n))

@@ -16,7 +16,7 @@ declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
 
 // Data
-declare local_rankings: collection {avgDuration: int,pageRank: int, pageURL: string} @ { Collection }
+declare local_rankings: collection {pageRank: int, pageURL: string, avgDuration: int} @ { Collection }
 declare local_q1_results: collection {pageRank: int,pageURL: string} @ { Collection }
 
 // Time
