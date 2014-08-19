@@ -36,6 +36,10 @@ namespace K3 {
 
 
   using std::string;
+  int index_by_hash(const string& s);
+
+  Address& peer_by_index(const int i);
+
   F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id);
 
   F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id);
@@ -90,10 +94,12 @@ namespace K3 {
       if (it != container.end()) {
         return &(it->second);
       } else {
-        return nullptr; 
+        return nullptr;
       }
     };
   }
+
+
 
   template <class E>
   F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>

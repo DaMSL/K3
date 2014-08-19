@@ -45,7 +45,7 @@ using VectorDS = StlDS<std::vector, Elem>;
 // MapDS implementation. For now, map() returns a VectorDS, requiring VectorDS be defined before MapDS
 template<class R>
 class MapDS {
-  
+
   using Key = typename R::KeyType;
   using Value = typename R::ValueType;
   using iterator_type = typename unordered_map<Key,Value>::iterator;
@@ -53,18 +53,18 @@ class MapDS {
 
  public:
   // Default Constructor
-  MapDS() 
-    : container() 
+  MapDS()
+    : container()
   {  }
-  
+
   // Copy Constructor
-  MapDS(const MapDS& other) 
-    : container(other.container) 
-  { } 
+  MapDS(const MapDS& other)
+    : container(other.container)
+  { }
   // Move Constructor
   MapDS(MapDS&& other)
     : container(std::move(other.container))
-  { } 
+  { }
   // Copy Assign Operator
   MapDS& operator=(const MapDS& other) {
     container = other.container;
@@ -81,7 +81,7 @@ class MapDS {
   // Construct from (container) iterators
   template<typename Iterator>
   MapDS(Iterator begin, Iterator end)
-    : container(begin,end) 
+    : container(begin,end)
   {}
 
   // TODO: Destructor
@@ -90,11 +90,11 @@ class MapDS {
   }
 
   // Copy Constructor from container
-  MapDS(const unordered_map<Key,Value>& con) 
-    : container(con) 
+  MapDS(const unordered_map<Key,Value>& con)
+    : container(con)
   { }
   // Move Constructor from container
-  MapDS(unordered_map<Key, Value>&& con) 
+  MapDS(unordered_map<Key, Value>&& con)
     : container(std::move(con))
   { }
   // DS Operations:
@@ -227,12 +227,13 @@ class MapDS {
           // Create a map to hold partial results
          unordered_map<K, Z> accs;
 
-         for (const R& elem : container) {
-            K key = grouper(elem);
+         for (const auto& it : container) {
+            R rec = R{it.first, it.second};
+            K key = grouper(rec);
             if (accs.find(key) == accs.end()) {
               accs[key] = init;
             }
-            accs[key] = folder(accs[key])(elem);
+            accs[key] = folder(accs[key])(rec);
          }
 
          // Force a move from accs into a mapDS
@@ -258,7 +259,7 @@ class MapDS {
 
     return result;
   }
-  
+
   int size(unit_t) const { return container.size(); }
 
   unordered_map<Key, Value>& getContainer() { return container; }
@@ -284,20 +285,20 @@ class StlDS {
   typedef typename Container::iterator iterator_type;
   public:
     // Default Constructor
-  	StlDS() 
-      : container() 
-    { } 
+  	StlDS()
+      : container()
+    { }
 
     // Copy Constructor
-    StlDS(const StlDS& other) 
-      : container(other.container) 
+    StlDS(const StlDS& other)
+      : container(other.container)
     { }
- 
+
     // Move Constructor
     StlDS(StlDS&& other)
       : container(std::move(other.container))
     { }
- 
+
     // Copy Assign Operator
     StlDS& operator=(const StlDS& other) {
       container = other.container;
@@ -314,14 +315,14 @@ class StlDS {
     // Construct from (container) iterators
     template<typename Iterator>
     StlDS(Iterator begin, Iterator end)
-      : container(begin,end) 
+      : container(begin,end)
     {}
 
     // TODO: Destructor
     ~StlDS() {
 
     }
-      
+
     // Maybe return the first element in the ds
     shared_ptr<Elem> peek(unit_t) const {
       shared_ptr<Elem> res;
@@ -355,7 +356,7 @@ class StlDS {
       return unit_t();
     }
 
-    // Generic implementation: 
+    // Generic implementation:
     // Find v in the container. Insert (by move) v2 in its position. Erase v.
     unit_t update(const Elem& v, const Elem&& v2) {
       iterator_type it;
@@ -370,7 +371,7 @@ class StlDS {
     // Update by copy
     unit_t update(const Elem& v, const Elem& v2) {
       // Copy v2, then update by move
-      return update(v, Elem(v2)); 
+      return update(v, Elem(v2));
     }
 
     // Fold a function over this ds
@@ -380,7 +381,7 @@ class StlDS {
       for (const Elem &e : container) { acc = f(acc)(e); }
       return acc;
     }
-    
+
     // Produce a new ds by mapping a function over this ds
     template<typename NewElem>
     VectorDS<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
@@ -466,7 +467,7 @@ class StlDS {
     VectorDS<R_elem<T>> ext(const F<VectorDS<T>(Elem)>& expand) {
       StlDS<StlContainer, R_elem<T>> result;
       for (const Elem& elem : container) {
-        StlDS<StlContainer, T> expanded = expand(elem); 
+        StlDS<StlContainer, T> expanded = expand(elem);
         for (const Elem& elem2 : expanded.getConstContainer()) {
           result.insert(R_elem<T> { elem2 } );
         }
@@ -482,7 +483,7 @@ class StlDS {
     Container& getContainer() { return container; }
 
     const Container& getConstContainer() const { return container; }
-  
+
   protected:
     Container container;
 

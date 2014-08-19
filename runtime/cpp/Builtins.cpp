@@ -21,6 +21,17 @@ namespace K3 {
   using std::endl;
   using std::to_string;
 
+  int index_by_hash(const string& s) {
+    auto& container = peers.getContainer();
+    size_t h = std::hash<string>()(s);
+    return h % container.size();
+  }
+
+  Address& peer_by_index(const int i) {
+    auto& container = peers.getContainer();
+    return container[i].addr;
+  }
+
   F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
       return [&] (const string& builtin_chan_id) {
         return [&] (const string& format) {
