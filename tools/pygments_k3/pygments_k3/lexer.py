@@ -6,3 +6,17 @@ class K3Lexer(RegexLexer):
     aliases = ['k3']
     filenames = ['*.k3']
 
+    keywords = {
+        'preprocessor': "include",
+
+        "declaration": [
+            "annotation", "declare", "feed", "provides", "requires", "source", "trigger"
+        ],
+
+        "type": ["bool", "int", "real", "string", "option", "ind", "collection"],
+
+        "expression": [
+            "if", "then", "else", "let", "in", "case", "of", "bind", "as", "some", "none",
+        ]
+    }
+
