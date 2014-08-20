@@ -20,3 +20,13 @@ class K3Lexer(RegexLexer):
         ]
     }
 
+    tokens = {
+        'root': [
+            (r'//.*?$', Token.Comment),
+            (r'\b(' + r'|'.join(keywords["preprocessor"]) + r')\s*\b(?!\.)', Keyword.Namespace),
+            (r'\b(' + r'|'.join(keywords["declaration"]) + r')\s*\b(?!\.)', Keyword.Declaration),
+            (r'\b(' + r'|'.join(keywords["type"]) + r')\s*\b(?!\.)', Keyword.Type),
+            (r'\b(' + r'|'.join(keywords["expression"]) + r')\s*\b(?!\.)', Keyword.Reserved),
+            (r'.*\n', Text),
+        ],
+    }
