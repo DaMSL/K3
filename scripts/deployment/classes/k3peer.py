@@ -9,9 +9,17 @@ class K3Peer:
     self.port = config["k3_port"]
     self.remote_binary_path = "/temp/"
     self.binary_name = "k3_" + str(self.ip) + str(self.port)
+    self.remote_log_dir  = "/temp/log/" + self.binary_name + "/"
+
+    self.remote_log_file = self.remote_log_dir + "stdouterr.log"
     self.remote_script_path = "/temp/" + self.binary_name + ".txt"
     self.k3_bindings = config.get("k3_bindings",{})
     self.loggingEnabled = bool(config.get("enable_logging", False))
+    self.collectResults = bool(config.get("collect_results", False))
+    self.local_output_dir = config["output_dir"]
+    output_dir_str = '"%s"' % self.remote_log_dir
+    self.k3_bindings["output_dir"] = output_dir_str
+
     # Constants
     self.local_script_path =  "%s.txt" % self.binary_name
     self.host = "root@%s" % self.ip
@@ -21,7 +29,7 @@ class K3Peer:
     local_kill_file = "kill_" + self.binary_name + ".txt"
     remote_kill_file = self.remote_binary_path + "kill_" + self.binary_name;
     script = ("""#!/bin/bash\n"""
-              """pkill %s\n""" % self.binary_name )
+              """for j in `pgrep -f "/temp/.*"`;do kill -9 $j; done\n""")
 
 
     # Dump to a local file
@@ -34,6 +42,10 @@ class K3Peer:
     # chmod +x remote_script
     chmod_cmd = "chmod +x %s" % remote_kill_file
     ssh(self.host, chmod_cmd)
+
+    # cleanup the local file
+    cleanup_cmd = "rm %s" % local_kill_file
+    os.system(cleanup_cmd)
 
     # call kill command
     ssh(self.host, remote_kill_file)
@@ -57,7 +69,7 @@ class K3Peer:
     #perf record -g -o /temp/perf/%(bn)s.data
     # Generate a script to run program.
     script = ("""#!/bin/bash\n"""
-              """nice -n 19 %(bp)s%(bn)s %(ls)s -p %(bs)s\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr}
+              """mkdir -p %(logdir)s\nrm -rf %(logdir)s/*\nnice -n 19 %(bp)s%(bn)s %(ls)s -p %(bs)s >%(sf)s 2>&1\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr, "sf": self.remote_log_file, "logdir": self.remote_log_dir}
 
     # Dump to a local file
     with open(self.local_script_path,"wb") as script_file:
@@ -77,3 +89,8 @@ class K3Peer:
   def runRemoteScript(self):
     run_script_cmd = self.remote_script_path
     ssh(self.host,run_script_cmd)
+
+  def collectResults(self):
+    if (self.collectResults):
+      os.system("mkdir -p %s" % self.local_output_dir)
+      scpDirFrom(self.host, self.remote_log_dir, self.local_output_dir) 

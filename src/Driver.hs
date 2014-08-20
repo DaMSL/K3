@@ -15,7 +15,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
-import Language.K3.Analysis.Conflicts
+--import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.Effect
@@ -60,8 +60,8 @@ run opts = do
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
-      Left s   -> putStrLn s
-      Right p' -> printer PrintAST p'
+      Left s   -> putStrLn s          >> putStrLn "ERROR"
+      Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     chooseTypechecker opts' p =
@@ -95,9 +95,9 @@ run opts = do
 
       -- Using arrow combinators to make this simpler
       -- first/second passes the other part of the pair straight through
-    analyzer Conflicts x           = first getAllConflicts x
-    analyzer Tasks x               = first getAllTasks x
-    analyzer ProgramTasks (p,s)    = (p, s ++ show (getProgramTasks p))
+    --analyzer Conflicts x           = first getAllConflicts x
+    --analyzer Tasks x               = first getAllTasks x
+    --analyzer ProgramTasks (p,s)    = (p, s ++ show (getProgramTasks p))
     analyzer ProxyPaths x          = first labelBindAliases x
     analyzer AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
     analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
@@ -107,6 +107,7 @@ run opts = do
     analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
+    analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
 
     -- If we produce a proper program, put it first. Otherwise put the original program first
     -- and add to the string
