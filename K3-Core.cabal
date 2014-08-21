@@ -180,10 +180,10 @@ library
     ghc-options: -Wall -fno-warn-orphans -O2
 
     other-modules:
-        --Language.K3.Codegen.CPP.Core.Declaration
-        --Language.K3.Codegen.CPP.Core.Expression
-        --Language.K3.Codegen.CPP.Core.Statement
-        --Language.K3.Codegen.CPP.Core.Type
+        Language.K3.Codegen.CPP.Core.Declaration
+        Language.K3.Codegen.CPP.Core.Expression
+        Language.K3.Codegen.CPP.Core.Statement
+        Language.K3.Codegen.CPP.Core.Type
         Language.K3.Codegen.CPP.Collections,
         Language.K3.Codegen.CPP.Common,
         Language.K3.Codegen.CPP.Declaration,

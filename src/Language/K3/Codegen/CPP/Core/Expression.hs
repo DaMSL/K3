@@ -3,6 +3,7 @@ module Language.K3.Codegen.CPP.Core.Expression where
 import Language.K3.Core.Common
 
 import Language.K3.Codegen.CPP.Core.Type
+import Language.K3.Codegen.CPP.Core.Statement
 
 data Expression
     = Binary Identifier Expression Expression
