@@ -1,0 +1,24 @@
+K3/core/tools/pygments_k3 -- Pygments Lexer for K3
+==================================================
+
+This package provides a K3 lexer definition for the `pygments` syntax highlighting library.
+
+Installation
+------------
+
+Ensure that `pygments` is available. Then install with `python setup.py install`. This is will
+register K3 with the pygments registry.
+
+Usage
+-----
+
+Test that the installation proceeded correctly with `pygmentize -L lexers | grep k3`, which should
+indicate that the K3 lexer is associated with the language definition `k3`, for files of form
+`*.k3`.
+
+Now you can use `pygmentize` as normal, with `pygmentize -l k3 -f <output-fomrat> /path/to/file.k3`.
+
+The LaTeX `minted` package will work transparently with language name `k3`, as long as `pygments`
+and `pygments_k3` are installed on the respective global paths. If using a python virtual
+environment, alter paths as necessary.
+
