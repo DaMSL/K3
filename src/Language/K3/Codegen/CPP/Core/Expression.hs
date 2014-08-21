@@ -7,7 +7,7 @@ import Language.K3.Codegen.CPP.Core.Statement
 
 data Expression
     = Binary Identifier Expression Expression
-    | Call Expression Expression
+    | Call Expression [Expression]
     | Dereference Expression
     | Lambda [(Identifier, Expression)] [(Type, Identifier)] Type [Statement]
     | Literal LiteralExpression
