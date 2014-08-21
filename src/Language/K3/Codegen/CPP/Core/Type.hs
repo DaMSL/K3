@@ -8,7 +8,7 @@ data Type
     | Parameter Identifier
     | Primitive PrimitiveType
     | Templated Type [Type]
-    | Qualified
+    | Qualified Identifier Type
   deriving (Eq, Read, Show)
 
 data PrimitiveType
