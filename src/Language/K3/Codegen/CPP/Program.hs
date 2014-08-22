@@ -251,4 +251,4 @@ showVar base_t name =
         iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
         -- wrap in lambda, then call it
-        return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)r
+        return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)

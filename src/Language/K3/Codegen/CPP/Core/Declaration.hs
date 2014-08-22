@@ -2,7 +2,7 @@ module Language.K3.Codegen.CPP.Core.Declaration where
 
 import Language.K3.Core.Common
 
-import Language.K3.Codegen.CPP.Core.Expression
+import Language.K3.Codegen.CPP.Core.Expression ()
 import Language.K3.Codegen.CPP.Core.Statement
 import Language.K3.Codegen.CPP.Core.Type
 
