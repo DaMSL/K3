@@ -28,3 +28,9 @@ data PrimitiveType
     | PDouble
     | PString
   deriving (Eq, Read, Show)
+
+instance Stringifiable PrimitiveType where
+    stringify PBool = text "bool"
+    stringify PInt = text "int"
+    stringify PDouble = text "double"
+    stringify PString = text "string"
