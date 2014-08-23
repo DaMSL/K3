@@ -9,11 +9,21 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 class Stringifiable a where
     stringify :: a -> Doc
 
+-- Pretty-Printing Utility Functions
+
+commaSep :: [Doc] -> Doc
+commaSep = fillSep . punctuate comma
+
 data Name
     = Name Identifier
     | Qualified Identifier Name
     | Specialized [Type] Name
   deriving (Eq, Read, Show)
+
+instance Stringifiable Name where
+    stringify (Name i) = text i
+    stringify (Qualified i n) = text i <> "::" <> stringify n
+    stringify (Specialized ts n) = stringify n <> angles (commaSep $ map stringify ts)
 
 data Primitive
     = PBool
