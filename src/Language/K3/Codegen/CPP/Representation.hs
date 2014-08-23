@@ -32,6 +32,12 @@ data Primitive
     | PString
   deriving (Eq, Read, Show)
 
+instance Stringifiable Primitive where
+    stringify PBool = "bool"
+    stringify PInt = "int"
+    stringify PDouble = "double"
+    stringify PString = "string"
+
 data Type
     = Named Name
     | Inferred
