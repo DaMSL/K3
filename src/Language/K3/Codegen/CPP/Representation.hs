@@ -76,6 +76,22 @@ data Expression
     | Variable Name
   deriving (Eq, Read, Show)
 
+instance Stringifiable Expression where
+    stringify (Binary op a b) = parens (stringify a) <+> fromString op <+> parens (stringify b)
+    stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
+    stringify (Dereference e) = fromString "*" <> parens (stringify e)
+    stringify (Initialization t e) = stringify t <+> braces (stringify e)
+    stringify (Lambda cs as rt bd) = cs' <+> as' <+> rt' <+> bd'
+      where
+        cs' = brackets $ commaSep $ [fromString i <+> equals <+> stringify t | (i, t) <- cs]
+        as' = parens $ commaSep $ [stringify t <+> fromString i | (i, t) <- as]
+        rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
+        bd' = braces $ vsep $ map stringify bd
+    stringify (Literal lt) = stringify lt
+    stringify (Project pt i) = parens (stringify pt) <> dot <> fromString i
+    stringify (Unary op e) = fromString op <> parens (stringify e)
+    stringify (Variable n) = stringify n
+
 data Statement
     = Assignment (Maybe Type) Expression Expression
     | Block [Statement]
