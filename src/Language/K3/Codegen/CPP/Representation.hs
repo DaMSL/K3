@@ -15,3 +15,17 @@ data Name
     | Specialized [Type] Name
   deriving (Eq, Read, Show)
 
+data Primitive
+    = PBool
+    | PInt
+    | PDouble
+    | PString
+  deriving (Eq, Read, Show)
+
+data Type
+    = Named Name
+    | Inferred
+    | Parameter Identifier
+    | Primitive Primitive
+  deriving (Eq, Read, Show)
+
