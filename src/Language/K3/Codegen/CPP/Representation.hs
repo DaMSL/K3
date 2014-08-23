@@ -9,3 +9,9 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 class Stringifiable a where
     stringify :: a -> Doc
 
+data Name
+    = Name Identifier
+    | Qualified Identifier Name
+    | Specialized [Type] Name
+  deriving (Eq, Read, Show)
+
