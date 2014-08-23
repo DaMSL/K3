@@ -36,3 +36,15 @@ data Literal
     | LString String
   deriving (Eq, Read, Show)
 
+data Expression
+    = Binary Identifier Expression Expression
+    | Call Expression [Expression]
+    | Dereference Expression
+    | Initialization Type Expression
+    | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
+    | Literal Literal
+    | Project Expression Identifier
+    | Unary Identifier Expression
+    | Variable Name
+  deriving (Eq, Read, Show)
+
