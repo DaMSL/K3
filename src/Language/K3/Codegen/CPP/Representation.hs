@@ -29,3 +29,10 @@ data Type
     | Primitive Primitive
   deriving (Eq, Read, Show)
 
+data Literal
+    = LBool Bool
+    | LInt Int
+    | LDouble Double
+    | LString String
+  deriving (Eq, Read, Show)
+
