@@ -58,6 +58,12 @@ data Literal
     | LString String
   deriving (Eq, Read, Show)
 
+instance Stringifiable Literal where
+    stringify (LBool b) = if b then "true" else "false"
+    stringify (LInt i) = int i
+    stringify (LDouble d) = double d
+    stringify (LString s) = dquotes $ string s
+
 data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
