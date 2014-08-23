@@ -45,6 +45,12 @@ data Type
     | Primitive Primitive
   deriving (Eq, Read, Show)
 
+instance Stringifiable Type where
+    stringify (Named n) = stringify n
+    stringify Inferred = "auto"
+    stringify (Parameter i) = fromString i
+    stringify (Primitive p) = stringify p
+
 data Literal
     = LBool Bool
     | LInt Int
