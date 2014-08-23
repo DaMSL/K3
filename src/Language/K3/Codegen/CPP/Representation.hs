@@ -48,3 +48,10 @@ data Expression
     | Variable Name
   deriving (Eq, Read, Show)
 
+data Statement
+    = Assignment (Maybe Type) Expression Expression
+    | Block [Statement]
+    | Ignored Expression
+    | Return Expression
+  deriving (Eq, Read, Show)
+
