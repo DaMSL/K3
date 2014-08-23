@@ -99,6 +99,12 @@ data Statement
     | Return Expression
   deriving (Eq, Read, Show)
 
+instance Stringifiable Statement where
+    stringify (Assignment mt a e) = maybe empty stringify mt <+> stringify a <+> equals <+> stringify e <> semi
+    stringify (Block ss) = braces (vsep [stringify s <> semi | s <- ss])
+    stringify (Ignored e) = stringify e <> semi
+    stringify (Return e) = "return" <+> stringify e <> semi
+
 data Declaration
     = Class Name [Type] [Declaration] [Declaration] [Declaration]
     | Function Type Name [(Identifier, Type)] [Statement]
