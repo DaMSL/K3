@@ -112,3 +112,23 @@ data Declaration
     | Templated [(Identifier, Maybe Type)] Declaration
   deriving (Eq, Read, Show)
 
+instance Stringifiable Declaration where
+    stringify (Class cn ps publics privates protecteds) =
+        "class" <+> stringify cn <> colon <+> stringifyParents ps
+                    <+> braces (publics' <$$> privates' <$$> protecteds') <> semi
+      where
+        stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
+        publics' = "public" <> colon <$$> vsep (map stringify publics)
+        privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
+        protecteds' = "private" <> colon <$$> vsep (map stringify privates)
+    stringify (Function rt fn as bd) = rt' <+> fn' <> as' <+> bd'
+      where
+        rt' = stringify rt
+        fn' = stringify fn
+        as' = parens (commaSep [fromString i <+> stringify t | (i, t) <- as])
+        bd' = braces (vsep $ map stringify bd)
+    stringify (Global s) = stringify s
+    stringify (Templated ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
+      where
+        parameterize (i, Nothing) = "class" <+> fromString i
+        parameterize (i, (Just t)) = stringify t <+> fromString i
