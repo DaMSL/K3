@@ -6,6 +6,8 @@ import Data.String
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
+import Language.K3.Core.Common
+
 class Stringifiable a where
     stringify :: a -> Doc
 
