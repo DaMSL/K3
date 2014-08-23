@@ -94,28 +94,47 @@ instance Stringifiable Expression where
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 
+data Declaration
+    = ClassDecl Name
+    | FunctionDecl Name Type [Type]
+    | ScalarDecl Name Type (Maybe Expression)
+    | TemplateDecl [(Identifier, Maybe Type)] Declaration
+  deriving (Eq, Read, Show)
+
+instance Stringifiable Declaration where
+    stringify (ClassDecl n) = "class" <+> stringify n
+    stringify (FunctionDecl n rt ats) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
+    stringify (ScalarDecl n t mi) =
+        stringify t <+> stringify n <> maybe semi (\i -> space <> equals <+> stringify i) mi <> semi
+    stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
+      where
+        parameterize (i, Nothing) = "class" <+> fromString i
+        parameterize (i, Just t) = stringify t <+> fromString i
+
 data Statement
-    = Assignment (Maybe Type) Expression Expression
+    = Assignment Expression Expression
     | Block [Statement]
-    | Ignored Expression
+    | Forward Declaration
+    | Ignore Expression
     | Return Expression
   deriving (Eq, Read, Show)
 
 instance Stringifiable Statement where
-    stringify (Assignment mt a e) = maybe empty stringify mt <+> stringify a <+> equals <+> stringify e <> semi
+    stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi
     stringify (Block ss) = braces (vsep [stringify s <> semi | s <- ss])
-    stringify (Ignored e) = stringify e <> semi
+    stringify (Forward d) = stringify d <> semi
+    stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
-data Declaration
-    = Class Name [Type] [Declaration] [Declaration] [Declaration]
-    | Function Type Name [(Identifier, Type)] [Statement]
-    | Global Statement
-    | Templated [(Identifier, Maybe Type)] Declaration
+data Definition
+    = ClassDefn Name [Type] [Definition] [Definition] [Definition]
+    | FunctionDefn Type Name [(Identifier, Type)] [Statement]
+    | GlobalDefn Statement
+    | TemplateDefn [(Identifier, Maybe Type)] Definition
   deriving (Eq, Read, Show)
 
-instance Stringifiable Declaration where
-    stringify (Class cn ps publics privates protecteds) =
+instance Stringifiable Definition where
+    stringify (ClassDefn cn ps publics privates protecteds) =
         "class" <+> stringify cn <> colon <+> stringifyParents ps
                     <+> braces (publics' <$$> privates' <$$> protecteds') <> semi
       where
@@ -123,14 +142,14 @@ instance Stringifiable Declaration where
         publics' = "public" <> colon <$$> vsep (map stringify publics)
         privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
         protecteds' = "private" <> colon <$$> vsep (map stringify privates)
-    stringify (Function rt fn as bd) = rt' <+> fn' <> as' <+> bd'
+    stringify (FunctionDefn rt fn as bd) = rt' <+> fn' <> as' <+> bd'
       where
         rt' = stringify rt
         fn' = stringify fn
         as' = parens (commaSep [fromString i <+> stringify t | (i, t) <- as])
         bd' = braces (vsep $ map stringify bd)
-    stringify (Global s) = stringify s
-    stringify (Templated ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
+    stringify (GlobalDefn s) = stringify s
+    stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
         parameterize (i, Just t) = stringify t <+> fromString i
