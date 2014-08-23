@@ -55,3 +55,10 @@ data Statement
     | Return Expression
   deriving (Eq, Read, Show)
 
+data Declaration
+    = Class Name [Type] [Declaration] [Declaration] [Declaration]
+    | Function Type Name [(Identifier, Type)] [Statement]
+    | Global Statement
+    | Templated [(Identifier, Maybe Type)] Declaration
+  deriving (Eq, Read, Show)
+
