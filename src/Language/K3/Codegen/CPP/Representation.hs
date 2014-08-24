@@ -73,6 +73,7 @@ data Literal
     | LInt Int
     | LDouble Double
     | LString String
+    | LNullptr
   deriving (Eq, Read, Show)
 
 instance Stringifiable Literal where
@@ -80,6 +81,7 @@ instance Stringifiable Literal where
     stringify (LInt i) = int i
     stringify (LDouble d) = double d
     stringify (LString s) = dquotes $ string s
+    stringify (LNullptr) = "nullptr"
 
 data Expression
     = Binary Identifier Expression Expression
