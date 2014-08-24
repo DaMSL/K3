@@ -1,6 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Language.K3.Codegen.CPP.Representation where
+module Language.K3.Codegen.CPP.Representation (
+    Stringifiable(..),
+
+    Name(..),
+
+    Primitive(..),
+    Type(..),
+
+    Literal(..),
+    Expression(..),
+
+    Declaration(..),
+    Statement(..),
+
+    Definition(..),
+) where
 
 import Data.String
 
