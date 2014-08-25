@@ -18,6 +18,9 @@ annotation Sorted given type a, b {
   provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
   @:Transformer
+  provides lifted sortedMap     : (content -> a) -> collection {elem : a} @ {Sorted}
+
+  @:Transformer
   provides lifted filter  : (content -> bool) -> self
 
   @:Transformer

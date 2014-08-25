@@ -10,9 +10,10 @@
 #include <list>
 
 
+// TODO verify the type signatures of ext for the various collection types
+
 namespace K3 {
 
-// TODO convert functions to curried form where necessary
 using std::shared_ptr;
 using std::tuple;
 
@@ -38,7 +39,6 @@ using SortedDS = StlDS<std::multiset, Elem>;
 template <class Elem>
 using VectorDS = StlDS<std::vector, Elem>;
 
-// MapDS implementation. For now, map() returns a SetDS, requiring SetDS be defined before MapDS
 template<class R>
 class MapDS {
 
@@ -161,8 +161,8 @@ class MapDS {
   }
 
   template<typename NewR>
-  SetDS<R_elem<NewR>> map(const F<NewR(R)>& f) {
-    SetDS<R_elem<NewR>> result;
+  VectorDS<R_elem<NewR>> map(const F<NewR(R)>& f) {
+    VectorDS<R_elem<NewR>> result;
     for (const std::pair<Key,Value>& p : container) {
       R rec {p.first, p.second};
       result.insert( R_elem<NewR>{ f(rec) } );
@@ -244,8 +244,8 @@ class MapDS {
 
   // TODO optimize copies
   template <class T>
-  SetDS<T> ext(const F<SetDS<T>(R)>& expand) {
-    SetDS<T> result;
+  VectorDS<T> ext(const F<SortedDS<T>(R)>& expand) {
+    VectorDS<T> result;
     for (const R& elem : container) {
       for (const R& elem2 : expand(elem).container) {
         result.insert(elem2);
@@ -380,8 +380,8 @@ class StlDS {
 
     // Produce a new ds by mapping a function over this ds
     template<typename NewElem>
-    SetDS<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
-      SetDS<R_elem<NewElem>> result;
+    VectorDS<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+      VectorDS<R_elem<NewElem>> result;
       for (const Elem &e : container) {
         result.insert( R_elem<NewElem>{ f(e) } ); // Copies e (f is pass by value), then move inserts
       }
@@ -460,10 +460,10 @@ class StlDS {
 
     // TODO optimize copies
     template <class T>
-    SetDS<R_elem<T>> ext(const F<SetDS<T>(Elem)>& expand) {
-      StlDS<StlContainer, R_elem<T>> result;
+    VectorDS<R_elem<T>> ext(const F<VectorDS<T>(Elem)>& expand) {
+      VectorDS<R_elem<T>> result;
       for (const Elem& elem : container) {
-        StlDS<StlContainer, T> expanded = expand(elem);
+        VectorDS<T> expanded = expand(elem);
         for (const Elem& elem2 : expanded.getConstContainer()) {
           result.insert(R_elem<T> { elem2 } );
         }
@@ -698,6 +698,15 @@ class Set : public SetDS<Elem> {
     return result;
   }
 
+  template<typename NewElem>
+  Set<R_elem<NewElem>> setMap(F<NewElem(Elem)> f) {
+    Set<R_elem<NewElem>> result;
+    for (const auto& e : Super::getConstContainer()) {
+      result.insert(f(e));
+    }
+    return result;
+  }
+
   // Overrides (convert from DS to Collection)
   Set filter(const F<bool(Elem)>& predicate) {
     return Set<Elem>(Super::filter(predicate));
@@ -781,6 +790,15 @@ class Seq : public ListDS<Elem> {
 
   int size(unit_t) {
     return Super::getConstContainer().size();
+  }
+
+  template<typename NewElem>
+  Seq<R_elem<NewElem>> seqMap(F<NewElem(Elem)> f) {
+    Seq<R_elem<NewElem>> result;
+    for (const auto& e : Super::getConstContainer()) {
+      result.insert(f(e));
+    }
+    return result;
   }
 
   // Overrides (convert from DS to Collection)
@@ -901,6 +919,15 @@ class Sorted : public SortedDS<Elem> {
       if (e > b) {
         break;
       }
+    }
+    return result;
+  }
+
+  template<typename NewElem>
+  Sorted<R_elem<NewElem>> sortedMap(F<NewElem(Elem)> f) {
+    Sorted<R_elem<NewElem>> result;
+    for (const auto& e : Super::getConstContainer()) {
+      result.insert(f(e));
     }
     return result;
   }

@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+s{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Language.K3.Analysis.CArgs where
@@ -7,7 +7,6 @@ import Control.Monad.Identity
 import Control.Arrow ((&&&))
 import Data.Maybe (catMaybes)
 import Data.Tree
-import Debug.Trace
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
@@ -22,7 +21,7 @@ import Language.K3.Utils.Pretty
 type CArgsEnv = [(Identifier, Int)]
 type AnnotationCArgsEnv = [(Identifier, CArgsEnv)]
 
-data AllCArgs = AllCArgs CArgsEnv AnnotationCArgsEnv 
+data AllCArgs = AllCArgs CArgsEnv AnnotationCArgsEnv
                 deriving (Eq, Read, Show)
 
 isCArgs :: Annotation Declaration -> Bool
@@ -35,23 +34,23 @@ containsCArgs (annotations -> anns) = any isCArgs anns
 -- Look for a CArgs property specifying the number of arguments expected by the backend implementation of a declared function.
 -- Functions without a CArgs property default to 1.
 numCArgs :: [Annotation Declaration] -> Int
-numCArgs anns = 
+numCArgs anns =
 	case filter isCArgs anns of
-        ((DProperty "CArgs" (Just literal)):_) -> extractN literal 
+        ((DProperty "CArgs" (Just literal)):_) -> extractN literal
         _ -> 1
   where
   	extractN (tag -> (LInt n)) = n
   	extractN _ = error "Invalid Literal for CArgs Property. Specify an Int."
 
 -- Build the CArgs Environment for a K3 Program. Mapping globally declared function names
--- to the number of arguments expected by the backend implementation (For those expecting >1) 
+-- to the number of arguments expected by the backend implementation (For those expecting >1)
 globalCArgsEnv :: K3 Declaration -> CArgsEnv
 globalCArgsEnv program = map makeEnvEntry cArgsDecls
   where
     cArgsDecls = fst . runIdentity $ result -- All declarations with an attached 'CArgs' property
-   
+
     result = foldProgram accumCArgs m_id m_id [] program
-   
+
     m_id acc x = return (acc, x)
 
     accumCArgs :: [K3 Declaration] -> K3 Declaration -> Identity ([K3 Declaration], K3 Declaration)
@@ -61,26 +60,26 @@ globalCArgsEnv program = map makeEnvEntry cArgsDecls
     extractFunName _ = error "Expecting a global variable (builtin function definition)"
 
     makeEnvEntry :: K3 Declaration -> (Identifier, Int)
-    makeEnvEntry dec = (extractFunName dec, numCArgs (annotations dec))  
+    makeEnvEntry dec = (extractFunName dec, numCArgs (annotations dec))
 
 -- Build the Annotation CArgs Environment for a K3 Program. Mapping Annotation name to a map from function name
--- to the number of arguments expected by the backend implementation (For those expecting >1) 
+-- to the number of arguments expected by the backend implementation (For those expecting >1)
 annotationCArgsEnv :: K3 Declaration -> AnnotationCArgsEnv
 annotationCArgsEnv program = map makeAnnotationEnvEntry annotationCArgsDecls
   where
     makeAnnotationEnvEntry (tag -> (DAnnotation name _ members)) = (name, (concatMap getCArgs members))
     makeAnnotationEnvEntry _ = error "Expecting Annotation Declaration"
-    
+
     annotationCArgsDecls = fst . runIdentity $ result
-   
+
     result = foldProgram accumAnnotationCArgs m_id m_id [] program
-   
+
     m_id acc x = return (acc, x)
 
     accumAnnotationCArgs :: [K3 Declaration] -> K3 Declaration -> Identity ([K3 Declaration], K3 Declaration)
     accumAnnotationCArgs acc dec = return (if annotationContainsCArgs dec then dec:acc else acc, dec)
-    	
-    getCArgs (Lifted _ ident _ _ anns) = 
+
+    getCArgs (Lifted _ ident _ _ anns) =
     	let num = numCArgs anns
     	in if num > 1 then [(ident, numCArgs anns)] else []
     getCArgs _ = []
@@ -99,8 +98,8 @@ allCArgs prog = AllCArgs globals anns
 		anns = annotationCArgsEnv prog
 
 convertProgram :: K3 Declaration -> K3 Declaration
-convertProgram prog = 
-	let cargs = allCArgs prog in (trace (show cargs)) $ runIdentity $ mapProgram m_id m_id (\x -> return (transformTriggerExpr cargs x)) prog
+convertProgram prog =
+	let cargs = allCArgs prog in runIdentity $ mapProgram m_id m_id (\x -> return (transformTriggerExpr cargs x)) prog
   where
   	m_id = (\x -> return x)
 
@@ -111,17 +110,17 @@ propogateCArgs a b = a
 transformTriggerExpr :: AllCArgs -> K3 Expression -> K3 Expression
 transformTriggerExpr cargs expr = runIdentity $ modifyTree m_transform expr
 	where
-		m_transform = return . (transformExpr cargs)  
+		m_transform = return . (transformExpr cargs)
 
 
 transformExpr :: AllCArgs -> K3 Expression -> K3 Expression
-transformExpr cargs e@(tag &&& children -> (EProject name, [src])) = 
-	if (trace "checking") (isTCollection . getEType) src
-	then (trace "Hello") (if n > 1 then e @+ (makeCArgs n) else e)
-    else (trace "Goodbye") e
+transformExpr cargs e@(tag &&& children -> (EProject name, [src])) =
+	if (isTCollection . getEType) src
+	  then (if n > 1 then e @+ (makeCArgs n) else e)
+    else e
   where
   	results = catMaybes $ map (lookupLiftedFun cargs name) (catMaybes $ map toAnnotationId (annotations $ getEType src))
-  	n = case results of 
+  	n = case results of
   		  []    -> 1
   		  (x:_) -> x
 transformExpr cargs e@(tag -> EVariable x) = if (isGlobal x) then maybeAttachCargs else e
@@ -132,17 +131,17 @@ transformExpr cargs e@(tag -> EVariable x) = if (isGlobal x) then maybeAttachCar
 transformExpr _ e@(tag &&& children -> (EOperate OApp, [l,_]))
   | eCArgs l > 2 = e @+ makeCArgs ((eCArgs l) - 1)
   | otherwise = e
-transformExpr _ e = (trace $ "Screw you" ++ (pretty e)) e
+transformExpr _ e = e
 
 toAnnotationId :: Annotation Type -> Maybe Identifier
-toAnnotationId tann = 
+toAnnotationId tann =
   case tann of
     TAnnotation i -> Just i
     _ -> Nothing
 
 
 lookupHelper :: [(Identifier, Int)] -> Identifier -> Maybe Int
-lookupHelper xs fun = 
+lookupHelper xs fun =
   case (filter (\(name, _) -> name == fun) xs) of
     [] -> Nothing
     ((_,n):_) -> Just n
@@ -151,7 +150,7 @@ lookupGlobalFun :: AllCArgs -> Identifier -> Maybe Int
 lookupGlobalFun (AllCArgs globals _) fun = lookupHelper globals fun
 
 lookupLiftedFun :: AllCArgs -> Identifier -> Identifier -> Maybe Int
-lookupLiftedFun (AllCArgs _ anncargs) fun ann = 
+lookupLiftedFun (AllCArgs _ anncargs) fun ann =
 	case filter (\(name, _) -> name == ann) anncargs of
 		[] -> Nothing
 		((_,env):_) -> lookupHelper env fun
@@ -176,9 +175,9 @@ makeCArgs n = EProperty "CArgs" (Just lit)
 -- Look for a CArgs property specifying the number of arguments expected by the backend implementation of a declared function.
 -- Functions without a CArgs property default to 1.
 eCArgs :: K3 Expression -> Int
-eCArgs (annotations -> anns) = 
+eCArgs (annotations -> anns) =
 	case filter isECArgs anns of
-        ((EProperty "CArgs" (Just literal)):_) -> extractN literal 
+        ((EProperty "CArgs" (Just literal)):_) -> extractN literal
         _ -> 1
   where
   	extractN (tag -> (LInt n)) = n
