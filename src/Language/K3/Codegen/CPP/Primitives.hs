@@ -20,6 +20,8 @@ import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Types
 
+import qualified Language.K3.Codegen.CPP.Representation as R
+
 -- | Generate a (potentially templated) C++ function definition.
 genCFunction :: Maybe [CPPGenR] -> CPPGenR -> CPPGenR -> [CPPGenR] -> CPPGenR -> CPPGenR
 genCFunction mta rt f args body = vsep $ tl ++ [rt <+> f <> tupled args <+> hangBrace body]
@@ -46,38 +48,34 @@ genCAssign a b = a <+> equals <+> b
 genCTemplateDecl :: [CPPGenR] -> CPPGenR
 genCTemplateDecl ta = text "template" <+> angles (hcat $ punctuate comma [text "class" <+> a | a <- ta])
 
-genCType :: K3 Type -> CPPGenM CPPGenR
-genCType (tag -> TBool) = return (text "bool")
-genCType (tag -> TByte) = return (text "unsigned char")
-genCType (tag -> TInt) = return (text "int")
-genCType (tag -> TReal) = return (text "double")
-genCType (tag -> TNumber) = return (text "double")
-genCType (tag -> TString) = return (text "string")
-genCType (tag &&& children -> (TOption, [t])) = (text "std::shared_ptr" <>) . angles <$> genCType t
-genCType (tag &&& children -> (TIndirection, [t])) = (text "shared_ptr" <>) . angles <$> genCType t
-genCType (tag &&& children -> (TTuple, [])) = return (text "unit_t")
-genCType (tag &&& children -> (TTuple, ts))
-    = (text "tuple" <>) . angles . sep . punctuate comma <$> mapM genCType ts
+genCType :: K3 Type -> CPPGenM R.Type
+genCType (tag -> TBool) = return $ R.Primitive R.PBool
+genCType (tag -> TByte) = return R.Byte
+genCType (tag -> TInt) = return $ R.Primitive R.PInt
+genCType (tag -> TReal) = return $ R.Primitive R.PDouble
+genCType (tag -> TNumber) = return $ R.Primitive R.PDouble
+genCType (tag -> TString) = return $ R.Primitive R.PString
+genCType (tag &&& children -> (TOption, [t])) = R.Pointer <$> genCType t
+genCType (tag &&& children -> (TIndirection, [t])) = R.Pointer <$> genCType t
+genCType (tag &&& children -> (TTuple, [])) = return R.Unit
+genCType (tag &&& children -> (TTuple, ts)) = R.Tuple <$> mapM genCType ts
 genCType t@(tag -> TRecord ids) = do
   let sig = recordSignature ids
   let children' = snd . unzip . sort $ zip ids (children t)
   addRecord sig (zip ids (children t))
   templateVars <- mapM genCType children'
-  return $ text sig <> angles (hsep $ punctuate comma templateVars)
-genCType (tag -> TDeclaredVar t) = return $ text t
+  return $ R.Named (R.Specialized templateVars $ R.Name sig)
+genCType (tag -> TDeclaredVar t) = return $ R.Named (R.Name t)
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- genCType et
     case annotationComboIdT as of
-        Nothing -> return $ text "Collection" <> angles ct
-        Just i' -> return $ text i' <> angles ct
-genCType (tag -> TAddress) = return $ text "Address"
-genCType (tag &&& children -> (TFunction, [ta, tr])) = do
-    cta <- genCType ta
-    ctr <- genCType tr
-    return $ genCQualify (text "std") $ text "function" <> angles (ctr <> parens cta)
+        Nothing -> return $ R.Named (R.Specialized [ct] $ R.Name "Collection")
+        Just i' -> return $ R.Named (R.Specialized [ct] $ R.Name i')
+genCType (tag -> TAddress) = return R.Address
+genCType (tag &&& children -> (TFunction, [_, _])) = return R.Inferred
 
 genCType (tag &&& children -> (TForall _, [t])) = genCType t
-genCType (tag -> TDeclaredVar i) = return $ text $ map toUpper i
+genCType (tag -> TDeclaredVar i) = return $ R.Named (R.Name $ map toUpper i)
 genCType t = throwE $ CPPGenE $ "Invalid Type Form " ++ show t
 
 genCBind :: CPPGenR -> CPPGenR -> Int -> CPPGenR
