@@ -102,7 +102,7 @@ data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
     | Dereference Expression
-    | Initialization Type Expression
+    | Initialization Type [Expression]
     | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Identifier
@@ -114,7 +114,7 @@ instance Stringifiable Expression where
     stringify (Binary op a b) = parens (stringify a) <+> fromString op <+> parens (stringify b)
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
-    stringify (Initialization t e) = stringify t <+> braces (stringify e)
+    stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as rt bd) = cs' <+> as' <+> rt' <+> bd'
       where
         cs' = brackets $ commaSep [fromString i <+> equals <+> stringify t | (i, t) <- cs]
