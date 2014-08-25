@@ -3,7 +3,6 @@
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/set.hpp"
 #include "boost/serialization/list.hpp"
-#include "external/boost_ext/unordered_set.hpp"
 #include "external/boost_ext/unordered_map.hpp"
 #include <boost/serialization/base_object.hpp>
 
@@ -22,9 +21,6 @@ using std::tuple;
 template<class K, class V>
 using unordered_map = std::tr1::unordered_map<K,V>;
 
-template<class V>
-using unordered_set = std::tr1::unordered_set<V>;
-
 // Forward declaration of StlDS
 template <template<typename...> class StlContainer, class Elem>
 class StlDS;
@@ -34,7 +30,7 @@ template <class Elem>
 using ListDS = StlDS<std::list, Elem>;
 
 template <class Elem>
-using SetDS = StlDS<unordered_set, Elem>;
+using SetDS = StlDS<std::set, Elem>;
 
 template <class Elem>
 using SortedDS = StlDS<std::multiset, Elem>;
@@ -42,7 +38,7 @@ using SortedDS = StlDS<std::multiset, Elem>;
 template <class Elem>
 using VectorDS = StlDS<std::vector, Elem>;
 
-// MapDS implementation. For now, map() returns a VectorDS, requiring VectorDS be defined before MapDS
+// MapDS implementation. For now, map() returns a SetDS, requiring SetDS be defined before MapDS
 template<class R>
 class MapDS {
 
@@ -165,8 +161,8 @@ class MapDS {
   }
 
   template<typename NewR>
-  VectorDS<R_elem<NewR>> map(const F<NewR(R)>& f) {
-    VectorDS<R_elem<NewR>> result;
+  SetDS<R_elem<NewR>> map(const F<NewR(R)>& f) {
+    SetDS<R_elem<NewR>> result;
     for (const std::pair<Key,Value>& p : container) {
       R rec {p.first, p.second};
       result.insert( R_elem<NewR>{ f(rec) } );
@@ -248,8 +244,8 @@ class MapDS {
 
   // TODO optimize copies
   template <class T>
-  VectorDS<T> ext(const F<VectorDS<T>(R)>& expand) {
-    VectorDS<T> result;
+  SetDS<T> ext(const F<SetDS<T>(R)>& expand) {
+    SetDS<T> result;
     for (const R& elem : container) {
       for (const R& elem2 : expand(elem).container) {
         result.insert(elem2);
@@ -384,8 +380,8 @@ class StlDS {
 
     // Produce a new ds by mapping a function over this ds
     template<typename NewElem>
-    VectorDS<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
-      VectorDS<R_elem<NewElem>> result;
+    SetDS<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+      SetDS<R_elem<NewElem>> result;
       for (const Elem &e : container) {
         result.insert( R_elem<NewElem>{ f(e) } ); // Copies e (f is pass by value), then move inserts
       }
@@ -464,7 +460,7 @@ class StlDS {
 
     // TODO optimize copies
     template <class T>
-    VectorDS<R_elem<T>> ext(const F<VectorDS<T>(Elem)>& expand) {
+    SetDS<R_elem<T>> ext(const F<SetDS<T>(Elem)>& expand) {
       StlDS<StlContainer, R_elem<T>> result;
       for (const Elem& elem : container) {
         StlDS<StlContainer, T> expanded = expand(elem);
@@ -496,22 +492,333 @@ private:
 
 }; // class StlDS
 
+// Forward declare Collection
+template <class Elem> class Collection;
+
+template <class Elem>
+class Map : public MapDS<Elem> {
+  typedef MapDS<Elem> Super;
+  public:
+  // Constructors
+  Map() : MapDS<Elem>() { }
+
+  Map(const Map& c): MapDS<Elem>(c) { }
+
+  Map(Map&& c): MapDS<Elem>(std::move(c)) { }
+
+    // Assign operators
+  Map& operator=(const Map& other) {
+    MapDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  Map& operator=(Map&& other) {
+    MapDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors
+  Map(const MapDS<Elem>& c): MapDS<Elem>(c) { }
+
+  Map(MapDS<Elem>&& c): MapDS<Elem>(std::move(c)) { }
+
+  // TODO: Map Specific functions (subMap, member, union, etc)
+
+  // Overrides (convert from DS to Collection)
+  Map filter(const F<bool(Elem)>& predicate) {
+    return Map<Elem>(Super::filter(predicate));
+  }
+
+  // TODO: copies?
+  tuple<Map, Map> split(unit_t) const {
+    auto t = Super::split(unit_t());
+    return std::make_tuple(Map<Elem>(std::get<0>(t)), Map<Elem>(std::get<1>(t)));
+  }
+
+  Map combine(const Map& other) const {
+    return Map<Elem>(Super::combine(other));
+  }
+
+  template <class K, class Z>
+  F<F<Map<R_key_value<K,Z>>(Z)>(F<F<Z(Elem)>(Z)>)> groupBy(F<K(Elem)> grouper) {
+    return [=] (F<F<Z(Elem)>(Z)> folder) {
+     return [=] (const Z& init) {
+        return Map<R_key_value<K,Z>>(Super::template groupBy<K,Z>(grouper)(folder)(init));
+      };
+    };
+  }
+
+  template<typename NewElem>
+  Collection<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+    return Collection<Elem>(Super::map(f));
+  }
+
+  template <class T>
+  Collection<R_elem<T>> ext(const F<Collection<T>(Elem)>& expand) {
+    return Collection<R_elem<T>>(Super::ext(expand));
+  }
+};
+
+
+
 // Typdefs for Collections
 // These are to support legacy code. The generated annotation combination classes (e.g _Collection)
 // should inherit directly from an appropriate dataspace
 template <class Elem>
-using Collection = VectorDS<Elem>;
+class Collection : public VectorDS<Elem> {
+  typedef VectorDS<Elem> Super;
+  public:
+  // Constructors
+  Collection() : VectorDS<Elem>() { }
+
+  Collection(const Collection& c): VectorDS<Elem>(c) { }
+
+  Collection(Collection&& c): VectorDS<Elem>(std::move(c)) { }
+
+    // Assign operators
+  Collection& operator=(const Collection& other) {
+    VectorDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  Collection& operator=(Collection&& other) {
+    VectorDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors
+  Collection(const VectorDS<Elem>& c): VectorDS<Elem>(c) { }
+
+  Collection(VectorDS<Elem>&& c): VectorDS<Elem>(std::move(c)) { }
+
+  // Overrides (convert from DS to Collection)
+  template<typename NewElem>
+  Collection<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+    return Collection<Elem>(Super::map(f));
+  }
+
+  Collection filter(const F<bool(Elem)>& predicate) {
+    return Collection<Elem>(Super::filter(predicate));
+  }
+
+  // TODO: copies?
+  tuple<Collection, Collection> split(unit_t) const {
+    auto t = Super::split(unit_t());
+    return std::make_tuple(Collection<Elem>(std::get<0>(t)), Collection<Elem>(std::get<1>(t)));
+  }
+
+  Collection combine(const Collection& other) const {
+    return Collection<Elem>(Super::combine(other));
+  }
+
+  template <class K, class Z>
+  F<F<Map<R_key_value<K,Z>>(Z)>(F<F<Z(Elem)>(Z)>)> groupBy(F<K(Elem)> grouper) {
+    return [=] (F<F<Z(Elem)>(Z)> folder) {
+     return [=] (const Z& init) {
+        return Map<R_key_value<K,Z>>(Super::template groupBy<K,Z>(grouper)(folder)(init));
+      };
+    };
+  }
+
+  template <class T>
+  Collection<R_elem<T>> ext(const F<Collection<T>(Elem)>& expand) {
+    return Collection<R_elem<T>>(Super::ext(expand));
+  }
+};
 
 template <class Elem>
-using Set = SetDS<Elem>;
+class Set : public SetDS<Elem> {
+  typedef SetDS<Elem> Super;
+  public:
+  // Constructors
+  Set() : SetDS<Elem>() { }
+
+  Set(const Set& c): SetDS<Elem>(c) { }
+
+  Set(Set&& c): SetDS<Elem>(std::move(c)) { }
+
+    // Assign operators
+  Set& operator=(const Set& other) {
+    SetDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  Set& operator=(Set&& other) {
+    SetDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors
+  Set(const SetDS<Elem>& c): SetDS<Elem>(c) { }
+
+  Set(SetDS<Elem>&& c): SetDS<Elem>(std::move(c)) { }
+
+  // TODO: Set Specific functions (subset, member, union, etc)
+
+  // Overrides (convert from DS to Collection)
+  Set filter(const F<bool(Elem)>& predicate) {
+    return Set<Elem>(Super::filter(predicate));
+  }
+
+  // TODO: copies?
+  tuple<Set, Set> split(unit_t) const {
+    auto t = Super::split(unit_t());
+    return std::make_tuple(Set<Elem>(std::get<0>(t)), Set<Elem>(std::get<1>(t)));
+  }
+
+  Set combine(const Set& other) const {
+    return Set<Elem>(Super::combine(other));
+  }
+
+  template <class K, class Z>
+  F<F<Map<R_key_value<K,Z>>(Z)>(F<F<Z(Elem)>(Z)>)> groupBy(F<K(Elem)> grouper) {
+    return [=] (F<F<Z(Elem)>(Z)> folder) {
+     return [=] (const Z& init) {
+        return Map<R_key_value<K,Z>>(Super::template groupBy<K,Z>(grouper)(folder)(init));
+      };
+    };
+  }
+
+  template<typename NewElem>
+  Collection<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+    return Collection<Elem>(Super::map(f));
+  }
+
+  template <class T>
+  Collection<R_elem<T>> ext(const F<Collection<T>(Elem)>& expand) {
+    return Collection<R_elem<T>>(Super::ext(expand));
+  }
+};
 
 template <class Elem>
-using Seq = ListDS<Elem>;
+class Seq : public ListDS<Elem> {
+  typedef ListDS<Elem> Super;
+  public:
+  // Constructors
+  Seq() : ListDS<Elem>() { }
+
+  Seq(const Seq& c): ListDS<Elem>(c) { }
+
+  Seq(Seq&& c): ListDS<Elem>(std::move(c)) { }
+
+    // Assign operators
+  Seq& operator=(const Seq& other) {
+    ListDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  Seq& operator=(Seq&& other) {
+    ListDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors
+  Seq(const ListDS<Elem>& c): ListDS<Elem>(c) { }
+
+  Seq(ListDS<Elem>&& c): ListDS<Elem>(std::move(c)) { }
+
+  // Seq specific functions (at,...)
+
+  // Overrides (convert from DS to Collection)
+
+  Seq filter(const F<bool(Elem)>& predicate) {
+    return Seq<Elem>(Super::filter(predicate));
+  }
+
+  // TODO: copies?
+  tuple<Seq, Seq> split(unit_t) const {
+    auto t = Super::split(unit_t());
+    return std::make_tuple(Seq<Elem>(std::get<0>(t)), Seq<Elem>(std::get<1>(t)));
+  }
+
+  Seq combine(const Seq& other) const {
+    return Seq<Elem>(Super::combine(other));
+  }
+
+  template <class K, class Z>
+  F<F<Map<R_key_value<K,Z>>(Z)>(F<F<Z(Elem)>(Z)>)> groupBy(F<K(Elem)> grouper) {
+    return [=] (F<F<Z(Elem)>(Z)> folder) {
+     return [=] (const Z& init) {
+        return Map<R_key_value<K,Z>>(Super::template groupBy<K,Z>(grouper)(folder)(init));
+      };
+    };
+  }
+
+  template<typename NewElem>
+  Collection<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+    return Collection<Elem>(Super::map(f));
+  }
+
+  template <class T>
+  Collection<R_elem<T>> ext(const F<Collection<T>(Elem)>& expand) {
+    return Collection<R_elem<T>>(Super::ext(expand));
+  }
+};
 
 template <class Elem>
-using Sorted = SortedDS<Elem>;
+class Sorted : public SortedDS<Elem> {
+  typedef SortedDS<Elem> Super;
+  public:
+  // Constructors
+  Sorted() : SortedDS<Elem>() { }
 
-template <class Elem>
-using Map = MapDS<Elem>;
+  Sorted(const Sorted& c): SortedDS<Elem>(c) { }
+
+  Sorted(Sorted&& c): SortedDS<Elem>(std::move(c)) { }
+
+    // Assign operators
+  Sorted& operator=(const Sorted& other) {
+    SortedDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  Sorted& operator=(Sorted&& other) {
+    SortedDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors
+  Sorted(const SortedDS<Elem>& c): SortedDS<Elem>(c) { }
+
+  Sorted(SortedDS<Elem>&& c): SortedDS<Elem>(std::move(c)) { }
+
+  // Sorted specific functions (at,...)
+
+  // Overrides (convert from DS to Collection)
+
+  Sorted filter(const F<bool(Elem)>& predicate) {
+    return Sorted<Elem>(Super::filter(predicate));
+  }
+
+  // TODO: copies?
+  tuple<Sorted, Sorted> split(unit_t) const {
+    auto t = Super::split(unit_t());
+    return std::make_tuple(Sorted<Elem>(std::get<0>(t)), Sorted<Elem>(std::get<1>(t)));
+  }
+
+  Sorted combine(const Sorted& other) const {
+    return Sorted<Elem>(Super::combine(other));
+  }
+
+  template <class K, class Z>
+  F<F<Map<R_key_value<K,Z>>(Z)>(F<F<Z(Elem)>(Z)>)> groupBy(F<K(Elem)> grouper) {
+    return [=] (F<F<Z(Elem)>(Z)> folder) {
+     return [=] (const Z& init) {
+        return Map<R_key_value<K,Z>>(Super::template groupBy<K,Z>(grouper)(folder)(init));
+      };
+    };
+  }
+
+  template<typename NewElem>
+  Collection<R_elem<NewElem>> map(F<NewElem(Elem)> f) {
+    return Collection<Elem>(Super::map(f));
+  }
+
+  template <class T>
+  Collection<R_elem<T>> ext(const F<Collection<T>(Elem)>& expand) {
+    return Collection<R_elem<T>>(Super::ext(expand));
+  }
+};
+
 
 } // Namespace K3

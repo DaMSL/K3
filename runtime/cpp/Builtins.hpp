@@ -79,14 +79,28 @@ namespace K3 {
 
   inline int now() { return now(unit_t()); }
 
+  // // Map-specific template function to look up
+  // template <class Key, class Value>
+  // F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
+  //   return [&] (const Key& key) -> Value* {
+  //     auto &container(map.getContainer());
+  //     auto it(container.find(key));
+  //     if (it != container.end()) {
+  //       return &(it->second);
+  //     } else {
+  //       return nullptr;
+  //     }
+  //   };
+  // }
+
   // Map-specific template function to look up
   template <class Key, class Value>
-  F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-    return [&] (const Key& key) -> Value* {
+  F<shared_ptr<Value>(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
+    return [&] (const Key& key) -> shared_ptr<Value> {
       auto &container(map.getContainer());
       auto it(container.find(key));
       if (it != container.end()) {
-        return &(it->second);
+        return make_shared<Value>(it->second);
       } else {
         return nullptr;
       }
