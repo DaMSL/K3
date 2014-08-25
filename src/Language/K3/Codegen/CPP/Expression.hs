@@ -55,20 +55,20 @@ unarySymbol ONeg = return "-"
 unarySymbol u = throwE $ CPPGenE $ "Invalid Unary Operator " ++ show u
 
 -- | Realization of binary operators.
-binarySymbol :: Operator -> CPPGenM CPPGenR
-binarySymbol OAdd = return $ text "+"
-binarySymbol OSub = return $ text "-"
-binarySymbol OMul = return $ text "*"
-binarySymbol ODiv = return $ text "/"
-binarySymbol OMod = return $ text "%" -- TODO: type based selection of % vs fmod
-binarySymbol OEqu = return $ text "=="
-binarySymbol ONeq = return $ text "!="
-binarySymbol OLth = return $ text "<"
-binarySymbol OLeq = return $ text "<="
-binarySymbol OGth = return $ text ">"
-binarySymbol OGeq = return $ text ">="
-binarySymbol OAnd = return $ text "&&"
-binarySymbol OOr = return $ text "||"
+binarySymbol :: Operator -> CPPGenM Identifier
+binarySymbol OAdd = return "+"
+binarySymbol OSub = return "-"
+binarySymbol OMul = return "*"
+binarySymbol ODiv = return "/"
+binarySymbol OMod = return "%" -- TODO: type based selection of % vs fmod
+binarySymbol OEqu = return "=="
+binarySymbol ONeq = return "!="
+binarySymbol OLth = return "<"
+binarySymbol OLeq = return "<="
+binarySymbol OGth = return ">"
+binarySymbol OGeq = return ">="
+binarySymbol OAnd = return "&&"
+binarySymbol OOr = return "||"
 binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
 -- | Realization of constants.
