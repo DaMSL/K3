@@ -139,7 +139,8 @@ inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- getKType c
     t <- genCType ct
-    return (e, text "shared_ptr" <> angles t <> parens (text "new" <+> t <> parens v))
+    return (e, R.Call (R.Variable $ R.Specialized [t] (R.Name "make_shared")) [v])
+
 inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
