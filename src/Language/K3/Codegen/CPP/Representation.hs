@@ -10,6 +10,7 @@ module Language.K3.Codegen.CPP.Representation (
     Type(..),
 
     pattern Address,
+    pattern Collection,
     pattern Byte,
     pattern Pointer,
     pattern Unit,
@@ -70,6 +71,7 @@ data Type
   deriving (Eq, Read, Show)
 
 pattern Address = Named (Name "address")
+pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
 pattern Unit = Named (Name "unit_t")
