@@ -251,7 +251,7 @@ inline e = do
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
-reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
+reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
