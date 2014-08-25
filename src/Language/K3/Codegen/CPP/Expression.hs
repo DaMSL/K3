@@ -185,7 +185,8 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
-    return (fe <$$> ae, fv <> parens av)
+    return (fe ++ ae, R.Call fv [av])
+
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, tv)  <- inline trig
     (ae, av)  <- inline addr
