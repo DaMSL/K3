@@ -100,7 +100,7 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Just ac -> do
         ct <- genCType t
         addComposite (namedEAnnotations as)
-        return ([], text ac <> angles ct <> parens empty)
+        return ([], R.Initialization (R.Collection ac ct) [])
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
