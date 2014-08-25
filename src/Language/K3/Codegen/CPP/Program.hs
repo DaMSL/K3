@@ -158,7 +158,7 @@ aliases = [
     ]
 
 staticGlobals :: CPPGenM CPPGenR
-staticGlobals = return $ text ""
+staticGlobals = return $ text "K3::Engine engine;"
 
 -- | Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)

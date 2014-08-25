@@ -1,20 +1,23 @@
 #include <functional>
 #include <string>
+
 #include "BaseTypes.hpp"
 #include "Common.hpp"
 #include "Engine.hpp"
 #include "dataspace/Dataspace.hpp"
+#include "Builtins.hpp"
 
+template <class CONTENT> class _Collection;
+template <class _T0> class R_addr;
+
+extern K3::Engine engine;
+extern _Collection<R_addr<K3::Address>> peers;
 
 char *sdup (const char *s) {
     char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
     if (d != NULL) strcpy (d,s);         // Copy string if okay
     return d;                            // Return new memory
 }
-
-
-
-#include "Builtins.hpp"
 
 namespace K3 {
   using std::string;
