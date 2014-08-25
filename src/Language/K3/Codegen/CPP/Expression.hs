@@ -154,7 +154,7 @@ inline e@(tag &&& children -> (ERecord is, cs)) = do
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (vsep es, sig <> braces (cat $ punctuate comma vs'))
+            return (concat es, R.Initialization sig vs')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
