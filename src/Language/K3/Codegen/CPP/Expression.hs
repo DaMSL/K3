@@ -94,7 +94,7 @@ cDecl t i = do
     ci <- return $ text i
     return $ genCDecl ct ci Nothing
 
-inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
+inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
     Just ac -> do
