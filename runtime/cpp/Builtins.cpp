@@ -1,14 +1,12 @@
 #include <functional>
 #include <string>
 
-#include "BaseTypes.hpp"
 #include "Common.hpp"
 #include "Engine.hpp"
+#include "BaseTypes.hpp"
 #include "dataspace/Dataspace.hpp"
+#include "BaseCollections.hpp"
 #include "Builtins.hpp"
-
-template <class CONTENT> class _Collection;
-template <class _T0> class R_addr;
 
 extern K3::Engine engine;
 extern _Collection<R_addr<K3::Address>> peers;

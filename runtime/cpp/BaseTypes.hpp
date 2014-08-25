@@ -3,9 +3,6 @@
 
 // Basic types needed by our builtin libraries
 
-#ifndef K3_R_elem
-#define K3_R_elem
-
 char *sdup (const char *s);
 
 class Str {
@@ -42,6 +39,30 @@ class Str {
   char *_buf;
 };
 
+#ifndef K3_R_addr
+#define K3_R_addr
+template <class _T0>
+class R_addr {
+    public:
+        R_addr() {}
+        R_addr(_T0 _addr): addr(_addr) {}
+        R_addr(const R_addr<_T0>& _r): addr(_r.addr) {}
+        bool operator==(R_addr _r) {
+            if (addr == _r.addr)
+                return true;
+            return false;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & addr;
+            
+        }
+        _T0 addr;
+};
+#endif // K3_R_addr
+
+#ifndef K3_R_elem
+#define K3_R_elem
 
 template <class _T0>
 class R_elem {
