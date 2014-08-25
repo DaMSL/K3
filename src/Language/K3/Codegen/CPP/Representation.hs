@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Language.K3.Codegen.CPP.Representation (
     Stringifiable(..),
@@ -7,6 +8,11 @@ module Language.K3.Codegen.CPP.Representation (
 
     Primitive(..),
     Type(..),
+
+    pattern Address,
+    pattern Pointer,
+    pattern Unit,
+    pattern Tuple,
 
     Literal(..),
     Expression(..),
@@ -21,7 +27,7 @@ import Data.String
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
-import Language.K3.Core.Common
+import Language.K3.Core.Common hiding (Address)
 
 class Stringifiable a where
     stringify :: a -> Doc
@@ -61,6 +67,11 @@ data Type
     | Parameter Identifier
     | Primitive Primitive
   deriving (Eq, Read, Show)
+
+pattern Address = Named (Name "address")
+pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
+pattern Unit = Named (Name "unit_t")
+pattern Tuple ts = Named (Specialized ts (Qualified "std" (Name "tuple")))
 
 instance Stringifiable Type where
     stringify (Named n) = stringify n
