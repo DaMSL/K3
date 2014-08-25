@@ -102,7 +102,7 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
         addComposite (namedEAnnotations as)
         return ([], text ac <> angles ct <> parens empty)
 
-inline (tag -> EConstant c) = (empty,) <$> constant c
+inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
