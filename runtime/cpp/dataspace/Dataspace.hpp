@@ -654,6 +654,49 @@ class Set : public SetDS<Elem> {
   Set(SetDS<Elem>&& c): SetDS<Elem>(std::move(c)) { }
 
   // TODO: Set Specific functions (subset, member, union, etc)
+  bool member(const Elem& e) {
+    auto it = std::find(Super::getConstContainer().begin(), Super::getConstContainer().end(), e);
+    return (it != Super::getConstContainer().end());
+  }
+
+  bool isSubsetOf(const Set<Elem>& other) {
+    for (const auto &x : Super::getConstContainer()) {
+      if (!other.member(x)) { return false; }
+    }
+    return true;
+  }
+
+  // TODO union is a reserved word
+  Set union1(const Set<Elem>& other) {
+    Set<Elem> result;
+    for (const auto &x : Super::getConstContainer()) {
+      result.insert(x);
+    }
+    for (const auto &x : other.getConstContainer()) {
+      result.insert(x);
+    }
+    return result;
+  }
+
+  Set intersect(const Set<Elem>& other) {
+    Set<Elem> result;
+    for (const auto &x : Super::getConstContainer()) {
+      if(other.member(x)) {
+        result.insert(x);
+      }
+    }
+    return result;
+  }
+
+  Set difference(const Set<Elem>& other) {
+    Set<Elem> result;
+    for (const auto &x : Super::getConstContainer()) {
+      if(!other.member(x)) {
+        result.insert(x);
+      }
+    }
+    return result;
+  }
 
   // Overrides (convert from DS to Collection)
   Set filter(const F<bool(Elem)>& predicate) {
@@ -717,13 +760,27 @@ class Seq : public ListDS<Elem> {
 
   Seq(ListDS<Elem>&& c): ListDS<Elem>(std::move(c)) { }
 
-  // Seq specific functions (at,...)
+  Seq sort(const F<F<int(Elem)>(Elem)>& comp) {
+      auto& l(Super::getConstContainer());
+      auto f = [&] (Elem& a, Elem& b) {
+        return comp(a)(b) < 0;
+      };
+      l.sort(f);
+      // Force Move into ListDS class.
+      // Dont reference l again
+      return Seq(Super(std::move(l)));
+  }
+
   Elem at(int i) {
     auto& l = Super::getConstContainer();
       auto it = l.begin();
       std::advance(it, i);
       return *it; // TODO: bounds check?
 
+  }
+
+  int size(unit_t) {
+    return Super::getConstContainer().size();
   }
 
   // Overrides (convert from DS to Collection)
@@ -790,6 +847,63 @@ class Sorted : public SortedDS<Elem> {
   Sorted(SortedDS<Elem>&& c): SortedDS<Elem>(std::move(c)) { }
 
   // Sorted specific functions (at,...)
+  std::shared_ptr<Elem> min() {
+     const std::multiset<Elem>& x = Super::getConstContainer();
+     auto it = std::min_element(x.begin(), x.end());
+     std::shared_ptr<Elem> result = nullptr;
+     if (it != x.end()) {
+       result = std::make_shared<Elem>(*it);
+     }
+
+     return result;
+  }
+
+  std::shared_ptr<Elem> max() {
+     const std::multiset<Elem>& x = Super::getConstContainer();
+     auto it = std::max_element(x.begin(), x.end());
+     std::shared_ptr<Elem> result = nullptr;
+     if (it != x.end()) {
+      result = std::make_shared<Elem>(*it);
+     }
+
+     return result;
+  }
+
+  std::shared_ptr<Elem> lowerBound(const Elem& e) {
+    const std::multiset<Elem>& x = Super::getConstContainer();
+    auto it = std::lower_bound(x.begin(), x.end(), e);
+    std::shared_ptr<Elem> result = nullptr;
+    if (it != x.end()) {
+      result = std::make_shared<Elem>(*it);
+    }
+
+    return result;
+  }
+
+  std::shared_ptr<Elem> upperBound(const Elem& e) {
+    const std::multiset<Elem>& x = Super::getConstContainer();
+    auto it = std::upper_bound(x.begin(), x.end(), e);
+    std::shared_ptr<Elem> result = nullptr;
+    if (it != x.end()) {
+      result = std::make_shared<Elem>(*it);
+    }
+
+    return result;
+  }
+
+  Sorted slice(const Elem& a, const Elem& b) {
+    const std::multiset<Elem>& x = Super::getConstContainer();
+    Sorted<Elem> result;
+    for (Elem e : x) {
+      if (e >= a && e <= b) {
+        result.insert(e);
+      }
+      if (e > b) {
+        break;
+      }
+    }
+    return result;
+  }
 
   // Overrides (convert from DS to Collection)
 
