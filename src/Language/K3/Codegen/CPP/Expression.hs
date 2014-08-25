@@ -49,9 +49,9 @@ instance Show RContext where
     show (RSplice _) = "RSplice <opaque>"
 
 -- | Realization of unary operators.
-unarySymbol :: Operator -> CPPGenM CPPGenR
-unarySymbol ONot = return $ text "!"
-unarySymbol ONeg = return $ text "-"
+unarySymbol :: Operator -> CPPGenM Identifier
+unarySymbol ONot = return "!"
+unarySymbol ONeg = return "-"
 unarySymbol u = throwE $ CPPGenE $ "Invalid Unary Operator " ++ show u
 
 -- | Realization of binary operators.
