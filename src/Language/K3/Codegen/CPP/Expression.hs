@@ -165,7 +165,8 @@ inline (tag &&& children -> (EOperate uop, [c])) = do
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    return (ae <$$> be, bv)
+    return (ae ++ be, bv)
+
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
