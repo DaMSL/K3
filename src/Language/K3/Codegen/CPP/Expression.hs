@@ -145,7 +145,8 @@ inline (tag &&& children -> (ETuple, [])) = return ([], R.Initialization R.Unit 
 
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    return (vsep es, text "make_tuple" <> tupled vs)
+    return (concat es, R.Call (R.Variable $ R.Name "make_tuple") vs)
+
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
