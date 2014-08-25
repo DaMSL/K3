@@ -160,7 +160,8 @@ inline e@(tag &&& children -> (ERecord is, cs)) = do
 inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
-    return (ce, usym <> cv)
+    return (ce, R.Unary usym cv)
+
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
