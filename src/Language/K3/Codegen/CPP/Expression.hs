@@ -107,14 +107,14 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
 inline e@(tag -> EVariable v)
-    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return (empty, text "*" <> text v)
+    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
     | otherwise = globals <$> get >>= attachTemplateVars
   where
     functionType = case e @~ \case { EType _ -> True; _ -> False } of
         Just (EType t@(tag -> TFunction)) -> Just t
         _ -> Nothing
 
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], R.Expression)
     attachTemplateVars g
         | isJust (lookup v g) && isJust functionType
             = do
@@ -134,11 +134,6 @@ inline e@(tag -> EVariable v)
     matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
     matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
     matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
-
-
-inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
-        then (empty, text "*" <> text v)
-        else (empty, text v)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
