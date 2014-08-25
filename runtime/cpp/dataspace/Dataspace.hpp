@@ -718,6 +718,13 @@ class Seq : public ListDS<Elem> {
   Seq(ListDS<Elem>&& c): ListDS<Elem>(std::move(c)) { }
 
   // Seq specific functions (at,...)
+  Elem at(int i) {
+    auto& l = Super::getConstContainer();
+      auto it = l.begin();
+      std::advance(it, i);
+      return *it; // TODO: bounds check?
+
+  }
 
   // Overrides (convert from DS to Collection)
 
