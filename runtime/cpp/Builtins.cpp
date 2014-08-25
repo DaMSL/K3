@@ -47,6 +47,17 @@ namespace K3 {
       return unit_t();
   }
 
+  int index_by_hash(const string& s) {
+    auto& container = peers.getContainer();
+    size_t h = std::hash<string>()(s);
+    return h % container.size();
+  }
+
+  Address& peer_by_index(const int i) {
+    auto& container = peers.getContainer();
+    return container[i].addr;
+  }
+
   unit_t printLine(string message) {
     std::cout << message << endl;
     return unit_t();
