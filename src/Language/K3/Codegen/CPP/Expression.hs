@@ -22,6 +22,8 @@ import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
+import qualified Language.K3.Codegen.CPP.Representation as R
+
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | The reification context passed to an expression determines how the result of that expression
@@ -72,13 +74,13 @@ binarySymbol OOr = return "||"
 binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
 -- | Realization of constants.
-constant :: Constant -> CPPGenM CPPGenR
-constant (CBool True) = return $ text "true"
-constant (CBool False) = return $ text "false"
-constant (CInt i) = return $ int i
-constant (CReal d) = return $ double d
-constant (CString s) = return $ text "string" <> (parens . text $ show s)
-constant (CNone _) = return $ text "nullptr"
+constant :: Constant -> CPPGenM R.Literal
+constant (CBool True) = return $ R.LBool True
+constant (CBool False) = return $ R.LBool False
+constant (CInt i) = return $ R.LInt i
+constant (CReal d) = return $ R.LDouble d
+constant (CString s) = return $ R.LString s
+constant (CNone _) = return R.LNullptr
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
 cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
