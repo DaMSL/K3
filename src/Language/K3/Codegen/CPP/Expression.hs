@@ -274,6 +274,7 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     be <- reify r b
     return $ [R.Block $ d ++ ee ++ be]
 
+-- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- getKType e
     d <- cDecl (head $ children ct) x
@@ -282,10 +283,8 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ee <- reify (RName g) e
     se <- reify r s
     ne <- reify r n
-    return $ p <$$> ee <$$>
-        text "if" <+> parens (text g) <+>
-        hangBrace (d <$$> text x <+> equals <+> text "*" <> text g <> semi <//> se) <+> text "else" <+>
-        hangBrace ne
+    let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
+    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (someAssignment ++ se) ne]
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
