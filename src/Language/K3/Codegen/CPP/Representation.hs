@@ -64,8 +64,8 @@ instance Stringifiable Primitive where
     stringify PString = "string"
 
 data Type
-    = Named Name
-    | Inferred
+    = Inferred
+    | Named Name
     | Parameter Identifier
     | Primitive Primitive
   deriving (Eq, Read, Show)

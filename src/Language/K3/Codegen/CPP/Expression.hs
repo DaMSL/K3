@@ -291,7 +291,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
-            return (ae', text g')
+            return (ae', R.Variable $ R.Name g')
 
     ta <- getKType a
 
@@ -299,18 +299,20 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
                 di <- cDecl ti i
-                return $ di <$$> (text i <+> equals <+> text "*" <> g <> semi)
+                return $ di ++ [R.Assignment (R.Variable $ R.Name i) (R.Dereference g)]
             BTuple is -> do
                 let (tag &&& children -> (TTuple, ts)) = ta
                 ds <- zipWithM cDecl ts is
-                return $ vsep ds <$$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
-            BRecord iis -> return $ vsep
-                [text v <+> equals <+> g <> dot <> text i <> semi | (i, v) <- iis]
+                let bindVars = [R.Variable (R.Name i) | i <- is]
+                let tieCall = R.Call (R.Variable $ R.Qualified "std" (R.Name "tie")) bindVars
+                return $ concat ds ++ [R.Assignment tieCall g]
+            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g i) | (i, v) <- iis]
 
     let bindWriteback = case b of
-            BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
-            BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
-            BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
+
+            BIndirection i -> [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
+            BTuple is -> zipWith (genTupleAssign g) [0..] is
+            BRecord iis -> map (uncurry $ genRecordAssign g) iis
 
     (bindBody, k) <- case r of
         RReturn -> do
@@ -318,15 +320,17 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             te <- getKType e
             de <- cDecl te g'
             re <- reify (RName g') e
-            return (de <$$> re, Just g')
+            return (de ++ re, Just g')
         _ -> (,Nothing) <$> reify r e
 
-    let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
+    let bindCleanUp = maybe [] (\k' -> [R.Return (R.Variable $ R.Name k')]) k
 
-    return $ ae <$$> hangBrace (bindInit <$$> bindBody <$$> bindWriteback <$$> bindCleanUp)
-    where
-    genTupleAssign g n i = genCCall (text "get") (Just [int n]) [g] <+> equals <+> text i <> semi
-    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
+    return $ ae ++ [R.Block $ bindInit ++ bindBody ++ bindWriteback ++ bindCleanUp]
+  where
+    genTupleAssign g n i =
+        R.Assignment (R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "0"] (R.Name "get")) [g])
+                     (R.Variable $ R.Name i)
+    genRecordAssign g k v = R.Assignment (R.Project g k) (R.Variable $ R.Name v)
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
