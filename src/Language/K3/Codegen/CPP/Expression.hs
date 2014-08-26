@@ -87,12 +87,11 @@ cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
-    return $ ctr <+> text i <> parens cta <> semi
+    return $ [R.Forward $ R.FunctionDecl (R.Name i) ctr [cta]]
 cDecl t i = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
-    ci <- return $ text i
-    return $ genCDecl ct ci Nothing
+    return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
 
 inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
