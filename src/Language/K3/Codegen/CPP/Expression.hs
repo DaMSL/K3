@@ -83,7 +83,7 @@ constant (CString s) = return $ R.LString s
 constant (CNone _) = return R.LNullptr
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
-cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
+cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
