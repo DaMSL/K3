@@ -243,7 +243,7 @@ inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> retu
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
     (pe, pv) <- inline p
-    return (he <$$> pe, genCCall (text "make_address") Nothing [hv, pv])
+    return (he ++ pe, R.Call (R.Variable $ R.Name "make_address") [hv, pv])
 
 inline e = do
     k <- genSym
