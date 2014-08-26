@@ -206,7 +206,8 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
     bsym <- binarySymbol bop
-    return (ae <//> be, av <+> bsym <+> bv)
+    return (ae ++ be, R.Binary bsym av bv)
+
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     (_, vv) <- globals <$> get >>= attachTemplateVars
