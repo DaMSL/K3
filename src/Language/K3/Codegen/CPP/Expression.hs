@@ -211,7 +211,7 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     (_, vv) <- globals <$> get >>= attachTemplateVars
-    return (ke, kv <> dot <> vv)
+    return (ke, R.Project kv vv)
   where
     functionType = case e @~ \case { EType _ -> True; _ -> False } of
         Just (EType t@(tag -> TFunction)) -> Just t
