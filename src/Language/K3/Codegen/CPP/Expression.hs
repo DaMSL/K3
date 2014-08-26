@@ -334,7 +334,7 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
     ee <- reify r e
-    return $ pe <//> text "if" <+> parens pv <+> hangBrace te </> text "else" <+> hangBrace ee
+    return $ pe ++ [R.IfThenElse pv te ee]
 
 reify r e = do
     (effects, value) <- inline e
