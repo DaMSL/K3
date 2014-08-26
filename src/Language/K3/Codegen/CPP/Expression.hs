@@ -339,8 +339,8 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
 reify r e = do
     (effects, value) <- inline e
     reification <- case r of
-        RForget -> return empty
-        RName k -> return $ text k <+> equals <+> value <> semi
-        RReturn -> return $ text "return" <+> value <> semi
-        RSplice f -> return $ f [value] <> semi
-    return $ effects <//> reification
+        RForget -> return []
+        RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
+        RReturn -> return [R.Return value]
+        RSplice f -> throwE $ CPPGenE "Unsupported reification by splice."
+    return $ effects ++ reification
