@@ -699,7 +699,7 @@ class Set : public SetDS<Elem> {
   }
 
   template<typename NewElem>
-  Set<R_elem<NewElem>> setMap(F<NewElem(Elem)> f) {
+  Set<R_elem<NewElem>> selfMap(F<NewElem(Elem)> f) {
     Set<R_elem<NewElem>> result;
     for (const auto& e : Super::getConstContainer()) {
       result.insert(f(e));
@@ -793,7 +793,7 @@ class Seq : public ListDS<Elem> {
   }
 
   template<typename NewElem>
-  Seq<R_elem<NewElem>> seqMap(F<NewElem(Elem)> f) {
+  Seq<R_elem<NewElem>> selfMap(F<NewElem(Elem)> f) {
     Seq<R_elem<NewElem>> result;
     for (const auto& e : Super::getConstContainer()) {
       result.insert(f(e));
@@ -924,7 +924,7 @@ class Sorted : public SortedDS<Elem> {
   }
 
   template<typename NewElem>
-  Sorted<R_elem<NewElem>> sortedMap(F<NewElem(Elem)> f) {
+  Sorted<R_elem<NewElem>> selfMap(F<NewElem(Elem)> f) {
     Sorted<R_elem<NewElem>> result;
     for (const auto& e : Super::getConstContainer()) {
       result.insert(f(e));

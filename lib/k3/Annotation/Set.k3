@@ -20,7 +20,7 @@ annotation Set given type a, b {
   provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
   @:Transformer
-  provides lifted setMap  : (content -> a) -> collection {elem : a} @ {Set}
+  provides lifted selfMap  : (content -> a) -> collection {elem : a} @ {Set}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self

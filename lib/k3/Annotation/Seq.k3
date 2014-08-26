@@ -20,7 +20,7 @@ annotation Seq given type a,b {
   provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
   @:Transformer
-  provides lifted seqMap     : (content -> a) -> collection {elem : a} @ {Seq}
+  provides lifted selfMap     : (content -> a) -> collection {elem : a} @ {Seq}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
