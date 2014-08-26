@@ -264,7 +264,7 @@ reify RForget e@(tag -> EOperate OApp) = do
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae <$$> be
+    return $ ae ++ be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     ct <- getKType e
