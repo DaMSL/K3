@@ -250,7 +250,7 @@ inline e = do
     ct <- getKType e
     decl <- cDecl ct k
     effects <- reify (RName k) e
-    return (decl <//> effects, text k)
+    return (decl ++ effects, R.Variable $ R.Name k)
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
