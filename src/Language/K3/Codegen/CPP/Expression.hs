@@ -238,7 +238,7 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
     matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
 
 
-inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
+inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
