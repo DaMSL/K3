@@ -259,7 +259,7 @@ reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
     (ee, ev) <- inline e
-    return $ ee <//> ev <> semi
+    return $ ee ++ [R.Ignore ev]
 
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
