@@ -124,9 +124,9 @@ inline e@(tag -> EVariable v)
                 let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
                 cts <- mapM genCType ts
                 return $ if null cts
-                   then (empty, text v)
-                   else (empty, text v <> angles (hsep $ punctuate comma cts))
-        | otherwise = return (empty, text v)
+                   then ([], R.Variable $ R.Name v)
+                   else ([], R.Variable $ R.Specialized cts (R.Name v))
+        | otherwise = return ([], R.Variable $ R.Name v)
 
     dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
 
@@ -216,7 +216,7 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
         Just (EType t@(tag -> TFunction)) -> Just t
         _ -> Nothing
 
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], Identifier)
     attachTemplateVars g
         | isJust (lookup v g) && isJust functionType
             = do
@@ -227,9 +227,9 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
                 let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
                 cts <- mapM genCType ts
                 return $ if null cts
-                   then (empty, text v)
-                   else (empty, text v <> angles (hsep $ punctuate comma cts))
-        | otherwise = return (empty, text v)
+                   then ([], v)
+                   else ([], v)
+        | otherwise = return ([], v)
 
     dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
 
