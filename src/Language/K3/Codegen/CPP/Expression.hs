@@ -271,7 +271,7 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
-    return $ hangBrace $ vsep [d, ee, be]
+    return $ [R.Block $ d ++ ee ++ be]
 
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- getKType e
