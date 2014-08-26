@@ -147,6 +147,7 @@ data Statement
     = Assignment Expression Expression
     | Block [Statement]
     | Forward Declaration
+    | IfThenElse Expression [Statement] [Statement]
     | Ignore Expression
     | Return Expression
   deriving (Eq, Read, Show)
@@ -155,6 +156,9 @@ instance Stringifiable Statement where
     stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi
     stringify (Block ss) = braces (vsep [stringify s <> semi | s <- ss])
     stringify (Forward d) = stringify d <> semi
+    stringify (IfThenElse p ts es) =
+        "if" <+> parens (stringify p) <+> braces (vsep $ map stringify ts) <+> "else"
+                                      <+> braces (vsep $ map stringify es)
     stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
