@@ -170,6 +170,16 @@ class MapDS {
     return result;
   }
 
+  template<typename A, typename B>
+  MapDS<R_key_value<A,B>> selfMap(const F<R_key_value<A,B>(R)>& f) {
+    MapDS<R_key_value<A,B>> result;
+    for (const std::pair<Key,Value>& p : container) {
+      R rec {p.first, p.second};
+      result.insert( f(rec) );
+    }
+    return result;
+  }
+
   unit_t iterate(F<unit_t(R)> f) {
     for (const std::pair<Key,Value>& p : container) {
       R rec;
@@ -522,7 +532,10 @@ class Map : public MapDS<Elem> {
 
   Map(MapDS<Elem>&& c): MapDS<Elem>(std::move(c)) { }
 
-  // TODO: Map Specific functions (subMap, member, union, etc)
+  template<typename A, typename B>
+  Map<R_key_value<A,B>> selfMap(const F<R_key_value<A,B>(Elem)>& f) {
+    return Map<R_key_value<A,B>> (Super::template selfMap<A,B>(f));
+  }
 
   // Overrides (convert from DS to Collection)
   Map filter(const F<bool(Elem)>& predicate) {

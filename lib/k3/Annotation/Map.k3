@@ -18,6 +18,9 @@ annotation Map given type a,b {
   provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
 
   @:Transformer
+  provides lifted selfMap : (content -> {key: a, value: b}) -> collection {key : a, value: b} @ {Map}
+
+  @:Transformer
   provides lifted filter  : (content -> bool) -> self
 
   @:Transformer
