@@ -42,6 +42,18 @@ commaSep = fillSep . punctuate comma
 hangBrace :: Doc -> Doc
 hangBrace d = "{" <$$> indent 4 d <$$> text "}"
 
+binaryParens :: Identifier -> Expression -> (Doc -> Doc)
+binaryParens _ (Variable _) = id
+binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
+  where
+    precedence :: Identifier -> Int
+    precedence x = fromJust $ lookup x precedences
+
+    precedences :: [(Identifier, Int)]
+    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("&&", 13), ("||", 14)]
+
+binaryParens _ _ = parens
+
 data Name
     = Name Identifier
     | Qualified Identifier Name
