@@ -126,7 +126,8 @@ data Expression
   deriving (Eq, Read, Show)
 
 instance Stringifiable Expression where
-    stringify (Binary op a b) = parens (stringify a) <+> fromString op <+> parens (stringify b)
+    stringify (Binary op a b)
+        = binaryParens op a (stringify a) <+> fromString op <+> binaryParens op b (stringify b)
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
@@ -135,7 +136,7 @@ instance Stringifiable Expression where
         cs' = brackets $ commaSep [fromString i <+> equals <+> stringify t | (i, t) <- cs]
         as' = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
         rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
-        bd' = braces $ vsep $ map stringify bd
+        bd' = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
     stringify (Unary op e) = fromString op <> parens (stringify e)
@@ -169,11 +170,11 @@ data Statement
 
 instance Stringifiable Statement where
     stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi
-    stringify (Block ss) = braces (vsep [stringify s <> semi | s <- ss])
+    stringify (Block ss) = hangBrace (vsep [stringify s | s <- ss])
     stringify (Forward d) = stringify d <> semi
     stringify (IfThenElse p ts es) =
-        "if" <+> parens (stringify p) <+> braces (vsep $ map stringify ts) <+> "else"
-                                      <+> braces (vsep $ map stringify es)
+        "if" <+> parens (stringify p) <+> hangBrace (vsep $ map stringify ts) <+> "else"
+                                      <+> hangBrace (vsep $ map stringify es)
     stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
@@ -187,7 +188,7 @@ data Definition
 instance Stringifiable Definition where
     stringify (ClassDefn cn ps publics privates protecteds) =
         "class" <+> stringify cn <> colon <+> stringifyParents ps
-                    <+> braces (publics' <$$> privates' <$$> protecteds') <> semi
+                    <+> hangBrace (publics' <$$> privates' <$$> protecteds') <> semi
       where
         stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
         publics' = "public" <> colon <$$> vsep (map stringify publics)
@@ -198,7 +199,7 @@ instance Stringifiable Definition where
         rt' = stringify rt
         fn' = stringify fn
         as' = parens (commaSep [fromString i <+> stringify t | (i, t) <- as])
-        bd' = braces (vsep $ map stringify bd)
+        bd' = hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
