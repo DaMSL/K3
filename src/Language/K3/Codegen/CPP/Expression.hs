@@ -18,13 +18,10 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
-import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
-
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
