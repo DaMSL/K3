@@ -105,7 +105,7 @@ data Expression
     | Initialization Type [Expression]
     | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
     | Literal Literal
-    | Project Expression Identifier
+    | Project Expression Name
     | Unary Identifier Expression
     | Variable Name
   deriving (Eq, Read, Show)
@@ -122,7 +122,7 @@ instance Stringifiable Expression where
         rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
         bd' = braces $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
-    stringify (Project pt i) = parens (stringify pt) <> dot <> fromString i
+    stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 
