@@ -58,7 +58,7 @@ data Name
     = Name Identifier
     | Qualified Identifier Name
     | Specialized [Type] Name
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Name where
     stringify (Name i) = text i
@@ -70,7 +70,7 @@ data Primitive
     | PInt
     | PDouble
     | PString
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Primitive where
     stringify PBool = "bool"
@@ -83,7 +83,7 @@ data Type
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "address")
 pattern Collection c t = Named (Specialized [t] (Name c))
