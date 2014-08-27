@@ -217,7 +217,7 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
         Just (EType t@(tag -> TFunction)) -> Just t
         _ -> Nothing
 
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], Identifier)
+    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], R.Name)
     attachTemplateVars g
         | isJust (lookup v g) && isJust functionType
             = do
@@ -228,9 +228,9 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
                 let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
                 cts <- mapM genCType ts
                 return $ if null cts
-                   then ([], v)
-                   else ([], v)
-        | otherwise = return ([], v)
+                   then ([], R.Name v)
+                   else ([], R.Specialized cts $ R.Name v)
+        | otherwise = return ([], R.Name v)
 
     dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
 
@@ -307,7 +307,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
                 let bindVars = [R.Variable (R.Name i) | i <- is]
                 let tieCall = R.Call (R.Variable $ R.Qualified "std" (R.Name "tie")) bindVars
                 return $ concat ds ++ [R.Assignment tieCall g]
-            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g i) | (i, v) <- iis]
+            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
 
     let bindWriteback = case b of
 
