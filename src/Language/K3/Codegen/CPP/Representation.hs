@@ -154,7 +154,7 @@ instance Stringifiable Declaration where
     stringify (ClassDecl n) = "class" <+> stringify n
     stringify (FunctionDecl n rt ats) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
     stringify (ScalarDecl n t mi) =
-        stringify t <+> stringify n <> maybe semi (\i -> space <> equals <+> stringify i) mi <> semi
+        stringify t <+> stringify n <> maybe empty (\i -> space <> equals <+> stringify i) mi
     stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
