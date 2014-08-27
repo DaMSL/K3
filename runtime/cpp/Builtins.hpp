@@ -93,19 +93,7 @@ namespace K3 {
   //   };
   // }
 
-  // // Map-specific template function to look up
-  // template <class Key, class Value>
-  // F<shared_ptr<Value>(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-  //   return [&] (const Key& key) -> shared_ptr<Value> {
-  //     auto &container(map.getContainer());
-  //     auto it(container.find(key));
-  //     if (it != container.end()) {
-  //       return make_shared<Value>(it->second);
-  //     } else {
-  //       return nullptr;
-  //     }
-  //   };
-  // }
+
 
 
 
