@@ -84,7 +84,7 @@ cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
-    return $ [R.Forward $ R.FunctionDecl (R.Name i) ctr [cta]]
+    return [R.Forward $ R.FunctionDecl (R.Name i) ctr [cta]]
 cDecl t i = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
@@ -272,7 +272,7 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
-    return $ [R.Block $ d ++ ee ++ be]
+    return [R.Block $ d ++ ee ++ be]
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
@@ -346,5 +346,5 @@ reify r e = do
         RForget -> return []
         RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
         RReturn -> return [R.Return value]
-        RSplice f -> throwE $ CPPGenE "Unsupported reification by splice."
+        RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
