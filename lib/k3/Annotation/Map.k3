@@ -15,10 +15,7 @@ annotation Map given type a,b {
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
-
-  @:Transformer
-  provides lifted selfMap : (content -> {key: a, value: b}) -> collection {key : a, value: b} @ {Map}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Map}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
@@ -31,8 +28,8 @@ annotation Map given type a,b {
                              -> collection { key : a, value : b } @ {Map}
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
-                             -> collection {elem : a} @ {Collection}
+  provides lifted ext     : (content -> collection {elem : a} @ {Map})
+                             -> collection {elem : a} @ {Map}
 
   provides lifted size : () -> int
 }

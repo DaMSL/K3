@@ -26,7 +26,7 @@ annotation Collection given type a, b {
 
   @:Transformer
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Map}
+                             -> collection { key : a, value : b } @ {Collection}
 
   @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @ {Collection})

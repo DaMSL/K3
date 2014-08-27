@@ -4,6 +4,7 @@ annotation Sorted given type a, b {
   provides lifted insert  : content -> ()
   provides lifted erase  : content -> ()
   provides lifted update  : content -> (content -> ())
+  provides lifted size : () -> int
 
   @:Transformer
   provides lifted combine : self -> self
@@ -15,7 +16,7 @@ annotation Sorted given type a, b {
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Sorted}
 
   @:Transformer
   provides lifted selfMap     : (content -> a) -> collection {elem : a} @ {Sorted}
@@ -28,11 +29,11 @@ annotation Sorted given type a, b {
 
   @:Transformer
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Map}
+                             -> collection { key : a, value : b } @ {Sorted}
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
-                             -> collection {elem : a} @ {Collection}
+  provides lifted ext     : (content -> collection {elem : a} @ {Sorted})
+                             -> collection {elem : a} @ {Sorted}
 
   provides lifted min         : () -> option content
 
@@ -44,5 +45,4 @@ annotation Sorted given type a, b {
 
   provides lifted slice       : content -> (content -> self)
 
-  provides lifted size : () -> int
 }

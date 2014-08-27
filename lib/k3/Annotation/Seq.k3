@@ -6,6 +6,7 @@ annotation Seq given type a,b {
   provides lifted insert  : content -> ()
   provides lifted erase  : content -> ()
   provides lifted update  : content -> (content -> ())
+  provides lifted size : () -> int
 
   @:Transformer
   provides lifted combine : self -> self
@@ -17,10 +18,7 @@ annotation Seq given type a,b {
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
-
-  @:Transformer
-  provides lifted selfMap     : (content -> a) -> collection {elem : a} @ {Seq}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {Seq}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
@@ -30,15 +28,14 @@ annotation Seq given type a,b {
 
   @:Transformer
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Map}
+                             -> collection { key : a, value : b } @ {Seq}
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
-                             -> collection {elem : a} @ {Collection}
+  provides lifted ext     : (content -> collection {elem : a} @ {Seq})
+                             -> collection {elem : a} @ {Seq}
 
   provides lifted sort : (content -> content -> int) -> self
 
   provides lifted at : int -> content
 
-  provides lifted size : () -> int
 }
