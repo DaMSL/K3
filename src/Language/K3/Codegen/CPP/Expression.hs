@@ -189,14 +189,18 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = text "ValDispatcher<" <> trigTypes <> text ">"
-        classInst = genCCall (text "auto d = make_shared" <> angles className) Nothing [tv, vv]
+    let className = R.Specialized [trigTypes] (R.Name "ValDispatcher")
+        classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
+                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className] $ R.Name "make_shared") [tv, vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
-    return (vsep [te, ae, ve,
-                  classInst <> semi,
-                  text "engine.send" <> tupled [av, int trigId, text "d"]] <> semi,
-            text "unit_t()")
+    return (concat [te, ae, ve]
+                 ++ [ classInst
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "send")) [
+                                    av, R.Variable (R.Name $ show trigId), R.Variable (R.Name "d")
+                                   ]
+                    ]
+             , R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
