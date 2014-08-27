@@ -284,7 +284,7 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     se <- reify r s
     ne <- reify r n
     let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
-    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (someAssignment ++ se) ne]
+    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
