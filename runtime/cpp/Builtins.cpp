@@ -49,7 +49,7 @@ namespace K3 {
   }
 
   int index_by_hash(const string& s) {
-    auto& container = peers.getContainer();
+    auto& container = peers.getConstContainer();
     size_t h = std::hash<string>()(s);
     return h % container.size();
   }
