@@ -39,6 +39,9 @@ class Stringifiable a where
 commaSep :: [Doc] -> Doc
 commaSep = fillSep . punctuate comma
 
+hangBrace :: Doc -> Doc
+hangBrace d = "{" <$$> indent 4 d <$$> text "}"
+
 data Name
     = Name Identifier
     | Qualified Identifier Name
