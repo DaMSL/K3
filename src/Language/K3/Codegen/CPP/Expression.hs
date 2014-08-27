@@ -328,10 +328,11 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
 
     return $ ae ++ [R.Block $ bindInit ++ bindBody ++ bindWriteback ++ bindCleanUp]
   where
+    genTupleAssign :: R.Expression -> Int -> Identifier -> R.Statement
     genTupleAssign g n i =
-        R.Assignment (R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "0"] (R.Name "get")) [g])
+        R.Assignment (R.Call (R.Variable $ R.Specialized [R.Named $ R.Name (show n)] (R.Name "get")) [g])
                      (R.Variable $ R.Name i)
-    genRecordAssign g k v = R.Assignment (R.Project g k) (R.Variable $ R.Name v)
+    genRecordAssign g k v = R.Assignment (R.Project g (R.Name k)) (R.Variable $ R.Name v)
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
