@@ -47,6 +47,33 @@ instance Show RContext where
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
+attachTemplateVars :: Identifier -> K3 Expression -> [(Identifier, K3 Type)] -> CPPGenM R.Name
+attachTemplateVars v e g
+    | isJust (lookup v g) && isJust (functionType e)
+        = do
+            signatureType <- case fromJust (lookup v g) of
+                                  t@(tag -> TFunction) -> return t
+                                  (tag &&& children -> (TForall _, [t'])) -> return t'
+                                  _ -> throwE $ CPPGenE "Unreachable Error."
+            let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust $ functionType e)
+            cts <- mapM genCType ts
+            return $ if null cts
+               then R.Name v
+               else R.Specialized cts $ R.Name v
+    | otherwise = return $ R.Name v
+
+dedup :: [(Identifier, a)] -> [(Identifier, a)]
+dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
+functionType :: K3 Expression -> Maybe (K3 Type)
+functionType e = case e @~ \case { EType _ -> True; _ -> False } of
+    Just (EType t@(tag -> TFunction)) -> Just t
+    _ -> Nothing
+
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
 unarySymbol ONot = return "!"
@@ -104,32 +131,7 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 -- dereferenced.
 inline e@(tag -> EVariable v)
     | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
-    | otherwise = globals <$> get >>= attachTemplateVars
-  where
-    functionType = case e @~ \case { EType _ -> True; _ -> False } of
-        Just (EType t@(tag -> TFunction)) -> Just t
-        _ -> Nothing
-
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], R.Expression)
-    attachTemplateVars g
-        | isJust (lookup v g) && isJust functionType
-            = do
-                signatureType <- case fromJust (lookup v g) of
-                                      t@(tag -> TFunction) -> return t
-                                      (tag &&& children -> (TForall _, [t'])) -> return t'
-                                      _ -> throwE $ CPPGenE "Unreachable Error."
-                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
-                cts <- mapM genCType ts
-                return $ if null cts
-                   then ([], R.Variable $ R.Name v)
-                   else ([], R.Variable $ R.Specialized cts (R.Name v))
-        | otherwise = return ([], R.Variable $ R.Name v)
-
-    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
-
-    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
-    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
-    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+    | otherwise = globals <$> get >>= attachTemplateVars v e >>= \n -> return ([], R.Variable n)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -210,34 +212,8 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
-    (_, vv) <- globals <$> get >>= attachTemplateVars
+    vv <- globals <$> get >>= attachTemplateVars v e
     return (ke, R.Project kv vv)
-  where
-    functionType = case e @~ \case { EType _ -> True; _ -> False } of
-        Just (EType t@(tag -> TFunction)) -> Just t
-        _ -> Nothing
-
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM ([R.Statement], R.Name)
-    attachTemplateVars g
-        | isJust (lookup v g) && isJust functionType
-            = do
-                signatureType <- case fromJust (lookup v g) of
-                                      t@(tag -> TFunction) -> return t
-                                      (tag &&& children -> (TForall _, [t'])) -> return t'
-                                      _ -> throwE $ CPPGenE "Unreachable Error."
-                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
-                cts <- mapM genCType ts
-                return $ if null cts
-                   then ([], R.Name v)
-                   else ([], R.Specialized cts $ R.Name v)
-        | otherwise = return ([], R.Name v)
-
-    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
-
-    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
-    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
-    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
-
 
 inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
 
