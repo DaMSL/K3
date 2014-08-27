@@ -182,6 +182,8 @@ data Definition
     = ClassDefn Name [Type] [Definition] [Definition] [Definition]
     | FunctionDefn Type Name [(Identifier, Type)] [Statement]
     | GlobalDefn Statement
+    | IncludeDefn Identifier
+    | GuardedDefn Identifier Definition
     | TemplateDefn [(Identifier, Maybe Type)] Definition
   deriving (Eq, Read, Show)
 
@@ -201,6 +203,9 @@ instance Stringifiable Definition where
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         bd' = hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
+    stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
+    stringify (GuardedDefn i d)
+        = "#ifndef" <+> fromString i <$$> "#define" <+> fromString i <$$> stringify d <$$> "#endif"
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
