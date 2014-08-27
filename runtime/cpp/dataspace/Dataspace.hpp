@@ -686,6 +686,8 @@ class Map {
   using const_iterator_type = typename unordered_map<Key, Value>::const_iterator;
 
  public:
+  typedef R ElemType;
+
   // Default Constructor
   Map()
     : container()
@@ -833,7 +835,7 @@ class Map {
     return result;
   }
 
-  tuple<Map, Map> split() {
+  tuple<Map, Map> split(const unit_t&) {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -877,14 +879,14 @@ class Map {
     return result;
   }
 
-  // TODO optimize copies
+  // TODO optimize copies. lots of record building here.
   template <class Fun>
   auto ext(Fun expand) -> Map < typename RT<Fun, R>::ElemType > {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
-    for (const R& elem : container) {
-      for (const T& elem2 : expand(elem).container) {
-        result.insert(elem2);
+    for (const auto& it : container) {
+      for (const auto& it2 : expand(R{it.first, it.second}).container) {
+        result.insert(R{it.first, it.second});
       }
     }
 
@@ -894,14 +896,13 @@ class Map {
   int size(unit_t) const { return container.size(); }
 
   // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r)
+  shared_ptr<R> lookup(const R& r) {
       auto it(container.find(r.key));
       if (it != container.end()) {
-        return make_shared<R>(R {it->first, it->second} );
+        return std::make_shared<R>(R {it->first, it->second} );
       } else {
         return nullptr;
       }
-    };
   }
 
   unordered_map<Key, Value>& getContainer() { return container; }
