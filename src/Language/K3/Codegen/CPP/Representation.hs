@@ -147,6 +147,7 @@ data Declaration
     | FunctionDecl Name Type [Type]
     | ScalarDecl Name Type (Maybe Expression)
     | TemplateDecl [(Identifier, Maybe Type)] Declaration
+    | UsingDecl (Either Name Name) (Maybe Name)
   deriving (Eq, Read, Show)
 
 instance Stringifiable Declaration where
@@ -158,6 +159,11 @@ instance Stringifiable Declaration where
       where
         parameterize (i, Nothing) = "class" <+> fromString i
         parameterize (i, Just t) = stringify t <+> fromString i
+    stringify (UsingDecl en mn) =
+        "using" <+> leftAlias <> rightAlias
+      where
+        leftAlias = either (\n -> "namespace" <+> stringify n) stringify en
+        rightAlias = maybe empty (\i -> space <> equals <+> stringify i) mn
 
 data Statement
     = Assignment Expression Expression
