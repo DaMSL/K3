@@ -198,7 +198,7 @@ instance Stringifiable Definition where
       where
         rt' = stringify rt
         fn' = stringify fn
-        as' = parens (commaSep [fromString i <+> stringify t | (i, t) <- as])
+        as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         bd' = hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
