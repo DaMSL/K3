@@ -25,6 +25,7 @@ module Language.K3.Codegen.CPP.Representation (
     Definition(..),
 ) where
 
+import Data.Maybe
 import Data.String
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
