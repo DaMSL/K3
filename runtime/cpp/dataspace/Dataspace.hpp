@@ -255,7 +255,6 @@ class StlDS {
   // Return a constant reference to the container
   const Container& getConstContainer() const {return container;}
 
- private:
   Container container;
 };
 
