@@ -145,7 +145,7 @@ instance Stringifiable Expression where
 
 data Declaration
     = ClassDecl Name
-    | FunctionDecl Name Type [Type]
+    | FunctionDecl Name [Type] Type
     | ScalarDecl Name Type (Maybe Expression)
     | TemplateDecl [(Identifier, Maybe Type)] Declaration
     | UsingDecl (Either Name Name) (Maybe Name)
@@ -153,10 +153,10 @@ data Declaration
 
 instance Stringifiable Declaration where
     stringify (ClassDecl n) = "class" <+> stringify n
-    stringify (FunctionDecl n rt ats) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
+    stringify (FunctionDecl n ats rt) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
     stringify (ScalarDecl n t mi) =
         stringify t <+> stringify n <> maybe empty (\i -> space <> equals <+> stringify i) mi
-    stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
+    stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <+> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
         parameterize (i, Just t) = stringify t <+> fromString i
@@ -187,7 +187,7 @@ instance Stringifiable Statement where
 
 data Definition
     = ClassDefn Name [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Type Name [(Identifier, Type)] [Statement]
+    | FunctionDefn Name [(Identifier, Type)] Type [Statement]
     | GlobalDefn Statement
     | IncludeDefn Identifier
     | GuardedDefn Identifier Definition
@@ -203,7 +203,7 @@ instance Stringifiable Definition where
         publics' = "public" <> colon <$$> vsep (map stringify publics)
         privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
         protecteds' = "private" <> colon <$$> vsep (map stringify privates)
-    stringify (FunctionDefn rt fn as bd) = rt' <+> fn' <> as' <+> bd'
+    stringify (FunctionDefn fn as rt bd) = rt' <+> fn' <> as' <+> bd'
       where
         rt' = stringify rt
         fn' = stringify fn
