@@ -168,8 +168,9 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
-            ta' <- genCType ta
-            tr' <- genCType tr
+            ta' <- genCInferredType ta
+            tr' <- genCInferredType tr
+
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- fst . unzip . globals <$> get
