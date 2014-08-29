@@ -214,12 +214,6 @@ record (sort -> ids) = do
 
 --     let constructors = [defaultConstructor, initConstructor, copyConstructor]
 
---     let fieldEqs = text "if"
---           <+> parens (hsep $ punctuate (text "&&") [text i <+> text "==" <+> text "_r" <> dot <> text i | i <- ids])
---           <$$> indent 4 (text "return true;") <$$> text "return false;"
-
---     let equalityOperator = genCFunction Nothing (text "bool") (text "operator==") [recordName <+> text "_r"] fieldEqs
-
 --     let fields = [t <+> text i <> semi | t <- templateVars | i <- ids]
     let initConstructor
             = R.FunctionDefn (R.Name recordName)
@@ -232,6 +226,14 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName)
               [("__other", R.Const $ R.Reference recordType)] Nothing
               [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids] []
+
+    let equalityOperator
+            = R.FunctionDefn (R.Name "operator==")
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [R.Return $ foldr1 (R.Binary "&&")
+                    [ R.Binary "==" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
+                    | i <- ids
+                    ]]
 
 
 --     serializer <- serializeDefn
