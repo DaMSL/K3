@@ -84,6 +84,7 @@ data Type
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
+    | Reference Type
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "address")
@@ -98,6 +99,7 @@ instance Stringifiable Type where
     stringify Inferred = "auto"
     stringify (Parameter i) = fromString i
     stringify (Primitive p) = stringify p
+    stringify (Reference t) = stringify t <> fromString "&"
 
 data Literal
     = LBool Bool
