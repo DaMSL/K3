@@ -202,11 +202,12 @@ data Definition
 
 instance Stringifiable Definition where
     stringify (ClassDefn cn ps publics privates protecteds) =
-        "class" <+> stringify cn <> colon <+> stringifyParents ps
+        "class" <+> stringify cn <> stringifyParents ps
                     <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
         guardNull xs ys = if null xs then [] else ys
-        stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
+        stringifyParents parents
+            = if null ps then empty else colon <+> commaSep ["public" <+> stringify t | t <- parents]
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
@@ -216,7 +217,7 @@ instance Stringifiable Definition where
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         is' = if null is then empty else colon <+> commaSep (map stringify is)
-        bd' = hangBrace (vsep $ map stringify bd)
+        bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
     stringify (GuardedDefn i d)
