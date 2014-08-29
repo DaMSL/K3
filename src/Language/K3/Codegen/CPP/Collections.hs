@@ -212,9 +212,6 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
---     let constructors = [defaultConstructor, initConstructor, copyConstructor]
-
---     let fields = [t <+> text i <> semi | t <- templateVars | i <- ids]
     let initConstructor
             = R.FunctionDefn (R.Name recordName)
               [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
@@ -235,6 +232,14 @@ record (sort -> ids) = do
                     | i <- ids
                     ]]
 
+    let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
+                     | i <- ids
+                     | t <- templateVars
+                     ]
+
+    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator] ++ fieldDecls
+
+    return [R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] members [] []]
 
 --     serializer <- serializeDefn
 
