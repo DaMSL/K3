@@ -189,7 +189,7 @@ instance Stringifiable Statement where
 
 data Definition
     = ClassDefn Name [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Name [(Identifier, Type)] Type [Statement]
+    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
     | GlobalDefn Statement
     | IncludeDefn Identifier
     | GuardedDefn Identifier Definition
@@ -206,10 +206,12 @@ instance Stringifiable Definition where
         privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
         protecteds' = "private" <> colon <$$> vsep (map stringify privates)
     stringify (FunctionDefn fn as rt bd) = rt' <+> fn' <> as' <+> bd'
+    stringify (FunctionDefn fn as mrt is bd) = rt' <> fn' <> as' <> is' <+> bd'
       where
-        rt' = stringify rt
+        rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
+        is' = if null is then empty else colon <+> commaSep (map stringify is)
         bd' = hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
