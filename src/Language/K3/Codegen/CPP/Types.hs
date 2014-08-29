@@ -75,7 +75,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] S.empty [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
