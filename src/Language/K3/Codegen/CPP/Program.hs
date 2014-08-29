@@ -19,6 +19,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 
+import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Collections
 import Language.K3.Codegen.CPP.Declaration
@@ -56,7 +57,11 @@ program (tag &&& children -> (DRole name, decls)) = do
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     forwardDefns <- map (R.GlobalDefn . R.Forward) . forwards <$> get
-
+    compositeDefns <- do
+        currentComposites <- composites <$> get
+        currentAnnotations <- annotationMap <$> get
+        forM (S.toList $ S.filter (not . S.null) currentComposites) $ \(S.toList -> als) ->
+            composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als]
     records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
     recordDefns <- mapM record records
 
@@ -66,7 +71,7 @@ program (tag &&& children -> (DRole name, decls)) = do
                                [R.Named $ R.Name "__program__context"] contextDefns [] []
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ [contextClassDefn]
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn]
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
