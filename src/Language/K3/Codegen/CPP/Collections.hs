@@ -212,11 +212,6 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
---     let initConstructor
---             = recordName <> tupled (zipWith (<+>) templateVars formalVars) <> colon
---                         <+> hsep (punctuate comma $ [text i <> parens f | i <- ids | f <- formalVars])
---                         <+> braces empty
-
 --     let copyConstructor
 --             = recordName <> parens (text "const" <+> recordName
 --                                       <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "_r")
@@ -233,6 +228,11 @@ record (sort -> ids) = do
 --     let equalityOperator = genCFunction Nothing (text "bool") (text "operator==") [recordName <+> text "_r"] fieldEqs
 
 --     let fields = [t <+> text i <> semi | t <- templateVars | i <- ids]
+    let initConstructor
+            = R.FunctionDefn (R.Name recordName)
+              [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
+              Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name f] | i <- ids | f <- formalVars] []
+
 
 --     serializer <- serializeDefn
 
