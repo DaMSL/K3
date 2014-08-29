@@ -9,7 +9,7 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (nub, partition, sort)
+import Data.List (intercalate, nub, partition, sort)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -208,8 +208,9 @@ record (sort -> ids) = do
     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
     let formalVars = ["_" ++ i | i <- ids]
 
---     let defaultConstructor
---             = recordName <> parens empty <+> braces empty
+    let defaultConstructor
+            = R.FunctionDefn (R.Name recordName) [] Nothing
+              [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
 --     let initConstructor
 --             = recordName <> tupled (zipWith (<+>) templateVars formalVars) <> colon
