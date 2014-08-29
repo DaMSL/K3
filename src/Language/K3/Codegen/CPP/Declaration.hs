@@ -28,7 +28,7 @@ import qualified Language.K3.Core.Constructor.Type as T
 
 import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Common
--- import Language.K3.Codegen.CPP.Collections
+import Language.K3.Codegen.CPP.Collections
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
