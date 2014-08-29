@@ -199,13 +199,13 @@ data Definition
 instance Stringifiable Definition where
     stringify (ClassDefn cn ps publics privates protecteds) =
         "class" <+> stringify cn <> colon <+> stringifyParents ps
-                    <+> hangBrace (publics' <$$> privates' <$$> protecteds') <> semi
+                    <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
+        guardNull xs ys = if null xs then [] else ys
         stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
-        publics' = "public" <> colon <$$> vsep (map stringify publics)
-        privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
-        protecteds' = "private" <> colon <$$> vsep (map stringify privates)
-    stringify (FunctionDefn fn as rt bd) = rt' <+> fn' <> as' <+> bd'
+        publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
+        privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
+        protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
     stringify (FunctionDefn fn as mrt is bd) = rt' <> fn' <> as' <> is' <+> bd'
       where
         rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
