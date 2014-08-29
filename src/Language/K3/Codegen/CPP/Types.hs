@@ -15,6 +15,8 @@ import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Declaration
 
+import qualified Language.K3.Codegen.CPP.Representation as R
+
 -- | The C++ code generation monad. Provides access to various configuration values and error
 -- reporting.
 type CPPGenM a = EitherT CPPGenE (State CPPGenS) a
@@ -39,10 +41,10 @@ data CPPGenS = CPPGenS {
         uuid :: Int,
 
         -- | Code necessary to initialize global declarations.
-        initializations :: CPPGenR,
+        initializations :: [R.Statement],
 
         -- | Forward declarations for constructs as a result of cyclic scope.
-        forwards :: [CPPGenR],
+        forwards :: [R.Declaration],
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
@@ -73,7 +75,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 empty [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] S.empty [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -88,8 +90,11 @@ genSym = do
     modify (\s -> s { uuid = succ (uuid s) })
     return $ "__" ++ show current
 
-addForward :: CPPGenR -> CPPGenM ()
+addForward :: R.Declaration -> CPPGenM ()
 addForward r = modify (\s -> s { forwards = r : forwards s })
+
+addInitialization :: [R.Statement] -> CPPGenM ()
+addInitialization ss = modify (\s -> s { initializations = initializations s ++ ss })
 
 -- | Add an annotation to the code generation state.
 addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
