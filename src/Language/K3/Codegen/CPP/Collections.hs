@@ -202,10 +202,11 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 -- annMemDecl (Attribute _ i _ _ _) = return $ text i
 -- annMemDecl (MAnnotation _ i _) = return $ text i
 
--- record :: [Identifier] -> CPPGenM [R.Definition]
--- record (sort -> ids) = do
---     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..]]
---     let formalVars = ["_" ++ show i | i <- ids]
+record :: [Identifier] -> CPPGenM [R.Definition]
+record (sort -> ids) = do
+    let recordName = "R_" ++ intercalate "_" ids
+    let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
+    let formalVars = ["_" ++ i | i <- ids]
 
 --     let defaultConstructor
 --             = recordName <> parens empty <+> braces empty
