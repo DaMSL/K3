@@ -198,95 +198,99 @@ requiredIncludes = return
 -- staticGlobals :: CPPGenM CPPGenR
 -- staticGlobals = return $ text "K3::Engine engine;"
 
--- -- | Generate a function to help print the current environment (global vars and their values).
--- -- Currently, this function returns a map from string (variable name) to string (string representation of value)
--- showGlobalsName :: String
--- showGlobalsName = "show_globals"
+-- | Generate a function to help print the current environment (global vars and their values).
+-- Currently, this function returns a map from string (variable name) to string (string representation of value)
+--showGlobalsName :: R.Name
+--showGlobalsName = R.Name "show_globals"
 
--- showGlobals :: CPPGenM CPPGenR
--- showGlobals = do
---     currentS <- get
---     body    <- gen_body $ showables currentS
---     return $ genCFunction Nothing result_type fun_name [] body
---   where
---     result_type  = text "map<string,string>"
---     fun_name     = text showGlobalsName
---     result_var   = text "result"
+--showGlobals :: CPPGenM R.Definition
+--showGlobals = do
+--   currentS <- get
+--   body    <- gen_body $ showables currentS
+--   return $ R.FunctionDefn showGlobalsName [] (Just result_type) [] body
+-- where
+--   p_string = R.Primitive R.PString
+--   result_type  = R.Named $ R.Specialized [p_string, p_string] (R.Name "map")
+--   result  = "result"
 
---     gen_body  :: [(Identifier, K3 Type)] -> CPPGenM CPPGenR
---     gen_body n_ts = do
---       result_decl <- return $ result_type <+> result_var <> semi
---       inserts     <- gen_inserts n_ts
---       return_st   <- return $ text "return" <+> result_var <> semi
---       return $ vsep $ (result_decl : inserts) ++ [return_st]
+--   gen_body  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+--   gen_body n_ts = do
+--     result_decl <- return $ R.Forward $ R.ScalarDecl (R.Name result) result_type Nothing
+--     inserts     <- gen_inserts n_ts
+--     return_st   <- return $ R.Return $ R.Variable $ R.Name result
+--     return $ (result_decl : inserts) ++ [return_st]
 
---     gen_inserts :: [(Identifier, K3 Type)] -> CPPGenM [CPPGenR]
---     gen_inserts n_ts = do
---       names      <- return $ map fst n_ts
---       name_strs  <- return $ map (dquotes . text) names
---       val_strs   <- mapM (\(n,t) -> showVar t n) n_ts
---       kvs        <- return $  zip name_strs val_strs
---       mk_insert  <- return $ \(k,v) -> result_var <> brackets k <> text " = " <> v <> semi
---       return $ map mk_insert kvs
+--   gen_inserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+--   gen_inserts n_ts = do
+--     names      <- return $ map fst n_ts
+--     name_vars  <- return $ map (R.Variable . R.Name) names
+--     new_nts    <- return $ zip name_vars $ map snd n_ts
+--     lhs_exprs  <- return $ map (\x -> R.Variable $ R.Name $ result ++ "[\"" ++ x ++ "\"]") names
+--     rhs_exprs  <- mapM (\(n,t) -> showVar t n) new_nts
+--     return $ zipWith (R.Assignment) lhs_exprs rhs_exprs
 
--- -- | Generate CPP code to show the a global variable of given K3-Type and name
--- showVar :: K3 Type -> String -> CPPGenM CPPGenR
--- showVar base_t name =
---   case base_t of
---     -- non-nested:
---     (tag -> TBool)     -> return $ std_to_string name
---     (tag -> TByte)     -> return $ std_to_string name
---     (tag -> TInt)      -> return $ std_to_string name
---     (tag -> TReal)     -> return $ std_to_string name
---     (tag -> TString)   -> return $ text name
---     (tag -> TAddress)  -> return $ text "addressAsString" <> parens (text name)
---     (tag -> TFunction) -> return $ str "<fun>"
---     -- nested:
---     ((tag &&& children) -> (TOption, [t]))      -> opt_to_string t name
---     ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t name
---     ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts name
---     ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts name
---     ((tag &&& children) -> (TCollection, [et]))  -> coll_to_string base_t et name
---     _                                           -> return $ str "Cant Show!"
---   where
---     -- Utils
---     str = dquotes . text
---     deref = (++) "*"
---     getTup i n = "get<" ++ (show i) ++ ">(" ++ n ++ ")"
---     project field n = n ++ "." ++ field
---     inner_comma = line <> text "+" <+> str "," <> line <> text "+"
---     -- Use std::to_string for basic types
---     std_to_string n = text "to_string" <> parens (text n)
---     -- Option
---     opt_to_string ct n = do
---         inner <- showVar ct (deref n)
---         let i = text "if" <+> parens (text n) <> hangBrace (str "Some" <+> text "+" <+> inner)
---             e = text "else" <> hangBrace (str "None")
---             in return $ vsep [i,e]
---     -- Indirection
---     ind_to_string ct n = do
---         inner <- showVar ct (deref n)
---         return $ str "Ind" <+> text "+" <+> inner
---     -- Tuple
---     tup_to_string cts n = do
---         ct_is <- return $ zip cts ([0..] :: [Integer])
---         cs    <- mapM (\(ct,i) -> showVar ct (getTup i n)) ct_is
---         done  <- return $ L.intersperse inner_comma cs
---         return $ vsep $ [empty, str "(" <> text "+" <> (hsep done), text "+", str ")"]
---     -- Record
---     rec_to_string ids cts n = do
---         ct_ids <- return $ zip cts ids
---         cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ str (field ++ ":") <+> text "+" <+>  v <> line) ct_ids
---         done   <- return $ L.intersperse inner_comma cs
---         return $ str "{" <> line <> text "+" <+> parens (hsep done <+> text "+" <> line <> str "}")
---     -- Collection
---     coll_to_string t et n = do
---         rvar <- return $ text "ostringstream oss;"
---         t_n  <- genCType t
---         et_n <- genCType et
---         v    <- showVar et "elem"
---         fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
---         iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
---         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
---         -- wrap in lambda, then call it
---         return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)
+---- | Generate an expression that represents a global variable as a string
+--showVar :: K3 Type -> R.Expression -> CPPGenM R.Expression
+--showVar base_t e =
+-- case base_t of
+--   -- non-nested:
+--   (tag -> TBool)     -> return $ to_string e
+--   (tag -> TByte)     -> return $ to_string e
+--   (tag -> TInt)      -> return $ to_string e
+--   (tag -> TReal)     -> return $ to_string e
+--   (tag -> TString)   -> return $ e
+--   (tag -> TAddress)  -> return $ R.Call (R.Variable $ R.Name "addressAsString") [e]
+--   (tag -> TFunction) -> return $ lit_string "<opaque_function>"
+--   -- nested:
+--   ((tag &&& children) -> (TOption, [t]))      -> opt t e
+--   ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t e
+--   ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts e
+--   --((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts name
+--   --((tag &&& children) -> (TCollection, [et])) -> coll_to_string base_t et name
+--   _                                           -> return $ lit_string "Cant Show!"
+-- where
+--   -- Utils
+--   singleton = replicate 1
+
+--   var_by_name = R.Variable . R.Name
+--   lit_string  = R.Literal . R.LString
+--   wrap stmnts  = R.Call (R.Lambda [] [] Nothing stmnts) []
+--   to_string e = R.Call (R.Variable $ R.Qualified "std" $ R.Name "to_string") [e]
+--   concat = R.Binary "+" 
+--   get_tup i e = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [e]
+--   str = dquotes . text
+--   deref = (++) "*"
+--   project field n = n ++ "." ++ field
+--   inner_comma = line <> text "+" <+> str "," <> line <> text "+"
+
+--   -- Option
+--   opt ct e = do
+--       inner <- showVar ct (R.Dereference e)
+--       return $ wrap $ singleton $ R.IfThenElse e [(R.Return $ concat (lit_string "Some ") inner)] [(R.Return $ lit_string "None")]
+--   -- Indirection
+--   ind_to_string ct e = do
+--       inner <- showVar ct (R.Dereference e)
+--       return $ concat (lit_string "Ind ") inner
+--   -- Tuple
+--   tup_to_string cts e = do
+--       ct_is  <- return $ zip cts ([0..] :: [Integer])
+--       cs     <- mapM (\(ct,i) -> showVar ct (get_tup i e)) ct_is --show each element in tuple
+--       commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
+--       return $ concat (foldl concat (lit_string "(") commad) (lit_string ")") -- concat
+   ---- Record
+   --rec_to_string ids cts n = do
+   --    ct_ids <- return $ zip cts ids
+   --    cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ str (field ++ ":") <+> text "+" <+>  v <> line) ct_ids
+   --    done   <- return $ L.intersperse inner_comma cs
+   --    return $ str "{" <> line <> text "+" <+> parens (hsep done <+> text "+" <> line <> str "}")
+   ---- Collection
+   --coll_to_string t et n = do
+   --    rvar <- return $ text "ostringstream oss;"
+   --    t_n  <- genCType t
+   --    et_n <- genCType et
+   --    v    <- showVar et "elem"
+   --    fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
+   --    iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
+   --    result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
+   --    -- wrap in lambda, then call it
+   --    return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)
