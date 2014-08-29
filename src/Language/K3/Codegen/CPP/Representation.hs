@@ -80,11 +80,13 @@ instance Stringifiable Primitive where
     stringify PString = stringify (Qualified "std" $ Name "string")
 
 data Type
-    = Inferred
+    = Const Type
+    | Inferred
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
     | Reference Type
+    | RValueReference Type
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -95,11 +97,13 @@ pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified "std" (Name "tuple")))
 
 instance Stringifiable Type where
-    stringify (Named n) = stringify n
     stringify Inferred = "auto"
+    stringify (Const t) = "const" <+> stringify t
+    stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
     stringify (Primitive p) = stringify p
-    stringify (Reference t) = stringify t <> fromString "&"
+    stringify (Reference t) = stringify t <> "&"
+    stringify (RValueReference t) = stringify t <> "&&"
 
 data Literal
     = LBool Bool
