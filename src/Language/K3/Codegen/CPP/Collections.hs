@@ -26,8 +26,6 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
-
 -- | An Annotation Combination Composite should contain the following:
 --  - Inlined implementations for all provided methods.
 --  - Declarations for all provided data members.
@@ -38,16 +36,29 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 --          - Additionally a move dataspace constructor which uses a temporary dataspace?
 --      - Copy constructor.
 --  - Serialization function, which should proxy the dataspace serialization.
--- composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM CPPGenR
--- composite className ans = do
+composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
+composite name ans = do
+    let (ras, _) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
 
---     let (ras, nras) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
+    -- Inlining is only done for provided (positive) declarations.
+    -- let positives = filter isPositiveDecl (concat . snd $ unzip nras)
 
---     -- Inlining is only done for provided (positive) declarations.
---     let positives = filter isPositiveDecl (concat . snd $ unzip nras)
+    -- Split data and method declarations, for access specifiers.
+    -- let (dataDecls, methDecls) = partition isDataDecl positives
 
---     -- Split data and method declarations, for access specifiers.
---     let (dataDecls, methDecls) = partition isDataDecl positives
+    let baseClasses = map (R.Specialized [R.Named $ R.Name "__CONTENT"] . R.Name . fst) ras
+
+    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+
+    let defaultConstructor = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] []
+    let copyConstructor = R.FunctionDefn (R.Name name) [("__other", R.Const $ R.Reference selfType)] Nothing
+                          [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
+
+    let methods = [defaultConstructor, copyConstructor]
+
+    return [R.TemplateDefn [("__CONTENT", Nothing)]
+             (R.ClassDefn (R.Name name) (map R.Named baseClasses) methods [] [])]
+  where
 
 --     let parentSerializeCall p = text "_archive" <+> text "&" <+>
 --                                 genCQualify (genCQualify (text "boost") (text "serialization"))
@@ -341,5 +352,5 @@ record (sort -> ids) = do
 --     return $ d <//> newI
 -- definition i t Nothing = cDecl t i
 
--- reservedAnnotations :: [Identifier]
--- reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map"]
+reservedAnnotations :: [Identifier]
+reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map"]
