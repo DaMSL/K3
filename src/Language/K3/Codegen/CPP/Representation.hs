@@ -77,7 +77,7 @@ instance Stringifiable Primitive where
     stringify PBool = "bool"
     stringify PInt = "int"
     stringify PDouble = "double"
-    stringify PString = "string"
+    stringify PString = stringify (Qualified "std" $ Name "string")
 
 data Type
     = Inferred
