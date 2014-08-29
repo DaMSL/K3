@@ -87,7 +87,7 @@ data Type
     | Reference Type
   deriving (Eq, Ord, Read, Show)
 
-pattern Address = Named (Name "address")
+pattern Address = Named (Name "Address")
 pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
