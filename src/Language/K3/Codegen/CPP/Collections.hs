@@ -212,13 +212,6 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
---     let copyConstructor
---             = recordName <> parens (text "const" <+> recordName
---                                       <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "_r")
---                                       <> colon
---                         <+> hsep (punctuate comma [text i <> parens (text "_r" <> dot <> text i) | i <- ids])
---                         <+> braces empty
-
 --     let constructors = [defaultConstructor, initConstructor, copyConstructor]
 
 --     let fieldEqs = text "if"
@@ -232,6 +225,13 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName)
               [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
               Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name f] | i <- ids | f <- formalVars] []
+
+    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
+
+    let copyConstructor
+            = R.FunctionDefn (R.Name recordName)
+              [("__other", R.Const $ R.Reference recordType)] Nothing
+              [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids] []
 
 
 --     serializer <- serializeDefn
