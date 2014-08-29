@@ -84,6 +84,10 @@ genCBind f x n = genCQualify (text "std") (text "bind") <> tupled ([f, x] ++ pla
                           | i <- [1 .. n - 2]
                           ]
 
+genCInferredType :: K3 Type -> CPPGenM R.Type
+genCInferredType (tag -> TDeclaredVar _) = return R.Inferred
+genCInferredType t = genCType t
+
 -- | Get the K3 Type of an expression. Relies on type-manifestation to have attached an EType
 -- annotation to the expression ahead of time.
 getKType :: K3 Expression -> CPPGenM (K3 Type)

@@ -25,6 +25,8 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
+--
+-- TODO: Add RAssign/RDeclare distinction.
 data RContext
 
     -- | Indicates that the calling context will ignore the callee's result.
@@ -111,7 +113,7 @@ cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
-    return [R.Forward $ R.FunctionDecl (R.Name i) ctr [cta]]
+    return [R.Forward $ R.FunctionDecl (R.Name i) [cta] ctr]
 cDecl t i = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
@@ -168,8 +170,9 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
-            ta' <- genCType ta
-            tr' <- genCType tr
+            ta' <- genCInferredType ta
+            tr' <- genCInferredType tr
+
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- fst . unzip . globals <$> get
@@ -191,9 +194,10 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Name "ValDispatcher")
+    let className = R.Specialized [trigTypes] (R.Qualified "K3" $ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
-                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className] $ R.Name "make_shared") [tv, vv])
+                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
+                                           (R.Qualified "std" $ R.Name "make_shared")) [tv, vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
     return (concat [te, ae, ve]
@@ -244,6 +248,7 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return $ ae ++ be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
+    -- TODO: Push declaration into reification.
     ct <- getKType e
     d <- cDecl ct x
     ee <- reify (RName x) e

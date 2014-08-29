@@ -77,16 +77,17 @@ instance Stringifiable Primitive where
     stringify PBool = "bool"
     stringify PInt = "int"
     stringify PDouble = "double"
-    stringify PString = "string"
+    stringify PString = stringify (Qualified "std" $ Name "string")
 
 data Type
     = Inferred
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
+    | Reference Type
   deriving (Eq, Ord, Read, Show)
 
-pattern Address = Named (Name "address")
+pattern Address = Named (Name "Address")
 pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
@@ -98,6 +99,7 @@ instance Stringifiable Type where
     stringify Inferred = "auto"
     stringify (Parameter i) = fromString i
     stringify (Primitive p) = stringify p
+    stringify (Reference t) = stringify t <> fromString "&"
 
 data Literal
     = LBool Bool
@@ -145,7 +147,7 @@ instance Stringifiable Expression where
 
 data Declaration
     = ClassDecl Name
-    | FunctionDecl Name Type [Type]
+    | FunctionDecl Name [Type] Type
     | ScalarDecl Name Type (Maybe Expression)
     | TemplateDecl [(Identifier, Maybe Type)] Declaration
     | UsingDecl (Either Name Name) (Maybe Name)
@@ -153,10 +155,10 @@ data Declaration
 
 instance Stringifiable Declaration where
     stringify (ClassDecl n) = "class" <+> stringify n
-    stringify (FunctionDecl n rt ats) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
+    stringify (FunctionDecl n ats rt) = stringify rt <+> stringify n <> parens (commaSep $ map stringify ats)
     stringify (ScalarDecl n t mi) =
         stringify t <+> stringify n <> maybe empty (\i -> space <> equals <+> stringify i) mi
-    stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
+    stringify (TemplateDecl ts d) = "template" <+> angles (commaSep $ map parameterize ts) <+> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
         parameterize (i, Just t) = stringify t <+> fromString i
@@ -187,7 +189,7 @@ instance Stringifiable Statement where
 
 data Definition
     = ClassDefn Name [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Type Name [(Identifier, Type)] [Statement]
+    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
     | GlobalDefn Statement
     | IncludeDefn Identifier
     | GuardedDefn Identifier Definition
@@ -197,17 +199,19 @@ data Definition
 instance Stringifiable Definition where
     stringify (ClassDefn cn ps publics privates protecteds) =
         "class" <+> stringify cn <> colon <+> stringifyParents ps
-                    <+> hangBrace (publics' <$$> privates' <$$> protecteds') <> semi
+                    <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
+        guardNull xs ys = if null xs then [] else ys
         stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
-        publics' = "public" <> colon <$$> vsep (map stringify publics)
-        privates' = "protected" <> colon <$$> vsep (map stringify protecteds)
-        protecteds' = "private" <> colon <$$> vsep (map stringify privates)
-    stringify (FunctionDefn rt fn as bd) = rt' <+> fn' <> as' <+> bd'
+        publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
+        privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
+        protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
+    stringify (FunctionDefn fn as mrt is bd) = rt' <> fn' <> as' <> is' <+> bd'
       where
-        rt' = stringify rt
+        rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
+        is' = if null is then empty else colon <+> commaSep (map stringify is)
         bd' = hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
