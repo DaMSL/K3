@@ -7,6 +7,7 @@ import Control.Arrow ((&&&), first)
 import Control.Monad.State
 
 import qualified Data.List as L
+import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Data.Functor
@@ -19,6 +20,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Common
+import Language.K3.Codegen.CPP.Collections
 import Language.K3.Codegen.CPP.Declaration
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
@@ -55,13 +57,17 @@ program (tag &&& children -> (DRole name, decls)) = do
     aliasDefns <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     forwardDefns <- map (R.GlobalDefn . R.Forward) . forwards <$> get
 
+    records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
+    recordDefns <- mapM record records
+
     let contextDefns = forwardDefns ++ programDefns
 
     let contextClassDefn = R.ClassDefn (R.Name $ name ++ "_context")
                                [R.Named $ R.Name "__program__context"] contextDefns [] []
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ [contextClassDefn]
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ [contextClassDefn]
+
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]

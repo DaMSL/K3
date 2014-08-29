@@ -51,7 +51,7 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
     precedence x = fromJust $ lookup x precedences
 
     precedences :: [(Identifier, Int)]
-    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("&&", 13), ("||", 14)]
+    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("==", 9), ("&&", 13), ("||", 14)]
 
 binaryParens _ _ = parens
 
@@ -80,11 +80,13 @@ instance Stringifiable Primitive where
     stringify PString = stringify (Qualified "std" $ Name "string")
 
 data Type
-    = Inferred
+    = Const Type
+    | Inferred
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
     | Reference Type
+    | RValueReference Type
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -95,11 +97,13 @@ pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified "std" (Name "tuple")))
 
 instance Stringifiable Type where
-    stringify (Named n) = stringify n
     stringify Inferred = "auto"
+    stringify (Const t) = "const" <+> stringify t
+    stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
     stringify (Primitive p) = stringify p
-    stringify (Reference t) = stringify t <> fromString "&"
+    stringify (Reference t) = stringify t <> "&"
+    stringify (RValueReference t) = stringify t <> "&&"
 
 data Literal
     = LBool Bool
@@ -198,11 +202,12 @@ data Definition
 
 instance Stringifiable Definition where
     stringify (ClassDefn cn ps publics privates protecteds) =
-        "class" <+> stringify cn <> colon <+> stringifyParents ps
+        "class" <+> stringify cn <> stringifyParents ps
                     <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
         guardNull xs ys = if null xs then [] else ys
-        stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
+        stringifyParents parents
+            = if null ps then empty else colon <+> commaSep ["public" <+> stringify t | t <- parents]
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
@@ -212,7 +217,7 @@ instance Stringifiable Definition where
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         is' = if null is then empty else colon <+> commaSep (map stringify is)
-        bd' = hangBrace (vsep $ map stringify bd)
+        bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
     stringify (GuardedDefn i d)

@@ -9,7 +9,7 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Functor
-import Data.List (nub, partition, sort)
+import Data.List (intercalate, nub, partition, sort)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -202,35 +202,44 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 -- annMemDecl (Attribute _ i _ _ _) = return $ text i
 -- annMemDecl (MAnnotation _ i _) = return $ text i
 
--- record :: [Identifier] -> CPPGenM [R.Definition]
--- record (sort -> ids) = do
---     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..]]
---     let formalVars = ["_" ++ show i | i <- ids]
+record :: [Identifier] -> CPPGenM [R.Definition]
+record (sort -> ids) = do
+    let recordName = "R_" ++ intercalate "_" ids
+    let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
+    let formalVars = ["_" ++ i | i <- ids]
 
---     let defaultConstructor
---             = recordName <> parens empty <+> braces empty
+    let defaultConstructor
+            = R.FunctionDefn (R.Name recordName) [] Nothing
+              [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
---     let initConstructor
---             = recordName <> tupled (zipWith (<+>) templateVars formalVars) <> colon
---                         <+> hsep (punctuate comma $ [text i <> parens f | i <- ids | f <- formalVars])
---                         <+> braces empty
+    let initConstructor
+            = R.FunctionDefn (R.Name recordName)
+              [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
+              Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name f] | i <- ids | f <- formalVars] []
 
---     let copyConstructor
---             = recordName <> parens (text "const" <+> recordName
---                                       <> angles (hsep $ punctuate comma templateVars) <> text "&" <+> text "_r")
---                                       <> colon
---                         <+> hsep (punctuate comma [text i <> parens (text "_r" <> dot <> text i) | i <- ids])
---                         <+> braces empty
+    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
 
---     let constructors = [defaultConstructor, initConstructor, copyConstructor]
+    let copyConstructor
+            = R.FunctionDefn (R.Name recordName)
+              [("__other", R.Const $ R.Reference recordType)] Nothing
+              [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids] []
 
---     let fieldEqs = text "if"
---           <+> parens (hsep $ punctuate (text "&&") [text i <+> text "==" <+> text "_r" <> dot <> text i | i <- ids])
---           <$$> indent 4 (text "return true;") <$$> text "return false;"
+    let equalityOperator
+            = R.FunctionDefn (R.Name "operator==")
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [R.Return $ foldr1 (R.Binary "&&")
+                    [ R.Binary "==" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
+                    | i <- ids
+                    ]]
 
---     let equalityOperator = genCFunction Nothing (text "bool") (text "operator==") [recordName <+> text "_r"] fieldEqs
+    let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
+                     | i <- ids
+                     | t <- templateVars
+                     ]
 
---     let fields = [t <+> text i <> semi | t <- templateVars | i <- ids]
+    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator] ++ fieldDecls
+
+    return [R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] members [] []]
 
 --     serializer <- serializeDefn
 
