@@ -51,7 +51,7 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
     precedence x = fromJust $ lookup x precedences
 
     precedences :: [(Identifier, Int)]
-    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("&&", 13), ("||", 14)]
+    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("==", 9), ("&&", 13), ("||", 14)]
 
 binaryParens _ _ = parens
 
