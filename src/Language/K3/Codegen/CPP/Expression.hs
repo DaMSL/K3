@@ -192,9 +192,10 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Name "ValDispatcher")
+    let className = R.Specialized [trigTypes] (R.Qualified "K3" $ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
-                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className] $ R.Name "make_shared") [tv, vv])
+                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
+                                           (R.Qualified "std" $ R.Name "make_shared")) [tv, vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
     return (concat [te, ae, ve]
