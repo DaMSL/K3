@@ -25,6 +25,8 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
+--
+-- TODO: Add RAssign/RDeclare distinction.
 data RContext
 
     -- | Indicates that the calling context will ignore the callee's result.
@@ -246,6 +248,7 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return $ ae ++ be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
+    -- TODO: Push declaration into reification.
     ct <- getKType e
     d <- cDecl ct x
     ee <- reify (RName x) e
