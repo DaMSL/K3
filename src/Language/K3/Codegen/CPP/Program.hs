@@ -70,10 +70,18 @@ program (tag &&& children -> (DRole name, decls)) = do
     let contextClassDefn = R.ClassDefn (R.Name $ name ++ "_context")
                                [R.Named $ R.Name "__program__context"] contextDefns [] []
 
+    mainFn <- main
+
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn]
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
+
+main :: CPPGenM [R.Definition]
+main = return [
+        R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
+             (Just $ R.Primitive R.PInt) [] []
+       ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
