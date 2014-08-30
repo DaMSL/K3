@@ -65,10 +65,16 @@ program (tag &&& children -> (DRole name, decls)) = do
     records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
     recordDefns <- mapM record records
 
-    let contextDefns = forwardDefns ++ programDefns
+    let contextName = R.Name $ name ++ "_context"
 
-    let contextClassDefn = R.ClassDefn (R.Name $ name ++ "_context")
-                               [R.Named $ R.Name "__program__context"] contextDefns [] []
+    inits <- initializations <$> get
+
+    let contextConstructor = R.FunctionDefn contextName [] Nothing
+                             [R.Call (R.Variable $ R.Name "__program_context") []] inits
+
+    let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns
+    let contextClassDefn = R.ClassDefn contextName
+                               [R.Named $ R.Name "__program_context"] contextDefns [] []
 
     mainFn <- main
 
