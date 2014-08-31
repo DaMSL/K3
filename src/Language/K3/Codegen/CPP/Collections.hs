@@ -325,6 +325,8 @@ record (sort -> ids) = do
                              (R.ClassDefn (R.Name "patcher") [recordType] [] [patcherFnDefn] [] [])
                        ]
 
+    return [recordStructDefn, patcherStructDefn]
+
 --     serializer <- serializeDefn
 
 --     let publicDefs = vsep $ constructors ++ [equalityOperator, serializer]
