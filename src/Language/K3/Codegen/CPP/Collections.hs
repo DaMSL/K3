@@ -282,6 +282,49 @@ record (sort -> ids) = do
                (R.Qualified "qi" (R.Name "rule")))
               (Just $ R.Subscript (oneFieldParserDefn f) (oneFieldParserAction f))
 
+    let allFieldParserDecls = map oneFieldParserDecl ids
+
+    let fieldParserDecl
+            = R.Forward $ R.ScalarDecl (R.Name "_field")
+              (R.Named $ R.Specialized
+                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
+                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    ]
+               (R.Qualified "qi" (R.Name "rule")))
+              (Just $ foldl1 (R.Binary "|") [R.Variable (R.Name $ "_" ++ f) | f <- "x": ids])
+
+    let recordParserDecl
+            = R.Forward $ R.ScalarDecl (R.Name "_parser")
+              (R.Named $ R.Specialized
+                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
+                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    ]
+               (R.Qualified "qi" (R.Name "rule")))
+              (Just $ foldl1 (R.Binary ">>")
+                                   [ R.Literal (R.LChar '{')
+                                   , R.Binary "%" (R.Variable $ R.Name "_field") (R.Literal $ R.LChar ',')
+                                   , R.Literal (R.LChar '}')
+                                   ])
+
+    let parseInvocation
+            = R.Call (R.Variable $ R.Qualified "qi" (R.Name "phrase_parse"))
+              [ R.Call (R.Variable $ R.Qualified "std" (R.Name "begin")) [R.Variable $ R.Name "_input"]
+              , R.Call (R.Variable $ R.Qualified "std" (R.Name "end")) [R.Variable $ R.Name "_input"]
+              , R.Variable (R.Name "_parser")
+              , R.Variable (R.Qualified "qi" $ R.Name "space")
+              ]
+
+    let patcherFnDefn
+            = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_record", R.Reference recordType)]
+              (Just $ R.Named $ R.Name "static void") []
+              ([shallowDecl] ++ allFieldParserDecls ++ [fieldParserDecl, recordParserDecl, R.Ignore parseInvocation])
+
+    let patcherStructDefn
+            = R.NamespaceDefn "K3" [
+                        R.TemplateDefn (zip templateVars (repeat Nothing))
+                             (R.ClassDefn (R.Name "patcher") [recordType] [] [patcherFnDefn] [] [])
+                       ]
+
 --     serializer <- serializeDefn
 
 --     let publicDefs = vsep $ constructors ++ [equalityOperator, serializer]
