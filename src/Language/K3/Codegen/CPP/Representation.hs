@@ -130,6 +130,7 @@ data Expression
     | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
+    | Subscript Expression Expression
     | Unary Identifier Expression
     | Variable Name
   deriving (Eq, Read, Show)
@@ -148,6 +149,7 @@ instance Stringifiable Expression where
         bd' = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
+    stringify (Subscript a b) = parens (stringify a) <> brackets (stringify b)
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 
