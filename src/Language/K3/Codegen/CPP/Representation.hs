@@ -44,6 +44,7 @@ hangBrace :: Doc -> Doc
 hangBrace d = "{" <$$> indent 4 d <$$> text "}"
 
 binaryParens :: Identifier -> Expression -> (Doc -> Doc)
+binaryParens _ (Call _ _) = id
 binaryParens _ (Variable _) = id
 binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
   where
@@ -51,7 +52,16 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
     precedence x = fromJust $ lookup x precedences
 
     precedences :: [(Identifier, Int)]
-    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("==", 9), ("&&", 13), ("||", 14)]
+    precedences
+        = [ ("!", 3)
+          , ("*", 5), ("/", 5), ("%", 5)
+          , ("+", 6), ("-", 6)
+          , (">>", 7)
+          , ("==", 9)
+          , ("|", 12)
+          , ("&&", 13)
+          , ("||", 14)
+          ]
 
 binaryParens _ _ = parens
 
