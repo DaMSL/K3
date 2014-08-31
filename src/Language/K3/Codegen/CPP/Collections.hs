@@ -273,6 +273,15 @@ record (sort -> ids) = do
               [("_partial", R.Primitive R.PString)] Nothing
               [R.Ignore $ doPatchInvocation f]
 
+    let oneFieldParserDecl f
+            = R.Forward $ R.ScalarDecl (R.Name $ "_" ++ f)
+              (R.Named $ R.Specialized
+                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
+                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    ]
+               (R.Qualified "qi" (R.Name "rule")))
+              (Just $ R.Subscript (oneFieldParserDefn f) (oneFieldParserAction f))
+
 --     serializer <- serializeDefn
 
 --     let publicDefs = vsep $ constructors ++ [equalityOperator, serializer]
