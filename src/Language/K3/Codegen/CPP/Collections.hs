@@ -57,7 +57,7 @@ composite name ans = do
     let methods = [defaultConstructor, copyConstructor]
 
     return [R.TemplateDefn [("__CONTENT", Nothing)]
-             (R.ClassDefn (R.Name name) (map R.Named baseClasses) methods [] [])]
+             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])]
   where
 
 --     let parentSerializeCall p = text "_archive" <+> text "&" <+>
@@ -250,7 +250,9 @@ record (sort -> ids) = do
 
     let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator] ++ fieldDecls
 
-    return [R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] members [] []]
+    let recordStructDefn
+            = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
+
 
 --     serializer <- serializeDefn
 
