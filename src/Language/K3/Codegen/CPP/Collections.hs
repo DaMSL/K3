@@ -260,6 +260,13 @@ record (sort -> ids) = do
     let doPatchInvocation f = R.Call (R.Variable $ R.Name "do_patch")
                               [R.Variable $ R.Name "_partial", R.Project (R.Variable $ R.Name "_record") (R.Name f)]
 
+    let oneFieldParserDefn f
+            = foldl1 (R.Binary ">>")
+              [ R.Call (R.Variable $ R.Qualified "qi" (R.Name "lit")) [R.Literal $ R.LString f]
+              , R.Literal (R.LChar ':')
+              , R.Variable (R.Name "_shallow")
+              ]
+
 
 --     serializer <- serializeDefn
 
