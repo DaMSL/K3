@@ -267,6 +267,11 @@ record (sort -> ids) = do
               , R.Variable (R.Name "_shallow")
               ]
 
+    let oneFieldParserAction f
+            = R.Lambda [("_record", R.Call (R.Variable (R.Qualified "std" (R.Name "ref")))
+                                      [R.Variable $ R.Name "_record"])]
+              [("_partial", R.Primitive R.PString)] Nothing
+              [R.Ignore $ doPatchInvocation f]
 
 --     serializer <- serializeDefn
 
