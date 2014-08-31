@@ -73,8 +73,7 @@ program (tag &&& children -> (DRole name, decls)) = do
                              [R.Call (R.Variable $ R.Name "__program_context") []] inits
 
     let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns
-    let contextClassDefn = R.ClassDefn contextName
-                               [R.Named $ R.Name "__program_context"] contextDefns [] []
+    let contextClassDefn = R.ClassDefn contextName [R.Named $ R.Name "__program_context"] [] contextDefns [] []
 
     mainFn <- main
 
