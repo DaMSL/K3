@@ -253,6 +253,13 @@ record (sort -> ids) = do
     let recordStructDefn
             = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
 
+    let shallowDecl = R.Forward $ R.ScalarDecl (R.Name "_shallow")
+                      (R.Named $ R.Specialized [R.Named $ R.Qualified "string" (R.Name "iterator")]
+                            (R.Name "shallow")) Nothing
+
+    let doPatchInvocation f = R.Call (R.Variable $ R.Name "do_patch")
+                              [R.Variable $ R.Name "_partial", R.Project (R.Variable $ R.Name "_record") (R.Name f)]
+
 
 --     serializer <- serializeDefn
 
