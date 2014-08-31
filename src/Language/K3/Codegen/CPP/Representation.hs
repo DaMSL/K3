@@ -196,17 +196,19 @@ instance Stringifiable Statement where
     stringify (Return e) = "return" <+> stringify e <> semi
 
 data Definition
-    = ClassDefn Name [Type] [Definition] [Definition] [Definition]
+    = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
     | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
     | GlobalDefn Statement
-    | IncludeDefn Identifier
     | GuardedDefn Identifier Definition
+    | IncludeDefn Identifier
+    | NamespaceDefn Identifier [Definition]
     | TemplateDefn [(Identifier, Maybe Type)] Definition
   deriving (Eq, Read, Show)
 
 instance Stringifiable Definition where
-    stringify (ClassDefn cn ps publics privates protecteds) =
-        "class" <+> stringify cn <> stringifyParents ps
+    stringify (ClassDefn cn ts ps publics privates protecteds) =
+        "class" <+> stringify cn <> (if null ts then empty else angles (commaSep $ map stringify ts))
+                    <> stringifyParents ps
                     <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
         guardNull xs ys = if null xs then [] else ys
@@ -223,9 +225,10 @@ instance Stringifiable Definition where
         is' = if null is then empty else colon <+> commaSep (map stringify is)
         bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
-    stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
     stringify (GuardedDefn i d)
         = "#ifndef" <+> fromString i <$$> "#define" <+> fromString i <$$> stringify d <$$> "#endif"
+    stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
+    stringify (NamespaceDefn n ss) = "namespace" <+> fromString n <+> hangBrace (vsep $ map stringify ss)
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
