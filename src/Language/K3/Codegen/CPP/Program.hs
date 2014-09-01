@@ -222,10 +222,10 @@ requiredIncludes = return
 -- staticGlobals :: CPPGenM CPPGenR
 -- staticGlobals = return $ text "K3::Engine engine;"
 
--- | Generate a function to help print the current environment (global vars and their values).
--- Currently, this function returns a map from string (variable name) to string (string representation of value)
+ --| Generate a function to help print the current environment (global vars and their values).
+ -- Currently, this function returns a map from string (variable name) to string (string representation of value)
 --showGlobalsName :: R.Name
---showGlobalsName = R.Name "show_globals"
+--showGlobalsName = R.Name "prettify"
 
 --showGlobals :: CPPGenM R.Definition
 --showGlobals = do
@@ -244,6 +244,7 @@ requiredIncludes = return
 --     return_st   <- return $ R.Return $ R.Variable $ R.Name result
 --     return $ (result_decl : inserts) ++ [return_st]
 
+--   -- Insert a key-value pair into the map
 --   gen_inserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
 --   gen_inserts n_ts = do
 --     names      <- return $ map fst n_ts
@@ -253,7 +254,7 @@ requiredIncludes = return
 --     rhs_exprs  <- mapM (\(n,t) -> showVar t n) new_nts
 --     return $ zipWith (R.Assignment) lhs_exprs rhs_exprs
 
----- | Generate an expression that represents a global variable as a string
+---- | Generate an expression that represents a variable as a string
 --showVar :: K3 Type -> R.Expression -> CPPGenM R.Expression
 --showVar base_t e =
 -- case base_t of
@@ -269,8 +270,8 @@ requiredIncludes = return
 --   ((tag &&& children) -> (TOption, [t]))      -> opt t e
 --   ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t e
 --   ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts e
---   --((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts name
---   --((tag &&& children) -> (TCollection, [et])) -> coll_to_string base_t et name
+--   ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts name
+--n
 --   _                                           -> return $ lit_string "Cant Show!"
 -- where
 --   -- Utils
@@ -278,19 +279,19 @@ requiredIncludes = return
 
 --   var_by_name = R.Variable . R.Name
 --   lit_string  = R.Literal . R.LString
---   wrap stmnts  = R.Call (R.Lambda [] [] Nothing stmnts) []
+--   wrap stmnts e = R.Call (R.Lambda [] [("x", R.Reference $ R.Named $ R.Name "auto")] Nothing stmnts) [e]
 --   to_string e = R.Call (R.Variable $ R.Qualified "std" $ R.Name "to_string") [e]
---   concat = R.Binary "+" 
+--   concat = R.Binary "+"
 --   get_tup i e = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [e]
 --   str = dquotes . text
 --   deref = (++) "*"
---   project field n = n ++ "." ++ field
+--   project field n = R.Project (R.Variable $ R.Name field) (R.Name n)
 --   inner_comma = line <> text "+" <+> str "," <> line <> text "+"
 
 --   -- Option
 --   opt ct e = do
---       inner <- showVar ct (R.Dereference e)
---       return $ wrap $ singleton $ R.IfThenElse e [(R.Return $ concat (lit_string "Some ") inner)] [(R.Return $ lit_string "None")]
+--       inner <- showVar ct (R.Dereference (R.Variable $ R.Name "x"))
+--       return $ wrap $ singleton $ R.IfThenElse e [(R.Return $ concat (lit_string "Some ") inner)] [(R.Return $ lit_string "None")] $ e
 --   -- Indirection
 --   ind_to_string ct e = do
 --       inner <- showVar ct (R.Dereference e)
@@ -301,20 +302,22 @@ requiredIncludes = return
 --       cs     <- mapM (\(ct,i) -> showVar ct (get_tup i e)) ct_is --show each element in tuple
 --       commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
 --       return $ concat (foldl concat (lit_string "(") commad) (lit_string ")") -- concat
-   ---- Record
-   --rec_to_string ids cts n = do
-   --    ct_ids <- return $ zip cts ids
-   --    cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ str (field ++ ":") <+> text "+" <+>  v <> line) ct_ids
-   --    done   <- return $ L.intersperse inner_comma cs
-   --    return $ str "{" <> line <> text "+" <+> parens (hsep done <+> text "+" <> line <> str "}")
-   ---- Collection
-   --coll_to_string t et n = do
-   --    rvar <- return $ text "ostringstream oss;"
-   --    t_n  <- genCType t
-   --    et_n <- genCType et
-   --    v    <- showVar et "elem"
-   --    fun  <- return $ text "auto f = [&]" <+> parens (et_n <+> text "elem") <+> braces (vsep [(text "oss <<" <+> v <+> text "<< \",\";"), text "return unit_t();"]) <> semi
-   --    iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
-   --    result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
-   --    -- wrap in lambda, then call it
-   --    return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)
+--   ---- Record
+--   rec_to_string ids cts n = do
+--       ct_ids <- return $ zip cts ids
+--       cs     <- mapM (\(ct,field) -> showVar ct (project field n) >>= \v -> return $ concat (lit_string $ field ++ ":") v) ct_ids
+--       done   <- return $ L.intersperse (lit_string ",") cs
+--       return $ concat (foldl concat (lit_string "{") done) (lit_string "}")
+--   ---- Collection
+--   coll_to_string t et n = do
+--       rvar <- return $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream")
+--       t_n  <- genCType t
+--       et_n <- genCType et
+--       e_name <- return $ R.Name "elem"
+--       v    <- showVar et (R.Variable e_name)
+--       lambda_body <- return $ R.Block $ [R.Ignore $ R.Binary "<<" (R.Variable e_name) (concat v $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
+--       fun <- return $ R.Lambda [] ("elem", R.Reference $ R.Named $ R.Name "auto") Nothing lambda_body
+--       iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") "iterate") [fun]
+--       result <- return $ R.Return $ concat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") "str") [])
+--       -- wrap in lambda, then call it
+--       return $ wrap (R.Block [R.Ignore iterate, result]) n
