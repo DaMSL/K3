@@ -194,10 +194,10 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Qualified "K3" $ R.Name "ValDispatcher")
+    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified "std" $ R.Name "make_shared")) [tv, vv])
+                                           (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [tv, vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
     return (concat [te, ae, ve]
@@ -286,7 +286,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
                 let (tag &&& children -> (TTuple, ts)) = ta
                 ds <- zipWithM cDecl ts is
                 let bindVars = [R.Variable (R.Name i) | i <- is]
-                let tieCall = R.Call (R.Variable $ R.Qualified "std" (R.Name "tie")) bindVars
+                let tieCall = R.Call (R.Variable $ R.Qualified (R.Name "std" )(R.Name "tie")) bindVars
                 return $ concat ds ++ [R.Assignment tieCall g]
             BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
 
