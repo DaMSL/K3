@@ -247,14 +247,25 @@ record (sort -> ids) = do
                      | i <- ids
                      | t <- templateVars
                      ]
+    let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive") (R.Variable $ R.Name m)
 
-    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator] ++ fieldDecls
+    let serializeStatements = map serializeMember ids
+
+    let serializeFn = R.TemplateDefn [("archive", Nothing)]
+                      (R.FunctionDefn (R.Name "serialize")
+                            [ ("_archive", R.Reference (R.Parameter "archive"))
+                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
+                            ]
+                       (Just $ R.Named $ R.Name "void")
+                       [] serializeStatements)
+
+    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator, serializeFn] ++ fieldDecls
 
     let recordStructDefn
             = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
 
     let shallowDecl = R.Forward $ R.ScalarDecl (R.Name "_shallow")
-                      (R.Named $ R.Specialized [R.Named $ R.Qualified "string" (R.Name "iterator")]
+                      (R.Named $ R.Specialized [R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")]
                             (R.Name "shallow")) Nothing
 
     let doPatchInvocation f = R.Call (R.Variable $ R.Name "do_patch")
@@ -262,13 +273,13 @@ record (sort -> ids) = do
 
     let oneFieldParserDefn f
             = foldl1 (R.Binary ">>")
-              [ R.Call (R.Variable $ R.Qualified "qi" (R.Name "lit")) [R.Literal $ R.LString f]
+              [ R.Call (R.Variable $ R.Qualified (R.Name "qi") (R.Name "lit")) [R.Literal $ R.LString f]
               , R.Literal (R.LChar ':')
               , R.Variable (R.Name "_shallow")
               ]
 
     let oneFieldParserAction f
-            = R.Lambda [("_record", R.Call (R.Variable (R.Qualified "std" (R.Name "ref")))
+            = R.Lambda [("_record", R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "ref")))
                                       [R.Variable $ R.Name "_record"])]
               [("_partial", R.Primitive R.PString)] Nothing
               [R.Ignore $ doPatchInvocation f]
@@ -276,10 +287,10 @@ record (sort -> ids) = do
     let oneFieldParserDecl f
             = R.Forward $ R.ScalarDecl (R.Name $ "_" ++ f)
               (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
-                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
+                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
                     ]
-               (R.Qualified "qi" (R.Name "rule")))
+               (R.Qualified (R.Name "qi") (R.Name "rule")))
               (Just $ R.Subscript (oneFieldParserDefn f) (oneFieldParserAction f))
 
     let allFieldParserDecls = map oneFieldParserDecl ids
@@ -287,19 +298,19 @@ record (sort -> ids) = do
     let fieldParserDecl
             = R.Forward $ R.ScalarDecl (R.Name "_field")
               (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
-                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
+                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
                     ]
-               (R.Qualified "qi" (R.Name "rule")))
+               (R.Qualified (R.Name "qi") (R.Name "rule")))
               (Just $ foldl1 (R.Binary "|") [R.Variable (R.Name $ "_" ++ f) | f <- "x": ids])
 
     let recordParserDecl
             = R.Forward $ R.ScalarDecl (R.Name "_parser")
               (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified "string" (R.Name "iterator")
-                    , R.Named $ R.Qualified "qi" (R.Name "space_type")
+                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
+                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
                     ]
-               (R.Qualified "qi" (R.Name "rule")))
+               (R.Qualified (R.Name "qi") (R.Name "rule")))
               (Just $ foldl1 (R.Binary ">>")
                                    [ R.Literal (R.LChar '{')
                                    , R.Binary "%" (R.Variable $ R.Name "_field") (R.Literal $ R.LChar ',')
@@ -307,11 +318,11 @@ record (sort -> ids) = do
                                    ])
 
     let parseInvocation
-            = R.Call (R.Variable $ R.Qualified "qi" (R.Name "phrase_parse"))
-              [ R.Call (R.Variable $ R.Qualified "std" (R.Name "begin")) [R.Variable $ R.Name "_input"]
-              , R.Call (R.Variable $ R.Qualified "std" (R.Name "end")) [R.Variable $ R.Name "_input"]
+            = R.Call (R.Variable $ R.Qualified (R.Name "qi") (R.Name "phrase_parse"))
+              [ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "begin")) [R.Variable $ R.Name "_input"]
+              , R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [R.Variable $ R.Name "_input"]
               , R.Variable (R.Name "_parser")
-              , R.Variable (R.Qualified "qi" $ R.Name "space")
+              , R.Variable (R.Qualified (R.Name "qi") $ R.Name "space")
               ]
 
     let patcherFnDefn
