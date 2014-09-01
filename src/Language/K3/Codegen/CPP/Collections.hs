@@ -212,6 +212,47 @@ composite name ans = do
 
 -- annMemDecl (Attribute _ i _ _ _) = return $ text i
 -- annMemDecl (MAnnotation _ i _) = return $ text i
+    let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+                          (R.Call
+                              (R.Variable $
+                                R.Specialized [R.Named $ R.Qualified (R.Name "K3") p]
+                                  (R.Qualified (R.Name "boost") $
+                                    R.Qualified (R.Name "serialization") $ R.Name "base_object"))
+                              [R.Variable $ R.Name "*this"])
+
+    let serializeStatements = map serializeParent baseClasses
+
+    let serializeFn = R.TemplateDefn [("archive", Nothing)]
+                      (R.FunctionDefn (R.Name "serialize")
+                            [ ("_archive", R.Reference (R.Parameter "archive"))
+                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
+                            ]
+                       (Just $ R.Named $ R.Name "void")
+                       [] serializeStatements)
+
+    let patcherFnDefn
+            = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_c", R.Reference selfType)]
+              (Just $ R.Named $ R.Name "static void") []
+              [R.Ignore $
+                R.Call (
+                  R.Variable $ R.Qualified
+                  (R.Specialized [R.Parameter name, R.Parameter "__CONTENT"] (R.Name "patch"))
+                  (R.Name "collection_patcher"))
+                     [R.Variable $ R.Name "_input", R.Variable $ R.Name "_c"]
+              ]
+
+    let patcherStructDefn
+            = R.NamespaceDefn "K3" [
+                      R.TemplateDefn [("__CONTENT", Nothing)]
+                           (R.ClassDefn (R.Name "patcher") [selfType] [] [patcherFnDefn] [] [])
+                     ]
+
+    let methods = [defaultConstructor, copyConstructor, serializeFn]
+
+    let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
+             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
+
+    return [collectionClassDefn, patcherStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
