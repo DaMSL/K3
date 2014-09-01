@@ -115,12 +115,7 @@ class R_key_value {
             return false;
         }
         bool operator<(const R_key_value& _r) const {
-            if (key == _r.key) {
-              return value < _r.value;
-            }
-            else {
-              return key < _r.key;
-            }
+          return std::tie(key, value) < std::tie(_r.key, _r.value);
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
@@ -135,11 +130,10 @@ class R_key_value {
         typedef _T1 ValueType;
 };
 
-// TODO incorporate value into hash
 template <class K,class V>
   std::size_t hash_value(R_key_value<K,V> const& b) {
-    boost::hash<K> hasher;
-    return hasher(b.key);
+    boost::hash<std::tuple<K,V>> hasher;
+    return hasher(std::tie(b.key, b.value));
 }
 
 #endif

@@ -250,6 +250,13 @@ class StlDS {
     return result;
   }
 
+  bool operator==(const StlDS& other) const {
+    return container == other.container;
+  }
+  bool operator<(const StlDS& other) const {
+    return container < other.container;
+  }
+
   Container& getContainer() { return container; }
 
   // Return a constant reference to the container
@@ -904,6 +911,14 @@ class Map {
       }
   }
 
+  bool operator==(const Map& other) const {
+    return container == other.container;
+  }
+
+  bool operator<(const Map& other) const {
+    return container < other.container;
+  }
+
   unordered_map<Key, Value>& getContainer() { return container; }
 
   const unordered_map<Key, Value>& getConstContainer() const { return container; }
@@ -920,6 +935,16 @@ class Map {
 
 }; // class Map
 
-
-
 } // Namespace K3
+
+template <class Container,class Elem>
+std::size_t hash_value(StlDS<Container,Elem> const& b) {
+  const auto& c  = b.getConstContainer();
+  return boost::hash_range(c.begin(), c.end());
+}
+
+template <class Elem>
+std::size_t hash_value(Map<Elem> const& b) {
+  const auto& c  = b.getConstContainer();
+  return boost::hash_range(c.begin(), c.end());
+}

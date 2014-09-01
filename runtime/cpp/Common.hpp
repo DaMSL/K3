@@ -93,11 +93,10 @@ namespace K3 {
                         addressPort(std::forward<Address>(addr))+2);
   }
 
-  // TODO implement hash for asio ip address
-  // std::size_t hash_value(boost::asio::ip::address const& b) {
-
-  // }
-
+  std::size_t hash_value(boost::asio::ip::address const& b) {
+    boost::hash<std::string> hasher;
+    return hasher(b.to_string());
+  }
 
   // TODO put the definition somewhere
   static Address defaultAddress = make_address("127.0.0.1", 40000);
