@@ -97,7 +97,6 @@ namespace K3 {
     boost::hash<std::string> hasher;
     return hasher(b.to_string());
   }
-
   // TODO put the definition somewhere
   static Address defaultAddress = make_address("127.0.0.1", 40000);
 

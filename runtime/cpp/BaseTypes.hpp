@@ -52,6 +52,9 @@ class R_addr {
                 return true;
             return false;
         }
+        bool operator!=(const R_addr& _r) const {
+            return !(*this == _r);
+        }
         bool operator<(const R_addr& _r) const {
           return addr < _r.addr;
         }
@@ -84,6 +87,10 @@ class R_elem {
                 return true;
             return false;
         }
+        // TODO, beter implementation?
+        bool operator!=(const R_elem& _r) const {
+            return !(*this == _r);
+        }
         bool operator<(const R_elem& _r) const {
             return elem < _r.elem;
         }
@@ -113,6 +120,9 @@ class R_key_value {
             if (key == _r.key&& value == _r.value)
                 return true;
             return false;
+        }
+        bool operator!=(const R_key_value& _r) const {
+            return !(*this == _r);
         }
         bool operator<(const R_key_value& _r) const {
           return std::tie(key, value) < std::tie(_r.key, _r.value);
