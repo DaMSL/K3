@@ -41,7 +41,7 @@ commaSep :: [Doc] -> Doc
 commaSep = fillSep . punctuate comma
 
 hangBrace :: Doc -> Doc
-hangBrace d = "{" <$$> indent 4 d <$$> text "}"
+hangBrace d = "{" <$$> indent 2 d <$$> text "}"
 
 binaryParens :: Identifier -> Expression -> (Doc -> Doc)
 binaryParens _ (Call _ _) = id
