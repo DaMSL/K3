@@ -67,13 +67,13 @@ binaryParens _ _ = parens
 
 data Name
     = Name Identifier
-    | Qualified Identifier Name
+    | Qualified Name Name
     | Specialized [Type] Name
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Name where
     stringify (Name i) = text i
-    stringify (Qualified i n) = text i <> "::" <> stringify n
+    stringify (Qualified i n) = stringify i <> "::" <> stringify n
     stringify (Specialized ts n) = stringify n <> angles (commaSep $ map stringify ts)
 
 data Primitive
@@ -87,7 +87,7 @@ instance Stringifiable Primitive where
     stringify PBool = "bool"
     stringify PInt = "int"
     stringify PDouble = "double"
-    stringify PString = stringify (Qualified "std" $ Name "string")
+    stringify PString = stringify (Qualified (Name "std") $ Name "string")
 
 data Type
     = Const Type
@@ -104,7 +104,7 @@ pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
 pattern Unit = Named (Name "unit_t")
-pattern Tuple ts = Named (Specialized ts (Qualified "std" (Name "tuple")))
+pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 
 instance Stringifiable Type where
     stringify Inferred = "auto"
