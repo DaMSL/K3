@@ -75,6 +75,8 @@ declaration (tag -> DGlobal i t me) = do
     globalInit <- maybe (return []) (reify $ RName i) me
 
     addInitialization globalInit
+    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
+
     return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType Nothing]
 
 -- Triggers are implementationally identical to functions returning unit, except they also generate

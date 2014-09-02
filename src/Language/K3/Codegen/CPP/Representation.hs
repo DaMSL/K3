@@ -41,9 +41,10 @@ commaSep :: [Doc] -> Doc
 commaSep = fillSep . punctuate comma
 
 hangBrace :: Doc -> Doc
-hangBrace d = "{" <$$> indent 4 d <$$> text "}"
+hangBrace d = "{" <$$> indent 2 d <$$> text "}"
 
 binaryParens :: Identifier -> Expression -> (Doc -> Doc)
+binaryParens _ (Call _ _) = id
 binaryParens _ (Variable _) = id
 binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
   where
@@ -51,19 +52,28 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
     precedence x = fromJust $ lookup x precedences
 
     precedences :: [(Identifier, Int)]
-    precedences = [("!", 3), ("+", 6), ("-", 6), ("*", 5), ("/", 5), ("%", 5), ("&&", 13), ("||", 14)]
+    precedences
+        = [ ("!", 3)
+          , ("*", 5), ("/", 5), ("%", 5)
+          , ("+", 6), ("-", 6)
+          , (">>", 7)
+          , ("==", 9)
+          , ("|", 12)
+          , ("&&", 13)
+          , ("||", 14)
+          ]
 
 binaryParens _ _ = parens
 
 data Name
     = Name Identifier
-    | Qualified Identifier Name
+    | Qualified Name Name
     | Specialized [Type] Name
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Name where
     stringify (Name i) = text i
-    stringify (Qualified i n) = text i <> "::" <> stringify n
+    stringify (Qualified i n) = stringify i <> "::" <> stringify n
     stringify (Specialized ts n) = stringify n <> angles (commaSep $ map stringify ts)
 
 data Primitive
@@ -77,14 +87,16 @@ instance Stringifiable Primitive where
     stringify PBool = "bool"
     stringify PInt = "int"
     stringify PDouble = "double"
-    stringify PString = stringify (Qualified "std" $ Name "string")
+    stringify PString = stringify (Qualified (Name "std") $ Name "string")
 
 data Type
-    = Inferred
+    = Const Type
+    | Inferred
     | Named Name
     | Parameter Identifier
     | Primitive Primitive
     | Reference Type
+    | RValueReference Type
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -92,17 +104,20 @@ pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
 pattern Unit = Named (Name "unit_t")
-pattern Tuple ts = Named (Specialized ts (Qualified "std" (Name "tuple")))
+pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 
 instance Stringifiable Type where
-    stringify (Named n) = stringify n
     stringify Inferred = "auto"
+    stringify (Const t) = "const" <+> stringify t
+    stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
     stringify (Primitive p) = stringify p
-    stringify (Reference t) = stringify t <> fromString "&"
+    stringify (Reference t) = stringify t <> "&"
+    stringify (RValueReference t) = stringify t <> "&&"
 
 data Literal
     = LBool Bool
+    | LChar Char
     | LInt Int
     | LDouble Double
     | LString String
@@ -111,6 +126,7 @@ data Literal
 
 instance Stringifiable Literal where
     stringify (LBool b) = if b then "true" else "false"
+    stringify (LChar c) = squotes (char c)
     stringify (LInt i) = int i
     stringify (LDouble d) = double d
     stringify (LString s) = dquotes $ string s
@@ -124,6 +140,7 @@ data Expression
     | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
+    | Subscript Expression Expression
     | Unary Identifier Expression
     | Variable Name
   deriving (Eq, Read, Show)
@@ -142,6 +159,7 @@ instance Stringifiable Expression where
         bd' = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
+    stringify (Subscript a b) = parens (stringify a) <> brackets (stringify b)
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 
@@ -188,21 +206,24 @@ instance Stringifiable Statement where
     stringify (Return e) = "return" <+> stringify e <> semi
 
 data Definition
-    = ClassDefn Name [Type] [Definition] [Definition] [Definition]
+    = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
     | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
     | GlobalDefn Statement
-    | IncludeDefn Identifier
     | GuardedDefn Identifier Definition
+    | IncludeDefn Identifier
+    | NamespaceDefn Identifier [Definition]
     | TemplateDefn [(Identifier, Maybe Type)] Definition
   deriving (Eq, Read, Show)
 
 instance Stringifiable Definition where
-    stringify (ClassDefn cn ps publics privates protecteds) =
-        "class" <+> stringify cn <> colon <+> stringifyParents ps
+    stringify (ClassDefn cn ts ps publics privates protecteds) =
+        "class" <+> stringify cn <> (if null ts then empty else angles (commaSep $ map stringify ts))
+                    <> stringifyParents ps
                     <+> hangBrace (vsep $ concat [publics', privates', protecteds']) <> semi
       where
         guardNull xs ys = if null xs then [] else ys
-        stringifyParents parents = commaSep ["public" <+> stringify t | t <- parents]
+        stringifyParents parents
+            = if null ps then empty else colon <+> commaSep ["public" <+> stringify t | t <- parents]
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
@@ -212,11 +233,12 @@ instance Stringifiable Definition where
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         is' = if null is then empty else colon <+> commaSep (map stringify is)
-        bd' = hangBrace (vsep $ map stringify bd)
+        bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
-    stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
     stringify (GuardedDefn i d)
         = "#ifndef" <+> fromString i <$$> "#define" <+> fromString i <$$> stringify d <$$> "#endif"
+    stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
+    stringify (NamespaceDefn n ss) = "namespace" <+> fromString n <+> hangBrace (vsep $ map stringify ss)
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
