@@ -49,7 +49,7 @@ stringifyProgram d = vsep . map R.stringify <$> program d
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
 program :: K3 Declaration -> CPPGenM [R.Definition]
-program (tag &&& children -> (DRole name, decls)) = do
+program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
 
@@ -206,20 +206,6 @@ requiredIncludes = return
 --       ]
 
 -- namespaces :: CPPGenM [Identifier]
--- namespaces = do
---     serializationNamespace <- serializationMethod <$> get >>= \case
---         BoostSerialization -> return "namespace K3::BoostSerializer"
---     return [
---             "namespace std",
---             "namespace K3",
---             serializationNamespace,
---             "std::begin", "std::end"
---         ]
-
--- aliases :: [(Identifier, Identifier)]
--- aliases = [
---     ]
-
 -- staticGlobals :: CPPGenM CPPGenR
 -- staticGlobals = return $ text "K3::Engine engine;"
 
