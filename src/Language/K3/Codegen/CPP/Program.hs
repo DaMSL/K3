@@ -251,7 +251,7 @@ genPrettify = do
      names      <- return $ map fst n_ts
      name_vars  <- return $ map (R.Variable . R.Name) names
      new_nts    <- return $ zip name_vars $ map snd n_ts
-     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name $ result) (lit_string x)) names
+     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name $ result) (R.Literal $ R.LString x)) names
      rhs_exprs  <- mapM (\(n,t) -> prettifyExpr t n) new_nts
      return $ zipWith (R.Assignment) lhs_exprs rhs_exprs
 
@@ -278,10 +278,10 @@ prettifyExpr base_t e =
    -- Utils
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
-   wrap stmnts e = R.Call (R.Lambda [] [("x", R.Reference $ R.Named $ R.Name "auto")] Nothing stmnts) [e]
+   wrap stmnts expr = R.Call (R.Lambda [] [("x", R.Const $ R.Reference $ R.Named $ R.Name "auto")] Nothing stmnts) [expr]
    to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
    concat = R.Binary "+"
-   get_tup i e = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [e]
+   get_tup i expr = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [expr]
    project field n = R.Project n (R.Name field)
 
    -- Option
@@ -310,7 +310,7 @@ prettifyExpr base_t e =
        e_name <- return $ R.Name "elem"
        v    <- prettifyExpr et (R.Variable e_name)
        lambda_body <- return $ [R.Forward rvar, R.Ignore $ R.Binary "<<" (R.Variable e_name) (concat v $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda [] [("elem", R.Reference $ R.Named $ R.Name "auto")] Nothing lambda_body
+       fun <- return $ R.Lambda [] [("elem", R.Const $ R.Reference $ R.Named $ R.Name "auto")] Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ concat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it

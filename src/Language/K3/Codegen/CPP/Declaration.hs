@@ -39,7 +39,8 @@ declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
 -- Global functions without implementations -- Built-Ins.
-declaration (tag -> DGlobal _ (tag -> TFunction) Nothing) = return []
+declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (\y -> y `L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
+                                                               | otherwise = return []
 
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
@@ -85,9 +86,7 @@ declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.un
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 
--- declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return empty
--- declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (\y -> y `L.isSuffixOf` name) source_builtins = genSourceBuiltin t name
---                                                                | otherwise = return empty
+--declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return []
 
 -- declaration (tag &&& children -> (DRole _, cs)) = do
 --     subDecls <- vsep . punctuate line <$> mapM declaration cs
@@ -133,44 +132,48 @@ declaration _ = return []
 -- -- Generated Builtins
 -- -- Interface for source builtins.
 -- -- Map special builtin suffix to a function that will generate the builtin.
--- source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM CPPGenR))]
--- source_builtin_map = [("HasRead", genHasRead),
---                       ("Read", genDoRead),
---                       ("Loader",genLoader),
---                       ("genJSON",genJSONLoader),
---                       ("LoaderVector", genVectorLoader),
---                       ("LoaderVectorLabel", genVectorLabelLoader)]
+source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
+source_builtin_map = [("HasRead", genHasRead),
+                      ("Read", genDoRead)]
+                   --("Loader",genLoader),
+                   --("genJSON",genJSONLoader),
+                   --("LoaderVector", genVectorLoader),
+                   --("LoaderVectorLabel", genVectorLabelLoader)]
 
--- source_builtins :: [String]
--- source_builtins = map fst source_builtin_map
+source_builtins :: [String]
+source_builtins = map fst source_builtin_map
 
--- -- Grab the generator function from the map, currying the key of the builtin to be generated.
--- getSourceBuiltin :: String -> (K3 Type -> String -> CPPGenM CPPGenR)
--- getSourceBuiltin k =
---   case filter (\(x,_) -> k == x) source_builtin_map of
---     []         -> error $ "Could not find builtin with name" ++ k
---     ((_,f):_) -> f k
+stripSuffix :: String -> String -> String
+stripSuffix suffix name = maybe (error "not a suffix!") reverse $ L.stripPrefix (reverse suffix) (reverse name)
 
--- genHasRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
--- genHasRead suf _ name = do
---   source_name <- return $ stripSuffix suf name
---   body        <- return $ text "return engine.hasRead" <> parens (dquotes $ text source_name) <> semi
---   forward     <- return $ text "bool" <+> text name <> parens (text "unit_t") <> semi
---   addForward forward
---   return $ genCFunction Nothing (text "bool") (text name) [text "unit_t"] body
+genSourceBuiltin :: K3 Type -> Identifier -> CPPGenM R.Definition
+genSourceBuiltin typ name = do
+    suffix <- return $ head $ filter (\y -> y `L.isSuffixOf` name) source_builtins
+    f <- return $ getSourceBuiltin suffix
+    f typ name
 
--- genDoRead :: String -> K3 Type -> String -> CPPGenM CPPGenR
--- genDoRead suf typ name = do
---     ret_type    <- genCType $ last $ children typ
---     source_name <- return $ stripSuffix suf name
---     res_decl    <- return $ ret_type <+> text "result" <> semi
---     doRead      <- return $ text "*engine.doReadExternal" <> parens (dquotes $ text source_name)
---     doPatch     <- return $ text "do_patch" <> angles ret_type <> parens (doRead <> comma <> text "result") <> semi
---     ret         <- return $ text "return result;"
---     body        <- return $ vsep $ [res_decl, doPatch, ret]
---     forward     <- return $ ret_type <+> text name <> parens (text "unit_t") <> semi
---     addForward forward
---     return $ genCFunction Nothing ret_type (text name) [text "unit_t"] body
+-- Grab the generator function from the map, currying the key of the builtin to be generated.
+getSourceBuiltin :: String -> (K3 Type -> String -> CPPGenM R.Definition)
+getSourceBuiltin k =
+    case filter (\(x,_) -> k == x) source_builtin_map of
+        []         -> error $ "Could not find builtin with name" ++ k
+        ((_,f):_) -> f k
+
+genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
+genHasRead suf _ name = do
+    let source_name = stripSuffix suf name
+    let e_has_r = R.Project (R.Variable $ R.Name "engine") (R.Name "hasRead")
+    let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name] 
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive $ R.PBool) [] [body]
+
+genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
+genDoRead suf typ name = do
+    ret_type    <- genCType $ last $ children typ
+    let source_name =  stripSuffix suf name
+    let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
+    let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "doReadExternal")) []
+    let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"] 
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
 -- genLoader :: String -> K3 Type -> String -> CPPGenM CPPGenR
 -- genLoader _ (children -> [_,f]) name = do
@@ -368,12 +371,3 @@ declaration _ = return []
 --                      _        ->  type_mismatch
 --     type_mismatch = error "Invalid type for Vector Loader function."
 -- genVectorLabelLoader _ _ _ = error "Invalid type for Vector Label Loader"
-
--- stripSuffix :: String -> String -> String
--- stripSuffix suffix name = maybe (error "not a suffix!") reverse $ L.stripPrefix (reverse suffix) (reverse name)
-
--- genSourceBuiltin :: K3 Type -> Identifier -> CPPGenM CPPGenR
--- genSourceBuiltin typ name = do
---   suffix <- return $ head $ filter (\y -> y `L.isSuffixOf` name) source_builtins
---   f <- return $ getSourceBuiltin suffix
---   f typ name

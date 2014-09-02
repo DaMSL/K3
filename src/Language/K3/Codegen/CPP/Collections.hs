@@ -114,6 +114,20 @@ record (sort -> ids) = do
                     | i <- ids
                     ]]
 
+    let tieSelf  = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Variable $ R.Name i | i <- ids]
+    let tieOther = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Project (R.Variable $ R.Name "__other") (R.Name i) | i <- ids]
+
+    let inequalityOperator
+            = R.FunctionDefn (R.Name "operator!=")
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [R.Return $ R.Binary "!=" tieSelf tieOther]
+
+    let lessOperator
+            = R.FunctionDefn (R.Name "operator<")
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [R.Return $ R.Binary "<" tieSelf tieOther]
+
+
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
                      | i <- ids
                      | t <- templateVars
@@ -130,7 +144,7 @@ record (sort -> ids) = do
                        (Just $ R.Named $ R.Name "void")
                        [] serializeStatements)
 
-    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator, serializeFn] ++ fieldDecls
+    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator, inequalityOperator, lessOperator, serializeFn] ++ fieldDecls
 
     let recordStructDefn
             = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
