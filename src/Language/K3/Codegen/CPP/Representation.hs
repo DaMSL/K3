@@ -57,6 +57,7 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
           , ("*", 5), ("/", 5), ("%", 5)
           , ("+", 6), ("-", 6)
           , (">>", 7)
+          , ("<<", 7)
           , ("==", 9)
           , ("|", 12)
           , ("&&", 13)
