@@ -72,7 +72,7 @@ program (tag &&& children -> (DRole name, decls)) = do
     let contextConstructor = R.FunctionDefn contextName [] Nothing
                              [R.Call (R.Variable $ R.Name "__program_context") []] inits
 
-    prettify <- showGlobals
+    prettify <- genPrettify
     let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns  ++ [prettify]
     let contextClassDefn = R.ClassDefn contextName [R.Named $ R.Name "__program_context"] [] contextDefns [] []
 
@@ -105,7 +105,7 @@ requiredIncludes = return
 -- program :: K3 Declaration -> CPPGenM CPPGenR
 -- program d = do
 --     let preprocessed = mangleReservedNames d
---     s <- showGlobals
+--     s <- genPrettify
 --     staticGlobals' <- staticGlobals
 --     program' <- declaration preprocessed
 --     genNamespaces <- namespaces  >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
@@ -170,7 +170,7 @@ requiredIncludes = return
 --             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
 --             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
 --               genCCall (text "DispatchMessageProcessor") Nothing
---                 [text showGlobalsName]) <> semi,
+--                 [text prettifyName]) <> semi,
 --             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
 --             text "return 0" <> semi
 --         ]
@@ -225,39 +225,39 @@ requiredIncludes = return
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
-showGlobalsName :: R.Name
-showGlobalsName = R.Name "prettify"
+prettifyName :: R.Name
+prettifyName = R.Name "prettify"
 
-showGlobals :: CPPGenM R.Definition
-showGlobals = do
+genPrettify :: CPPGenM R.Definition
+genPrettify = do
    currentS <- get
-   body    <- gen_body $ showables currentS
-   return $ R.FunctionDefn showGlobalsName [] (Just result_type) [] body
+   body    <- genBody $ showables currentS
+   return $ R.FunctionDefn prettifyName [] (Just result_type) [] body
  where
    p_string = R.Primitive R.PString
    result_type  = R.Named $ R.Specialized [p_string, p_string] (R.Name "map")
    result  = "result"
 
-   gen_body  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   gen_body n_ts = do
+   genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genBody n_ts = do
      result_decl <- return $ R.Forward $ R.ScalarDecl (R.Name result) result_type Nothing
-     inserts     <- gen_inserts n_ts
+     inserts     <- genInserts n_ts
      return_st   <- return $ R.Return $ R.Variable $ R.Name result
      return $ (result_decl : inserts) ++ [return_st]
 
-   -- Insert a key-value pair into the map
-   gen_inserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   gen_inserts n_ts = do
+   -- Insert key-value pairs into the map
+   genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genInserts n_ts = do
      names      <- return $ map fst n_ts
      name_vars  <- return $ map (R.Variable . R.Name) names
      new_nts    <- return $ zip name_vars $ map snd n_ts
-     lhs_exprs  <- return $ map (\x -> R.Variable $ R.Name $ result ++ "[\"" ++ x ++ "\"]") names
-     rhs_exprs  <- mapM (\(n,t) -> showVar t n) new_nts
+     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name $ result) (lit_string x)) names
+     rhs_exprs  <- mapM (\(n,t) -> prettifyExpr t n) new_nts
      return $ zipWith (R.Assignment) lhs_exprs rhs_exprs
 
--- | Generate an expression that represents a variable as a string
-showVar :: K3 Type -> R.Expression -> CPPGenM R.Expression
-showVar base_t e =
+-- | Generate an expression that represents an expression of the given type as a string
+prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
+prettifyExpr base_t e =
  case base_t of
    -- non-nested:
    (tag -> TBool)     -> return $ to_string
@@ -286,29 +286,29 @@ showVar base_t e =
 
    -- Option
    opt ct = do
-       inner <- showVar ct (R.Dereference (R.Variable $ R.Name "x"))
+       inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
        return $ wrap (singleton $ R.IfThenElse e [(R.Return $ concat (lit_string "Some ") inner)] [(R.Return $ lit_string "None")]) e
    -- Indirection
    ind_to_string ct = do
-       inner <- showVar ct (R.Dereference e)
+       inner <- prettifyExpr ct (R.Dereference e)
        return $ concat (lit_string "Ind ") inner
    -- Tuple
    tup_to_string cts = do
        ct_is  <- return $ zip cts ([0..] :: [Integer])
-       cs     <- mapM (\(ct,i) -> showVar ct (get_tup i e)) ct_is --show each element in tuple
+       cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
        commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
        return $ concat (foldl concat (lit_string "(") commad) (lit_string ")") -- concat
    -- Record
    rec_to_string ids cts = do
        ct_ids <- return $ zip cts ids
-       cs     <- mapM (\(ct,field) -> showVar ct (project field e) >>= \v -> return $ concat (lit_string $ field ++ ":") v) ct_ids
+       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field e) >>= \v -> return $ concat (lit_string $ field ++ ":") v) ct_ids
        done   <- return $ L.intersperse (lit_string ",") cs
        return $ concat (foldl concat (lit_string "{") done) (lit_string "}")
    -- Collection
    coll_to_string t et = do
        rvar <- return $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
        e_name <- return $ R.Name "elem"
-       v    <- showVar et (R.Variable e_name)
+       v    <- prettifyExpr et (R.Variable e_name)
        lambda_body <- return $ [R.Forward rvar, R.Ignore $ R.Binary "<<" (R.Variable e_name) (concat v $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
        fun <- return $ R.Lambda [] [("elem", R.Reference $ R.Named $ R.Name "auto")] Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
