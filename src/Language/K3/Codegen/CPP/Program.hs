@@ -148,6 +148,12 @@ requiredIncludes = return
                    [ "string"
                    , "tuple"
                    , "Common.hpp"
+                   , "Dispatch.hpp"
+                   , "Engine.hpp"
+                   , "MessageProcessor.hpp"
+                   , "Literals.hpp"
+                   , "Serialization.hpp"
+                   , "Builtins.hpp"
                    ]
 
 matcherDecl :: CPPGenM [R.Statement]
