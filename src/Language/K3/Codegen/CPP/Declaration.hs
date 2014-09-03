@@ -147,7 +147,7 @@ genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead suf _ name = do
     let source_name = stripSuffix suf name
     let e_has_r = R.Project (R.Variable $ R.Name "engine") (R.Name "hasRead")
-    let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name] 
+    let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive $ R.PBool) [] [body]
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
@@ -156,7 +156,7 @@ genDoRead suf typ name = do
     let source_name =  stripSuffix suf name
     let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
     let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "doReadExternal")) []
-    let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"] 
+    let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
@@ -170,7 +170,7 @@ genLoader suf (children -> [_,f]) name = do
  let coll_name = stripSuffix suf name
  let result_dec = R.Forward $ R.ScalarDecl (R.Name "rec") cRecType Nothing
  let projs = [R.Project (R.Variable $ R.Name "rec") (R.Name i) | i <- fields]
- let parse = R.Call (R.Variable $ R.Qualified (R.Name "strtk" ) (R.Name "parse")) ((R.Variable $ R.Name "str"):projs) 
+ let parse = R.Call (R.Variable $ R.Qualified (R.Name "strtk" ) (R.Name "parse")) ((R.Variable $ R.Name "str"):projs)
  let insert = R.Call (R.Project (R.Variable $ R.Name "c") (R.Name "insert")) [R.Variable $ R.Name "rec"]
  let err    = R.Binary "<<" (R.Variable $ R.Name "cout") (R.Literal $ R.LString "Failed to parse a row!\\n")
  let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
@@ -178,7 +178,7 @@ genLoader suf (children -> [_,f]) name = do
  let lamb = R.Lambda [("file", R.Variable $ R.Name "file"), ("c", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "c")])] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
  let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
- return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Const $ R.Reference $ cColType)] 
+ return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Const $ R.Reference $ cColType)]
             (Just $ R.Named $ R.Name "unit_t")
             [] [result_dec, R.Ignore foreachline, ret]
  where
