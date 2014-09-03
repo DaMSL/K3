@@ -20,11 +20,9 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.Common
-import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Collections
 import Language.K3.Codegen.CPP.Declaration
 import Language.K3.Codegen.CPP.Preprocessing
-import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 import qualified Language.K3.Codegen.Imperative as I
 
@@ -86,9 +84,56 @@ program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 main :: CPPGenM [R.Definition]
 main = do
     matcher <- matcherDecl
+    let popDispatchCall = R.Ignore $ R.Call (R.Variable $ R.Name "populate_dispatch") []
+    let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
+    let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
+                                    [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
+                     [R.Return (R.Literal $ R.LInt 0)] []
+    let bindingsDecl = R.Forward $ R.ScalarDecl (R.Name "bindings")
+                       (R.Named $ R.Qualified (R.Name "std")
+                             (R.Specialized [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map"))
+                       (Just $ R.Call (R.Variable $ R.Name "parse_bindings")
+                                 [R.Subscript (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
+                                       (R.Literal $ R.LInt 0)])
+
+    let matchPatchersCall = R.Ignore $ R.Call (R.Variable $ R.Name "match_patchers")
+                            [ R.Variable $ R.Name "bindings"
+                            , R.Variable $ R.Name "matchers"
+                            ]
+
+    let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
+                            (R.Named $ R.Name "systemEnvironment")
+                            (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
+                                  [R.Initialization (R.Named $ R.Specialized [R.Address] (R.Name "list"))
+                                    [R.Variable $ R.Name "me"]])
+
+    let engineConfigure = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "configure"))
+                          [ R.Project (R.Variable $ R.Name "opt") (R.Name "simulation")
+                          , R.Variable (R.Name "se")
+                          , R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DefaultInternalCodec"]
+                                     (R.Name "make_shared")) []
+                          , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
+                          ]
+
+    let processRoleCall = R.Ignore $ R.Call (R.Variable $ R.Name "processRole") [R.Initialization R.Unit []]
+    let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
+                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DispatchMessageProcessor"]
+                                     (R.Name "make_shared")) [R.Variable $ R.Name "prettify"]]
+
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
-             (Just $ R.Primitive R.PInt) [] matcher
+             (Just $ R.Primitive R.PInt) []
+             (matcher
+              ++ [ popDispatchCall
+                 , optionDecl
+                 , optionCall
+                 , bindingsDecl
+                 , matchPatchersCall
+                 , systemEnvironment
+                 , engineConfigure
+                 , processRoleCall
+                 , runEngineCall
+                 ])
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
@@ -100,9 +145,18 @@ requiredAliases = return
 
 requiredIncludes :: CPPGenM [Identifier]
 requiredIncludes = return
-                   [ "string"
+                   [ "functional"
+                   , "memory"
+                   , "sstream"
+                   , "string"
                    , "tuple"
                    , "Common.hpp"
+                   , "Dispatch.hpp"
+                   , "Engine.hpp"
+                   , "MessageProcessor.hpp"
+                   , "Literals.hpp"
+                   , "Serialization.hpp"
+                   , "Builtins.hpp"
                    ]
 
 matcherDecl :: CPPGenM [R.Statement]
@@ -121,78 +175,6 @@ matcherDecl = do
     patchables' <- patchables <$> get
     return $ matcherMap : map popMatcher patchables'
 
--- program :: K3 Declaration -> CPPGenM CPPGenR
--- program d = do
---     let preprocessed = mangleReservedNames d
---     s <- genPrettify
---     staticGlobals' <- staticGlobals
---     program' <- declaration preprocessed
---     genNamespaces <- namespaces  >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
---     genIncludes2  <- sysIncludes >>= \is -> return [text "#include" <+> angles (text f) | f <- is]
---     genIncludes   <- includes    >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
---     main <- genKMain
---     return $ vsep $ punctuate line [
---             text "#define MAIN_PROGRAM",
---             vsep genIncludes2,
---             vsep genIncludes,
---             vsep genNamespaces,
---             vsep genAliases,
---             staticGlobals',
---             program',
---             s,
---             main
---         ]
---   where
---     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
-
--- matchersDecl :: CPPGenM CPPGenR
--- matchersDecl = do
---     let mapDecl = genCDecl
---                    (text "map" <> angles (cat $ punctuate comma [text "string", text "std::function<void(string)>"]))
---                    (text "matchers")
---                    Nothing
---     mapInit <- map populateMatchers . patchables <$> get
---     return $ vsep $ mapDecl : mapInit
---   where
---     populateMatchers :: Identifier -> CPPGenR
---     populateMatchers f = text "matchers"
---                             <> brackets (dquotes $ text f)
---                             <+> equals
---                             <+> brackets empty
---                             <+> parens (text "string _s")
---                             <+> braces (genCCall (text "do_patch") Nothing [text "_s", text f] <> semi)
---                             <> semi
-
--- genKMain :: CPPGenM CPPGenR
--- genKMain = do
---     matchers <- matchersDecl
---     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
---             genCCall (text "initGlobalDecls") Nothing [] <> semi,
---             genCDecl (text "Options") (text "opt") Nothing,
---             (text "if ") <>
---               parens (genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
---               <> text " return 0" <> semi,
---             genCCall (text "populate_dispatch") Nothing [] <> semi,
---             matchers,
---             genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
---             genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
---               (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
---               [text "parse_arg"]),
---             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
---             text "list<Address> addr_l;",
---             text "addr_l.push_back(me);",
---             text "SystemEnvironment se = defaultEnvironment(addr_l);",
---             genCCall (text "engine.configure") Nothing
---               [text "opt.simulation", text "se",
---                text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())",
---                text "opt.log_level"] <> semi,
---             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
---             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
---               genCCall (text "DispatchMessageProcessor") Nothing
---                 [text prettifyName]) <> semi,
---             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
---             text "return 0" <> semi
---         ]
 
 -- sysIncludes :: CPPGenM [Identifier]
 -- sysIncludes = return [
@@ -256,20 +238,20 @@ genPrettify = do
      names      <- return $ map fst n_ts
      name_vars  <- return $ map (R.Variable . R.Name) names
      new_nts    <- return $ zip name_vars $ map snd n_ts
-     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name $ result) (R.Literal $ R.LString x)) names
+     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
      rhs_exprs  <- mapM (\(n,t) -> prettifyExpr t n) new_nts
-     return $ zipWith (R.Assignment) lhs_exprs rhs_exprs
+     return $ zipWith R.Assignment lhs_exprs rhs_exprs
 
 -- | Generate an expression that represents an expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
  case base_t of
    -- non-nested:
-   (tag -> TBool)     -> return $ to_string
-   (tag -> TByte)     -> return $ to_string
-   (tag -> TInt)      -> return $ to_string
-   (tag -> TReal)     -> return $ to_string
-   (tag -> TString)   -> return $ e
+   (tag -> TBool)     -> return to_string
+   (tag -> TByte)     -> return to_string
+   (tag -> TInt)      -> return to_string
+   (tag -> TReal)     -> return to_string
+   (tag -> TString)   -> return e
    (tag -> TAddress)  -> return $ R.Call (R.Variable $ R.Name "addressAsString") [e]
    (tag -> TFunction) -> return $ lit_string "<opaque_function>"
    -- nested:
@@ -285,38 +267,38 @@ prettifyExpr base_t e =
    lit_string  = R.Literal . R.LString
    wrap stmnts expr = R.Call (R.Lambda [] [("x", R.Const $ R.Reference $ R.Named $ R.Name "auto")] Nothing stmnts) [expr]
    to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
-   concat = R.Binary "+"
+   stringConcat = R.Binary "+"
    get_tup i expr = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [expr]
    project field n = R.Project n (R.Name field)
 
    -- Option
    opt ct = do
        inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
-       return $ wrap (singleton $ R.IfThenElse e [(R.Return $ concat (lit_string "Some ") inner)] [(R.Return $ lit_string "None")]) e
+       return $ wrap (singleton $ R.IfThenElse e [R.Return $ stringConcat (lit_string "Some ") inner] [R.Return $ lit_string "None"]) e
    -- Indirection
    ind_to_string ct = do
        inner <- prettifyExpr ct (R.Dereference e)
-       return $ concat (lit_string "Ind ") inner
+       return $ stringConcat (lit_string "Ind ") inner
    -- Tuple
    tup_to_string cts = do
        ct_is  <- return $ zip cts ([0..] :: [Integer])
        cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
        commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
-       return $ concat (foldl concat (lit_string "(") commad) (lit_string ")") -- concat
+       return $ stringConcat (foldl stringConcat (lit_string "(") commad) (lit_string ")") -- stringConcat
    -- Record
    rec_to_string ids cts = do
        ct_ids <- return $ zip cts ids
-       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field e) >>= \v -> return $ concat (lit_string $ field ++ ":") v) ct_ids
+       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field e) >>= \v -> return $ stringConcat (lit_string $ field ++ ":") v) ct_ids
        done   <- return $ L.intersperse (lit_string ",") cs
-       return $ concat (foldl concat (lit_string "{") done) (lit_string "}")
+       return $ stringConcat (foldl stringConcat (lit_string "{") done) (lit_string "}")
    -- Collection
-   coll_to_string t et = do
+   coll_to_string _ et = do
        rvar <- return $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
        e_name <- return $ R.Name "elem"
        v    <- prettifyExpr et (R.Variable e_name)
-       lambda_body <- return $ [R.Forward rvar, R.Ignore $ R.Binary "<<" (R.Variable e_name) (concat v $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
+       lambda_body <- return [R.Forward rvar, R.Ignore $ R.Binary "<<" (R.Variable e_name) (stringConcat v $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
        fun <- return $ R.Lambda [] [("elem", R.Const $ R.Reference $ R.Named $ R.Name "auto")] Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
-       result <- return $ R.Return $ concat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
+       result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
        return $ wrap [R.Ignore iter, result] e
