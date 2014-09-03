@@ -142,6 +142,7 @@ requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "tuple"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
                   ]
@@ -231,7 +232,7 @@ genPrettify = do
    return $ R.FunctionDefn prettifyName [] (Just result_type) [] body
  where
    p_string = R.Primitive R.PString
-   result_type  = R.Named $ R.Specialized [p_string, p_string] (R.Name "map")
+   result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
    result  = "result"
 
    genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
