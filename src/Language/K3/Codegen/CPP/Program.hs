@@ -145,7 +145,10 @@ requiredAliases = return
 
 requiredIncludes :: CPPGenM [Identifier]
 requiredIncludes = return
-                   [ "string"
+                   [ "functional"
+                   , "memory"
+                   , "sstream"
+                   , "string"
                    , "tuple"
                    , "Common.hpp"
                    , "Dispatch.hpp"
@@ -172,60 +175,6 @@ matcherDecl = do
     patchables' <- patchables <$> get
     return $ matcherMap : map popMatcher patchables'
 
--- program :: K3 Declaration -> CPPGenM CPPGenR
--- program d = do
---     let preprocessed = mangleReservedNames d
---     s <- genPrettify
---     staticGlobals' <- staticGlobals
---     program' <- declaration preprocessed
---     genNamespaces <- namespaces  >>= \ns -> return [text "using" <+> text n <> semi | n <- ns]
---     genIncludes2  <- sysIncludes >>= \is -> return [text "#include" <+> angles (text f) | f <- is]
---     genIncludes   <- includes    >>= \is -> return [text "#include" <+> dquotes (text f) | f <- is]
---     main <- genKMain
---     return $ vsep $ punctuate line [
---             text "#define MAIN_PROGRAM",
---             vsep genIncludes2,
---             vsep genIncludes,
---             vsep genNamespaces,
---             vsep genAliases,
---             staticGlobals',
---             program',
---             s,
---             main
---         ]
---   where
---     genAliases = [text "using" <+> text new <+> equals <+> text old <> semi | (new, old) <- aliases]
-
--- genKMain :: CPPGenM CPPGenR
--- genKMain = do
---     matchers <- matchersDecl
---     return $ genCFunction Nothing (text "int") (text "main") [text "int argc", text "char** argv"] $ vsep [
---             genCCall (text "initGlobalDecls") Nothing [] <> semi,
---             genCDecl (text "Options") (text "opt") Nothing,
---             (text "if ") <>
---               parens (genCCall (text "opt.parse") Nothing [text "argc", text "argv"])
---               <> text " return 0" <> semi,
---             genCCall (text "populate_dispatch") Nothing [] <> semi,
---             matchers,
---             genCDecl (text "string") (text "parse_arg") (Just $ text "opt.peer_strings[0]") <> semi,
---             genCDecl (text "map" <> angles (cat $ punctuate comma [text "string", text "string"]))
---               (text "bindings") (Just $ genCCall (text "parse_bindings") Nothing
---               [text "parse_arg"]),
---             genCCall (text "match_patchers") Nothing [text "bindings", text "matchers"] <> semi,
---             text "list<Address> addr_l;",
---             text "addr_l.push_back(me);",
---             text "SystemEnvironment se = defaultEnvironment(addr_l);",
---             genCCall (text "engine.configure") Nothing
---               [text "opt.simulation", text "se",
---                text "make_shared<DefaultInternalCodec>(DefaultInternalCodec())",
---                text "opt.log_level"] <> semi,
---             genCCall (text "processRole") Nothing [text "unit_t()"] <> semi,
---             genCDecl (text "DispatchMessageProcessor") (text "dmp") (Just $
---               genCCall (text "DispatchMessageProcessor") Nothing
---                 [text prettifyName]) <> semi,
---             text "engine.runEngine(make_shared<DispatchMessageProcessor>(dmp))" <> semi,
---             text "return 0" <> semi
---         ]
 
 -- sysIncludes :: CPPGenM [Identifier]
 -- sysIncludes = return [
