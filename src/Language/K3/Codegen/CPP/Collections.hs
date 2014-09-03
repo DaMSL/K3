@@ -219,9 +219,17 @@ record (sort -> ids) = do
             = R.NamespaceDefn "K3" [
                         R.TemplateDefn (zip templateVars (repeat Nothing))
                              (R.ClassDefn (R.Name "patcher") [recordType] [] [patcherFnDefn] [] [])
-                       ]
+                             ]
+    let hashStructDefn
+            = R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                (R.FunctionDefn (R.Name "hash_value"))
+                  [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) []
+                      [R.Forward $ R.ScalarDecl (R.Name "hasher")
+                        (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] (R.Name "tuple")] (R.Name "hash"))) Nothing,
+                       R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieSelf]]
 
-    return [recordStructDefn, patcherStructDefn]
+
+    return [recordStructDefn, patcherStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map"]
