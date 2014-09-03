@@ -225,7 +225,7 @@ record (sort -> ids) = do
                 (R.FunctionDefn (R.Name "hash_value"))
                   [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) []
                       [R.Forward $ R.ScalarDecl (R.Name "hasher")
-                        (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] (R.Name "tuple")] (R.Name "hash"))) Nothing,
+                        (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]] (R.Name "hash"))) Nothing,
                        R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]]
 
 
