@@ -84,9 +84,11 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
-main = return [
+main = do
+    matcher <- matcherDecl
+    return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
-             (Just $ R.Primitive R.PInt) [] []
+             (Just $ R.Primitive R.PInt) [] matcher
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
@@ -101,6 +103,22 @@ requiredIncludes = return
 
                    , "Common.hpp"
                    ]
+
+matcherDecl :: CPPGenM [R.Statement]
+matcherDecl = do
+    let matcherMap = R.Forward $ R.ScalarDecl (R.Name "matchers")
+                     (R.Named $ R.Qualified (R.Name "std") $
+                       R.Specialized
+                            [ R.Primitive R.PString,
+                              R.Function [R.Primitive R.PString] R.Void
+                            ]
+                      (R.Name "map")) Nothing
+    let popMatcher p = R.Assignment (R.Subscript (R.Variable $ R.Name "matchers") (R.Literal $ R.LString p))
+                       (R.Lambda [] [("__input", R.Primitive R.PString)] Nothing
+                         [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
+                               [R.Variable $ R.Name "__input", R.Variable $ R.Name p]])
+    patchables' <- patchables <$> get
+    return $ matcherMap : map popMatcher patchables'
 
 -- program :: K3 Declaration -> CPPGenM CPPGenR
 -- program d = do
