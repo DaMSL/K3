@@ -69,11 +69,12 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     inits <- initializations <$> get
 
     let contextConstructor = R.FunctionDefn contextName [] Nothing
-                             [R.Call (R.Variable $ R.Name "__program_context") []] inits
+                             [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context") []] inits
 
     prettify <- genPrettify
     let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns  ++ [prettify]
-    let contextClassDefn = R.ClassDefn contextName [R.Named $ R.Name "__program_context"] [] contextDefns [] []
+    let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
+                           contextDefns [] []
 
     mainFn <- main
 
@@ -148,17 +149,23 @@ requiredAliases = return
 requiredIncludes :: CPPGenM [Identifier]
 requiredIncludes = return
                    [ "functional"
+                   , "map"
                    , "memory"
                    , "sstream"
                    , "string"
                    , "tuple"
+
+                   , "BaseTypes.hpp"
                    , "Common.hpp"
+                   , "Context.hpp"
                    , "Dispatch.hpp"
                    , "Engine.hpp"
                    , "MessageProcessor.hpp"
                    , "Literals.hpp"
                    , "Serialization.hpp"
                    , "Builtins.hpp"
+
+                   , "dataspace/Dataspace.hpp"
                    ]
 
 matcherDecl :: CPPGenM [R.Statement]
