@@ -134,8 +134,8 @@ declaration _ = return []
 -- -- Map special builtin suffix to a function that will generate the builtin.
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
 source_builtin_map = [("HasRead", genHasRead),
-                      ("Read", genDoRead)]
-                   --("Loader",genLoader),
+                      ("Read", genDoRead),
+                      ("Loader",genLoader)]
                    --("genJSON",genJSONLoader),
                    --("LoaderVector", genVectorLoader),
                    --("LoaderVectorLabel", genVectorLabelLoader)]
@@ -175,33 +175,39 @@ genDoRead suf typ name = do
     let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"] 
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
--- genLoader :: String -> K3 Type -> String -> CPPGenM CPPGenR
--- genLoader _ (children -> [_,f]) name = do
---     (colType, recType) <- return $ getColType f
---     cColType <- genCType colType
---     cRecType <- genCType recType
---     fields   <- getRecFields recType
---     proj_str <- return $ text $ concat $ L.intersperse "," $ map (\q -> "rec." ++ q) fields
---     header1  <- return $ text "F<unit_t(" <> cColType <> text "&)>"<> text name <> text "(string filepath)"
---     header2  <- return $ text "F<unit_t(" <> cColType <> text "&)> r = [filepath] (" <> cColType <> text" & c)"
---     ifs      <- return $ text "if (strtk::parse(str,\",\"," <> proj_str <> text "))" <> (hangBrace (text "c.insert(rec)" <> semi))
---     elses    <- return $ text "else" <> (hangBrace $ text "std::cout << \"Failed to parse a row\" << std::endl;")
---     body     <- return $ vsep [cRecType <+> text "rec" <> semi,
---                                 text "strtk::for_each_line(filepath,",
---                                 text "[&](const std::string& str)" <> (hangBrace (vsep [ifs,elses]) <> text ");"),
---                                 text "return unit_t();"]
---     return $ header1 <> (hangBrace $ (header2 <> vsep [hangBrace body <> semi, text "return r;"]))
---   where
---     getColType = case children f of
---                      ([c,_])  -> case children c of
---                                    [r] -> return (c, r)
---                                    _   -> type_mismatch
---                      _        -> type_mismatch
+-- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
+-- (since the collection is technically passed-by-value)
+genLoader :: String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader suf (children -> [_,f]) name = do
+ (colType, recType) <- return $ getColType f
+ cColType <- genCType colType
+ cRecType <- genCType recType
+ fields   <- getRecFields recType
+ let coll_name = stripSuffix suf name
+ let result_dec = R.Forward $ R.ScalarDecl (R.Name "rec") cRecType Nothing
+ let projs = [R.Project (R.Variable $ R.Name "rec") (R.Name i) | i <- fields]
+ let parse = R.Call (R.Variable $ R.Qualified (R.Name "strtk" ) (R.Name "parse")) ((R.Variable $ R.Name "str"):projs) 
+ let insert = R.Call (R.Project (R.Variable $ R.Name "c") (R.Name "insert")) [R.Variable $ R.Name "rec"]
+ let err    = R.Binary "<<" (R.Variable $ R.Name "cout") (R.Literal $ R.LString "Failed to parse a row!\\n")
+ let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
 
---     getRecFields (tag -> TRecord ids)  = return ids
---     getRecFields _ = error "Cannot get fields for non-record type"
+ let lamb = R.Lambda [("file", R.Variable $ R.Name "file"), ("c", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "c")])] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
+ let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
+ let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
+ return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Const $ R.Reference $ cColType)] 
+            (Just $ R.Named $ R.Name "unit_t")
+            [] [result_dec, R.Ignore foreachline, ret]
+ where
+    getColType = case children f of
+                  ([c,_])  -> case children c of
+                                [r] -> return (c, r)
+                                _   -> type_mismatch
+                  _        -> type_mismatch
 
---     type_mismatch = error "Invalid type for Loader function. Should Be String -> BaseCollection R -> ()"
+    getRecFields (tag -> TRecord ids)  = return ids
+    getRecFields _ = error "Cannot get fields for non-record type"
+
+    type_mismatch = error "Invalid type for Loader function. Should Be String -> BaseCollection R -> ()"
 
 
 -- genLoader _ _ _ =  error "Invalid type for Loader function."
