@@ -115,17 +115,17 @@ record (sort -> ids) = do
                     ]]
 
     let tieSelf  = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Variable $ R.Name i | i <- ids]
-    let tieOther = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Project (R.Variable $ R.Name "__other") (R.Name i) | i <- ids]
+    let tieOther n = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Project (R.Variable $ R.Name n) (R.Name i) | i <- ids]
 
     let inequalityOperator
             = R.FunctionDefn (R.Name "operator!=")
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
-              [R.Return $ R.Binary "!=" tieSelf tieOther]
+              [R.Return $ R.Binary "!=" tieSelf (tieOther "__other")]
 
     let lessOperator
             = R.FunctionDefn (R.Name "operator<")
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
-              [R.Return $ R.Binary "<" tieSelf tieOther]
+              [R.Return $ R.Binary "<" tieSelf (tieOther "__other")]
 
 
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
@@ -226,7 +226,7 @@ record (sort -> ids) = do
                   [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) []
                       [R.Forward $ R.ScalarDecl (R.Name "hasher")
                         (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] (R.Name "tuple")] (R.Name "hash"))) Nothing,
-                       R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieSelf]]
+                       R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]]
 
 
     return [recordStructDefn, patcherStructDefn, hashStructDefn]

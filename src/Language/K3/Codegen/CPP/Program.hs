@@ -94,13 +94,14 @@ main = do
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)]
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
+                  , (Right (R.Qualified (R.Name "std" )$ R.Name "tuple"), Nothing)
+                  ]
 
 requiredIncludes :: CPPGenM [Identifier]
 requiredIncludes = return
                    [ "string"
                    , "tuple"
-
                    , "Common.hpp"
                    ]
 
