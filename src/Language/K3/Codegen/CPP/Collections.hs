@@ -34,7 +34,7 @@ composite name ans = do
     -- Split data and method declarations, for access specifiers.
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
-    let baseClasses = map (R.Specialized [R.Named $ R.Name "__CONTENT"] . R.Name . fst) ras
+    let baseClasses = map (R.Qualified (R.Name "K3") . R.Specialized [R.Named $ R.Name "__CONTENT"] . R.Name . fst) ras
 
     let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
@@ -45,7 +45,7 @@ composite name ans = do
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
                               (R.Variable $
-                                R.Specialized [R.Named $ R.Qualified (R.Name "K3") p]
+                                R.Specialized [R.Named p]
                                   (R.Qualified (R.Name "boost") $
                                     R.Qualified (R.Name "serialization") $ R.Name "base_object"))
                               [R.Variable $ R.Name "*this"])
@@ -222,7 +222,7 @@ record (sort -> ids) = do
                              ]
     let hashStructDefn
             = R.TemplateDefn (zip templateVars (repeat Nothing)) $
-                (R.FunctionDefn (R.Name "hash_value"))
+                R.FunctionDefn (R.Name "hash_value")
                   [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) []
                       [R.Forward $ R.ScalarDecl (R.Name "hasher")
                         (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]] (R.Name "hash"))) Nothing,
