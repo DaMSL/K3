@@ -15,6 +15,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Pointer,
     pattern Unit,
     pattern Tuple,
+    pattern Void,
 
     Literal(..),
     Expression(..),
@@ -92,6 +93,7 @@ instance Stringifiable Primitive where
 
 data Type
     = Const Type
+    | Function [Type] Type
     | Inferred
     | Named Name
     | Parameter Identifier
@@ -106,9 +108,12 @@ pattern Byte = Named (Name "unsigned char")
 pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
 pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
+pattern Void = Named (Name "void")
 
 instance Stringifiable Type where
     stringify Inferred = "auto"
+    stringify (Function ats rt) = stringify (Qualified (Name "std") (Name "function"))
+                                  <> angles (stringify rt <> parens (commaSep (map stringify ats)))
     stringify (Const t) = "const" <+> stringify t
     stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
