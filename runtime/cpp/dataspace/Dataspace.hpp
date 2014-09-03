@@ -1,3 +1,6 @@
+#ifndef __K3_RUNTIME_DATASPACE__
+#define __K3_RUNTIME_DATASPACE__
+
 #include <boost/tr1/unordered_set.hpp>
 #include <boost/tr1/unordered_map.hpp>
 #include "boost/serialization/vector.hpp"
@@ -983,3 +986,4 @@ class Sorted : public SortedDS<Elem> {
 
 
 } // Namespace K3
+#endif
