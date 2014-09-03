@@ -84,9 +84,56 @@ program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 main :: CPPGenM [R.Definition]
 main = do
     matcher <- matcherDecl
+    let popDispatchCall = R.Ignore $ R.Call (R.Variable $ R.Name "populate_dispatch") []
+    let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
+    let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
+                                    [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
+                     [R.Return (R.Literal $ R.LInt 0)] []
+    let bindingsDecl = R.Forward $ R.ScalarDecl (R.Name "bindings")
+                       (R.Named $ R.Qualified (R.Name "std")
+                             (R.Specialized [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map"))
+                       (Just $ R.Call (R.Variable $ R.Name "parse_bindings")
+                                 [R.Subscript (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
+                                       (R.Literal $ R.LInt 0)])
+
+    let matchPatchersCall = R.Ignore $ R.Call (R.Variable $ R.Name "match_patchers")
+                            [ R.Variable $ R.Name "bindings"
+                            , R.Variable $ R.Name "matchers"
+                            ]
+
+    let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
+                            (R.Named $ R.Name "systemEnvironment")
+                            (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
+                                  [R.Initialization (R.Named $ R.Specialized [R.Address] (R.Name "list"))
+                                    [R.Variable $ R.Name "me"]])
+
+    let engineConfigure = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "configure"))
+                          [ R.Project (R.Variable $ R.Name "opt") (R.Name "simulation")
+                          , R.Variable (R.Name "se")
+                          , R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DefaultInternalCodec"]
+                                     (R.Name "make_shared")) []
+                          , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
+                          ]
+
+    let processRoleCall = R.Ignore $ R.Call (R.Variable $ R.Name "processRole") [R.Initialization R.Unit []]
+    let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
+                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DispatchMessageProcessor"]
+                                     (R.Name "make_shared")) [R.Variable $ R.Name "prettify"]]
+
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
-             (Just $ R.Primitive R.PInt) [] matcher
+             (Just $ R.Primitive R.PInt) []
+             (matcher
+              ++ [ popDispatchCall
+                 , optionDecl
+                 , optionCall
+                 , bindingsDecl
+                 , matchPatchersCall
+                 , systemEnvironment
+                 , engineConfigure
+                 , processRoleCall
+                 , runEngineCall
+                 ])
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
