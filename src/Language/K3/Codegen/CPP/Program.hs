@@ -246,7 +246,7 @@ generateDispatchPopulation = do
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
 prettifyName :: R.Name
-prettifyName = R.Name "prettify"
+prettifyName = R.Name "__prettify"
 
 genPrettify :: CPPGenM R.Definition
 genPrettify = do
