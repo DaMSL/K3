@@ -165,7 +165,10 @@ instance Stringifiable Expression where
         bd' = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
-    stringify (Subscript a b) = parens (stringify a) <> brackets (stringify b)
+    stringify (Subscript a b)
+        = case b of
+            (Lambda _ _ _ _) -> parens (stringify a) <> brackets (parens $ stringify b)
+            _ -> parens (stringify a) <> brackets (stringify b)
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 

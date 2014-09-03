@@ -10,6 +10,8 @@
 #include <functional>
 
 #include "BaseTypes.hpp"
+#include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
 
 namespace K3 {
   //class Builtins: public __k3_context {
@@ -100,7 +102,7 @@ namespace K3 {
       auto &container(map.getContainer());
       auto it(container.find(key));
       if (it != container.end()) {
-        return make_shared<Value>(it->second);
+        return std::make_shared<Value>(it->second);
       } else {
         return nullptr;
       }
