@@ -108,7 +108,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir ++ "//*.o" *> \out -> do
               let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
+              () <- cmd cc ["-stdlib=libc++"] ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
               needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x
