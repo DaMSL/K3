@@ -6,16 +6,9 @@ module Language.K3.Codegen.CPP.Declaration where
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
-import Data.Char (toUpper)
-import Data.Functor
 import Data.Maybe
 
 import qualified Data.List as L
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Data.Tree
-
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -26,9 +19,6 @@ import Language.K3.Core.Type
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
-import Language.K3.Codegen.Common
-import Language.K3.Codegen.CPP.Common
-import Language.K3.Codegen.CPP.Collections
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
@@ -39,7 +29,7 @@ declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
 -- Global functions without implementations -- Built-Ins.
-declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (\y -> y `L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
+declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (`L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
                                                                | otherwise = return []
 
 -- Global monomorphic function with direct implementations.
@@ -148,7 +138,7 @@ genHasRead suf _ name = do
     let source_name = stripSuffix suf name
     let e_has_r = R.Project (R.Variable $ R.Name "engine") (R.Name "hasRead")
     let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive $ R.PBool) [] [body]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive R.PBool) [] [body]
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoRead suf typ name = do
@@ -193,8 +183,7 @@ genLoader suf (children -> [_,f]) name = do
 
     type_mismatch = error "Invalid type for Loader function. Should Be String -> BaseCollection R -> ()"
 
-
--- genLoader _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ =  error "Invalid type for Loader function."
 
 -- -- Generate a JSON Loader builtin for a collection with a specified type
 -- genJSONLoader :: String -> K3 Type -> String -> CPPGenM CPPGenR
