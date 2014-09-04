@@ -112,22 +112,6 @@ declaration _ = return []
 -- declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
 -- declaration _ = return empty
 
--- -- | Generates a function which populates the trigger dispatch table.
--- generateDispatchPopulation :: CPPGenM R.Definition
--- generateDispatchPopulation = do
---     triggerS <- triggers <$> get
---     dispatchStatements <- mapM genDispatch triggerS
---     let dispatchInit = text "dispatch_table.resize" <> parens(int $ length triggerS) <> semi
---     return $ genCFunction Nothing (text "void") (text "populate_dispatch") [] $
---              vsep $ dispatchInit:dispatchStatements
---   where
---     genDispatch (tName, (tType, tNum)) = do
---       kType <- genCType tType
---       let className = text "ValDispatcher" <> angles kType
---       return $ text "dispatch_table[" <> int tNum <> text "] =" <+>
---         text "make_tuple" <> parens (
---           text "make_shared" <> angles className <> parens (text tName) <> comma <+> dquotes (text tName))
---         <> semi
 
 -- -- Generated Builtins
 -- -- Interface for source builtins.

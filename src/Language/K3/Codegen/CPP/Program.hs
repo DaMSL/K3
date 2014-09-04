@@ -76,10 +76,11 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
                            contextDefns [] []
 
+    pop_dispatch <- generateDispatchPopulation
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ [pop_dispatch] ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
@@ -185,6 +186,28 @@ matcherDecl = do
     patchables' <- patchables <$> get
     return $ matcherMap : map popMatcher patchables'
 
+
+-- -- | Generates a function which populates the trigger dispatch table.
+generateDispatchPopulation :: CPPGenM R.Definition
+generateDispatchPopulation = do
+    triggerS <- triggers <$> get
+
+    dispatchStatements <- mapM genDispatch triggerS
+    let dispatchInit = R.Ignore $ R.Call (R.Project table $ R.Name "resize") [R.Literal $ R.LInt $ length triggerS]
+    return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just $ R.Void) [] (dispatchInit:dispatchStatements)
+
+  where
+     table = R.Variable $ R.Name "dispatch_table"
+     genDispatch (tName, (tType, tNum)) = do
+       kType <- genCType tType
+
+       let classType = R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")
+           shared = R.Call (R.Variable $ R.Specialized [classType] (R.Name "make_shared")) []
+           trigStr = R.Literal $ R.LString tName
+
+           tuple =  R.Call (R.Variable $ R.Name "make_tuple") [shared, trigStr]
+           i = R.Literal $ R.LInt tNum
+       return $ R.Ignore $ R.Binary "=" (R.Subscript table i) tuple
 
 -- sysIncludes :: CPPGenM [Identifier]
 -- sysIncludes = return [

@@ -197,7 +197,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [tv, vv])
+                                           (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
     return (concat [te, ae, ve]

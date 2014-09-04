@@ -54,26 +54,26 @@ namespace K3
   };
 
   // Message Processor used by generated code.
-  class DispatchMessageProcessor : public NativeMessageProcessor {
-    public:
-      DispatchMessageProcessor()
-        : NativeMessageProcessor(empty_map) {}
+  // class DispatchMessageProcessor : public NativeMessageProcessor {
+  //   public:
+  //     DispatchMessageProcessor()
+  //       : NativeMessageProcessor(empty_map) {}
 
-      DispatchMessageProcessor(EnvStrFunction f)
-        : NativeMessageProcessor(f) {}
+  //     DispatchMessageProcessor(EnvStrFunction f)
+  //       : NativeMessageProcessor(f) {}
 
-      LoopStatus process(Message msg)
-      {
-        msg.dispatcher()->dispatch();
+  //     LoopStatus process(Message msg)
+  //     {
+  //       msg.dispatcher()->dispatch();
 
-        // Message was processed, signal the engine to continue.
-        // TODO: Propagate trigger errors to engine, K3 error semantics?
-        return LoopStatus::Continue;
-      }
+  //       // Message was processed, signal the engine to continue.
+  //       // TODO: Propagate trigger errors to engine, K3 error semantics?
+  //       return LoopStatus::Continue;
+  //     }
 
-    private:
-      static std::map<std::string, std::string> empty_map() { return std::map<std::string, std::string>(); };
-    };
+  //   private:
+  //     static std::map<std::string, std::string> empty_map() { return std::map<std::string, std::string>(); };
+  //   };
 
   class Engine;
 
@@ -90,7 +90,7 @@ namespace K3
 
     LoopStatus process(Message msg) {
       try {
-        contexts[msg.address()]->__dispatch(msg.dispatcher());
+        contexts[msg.address()]->__dispatch(msg.id(), msg.dispatcher()->getArg());
       } catch(std::out_of_range e) {
         return LoopStatus::Error;
       }
