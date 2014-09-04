@@ -202,7 +202,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
                          tName `lookup` trigList
     return (concat [te, ae, ve]
                  ++ [ classInst
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "send")) [
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
                                     av, R.Variable (R.Name $ show trigId), R.Variable (R.Name "d")
                                    ]
                     ]

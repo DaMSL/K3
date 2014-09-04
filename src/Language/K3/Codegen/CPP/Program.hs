@@ -92,17 +92,19 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
                            contextDefns [] [R.GlobalDefn matcherMap]
+    let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "dispatch_table") (R.Named $ R.Qualified (R.Name "K3") (R.Name "TriggerDispatch")) Nothing
 
-    pop_dispatch <- generateDispatchPopulation
+    popDispatch <- generateDispatchPopulation
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ [pop_dispatch] ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn, tableDecl, popDispatch] ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
 main = do
+    let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
     let popDispatchCall = R.Ignore $ R.Call (R.Variable $ R.Name "populate_dispatch") []
     let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
@@ -142,7 +144,8 @@ main = do
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) []
-             [ popDispatchCall
+             [ engineDecl
+             , popDispatchCall
              , optionDecl
              , optionCall
              , bindingsDecl
@@ -158,9 +161,17 @@ requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "tuple"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "map"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "list"), Nothing)
                   ]
 
 requiredIncludes :: CPPGenM [Identifier]
