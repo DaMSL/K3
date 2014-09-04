@@ -68,13 +68,31 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     inits <- initializations <$> get
 
-    let contextConstructor = R.FunctionDefn contextName [] Nothing
-                             [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context") []] inits
-
     prettify <- genPrettify
+
+    let matcherMap = R.Forward $ R.ScalarDecl (R.Name "matchers")
+                     (R.Named $ R.Qualified (R.Name "std") $
+                       R.Specialized
+                            [ R.Primitive R.PString,
+                              R.Function [R.Primitive R.PString] R.Void
+                            ]
+                      (R.Name "map")) Nothing
+
+    let popMatcher p = R.Assignment (R.Subscript (R.Variable $ R.Name "matchers") (R.Literal $ R.LString p))
+                       (R.Lambda [] [("__input", R.Primitive R.PString)] Nothing
+                         [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
+                               [R.Variable $ R.Name "__input", R.Variable $ R.Name p]])
+
+    patchables' <- patchables <$> get
+
+    let contextConstructor = R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
+                             Nothing [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context")
+                                   [R.Variable $ R.Name "__engine"]]
+                             (inits ++ map popMatcher patchables')
+
     let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns  ++ [prettify]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
-                           contextDefns [] []
+                           contextDefns [] [R.GlobalDefn matcherMap]
 
     pop_dispatch <- generateDispatchPopulation
     mainFn <- main
@@ -86,7 +104,6 @@ program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
 main = do
-    matcher <- matcherDecl
     let popDispatchCall = R.Ignore $ R.Call (R.Variable $ R.Name "populate_dispatch") []
     let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
@@ -121,22 +138,21 @@ main = do
     let processRoleCall = R.Ignore $ R.Call (R.Variable $ R.Name "processRole") [R.Initialization R.Unit []]
     let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
                         [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DispatchMessageProcessor"]
-                                     (R.Name "make_shared")) [R.Variable $ R.Name "prettify"]]
+                                     (R.Name "make_shared")) [R.Variable prettifyName]]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) []
-             (matcher
-              ++ [ popDispatchCall
-                 , optionDecl
-                 , optionCall
-                 , bindingsDecl
-                 , matchPatchersCall
-                 , systemEnvironment
-                 , engineConfigure
-                 , processRoleCall
-                 , runEngineCall
-                 ])
+             [ popDispatchCall
+             , optionDecl
+             , optionCall
+             , bindingsDecl
+             , matchPatchersCall
+             , systemEnvironment
+             , engineConfigure
+             , processRoleCall
+             , runEngineCall
+             ]
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
@@ -169,79 +185,6 @@ requiredIncludes = return
 
                    , "dataspace/Dataspace.hpp"
                    ]
-
-matcherDecl :: CPPGenM [R.Statement]
-matcherDecl = do
-    let matcherMap = R.Forward $ R.ScalarDecl (R.Name "matchers")
-                     (R.Named $ R.Qualified (R.Name "std") $
-                       R.Specialized
-                            [ R.Primitive R.PString,
-                              R.Function [R.Primitive R.PString] R.Void
-                            ]
-                      (R.Name "map")) Nothing
-    let popMatcher p = R.Assignment (R.Subscript (R.Variable $ R.Name "matchers") (R.Literal $ R.LString p))
-                       (R.Lambda [] [("__input", R.Primitive R.PString)] Nothing
-                         [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
-                               [R.Variable $ R.Name "__input", R.Variable $ R.Name p]])
-    patchables' <- patchables <$> get
-    return $ matcherMap : map popMatcher patchables'
-
-
--- -- | Generates a function which populates the trigger dispatch table.
-generateDispatchPopulation :: CPPGenM R.Definition
-generateDispatchPopulation = do
-    triggerS <- triggers <$> get
-
-    dispatchStatements <- mapM genDispatch triggerS
-    let dispatchInit = R.Ignore $ R.Call (R.Project table $ R.Name "resize") [R.Literal $ R.LInt $ length triggerS]
-    return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just $ R.Void) [] (dispatchInit:dispatchStatements)
-
-  where
-     table = R.Variable $ R.Name "dispatch_table"
-     genDispatch (tName, (tType, tNum)) = do
-       kType <- genCType tType
-
-       let classType = R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")
-           shared = R.Call (R.Variable $ R.Specialized [classType] (R.Name "make_shared")) []
-           trigStr = R.Literal $ R.LString tName
-
-           tuple =  R.Call (R.Variable $ R.Name "make_tuple") [shared, trigStr]
-           i = R.Literal $ R.LInt tNum
-       return $ R.Ignore $ R.Binary "=" (R.Subscript table i) tuple
-
--- sysIncludes :: CPPGenM [Identifier]
--- sysIncludes = return [
---         -- Standard Library
---         "functional",
---         "memory",
---         "sstream",
---         "string",
-
---         -- Strtk
---         "external/strtk.hpp",
-
---         -- JSON
---         "external/json_spirit_reader_template.h"
---       ]
-
--- includes :: CPPGenM [Identifier]
--- includes = return [
---         -- K3 Runtime
---         "BaseTypes.hpp",
---         "Common.hpp",
---         "dataspace/Dataspace.hpp",
---         "BaseCollections.hpp",
---         "Dispatch.hpp",
---         "Engine.hpp",
---         "Literals.hpp",
---         "MessageProcessor.hpp",
---         "Serialization.hpp",
---         "Builtins.hpp"
---       ]
-
--- namespaces :: CPPGenM [Identifier]
--- staticGlobals :: CPPGenM CPPGenR
--- staticGlobals = return $ text "K3::Engine engine;"
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
