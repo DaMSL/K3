@@ -1,10 +1,15 @@
 #include <functional>
 #include <string>
-#include "BaseTypes.hpp"
+
 #include "Common.hpp"
 #include "Engine.hpp"
+#include "BaseTypes.hpp"
 #include "dataspace/Dataspace.hpp"
+#include "BaseCollections.hpp"
+#include "Builtins.hpp"
 
+extern K3::Engine engine;
+extern _Collection<R_addr<K3::Address>> peers;
 
 char *sdup (const char *s) {
     char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
@@ -12,25 +17,10 @@ char *sdup (const char *s) {
     return d;                            // Return new memory
 }
 
-
-
-#include "Builtins.hpp"
-
 namespace K3 {
   using std::string;
   using std::endl;
   using std::to_string;
-
-  int index_by_hash(const string& s) {
-    auto& container = peers.getContainer();
-    size_t h = std::hash<string>()(s);
-    return h % container.size();
-  }
-
-  Address& peer_by_index(const int i) {
-    auto& container = peers.getContainer();
-    return container[i].addr;
-  }
 
   F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
       return [&] (const string& builtin_chan_id) {
@@ -56,6 +46,17 @@ namespace K3 {
   unit_t close(string chan_id) {
       engine.close(chan_id);
       return unit_t();
+  }
+
+  int index_by_hash(const string& s) {
+    auto& container = peers.getConstContainer();
+    size_t h = std::hash<string>()(s);
+    return h % container.size();
+  }
+
+  Address& peer_by_index(const int i) {
+    auto& container = peers.getContainer();
+    return container[i].addr;
   }
 
   unit_t printLine(string message) {

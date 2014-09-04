@@ -134,6 +134,7 @@ includes = return [
         "BaseTypes.hpp",
         "Common.hpp",
         "dataspace/Dataspace.hpp",
+        "BaseCollections.hpp",
         "Dispatch.hpp",
         "Engine.hpp",
         "Literals.hpp",
@@ -158,7 +159,7 @@ aliases = [
     ]
 
 staticGlobals :: CPPGenM CPPGenR
-staticGlobals = return $ text ""
+staticGlobals = return $ text "K3::Engine engine;"
 
 -- | Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
@@ -251,4 +252,4 @@ showVar base_t name =
         iter <- return $ text "coll" <> dot <> text "iterate" <> parens (text "f") <> semi
         result <- return $ text "return" <+> str "[" <+> text "+" <+> text "oss.str()" <+> text "+" <+> str "]" <> semi
         -- wrap in lambda, then call it
-        return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)r
+        return $ parens $ text "[]" <+> parens (t_n <+> text "coll") <+> hangBrace (vsep [rvar,fun,iter,result]) <> parens (text n)

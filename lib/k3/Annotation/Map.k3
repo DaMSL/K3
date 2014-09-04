@@ -1,9 +1,14 @@
+// Maps are expected to contain only records with fields key and value
 annotation Map given type a,b {
   provides lifted peek    : () -> option content
 
   provides lifted insert  : content -> ()
   provides lifted erase  : content -> ()
   provides lifted update  : content -> (content -> ())
+  provides lifted size : () -> int
+
+  //lookup ignores the value of the provided element.
+  provides lifted lookup : content -> option content
 
   @:Transformer
   provides lifted combine : self -> self
@@ -15,7 +20,7 @@ annotation Map given type a,b {
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Collection}
+  provides lifted map     : (content -> {key: a, value: b}) -> collection {key: a, value: b} @ {Map}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
@@ -28,8 +33,7 @@ annotation Map given type a,b {
                              -> collection { key : a, value : b } @ {Map}
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Collection})
-                             -> collection {elem : a} @ {Collection}
+  provides lifted ext     : (content -> collection {key : a, value: b} @ {Map})
+                             -> collection {key : a, value: b} @ {Map}
 
-  provides lifted size : () -> int
 }

@@ -3,9 +3,6 @@
 
 // Basic types needed by our builtin libraries
 
-#ifndef K3_R_elem
-#define K3_R_elem
-
 char *sdup (const char *s);
 
 class Str {
@@ -42,6 +39,42 @@ class Str {
   char *_buf;
 };
 
+#ifndef K3_R_addr
+#define K3_R_addr
+template <class _T0>
+class R_addr {
+    public:
+        R_addr() {}
+        R_addr(_T0 _addr): addr(_addr) {}
+        R_addr(const R_addr<_T0>& _r): addr(_r.addr) {}
+        bool operator==(const R_addr& _r) const {
+            if (addr == _r.addr)
+                return true;
+            return false;
+        }
+        bool operator!=(const R_addr& _r) const {
+            return !(*this == _r);
+        }
+        bool operator<(const R_addr& _r) const {
+          return addr < _r.addr;
+        }
+        template <class archive>
+        void serialize(archive& _archive,const unsigned int) {
+            _archive & addr;
+
+        }
+        _T0 addr;
+};
+template <class T>
+  std::size_t hash_value(R_addr<T> const& b) {
+    boost::hash<T> hasher;
+    return hasher(b.addr);
+}
+
+#endif // K3_R_addr
+
+#ifndef K3_R_elem
+#define K3_R_elem
 
 template <class _T0>
 class R_elem {
@@ -49,10 +82,17 @@ class R_elem {
         R_elem() {}
         R_elem(_T0 _elem): elem(_elem) {}
         R_elem(const R_elem<_T0>& _r): elem(_r.elem) {}
-        bool operator==(R_elem _r) {
+        bool operator==(const R_elem& _r) const {
             if (elem == _r.elem)
                 return true;
             return false;
+        }
+        // TODO, beter implementation?
+        bool operator!=(const R_elem& _r) const {
+            return !(*this == _r);
+        }
+        bool operator<(const R_elem& _r) const {
+            return elem < _r.elem;
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
@@ -60,6 +100,11 @@ class R_elem {
         }
         _T0 elem;
 };
+template <class T>
+  std::size_t hash_value(R_elem<T> const& b) {
+    boost::hash<T> hasher;
+    return hasher(b.elem);
+}
 
 #endif // K3_R_elem
 
@@ -71,10 +116,16 @@ class R_key_value {
         R_key_value() {}
         R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
         R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(R_key_value _r) {
+        bool operator==(const R_key_value& _r) const {
             if (key == _r.key&& value == _r.value)
                 return true;
             return false;
+        }
+        bool operator!=(const R_key_value& _r) const {
+            return !(*this == _r);
+        }
+        bool operator<(const R_key_value& _r) const {
+          return std::tie(key, value) < std::tie(_r.key, _r.value);
         }
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
@@ -88,6 +139,14 @@ class R_key_value {
         typedef _T0 KeyType;
         typedef _T1 ValueType;
 };
+
+template <class K,class V>
+  std::size_t hash_value(R_key_value<K,V> const& b) {
+    boost::hash<std::tuple<K,V>> hasher;
+    return hasher(std::tie(b.key, b.value));
+}
+
 #endif
+
 
 #endif // K3_RUNTIME_BASETYPES_H

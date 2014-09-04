@@ -68,13 +68,7 @@ namespace K3 {
 
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
     
-  //*********Ricky's Eigen stuff**********
-  // F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add_eigen(const Collection<R_elem<double>>& c1);  //
-  //F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub_eigen(const Collection<R_elem<double>>& c1);
-  //  F<double(const Collection<R_elem<double>>&)> dot_eigen(const Collection<R_elem<double>>& c1);
-  //  F<double(const Collection<R_elem<double>>&)> squared_distance_eigen(const Collection<R_elem<double>>& c1);
-  //  Collection<R_elem<double>> zero_vector_eigen(int n);
-  //  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult_eigen(const double& d);
+
   
   // ms
   inline int now(unit_t) {
@@ -85,41 +79,43 @@ namespace K3 {
 
   inline int now() { return now(unit_t()); }
 
-  // Map-specific template function to look up
-  template <class Key, class Value>
-  F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-    return [&] (const Key& key) -> Value* {
-      auto &container(map.getContainer());
-      auto it(container.find(key));
-      if (it != container.end()) {
-        return &(it->second);
-      } else {
-        return nullptr;
-      }
-    };
-  }
+  // // Map-specific template function to look up
+  // template <class Key, class Value>
+  // F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
+  //   return [&] (const Key& key) -> Value* {
+  //     auto &container(map.getContainer());
+  //     auto it(container.find(key));
+  //     if (it != container.end()) {
+  //       return &(it->second);
+  //     } else {
+  //       return nullptr;
+  //     }
+  //   };
+  // }
 
 
 
-  template <class E>
-  F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>
-  insert_with(Map<E>& map) {
-    return [&] (const typename E::KeyType& key) {
-      return [&] (const typename E::ValueType& value) {
-        return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
-          auto &c = map.getContainer();
-          auto it(c.find(key));
-          if (it == map.end()) {
-            map.insert(E(key, value));
-          } else {
-            map.insert(E(key, f(value)));
-          }
 
-          return unit_t();
-        };
-      };
-    };
-  }
+
+  // template <class E>
+  // F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>
+  // insert_with(Map<E>& map) {
+  //   return [&] (const typename E::KeyType& key) {
+  //     return [&] (const typename E::ValueType& value) {
+  //       return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
+  //         auto &c = map.getContainer();
+  //         auto it(c.find(key));
+  //         if (it == map.end()) {
+  //           map.insert(E(key, value));
+  //         } else {
+  //           map.insert(E(key, f(value)));
+  //         }
+
+  //         return unit_t();
+  //       };
+  //     };
+  //   };
+  // }
 
   // Split a std::string by substrings
   F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);

@@ -82,12 +82,15 @@ composite className ans = do
             <$$> vsep [text "private:" <$$> indent 4 (vsep $ punctuate line prvDecls) | not (null prvDecls)]
             ) <> semi
 
-    let classDefn = genCTemplateDecl [text "CONTENT"] <$$> classBody <$$> patcherSpec
+    let classDefn = genCTemplateDecl [text "CONTENT"] <$$> classBody
 
     addForward $ genCTemplateDecl [text "CONTENT"] <+> text "class" <+> text className <> semi
 
-    return classDefn
+    return $ defineProtect classDefn <$$> patcherSpec
+
   where
+    sigil = hcat (punctuate (text "_") [text "K3", text className])
+    defineProtect t = text "#ifndef" <+> sigil <$$> text "#define" <+> sigil <$$> t <$$> text "#endif //" <+> sigil
 
     isPositiveDecl :: AnnMemDecl -> Bool
     isPositiveDecl (Lifted Provides _ _ _ _) = True
