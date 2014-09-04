@@ -55,7 +55,6 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     -- Generate program preamble.
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
-    forwardDefns <- map (R.GlobalDefn . R.Forward) . forwards <$> get
     compositeDefns <- do
         currentComposites <- composites <$> get
         currentAnnotations <- annotationMap <$> get
@@ -90,7 +89,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                                    [R.Variable $ R.Name "__engine"]]
                              (inits ++ map popMatcher patchables')
 
-    let contextDefns = [contextConstructor] ++ forwardDefns ++ programDefns  ++ [prettify]
+    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
                            contextDefns [] [R.GlobalDefn matcherMap]
 
@@ -186,6 +185,27 @@ requiredIncludes = return
                    , "dataspace/Dataspace.hpp"
                    ]
 
+generateDispatchPopulation :: CPPGenM R.Definition
+generateDispatchPopulation = do
+  triggerS <- triggers <$> get
+
+  dispatchStatements <- mapM genDispatch triggerS
+  let dispatchInit = R.Ignore $ R.Call (R.Project table (R.Name "resize")) [R.Literal $ R.LInt $ length triggerS]
+  return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just $ R.Void) [] (dispatchInit:dispatchStatements)
+
+  where
+     table = R.Variable $ R.Name "dispatch_table"
+     genDispatch (tName, (tType, tNum)) = do
+       kType <- genCType tType
+
+       let classType = R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")
+           shared = R.Call (R.Variable $ R.Specialized [classType] (R.Name "make_shared")) []
+           trigStr = R.Literal $ R.LString tName
+
+           tuple =  R.Call (R.Variable $ R.Name "make_tuple") [shared, trigStr]
+           i = R.Literal $ R.LInt tNum
+       return $ R.Ignore $ R.Binary "=" (R.Subscript table i) tuple
+
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
 prettifyName :: R.Name
@@ -242,7 +262,7 @@ prettifyExpr base_t e =
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", R.Const $ R.Reference t)] Nothing stmnts) [expr]
+   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] Nothing stmnts) [expr]
    to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
    stringConcat = R.Binary "+"
    ossConcat = R.Binary "<<"
@@ -253,7 +273,7 @@ prettifyExpr base_t e =
    opt ct = do
        cType <- genCType base_t
        inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
-       return $ wrap (singleton $ R.IfThenElse e [R.Return $ stringConcat (lit_string "Some ") inner] [R.Return $ lit_string "None"]) [] e cType
+       return $ wrap (singleton $ R.IfThenElse e [R.Return $ stringConcat (lit_string "Some ") inner] [R.Return $ lit_string "None"]) [] e (R.Const $ R.Reference cType)
    -- Indirection
    ind_to_string ct = do
        inner <- prettifyExpr ct (R.Dereference e)
@@ -283,4 +303,4 @@ prettifyExpr base_t e =
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
-       return $ wrap [R.Forward rvar, R.Ignore iter, result] [] e cColType
+       return $ wrap [R.Forward rvar, R.Ignore iter, result] [] e (R.Reference cColType)
