@@ -9,7 +9,7 @@
 #include "Serialization.hpp"
 
 namespace K3 {
-  
+
     //------------
     // Dispatcher class
     //
@@ -17,7 +17,7 @@ namespace K3 {
     // in a queue
     class Dispatcher {
       public:
-        virtual Value pack() const = 0; 
+        virtual Value pack() const = 0;
         virtual void unpack(const Value &msg) = 0;
         virtual void* getArg() = 0;
         virtual Dispatcher* clone() = 0;
@@ -86,4 +86,3 @@ namespace K3 {
 
 } // namespace K3
 #endif
-
