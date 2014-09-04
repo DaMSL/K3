@@ -64,11 +64,17 @@ run opts = do
       Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
+    quickTypecheckAux f p = do
+      qtp <- inferProgramTypes p;
+      f qtp
+
+    quickTypecheckOpts opts' p = flip quickTypecheckAux p $
+      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
+
+    quickTypecheck p = quickTypecheckAux translateProgramTypes p
+
     chooseTypechecker opts' p =
-      if noQuickTypes opts'
-        then typecheck p
-        else do { qtp <- inferProgramTypes p;
-                  if printQuickTypes opts' then return qtp else translateProgramTypes qtp }
+      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
 
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
@@ -103,7 +109,7 @@ run opts = do
     analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
     analyzer EffectNormalization x = first Normalization.normalizeProgram x
     analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
-    analyzer Effects x             = wrapEither analyzeEffects . wrapEither typecheck $ x
+    analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
     analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
