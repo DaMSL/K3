@@ -172,6 +172,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "map"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "list"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "ostringstream"), Nothing)
                   ]
 
 requiredIncludes :: CPPGenM [Identifier]
@@ -309,8 +310,9 @@ prettifyExpr base_t e =
        e_name <- return $ R.Name "elem"
        v    <- prettifyExpr et (R.Variable e_name)
        svar <- return $ R.ScalarDecl (R.Name "s") (R.Primitive R.PString) (Just v)
-       lambda_body <- return [R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda [("oss", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "oss")])] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
+       oss_v <- return $ R.ScalarDecl (R.Name "oss") (R.Reference $ R.Named $ R.Name "ostringstream") (Just $ R.Call (R.Project (R.Variable $ R.Name "oss_ref") (R.Name "get")) [])
+       lambda_body <- return [R.Forward oss_v, R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
+       fun <- return $ R.Lambda [("oss_ref", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "oss")])] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
