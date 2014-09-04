@@ -23,10 +23,12 @@ type NamedEnv a = Map Identifier a
 type NamedEffectEnv = NamedEnv [[Property]]
 data AnnEffectEnv   = AnnEffectEnv { definitions  :: NamedEnv (NamedEnv [Property])
                                    , realizations :: NamedEnv (NamedEnv [Property]) }
+                        deriving (Eq, Show)
 
 -- | An effect environment supporting an open set of effect types as properties.
 data EffectEnv = EffectEnv { bindingE    :: NamedEffectEnv
                            , annotationE :: AnnEffectEnv }
+                   deriving (Eq, Show)
 
 {- Helpers -}
 annotationComboId :: [Identifier] -> Identifier
@@ -231,11 +233,11 @@ analyzeExprEffect env e = do
 
     propagateEffect eEnv ch n@(chainEffect . tag -> True) = propagateIfAllPure eEnv ch n
 
-    propagateEffect eEnv ch n@(tag -> EProject i) =
+    propagateEffect eEnv ch n@(tag &&& annotations -> (EProject i, prjAnns)) =
       let srcAnns = annotations $ head ch in
       case maybe Nothing (Just . details) $ typeOf $ srcAnns of
         Just (TRecord   _, _, _)     -> propagateIfAllPure eEnv ch n
-        Just (TCollection, _, tAnns) -> propagateProjectMemberEffect eEnv ch tAnns srcAnns i
+        Just (TCollection, _, tAnns) -> propagateProjectMemberEffect eEnv ch tAnns prjAnns i
 
         Just _  -> Left $ "Invalid source type in projection expression, neither collection nor record: " ++ (show $ typeOf srcAnns)
         Nothing -> Left "Unknown source type in projection expression."
@@ -302,14 +304,16 @@ analyzeTypeEffect t anns =
 --   Externals adopt their purity properties through explicit specification.
 initialAnnotationEnv :: [AnnMemDecl] -> NamedEnv [Property]
 initialAnnotationEnv mems = foldl initMemberEffect Map.empty mems
-  where initMemberEffect acc (Lifted      Provides n _ (Just _) _)     = addMemberEffect acc n
-        initMemberEffect acc (Attribute   Provides n _ (Just _) _)     = addMemberEffect acc n
+  where initMemberEffect acc (Lifted      Provides n _ (Just _) _)     = addMemberEffect acc n [pureEffect]
+        initMemberEffect acc (Attribute   Provides n _ (Just _) _)     = addMemberEffect acc n [pureEffect]
         initMemberEffect acc (Lifted      Provides n _ Nothing  dAnns) = addIfAnnotated acc n dAnns
         initMemberEffect acc (Attribute   Provides n _ Nothing  dAnns) = addIfAnnotated acc n dAnns
         initMemberEffect acc _ = acc
 
-        addIfAnnotated acc n dAnns = if any isPureDProperty dAnns then addMemberEffect acc n else acc
-        addMemberEffect acc n = Map.insert n [pureEffect] acc
+        addIfAnnotated acc n dAnns =
+          addMemberEffect acc n $ if any isPureDProperty dAnns then [pureEffect] else []
+
+        addMemberEffect acc n effects = Map.insert n effects acc
 
 
 -- | Returns a member effect environment as well as members annotated with purity properties.
