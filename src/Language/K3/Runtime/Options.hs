@@ -5,7 +5,7 @@ import Control.Applicative
 import Options.Applicative
 
 import Text.Parser.Char
-import Text.Parser.Combinators
+import Text.Parser.Combinators hiding ( option )
 import Text.Parser.Token
 
 import Language.K3.Core.Common
@@ -27,10 +27,9 @@ peerBReader peerDesc = either (Left . show) Right $ runK3Parser parser peerDesc
           (addr, ("me", addrE):(filter (("me" /=) . fst) bootstrap))
 
 peerBOptions :: Parser (Address, PeerBootstrap)
-peerBOptions = nullOption (
+peerBOptions = option (eitherReader peerBReader) (
         short 'p'
      <> long "peer"
-     <> eitherReader peerBReader
      <> help "Peer configuration in the format role:host:port."
     )
 

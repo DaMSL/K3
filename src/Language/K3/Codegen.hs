@@ -10,7 +10,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
-import qualified Language.K3.Codegen.Haskell as HG
+--import qualified Language.K3.Codegen.Haskell as HG
 
 class Compilable a where
   typ         :: K3 Type -> a
@@ -35,6 +35,7 @@ instance Compilable IdentityEmbedding where
   compile         = undefined
 
 -- | Haskell code generation.
+{-
 instance Compilable (HG.CodeGeneration HG.HaskellEmbedding) where
   typ         = HG.typ
   expression  = HG.expression
@@ -42,4 +43,4 @@ instance Compilable (HG.CodeGeneration HG.HaskellEmbedding) where
 
   generate    = HG.generate
   compile     = HG.compile
-
+-}
