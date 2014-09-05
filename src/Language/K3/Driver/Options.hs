@@ -180,46 +180,41 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> noQuickTypesOpt
 
 outLanguageOpt :: Parser String
-outLanguageOpt = option ( short   'l'
+outLanguageOpt = strOption ( short   'l'
                       <> long    "language"
                       <> value   defaultOutLanguage
-                      <> reader  str
                       <> help    "Specify compiler target language"
                       <> metavar "LANG" )
 
 progNameOpt :: Parser String
-progNameOpt = option (   short   'n'
+progNameOpt = strOption (   short   'n'
                       <> long    "name"
                       <> value   defaultProgramName
-                      <> reader  str
                       <> help    "Program name"
                       <> metavar "PROGNAME" )
 
 runtimePathOpt :: Parser FilePath
-runtimePathOpt = option (
+runtimePathOpt = option auto (
                        short   'r'
                     <> long    "runtime"
-                    <> reader  str
                     <> help    "Specify runtime path"
                     <> metavar "RUNTIME" )
 
 outputFileOpt :: Parser (Maybe FilePath)
-outputFileOpt = validatePath <$> option (
+outputFileOpt = validatePath <$> option (\s -> str s >>= return . Just) (
                        short   'o'
                     <> long    "output"
                     <> value   defaultOutputFile
-                    <> reader (\s -> str s >>= return . Just)
                     <> help    "Specify output file"
                     <> metavar "OUTPUT" )
   where validatePath Nothing  = Nothing
         validatePath (Just p) = if isValid p then Just p else Nothing
 
 buildDirOpt :: Parser (Maybe FilePath)
-buildDirOpt = validatePath <$> option (
+buildDirOpt = validatePath <$> option (\s -> str s >>= return . Just) (
                        short   'b'
                     <> long    "build"
                     <> value   defaultBuildDir
-                    <> reader (\s -> str s >>= return . Just)
                     <> help    "Temporary build directory"
                     <> metavar "BUILDDIR" )
   where validatePath Nothing  = Nothing
@@ -466,11 +461,10 @@ informOptions = InfoSpec <$> loggingOptions <*> verbosityOptions
 
 -- | Logging options.
 loggingOptions :: Parser LoggerOptions
-loggingOptions = many $ option (
+loggingOptions = many $ option (eitherReader parseInstruction) (
                        long "log"
                     <> help "Enable logging on TAG"
                     <> metavar "TAG"
-                    <> eitherReader parseInstruction
                  )
 
 -- | Path options.
@@ -484,7 +478,7 @@ pathOptions = PathOptions <$> many ( strOption (
 
 -- | Verbosity options.
 verbosityOptions :: Parser Verbosity
-verbosityOptions = toEnum . roundVerbosity <$> option (
+verbosityOptions = toEnum . roundVerbosity <$> option auto (
         short 'v'
      <> long "verbosity"
      <> help "Verbosity of Output. [0..2]"

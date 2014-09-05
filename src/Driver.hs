@@ -33,7 +33,7 @@ import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
-import qualified Language.K3.Compiler.Haskell as HaskellC
+--import qualified Language.K3.Compiler.Haskell as HaskellC
 import qualified Language.K3.Compiler.CPP     as CPPC
 
 -- | Mode Dispatch.
@@ -80,9 +80,9 @@ run opts = do
       let (p, str) = transform (coTransform cOpts) prog
       putStrLn str
       case map toLower $ outLanguage cOpts of
-        "haskell" -> HaskellC.compile opts cOpts p
         "cpp"     -> CPPC.compile opts cOpts p
         _         -> error $ outLanguage cOpts ++ " compilation not supported."
+        --"haskell" -> HaskellC.compile opts cOpts p
 
     interpret im@(Batch {}) prog = do
       let (p, str) = transform (ioTransform im) prog

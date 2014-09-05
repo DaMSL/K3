@@ -2,7 +2,6 @@ dist*
 tmp
 /.dist-buildwrapper
 .project
-env.bat
 *.k3
 *.pyc
 
