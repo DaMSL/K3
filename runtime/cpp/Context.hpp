@@ -22,5 +22,29 @@ namespace K3 {
    protected:
     Engine& __engine;
   };
+
+  template<class Context>
+  std::map<Address, shared_ptr<__k3_context>> createContexts(std::vector<string> peer_strs, const Engine& engine) {
+    std::map<Address, shared_ptr<__k3_context>> contexts;
+    for (auto &s : peer_strs) {
+      std::map<std::string, std::string> bindings = parse_bindings(s);
+      Context gc = Context(engine);
+      match_patchers(bindings, gc.matchers);
+      // TODO: call __patch instead?
+      contexts[gc.me] = make_shared<__k3_context>(gc);
+    }
+    return contexts;
+  }
+  std::list<Address> getAddrs(std::map<Address, shared_ptr<__k3_context>> contexts) {
+    std::list<Address> result;
+    for (const auto& it: contexts) {
+      result.push_back(it.first);
+    }
+    return result;
+  }
+
 }
+
+
+
 #endif

@@ -110,23 +110,14 @@ main = do
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
                                     [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
                      [R.Return (R.Literal $ R.LInt 0)] []
-    let bindingsDecl = R.Forward $ R.ScalarDecl (R.Name "bindings")
-                       (R.Named $ R.Qualified (R.Name "std")
-                             (R.Specialized [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map"))
-                       (Just $ R.Call (R.Variable $ R.Name "parse_bindings")
-                                 [R.Subscript (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
-                                       (R.Literal $ R.LInt 0)])
-
-    let matchPatchersCall = R.Ignore $ R.Call (R.Variable $ R.Name "match_patchers")
-                            [ R.Variable $ R.Name "bindings"
-                            , R.Variable $ R.Name "matchers"
-                            ]
+    -- TODO grab context name from elsewhere (Add to state?)
+    let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") (R.Named $ R.Specialized [R.Named $ R.Name "Address", R.Named $ R.Specialized [R.Named $ R.Name "__k3_context"] (R.Name "shared_ptr")] (R.Name "map"))
+                     (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Variable $ R.Name "engine"])
 
     let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
                             (R.Named $ R.Name "SystemEnvironment")
                             (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
-                                  [R.Initialization (R.Named $ R.Specialized [R.Address] (R.Name "list"))
-                                    [R.Variable $ R.Name "me"]])
+                                    [R.Call (R.Variable $ R.Name "getAddrs") [R.Variable $ R.Name "contexts"]])
 
     let engineConfigure = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "configure"))
                           [ R.Project (R.Variable $ R.Name "opt") (R.Name "simulation")
@@ -138,8 +129,8 @@ main = do
 
     let processRoleCall = R.Ignore $ R.Call (R.Variable $ R.Name "processRole") [R.Initialization R.Unit []]
     let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
-                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DispatchMessageProcessor"]
-                                     (R.Name "make_shared")) [R.Variable prettifyName]]
+                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "virtualizing_message_processor"]
+                                     (R.Name "make_shared")) [R.Variable $ R.Name "contexts"]]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
@@ -148,8 +139,7 @@ main = do
              , popDispatchCall
              , optionDecl
              , optionCall
-             , bindingsDecl
-             , matchPatchersCall
+             , contexts
              , systemEnvironment
              , engineConfigure
              , processRoleCall
@@ -164,11 +154,17 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "do_patch"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
-                  , (Right (R.Qualified (R.Name "std")$ R.Name "tuple"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "shared_ptr" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "map"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "list"), Nothing)
