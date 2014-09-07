@@ -69,29 +69,26 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     prettify <- genPrettify
 
-    let matcherMap = R.Forward $ R.ScalarDecl (R.Name "matchers")
-                     (R.Named $ R.Qualified (R.Name "std") $
-                       R.Specialized
-                            [ R.Primitive R.PString,
-                              R.Function [R.Primitive R.PString] R.Void
-                            ]
-                      (R.Name "map")) Nothing
-
-    let popMatcher p = R.Assignment (R.Subscript (R.Variable $ R.Name "matchers") (R.Literal $ R.LString p))
-                       (R.Lambda [R.ValueCapture (Just ("this", Nothing))] [("__input", R.Primitive R.PString)] Nothing
-                         [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
-                               [R.Variable $ R.Name "__input", R.Variable $ R.Name p]])
-
     patchables' <- patchables <$> get
+
+    let popPatch p = R.IfThenElse (R.Binary ">"
+                                        (R.Call (R.Project (R.Variable $ R.Name "bindings") (R.Name "count"))
+                                          [R.Literal $ R.LString p])
+                                        (R.Literal $ R.LInt 0))
+                     [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
+                       [R.Subscript (R.Variable $ R.Name "bindings") (R.Literal $ R.LString p), R.Variable $ R.Name p]]
+                     []
+    let patchDecl = R.FunctionDefn (R.Name "__patch")
+                    [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map")] (Just R.Void) [] (map popPatch patchables')
 
     let contextConstructor = R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
                              Nothing [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context")
                                    [R.Variable $ R.Name "__engine"]]
-                             (inits ++ map popMatcher patchables')
+                             inits
 
-    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify]
+    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
-                           contextDefns [] [R.GlobalDefn matcherMap]
+                           contextDefns [] []
     let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "dispatch_table") (R.Named $ R.Qualified (R.Name "K3") (R.Name "TriggerDispatch")) Nothing
 
     popDispatch <- generateDispatchPopulation
@@ -197,7 +194,7 @@ generateDispatchPopulation = do
 
   dispatchStatements <- mapM genDispatch triggerS
   let dispatchInit = R.Ignore $ R.Call (R.Project table (R.Name "resize")) [R.Literal $ R.LInt $ length triggerS]
-  return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just $ R.Void) [] (dispatchInit:dispatchStatements)
+  return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just R.Void) [] (dispatchInit:dispatchStatements)
 
   where
      table = R.Variable $ R.Name "dispatch_table"
