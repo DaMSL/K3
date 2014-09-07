@@ -177,9 +177,12 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- fst . unzip . globals <$> get
     let fvs = nub $ filter (/= arg) $ freeVariables body
+    let capture = R.ValueCapture (Just ("this", Nothing)) : [R.ValueCapture (Just (j, Nothing)) | j <- fvs \\exc]
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
-    return ([], R.Lambda [(i', R.Variable $ R.Name i') | i' <- fvs \\ exc] [(arg, ta)] (Just tr) body')
+    return ( []
+           , R.Lambda capture [(arg, ta)] (Just tr) body'
+           )
 
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
