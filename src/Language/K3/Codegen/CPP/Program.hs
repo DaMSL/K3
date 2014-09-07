@@ -78,7 +78,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                       (R.Name "map")) Nothing
 
     let popMatcher p = R.Assignment (R.Subscript (R.Variable $ R.Name "matchers") (R.Literal $ R.LString p))
-                       (R.Lambda [] [("__input", R.Primitive R.PString)] Nothing
+                       (R.Lambda [R.ValueCapture (Just ("this", Nothing))] [("__input", R.Primitive R.PString)] Nothing
                          [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
                                [R.Variable $ R.Name "__input", R.Variable $ R.Name p]])
 
@@ -306,9 +306,9 @@ prettifyExpr base_t e =
        e_name <- return $ R.Name "elem"
        v    <- prettifyExpr et (R.Variable e_name)
        svar <- return $ R.ScalarDecl (R.Name "s") (R.Primitive R.PString) (Just v)
-       oss_v <- return $ R.ScalarDecl (R.Name "oss") (R.Reference $ R.Named $ R.Name "ostringstream") (Just $ R.Call (R.Project (R.Variable $ R.Name "oss_ref") (R.Name "get")) [])
+       oss_v <- return $ R.ScalarDecl (R.Name "oss") (R.Reference $ R.Named $ R.Name "ostringstream") (Just $ R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "get")) [])
        lambda_body <- return [R.Forward oss_v, R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda [("oss_ref", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "oss")])] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
+       fun <- return $ R.Lambda [(R.RefCapture (Just ("oss", Nothing)))] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
