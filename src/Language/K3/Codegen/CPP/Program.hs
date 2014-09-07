@@ -79,36 +79,41 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                        [R.Subscript (R.Variable $ R.Name "bindings") (R.Literal $ R.LString p), R.Variable $ R.Name p]]
                      []
     let patchDecl = R.FunctionDefn (R.Name "__patch")
-                    [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map")] (Just R.Void) [] (map popPatch patchables')
+                    [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized
+                                    [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map")]
+                    (Just R.Void) [] (map popPatch patchables')
+
+    dispatchPop <- generateDispatchPopulation
 
     let contextConstructor = R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
                              Nothing [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context")
                                    [R.Variable $ R.Name "__engine"]]
-                             inits
+                             (inits ++ dispatchPop)
 
-    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl]
-    let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
-                           contextDefns [] []
+    let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
+                       [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
+                       (Just R.Void) [] []
     let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "dispatch_table") (R.Named $ R.Qualified (R.Name "K3") (R.Name "TriggerDispatch")) Nothing
 
-    popDispatch <- generateDispatchPopulation
+    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl, dispatchDecl]
+    let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
+                           contextDefns [] [tableDecl]
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn, tableDecl, popDispatch] ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
 main = do
     let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
-    let popDispatchCall = R.Ignore $ R.Call (R.Variable $ R.Name "populate_dispatch") []
     let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
                                     [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
                      [R.Return (R.Literal $ R.LInt 0)] []
     -- TODO grab context name from elsewhere (Add to state?)
-    let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") (R.Named $ R.Specialized [R.Named $ R.Name "Address", R.Named $ R.Specialized [R.Named $ R.Name "__k3_context"] (R.Name "shared_ptr")] (R.Name "map"))
+    let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") R.Inferred
                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Variable $ R.Name "engine"])
 
     let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
@@ -132,7 +137,6 @@ main = do
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) []
              [ engineDecl
-             , popDispatchCall
              , optionDecl
              , optionCall
              , contexts
@@ -188,14 +192,10 @@ requiredIncludes = return
                    , "dataspace/Dataspace.hpp"
                    ]
 
-generateDispatchPopulation :: CPPGenM R.Definition
+generateDispatchPopulation :: CPPGenM [R.Statement]
 generateDispatchPopulation = do
   triggerS <- triggers <$> get
-
-  dispatchStatements <- mapM genDispatch triggerS
-  let dispatchInit = R.Ignore $ R.Call (R.Project table (R.Name "resize")) [R.Literal $ R.LInt $ length triggerS]
-  return $ R.FunctionDefn (R.Name "populate_dispatch") [] (Just R.Void) [] (dispatchInit:dispatchStatements)
-
+  mapM genDispatch triggerS
   where
      table = R.Variable $ R.Name "dispatch_table"
      genDispatch (tName, (tType, tNum)) = do
