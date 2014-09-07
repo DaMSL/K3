@@ -24,15 +24,13 @@ namespace K3 {
     Engine& __engine;
   };
 
-  template<class Context>
-  std::map<Address, shared_ptr<__k3_context>> createContexts(std::vector<string> peer_strs, const Engine& engine) {
+  template <class context>
+  std::map<Address, shared_ptr<__k3_context>> createContexts(std::vector<string> peer_strs, Engine& engine) {
     std::map<Address, shared_ptr<__k3_context>> contexts;
-    for (auto &s : peer_strs) {
-      std::map<std::string, std::string> bindings = parse_bindings(s);
-      Context gc = Context(engine);
-      match_patchers(bindings, gc.matchers);
-      // TODO: call __patch instead?
-      contexts[gc.me] = make_shared<__k3_context>(gc);
+    for (auto& s : peer_strs) {
+      auto gc = make_shared<context>(engine);
+      gc->__patch(parse_bindings(s));
+      contexts[gc->me] = gc;
     }
     return contexts;
   }
