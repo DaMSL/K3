@@ -127,7 +127,6 @@ main = do
                           , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
                           ]
 
-    let processRoleCall = R.Ignore $ R.Call (R.Variable $ R.Name "processRole") [R.Initialization R.Unit []]
     let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
                         [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "virtualizing_message_processor"]
                                      (R.Name "make_shared")) [R.Variable $ R.Name "contexts"]]
@@ -142,7 +141,6 @@ main = do
              , contexts
              , systemEnvironment
              , engineConfigure
-             , processRoleCall
              , runEngineCall
              ]
        ]
