@@ -184,8 +184,11 @@ instance Stringifiable Expression where
         parenthesize pt' = parens $ stringify pt'
     stringify (Subscript a b)
         = case b of
-            (Lambda _ _ _ _) -> parens (stringify a) <> brackets (parens $ stringify b)
-            _ -> parens (stringify a) <> brackets (stringify b)
+            (Lambda _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
+            _ -> parenthesize a <> brackets (stringify b)
+      where
+        parenthesize a'@(Variable _) = stringify a'
+        parenthesize a' = parens $ stringify a'
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
 
