@@ -207,7 +207,7 @@ generateDispatchPopulation = do
 
            tuple =  R.Call (R.Variable $ R.Name "make_tuple") [shared, trigStr]
            i = R.Literal $ R.LInt tNum
-       return $ R.Ignore $ R.Binary "=" (R.Subscript table i) tuple
+       return $ R.Assignment (R.Subscript table i) tuple
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
