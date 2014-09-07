@@ -127,7 +127,7 @@ genSourceBuiltin typ name = do
     f typ name
 
 -- Grab the generator function from the map, currying the key of the builtin to be generated.
-getSourceBuiltin :: String -> (K3 Type -> String -> CPPGenM R.Definition)
+getSourceBuiltin :: String -> K3 Type -> String -> CPPGenM R.Definition
 getSourceBuiltin k =
     case filter (\(x,_) -> k == x) source_builtin_map of
         []         -> error $ "Could not find builtin with name" ++ k
@@ -165,10 +165,10 @@ genLoader suf (children -> [_,f]) name = do
  let err    = R.Binary "<<" (R.Variable $ R.Name "cout") (R.Literal $ R.LString "Failed to parse a row!\\n")
  let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
 
- let lamb = R.Lambda [("file", R.Variable $ R.Name "file"), ("c", R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "ref")) [(R.Variable $ R.Name "c")])] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
+ let lamb = R.Lambda [R.ValueCapture (Just ("file", Nothing)), R.RefCapture (Just ("c", Nothing))] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
  let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
- return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Const $ R.Reference $ cColType)]
+ return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Const $ R.Reference cColType)]
             (Just $ R.Named $ R.Name "unit_t")
             [] [result_dec, R.Ignore foreachline, ret]
  where
