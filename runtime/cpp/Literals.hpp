@@ -12,9 +12,18 @@
 #include "boost/fusion/include/std_pair.hpp"
 #include "boost/spirit/include/qi.hpp"
 
+#include "BaseTypes.hpp"
+
 namespace K3 {
   namespace qi = boost::spirit::qi;
 
+  using std::list;
+  using std::make_shared;
+  using std::map;
+  using std::pair;
+  using std::shared_ptr;
+  using std::string;
+  using std::tuple;
 
   template <class iterator>
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {
@@ -231,7 +240,7 @@ namespace K3 {
     patcher<T>::patch(s, t);
   }
 
-  void match_patchers(map<string, string>& m, map<string, function<void(string)>>& f) {
+  void match_patchers(map<string, string>& m, map<string, std::function<void(string)>>& f) {
     for (pair<string, string> p: m) {
       if (f.find(p.first) != end(f)) {
         f[p.first](p.second);
