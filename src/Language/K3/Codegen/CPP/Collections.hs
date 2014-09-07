@@ -187,7 +187,7 @@ record (sort -> ids) = do
                     , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
                     ]
                (R.Qualified (R.Name "qi") (R.Name "rule")))
-              (Just $ foldl1 (R.Binary "|") [R.Variable (R.Name $ "_" ++ f) | f <- "x": ids])
+              (Just $ foldl1 (R.Binary "|") [R.Variable (R.Name $ "_" ++ f) | f <- ids])
 
     let recordParserDecl
             = R.Forward $ R.ScalarDecl (R.Name "_parser")
