@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Dispatch.hpp"
+#include "Literals.hpp"
 
 namespace K3 {
 
