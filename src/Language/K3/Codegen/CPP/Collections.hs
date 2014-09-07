@@ -165,8 +165,7 @@ record (sort -> ids) = do
               ]
 
     let oneFieldParserAction f
-            = R.Lambda [("_record", R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "ref")))
-                                      [R.Variable $ R.Name "_record"])]
+            = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
               [("_partial", R.Primitive R.PString)] Nothing
               [R.Ignore $ doPatchInvocation f]
 
