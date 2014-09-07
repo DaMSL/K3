@@ -66,8 +66,8 @@ composite name ans = do
               [R.Ignore $
                 R.Call (
                   R.Variable $ R.Qualified
-                  (R.Specialized [R.Parameter name, R.Parameter "__CONTENT"] (R.Name "patch"))
-                  (R.Name "collection_patcher"))
+                  (R.Specialized [R.Parameter name, R.Parameter "__CONTENT"] (R.Name "collection_patcher"))
+                  (R.Name "patch"))
                      [R.Variable $ R.Name "_input", R.Variable $ R.Name "_c"]
               ]
 
