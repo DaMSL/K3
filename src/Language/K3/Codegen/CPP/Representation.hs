@@ -18,6 +18,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Void,
 
     Literal(..),
+    Capture(..),
     Expression(..),
 
     Declaration(..),
@@ -138,12 +139,25 @@ instance Stringifiable Literal where
     stringify (LString s) = dquotes $ string s
     stringify (LNullptr) = "nullptr"
 
+data Capture
+    = ValueCapture (Maybe (Identifier, Maybe Expression))
+    | RefCapture (Maybe (Identifier, Maybe Expression))
+  deriving (Eq, Read, Show)
+
+instance Stringifiable Capture where
+    stringify (ValueCapture Nothing) = "="
+    stringify (ValueCapture (Just (i, Nothing))) = fromString i
+    stringify (ValueCapture (Just (i, Just e))) = fromString i <+> equals <+> stringify e
+    stringify (RefCapture Nothing) = "&"
+    stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
+    stringify (RefCapture (Just (i, Just e))) = "&" <> fromString i <+> equals <+> stringify e
+
 data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
     | Dereference Expression
     | Initialization Type [Expression]
-    | Lambda [(Identifier, Expression)] [(Identifier, Type)] (Maybe Type) [Statement]
+    | Lambda [Capture] [(Identifier, Type)] (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
     | Subscript Expression Expression
@@ -159,12 +173,15 @@ instance Stringifiable Expression where
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as rt bd) = cs' <+> as' <+> rt' <+> bd'
       where
-        cs' = brackets $ commaSep [fromString i <+> equals <+> stringify t | (i, t) <- cs]
+        cs' = brackets $ commaSep (map stringify cs)
         as' = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
         rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
         bd' = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
-    stringify (Project pt i) = parens (stringify pt) <> dot <> stringify i
+    stringify (Project pt i) = parenthesize pt <> dot <> stringify i
+      where
+        parenthesize pt'@(Variable _) = stringify pt'
+        parenthesize pt' = parens $ stringify pt'
     stringify (Subscript a b)
         = case b of
             (Lambda _ _ _ _) -> parens (stringify a) <> brackets (parens $ stringify b)
