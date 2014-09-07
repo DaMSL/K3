@@ -226,8 +226,9 @@ instance Stringifiable Statement where
     stringify (Block ss) = hangBrace (vsep [stringify s | s <- ss])
     stringify (Forward d) = stringify d <> semi
     stringify (IfThenElse p ts es) =
-        "if" <+> parens (stringify p) <+> hangBrace (vsep $ map stringify ts) <+> "else"
-                                      <+> hangBrace (vsep $ map stringify es)
+        "if" <+> parens (stringify p) <+> hangBrace (vsep $ map stringify ts)
+              <> (if (null es) then empty else
+                      (space <> "else" <+> hangBrace (vsep $ map stringify es)))
     stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
