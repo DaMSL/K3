@@ -12,7 +12,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Address,
     pattern Collection,
     pattern Byte,
-    pattern Pointer,
+    pattern SharedPointer,
     pattern Unit,
     pattern Tuple,
     pattern Void,
@@ -98,6 +98,7 @@ data Type
     | Inferred
     | Named Name
     | Parameter Identifier
+    | Pointer Type
     | Primitive Primitive
     | Reference Type
     | RValueReference Type
@@ -106,7 +107,7 @@ data Type
 pattern Address = Named (Name "Address")
 pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
-pattern Pointer t = Named (Specialized [t] (Name "shared_ptr"))
+pattern SharedPointer t = Named (Specialized [t] (Name "shared_ptr"))
 pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern Void = Named (Name "void")
@@ -118,6 +119,7 @@ instance Stringifiable Type where
     stringify (Const t) = "const" <+> stringify t
     stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
+    stringify (Pointer t) = stringify t <> "*"
     stringify (Primitive p) = stringify p
     stringify (Reference t) = stringify t <> "&"
     stringify (RValueReference t) = stringify t <> "&&"
