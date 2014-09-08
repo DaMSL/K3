@@ -1,3 +1,6 @@
+#ifndef __K3_RUNTIME_DATASPACE__
+#define __K3_RUNTIME_DATASPACE__
+
 #include <boost/tr1/unordered_set.hpp>
 #include <boost/tr1/unordered_map.hpp>
 #include "boost/serialization/vector.hpp"
@@ -957,3 +960,4 @@ std::size_t hash_value(K3::Map<Elem> const& b) {
   const auto& c  = b.getConstContainer();
   return boost::hash_range(c.begin(), c.end());
 }
+#endif
