@@ -4,7 +4,6 @@
 #include <map>
 #include <string>
 
-#include "Dispatch.hpp"
 #include "Literals.hpp"
 
 namespace K3 {
@@ -14,7 +13,6 @@ namespace K3 {
   class __k3_context {
    public:
     __k3_context(Engine& e): __engine(e) {}
-    //__k3_context(Engine& e, std::map<string, string> b): __engine(e) {__patch(b)}
 
     virtual void __dispatch(int, void *) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;

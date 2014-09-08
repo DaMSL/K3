@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "Common.hpp"
+#include "Context.hpp"
 #include "Serialization.hpp"
 
 namespace K3 {
@@ -19,7 +20,7 @@ namespace K3 {
       public:
         virtual Value pack() const = 0;
         virtual void unpack(const Value &msg) = 0;
-        virtual void* getArg() = 0;
+      virtual void call_dispatch(__k3_context&, int) = 0;
         virtual Dispatcher* clone() = 0;
         virtual ~Dispatcher() {}
     };
@@ -37,7 +38,9 @@ namespace K3 {
 
         Value pack() const { return BoostSerializer::pack<T>(_arg); }
 
-        void* getArg() { return (void *) &_arg; }
+        void call_dispatch(__k3_context& context, int trigger_id) {
+	  context.__dispatch(trigger_id, static_cast<void*>(&_arg));
+        }
 
         T _arg;
     };
