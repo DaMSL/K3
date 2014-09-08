@@ -93,7 +93,11 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
                        [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
                        (Just R.Void) [] []
-    let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "dispatch_table") (R.Named $ R.Qualified (R.Name "K3") (R.Name "TriggerDispatch")) Nothing
+    let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
+                     (R.Name "dispatch_table")
+                     (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
+                           [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
+                     Nothing
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl, dispatchDecl]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
@@ -201,13 +205,17 @@ generateDispatchPopulation = do
      genDispatch (tName, (tType, tNum)) = do
        kType <- genCType tType
 
-       let classType = R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")
-           shared = R.Call (R.Variable $ R.Specialized [classType] (R.Name "make_shared")) []
-           trigStr = R.Literal $ R.LString tName
+       let i = R.Literal $ R.LInt tNum
 
-           tuple =  R.Call (R.Variable $ R.Name "make_tuple") [shared, trigStr]
-           i = R.Literal $ R.LInt tNum
-       return $ R.Assignment (R.Subscript table i) tuple
+       let dispatchWrapper = R.Lambda
+                             [R.ValueCapture $ Just ("this", Nothing)]
+                             [("payload", R.Named $ R.Name "void*")] Nothing
+                             [R.Ignore $ R.Call (R.Variable $ R.Name tName)
+                                   [R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
+                                                             R.Name "static_cast")
+                                    [R.Variable $ R.Name "payload"]]]
+
+       return $ R.Assignment (R.Subscript table i) dispatchWrapper
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)
