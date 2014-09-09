@@ -25,6 +25,8 @@ import Language.K3.Codegen.CPP.Declaration
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives (genCType)
 import Language.K3.Codegen.CPP.Types
+
+import qualified Language.K3.Analysis.CArgs as CArgs
 import qualified Language.K3.Codegen.Imperative as I
 
 import qualified Language.K3.Codegen.CPP.Representation as R
@@ -48,7 +50,7 @@ stringifyProgram d = vsep . map R.stringify <$> program d
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
 program :: K3 Declaration -> CPPGenM [R.Definition]
-program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
+program (mangleReservedNames . CArgs.convertProgram -> (tag &&& children -> (DRole name, decls))) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
 
