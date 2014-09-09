@@ -168,6 +168,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
