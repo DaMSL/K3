@@ -17,7 +17,7 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get install -y \
       wget vim make git \
       zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
-      clang-3.4 libboost1.55-all-dev 
+      clang-3.4 libboost1.55-all-dev
 
 # Install decent vim configuration
 RUN mkdir /root/.vim
@@ -27,6 +27,9 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 
 # Install ocaml
 RUN apt-get install -y ocaml opam camlp4-extra
+
+# Install Redis
+RUN apt-get install -y redis-server redis-tools libhiredis0.10 libhiredis-dev libhiredis-dbg
 
 # Install GHC and cabal
 ADD haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz /
