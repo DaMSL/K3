@@ -208,6 +208,8 @@ requiredIncludes = return
                    , "Builtins.hpp"
 
                    , "dataspace/Dataspace.hpp"
+
+                   , "strtk.hpp"
                    ]
 
 
