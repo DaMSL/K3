@@ -13,6 +13,9 @@
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
 
+
+std::size_t hash_value(boost::asio::ip::address const& b);
+
 namespace K3 {
   //class Builtins: public __k3_context {
   //  public:

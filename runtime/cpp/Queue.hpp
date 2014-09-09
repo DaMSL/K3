@@ -114,8 +114,7 @@ namespace K3 {
     {
       if (validTarget(m)) { enqueue(m, queue(m)); }
       else {
-        BOOST_LOG(*this) << "Invalid message target: "
-                         << addressAsString(m.address()) << ":" << std::get<1>(dispatch_table[m.id()]);
+        BOOST_LOG(*this) << "Invalid message target:" << m.id() << "@" << K3::addressAsString(m.address());
       }
     }
 

@@ -147,7 +147,7 @@ record (sort -> ids) = do
     let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator, inequalityOperator, lessOperator, serializeFn] ++ fieldDecls
 
     let recordStructDefn
-            = R.GuardedDefn ("K3_" ++ recordName) $
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $
                 R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
 
     let shallowDecl = R.Forward $ R.ScalarDecl (R.Name "_shallow")

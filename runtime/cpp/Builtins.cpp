@@ -8,8 +8,9 @@
 #include "BaseCollections.hpp"
 #include "Builtins.hpp"
 
-extern K3::Engine engine;
-extern _Collection<R_addr<K3::Address>> peers;
+// TODO cleanup traces of engine and peers
+//extern K3::Engine engine;
+//extern _Collection<R_addr<K3::Address>> peers;
 
 char *sdup (const char *s) {
     char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
@@ -17,47 +18,53 @@ char *sdup (const char *s) {
     return d;                            // Return new memory
 }
 
+std::size_t hash_value(boost::asio::ip::address const& b) {
+  boost::hash<std::string> hasher;
+  return hasher(b.to_string());
+}
+
 namespace K3 {
   using std::string;
   using std::endl;
   using std::to_string;
 
-  F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
-      return [&] (const string& builtin_chan_id) {
-        return [&] (const string& format) {
-          engine.openBuiltin(chan_id, builtin_chan_id);
-          return unit_t();
-        };
-      };
-    }
 
-  F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id) {
-      return [&] (const string& path) {
-          return [&] (const string& fmt) {
-              return [&] (const string& mode) {
-                  IOMode iomode = engine.ioMode(mode);
-                  engine.openFile(chan_id, path, iomode);
-                  return unit_t();
-              };
-          };
-      };
-  }
+  //F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
+  //    return [&] (const string& builtin_chan_id) {
+  //      return [&] (const string& format) {
+  //        engine.openBuiltin(chan_id, builtin_chan_id);
+  //        return unit_t();
+  //      };
+  //    };
+  //  }
 
-  unit_t close(string chan_id) {
-      engine.close(chan_id);
-      return unit_t();
-  }
+  //F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id) {
+  //    return [&] (const string& path) {
+  //        return [&] (const string& fmt) {
+  //            return [&] (const string& mode) {
+  //                IOMode iomode = engine.ioMode(mode);
+  //                engine.openFile(chan_id, path, iomode);
+  //                return unit_t();
+  //            };
+  //        };
+  //    };
+  //}
 
-  int index_by_hash(const string& s) {
-    auto& container = peers.getConstContainer();
-    size_t h = std::hash<string>()(s);
-    return h % container.size();
-  }
+  //unit_t close(string chan_id) {
+  //    engine.close(chan_id);
+  //    return unit_t();
+  //}
 
-  Address& peer_by_index(const int i) {
-    auto& container = peers.getContainer();
-    return container[i].addr;
-  }
+  //int index_by_hash(const string& s) {
+  //  auto& container = peers.getConstContainer();
+  //  size_t h = std::hash<string>()(s);
+  //  return h % container.size();
+  //}
+
+  //Address& peer_by_index(const int i) {
+  //  auto& container = peers.getContainer();
+  //  return container[i].addr;
+  //}
 
   unit_t printLine(string message) {
     std::cout << message << endl;
@@ -72,10 +79,10 @@ namespace K3 {
     return to_string(d);
   }
 
-  unit_t haltEngine(unit_t) {
-    engine.forceTerminateEngine();
-    return unit_t();
-  }
+  //unit_t haltEngine(unit_t) {
+  //  engine.forceTerminateEngine();
+  //  return unit_t();
+  //}
 
   F<F<string(const int&)>(const int&)> substring(const string& s) {
       return [&] (const int& i) {

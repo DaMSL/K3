@@ -20,7 +20,9 @@ namespace K3 {
     const Address&  address()  const { return std::get<0>(*this); }
     TriggerId id()             const { return std::get<1>(*this); }
     const std::shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
-    std::string target() const { return std::get<1>(dispatch_table[id()]) + "@" + addressAsString(address()); }
+    std::string target() const {
+      return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address());
+    }
   };
 
 
@@ -44,13 +46,13 @@ namespace K3 {
     const Address&    address()  const { return std::get<0>(*this); }
     TriggerId id()               const { return std::get<1>(*this); }
     const Value& contents()      const { return std::get<2>(*this); }
-    std::string target()         const {
-       return std::get<1>(dispatch_table[id()]) + "@" + addressAsString(address());
+    std::string target() const {
+      return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address()); 
     }
 
     // TODO: error reporting if not found
     const std::shared_ptr<Message> toMessage() const {
-      auto *d = std::get<0>(dispatch_table[id()])->clone();
+      auto *d = __k3_context::__get_clonable_dispatcher(id())->clone();
       d->unpack(contents());
       return std::make_shared<Message>(address(), id(), std::shared_ptr<Dispatcher>(d));
     }

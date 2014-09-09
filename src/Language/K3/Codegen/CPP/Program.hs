@@ -92,8 +92,12 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
                        [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
-                       (Just R.Void) [] []
-    let tableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
+                       (Just R.Void) []
+                       [R.Ignore $ R.Call
+                         (R.Subscript (R.Variable $ R.Name "dispatch_table") (R.Variable $ R.Name "trigger_id"))
+                         [R.Variable $ R.Name "payload"]
+                       ]
+    let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name "dispatch_table")
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                            [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
@@ -101,7 +105,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl, dispatchDecl]
     let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
-                           contextDefns [] [tableDecl]
+                           contextDefns [] [dispatchTableDecl]
     mainFn <- main
 
     -- Return all top-level definitions.
@@ -120,6 +124,7 @@ main = do
     let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") R.Inferred
                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Variable $ R.Name "engine"])
 
+    staticContextMembersPop <- R.Block <$> generateStaticContextMembers
     let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
                             (R.Named $ R.Name "SystemEnvironment")
                             (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
@@ -133,6 +138,8 @@ main = do
                           , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
                           ]
 
+    let processRoles = R.Ignore $ R.Call (R.Variable $ R.Name "processRoles") [R.Variable $ R.Name "contexts"]
+
     let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
                         [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "virtualizing_message_processor"]
                                      (R.Name "make_shared")) [R.Variable $ R.Name "contexts"]]
@@ -144,8 +151,10 @@ main = do
              , optionDecl
              , optionCall
              , contexts
+             , staticContextMembersPop
              , systemEnvironment
              , engineConfigure
+             , processRoles
              , runEngineCall
              ]
        ]
@@ -157,9 +166,11 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "do_patch"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
@@ -195,6 +206,36 @@ requiredIncludes = return
 
                    , "dataspace/Dataspace.hpp"
                    ]
+
+
+generateStaticContextMembers :: CPPGenM [R.Statement]
+generateStaticContextMembers = do
+  triggerS <- triggers <$> get
+  let initNames = R.Forward $ R.ScalarDecl
+                    (R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names"))
+                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Name "string"] (R.Name "map"))
+                    Nothing
+  let initDisps = R.Forward $ R.ScalarDecl
+                    (R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers"))
+                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Specialized [R.Named $ R.Name "Dispatcher"] (R.Name "shared_ptr")] (R.Name "map") )
+                    Nothing
+  names <- mapM assignTrigName triggerS
+  dispatchers <- mapM assignClonableDispatcher triggerS
+  return $ names ++ dispatchers;
+  where
+    assignTrigName (tName, (_, tNum)) = do
+      let i = R.Literal $ R.LInt tNum
+      let nameStr = R.Literal $ R.LString tName
+      let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names")
+      return $ R.Assignment (R.Subscript table i) nameStr
+    assignClonableDispatcher (_, (tType, tNum)) = do
+      kType <- genCType tType
+      let i = R.Literal $ R.LInt tNum
+      let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers")
+      let dispatcher = R.Call
+                         (R.Variable $ R.Specialized [R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")] (R.Name "make_shared"))
+                         []
+      return $ R.Assignment (R.Subscript table i) dispatcher
 
 generateDispatchPopulation :: CPPGenM [R.Statement]
 generateDispatchPopulation = do
