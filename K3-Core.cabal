@@ -40,7 +40,7 @@ library
         network,
         network-transport,
         network-transport-tcp,
-        optparse-applicative,
+        optparse-applicative >= 0.10.0,
         parsec,
         parsers,
         process,

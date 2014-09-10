@@ -1,6 +1,7 @@
 #ifndef K3_RUNTIME_BASETYPES_H
 #define K3_RUNTIME_BASETYPES_H
 
+#include "boost/functional/hash.hpp"
 // Basic types needed by our builtin libraries
 
 char *sdup (const char *s);
@@ -65,13 +66,18 @@ class R_addr {
         }
         _T0 addr;
 };
+
+#endif // K3_R_addr
+
+#ifndef K3_R_addr_hash_value
+#define K3_R_addr_hash_value
 template <class T>
   std::size_t hash_value(R_addr<T> const& b) {
     boost::hash<T> hasher;
     return hasher(b.addr);
 }
+#endif // K3_R_addr_hash_value
 
-#endif // K3_R_addr
 
 #ifndef K3_R_elem
 #define K3_R_elem
@@ -100,13 +106,17 @@ class R_elem {
         }
         _T0 elem;
 };
+#endif // K3_R_elem
+
+
+#ifndef K3_R_elem_hash_value
+#define K3_R_elem_hash_value
 template <class T>
   std::size_t hash_value(R_elem<T> const& b) {
     boost::hash<T> hasher;
     return hasher(b.elem);
 }
-
-#endif // K3_R_elem
+#endif // K3_R_elem_hash_value
 
 #ifndef K3_R_key_value
 #define K3_R_key_value
@@ -139,14 +149,16 @@ class R_key_value {
         typedef _T0 KeyType;
         typedef _T1 ValueType;
 };
+#endif // K3_R_key_value
 
+#ifndef K3_R_key_value_hash_value
+#define K3_R_key_value_hash_value
 template <class K,class V>
   std::size_t hash_value(R_key_value<K,V> const& b) {
     boost::hash<std::tuple<K,V>> hasher;
     return hasher(std::tie(b.key, b.value));
 }
-
-#endif
+#endif // K3_R_key_value_hash_value
 
 
 #endif // K3_RUNTIME_BASETYPES_H

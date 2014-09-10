@@ -12,9 +12,18 @@
 #include "boost/fusion/include/std_pair.hpp"
 #include "boost/spirit/include/qi.hpp"
 
+#include "BaseTypes.hpp"
+
 namespace K3 {
   namespace qi = boost::spirit::qi;
 
+  using std::list;
+  using std::make_shared;
+  using std::map;
+  using std::pair;
+  using std::shared_ptr;
+  using std::string;
+  using std::tuple;
 
   template <class iterator>
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {
@@ -219,32 +228,16 @@ namespace K3 {
     }
   };
 
-  map<string, string> parse_bindings(string s) {
-    map<string, string> bindings;
-    literal<string::iterator> parser;
-    qi::phrase_parse(begin(s), end(s), parser, qi::space, bindings);
-    return bindings;
-  }
+  map<string, string> parse_bindings(string s);
 
   template <class T>
   void do_patch(string s, T& t) {
     patcher<T>::patch(s, t);
   }
 
-  void match_patchers(map<string, string>& m, map<string, function<void(string)>>& f) {
-    for (pair<string, string> p: m) {
-      if (f.find(p.first) != end(f)) {
-        f[p.first](p.second);
-      }
-    }
-  }
+  void match_patchers(map<string, string>& m, map<string, std::function<void(string)>>& f);
 
-  string preprocess_argv(int argc, char** argv) {
-    if (argc < 2)
-      return "";
-
-    return argv[1];
-  }
+  string preprocess_argv(int argc, char** argv);
 }
 
 #endif

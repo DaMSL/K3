@@ -17,15 +17,18 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+import Language.K3.Analysis.CArgs
+
 import Language.K3.Codegen.Common
-import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import qualified Language.K3.Codegen.CPP.Representation as R
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
+--
+-- TODO: Add RAssign/RDeclare distinction.
 data RContext
 
     -- | Indicates that the calling context will ignore the callee's result.
@@ -48,105 +51,104 @@ instance Show RContext where
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
+attachTemplateVars :: Identifier -> K3 Expression -> [(Identifier, K3 Type)] -> CPPGenM R.Name
+attachTemplateVars v e g
+    | isJust (lookup v g) && isJust (functionType e)
+        = do
+            signatureType <- case fromJust (lookup v g) of
+                                  t@(tag -> TFunction) -> return t
+                                  (tag &&& children -> (TForall _, [t'])) -> return t'
+                                  _ -> throwE $ CPPGenE "Unreachable Error."
+            let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust $ functionType e)
+            cts <- mapM genCType ts
+            return $ if null cts
+               then R.Name v
+               else R.Specialized cts $ R.Name v
+    | otherwise = return $ R.Name v
+
+dedup :: [(Identifier, a)] -> [(Identifier, a)]
+dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
+
+matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
+matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
+matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
+
+functionType :: K3 Expression -> Maybe (K3 Type)
+functionType e = case e @~ \case { EType _ -> True; _ -> False } of
+    Just (EType t@(tag -> TFunction)) -> Just t
+    _ -> Nothing
+
 -- | Realization of unary operators.
-unarySymbol :: Operator -> CPPGenM CPPGenR
-unarySymbol ONot = return $ text "!"
-unarySymbol ONeg = return $ text "-"
+unarySymbol :: Operator -> CPPGenM Identifier
+unarySymbol ONot = return "!"
+unarySymbol ONeg = return "-"
 unarySymbol u = throwE $ CPPGenE $ "Invalid Unary Operator " ++ show u
 
 -- | Realization of binary operators.
-binarySymbol :: Operator -> CPPGenM CPPGenR
-binarySymbol OAdd = return $ text "+"
-binarySymbol OSub = return $ text "-"
-binarySymbol OMul = return $ text "*"
-binarySymbol ODiv = return $ text "/"
-binarySymbol OMod = return $ text "%" -- TODO: type based selection of % vs fmod
-binarySymbol OEqu = return $ text "=="
-binarySymbol ONeq = return $ text "!="
-binarySymbol OLth = return $ text "<"
-binarySymbol OLeq = return $ text "<="
-binarySymbol OGth = return $ text ">"
-binarySymbol OGeq = return $ text ">="
-binarySymbol OAnd = return $ text "&&"
-binarySymbol OOr = return $ text "||"
+binarySymbol :: Operator -> CPPGenM Identifier
+binarySymbol OAdd = return "+"
+binarySymbol OSub = return "-"
+binarySymbol OMul = return "*"
+binarySymbol ODiv = return "/"
+binarySymbol OMod = return "%" -- TODO: type based selection of % vs fmod
+binarySymbol OEqu = return "=="
+binarySymbol ONeq = return "!="
+binarySymbol OLth = return "<"
+binarySymbol OLeq = return "<="
+binarySymbol OGth = return ">"
+binarySymbol OGeq = return ">="
+binarySymbol OAnd = return "&&"
+binarySymbol OOr = return "||"
 binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
 -- | Realization of constants.
-constant :: Constant -> CPPGenM CPPGenR
-constant (CBool True) = return $ text "true"
-constant (CBool False) = return $ text "false"
-constant (CInt i) = return $ int i
-constant (CReal d) = return $ double d
-constant (CString s) = return $ text "string" <> (parens . text $ show s)
-constant (CNone _) = return $ text "nullptr"
+constant :: Constant -> CPPGenM R.Literal
+constant (CBool True) = return $ R.LBool True
+constant (CBool False) = return $ R.LBool False
+constant (CInt i) = return $ R.LInt i
+constant (CReal d) = return $ R.LDouble d
+constant (CString s) = return $ R.LString s
+constant (CNone _) = return R.LNullptr
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
-cDecl :: K3 Type -> Identifier -> CPPGenM CPPGenR
+cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
 cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     ctr <- genCType tr
     cta <- genCType ta
-    return $ ctr <+> text i <> parens cta <> semi
+    return [R.Forward $ R.FunctionDecl (R.Name i) [cta] ctr]
 cDecl t i = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
-    ci <- return $ text i
-    return $ genCDecl ct ci Nothing
+    return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
 
-inline :: K3 Expression -> CPPGenM (CPPGenR, CPPGenR)
+inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
     Just ac -> do
         ct <- genCType t
         addComposite (namedEAnnotations as)
-        return (empty, text ac <> angles ct <> parens empty)
+        return ([], R.Initialization (R.Collection ac ct) [])
 
-inline (tag -> EConstant c) = (empty,) <$> constant c
+inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
 inline e@(tag -> EVariable v)
-    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return (empty, text "*" <> text v)
-    | otherwise = globals <$> get >>= attachTemplateVars
-  where
-    functionType = case e @~ \case { EType _ -> True; _ -> False } of
-        Just (EType t@(tag -> TFunction)) -> Just t
-        _ -> Nothing
-
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
-    attachTemplateVars g
-        | isJust (lookup v g) && isJust functionType
-            = do
-                signatureType <- case fromJust (lookup v g) of
-                                      t@(tag -> TFunction) -> return t
-                                      (tag &&& children -> (TForall _, [t'])) -> return t'
-                                      _ -> throwE $ CPPGenE "Unreachable Error."
-                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
-                cts <- mapM genCType ts
-                return $ if null cts
-                   then (empty, text v)
-                   else (empty, text v <> angles (hsep $ punctuate comma cts))
-        | otherwise = return (empty, text v)
-
-    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
-
-    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
-    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
-    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
-
-
-inline e@(tag -> EVariable v) = return $ if isJust $ e @~ (\case { EMutable -> True; _ -> False })
-        then (empty, text "*" <> text v)
-        else (empty, text v)
+    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
+    | otherwise = globals <$> get >>= attachTemplateVars v e >>= \n -> return ([], R.Variable n)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
     ct <- getKType c
     t <- genCType ct
-    return (e, text "shared_ptr" <> angles t <> parens (text "new" <+> t <> parens v))
-inline (tag &&& children -> (ETuple, [])) = return (empty, text "unit_t" <> parens empty)
+    return (e, R.Call (R.Variable $ R.Specialized [t] (R.Name "make_shared")) [v])
+
+inline (tag &&& children -> (ETuple, [])) = return ([], R.Initialization R.Unit [])
+
 inline (tag &&& children -> (ETuple, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    return (vsep es, text "make_tuple" <> tupled vs)
+    return (concat es, R.Call (R.Variable $ R.Name "make_tuple") vs)
+
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
@@ -154,120 +156,119 @@ inline e@(tag &&& children -> (ERecord is, cs)) = do
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (vsep es, sig <> braces (cat $ punctuate comma vs'))
+            return (concat es, R.Initialization sig vs')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
     (ce, cv) <- inline c
     usym <- unarySymbol uop
-    return (ce, usym <> cv)
+    return (ce, R.Unary usym cv)
+
 inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     (be, bv) <- inline b
-    return (ae <$$> be, bv)
+    return (ae ++ be, bv)
+
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
-            ta' <- genCType ta
-            tr' <- genCType tr
+            ta' <- genCInferredType ta
+            tr' <- genCInferredType tr
+
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
     exc <- fst . unzip . globals <$> get
     let fvs = nub $ filter (/= arg) $ freeVariables body
+    let capture = R.ValueCapture (Just ("this", Nothing)) : [R.ValueCapture (Just (j, Nothing)) | j <- fvs \\exc]
     body' <- reify RReturn body
-    return (empty, list (map text $ fvs \\ exc) <+> parens (ta <+> text arg) <+> text "mutable" <+> text "->" <+> tr <+> hangBrace body')
+    -- TODO: Handle `mutable' arguments.
+    return ( []
+           , R.Lambda capture [(arg, ta)] (Just tr) body'
+           )
+
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
-    return (fe <$$> ae, fv <> parens av)
+    let argCount = eCArgs f
+
+    return $ if argCount == 1
+       then (fe ++ ae, R.Call fv [av])
+       else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
+                    (fv : av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders"))
+                                     (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
+
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
-    (te, tv)  <- inline trig
+    (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = text "ValDispatcher<" <> trigTypes <> text ">"
-        classInst = genCCall (text "auto d = make_shared" <> angles className) Nothing [tv, vv]
+    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher")
+        classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
+                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
+                                           (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [vv])
         (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
                          tName `lookup` trigList
-    return (vsep [te, ae, ve,
-                  classInst <> semi,
-                  text "engine.send" <> tupled [av, int trigId, text "d"]] <> semi,
-            text "unit_t()")
+    return (concat [te, ae, ve]
+                 ++ [ classInst
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
+                                    av, R.Variable (R.Name $ show trigId), R.Variable (R.Name "d")
+                                   ]
+                    ]
+             , R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
     (be, bv) <- inline b
     bsym <- binarySymbol bop
-    return (ae <//> be, av <+> bsym <+> bv)
+    return (ae ++ be, R.Binary bsym av bv)
+
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
-    (_, vv) <- globals <$> get >>= attachTemplateVars
-    return (ke, kv <> dot <> vv)
-  where
-    functionType = case e @~ \case { EType _ -> True; _ -> False } of
-        Just (EType t@(tag -> TFunction)) -> Just t
-        _ -> Nothing
+    vv <- globals <$> get >>= attachTemplateVars v e
 
-    attachTemplateVars :: [(Identifier, K3 Type)] -> CPPGenM (CPPGenR, CPPGenR)
-    attachTemplateVars g
-        | isJust (lookup v g) && isJust functionType
-            = do
-                signatureType <- case fromJust (lookup v g) of
-                                      t@(tag -> TFunction) -> return t
-                                      (tag &&& children -> (TForall _, [t'])) -> return t'
-                                      _ -> throwE $ CPPGenE "Unreachable Error."
-                let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust functionType)
-                cts <- mapM genCType ts
-                return $ if null cts
-                   then (empty, text v)
-                   else (empty, text v <> angles (hsep $ punctuate comma cts))
-        | otherwise = return (empty, text v)
+    -- TODO: Curry object with member functions at projection.
+    return (ke, R.Project kv vv)
 
-    dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
-
-    matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
-    matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
-    matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
-
-
-inline (tag &&& children -> (EAssign x, [e])) = (,text "unit_t" <> parens empty) <$> reify (RName x) e
+inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
     (pe, pv) <- inline p
-    return (he <$$> pe, genCCall (text "make_address") Nothing [hv, pv])
+    return (he ++ pe, R.Call (R.Variable $ R.Name "make_address") [hv, pv])
 
 inline e = do
     k <- genSym
     ct <- getKType e
     decl <- cDecl ct k
     effects <- reify (RName k) e
-    return (decl <//> effects, text k)
+    return (decl ++ effects, R.Variable $ R.Name k)
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
-reify :: RContext -> K3 Expression -> CPPGenM CPPGenR
+reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
     (ee, ev) <- inline e
-    return $ ee <//> ev <> semi
+    return $ ee ++ [R.Ignore ev]
 
 reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     ae <- reify RForget a
     be <- reify r b
-    return $ ae <$$> be
+    return $ ae ++ be
 
 reify r (tag &&& children -> (ELetIn x, [e, b])) = do
+    -- TODO: Push declaration into reification.
     ct <- getKType e
     d <- cDecl ct x
     ee <- reify (RName x) e
     be <- reify r b
-    return $ hangBrace $ vsep [d, ee, be]
+    return [R.Block $ d ++ ee ++ be]
 
+-- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ct <- getKType e
     d <- cDecl (head $ children ct) x
@@ -276,10 +277,8 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     ee <- reify (RName g) e
     se <- reify r s
     ne <- reify r n
-    return $ p <$$> ee <$$>
-        text "if" <+> parens (text g) <+>
-        hangBrace (d <$$> text x <+> equals <+> text "*" <> text g <> semi <//> se) <+> text "else" <+>
-        hangBrace ne
+    let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
+    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
 
 reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     (ae, g) <- case a of
@@ -287,7 +286,7 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
         _ -> do
             g' <- genSym
             ae' <- reify (RName g') a
-            return (ae', text g')
+            return (ae', R.Variable $ R.Name g')
 
     ta <- getKType a
 
@@ -295,18 +294,20 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
                 di <- cDecl ti i
-                return $ di <$$> (text i <+> equals <+> text "*" <> g <> semi)
+                return $ di ++ [R.Assignment (R.Variable $ R.Name i) (R.Dereference g)]
             BTuple is -> do
                 let (tag &&& children -> (TTuple, ts)) = ta
                 ds <- zipWithM cDecl ts is
-                return $ vsep ds <$$> genCCall (text "tie") Nothing (map text is) <+> equals <+> g <> semi
-            BRecord iis -> return $ vsep
-                [text v <+> equals <+> g <> dot <> text i <> semi | (i, v) <- iis]
+                let bindVars = [R.Variable (R.Name i) | i <- is]
+                let tieCall = R.Call (R.Variable $ R.Qualified (R.Name "std" )(R.Name "tie")) bindVars
+                return $ concat ds ++ [R.Assignment tieCall g]
+            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
 
     let bindWriteback = case b of
-            BIndirection i -> g <+> equals <+> genCCall (text "make_shared") Nothing [text i]
-            BTuple is -> vcat (zipWith (genTupleAssign g) [0..] is)
-            BRecord iis -> vcat (map (uncurry $ genRecordAssign g) iis)
+
+            BIndirection i -> [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
+            BTuple is -> zipWith (genTupleAssign g) [0..] is
+            BRecord iis -> map (uncurry $ genRecordAssign g) iis
 
     (bindBody, k) <- case r of
         RReturn -> do
@@ -314,27 +315,30 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
             te <- getKType e
             de <- cDecl te g'
             re <- reify (RName g') e
-            return (de <$$> re, Just g')
+            return (de ++ re, Just g')
         _ -> (,Nothing) <$> reify r e
 
-    let bindCleanUp = maybe empty (\k' -> text "return" <+> text k' <> semi) k
+    let bindCleanUp = maybe [] (\k' -> [R.Return (R.Variable $ R.Name k')]) k
 
-    return $ ae <$$> hangBrace (bindInit <$$> bindBody <$$> bindWriteback <$$> bindCleanUp)
-    where
-    genTupleAssign g n i = genCCall (text "get") (Just [int n]) [g] <+> equals <+> text i <> semi
-    genRecordAssign g k v = g <> dot <> text k <+> equals <+> text v <> semi
+    return $ ae ++ [R.Block $ bindInit ++ bindBody ++ bindWriteback ++ bindCleanUp]
+  where
+    genTupleAssign :: R.Expression -> Int -> Identifier -> R.Statement
+    genTupleAssign g n i =
+        R.Assignment (R.Call (R.Variable $ R.Specialized [R.Named $ R.Name (show n)] (R.Name "get")) [g])
+                     (R.Variable $ R.Name i)
+    genRecordAssign g k v = R.Assignment (R.Project g (R.Name k)) (R.Variable $ R.Name v)
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
     te <- reify r t
     ee <- reify r e
-    return $ pe <//> text "if" <+> parens pv <+> hangBrace te </> text "else" <+> hangBrace ee
+    return $ pe ++ [R.IfThenElse pv te ee]
 
 reify r e = do
     (effects, value) <- inline e
     reification <- case r of
-        RForget -> return empty
-        RName k -> return $ text k <+> equals <+> value <> semi
-        RReturn -> return $ text "return" <+> value <> semi
-        RSplice f -> return $ f [value] <> semi
-    return $ effects <//> reification
+        RForget -> return []
+        RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
+        RReturn -> return [R.Return value]
+        RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
+    return $ effects ++ reification
