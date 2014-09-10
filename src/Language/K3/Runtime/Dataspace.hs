@@ -184,10 +184,10 @@ dsChainInstanceGenerator mErrorE dsInstanceSpec =
     iConPat cn vn    = conP (mkName cn) [varP $ mkName vn]
     iConPatOpt cn vn = conP (mkName "Just") [conP (mkName cn) [varP $ mkName vn]]
 
-    app0E       = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) |])
-    app1E an    = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName vn) |])
-    app2E an bn = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName bn) $(varE $ mkName vn) |])
-    appBinE     = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName $ "l_"++vn) $(varE $ mkName $ "r_"++vn) |])
+    app0E       = (\(mn, _, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) |])
+    app1E an    = (\(mn, _, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName vn) |])
+    app2E an bn = (\(mn, _, vn) -> [| $(varE $ mkName mn) $(varE $ mkName an) $(varE $ mkName bn) $(varE $ mkName vn) |])
+    appBinE     = (\(mn, _, vn) -> [| $(varE $ mkName mn) $(varE $ mkName $ "l_"++vn) $(varE $ mkName $ "r_"++vn) |])
 
     appConE        = (\(mn, cn, vn) -> [| $(varE $ mkName mn) $(varE $ mkName vn) >>= return . $(conE $ mkName cn) |])
     appConOE       = (\(mn, cn, vn) -> [| $(varE $ mkName mn) (Just $(varE $ mkName vn)) >>= return . $(conE $ mkName cn) |])

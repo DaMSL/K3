@@ -10,7 +10,9 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+{- Disabled while HaskellCG is deprecated
 --import qualified Language.K3.Codegen.Haskell as HG
+-}
 
 class Compilable a where
   typ         :: K3 Type -> a
@@ -34,7 +36,7 @@ instance Compilable IdentityEmbedding where
   generate        = undefined
   compile         = undefined
 
--- | Haskell code generation.
+-- | DEPRECATED: Haskell code generation.
 {-
 instance Compilable (HG.CodeGeneration HG.HaskellEmbedding) where
   typ         = HG.typ

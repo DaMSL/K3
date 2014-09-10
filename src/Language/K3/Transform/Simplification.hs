@@ -178,9 +178,6 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     applyOp           ch n op   = withValueChildren n ch $ op
     applyVCtor        ch n ctor = withValueChildren n ch $ ctor
 
-    isLeft (Left _) = True
-    isLeft _        = False
-
     asUnary f [a] = f a
     asUnary _ _ = Left "Invalid unary operands"
 
