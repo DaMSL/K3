@@ -17,6 +17,8 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+import Language.K3.Analysis.CArgs
+
 import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
@@ -189,10 +191,15 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
-    return (fe ++ ae, R.Call fv [av])
+    let argCount = eCArgs f
+
+    return $ if argCount == 1
+       then (fe ++ ae, R.Call fv [av])
+       else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
+                    (av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders")) (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
-    (te, tv)  <- inline trig
+    (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
@@ -220,6 +227,8 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     vv <- globals <$> get >>= attachTemplateVars v e
+
+    -- TODO: Curry object with member functions at projection.
     return (ke, R.Project kv vv)
 
 inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
