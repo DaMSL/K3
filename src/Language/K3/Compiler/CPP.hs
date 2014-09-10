@@ -63,7 +63,7 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.program cppIr)
+    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram cppIr)
     genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
 
     outputCPP (Right doc) =
@@ -108,7 +108,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir ++ "//*.o" *> \out -> do
               let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
+              () <- cmd cc ["-stdlib=libc++"] ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
               needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x
