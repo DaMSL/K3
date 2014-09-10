@@ -15,6 +15,8 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
+RUN apt-get install -y wget vim git
+
 # Install decent vim configuration
 RUN mkdir /root/.vim
 RUN git clone https://github.com/tpope/vim-pathogen.git /root/.vim
