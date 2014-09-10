@@ -88,8 +88,19 @@ program (mangleReservedNames . CArgs.convertProgram -> (tag &&& children -> (DRo
     dispatchPop <- generateDispatchPopulation
 
     let contextConstructor = R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
-                             Nothing [R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__k3_context")
-                                   [R.Variable $ R.Name "__engine"]]
+                             Nothing
+                             [ R.Call
+                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__standard_context")
+                                 [R.Variable $ R.Name "__engine"]
+                             -- builtin mixins:
+                             , R.Call
+                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__string_context")
+                                 []
+
+                             , R.Call
+                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
+                                 []
+                             ]
                              (inits ++ dispatchPop)
 
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
@@ -106,8 +117,12 @@ program (mangleReservedNames . CArgs.convertProgram -> (tag &&& children -> (DRo
                      Nothing
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl, dispatchDecl]
-    let contextClassDefn = R.ClassDefn contextName [] [R.Named $ R.Qualified (R.Name "K3") $ R.Name "__k3_context"]
-                           contextDefns [] [dispatchTableDecl]
+    let contextClassDefn = R.ClassDefn contextName []
+                             [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
+                             ]
+                             contextDefns [] [dispatchTableDecl]
     mainFn <- main
 
     -- Return all top-level definitions.
