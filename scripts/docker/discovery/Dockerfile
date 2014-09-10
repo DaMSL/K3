@@ -53,8 +53,8 @@ RUN wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
 
 # Clone K3-Core, K3-Driver, K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Core /k3/K3-Driver && \
-    git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core && \
-    git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
+    git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core -b focus/peer-discovery && \
+    git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver -b focus/peer-discovery
 
 ### Build K3-Core
 WORKDIR /k3/K3-Core
