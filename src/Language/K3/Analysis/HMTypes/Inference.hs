@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
@@ -43,15 +44,19 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
+logVoid :: (Functor m, Monad m) => String -> m ()
+logVoid s = void $ _debug s
+--logVoid s = trace s $ return ()
+
 -- | Misc. helpers
-logAction :: (Monad m) => (String -> m ()) -> (Maybe a -> Maybe String) -> m a -> m a
-logAction logger msgF action = do
+logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+logAction msgF action = do
   doLog (msgF Nothing)
   result <- action
   doLog (msgF $ Just result)
   return result
   where doLog Nothing  = return ()
-        doLog (Just s) = logger s
+        doLog (Just s) = logVoid s
 
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
 (.+) e qt = e @+ (EQType $ mutabilityE e qt)
@@ -228,6 +233,9 @@ tvlkup (TVEnv _ s) v = Map.lookup v s
 tvext :: TVEnv -> QTVarId -> K3 QType -> TVEnv
 tvext (TVEnv c s) v t = TVEnv c $ Map.insert v t s
 
+tvmap :: TVEnv -> (K3 QType -> K3 QType) -> TVEnv
+tvmap (TVEnv c s) f = TVEnv c $ Map.map f s
+
 -- TVE domain predicate: check to see if a TVarName is in the domain of TVE
 tvdomainp :: TVEnv -> QTVarId -> Bool
 tvdomainp (TVEnv _ s) v = Map.member v s
@@ -239,14 +247,30 @@ tvfree (TVEnv c s) = filter (\v -> not (Map.member v s)) [0..c-1]
 
 -- `Shallow' substitution
 tvchase :: TVEnv -> K3 QType -> K3 QType
-tvchase tve (tag -> QTVar v) | Just t <- tvlkup tve v = tvchase tve t
-tvchase _ t = t
+tvchase tve t = acyclicChase [] t
+  where acyclicChase path qt@(tag -> QTVar v)
+          | v `elem` path = qt
+          | Just nt <- tvlkup tve v = acyclicChase (v:path) nt
+        acyclicChase _ qt = qt
 
 -- 'Shallow' substitution, additionally returning the last variable in
 --  the chased chain.
-tvchasev :: TVEnv -> Maybe QTVarId -> K3 QType -> (Maybe QTVarId, K3 QType)
-tvchasev tve _ (tag -> QTVar v) | Just ctv <- tvlkup tve v = tvchasev tve (Just v) ctv
-tvchasev _ lastV tv = (lastV, tv)
+tvchasev :: TVEnv -> Maybe (QTVarId, QTVarId) -> K3 QType -> (Maybe (QTVarId, QTVarId), K3 QType)
+tvchasev tve firstAndLastV t = acyclicChasev [] firstAndLastV t
+  where acyclicChasev path flv qt@(tag -> QTVar v)
+          | v `elem` path = (flv, qt)
+          | Just ctv <- tvlkup tve v =
+              let extendV = maybe (Just (v,v)) (\(u,_) -> Just (u,v)) flv
+              in acyclicChasev (v:path) extendV ctv
+
+        acyclicChasev _ flv qt = (flv, qt)
+
+tvpath :: TVEnv -> QTVarId -> [QTVarId]
+tvpath tve v = acyclicPath [] v
+  where acyclicPath acc v' | v' `elem` acc = acc
+                           | Just qt <- tvlkup tve v'
+                           , QTVar nv <- tag qt = acyclicPath (v':acc) nv
+        acyclicPath acc v' = v':acc
 
 -- Compute (quite unoptimally) the characteristic function of the set
 --  forall tvb \in fv(tve_before). Union fv(tvsub(tve_after,tvb))
@@ -265,12 +289,14 @@ freevars t = runIdentity $ foldMapTree extractVars [] t
 
 -- The occurs check: if v appears free in t
 occurs :: QTVarId -> K3 QType -> TVEnv -> Bool
-occurs v t@(tag -> QTCon _)      tve = or $ map (flip (occurs v) tve) $ children t
-occurs v t@(tag -> QTOperator _) tve = or $ map (flip (occurs v) tve) $ children t
-occurs v (tag -> QTVar v2) tve
-  | v == v2   = True
-  | otherwise = maybe (v == v2) (flip (occurs v) tve) $ tvlkup tve v2
-occurs _ _ _ = False
+occurs v t tve = acyclicOccurs [] t
+  where acyclicOccurs path qt@(tag -> QTCon _)      = or $ map (acyclicOccurs path) $ children qt
+        acyclicOccurs path qt@(tag -> QTOperator _) = or $ map (acyclicOccurs path) $ children qt
+        acyclicOccurs path (tag -> QTVar v2)
+          | v == v2        = True
+          | v2 `elem` path = False
+          | otherwise      = maybe False (acyclicOccurs $ v2:path) $ tvlkup tve v2
+        acyclicOccurs _ _ = False
 
 
 {- TInfM helpers -}
@@ -299,93 +325,104 @@ newtv = do
 
 -- Deep substitute, throughout type structure
 tvsub :: K3 QType -> TInfM (K3 QType)
-tvsub qt = mapTree sub qt
-  where
-    sub ch t@(tag -> QTCon d) = return $ foldl (@+) (tdata d ch) $ annotations t
+tvsub qt = acyclicSub [] qt
+  where acyclicSub path t@(tag -> QTVar v)
+          | v `elem` path = return t
+          | otherwise = getTVE >>= \tve ->
+              case tvlkup tve v of
+                Just t' -> acyclicSub (v:path) t' >>= flip extendAnns t
+                _       -> return t
 
-    sub ch t@(tag -> QTOperator QTLower)
-      | null ch = left "Invalid qtype lower operator"
-      | null $ concatMap freevars ch = tvopeval QTLower ch >>= flip extendAnns t
-      | otherwise = return $ foldl (@+) (tlower ch) $ annotations t
+        acyclicSub path t@(tag -> QTCon d) = do
+          ch <- mapM (acyclicSub path) $ children t
+          return $ foldl (@+) (tdata d ch) $ annotations t
 
-    sub _ t@(tag -> QTVar v) = getTVE >>= \tve ->
-      case tvlkup tve v of
-        Just t' -> tvsub t' >>= flip extendAnns t
-        _       -> return t
+        acyclicSub path t@(tag -> QTOperator QTLower) = do
+          ch <- mapM (acyclicSub path) $ children t
+          if null ch then left "Invalid qtype lower operator"
+          else if null $ concatMap freevars ch then tvopeval QTLower ch >>= flip extendAnns t
+          else return $ foldl (@+) (tlower ch) $ annotations t
 
-    sub _ t = return t
+        acyclicSub _ t = return t
+        extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
-    extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
 -- | Lower bound computation for numeric and record types.
 --   This function does not preserve annotations.
 tvlower :: K3 QType -> K3 QType -> TInfM (K3 QType)
-tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
-  where
-    tvlower' a' b' = case (tag a', tag b') of
+tvlower a b = getTVE >>= \tve -> tvshallowLowerRcr tvlower (tvchase tve a) (tvchase tve b)
+
+tvshallowLower :: K3 QType -> K3 QType -> TInfM (K3 QType)
+tvshallowLower a b = tvshallowLowerRcr tvshallowLower a b
+
+tvshallowLowerRcr :: (K3 QType -> K3 QType -> TInfM (K3 QType))
+                  -> K3 QType -> K3 QType -> TInfM (K3 QType)
+tvshallowLowerRcr rcr a b =
+    case (tag a, tag b) of
       (QTPrimitive p1, QTPrimitive p2)
         | [p1, p2] `intersect` [QTReal, QTInt, QTNumber] == [p1,p2] ->
-            annLower a' b' >>= return . foldl (@+) (tprim $ toEnum $ minimum $ map fromEnum [p1,p2])
-        | p1 == p2 -> return a'
+            annLower a b >>= return . foldl (@+) (tprim $ toEnum $ minimum $ map fromEnum [p1,p2])
+        | p1 == p2 -> return a
 
       (QTCon (QTRecord i1), QTCon (QTRecord i2))
-        | i1 `contains` i2 -> mergedRecord False i1 a' i2 b'
-        | i2 `contains` i1 -> mergedRecord True  i2 b' i1 a'
+        | i1 `contains` i2 -> mergedRecord False i1 a i2 b
+        | i2 `contains` i1 -> mergedRecord True  i2 b i1 a
         | otherwise ->
-            let idChPairs = zip (i1 ++ i2) $ children a' ++ children b'
-            in annLower a' b' >>= return . foldl (@+) (trec $ nub idChPairs)
+            let idChPairs = zip (i1 ++ i2) $ children a ++ children b
+            in annLower a b >>= return . foldl (@+) (trec $ nub idChPairs)
        where
         contains xs ys = xs `union` ys == xs
 
-      (QTCon (QTCollection _), QTCon (QTRecord _)) -> coveringCollection a' b'
-      (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b' a'
+      (QTCon (QTCollection _), QTCon (QTRecord _)) -> coveringCollection a b
+      (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b a
 
       (QTCon (QTCollection idsA), QTCon (QTCollection idsB))
-        | idsA `intersect` idsB == idsA -> mergedCollection idsB a' b'
-        | idsA `intersect` idsB == idsB -> mergedCollection idsA a' b'
+        | idsA `intersect` idsB == idsA -> mergedCollection idsB a b
+        | idsA `intersect` idsB == idsB -> mergedCollection idsA a b
 
-      (QTVar _, QTVar _) -> return a'
-      (QTVar _, _) -> return a'
-      (_, QTVar _) -> return b'
+      (QTVar _, QTVar _) -> return a
+      (QTVar _, _) -> return a
+      (_, QTVar _) -> return b
 
       -- | Function type lower bounds
       (QTCon QTFunction, QTCon QTFunction) -> do
-        arga  <- tvsub $ head $ children a'
-        argb  <- tvsub $ head $ children b'
-        retlb <- tvlower (last $ children a') $ last $ children b'
+        arga  <- tvsub $ head $ children a
+        argb  <- tvsub $ head $ children b
+        retlb <- rcr (last $ children a) $ last $ children b
         if arga /= argb
-          then lowerError a' b'
-          else annLower a' b' >>= return . foldl (@+) (tfun (head $ children a') retlb)
+          then lowerError a b
+          else annLower a b >>= return . foldl (@+) (tfun (head $ children a) retlb)
 
       -- | Self type lower bounds
-      (QTSelf, QTSelf)                 -> return a'
-      (QTCon (QTCollection _), QTSelf) -> return a'
-      (QTSelf, QTCon (QTCollection _)) -> return b'
+      (QTSelf, QTSelf)                 -> return a
+      (QTCon (QTCollection _), QTSelf) -> return a
+      (QTSelf, QTCon (QTCollection _)) -> return b
 
       (_, _)
-        | (isQTLower a' && isQTLower b') || isQTLower a' || isQTLower b' -> do
-          lb1 <- lowerBound a'
-          lb2 <- lowerBound b'
-          nlb <- tvlower lb1 lb2
-          if isQTLower a' && isQTLower b'
+        | (isQTLower a && isQTLower b) || isQTLower a || isQTLower b -> do
+          lb1 <- lowerBound a
+          lb2 <- lowerBound b
+          nlb <- rcr lb1 lb2
+          if isQTLower a && isQTLower b
             then return $ tlower [nlb]
             else return nlb
 
-        | a' == b'  -> return a'
-        | otherwise -> lowerError a' b'
+        | a == b  -> return a
+        | otherwise -> lowerError a b
 
+  where
     mergedRecord supAsLeft subid subqt supid supqt = do
       fieldQt <- mergeCovering supAsLeft
                   (zip subid $ children subqt) (zip supid $ children supqt)
       annLower subqt supqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
 
     mergedCollection annIds ct1 ct2 = do
-       ctntLower <- tvlower (head $ children ct1) (head $ children ct2)
+       ctntLower <- rcr (head $ children ct1) (head $ children ct2)
        annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
     mergeCovering supAsLeft sub sup =
-      let lowerF = if supAsLeft then \subV supV -> tvlower supV subV
-                                else \subV supV -> tvlower subV supV
+      let lowerF = if supAsLeft then \subV supV -> rcr supV subV
+                                else \subV supV -> rcr subV supV
       in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sup) sub
 
     coveringCollection ct rt@(tag -> QTCon (QTRecord _)) =
@@ -400,7 +437,7 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
           invalid = [QTMutable, QTImmutable]
       in if annAB `intersect` invalid == invalid then lowerError x y else return annAB
 
-    lowerBound t@(tag -> QTOperator QTLower) = tvopeval QTLower $ children t
+    lowerBound t@(tag -> QTOperator QTLower) = tvopevalWithLowerF rcr QTLower $ children t
     lowerBound t = return t
 
     lowerError x y = left $ boxToString $
@@ -408,30 +445,42 @@ tvlower a b = getTVE >>= \tve -> tvlower' (tvchase tve a) (tvchase tve b)
 
 -- | Type operator evaluation.
 tvopeval :: QTOp -> [K3 QType] -> TInfM (K3 QType)
-tvopeval _ [] = left $ "Invalid qt operator arguments"
-tvopeval QTLower ch = foldM tvlower (head ch) $ tail ch
+tvopeval op ch = tvopevalWithLowerF tvlower op ch
+
+tvopevalShallow :: QTOp -> [K3 QType] -> TInfM (K3 QType)
+tvopevalShallow op ch = tvopevalWithLowerF tvshallowLower op ch
+
+tvopevalWithLowerF :: (K3 QType -> K3 QType -> TInfM (K3 QType)) -> QTOp -> [K3 QType] -> TInfM (K3 QType)
+tvopevalWithLowerF _ _ [] = left $ "Invalid qt operator arguments"
+tvopevalWithLowerF lowerF QTLower ch = foldM lowerF (head ch) $ tail ch
 
 consistentTLower :: [K3 QType] -> TInfM (K3 QType)
 consistentTLower ch =
     let (varCh, nonvarCh) = partition isQTVar $ nub ch in
     case (varCh, nonvarCh) of
       ([], []) -> left "Invalid lower qtype"
-      ([], _)  -> tvopeval QTLower nonvarCh
-      (_, [])  -> getTVE >>= \tve -> unifiedLower (tail varCh) (tvchase tve $ head varCh)
-      (_, _)   -> tvopeval QTLower nonvarCh >>= unifiedLower varCh
+      ([], _)  -> tvopevalShallow QTLower nonvarCh
+      (_, _)   -> lowerBoundWithVars varCh nonvarCh
+
   where
-    unifiedLower vch lb = do
-      nvch <- mapM (extractAndUnifyV lb) vch
-      return $ tlower $ [lb]++nvch
+    lowerBoundWithVars vars extraLBTypes = do
+      (boundTypes, freeVars) <- foldM partitionBoundV ([],[]) vars
+      lb <- tvopevalShallow QTLower (boundTypes ++ extraLBTypes)
+      nch <- foldM unifyFreeVar [lb] $ nub freeVars
+      return $ tlower nch
 
-    extractAndUnifyV t t2@(tag -> QTVar _) = do
+    partitionBoundV (tacc,vacc) t@(tag -> QTVar _) = do
       tve <- getTVE
-      let tchased = tvchase tve t2
-      case tag tchased of
-        QTVar v2 -> unifyv v2 t >> return t
-        _ -> return tchased
+      let bt = tvchase tve t
+      case tag bt of
+        QTVar _ -> return (tacc, vacc++[bt])
+        _ -> return (tacc++[bt], vacc)
 
-    extractAndUnifyV _ _ = left "Invalid type var during lower qtype merge"
+    partitionBoundV _ _ = left "Invalid type var during lower qtype merge"
+
+    unifyFreeVar tacc t2@(tag -> QTVar v) = unifyv v (head tacc) >> return (t2:tacc)
+    unifyFreeVar _ _ = left "Invalid type var during lower qtype merge"
+
 
 -- Unification helpers.
 -- | Returns a self record and lifted attribute identifiers when given
@@ -457,31 +506,31 @@ collectionSubRecord _ _ = return Nothing
 unifyv :: QTVarId -> K3 QType -> TInfM ()
 unifyv v1 t@(tag -> QTVar v2)
   | v1 == v2  = return ()
-  | otherwise = do { void $ _debug $ prettyTaggedSPair "unifyv var" v1 t;
-                     modify $ mtive $ \tve -> tvext tve v1 t }
+  | otherwise = getTVE >>= \tve ->
+    if occurs v1 t tve
+      then logVoid $ prettyTaggedSPair "unifyv cycle" v1 t
+      else do { logVoid $ prettyTaggedSPair "unifyv var" v1 t;
+                modify $ mtive $ \tve' -> tvext tve' v1 t }
 
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
-    then do { void $ _debug $ prettyTaggedSPair "unifyv noc" v t;
+    then do { logVoid $ prettyTaggedSPair "unifyv noc" v t;
               modify $ mtive $ \tve' -> tvext tve' v t }
-    else tvsub t >>= unifyvMuQt tve
+
+    else do { subQt <- tvsub t;
+              boundQt <- return $ substituteSelfQt t;
+              logVoid $ prettyTaggedTriple (unwords ["unifyv yoc", show v]) t subQt boundQt;
+              modify $ mtive $ \tve' -> tvext (tvmap tve' substituteSelfQt) v boundQt; }
 
   where
-    unifyvMuQt tve qt = do
-      qt' <- injectSelfQt tve qt
-      void $ _debug $ prettyTaggedSPair "unifyv yoc" v qt'
-      modify $ mtive $ \tve' -> tvext tve' v qt'
+    substituteSelfQt t'@(tag -> QTVar _) = t'
+    substituteSelfQt t' = aux t'
+      where aux n@(Node (QTVar v2 :@: anns) _)
+              | v == v2   = foldl (@+) tself anns
+              | otherwise = n
 
-    injectSelfQt tve qt = mapTree (inject tve) qt
+            aux (Node tg ch) = Node tg (map aux ch)
 
-    inject tve nch n@(Node (QTCon (QTRecord _) :@: anns) _)
-      | occurs v n tve = return $ foldl (@+) tself anns
-      | otherwise = return $ Node (tag n :@: anns) nch
-
-    inject _ [(tag -> QTSelf)] (Node (QTOperator QTLower :@: anns) [Node (QTCon (QTRecord _) :@: _) _])
-      = return $ foldl (@+) tself anns
-
-    inject _ ch n = return $ Node (tag n :@: annotations n) ch
 
 -- | Unification driver type synonyms.
 type RecordParts = (K3 QType, QTData, [Identifier])
@@ -492,14 +541,26 @@ type UnifyPostF a = (a, a) -> K3 QType -> TInfM (K3 QType)
 -- | A unification driver, i.e., common unification code for both
 --   our standard unification method, and unification with variable overrides
 unifyDrv :: (Show a) => UnifyPreF a -> UnifyPostF a -> K3 QType -> K3 QType -> TInfM (K3 QType)
-unifyDrv preF postF qt1 qt2 = do
-    (p1, qt1') <- preF qt1
-    (p2, qt2') <- preF qt2
-    qt         <- unifyDrv' qt1' qt2'
-    void $ _debug $ prettyTaggedTriple "unifyDrv" qt1' qt2' qt
-    postF (p1, p2) qt
+unifyDrv preF postF qt1 qt2 = unifyDrvWithPaths preF postF [] [] qt1 qt2
+
+unifyDrvWithPaths :: (Show a) => UnifyPreF a -> UnifyPostF a
+                  -> [QTVarId] -> [QTVarId] -> K3 QType -> K3 QType -> TInfM (K3 QType)
+unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
+    case (cyclicPath path1 qt1, cyclicPath path2 qt2) of
+      (True, _) -> preF qt2 >>= return . snd
+      (_, True) -> preF qt1 >>= return . snd
+      (_, _) -> doUnify
 
   where
+    doUnify = do
+        (p1, qt1') <- preF qt1
+        (p2, qt2') <- preF qt2
+        qt         <- unifyDrv' qt1' qt2'
+        logVoid $ prettyTaggedPair (unwords ["unifyDrvPreL", show p1]) qt1 qt1'
+        logVoid $ prettyTaggedPair (unwords ["unifyDrvPreR", show p2]) qt2 qt2'
+        logVoid $ prettyTaggedTriple "unifyDrv" qt1' qt2' qt
+        postF (p1, p2) qt
+
     unifyDrv' :: K3 QType -> K3 QType -> TInfM (K3 QType)
     unifyDrv' t1@(isQTNumeric -> True) t2@(isQTNumeric -> True) = tvlower t1 t2
 
@@ -558,7 +619,7 @@ unifyDrv preF postF qt1 qt2 = do
 
       void $ foldM rcr (head $ lbs) $ tail lbs
       let allChQT = children t1 ++ children t2
-      r <- logAction _debug (binaryLowerMsgF allChQT) $ consistentTLower allChQT
+      r <- logAction (binaryLowerMsgF allChQT) $ consistentTLower allChQT
       case tag r of
         QTOperator QTLower -> return r
         _ -> return $ tlower [r]
@@ -573,12 +634,12 @@ unifyDrv preF postF qt1 qt2 = do
     unifyDrv' t1@(tag -> QTOperator QTLower) t2 = do
       lb1 <- lowerBound t1
       nlb <- rcr lb1 t2
-      logAction _debug (unaryLowerMsgF "L") $ consistentTLower $ children t1 ++ [nlb]
+      logAction (unaryLowerMsgF "L") $ consistentTLower $ children t1 ++ [nlb]
 
     unifyDrv' t1 t2@(tag -> QTOperator QTLower) = do
       lb2 <- lowerBound t2
       nlb <- rcr t1 lb2
-      logAction _debug (unaryLowerMsgF "R") $ consistentTLower $ [nlb] ++ children t2
+      logAction (unaryLowerMsgF "R") $ consistentTLower $ [nlb] ++ children t2
 
     -- | Top unifies with any value. Bottom unifies with only itself. Self unifies with itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
@@ -587,8 +648,23 @@ unifyDrv preF postF qt1 qt2 = do
       | tg1 == tg2   = return t1
       | otherwise    = unifyErr t1 t2 "qtypes" ""
 
+    cyclicPath :: [QTVarId] -> K3 QType -> Bool
+    cyclicPath path qt = case tag qt of
+      QTVar v -> v `elem` path
+      _ -> False
+
+    extendPath :: [QTVarId] -> K3 QType -> [QTVarId]
+    extendPath path qt = case tag qt of
+      QTVar v -> v:path
+      _ -> path
+
     rcr :: K3 QType -> K3 QType -> TInfM (K3 QType)
-    rcr a b = unifyDrv preF postF a b
+    rcr a b = do
+      logVoid $ prettyTaggedPair "unifyDrv recurring from " qt1 qt2
+      logVoid $ prettyTaggedPair "unifyDrv recurring on "   a   b
+      let npath1 = extendPath path1 qt1
+      let npath2 = extendPath path2 qt2
+      unifyDrvWithPaths preF postF npath1 npath2 a b
 
     onCollectionPair :: [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
     onCollectionPair annIds t1 t2 =
@@ -654,12 +730,12 @@ unifyDrv preF postF qt1 qt2 = do
     binaryLowerMsgF _ Nothing = Nothing
     binaryLowerMsgF args (Just ret) =
       Just $ boxToString $ ["consistentTLowerB "]
-               %+ (intersperseBoxes [" "] $ map prettyLines $ [ret] ++ args)
+               %+ (intersperseBoxes [" "] $ map prettyLines $ args ++ [ret])
 
 
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
-unifyM t1 t2 errf = void $ logAction _debug msgF $ reasonM errf $ unifyDrv preChase postId t1 t2
+unifyM t1 t2 errf = void $ logAction msgF $ reasonM errf $ unifyDrv preChase postId t1 t2
   where
     preChase qt = getTVE >>= \tve -> return ((), tvchase tve qt)
     postId _ qt = return qt
@@ -669,14 +745,58 @@ unifyM t1 t2 errf = void $ logAction _debug msgF $ reasonM errf $ unifyDrv preCh
 -- | Type unification with variable overrides to the unification result.
 unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QType)
 unifyWithOverrideM qt1 qt2 errf =
-  logAction _debug msgF $ reasonM errf $ unifyDrv preChase postUnify qt1 qt2
+  logAction msgF $ reasonM errf $ unifyDrv preChase (\x y -> postUnifyCased x y >>= logPostUnify) qt1 qt2
   where
     preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
-    postUnify (v1, v2) qt = do
+
+    logPostUnify r = logVoid (boxToString $ ["postUnify "] %+ prettyLines r) >> return r
+
+    postUnifyCased (vo1, vo2) qt = case (vo1, vo2) of
+        (Just v1, Just v2) -> unifyTwoChain v1 v2 qt
+        (Just v, _) -> unifyOne v qt
+        (_, Just v) -> unifyOne v qt
+        _ -> return qt
+
+    unifyOne v qt = do
+      checkedUnify (snd v) qt
+      return $ foldl (@+) (tvar $ fst v) $ annotations qt
+
+    unifyTwoChain v1 v2 qt = do
       tve <- getTVE
-      let vs = catMaybes [v1, v2]
-      void $ mapM_ (\v -> if occurs v qt tve then return () else unifyv v qt) vs
-      return $ if null vs then qt else (foldl (@+) (tvar $ head vs) $ annotations qt)
+      let vtCtor v = foldl (@+) (tvar v) $ annotations qt
+      let (c1, c2) = (fst v1 == snd v1, fst v2 == snd v2)
+      (src, trg, chain) <-
+        case (v1 == v2, snd v1 == snd v2, c1 || c2, fst v1 == fst v2) of
+          (True, _, _, _)        -> return (fst v1, snd v2, Nothing)
+          (False, True, True, _) -> return (fst (if c1 then v2 else v1), snd v1, Nothing)
+          (False, True, _, _)    -> let (_, p1, p2) = commonSuffix (tvpath tve $ fst v1) (tvpath tve $ fst v2) in
+                                    if null p1 then return (head p2, snd v1, Nothing)
+                                    else if null p2 then return (head p1, snd v2, Nothing)
+                                    else return (fst v1, snd v2, Just (last p1, head p2))
+          (_, _, _, True) -> left "Unhandled case in unifyTwoChain"
+          (_, _, _, _) ->
+            if snd v2 == fst v1 then return (fst v2, snd v1, Nothing)
+            else return (fst v1, snd v2, if snd v1 /= fst v2 then Just (snd v1, fst v2) else Nothing)
+
+      checkedUnify trg qt
+      void $ maybe (logVoid "unifyTwoChain no chain") (\(s,t) -> checkedUnify s $ vtCtor t) chain
+      return $ vtCtor $ src
+
+    commonSuffix l1 l2 =
+      let (rl1, rl2) = (reverse l1, reverse l2)
+          suffix = map fst $ takeWhile (uncurry (==)) $ zip rl1 rl2
+          f l = reverse $ drop (length suffix) l
+      in (reverse suffix, f rl1, f rl2)
+
+    checkedUnify v qt = do
+      tve <- getTVE
+      if not (occurs v qt tve) then unifyv v qt
+      else do
+        let uqt = case tag qt of
+                    QTVar _ -> tvchase tve qt
+                    _ -> qt
+        logVoid $ prettyTaggedSPair "checkedUnify adding cycle" v uqt
+        unifyv v uqt
 
     msgF Nothing  = Just $ prettyTaggedPair "unifyOvM call" qt1 qt2
     msgF (Just r) = Just $ prettyTaggedTriple "unifyOvM result" qt1 qt2 r
@@ -797,8 +917,9 @@ inferProgramTypes prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          void $ _debug $ prettyTaggedPair ("unify init ") qt1 qt2
+          logVoid $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
+          --return $ Just e
           substituteDeepQt e >>= return . Just
 
         Nothing -> return Nothing
@@ -916,7 +1037,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     inferQType :: [K3 Expression] -> K3 Expression -> TInfM (K3 Expression)
     inferQType ch n = do
       (ruleTag, r) <- inferTagQType ch n
-      void $ _debug $ showTInfRule ruleTag ch r
+      logVoid $ showTInfRule ruleTag ch r
       return r
 
     inferTagQType :: [K3 Expression] -> K3 Expression -> TInfM (String, K3 Expression)
@@ -1200,15 +1321,15 @@ qpType :: K3 Type -> TInfM QPType
 --   environment with fresh qtype variables. This leads to substitutions for any
 --   corresponding declared variables in the type tree.
 qpType t@(tag -> TForall tvars) = do
-  tvmap <- mapM (\(TypeVarDecl i _ _) -> newtv >>= varId >>= return . (i,)) tvars
-  void $ modify $ extend tvmap
+  tvmap_ <- mapM (\(TypeVarDecl i _ _) -> newtv >>= varId >>= return . (i,)) tvars
+  void $ modify $ extend tvmap_
   chQt <- qType (head $ children t)
-  void $ modify $ prune tvmap
-  return $ QPType (map snd tvmap) chQt
+  void $ modify $ prune tvmap_
+  return $ QPType (map snd tvmap_) chQt
 
   where
-    extend tvmap env = foldl (\a (b,c) -> tiextdv a b c) env tvmap
-    prune  tvmap env = foldl (\a (b,_) -> tideldv a b) env tvmap
+    extend tvmap_ env = foldl (\a (b,c) -> tiextdv a b c) env tvmap_
+    prune  tvmap_ env = foldl (\a (b,_) -> tideldv a b) env tvmap_
     varId (tag -> QTVar i) = return i
     varId _ = left $ "Invalid type variable for type var bindings"
 
@@ -1281,7 +1402,7 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       let nch' = case tg of
                    ELetIn _ -> [flip addTQualifier (head nch) $ letTQualifier e] ++ tail nch
                    _        -> nch
-      nanns <- mapM translateEQType $ filter (not . isEType) anns
+      nanns <- mapM (translateEQType $ e @~ isESpan) $ filter (not . isEType) anns
       return (Node (tg :@: nanns) nch')
 
     addTQualifier tqOpt e@(Node (tg :@: anns) ch) = maybe e (\tq -> Node (tg :@: map (inject tq) anns) ch) tqOpt
@@ -1296,8 +1417,8 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
         Just (EQType qt) -> find isQTQualified $ annotations qt
         _ -> Nothing
 
-    translateEQType (EQType qt) = translateQType qt >>= return . EType
-    translateEQType x = return x
+    translateEQType spanOpt (EQType qt) = translateQType spanOpt qt >>= return . EType
+    translateEQType _ x = return x
 
     translateAnnotation a = case a of
       QTMutable   -> TMutable
@@ -1305,8 +1426,8 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       QTWitness   -> TWitness
 
 
-translateQType :: K3 QType -> Either String (K3 Type)
-translateQType qt = mapTree translateWithMutability qt
+translateQType :: Maybe (Annotation Expression) -> K3 QType -> Either String (K3 Type)
+translateQType spanOpt qt = mapTree translateWithMutability qt
   where translateWithMutability ch qt'@(tag -> QTCon tg)
           | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
 
@@ -1330,8 +1451,10 @@ translateQType qt = mapTree translateWithMutability qt
           | QTSelf       <- tag qt' = return $ TC.builtIn TSelf
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
           | QTOperator _ <- tag qt' =
-              Left $ boxToString $
-                ["Invalid qtype translation for qtype operator "] %+ prettyLines qt'
+              let msg = "Invalid qtype translation for qtype operator"
+              in Left $ boxToString
+                      $ [unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
+                      %$ prettyLines qt'
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
@@ -1353,7 +1476,7 @@ translateQType qt = mapTree translateWithMutability qt
           QTSource            -> return $ TC.source $ head ch
           QTSink              -> return $ TC.sink $ head ch
 
-        translate _ qt' = Left $ "No translation for: " ++ show qt'
+        translate _ qt' = Left . unwords $ ["No translation for ", "(", maybe "" show spanOpt, ")", show qt']
 
 
 {- Instances -}
@@ -1397,5 +1520,8 @@ prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] 
 
 prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> String
 prettyTaggedTriple s a b c =
-  boxToString $ [s ++ " "] %+
-    (intersperseBoxes [" , "] [prettyLines a, prettyLines b, prettyLines c])
+  boxToString $ [s ++ " "] %+ (intersperseBoxes [" , "] [prettyLines a, prettyLines b, prettyLines c])
+
+prettyTaggedSTriple :: (Show a, Pretty b, Pretty c) => String -> a -> b -> c -> String
+prettyTaggedSTriple s a b c =
+  boxToString $ [s ++ " "] %+ (intersperseBoxes [" , "] [[show a], prettyLines b, prettyLines c])
