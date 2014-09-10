@@ -196,7 +196,8 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     return $ if argCount == 1
        then (fe ++ ae, R.Call fv [av])
        else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
-                    (av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders")) (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
+                    (fv : av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders"))
+                                     (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
