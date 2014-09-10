@@ -30,6 +30,8 @@ RUN apt-get install -y ocaml opam camlp4-extra
 
 # Install Redis
 RUN apt-get install -y redis-server redis-tools libhiredis0.10 libhiredis-dev libhiredis-dbg
+EXPOSE 6379
+EXPOSE 26379
 
 # Install GHC and cabal
 ADD haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz /
