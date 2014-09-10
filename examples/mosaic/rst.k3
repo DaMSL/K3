@@ -293,10 +293,10 @@ declare frontier_int_int : {
 declare log_read_geq : { _r1_:int, _r2_:int, _r3_:int } -> collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
   } @ { Collection } = (\vid2 -> 
-    (log__master.filter
+    log__master.filter
       ((\_b1_ -> 
         bind _b1_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in 
-        vid_geq {key:vid, value:vid2}))))
+        vid_geq {key:vid, value:vid2})))
 
 declare check_and_update_stmt_cntr_index : {
   key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } -> bool = (\_b1_ -> 
@@ -388,7 +388,7 @@ declare add_delta_to_int_int_int : {
           bind _b1_ as {_r1_:vid_arg, _r2_:__arg_0, _r3_:__arg_1,
                         _r4_:__arg_val} in 
           let filtered =
-            (((bind
+            ((bind
               target_map
               as ind __x
               in __x).filter
@@ -397,7 +397,7 @@ declare add_delta_to_int_int_int : {
                 _r2_ == __arg_0 and _r3_ == __arg_1))).filter
               ((\_b1_ -> 
                 bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
-                              _r4_:__map_val} in vid > min_vid))) in
+                              _r4_:__map_val} in vid > min_vid)) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_1,
@@ -457,12 +457,12 @@ declare add_delta_to_int : {
         ((\_b1_ -> 
           bind _b1_ as {key:vid_arg, value:__arg_val} in 
           let filtered =
-            ((bind
+            (bind
               target_map
               as ind __x
               in __x).filter
               ((\_b1_ -> 
-                bind _b1_ as {key:vid, value:__map_val} in vid > min_vid))) in
+                bind _b1_ as {key:vid, value:__map_val} in vid > min_vid)) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {key:vid, value:__map_val} in 
@@ -529,7 +529,7 @@ declare add_delta_to_int_int : {
         ((\_b1_ -> 
           bind _b1_ as {_r1_:vid_arg, _r2_:__arg_0, _r3_:__arg_val} in 
           let filtered =
-            (((bind
+            ((bind
               target_map
               as ind __x
               in __x).filter
@@ -538,7 +538,7 @@ declare add_delta_to_int_int : {
                 __arg_0))).filter
               ((\_b1_ -> 
                 bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_val} in vid >
-                min_vid))) in
+                min_vid)) in
           filtered.iterate
             ((\_b1_ -> 
               bind _b1_ as {_r1_:vid, _r2_:__map_0, _r3_:__map_val} in 
@@ -680,10 +680,10 @@ declare get_ring_node : { key:int, value:int } -> address = (\_b1_ ->
         (real_of_int (get_max_int ()) * (real_of_int data /
         real_of_int max_val)) in
     let results =
-      (node_ring.filter
+      node_ring.filter
         ((\_b1_ -> 
           bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in hash
-          >= scaled))) in
+          >= scaled)) in
     bind if results == empty { _r1_:address, _r2_:string, _r3_:string, _r4_:int
            } @ { Seq }
          then case (node_ring.peek ()) of { Some x -> x } { None -> error () }
@@ -692,7 +692,11 @@ declare get_ring_node : { key:int, value:int } -> address = (\_b1_ ->
 
 declare get_all_uniq_nodes : () -> collection {i:address} @ { Collection } =
   (\_ -> 
-    (node_ring.groupBy
+    ((node_ring.fold
+        ((\acc_conv -> (\x -> 
+          ({| _r1_:address, _r2_:string, _r3_:string, _r4_:int |
+          x|} @ { Collection }).combine acc_conv))) empty {
+        _r1_:address, _r2_:string, _r3_:string, _r4_:int } @ { Collection }).groupBy
        ((\_b1_ -> 
          bind _b1_ as {_r1_:addr, _r2_:_role_, _r3_:name, _r4_:hash} in addr))
        ((\_ -> (\_ ->  ()))) ()).fold
@@ -791,8 +795,8 @@ declare route_to_int : { key:int, value:option int
           empty {i:collection { key:int, value:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.fold
-           ((\__acc_map -> (\_b3_ -> 
-             bind _b3_ as {i:free_bucket} in __acc_map.combine
+           ((\acc_ips -> (\_b3_ -> 
+             bind _b3_ as {i:free_bucket} in acc_ips.combine
              ({|i:address|
              get_ring_node
                {key:free_bucket.fold
@@ -803,8 +807,8 @@ declare route_to_int : { key:int, value:option int
                           bind _b1_ as {key:key, value:value} in key == i))).peek
                         ()) of { Some x -> x }
                         { None -> error () } as {key:__1, value:__2} in __2))))
-                      bound_bucket, value:max_val}|} @ { Seq }))))
-           empty {i:address} @ { Seq }).groupBy
+                      bound_bucket, value:max_val}|} @ { Collection }))))
+           empty {i:address} @ { Collection }).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) () in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
@@ -902,8 +906,8 @@ declare route_to_int_int : { _r1_:int, _r2_:option int, _r3_:option int
           empty {i:collection { key:int, value:int } @ { Seq }} @ { Seq } in
       let sorted_ip_list =
         (free_cart_prod.fold
-           ((\__acc_map -> (\_b3_ -> 
-             bind _b3_ as {i:free_bucket} in __acc_map.combine
+           ((\acc_ips -> (\_b3_ -> 
+             bind _b3_ as {i:free_bucket} in acc_ips.combine
              ({|i:address|
              get_ring_node
                {key:free_bucket.fold
@@ -914,8 +918,8 @@ declare route_to_int_int : { _r1_:int, _r2_:option int, _r3_:option int
                           bind _b1_ as {key:key, value:value} in key == i))).peek
                         ()) of { Some x -> x }
                         { None -> error () } as {key:__1, value:__2} in __2))))
-                      bound_bucket, value:max_val}|} @ { Seq }))))
-           empty {i:address} @ { Seq }).groupBy
+                      bound_bucket, value:max_val}|} @ { Collection }))))
+           empty {i:address} @ { Collection }).groupBy
           ((\_b1_ ->  bind _b1_ as {i:ip} in ip)) ((\_ -> (\_ ->  ()))) () in
       if sorted_ip_list == empty { key:address, value:() } @ { Collection }
       then {|i:address|
@@ -1384,20 +1388,26 @@ declare filter_corrective_list : {
   } @ { Collection } = (\_b1_ -> 
     bind _b1_ as {key:request_vid, value:trig_stmt_list} in 
     let log_entries = log_read_geq request_vid in
-    ((log_entries.fold
-        ((\acc -> (\_b3_ -> 
-          bind _b3_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in acc.combine
-          ({| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
-          {key:vid, value:stmt_id}|} @ { Seq })))) empty {
-        key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Seq }).sort
-      ((\_b2_ -> bind _b2_ as {key:vid1, value:stmt1} in (\_b5_ -> 
-        bind _b5_ as {key:vid2, value:stmt2} in 
-        if vid_lt {key:vid1, value:vid2} then -1 else 1)))).groupBy
-      ((\_b1_ ->  bind _b1_ as {key:_, value:stmt_id} in stmt_id))
-      ((\vid_list -> (\_b3_ -> 
-        bind _b3_ as {key:vid, value:_} in vid_list.combine
-        ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq })))) empty {
-      _r1_:int, _r2_:int, _r3_:int } @ { Seq })
+    (((log_entries.fold
+         ((\acc -> (\_b3_ -> 
+           bind _b3_ as {_r1_:vid, _r2_:trig_id, _r3_:stmt_id} in acc.combine
+           ({| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+           {key:vid, value:stmt_id}|} @ { Seq })))) empty {
+         key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Seq }).sort
+       ((\_b2_ -> bind _b2_ as {key:vid1, value:stmt1} in (\_b5_ -> 
+         bind _b5_ as {key:vid2, value:stmt2} in 
+         if vid_lt {key:vid1, value:vid2} then -1 else 1)))).groupBy
+       ((\_b1_ ->  bind _b1_ as {key:_, value:stmt_id} in stmt_id))
+       ((\vid_list -> (\_b3_ -> 
+         bind _b3_ as {key:vid, value:_} in vid_list.combine
+         ({| _r1_:int, _r2_:int, _r3_:int | vid|} @ { Seq })))) empty {
+       _r1_:int, _r2_:int, _r3_:int } @ { Seq }).fold
+      ((\acc_conv -> (\x -> 
+        ({|
+        key:int, value:collection { _r1_:int, _r2_:int, _r3_:int } @ { Seq } |
+        x|} @ { Collection }).combine acc_conv))) empty {
+      key:int, value:collection { _r1_:int, _r2_:int, _r3_:int } @ { Seq }
+      } @ { Collection })
 
 trigger insert_T : {
 key:int, value:int
