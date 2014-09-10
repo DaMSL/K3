@@ -8,10 +8,6 @@
 #include "BaseCollections.hpp"
 #include "Builtins.hpp"
 
-// TODO cleanup traces of engine and peers
-//extern K3::Engine engine;
-//extern _Collection<R_addr<K3::Address>> peers;
-
 char *sdup (const char *s) {
     char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
     if (d != NULL) strcpy (d,s);         // Copy string if okay
@@ -29,32 +25,49 @@ namespace K3 {
   using std::to_string;
 
 
-  //F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id) {
-  //    return [&] (const string& builtin_chan_id) {
-  //      return [&] (const string& format) {
-  //        engine.openBuiltin(chan_id, builtin_chan_id);
-  //        return unit_t();
-  //      };
-  //    };
-  //  }
+  // Standard context implementations
+  __standard_context::__standard_context(Engine& __engine) 
+    : __k3_context(__engine)
+  {}
 
-  //F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id) {
-  //    return [&] (const string& path) {
-  //        return [&] (const string& fmt) {
-  //            return [&] (const string& mode) {
-  //                IOMode iomode = engine.ioMode(mode);
-  //                engine.openFile(chan_id, path, iomode);
-  //                return unit_t();
-  //            };
-  //        };
-  //    };
-  //}
+  F<F<unit_t(const string&)>(const string&)> __standard_context::openBuiltin(const string& chan_id) {
+      return [&] (const string& builtin_chan_id) {
+        return [&] (const string& format) {
+          __engine.openBuiltin(chan_id, builtin_chan_id);
+          return unit_t();
+        };
+      };
+    }
 
-  //unit_t close(string chan_id) {
-  //    engine.close(chan_id);
-  //    return unit_t();
-  //}
+  F<F<F<unit_t(const string&)>(const string&)>(const string&)> __standard_context::openFile(const string& chan_id) {
+      return [&] (const string& path) {
+          return [&] (const string& fmt) {
+              return [&] (const string& mode) {
+                  IOMode iomode = __engine.ioMode(mode);
+                  __engine.openFile(chan_id, path, iomode);
+                  return unit_t();
+              };
+          };
+      };
+  }
 
+  unit_t __standard_context::close(string chan_id) {
+      __engine.close(chan_id);
+      return unit_t();
+  }
+
+
+  unit_t __standard_context::haltEngine(unit_t) {
+    __engine.forceTerminateEngine();
+    return unit_t();
+  }
+
+  unit_t __standard_context::printLine(string message) {
+    std::cout << message << endl;
+    return unit_t();
+  }
+
+  // TODO Builtins that require a handle to peers? 
   //int index_by_hash(const string& s) {
   //  auto& container = peers.getConstContainer();
   //  size_t h = std::hash<string>()(s);
@@ -66,25 +79,29 @@ namespace K3 {
   //  return container[i].addr;
   //}
 
-  unit_t printLine(string message) {
-    std::cout << message << endl;
-    return unit_t();
+
+  // Time:
+  __time_context::__time_context() {} 
+  
+  int __time_context::now(unit_t) {
+    auto t = std::chrono::system_clock::now();
+    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
+    return elapsed.count();
   }
 
-  string itos(int i) {
+
+  // String operations:
+  __string_context::__string_context() {}
+  string __string_context::itos(int i) {
     return to_string(i);
   }
 
-  string rtos(double d) {
+  string __string_context::rtos(double d) {
     return to_string(d);
   }
 
-  //unit_t haltEngine(unit_t) {
-  //  engine.forceTerminateEngine();
-  //  return unit_t();
-  //}
 
-  F<F<string(const int&)>(const int&)> substring(const string& s) {
+  F<F<string(const int&)>(const int&)> __string_context::substring(const string& s) {
       return [&] (const int& i) {
             return [&] (const int& n) {
                 return s.substr(i,n);
@@ -92,6 +109,23 @@ namespace K3 {
       };
   }
 
+  // Split a string by substrings
+  F<Seq<R_elem<string> >(const string&)> __string_context::splitString(const string& s) {
+    return [&] (const string& splitter) {
+      std::vector<string> words;
+      boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
+
+      // Transfer to R_elems
+      Seq<R_elem<string>> results;
+      auto &c = results.getContainer();
+      c.resize(words.size());
+      for (const auto &elem : words) {
+        results.insert(elem);
+      }
+      return results;
+    };
+  }
+  // Vector operations:
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1) {
       return [&] (const Collection<R_elem<double>>& c2) {
         using namespace K3;
@@ -179,21 +213,5 @@ namespace K3 {
       };
   }
 
-  // Split a string by substrings
-  F<Seq<R_elem<string> >(const string&)> splitString(const string& s) {
-    return [&] (const string& splitter) {
-      std::vector<string> words;
-      boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
-
-      // Transfer to R_elems
-      Seq<R_elem<string>> results;
-      auto &c = results.getContainer();
-      c.resize(words.size());
-      for (const auto &elem : words) {
-        results.insert(elem);
-      }
-      return results;
-    };
-  }
 
 } // namespace K3
