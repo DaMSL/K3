@@ -1,3 +1,0 @@
-git pull
-cd /k3/core/runtime/cpp/test/distributed && chmod +x ./compile2 && ./compile2
-/bin/bash

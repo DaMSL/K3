@@ -19,6 +19,13 @@ RUN apt-get install -y \
       zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
       clang-3.4 libboost1.55-all-dev 
 
+
+# Install and configure GCC 4.9
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt-get update
+RUN apt-get install -y gcc-4.9
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
+
 # Install decent vim configuration
 RUN mkdir /root/.vim
 RUN git clone https://github.com/tpope/vim-pathogen.git /root/.vim
