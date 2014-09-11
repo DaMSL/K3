@@ -7,12 +7,12 @@ class K3Peer:
     self.local_binary_path = config.get("local_binary_path")
     self.ip = config["ip"]
     self.port = config["k3_port"]
-    self.remote_binary_path = "/temp/"
+    self.remote_binary_path = "/tmp/"
     self.binary_name = "k3_" + str(self.ip) + str(self.port)
-    self.remote_log_dir  = "/temp/log/" + self.binary_name + "/"
+    self.remote_log_dir  = "/tmp/log/" + self.binary_name + "/"
 
     self.remote_log_file = self.remote_log_dir + "stdouterr.log"
-    self.remote_script_path = "/temp/" + self.binary_name + ".txt"
+    self.remote_script_path = "/tmp/" + self.binary_name + ".txt"
     self.k3_bindings = config.get("k3_bindings",{})
     self.loggingEnabled = bool(config.get("enable_logging", False))
     self.collectResults = bool(config.get("collect_results", False))
@@ -29,7 +29,7 @@ class K3Peer:
     local_kill_file = "kill_" + self.binary_name + ".txt"
     remote_kill_file = self.remote_binary_path + "kill_" + self.binary_name;
     script = ("""#!/bin/bash\n"""
-              """for j in `pgrep -f "/temp/.*"`;do kill -9 $j; done\n""")
+              """for j in `pgrep -f "/tmp/.*"`;do kill -9 $j; done\n""")
 
 
     # Dump to a local file
@@ -66,7 +66,7 @@ class K3Peer:
     logStr = ""
     if self.loggingEnabled:
       logStr = "-l some"
-    #perf record -g -o /temp/perf/%(bn)s.data
+    #perf record -g -o /tmp/perf/%(bn)s.data
     # Generate a script to run program.
     script = ("""#!/bin/bash\n"""
               """mkdir -p %(logdir)s\nrm -rf %(logdir)s/*\nnice -n 19 %(bp)s%(bn)s %(ls)s -p %(bs)s >%(sf)s 2>&1\n""") % {"bn":self.binary_name,"bp":self.remote_binary_path, "bs":self.k3_bindings_str, "ls": logStr, "sf": self.remote_log_file, "logdir": self.remote_log_dir}
