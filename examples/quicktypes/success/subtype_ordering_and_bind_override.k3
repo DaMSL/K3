@@ -1,0 +1,137 @@
+include "Core/Builtins.k3"
+include "Annotation/Map.k3"
+include "Annotation/Set.k3"
+include "Annotation/Seq.k3"
+
+declare vid_eq : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 == r0 and (l1 == r1 and l2
+    == r2))
+
+declare vid_neq : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in not (l0 == r0 and (l1 == r1 and
+    l2 == r2)))
+
+declare vid_lt : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 < r0 or (l0 == r0 and (l1 <
+    r1 or (l1 == r1 and l2 < r2))))
+
+declare vid_gt : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in l0 > r0 or (l0 == r0 and (l1 >
+    r1 or (l1 == r1 and l2 > r2))))
+
+declare vid_leq : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in not (l0 > r0 or (l0 == r0 and
+    (l1 > r1 or (l1 == r1 and l2 > r2)))))
+
+declare vid_geq : {
+  key:{ _r1_:int, _r2_:int, _r3_:int }, value:{ _r1_:int, _r2_:int, _r3_:int }
+  } -> bool = (\_b1_ ->
+    bind _b1_ as {key:_b2_, value:_b6_} in
+    bind _b2_ as {_r1_:l0, _r2_:l1, _r3_:l2} in
+    bind _b6_ as {_r1_:r0, _r2_:r1, _r3_:r2} in not (l0 < r0 or (l0 == r0 and
+    (l1 < r1 or (l1 == r1 and l2 < r2)))))
+
+declare frontier_int :  { key:{ _r1_:int, _r2_:int, _r3_:int }
+                        , value:collection { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection } }
+                     -> collection { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection }
+= (\_b1_ ->
+    bind _b1_ as {key:vid, value:input_map} in
+    bind input_map.fold
+           ((\_b2_ -> bind _b2_ as {key:acc, value:max_vid} in (\_b5_ ->
+             bind _b5_ as {key:map_vid, value:__map_val} in
+             if vid_lt {key:map_vid, value:vid}
+             then
+               if vid_eq {key:map_vid, value:max_vid}
+               then
+                 {key:({| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+                  {key:map_vid, value:__map_val}|} @ { Collection }).combine
+                  acc, value:max_vid}
+               else
+                 if vid_gt {key:map_vid, value:max_vid}
+                 then
+                   {key:{| key:{ _r1_:int, _r2_:int, _r3_:int }, value:int |
+                    {key:map_vid, value:__map_val}|} @ { Collection },
+                    value:map_vid}
+                 else {key:acc, value:max_vid}
+             else {key:acc, value:max_vid})))
+           { key   : empty { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection }
+           , value : {_r1_:0, _r2_:0, _r3_:0}}
+    as {key:__1, value:__2}
+    in __1)
+
+
+declare add_delta_to_int : { _r1_:ind collection { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection },
+                             _r2_:bool,
+                             _r3_:{ _r1_:int, _r2_:int, _r3_:int },
+                             _r4_:collection { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection } }
+                          -> ()
+= (\_b1_ ->
+    bind _b1_ as {_r1_:target_map, _r2_:corrective, _r3_:min_vid, _r4_:delta_tuples}
+    in (
+      delta_tuples.iterate
+        ((\_b1_ ->
+          bind _b1_ as {key:vid, value:__map_val} in
+          let lookup_value =
+            if corrective
+            then (bind target_map as ind __x in __x).filter
+              ((\_b1_ ->  bind _b1_ as {key:key, value:value} in key == vid))
+            else empty { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection }
+          in
+          if not (lookup_value == empty { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection })
+          then
+            let update_value = __map_val +
+              bind case (lookup_value.peek()) of { Some x -> x }
+                                                 { None -> error () } as {key:__1, value:__2}
+              in __2
+            in
+            (bind target_map as ind __x in __x).insert {key:vid, value:update_value}
+          else
+            let lookup_value = frontier_int {key:vid, value:bind target_map as ind __x in __x} in
+            let update_value = __map_val +
+              if lookup_value == empty {
+                key:{ _r1_:int, _r2_:int, _r3_:int }, value:int
+                } @ { Collection }
+              then 0
+              else bind case (lookup_value.peek ()) of { Some x -> x }
+                                                       { None -> error () }
+                   as {key:__1, value:__2} in __2
+            in
+            (bind target_map as ind __x in __x).insert {key:vid, value:update_value}));
+      delta_tuples.iterate
+        ((\_b1_ ->
+          bind _b1_ as {key:vid_arg, value:__arg_val} in
+          let filtered = (bind target_map as ind __x in __x)
+                            .filter ((\_b1_ -> bind _b1_ as {key:vid, value:__map_val} in vid > min_vid))
+          in
+          filtered.iterate
+            ((\_b1_ ->
+              bind _b1_ as {key:vid, value:__map_val} in
+              (bind target_map as ind __x in __x)
+                .update
+                  {key:vid, value:__map_val}
+                  {key:vid, value:__map_val + __arg_val}))))
+      ))
+
+trigger t : () = \_ -> ()
+source s1 : () = value ()
+feed s1 |> t

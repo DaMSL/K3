@@ -429,16 +429,14 @@ tvshallowLowerRcr rcr a b =
       in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sup) sub
 
     coveringCollection ct rt@(tag -> QTCon (QTRecord _)) =
-      collectionSubRecord ct rt >>= \case
-        Just _ -> return ct
-        _      -> lowerError ct rt
+      collectionSubRecord ct rt >>= either (const $ lowerError ct rt) (const $ return ct)
 
     coveringCollection x y = lowerError x y
 
     annLower x@(annotations -> annA) y@(annotations -> annB) =
       let annAB   = nub $ annA ++ annB
           invalid = [QTMutable, QTImmutable]
-      in if annAB `intersect` invalid == invalid then lowerError x y else return annAB
+      in if invalid `intersect` annAB == invalid then lowerError x y else return annAB
 
     lowerBound t@(tag -> QTOperator QTLower) = tvopevalWithLowerF rcr QTLower $ children t
     lowerBound t = return t
@@ -488,7 +486,7 @@ consistentTLower ch =
 -- Unification helpers.
 -- | Returns a self record and lifted attribute identifiers when given
 --   a collection and a record that is a subtype of the collection.
-collectionSubRecord :: K3 QType -> K3 QType -> TInfM (Maybe (K3 QType, [Identifier]))
+collectionSubRecord :: K3 QType -> K3 QType -> TInfM (Either (Maybe (K3 QType)) (K3 QType, [Identifier]))
 collectionSubRecord ct@(tag -> QTCon (QTCollection annIds)) (tag -> QTCon (QTRecord ids))
   = get >>= mkColQT >>= return . testF
   where
@@ -498,12 +496,12 @@ collectionSubRecord ct@(tag -> QTCon (QTCollection annIds)) (tag -> QTCon (QTRec
 
     testF (_, self)
       | QTCon (QTRecord liftedAttrIds) <- tag self
-      , liftedAttrIds `intersect` ids == ids
-      = Just (self, liftedAttrIds)
+      , ids `intersect` liftedAttrIds == ids
+      = Right (self, liftedAttrIds)
 
-    testF _ = Nothing
+    testF (_, self) = Left $ Just self
 
-collectionSubRecord _ _ = return Nothing
+collectionSubRecord _ _ = return $ Left Nothing
 
 -- Unify a free variable v1 with t2
 unifyv :: QTVarId -> K3 QType -> TInfM ()
@@ -585,13 +583,15 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     -- | Collection-as-record subtyping for projection
     unifyDrv' t1@(tag -> QTCon (QTCollection _)) t2@(tag -> QTCon (QTRecord _))
       = collectionSubRecord t1 t2 >>= \case
-          Just (selfRecord, liftedAttrIds) -> onCollection selfRecord liftedAttrIds t1 t2
-          _ -> unifyErr t1 t2 "collection-record" ""
+          Right (selfRecordQt, liftedAttrIds) -> onCollection selfRecordQt liftedAttrIds t1 t2
+          Left (Just selfRecordQt)            -> unifyErr t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t2
+          Left Nothing                        -> unifyErr t1 t2 "collection-record" ""
 
     unifyDrv' t1@(tag -> QTCon (QTRecord _)) t2@(tag -> QTCon (QTCollection _))
       = collectionSubRecord t2 t1 >>= \case
-          Just (selfRecord, liftedAttrIds) -> onCollection selfRecord liftedAttrIds t2 t1
-          _ -> unifyErr t1 t2 "collection-record" ""
+          Right (selfRecordQt, liftedAttrIds) -> onCollection selfRecordQt liftedAttrIds t2 t1
+          Left (Just selfRecordQt)            -> unifyErr t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t1
+          Left Nothing                        -> unifyErr t1 t2 "collection-record" ""
 
     unifyDrv' t1@(tag -> QTCon (QTCollection idsA)) t2@(tag -> QTCon (QTCollection idsB))
         | idsA `intersect` idsB == idsA = onCollectionPair idsB t1 t2
@@ -720,8 +720,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     primitiveErr a b = unifyErr a b "primitives" ""
 
-    unifyErr a b kind s = left $ unlines
-      [unwords ["Unification mismatch on ", kind, "(", s, "):"], pretty a, pretty b]
+    unifyErr a b kind s = left $ boxToString $
+      [unwords ["Unification mismatch on ", kind, ":("]] %$ indent 2 [s] %$ [")"] %$ (prettyLines a %+ [" "] %+ prettyLines b)
 
     subSelfErr ct = left $ boxToString $
       ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
@@ -1013,18 +1013,18 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         case b of
           BIndirection i -> do
             itv <- newtv
-            void $ unifyM ch1T (tind itv) $ bindErr "indirection"
+            void $ unifyWithOverrideM ch1T (tind itv) $ bindErr "indirection"
             monoBinding i itv
 
           BTuple ids -> do
             idtvs <- mapM (const newtv) ids
-            void   $ unifyM ch1T (ttup idtvs) $ bindErr "tuple"
+            void   $ unifyWithOverrideM ch1T (ttup idtvs) $ bindErr "tuple"
             mapM_ (uncurry monoBinding) $ zip ids idtvs
 
           -- TODO: partial bindings?
           BRecord ijs -> do
             jtvs <- mapM (const newtv) ijs
-            void $  unifyM ch1T (trec $ flip zip jtvs $ map fst ijs) $ bindErr "record"
+            void $  unifyWithOverrideM ch1T (trec $ flip zip jtvs $ map fst ijs) $ bindErr "record"
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
         return [iu]
@@ -1035,7 +1035,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     sidewaysBinding ch1 (tag -> ECaseOf i) = do
       ch1T <- qTypeOfM ch1
       itv  <- newtv
-      void $  unifyM ch1T (topt itv) $ (("Invalid case-of source expression: ")++)
+      void $  unifyWithOverrideM ch1T (topt itv) $ (("Invalid case-of source expression: ")++)
       return [monoBinding i itv, modify $ \env -> tidele env i]
 
     sidewaysBinding _ (children -> ch) = return (replicate (length ch - 1) iu)
