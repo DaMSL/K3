@@ -1,16 +1,13 @@
 include "Annotation/Collection.k3"
 include "Core/CppBuiltins.k3"
 
-// Hack
+// Generate a builtin to load data into a collection
 @:CArgs 2
-declare dataLoader : string -> collection {pageRank: int, pageURL: string,avgDuration: int} @ { Collection } -> ()
-
-
-
+declare dataLoader : string -> collection {pageURL: string,pageRank: int, avgDuration: int} @ { Collection } -> ()
 
 // Constants
 declare master: address = 127.0.0.1:40000
-declare x: mut int = 10
+declare x: mut int = 10 //pageRank threshold for the select statement
 declare num_peers: int = 2
 declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
