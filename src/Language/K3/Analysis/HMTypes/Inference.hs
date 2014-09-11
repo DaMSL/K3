@@ -29,6 +29,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -258,12 +260,13 @@ tvchase tve t = acyclicChase [] t
 tvchasev :: TVEnv -> Maybe (QTVarId, QTVarId) -> K3 QType -> (Maybe (QTVarId, QTVarId), K3 QType)
 tvchasev tve firstAndLastV t = acyclicChasev [] firstAndLastV t
   where acyclicChasev path flv qt@(tag -> QTVar v)
-          | v `elem` path = (flv, qt)
-          | Just ctv <- tvlkup tve v =
-              let extendV = maybe (Just (v,v)) (\(u,_) -> Just (u,v)) flv
-              in acyclicChasev (v:path) extendV ctv
+          | v `elem` path            = (flv, qt)
+          | Just ctv <- tvlkup tve v = acyclicChasev (v:path) (extendFirstLast flv v) ctv
+          | otherwise                = (extendFirstLast flv v, qt)
 
         acyclicChasev _ flv qt = (flv, qt)
+
+        extendFirstLast flv v = maybe (Just (v,v)) (\(u,_) -> Just (u,v)) flv
 
 tvpath :: TVEnv -> QTVarId -> [QTVarId]
 tvpath tve v = acyclicPath [] v
@@ -861,7 +864,10 @@ inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramTypes prog = do
     (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
                     in a >>= return . (, b)
-    nProg <- fst $ runTInfM initEnv $ mapProgram declF annMemF exprF prog
+    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
+                         in a >>= return . (, b)
+    logVoid $ "Final type environment"
+    logVoid $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
