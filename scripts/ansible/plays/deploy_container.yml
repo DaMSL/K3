@@ -1,0 +1,15 @@
+# Host must have set the following variables: name, docker_ip
+
+- name: Kill running docker container
+  docker: name="k3-{{name}}" image=damsl/k3-deployment state=killed
+  ignore_errors: yes
+
+- name: Remove existing docker container to fix conflict
+  shell: docker rm k3-{{name}}
+  ignore_errors: yes
+
+- name: Run a docker container that can accept and run K3 binaries
+  shell: docker run -d -t -i -name="k3-{{name}}" -v /local:/local_data damsl/k3-deployment /startup.sh
+
+- name: Assign an IP address to the docker container
+  shell: /damsl/software/docker/run-scripts/assign-ip.sh k3-{{name}} {{docker_ip}}
