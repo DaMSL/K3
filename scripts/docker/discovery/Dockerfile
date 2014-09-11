@@ -27,8 +27,3 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 RUN apt-get install -y redis-server redis-tools libhiredis0.10 libhiredis-dev libhiredis-dbg
 EXPOSE 6379
 EXPOSE 26379
-
-RUN service ssh start
-EXPOSE 22
-
-ADD redis_and_bash.sh
