@@ -1,92 +1,145 @@
-include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+include "Annotation/Map.k3"
 include "Core/CppBuiltins.k3"
-include "Core/Vector.k3"
 
-declare master: address = 127.0.0.1:40000
-
-declare k: int = 1
-declare dimensionality: 3
-declare num_peers: mut int = 1
-
-declare iterations_remaining: mut int = 10
-declare requests: mut int = 0
-
-declare means: mut collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection }
-declare aggregates: mut collection { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }
-
-declare data: collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection }
-
-declare LoaderVector : string -> collection { elem: collection { key: int, value: real } @ { Collection } } @ { Collection } -> ()
+// Constants
+declare k : int = 3
+declare dimensionality : int = 3
+declare master : address
 
 
-declare nearest_neighbor: collection { key: int, value: real } -> collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } -> int = \p -> \means -> (
-    case means.peek () of
-        { Some first_mean ->
-            let nearest = means.fold (\acc -> \next ->
-                if (squared_distance p next.value) < acc.distance
-                    then {mean: next, distance: squared_distance p next.value}
-                    else acc
-            ) {mean: first_mean, distance: squared_distance p first_mean.value} in nearest.mean.key
-        }
-        { None -> (-1) } // Error
-)
+declare iterations_remaining : mut int = 5
 
-trigger assign: collection { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection } = \current_means -> (
-        (aggregate, master) <-
-            data.groupBy (\p -> nearest_neighbor p.elem current_means) (\sc -> \p -> { count: sc.count + 1 , sum: vector_add sc.sum p.elem}) {count: 0, sum: (zero_vector ())}
-)
+// Outstanding requests for partial aggregation
+declare requests : mut int = 0
 
-trigger aggregate: collection { key: int, value: { count: int , sum: collection { key: int, value: real } @ { Collection }} } @ { Collection } = \ags -> let
-  combined = aggregates.combine ags in let
-  new_ags = combined.groupBy
-    (\ag -> ag.key)
-    (\acc -> \ag -> { count: acc.count + ag.value.count, sum: (vector_add acc.sum ag.value.sum)})
-    ({ count: 0, sum: (zero_vector ()) })
-  in (
-    (aggregates = new_ags);
-    (requests = requests - 1);
-    (if requests == 0 then ((maximize,master) <- ()) else ())
-  )
-
-trigger maximize: () = \_ -> (
-  (means = empty { key: int, value: collection { key: int, value: real } @ { Collection } } @ { Collection });
-  (aggregates.iterate (\x -> means.insert {key: x.key, value: scalar_mult (1.0/(x.value.count)) (x.value.sum)}));
-  (iterations_remaining = iterations_remaining - 1);
-  (if iterations_remaining == 0
-  then (peers.iterate (\p -> (shutdown, p.addr) <- ()))
-  else (aggregates = empty { key: int, value: { count: int, sum: collection { key: int, value: real } @ { Collection } } } @ { Collection }); peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))fg
-)
+declare foo : collection {elem: real} @ {Vector}
 
 
-trigger start: () = \_ -> (
-  let foo = (data.fold
-    (\a -> \p ->
+// Collection of data points. Each point represented as a vector
+declare data:
+  collection {
+    elem: collection {elem: real} @ {Vector}
+  } @ {Collection}
+
+// Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
+declare means :
+  mut collection {
+    key: int
+  , value: collection {elem: real} @ {Vector}
+  } @ {Collection}
+
+
+declare aggregates :
+  mut collection {
+    key: int
+  , value: {
+      count: int
+    , sum : collection {elem: real} @ {Vector}
+    }
+  } @ {Map}
+
+
+
+trigger start : () = \_ -> (
+  let ignore = data.fold
+    (\a -> (\p -> (
       if a == 0
-      then a
-      else (
-        (means.insert {key: a, value: p.elem});
-        (a - 1)
+        then a
+        else (
+          (means.insert {key: a, value: p.elem});
+          (a - 1)
+        )
+    )))
+    k
+  in peers.iterate \p -> (
+    requests = requests + 1;
+    (assign, p.addr) <- means
+  )
+)
+
+
+// Function that returns the key of nearest mean (in the global variable means)
+declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
+  case means.peek() of
+    { Some first_mean ->
+        let nearest = means.fold (\acc -> \curr_mean ->
+          let dist = p.squareDistance curr_mean.value
+          in
+            if dist < acc.distance
+            then {mean: curr_mean, distance: dist}
+            else acc
+        ) {mean: first_mean, distance: p.squareDistance first_mean.value}
+        in
+          nearest.mean.key
+    }
+    { None -> (-1) } // Error
+)
+
+trigger assign : collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
+  means = new_means;
+  let aggs = data.groupBy
+    (\p -> nearest_mean p.elem)
+    (\sc -> \p ->
+      {count: sc.count + 1, sum: sc.sum.add p.elem}
+    )
+    {count: 0, sum: zeroVector dimensionality}
+  in (aggregate, master) <- aggs
+)
+
+
+declare merge_results : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Collection} -> () = \peer_aggs -> (
+  peer_aggs.iterate (\v ->
+    case aggregates.lookup v of
+     { Some a ->
+         aggregates.insert
+          { key: v.key,
+            value: { count: v.value.count + a.value.count,
+                     sum:   v.value.sum.add a.value.sum
+                   }
+          }
+     }
+     { None -> aggregates.insert v }
+  )
+)
+
+trigger aggregate : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Collection} = \peer_aggs -> (
+  merge_results peer_aggs;
+  requests = requests -1;
+  if requests == 0
+    then (maximize, master) <- ()
+    else ()
+)
+
+trigger maximize : () = \_ -> (
+  means = empty {key: int, value: collection {elem: real} @ {Vector}} @ {Collection};
+  aggregates.iterate (\x ->
+    means.insert
+      {  key: x.key
+      ,  value: x.value.sum.map (\e -> (1.0 / x.value.count) * e.elem)  // scalar * vector
+      }
+  );
+  iterations_remaining = iterations_remaining - 1;
+  if iterations_remaining == 0
+    then ()
+    else (
+      aggregates = empty {key:int, value: {count: int, sum: collection {elem: real} @ {Vector}}} @ {Map};
+      peers.iterate \p -> (
+        requests = requests + 1;
+        (assign, p.addr) <- means
       )
     )
-    k
-  ) in
-  (peers.iterate (\p -> ((requests = requests + 1); (assign, p.addr) <- means)))
-)
-
-trigger ready : () = \_ -> (
-  (num_peers = num_peers - 1);
-  (if num_peers == 0
-   then (start, master) <- ()
-   else ()
-  )
 )
 
 trigger shutdown : () = \_ -> haltEngine ()
 
-trigger load_all : () = \_ -> (
-  LoaderVector "/Users/joshwheeler/foo.vector" data;
-  (ready, master) <- ()
+trigger t : () = (\_ ->
+ ()
 )
 
-source points : () = value ()
-feed points |> load_all
+
+
+
+
+source s1 : () = value ()
+feed s1 |> t

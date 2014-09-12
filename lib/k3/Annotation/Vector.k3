@@ -1,0 +1,34 @@
+include "Annotation/Collection.k3"
+
+// Vectors must have a content type of {elem: real}
+annotation Vector given type a{
+  // TODO: bounds checking
+  provides lifted at  : int -> content
+  provides lifted set : int -> content -> ()
+  provides lifted size : () -> int
+  
+  @:Transformer
+  provides lifted add : self -> self
+  
+  @:Transformer
+  provides lifted inPlaceAdd : self -> ()
+  
+  @:Transformer
+  provides lifted sub : self -> self
+  
+  @:Transformer
+  provides lifted inPlaceSub : self -> ()
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+  
+  @:Transformer
+  provides lifted map: (content -> real) -> self
+
+  @:Transformer
+  provides lifted fold: (a -> (content -> a)) -> a -> a
+
+  provides lifted dot : self -> real
+  provides lifted squareDistance: self -> real
+ 
+}

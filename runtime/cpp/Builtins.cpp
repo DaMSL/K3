@@ -67,6 +67,20 @@ namespace K3 {
     return unit_t();
   }
 
+  Vector<R_elem<double>> __standard_context::zeroVector(int i) {
+    Vector<R_elem<double>> result;
+    result.resize(i);
+    return result;
+
+  }
+
+  Vector<R_elem<double>> __standard_context::randomVector(int i) {
+    Vector<R_elem<double>> result;
+    result.resize(i);
+    return result;
+
+  }
+
   // TODO Builtins that require a handle to peers? 
   //int index_by_hash(const string& s) {
   //  auto& container = peers.getConstContainer();

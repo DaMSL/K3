@@ -33,6 +33,9 @@ namespace K3 {
     unit_t haltEngine(unit_t);
 
     unit_t printLine(std::string message);
+
+    Vector<R_elem<double>> zeroVector(int i);
+    Vector<R_elem<double>> randomVector(int i);
   };
 
   

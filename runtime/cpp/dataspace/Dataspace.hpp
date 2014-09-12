@@ -525,7 +525,7 @@ class Seq : public ListDS<Elem> {
     auto& l = Super::getConstContainer();
     auto it = l.begin();
     std::advance(it, i);
-    return *it; // TODO: bounds check?
+    return *it;
   }
 
   // Wrapped Dataspace Functions: (call DS function, then construct-by-move)
@@ -947,17 +947,122 @@ class Map {
 
 }; // class Map
 
+template <class Elem>
+class Vector : public VectorDS<Elem> {
+  typedef VectorDS<Elem> Super;
+
+ public:
+  // Constructors:
+  // Default:
+  Vector() : VectorDS<Elem>() { }
+
+  // Copy:
+  Vector(const Vector& c): VectorDS<Elem>(c) { }
+
+  // Move:
+  Vector(Vector&& c): VectorDS<Elem>(std::move(c)) { }
+
+  // Assign operators:
+  // Copy:
+  Vector& operator=(const Vector& other) {
+    VectorDS<Elem>::operator=(other);
+    return *this;
+  }
+
+  // Move:
+  Vector& operator=(Vector&& other) {
+    VectorDS<Elem>::operator=(std::move(other));
+    return *this;
+  }
+
+  // Superclass constructors: (for conversion from Super to this-type)
+  // Copy:
+  Vector(const VectorDS<Elem>& c): VectorDS<Elem>(c) { }
+
+  // Move:
+  Vector(VectorDS<Elem>&& c): VectorDS<Elem>(std::move(c)) { }
+
+  template<typename Fun>
+  auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> {
+    return Vector<R_elem<RT<Fun, Elem>>>(Super::map(f));
+  }
+
+  // TODO bounds checking
+  Elem at(int i) {
+    auto& vec = Super::getConstContainer();
+    return vec[i];
+  }
+
+  // TODO bounds checking
+  unit_t set(int i, Elem f) {
+    auto& vec = Super::getContainer();
+    vec[i] = f;
+    return unit_t();
+  }
+
+  unit_t inPlaceAdd(const Vector<Elem>& other) {
+    auto& vec = Super::getContainer();
+    auto& other_vec = other.getConstContainer();
+    if (vec.size() != other_vec.size()) {
+      throw std::runtime_error("Vector inPlaceAdd size mismatch");
+    }
+    for (int i =0; i < vec.size(); i++) {
+      vec[i].elem += other_vec[i].elem;
+    }
+  }
+
+  Vector<Elem> add(const Vector<Elem>& other) const {
+    auto copy = Vector<Elem>(*this);
+    copy.inPlaceAdd(other);
+    return copy;
+  }
+
+  unit_t inPlaceSub(const Vector<Elem>& other) {
+    auto& vec = Super::getContainer();
+    auto& other_vec = other.getConstContainer();
+    if (vec.size() != other_vec.size()) {
+      throw std::runtime_error("Vector inPlaceSub size mismatch");
+    }
+    for (int i =0; i < vec.size(); i++) {
+      vec[i].elem -= other_vec[i].elem;
+    }
+  }
+
+  Vector<Elem> sub(const Vector<Elem>& other) const {
+    auto copy = Vector<Elem>(*this);
+    copy.inPlaceSub(other);
+    return copy;
+  }
+
+  double dot(const Vector<Elem&> other) const {
+    auto& vec = Super::getConstContainer();
+    auto& other_vec = other.getConstContainer();
+    if (vec.size() != other_vec.size()) {
+      throw std::runtime_error("Vector dot size mismatch");
+    }
+
+    double d = 0;
+    for(int i = 0; i < vec.size(); i++) {
+      d += vec[i].elem + other_vec[i].elem;
+    }
+    return d;
+  }
+
+
+
+};
+
 } // Namespace K3
 
-template <template<typename...> class Container, class Elem>
-std::size_t hash_value(K3::StlDS<Container,Elem> const& b) {
-  const auto& c  = b.getConstContainer();
-  return boost::hash_range(c.begin(), c.end());
-}
-
-template <class Elem>
-std::size_t hash_value(K3::Map<Elem> const& b) {
-  const auto& c  = b.getConstContainer();
-  return boost::hash_range(c.begin(), c.end());
-}
+//template <template<typename...> class Container, class Elem>
+//std::size_t hash_value(K3::StlDS<Container,Elem> const& b) {
+//  const auto& c  = b.getConstContainer();
+//  return boost::hash_range(c.begin(), c.end());
+//}
+//
+//template <class Elem>
+//std::size_t hash_value(K3::Map<Elem> const& b) {
+//  const auto& c  = b.getConstContainer();
+//  return boost::hash_range(c.begin(), c.end());
+//}
 #endif
