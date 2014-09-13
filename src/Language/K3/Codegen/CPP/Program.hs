@@ -375,4 +375,4 @@ prettifyExpr base_t e =
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
-       return $ wrap [R.Forward rvar, R.Ignore iter, result] [] e (R.Reference cColType)
+       return $ wrap [R.Forward rvar, R.Ignore iter, result] [] e (cColType)

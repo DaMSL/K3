@@ -23,6 +23,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --      - Dataspace constructor, which creates a collection from an empty dataspace (e.g. vector).
 --          - Additionally a move dataspace constructor which uses a temporary dataspace?
 --      - Copy constructor.
+--      - Superclass constructor.
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
 composite name ans = do
@@ -41,6 +42,11 @@ composite name ans = do
     let defaultConstructor = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] []
     let copyConstructor = R.FunctionDefn (R.Name name) [("__other", R.Const $ R.Reference selfType)] Nothing
                           [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
+
+    let superConstructor = R.FunctionDefn (R.Name name)
+                             [("__other" ++ (show i), R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses [1..] ]
+                             Nothing
+                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ (show i)] | (b,i) <- zip baseClasses [1..] ]                                []
 
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
@@ -77,7 +83,7 @@ composite name ans = do
                            (R.ClassDefn (R.Name "patcher") [selfType] [] [patcherFnDefn] [] [])
                      ]
 
-    let methods = [defaultConstructor, copyConstructor, serializeFn]
+    let methods = [defaultConstructor, copyConstructor, superConstructor, serializeFn]
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -232,4 +238,4 @@ record (sort -> ids) = do
     return [recordStructDefn, patcherStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
-reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map"]
+reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"]
