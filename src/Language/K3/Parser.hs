@@ -11,13 +11,14 @@
 module Language.K3.Parser (
   K3Parser,
   identifier,
-  declaration,
   qualifiedTypeExpr,
   typeExpr,
   qualifiedLiteral,
   literal,
   qualifiedExpr,
   expr,
+  declaration,
+  program,
   parseType,
   parseLiteral,
   parseExpression,
@@ -33,25 +34,19 @@ import Control.Arrow
 import Control.Monad
 
 import Data.Function
-import Data.Functor.Identity
-import qualified Data.HashSet as HashSet
-import Data.HashSet (HashSet)
 import Data.List
-import Data.String
+import qualified Data.Map as Map
+import Data.Maybe
 import Data.Traversable hiding ( mapM )
+import Data.Tree
 
 import Debug.Trace
 
 import System.FilePath
-
 import qualified Text.Parsec          as P
-import qualified Text.Parsec.Prim     as PP
-
 import Text.Parser.Char
 import Text.Parser.Combinators
-import Text.Parser.Expression hiding ( buildExpressionParser )
 import Text.Parser.Token
-import Text.Parser.Token.Style
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -66,257 +61,24 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+import Language.K3.Parser.DataTypes
+import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
+import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.Pretty.Syntax as S
-
-{- Note: debugging helper
-import Debug.Trace
-
-myTrace :: String -> K3Parser a -> K3Parser a
-myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
--}
-
-{- Type synonyms for parser return types -}
-{-| Parser environment type.
-    This includes two scoped frames, one for source metadata, and another as a
-    list of K3 program entry points as role-qualified sources that can be consumed.
--}
-
--- endpoint name => endpoint spec, bound triggers, qualified name, initializer expression
-type EndpointInfo      = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
-type EndpointsBQG      = [(Identifier, EndpointInfo)]
-
--- role name, default name
-type DefaultEntries    = [(Identifier, Identifier)]
-
-type EnvironmentFrame  = (EndpointsBQG, DefaultEntries)
-type ParserEnvironment = [EnvironmentFrame]
-type ParserState       = (Int, ParserEnvironment)
-
--- | Parser type synonyms
-type K3Parser          = PP.ParsecT String ParserState Identity
-type TypeParser        = K3Parser (K3 Type)
-type LiteralParser     = K3Parser (K3 Literal)
-type ExpressionParser  = K3Parser (K3 Expression)
-type BinderParser      = K3Parser Binder
-type DeclParser        = K3Parser (K3 Declaration)
-
--- | Additional parsing type synonyms.
-type EndpointMethods   = (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
-type EndpointBuilder   = Identifier -> K3 Type -> Either String EndpointMethods
-
-type K3Operator           = Language.K3.Core.Expression.Operator
-type ParserOperator       = Text.Parser.Expression.Operator K3Parser
-type K3BinaryOperator     = K3 Expression -> K3 Expression -> K3 Expression
-type K3UnaryOperator      = K3 Expression -> K3 Expression
-
-{- Helpers -}
-set :: [String] -> HashSet String
-set = HashSet.fromList
-
-parseError :: Parsing m => String -> String -> m a -> m a
-parseError rule i m = m <?> (i ++ " " ++ rule)
-
-suffixError :: Parsing m => String -> String -> m a -> m a
-suffixError k x = parseError x k
-
-declError :: Parsing m => String -> m a -> m a
-declError x = parseError "declaration" x
-
-typeError :: Parsing m => String -> m a -> m a
-typeError x = parseError x "type"
-
-typeExprError :: Parsing m => String -> m a -> m a
-typeExprError x = parseError "type expression" x
-
-litError :: Parsing m => String -> m a -> m a
-litError x = parseError "literal" x
-
-exprError :: Parsing m => String -> m a -> m a
-exprError x = parseError "expression" x
-
-
-{- Span and UID helpers -}
-emptySpan :: Span
-emptySpan = Span "<dummy>" 0 0 0 0
-
--- | Span computation.
---   TODO: what if source names do not match?
-(<->) :: (AContainer a, Eq (IElement a)) => (Span -> IElement a) -> K3Parser a -> K3Parser a
-(<->) cstr parser = annotate <$> PP.getPosition <*> parser <*> PP.getPosition
-  where annotate start x end = x @+ (cstr $ mkSpan start end)
-
-mkSpan :: P.SourcePos -> P.SourcePos -> Span
-mkSpan s e = Span (P.sourceName s) (P.sourceLine s) (P.sourceColumn s)
-                                   (P.sourceLine e) (P.sourceColumn e)
-
-spanned :: K3Parser a -> K3Parser (a, Span)
-spanned parser = do
-  start <- PP.getPosition
-  result <- parser
-  end <- PP.getPosition
-  return (result, mkSpan start end)
-
-infixl 1 <->
-infixl 1 #
-
-getESpan :: [Annotation Expression] -> Span
-getESpan l = maybe emptySpan extractSpan $ find isESpan l
-  where extractSpan (ESpan s) = s
-        extractSpan _         = emptySpan
-
-binOpSpan :: K3BinaryOperator -> K3 Expression -> K3 Expression -> K3 Expression
-binOpSpan cstr l@(annotations -> la) r@(annotations -> ra) =
-  (cstr l r) @+ (ESpan $ coverSpans (getESpan la) (getESpan ra))
-
-unOpSpan :: String -> K3UnaryOperator -> K3 Expression -> K3 Expression
-unOpSpan opName cstr e@(annotations -> al) =
-  (cstr e) @+ (ESpan $ (prefixSpan $ length opName) $ getESpan al)
-
-
--- Some code for UID annotation.  Abusing typeclasses into ad-hoc polymorphism.
--- |Ensures that the provided parser generates an element with a UID.
-ensureUID :: (Eq (IElement a), AContainer a)
-          => (IElement a -> Bool) -> (UID -> IElement a) -> K3Parser a
-          -> K3Parser a
-ensureUID matcher constructor parser = do
-  x <- parser
-  case x @~ matcher of
-    Just _ -> return x
-    Nothing -> (\uid -> x @+ constructor uid) <$> nextUID
-
-class (Eq (IElement a), AContainer a) => UIDAttachable a where
-  (#) :: (UID -> IElement a) -> K3Parser a -> K3Parser a
-instance UIDAttachable (K3 Expression) where
-  (#) = ensureUID isEUID
-instance UIDAttachable (K3 Type) where
-  (#) = ensureUID isTUID
-instance UIDAttachable (K3 Declaration) where
-  (#) = ensureUID isDUID
-
-
-{- Parsing state helpers -}
-withEnvironment :: (ParserEnvironment -> a) -> K3Parser a
-withEnvironment f = PP.getState >>= return . f . snd
-
-modifyEnvironment :: (ParserEnvironment -> (ParserEnvironment, a)) -> K3Parser a
-modifyEnvironment f = modifyEnvironmentF $ Right . f
-
-modifyEnvironment_ :: (ParserEnvironment -> ParserEnvironment) -> K3Parser ()
-modifyEnvironment_ f = modifyEnvironment $ (,()) . f
-
-modifyEnvironmentF :: (ParserEnvironment -> Either String (ParserEnvironment, a)) -> K3Parser a
-modifyEnvironmentF f = PP.getState >>= (\(x,y) -> case f y of
-  Left errMsg    -> PP.parserFail errMsg
-  Right (nenv,r) -> PP.putState (x, nenv) >> return r)
-
-modifyEnvironmentF_ :: (ParserEnvironment -> Either String ParserEnvironment) -> K3Parser ()
-modifyEnvironmentF_ f = modifyEnvironmentF $ (>>= Right . (,())) . f
-
-parserWithUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithUID f = PP.getState >>= (\(x,y) -> PP.putState (x+1, y) >> f x)
-
-withUID :: (Int -> a) -> K3Parser a
-withUID f = parserWithUID $ return . f
-
-{- Note: unused
-modifyUID :: (Int -> (Int,a)) -> K3Parser a
-modifyUID f = PP.getState >>= (\(old, env) -> let (new, r) = f old in PP.putState (new, env) >> return r)
-
-modifyUID_ :: (Int -> Int) -> K3Parser ()
-modifyUID_ f = modifyUID $ (,()) . f
--}
-
-nextUID :: K3Parser UID
-nextUID = withUID UID
-
-
-{- Language definition constants -}
-k3Operators :: [[Char]]
-k3Operators = [
-    "+", "-", "*", "/", "%",
-    "==", "!=", "<>", "<", ">", ">=", "<=", ";"
-  ]
-
-k3Keywords :: [[Char]]
-k3Keywords = [
-    {- Types -}
-    "int", "bool", "real", "string",
-    "immut", "mut", "witness", "option", "ind" , "collection",
-
-    {- Declarations -}
-    "declare", "fun", "trigger", "source", "sink", "feed",
-
-    {- Expressions -}
-    "let", "in", "if", "then", "else", "case", "of", "bind", "as",
-    "and", "or", "not",
-
-    {- Values -}
-    "true", "false", "ind", "Some", "None", "empty",
-
-    {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires",
-
-    {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall"
-  ]
-
-{- Style definitions for parsers library -}
-
-k3Ops :: TokenParsing m => IdentifierStyle m
-k3Ops = emptyOps { _styleReserved = set k3Operators }
-
-k3Idents :: TokenParsing m => IdentifierStyle m
-k3Idents = emptyIdents { _styleReserved = set k3Keywords }
-
-operator :: (TokenParsing m, Monad m) => String -> m ()
-operator = reserve k3Ops
-
-identifier :: (TokenParsing m, Monad m, IsString s) => m s
-identifier = ident k3Idents
-
-keyword :: (TokenParsing m, Monad m) => String -> m ()
-keyword = reserve k3Idents
-
-
-{- Comments -}
-
-mkComment :: Bool -> Bool -> P.SourcePos -> String -> P.SourcePos -> SyntaxAnnotation
-mkComment post multi start contents end = SourceComment post multi (mkSpan start end) contents
-
-multiComment :: Bool -> K3Parser SyntaxAnnotation
-multiComment post = (mkComment post True
-                     <$> PP.getPosition
-                     <*> (symbol "/*" *> manyTill anyChar (try $ symbol "*/") <* spaces)
-                     <*> PP.getPosition) <?> "multi-line comment"
-
-singleComment :: Bool -> K3Parser SyntaxAnnotation
-singleComment post = (mkComment post False
-                      <$> PP.getPosition
-                      <*> (symbol "//" *> manyTill anyChar (try newline) <* spaces)
-                      <*> PP.getPosition) <?> "single line comment"
-
-comment :: Bool -> K3Parser [SyntaxAnnotation]
-comment post = many (choice [try $ multiComment post, try $ singleComment post])
-
--- | Helper to attach comment annotations
-(//) :: (a -> SyntaxAnnotation -> a) -> [SyntaxAnnotation] -> a -> a
-(//) attachF l x = foldl attachF x l
 
 
 {- Main parsing functions -}
 stringifyError :: Either P.ParseError a -> Either String a
 stringifyError = either (Left . show) Right
 
-emptyParserState :: ParserState
-emptyParserState = (0,[])
-
-runK3Parser :: K3Parser a -> String -> Either P.ParseError a
-runK3Parser p s = P.runParser p emptyParserState "" s
+runK3Parser :: Maybe ParserState -> K3Parser a -> String -> Either P.ParseError a
+runK3Parser Nothing   p s = P.runParser p emptyParserState "" s
+runK3Parser (Just st) p s = P.runParser p st "" s
 
 maybeParser :: K3Parser a -> String -> Maybe a
-maybeParser p s = either (const Nothing) Just $ runK3Parser (head <$> endBy1 p eof) s
+maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
 
 parseType :: String -> Maybe (K3 Type)
 parseType = maybeParser typeExpr
@@ -328,11 +90,11 @@ parseExpression :: String -> Maybe (K3 Expression)
 parseExpression = maybeParser expr
 
 parseDeclaration :: String -> Maybe (K3 Declaration)
-parseDeclaration s = either (const Nothing) mkRole $ runK3Parser (head <$> endBy1 declaration eof) s
+parseDeclaration s = either (const Nothing) mkRole $ runK3Parser Nothing (head <$> endBy1 declaration eof) s
   where mkRole l = Just $ DC.role defaultRoleName l
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
-parseSimpleK3 s = either (const Nothing) Just $ runK3Parser (program True) s
+parseSimpleK3 s = either (const Nothing) Just $ runK3Parser Nothing (program True) s
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
@@ -348,7 +110,7 @@ parseK3 noFeed includePaths s = do
           | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || noFeed)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser (program $ not asTopLevel || noFeed)
+    parseAtLevel asTopLevel = stringifyError . runK3Parser Nothing (program $ not asTopLevel || noFeed)
     programError = Left "Invalid program, expected top-level role."
 
 
@@ -357,11 +119,11 @@ parseK3 noFeed includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram <$> (spaces *> endBy1 (roleBody noDriver "") eof)
-        mkProgram l = DC.role defaultRoleName $ concat l
+  where rule = mkProgram =<< (spaces *> endBy1 (roleBody noDriver "") eof)
+        mkProgram l = P.getState >>= return . DC.role defaultRoleName . ((concat l) ++) . getGeneratedDecls
 
         selfContainedProgram d = if noDriver then return d else (mkEntryPoints d >>= mkBuiltins)
-        mkEntryPoints d = withEnvironment $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
+        mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
 roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
@@ -369,23 +131,25 @@ roleBody noDriver n =
     pushBindings >> rule >>= popBindings
       >>= \df -> if noDriver then return $ fst df else postProcessRole n df
   where rule = some declaration >>= return . concat
-        pushBindings = modifyEnvironment_ addFrame
-        popBindings dl = modifyEnvironment (\env -> (removeFrame env, (dl, currentFrame env)))
+        pushBindings = modifyEnv_ addFrame
+        popBindings dl = modifyEnv (\env -> (removeFrame env, (dl, currentFrame env)))
 
 
 {- Declarations -}
 declaration :: K3Parser [K3 Declaration]
 declaration = (//) attachComment <$> comment False <*>
-              choice [ignores >> return [], singleDecls, multiDecls, sugaredDecls >> return []]
+              choice [ignores >> return [], k3Decls, edgeDecls, driverDecls >> return []]
 
-  where k3Decls     = choice [dGlobal, dTrigger, dRole, dAnnotation]
-        edgeDecls   = choice [dSource, dSink]
+  where k3Decls     = choice $ map normalizeDeclAsList
+                        [Right dGlobal, Right dTrigger, Right dRole, Left dMacroAnnotation, Right dAnnotation]
+        edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
         driverDecls = choice [dSelector, dFeed]
+        ignores     = pInclude >> return ()
 
-        singleDecls  = (:[]) <$> (DUID # withProperties True dProperties k3Decls)
-        multiDecls   = mapM ((DUID #) . return) =<< edgeDecls
-        sugaredDecls = driverDecls
-        ignores      = pInclude >> return ()
+        props p = DUID # withProperties True dProperties p
+
+        normalizeDeclAsList (Right p) = (:[]) <$> props p
+        normalizeDeclAsList (Left  p) = try p >>= return . maybe [] (:[])
 
         attachComment [] _      = []
         attachComment (h:t) cmt = (h @+ DSyntax cmt):t
@@ -440,13 +204,98 @@ dRole = chainedNamedBraceDecl n n (roleBody False) DC.role
 dSelector :: K3Parser ()
 dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
+dMacroAnnotation :: K3Parser (Maybe (K3 Declaration))
+dMacroAnnotation = namedIdentifier "macro annotation" "annotation" rule
+  where rule x = mkGenerator =<< ((,,,) <$> x <*> spliceParameters <*> typeParameters <*> braces (some annotationMember))
+
+        typeParameters   = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
+        spliceParameters = brackets (commaSep spliceParameter)
+        spliceParameter  = choice [typeSParam, labelTypeSParam]
+        typeSParam       = keyword "type" *> identifier
+        labelTypeSParam  = identifier
+
+        mkGenerator (n, [], tp, mems) = spliceAnnMems mems >>= return . Just . DC.annotation n tp
+        mkGenerator (n, sp, tp, mems) =
+          -- TODO: match splice parameter types (e.g., types vs label-types vs exprs.)
+          let validateSplice env = Map.filterWithKey (\k _ -> k `elem` sp) env
+              splicer spliceEnv  = SRDecl $ do
+                                     modifySCtxtF_ $ \ctxt -> Right $ pushSCtxt (validateSplice spliceEnv) ctxt
+                                     nmems <- spliceAnnMems mems
+                                     modifySCtxtF_ $ Right . popSCtxt
+                                     withGUID $ \i -> DC.annotation (concat [n, "_", show i]) tp nmems
+
+              extendGen genEnv   = maybe (Right $ addGenE n splicer genEnv) duplicateSpliceErr $ lookupGenE n genEnv
+              duplicateSpliceErr = const $ Left $ unwords ["Duplicate macro annotation for", n]
+          in modifyGEnvF_ extendGen >> return Nothing
+
+        spliceAnnMems mems = flip mapM mems $ \case
+          Lifted    p n t eOpt mAnns -> spliceDeclParts n t eOpt >>= \(sn, st, seOpt) -> return $ Lifted    p sn st seOpt mAnns
+          Attribute p n t eOpt mAnns -> spliceDeclParts n t eOpt >>= \(sn, st, seOpt) -> return $ Attribute p sn st seOpt mAnns
+          m -> return m
+
+        spliceDeclParts n t eOpt = do
+          sn <- spliceIdentifier n
+          st <- spliceType t
+          seOpt <- maybe (return Nothing) (\e -> spliceExpression e >>= return . Just) eOpt
+          return (sn, st, seOpt)
+
+        spliceIdentifier i = expectIdSplicer i
+
+        spliceType = mapTree doSplice
+          where
+            doSplice [] t@(tag -> TDeclaredVar i) = expectTypeSplicer i >>= \nt -> return $ foldl (@+) nt $ annotations t
+            doSplice ch t@(tag -> TRecord ids) = mapM spliceIdentifier ids >>= \nids -> return $ Node (TRecord nids :@: annotations t) ch
+            doSplice ch (Node tg _) = return $ Node tg ch
+
+        spliceExpression = mapTree doSplice
+          where
+            doSplice [] e@(tag -> EVariable i)           = expectExprSplicer i      >>= \ne   -> return $ foldl (@+) ne $ annotations e
+            doSplice ch e@(tag -> ERecord ids)           = mapM expectIdSplicer ids >>= \nids -> return $ Node (ERecord nids :@: annotations e) ch
+            doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= \nid  -> return $ Node (EProject nid :@: annotations e) ch
+            doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= \nid  -> return $ Node (EAssign nid :@: annotations e) ch
+            doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= \nct  -> return $ Node (EConstant (CEmpty nct) :@: annotations e) ch
+            doSplice ch (Node tg _) = return $ Node tg ch
+
+        expectIdSplicer   i = parseSplice i $ choice [try idFromParts, identifier]
+        expectTypeSplicer i = parseSplice i $ choice [try typeFromParts, identifier >>= return . TC.declaredVar]
+        expectExprSplicer i = parseSplice i $ choice [try exprFromParts, identifier >>= return . EC.variable]
+
+        idFromParts   = evalIdSplice   =<< identParts
+        typeFromParts = evalTypeSplice =<< identParts
+        exprFromParts = evalExprSplice =<< identParts
+
+        evalIdSplice l = return . concat =<< (flip mapM l $ \case
+          Left n -> return n
+          Right (SVLabel, i) -> evalSplice i spliceVIdSym $ \case { SLabel n -> return n; _ -> spliceTypeFail i spliceVIdSym }
+          Right (_, i) -> spliceTypeFail i spliceVIdSym)
+
+        evalTypeSplice = \case
+          [Right (SVType, i)] -> evalSplice i spliceVTSym $ \case { SType  t -> return t; _ -> spliceTypeFail i spliceVTSym }
+          l -> spliceTypeFail (partsAsString l) spliceVTSym
+
+        evalExprSplice = \case
+          [Right (SVExpr, i)] -> evalSplice i spliceVESym $ \case { SExpr  e -> return e; _ -> spliceTypeFail i spliceVESym }
+          l -> spliceTypeFail (partsAsString l) spliceVESym
+
+        evalSplice i kind f = parserWithSCtxt $ \ctxt -> maybe (spliceFail i kind "lookup failed") f $ lookupSCtxt i kind ctxt
+
+        parseSplice s p = P.getState >>= \st -> either P.parserFail return $ stringifyError $ runK3Parser (Just st) p s
+
+        partsAsString l = concat $ flip map l $ \case
+          Left n -> n
+          Right (SVLabel, i) -> "#["  ++ i ++ "]"
+          Right (SVType,  i) -> "::[" ++ i ++ "]"
+          Right (SVExpr,  i) -> "$["  ++ i ++ "]"
+
+
+        spliceTypeFail i kind = spliceFail i kind "invalid type"
+        spliceFail n kind msg = P.parserFail $ unwords ["Failed to splice a", kind , "symbol", n, ":", msg]
+
+
 dAnnotation :: DeclParser
 dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
-  where rule x = x <*> annotationTypeParametersParser
-                   <*> braces (some annotationMember)
-        annotationTypeParametersParser =
-              keyword "given" *> keyword "type" *> typeVarDecls
-          <|> return []
+  where rule x = x <*> typeParameters <*> braces (some annotationMember)
+        typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
 
 {- Annotation declaration members -}
 annotationMember :: K3Parser AnnMemDecl
@@ -510,16 +359,7 @@ typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
 
 typeVarDecl :: K3Parser TypeVarDecl
-typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*>
-                  option Nothing (Just <$ symbol "<=" <*> typeExpr)
-
-
-{- Parenthesized version of qualified types.
-qualifiedTypeExpr :: TypeParser
-qualifiedTypeExpr = typeExprError "qualified" $
-  choice [parens $ qualifiedTypeExpr
-         , flip (@+) <$> typeQualifier <*> typeExpr]
--}
+typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*> option Nothing (Just <$ symbol "<=" <*> typeExpr)
 
 typeQualifier :: K3Parser (Annotation Type)
 typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmutable,
@@ -539,7 +379,6 @@ tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" 
         mkTermOrFun t Nothing   = clean t
         clean t                 = stripAnnot isTSpan $ stripAnnot isTUID t
         stripAnnot f t          = maybe t (t @-) $ t @~ f
-
 tPrimitive :: TypeParser
 tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
                                               , ("int",     TC.int)
@@ -574,11 +413,12 @@ tRecord = typeExprError "record" $ ( TUID # ) $
             TC.record <$> (braces . commaSep) idQType
 
 tCollection :: TypeParser
-tCollection = cErr $ TUID #
-                 mkCollectionType <$> (keyword "collection" *> choice [tRecord, tDeclared])
-                                  <*> withAnnotations tAnnotations
-  where mkCollectionType t a = foldl (@+) (TC.collection t) a
+tCollection = cErr $ TUID # mkCollectionType
+                  <$> ((keyword "collection" *> choice [tRecord, tDeclared]) >>= attachAnnotations)
+  where mkCollectionType (t, a) = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
+        attachAnnotations t@(tag -> TRecord ids) = withAnnotations (tAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (t,)
+        attachAnnotations t = withAnnotations (tAnnotations Nothing) >>= return . (t,)
 
 tBuiltIn :: TypeParser
 tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> return (TC.builtIn bi))
@@ -590,9 +430,6 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
 tDeclared :: TypeParser
 tDeclared = typeExprError "declared" $ ( TUID # ) $ TC.declaredVar <$> identifier
 
-tAnnotations :: K3Parser [Annotation Type]
-tAnnotations = braces $ commaSep1 (mkTAnnotation <$> identifier)
-  where mkTAnnotation x = TAnnotation x
 
 {- Expressions -}
 
@@ -708,9 +545,12 @@ eRecord :: ExpressionParser
 eRecord = exprError "record" $ EC.record <$> braces idQExprList
 
 eEmpty :: ExpressionParser
-eEmpty = exprError "empty" $ mkEmpty <$> typedEmpty <*> withAnnotations eAnnotations
-  where mkEmpty e a = foldl (@+) e a
+eEmpty = exprError "empty" $ mkEmpty <$> (typedEmpty >>= attachAnnotations)
+  where mkEmpty (e, a) = foldl (@+) e a
         typedEmpty = EC.empty <$> (keyword "empty" *> tRecord)
+        attachAnnotations e@(tag -> EConstant (CEmpty t@(tag -> TRecord ids))) =
+          withAnnotations (eAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (e,)
+        attachAnnotations e = withAnnotations (eAnnotations Nothing) >>= return . (e,)
 
 eLambda :: ExpressionParser
 eLambda = exprError "lambda" $ EC.lambda <$> choice [iArrow "fun", iArrowS "\\"] <*> nonSeqExpr
@@ -780,8 +620,7 @@ eSelf = exprError "self" $ keyword "self" >> return EC.self
 -- TODO: treating collection literals as immutable will fail when initializing mutable collections.
 eCollection :: ExpressionParser
 eCollection = exprError "collection" $
-              mkCollection <$> braces (choice [try singleField, multiField])
-                           <*> withAnnotations eAnnotations
+              mkCollection <$> (braces (choice [try singleField, multiField]) >>= attachAnnotations)
   where
         singleField =     (symbol "|" *> idQType <* symbol "|")
                       >>= mkSingletonRecord (commaSep1 expr <* symbol "|")
@@ -791,7 +630,7 @@ eCollection = exprError "collection" $
                           <*> commaSep1 idQType
                           <*> (symbol "|" *> commaSep1 expr <* symbol "|")
 
-        mkCollection (tyl, el) a = EC.letIn cId (emptyC tyl a) $ EC.binop OSeq (mkInserts el) cVar
+        mkCollection ((tyl, el), a) = EC.letIn cId (emptyC tyl a) $ EC.binop OSeq (mkInserts el) cVar
 
         mkInserts el = foldl (\acc e -> EC.binop OSeq acc $ mkInsert e) (mkInsert $ head el) (tail el)
         mkInsert     = EC.binop OApp (EC.project "insert" cVar)
@@ -801,114 +640,8 @@ eCollection = exprError "collection" $
         mkSingletonRecord p (n,t) =
           p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,) . (@+ EImmutable))
 
-
-{- Attachments -}
-withAnnotations :: K3Parser [Annotation a] -> K3Parser [Annotation a]
-withAnnotations p = option [] (symbol "@" *> p)
-
-eAnnotations :: K3Parser [Annotation Expression]
-eAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = EAnnotation <$> identifier
-
-withProperties :: (Eq (Annotation a))
-               =>  Bool -> K3Parser [Annotation a] -> K3Parser (K3 a) -> K3Parser (K3 a)
-withProperties asPrefix prop tree =
-    if asPrefix then (flip propertize) <$> optionalProperties prop <*> tree
-                else propertize <$> tree <*> optionalProperties prop
-  where propertize a (Just b) = foldl (@+) a b
-        propertize a Nothing  = a
-
-optionalProperties :: K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
-optionalProperties p = optional (symbol "@:" *> p)
-
-properties :: (Identifier -> Maybe (K3 Literal) -> Annotation a) -> K3Parser [Annotation a]
-properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = ctor <$> identifier <*> optional literal
-
-dProperties :: K3Parser [Annotation Declaration]
-dProperties = properties DProperty
-
-eProperties :: K3Parser [Annotation Expression]
-eProperties = properties EProperty
-
-
-{- Operators -}
-
-uidTagBinOp :: K3Parser (a -> b -> K3 Expression)
-            -> K3Parser (a -> b -> K3 Expression)
-uidTagBinOp mg = (\g uid x y -> g x y @+ EUID uid) <$> mg <*> nextUID
-
-uidTagUnOp :: K3Parser (a -> K3 Expression)
-           -> K3Parser (a -> K3 Expression)
-uidTagUnOp mg = (\g uid x -> g x @+ EUID uid) <$> mg <*> nextUID
-
-binary :: String -> K3BinaryOperator -> Assoc -> (String -> K3Parser ())
-       -> ParserOperator (K3 Expression)
-binary op cstr assoc parser = Infix (uidTagBinOp $ (pure cstr) <* parser op) assoc
-
-prefix :: String -> K3UnaryOperator -> (String -> K3Parser ())
-       -> ParserOperator (K3 Expression)
-prefix op cstr parser = Prefix (uidTagUnOp  $ (pure cstr) <* parser op)
-
-{- Note: unused
-postfix :: String -> K3UnaryOperator -> (String -> K3Parser ())
-        -> ParserOperator (K3 Expression)
-postfix op cstr parser = Postfix (uidTagUnOp  $ (pure cstr) <* parser op)
--}
-
-binaryParseOp :: (String, K3Operator)
-              -> ((String -> K3Parser ()) -> ParserOperator (K3 Expression))
-binaryParseOp (opName, opTag) = binary opName (binOpSpan $ EC.binop opTag) AssocLeft
-
-unaryParseOp :: (String, K3Operator)
-             -> ((String -> K3Parser ()) -> ParserOperator (K3 Expression))
-unaryParseOp (opName, opTag) = prefix opName (unOpSpan opName $ EC.unop opTag)
-
-mkBinOp :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkBinOp x = binaryParseOp x operator
-
-mkBinOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkBinOpK x = binaryParseOp x keyword
-
-mkUnOp :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkUnOp x = unaryParseOp x operator
-
-mkUnOpK :: (String, K3Operator) -> ParserOperator (K3 Expression)
-mkUnOpK x = unaryParseOp x keyword
-
-nonSeqOpTable :: OperatorTable K3Parser (K3 Expression)
-nonSeqOpTable =
-  [   map mkUnOp   [("-",   ONeg)],
-      map mkBinOp  [("*",   OMul), ("/",  ODiv), ("%",  OMod)],
-      map mkBinOp  [("+",   OAdd), ("-",  OSub)],
-      map mkBinOp  [("++",  OConcat)],
-      map mkBinOp  [("<",   OLth), ("<=", OLeq), (">",  OGth), (">=", OGeq) ],
-      map mkBinOp  [("==",  OEqu), ("!=", ONeq), ("<>", ONeq)],
-      map mkUnOpK  [("not", ONot)],
-      map mkBinOpK [("and", OAnd)],
-      map mkBinOpK [("or",  OOr)]
-  ]
-
-fullOpTable :: OperatorTable K3Parser (K3 Expression)
-fullOpTable = nonSeqOpTable ++
-  [   map mkBinOp  [(";",   OSeq)]
-  ]
-
-{- Terms -}
-nsPrefix :: String -> ExpressionParser
-nsPrefix k = keyword k *> nonSeqExpr
-
-ePrefix :: String -> ExpressionParser
-ePrefix k  = keyword k *> expr
-
-iPrefix :: String -> K3Parser Identifier
-iPrefix k = keyword k *> identifier
-
-iArrow :: String -> K3Parser Identifier
-iArrow k = iPrefix k <* symbol "->"
-
-iArrowS :: String -> K3Parser Identifier
-iArrowS s = symbol s *> identifier <* symbol "->"
+        attachAnnotations (tyl, el) =
+          withAnnotations (eAnnotations $ Just $ uncurry mkRecordSpliceEnv $ unzip tyl) >>= return . ((tyl,el),)
 
 
 {- Literal values -}
@@ -969,14 +702,16 @@ lRecord :: LiteralParser
 lRecord = litError "record" $ LC.record <$> braces idQLitList
 
 lEmpty :: LiteralParser
-lEmpty = litError "empty" $ mkEmpty <$> typedEmpty <*> withAnnotations lAnnotations
-  where mkEmpty l a = foldl (@+) l a
+lEmpty = litError "empty" $ mkEmpty <$> (typedEmpty >>= attachAnnotations)
+  where mkEmpty (l, a) = foldl (@+) l a
         typedEmpty = LC.empty <$> (keyword "empty" *> tRecord)
+        attachAnnotations l@(tag -> LEmpty t@(tag -> TRecord ids)) =
+          withAnnotations (lAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (l,)
+        attachAnnotations l = withAnnotations (lAnnotations Nothing) >>= return . (l,)
 
 lCollection :: LiteralParser
 lCollection = litError "collection" $
-              mkCollection <$> braces (choice [try singleField, multiField])
-                           <*> withAnnotations lAnnotations
+              mkCollection <$> (braces (choice [try singleField, multiField]) >>= attachAnnotations)
   where
     singleField =     (symbol "|" *> idQType <* symbol "|")
                   >>= mkSingletonRecord (commaSep1 literal <* symbol "|")
@@ -986,19 +721,96 @@ lCollection = litError "collection" $
                     <*> commaSep1 idQType
                     <*> (symbol "|" *> commaSep1 literal <* symbol "|")
 
-    mkCollection (tyl, el) a = foldl (@+) ((LC.collection (TC.record tyl) el) @+ LImmutable) a
+    mkCollection ((tyl, el), a) = foldl (@+) ((LC.collection (TC.record tyl) el) @+ LImmutable) a
 
     mkSingletonRecord p (n,t) =
       p >>= return . ([(n,t)],) . map (LC.record . (:[]) . (n,) . (@+ LImmutable))
 
-lAnnotations :: K3Parser [Annotation Literal]
-lAnnotations = braces $ commaSep1 (mkLAnnotation <$> identifier)
-  where mkLAnnotation x = LAnnotation x
+    attachAnnotations (tyl,el) =
+      withAnnotations (lAnnotations $ Just $ uncurry mkRecordSpliceEnv $ unzip tyl) >>= return . ((tyl,el),)
 
 lAddress :: LiteralParser
 lAddress = litError "address" $ LC.address <$> ipAddress <* colon <*> port
   where ipAddress = LC.string <$> (some $ choice [alphaNum, oneOf "."])
         port = LC.int . fromIntegral <$> natural
+
+
+{- Attachments -}
+withAnnotations :: K3Parser [Annotation a] -> K3Parser [Annotation a]
+withAnnotations p = option [] (symbol "@" *> p)
+
+tAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Type]
+tAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = annotationUse sEnv TAnnotation
+
+eAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Expression]
+eAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = annotationUse sEnv EAnnotation
+
+lAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Literal]
+lAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = annotationUse sEnv LAnnotation
+
+annotationUse :: Maybe SpliceEnv -> (Identifier -> Annotation a) -> K3Parser (Annotation a)
+annotationUse sEnv aCtor = try macroOrAnn
+  where macroOrAnn = mkMacroOrAnn =<< ((,) <$> identifier <*> option [] (parens $ commaSep1 spliceParam))
+        mkMacroOrAnn (n, []) = return $ aCtor n
+        mkMacroOrAnn np = mkAnnDecl np
+
+        mkAnnDecl (n, params) = parserWithGEnv $ \gEnv ->
+          let nsenv = mkSpliceEnv $ catMaybes params
+          in maybe (spliceLookupErr n) (expectSpliceAnnotation . ($ nsenv)) $ Map.lookup n gEnv
+
+        expectSpliceAnnotation (SRDecl p) = do
+          decl <- p
+          case tag decl of
+            DAnnotation n _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
+            _ -> P.parserFail $ boxToString $ ["Invalid annotation splice"] %+ prettyLines decl
+
+        expectSpliceAnnotation _ = P.parserFail "Invalid annotation splice"
+
+        spliceParam = choice [sLabel, sType, sExpr, sLabelType]
+        sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
+        sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
+        sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
+        sLabelType  = mkLabelTypeSRepr sEnv <$> identifier <*> optional (symbol "=" *> identifier)
+
+        mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
+
+        mkLabelTypeSRepr Nothing _ _ = Nothing
+        mkLabelTypeSRepr (Just sEnv') a bOpt =
+          let lvOpt = lookupSpliceE (maybe a id bOpt) spliceVIdSym sEnv'
+              tvOpt = lookupSpliceE (maybe a id bOpt) spliceVTSym  sEnv'
+          in case (lvOpt, tvOpt) of
+               (Just lv, Just tv) -> Just (a, mkSpliceReprEnv [(spliceVIdSym, lv), (spliceVTSym, tv)])
+               (_, _) -> Nothing
+
+        spliceLookupErr n = P.parserFail $ unwords ["Could not find macro", n]
+
+mkRecordSpliceEnv :: [Identifier] -> [K3 Type] -> SpliceEnv
+mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
+  where mkSpliceEnvEntry (i,t) = (i, mkSpliceReprEnv [(spliceVIdSym, SLabel i), (spliceVTSym, SType t)])
+
+withProperties :: (Eq (Annotation a))
+               =>  Bool -> K3Parser [Annotation a] -> K3Parser (K3 a) -> K3Parser (K3 a)
+withProperties asPrefix prop tree =
+    if asPrefix then (flip propertize) <$> optionalProperties prop <*> tree
+                else propertize <$> tree <*> optionalProperties prop
+  where propertize a (Just b) = foldl (@+) a b
+        propertize a Nothing  = a
+
+optionalProperties :: K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
+optionalProperties p = optional (symbol "@:" *> p)
+
+properties :: (Identifier -> Maybe (K3 Literal) -> Annotation a) -> K3Parser [Annotation a]
+properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = ctor <$> identifier <*> optional literal
+
+dProperties :: K3Parser [Annotation Declaration]
+dProperties = properties DProperty
+
+eProperties :: K3Parser [Annotation Expression]
+eProperties = properties EProperty
 
 
 {- Identifiers and their list forms -}
@@ -1032,7 +844,23 @@ idQLit = (,) <$> identifier <*> (colon *> qualifiedLiteral)
 idQType :: K3Parser (Identifier, K3 Type)
 idQType = (,) <$> identifier <*> (colon *> qualifiedTypeExpr)
 
-{- Misc -}
+
+{- Expression helpers -}
+nsPrefix :: String -> ExpressionParser
+nsPrefix k = keyword k *> nonSeqExpr
+
+ePrefix :: String -> ExpressionParser
+ePrefix k  = keyword k *> expr
+
+iPrefix :: String -> K3Parser Identifier
+iPrefix k = keyword k *> identifier
+
+iArrow :: String -> K3Parser Identifier
+iArrow k = iPrefix k <* symbol "->"
+
+iArrowS :: String -> K3Parser Identifier
+iArrowS s = symbol s *> identifier <* symbol "->"
+
 equateExpr :: ExpressionParser
 equateExpr = symbol "=" *> expr
 
@@ -1105,43 +933,10 @@ chainedNamedBraceDecl k n namedRule cstr =
   where passName x = (cstr x) <$> (braces $ namedRule x)
 
 
-{- Environment maintenance helpers -}
-
-{- Note: unused
-sourceState :: EnvironmentFrame -> EndpointsBQG
-sourceState = fst
-
-defaultEntries :: EnvironmentFrame -> DefaultEntries
-defaultEntries = snd
--}
-
-sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
-sourceBindings s = concatMap extractBindings s
-  where extractBindings (x,(_,Just b,_,_))  = map ((,) x) b
-        extractBindings (_,(_,Nothing,_,_)) = []
-
-qualifiedSources :: EndpointsBQG -> [Identifier]
-qualifiedSources s = concatMap (qualifiedSourceName . snd) s
-  where qualifiedSourceName (_, Just _, x, _)  = [x]
-        qualifiedSourceName (_, Nothing, _, _) = []
-
-addFrame :: ParserEnvironment -> ParserEnvironment
-addFrame env = ([],[]):env
-
-removeFrame :: ParserEnvironment -> ParserEnvironment
-removeFrame = tail
-
-currentFrame :: ParserEnvironment -> EnvironmentFrame
-currentFrame = head
-
-safePopFrame :: ParserEnvironment -> (EnvironmentFrame, ParserEnvironment)
-safePopFrame [] = (([],[]),[])
-safePopFrame (h:t) = (h,t)
-
 -- | Records source bindings in a K3 parsing environment
 --   A parsing error is raised on an attempt to bind to anything other than a source.
 trackBindings :: (Identifier, Identifier) -> K3Parser ()
-trackBindings (src, dest) = modifyEnvironmentF_ $ updateBindings
+trackBindings (src, dest) = modifyEnvF_ $ updateBindings
   where updateBindings (safePopFrame -> ((s,d), env)) =
           case lookup src s of
             Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g), d):env
@@ -1157,7 +952,7 @@ trackEndpoint eSpec d
   | otherwise = return d
 
   where
-    track isSource n eOpt = modifyEnvironmentF_ $ addEndpointGoExpr isSource n eOpt
+    track isSource n eOpt = modifyEnvF_ $ addEndpointGoExpr isSource n eOpt
 
     addEndpointGoExpr isSource n eOpt (safePopFrame -> ((fs,fd), env)) =
       case (eOpt, isSource) of
@@ -1171,15 +966,15 @@ trackEndpoint eSpec d
 
 -- | Records defaults in a K3 parsing environment
 trackDefault :: Identifier -> K3Parser ()
-trackDefault n = modifyEnvironment_ $ updateState
+trackDefault n = modifyEnv_ $ updateState
   where updateState (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
 
 
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
-postProcessRole :: Identifier -> ([K3 Declaration], EnvironmentFrame) -> K3Parser [K3 Declaration]
+postProcessRole :: Identifier -> ([K3 Declaration], EnvFrame) -> K3Parser [K3 Declaration]
 postProcessRole n (dl, frame) =
-  modifyEnvironmentF_ (ensureQualified frame) >> processEndpoints frame
+  modifyEnvF_ (ensureQualified frame) >> processEndpoints frame
 
   where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
         attachSource s         = bindSource $ sourceBindings s
@@ -1256,66 +1051,3 @@ propagateQualifier (tag &&& annotations -> (ttag, tas)) (Just e@(annotations -> 
   | any isEQualified eas || inApplicable ttag = Just e
   | otherwise = Just $ if any isTImmutable tas then (e @+ EImmutable) else (e @+ EMutable)
   where inApplicable = flip elem [TTrigger, TSink, TSource]
-
-
--- | Duplicate implementation of buildExpressionParser adopted from the parsers-0.10 source.
---   This applies a bugfix for detecting ambiguous operators.
-buildExpressionParser :: forall m a. (Parsing m, Applicative m)
-                      => OperatorTable m a -> m a -> m a
-buildExpressionParser operators simpleExpr
-    = foldl makeParser simpleExpr operators
-    where
-      makeParser term ops
-        = let (rassoc,lassoc,nassoc,prefix',postfix') = foldr splitOp ([],[],[],[],[]) ops
-              rassocOp   = choice rassoc
-              lassocOp   = choice lassoc
-              nassocOp   = choice nassoc
-              prefixOp   = choice prefix'  <?> ""
-              postfixOp  = choice postfix' <?> ""
-
-              -- Note: parsers-0.10 does not employ a 'try' parser here.
-              ambiguous assoc op = try $ op *> empty <?> ("ambiguous use of a " ++ assoc ++ "-associative operator")
-
-              ambiguousRight    = ambiguous "right" rassocOp
-              ambiguousLeft     = ambiguous "left" lassocOp
-              ambiguousNon      = ambiguous "non" nassocOp
-
-              termP      = (prefixP <*> term) <**> postfixP
-
-              postfixP   = postfixOp <|> pure id
-
-              prefixP    = prefixOp <|> pure id
-
-              rassocP, rassocP1, lassocP, lassocP1, nassocP :: m (a -> a)
-
-              rassocP  = (flip <$> rassocOp <*> (termP <**> rassocP1)
-                          <|> ambiguousLeft
-                          <|> ambiguousNon)
-
-              rassocP1 = rassocP <|> pure id
-
-              lassocP  = ((flip <$> lassocOp <*> termP) <**> ((.) <$> lassocP1)
-                          <|> ambiguousRight
-                          <|> ambiguousNon)
-
-              lassocP1 = lassocP <|> pure id
-
-              nassocP = (flip <$> nassocOp <*> termP)
-                        <**> (ambiguousRight
-                              <|> ambiguousLeft
-                              <|> ambiguousNon
-                              <|> pure id)
-           in termP <**> (rassocP <|> lassocP <|> nassocP <|> pure id) <?> "operator"
-
-
-      splitOp (Infix op assoc) (rassoc,lassoc,nassoc,prefix',postfix')
-        = case assoc of
-            AssocNone  -> (rassoc,lassoc,op:nassoc,prefix',postfix')
-            AssocLeft  -> (rassoc,op:lassoc,nassoc,prefix',postfix')
-            AssocRight -> (op:rassoc,lassoc,nassoc,prefix',postfix')
-
-      splitOp (Prefix op) (rassoc,lassoc,nassoc,prefix',postfix')
-        = (rassoc,lassoc,nassoc,op:prefix',postfix')
-
-      splitOp (Postfix op) (rassoc,lassoc,nassoc,prefix',postfix')
-        = (rassoc,lassoc,nassoc,prefix',op:postfix')
