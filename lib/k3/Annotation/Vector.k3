@@ -29,6 +29,6 @@ annotation Vector given type a{
   provides lifted fold: (a -> (content -> a)) -> a -> a
 
   provides lifted dot : self -> real
-  provides lifted squareDistance: self -> real
+  provides lifted distance: self -> real
  
 }

@@ -11,7 +11,7 @@
 
 #include <list>
 #include <vector>
-
+#include <math.h>
 
 // TODO verify the type signatures of ext for the various collection types
 
@@ -265,12 +265,21 @@ class StlDS {
     return container < other.container;
   }
 
+
   Container& getContainer() { return container; }
 
   // Return a constant reference to the container
   const Container& getConstContainer() const {return container;}
 
   Container container;
+
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
+  }
+
 };
 
 // Various DS's achieved through typedefs
@@ -1034,7 +1043,7 @@ class Vector : public VectorDS<Elem> {
     return copy;
   }
 
-  double dot(const Vector<Elem&> other) const {
+  double dot(const Vector<Elem>& other) const {
     auto& vec = Super::getConstContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
@@ -1047,22 +1056,33 @@ class Vector : public VectorDS<Elem> {
     }
     return d;
   }
-
+  double distance(const Vector<Elem>& other) const {
+    double d = 0;
+    auto& vec = Super::getConstContainer();
+    auto& other_vec = other.getConstContainer();
+    if (vec.size() != other_vec.size()) {
+      throw std::runtime_error("Vector squareDistance size mismatch");
+    }
+    for(int i = 0; i < vec.size(); i++) {
+      d += pow(vec[i].elem - other_vec[i].elem, 2);
+    }
+    return sqrt(d);
+  }
 
 
 };
 
 } // Namespace K3
 
-//template <template<typename...> class Container, class Elem>
-//std::size_t hash_value(K3::StlDS<Container,Elem> const& b) {
-//  const auto& c  = b.getConstContainer();
-//  return boost::hash_range(c.begin(), c.end());
-//}
-//
-//template <class Elem>
-//std::size_t hash_value(K3::Map<Elem> const& b) {
-//  const auto& c  = b.getConstContainer();
-//  return boost::hash_range(c.begin(), c.end());
-//}
+template <template<typename...> class Container, class Elem>
+std::size_t hash_value(K3::StlDS<Container,Elem> const& b) {
+  const auto& c  = b.getConstContainer();
+  return boost::hash_range(c.begin(), c.end());
+}
+
+template <class Elem>
+std::size_t hash_value(K3::Map<Elem> const& b) {
+  const auto& c  = b.getConstContainer();
+  return boost::hash_range(c.begin(), c.end());
+}
 #endif

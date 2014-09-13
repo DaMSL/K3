@@ -64,12 +64,12 @@ declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
         let nearest = means.fold (\acc -> \curr_mean ->
-          let dist = p.squareDistance curr_mean.value
+          let dist = p.distance curr_mean.value
           in
             if dist < acc.distance
             then {mean: curr_mean, distance: dist}
             else acc
-        ) {mean: first_mean, distance: p.squareDistance first_mean.value}
+        ) {mean: first_mean, distance: p.distance first_mean.value}
         in
           nearest.mean.key
     }
