@@ -14,7 +14,7 @@ import Language.K3.Parser
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 
 peerBReader :: String -> Either String (Address, PeerBootstrap)
-peerBReader peerDesc = either (Left . show) Right $ runK3Parser parser peerDesc
+peerBReader peerDesc = either (Left . show) Right $ runK3Parser Nothing parser peerDesc
   where parser       = mkBootstrap <$> ipAddressP <* colon <*> portP
                                    <*> many ((,) <$> (colon *> identifier) <* symbol "=" <*> literal)
         ipAddressP   = some $ choice [alphaNum, oneOf "."]
