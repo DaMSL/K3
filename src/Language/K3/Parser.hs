@@ -771,8 +771,8 @@ annotationUse sEnv aCtor = try macroOrAnn
 
         spliceParam = choice [sLabel, sType, sExpr, sLabelType]
         sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
-        sType       = (\a b -> mkSRepr spliceVESym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
-        sExpr       = (\a b -> mkSRepr spliceVTSym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
+        sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
+        sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
         sLabelType  = mkLabelTypeSRepr sEnv <$> identifier <*> optional (symbol "=" *> identifier)
 
         mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
