@@ -21,24 +21,47 @@ namespace K3 {
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
-    public:     
+    public:
     __standard_context(Engine& engine);
 
     F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id);
 
     F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id);
-  
+
     unit_t close(std::string chan_id);
-  
+
     unit_t haltEngine(unit_t);
 
     unit_t printLine(std::string message);
 
+    // TODO move to seperate context
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
+
+    template <template<typename S> class C, class V>
+    unit_t loadVector(string filepath, C<R_elem<V>>& c) {
+      std::string line;
+      std::ifstream infile(filepath);
+      while (std::getline(infile, line)){
+        char * pch;
+        pch = strtok(&line[0],",");
+        V v;
+        while (pch != NULL) {
+          R_elem<double> rec;
+          rec.elem = std::atof(pch);
+          v.insert(rec);
+          pch = strtok(NULL,",");
+        }
+        R_elem<V> rec2 {v};
+        c.insert(rec2);
+      }
+      return unit_t();
+
+    }
+
   };
 
-  
+
   // TODO Builtins that require a handle to peers. Do we need this?
   int index_by_hash(const string& s);
 
@@ -47,13 +70,13 @@ namespace K3 {
   // Utilities:
 
 
-  // Time: 
+  // Time:
   class __time_context {
     public:
     __time_context();
     int now(unit_t);
   };
-  
+
   // String operations:
 
   class __string_context {
@@ -61,28 +84,28 @@ namespace K3 {
     __string_context();
 
     std::string itos(int i);
-  
+
     std::string rtos(double d);
-  
+
     F<F<string(const int&)>(const int&)> substring(const string& s);
 
     // Split a std::string by substrings
     F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
   };
-  
+
   // Vector operations:
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1);
 
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1);
-  
+
   F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1);
-  
+
   F<double(const Collection<R_elem<double>>&)> squared_distance(const Collection<R_elem<double>>& c1);
 
   Collection<R_elem<double>> zero_vector(int n);
 
   F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
-    
+
   // TODO clean this up. extract what is needed. delete the rest.
   //class Builtins: public __k3_context {
   //  public:
