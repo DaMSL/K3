@@ -26,7 +26,7 @@ namespace K3 {
 
 
   // Standard context implementations
-  __standard_context::__standard_context(Engine& __engine) 
+  __standard_context::__standard_context(Engine& __engine)
     : __k3_context(__engine)
   {}
 
@@ -69,19 +69,19 @@ namespace K3 {
 
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
     Vector<R_elem<double>> result;
-    result.resize(i);
+    result.getContainer().resize(i);
     return result;
 
   }
 
   Vector<R_elem<double>> __standard_context::randomVector(int i) {
     Vector<R_elem<double>> result;
-    result.resize(i);
+    result.getContainer().resize(i);
     return result;
 
   }
 
-  // TODO Builtins that require a handle to peers? 
+  // TODO Builtins that require a handle to peers?
   //int index_by_hash(const string& s) {
   //  auto& container = peers.getConstContainer();
   //  size_t h = std::hash<string>()(s);
@@ -95,8 +95,8 @@ namespace K3 {
 
 
   // Time:
-  __time_context::__time_context() {} 
-  
+  __time_context::__time_context() {}
+
   int __time_context::now(unit_t) {
     auto t = std::chrono::system_clock::now();
     auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
