@@ -47,8 +47,8 @@ import Language.K3.Utils.Pretty
 $(loggingFunctions)
 
 logVoid :: (Functor m, Monad m) => String -> m ()
-logVoid s = void $ _debug s
---logVoid s = trace s $ return ()
+--logVoid s = void $ _debug s
+logVoid s = trace s $ return ()
 
 -- | Misc. helpers
 logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
@@ -1094,13 +1094,21 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       ipt <- either (assignBindingErr i) return $ tilkupe env i
       eqt <- qTypeOfM $ head ch
       case ipt of
-        QPType [] iqt
-          | (iqt @~ isQTQualified) == Just QTMutable ->
-              do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF n $ assignErrF i;
-                   return $ ("assign",) $ rebuildE n ch .+ tunit }
-          | otherwise -> mutabilityErr i
+        QPType [] iqt@(tag -> QTVar _) ->
+          let nqt = tvchase (tive env) iqt in
+          if nqt == iqt
+            then do { void $ unifyWithOverrideM iqt (eqt @+ QTMutable) $ mkErrorF n $ assignErrF i;
+                      return $ ("assign",) $ rebuildE n ch .+ tunit }
+            else unifyWithMutableQt eqt nqt
 
+        QPType [] iqt -> unifyWithMutableQt eqt iqt
         _ -> polyAssignBindingErr
+
+      where unifyWithMutableQt eqt iqt
+              | (iqt @~ isQTQualified) == Just QTMutable =
+                  do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF n $ assignErrF i;
+                       return $ ("assign",) $ rebuildE n ch .+ tunit }
+              | otherwise = mutabilityErr i
 
     inferTagQType ch n@(tag -> EProject i) = do
       srcqt   <- qTypeOfM $ head ch
@@ -1249,13 +1257,14 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     applyErrF fnqt argqt retqt =
       (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
 
-    lookupError j reason      = left $ unwords ["No type environment binding for ", j, ":", reason]
-    lambdaBindingErr i reason = left $ unwords ["Could not find typevar for lambda binding: ", i, reason]
-    polyLambdaBindingErr      = left "Invalid forall type in lambda binding"
+    msgWithTypeEnv msg        = get >>= \env -> left $ msg ++ "\nType envrionment:\n" ++ pretty env
+    lookupError j reason      = msgWithTypeEnv $ unwords ["No type environment binding for ", j, ":", reason]
+    lambdaBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find typevar for lambda binding: ", i, reason]
+    polyLambdaBindingErr      = msgWithTypeEnv "Invalid forall type in lambda binding"
 
-    assignBindingErr i reason = left $ unwords ["Could not find binding type for assignment: ", i, reason]
-    polyAssignBindingErr      = left "Invalid forall type in assignment"
-    mutabilityErr j           = left $ "Invalid assigment to non-mutable binding: " ++ j
+    assignBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find binding type for assignment: ", i, reason]
+    polyAssignBindingErr      = msgWithTypeEnv "Invalid forall type in assignment"
+    mutabilityErr j           = msgWithTypeEnv $ "Invalid assignment to non-mutable binding: " ++ j
 
     sndError     side reason = "Invalid " ++ side ++ " send operand: " ++ reason
     numericError side reason = "Invalid " ++ side ++ " numeric operand: " ++ reason
