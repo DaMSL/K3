@@ -9,7 +9,7 @@ declare c : collection {i: ind {count: mut int}} @ {Collection}
 trigger t : () = \_ -> (
   c.iterate (\x ->
     bind x.i as ind r
-    in r.count = (mut 0)
+    in r.count = 0
   )
 )
 
