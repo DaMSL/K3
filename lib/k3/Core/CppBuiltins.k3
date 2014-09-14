@@ -34,5 +34,6 @@ declare substring : string -> int -> int -> string
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
 // Vector Utilities
+declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } -> ()
 declare zeroVector : int -> collection {elem: real} @ {Vector}
 declare randomVector : int -> collection {elem: real} @ {Vector}
