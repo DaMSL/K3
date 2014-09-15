@@ -89,12 +89,14 @@ namespace K3 {
               sent = true;
             } else {
               if (ep && !ep->hasWrite()) {
-                logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
+                if (log_enabled)
+		  logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
                 boost::this_thread::sleep_for( boost::chrono::milliseconds(20) );
 
               }
               else {
-                logAt(trivial::trace, "Creating endpoint: " + eid);
+		if (log_enabled)
+                  logAt(trivial::trace, "Creating endpoint: " + eid);
                 openSocketInternal(eid, addr, IOMode::Write);
               }
             }

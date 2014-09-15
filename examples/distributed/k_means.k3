@@ -102,12 +102,14 @@ declare merge_results : collection {key: int, value: {count: int, sum: collectio
 // Triggers
 // Load data into global variable, then notify master.
 trigger load : () = \_ -> (
+  printLine ("Loading data from disk");
   loadVector data_file data;
   (ready, master) <- ()
 )
 
 // Increment the count of peers who are ready to start
 trigger ready : () = \_ -> (
+  printLine ("Received a ready signal from a peer");
   peers_ready = peers_ready + 1;
   if (peers_ready == peers.size())
     then start ()
@@ -147,6 +149,8 @@ trigger maximize : () = \_ -> (
       }
   );
   iterations_remaining = iterations_remaining - 1;
+  printLine "Iterations remaining:";
+  printLine (itos iterations_remaining); 
   if iterations_remaining == 0
     then (
       printLine "Zero iterations remaining. Final means: ";

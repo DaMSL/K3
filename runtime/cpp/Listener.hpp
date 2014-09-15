@@ -176,7 +176,7 @@ namespace K3 {
             [=] (const boost::system::error_code& ec) {
               if ( !ec ) {
                 registerConnection(nextConnection);
-                this->listenerLog->logAt(boost::log::trivial::trace, "Listener Registered a connection");
+                //this->listenerLog->logAt(boost::log::trivial::trace, "Listener Registered a connection");
 
               }
               else {

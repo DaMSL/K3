@@ -138,7 +138,7 @@ namespace K3
                 if (!error) {
                   connected_ = true;
                   //logAt(boost::log::trivial::warning, "connected");
-                  BOOST_LOG(*this) << "Connected! ";
+                  //BOOST_LOG(*this) << "Connected! ";
 
                 } else {
                   BOOST_LOG(*this) << "Connect error: " << error.message();
