@@ -96,7 +96,7 @@ attachToLifteds e = return e
 -- TODO Aliases
 propogateCArgs :: K3 Expression -> CArgsM (K3 Expression)
 propogateCArgs e@(tag &&& children -> (EOperate OApp, (l:_)))
-  | eCArgs l > 2 = return $ e @+ makeCArgs ((eCArgs l) - 1)
+  | eCArgs l > 0 = return $ e @+ makeCArgs ((eCArgs l) - 1)
   | otherwise    = return e
 propogateCArgs e = return e
 
