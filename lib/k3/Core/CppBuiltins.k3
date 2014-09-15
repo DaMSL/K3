@@ -33,6 +33,8 @@ declare substring : string -> int -> int -> string
 // 1. target string 2. split text
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
+declare range: int -> collection {elem: int} @ {Seq}
+
 // Vector Utilities
 declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } -> ()
 declare zeroVector : int -> collection {elem: real} @ {Vector}

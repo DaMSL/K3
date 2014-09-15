@@ -27,9 +27,15 @@ int Options::parse(int argc, const char *const argv[]) {
   }
   if (vm.count("simulation")) {
     simulation = true;
+  } else {
+    simulation = false;
   }
   if (vm.count("log")) {
     log_level = vm["log"].as<string>();
+    std::cout << "log:" << log_level << std::endl;
+  } else {
+    log_level = "";
+    std::cout << "logging disabled" << std::endl;
   }
 
   return 0;

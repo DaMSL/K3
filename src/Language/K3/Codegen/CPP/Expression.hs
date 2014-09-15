@@ -192,8 +192,10 @@ inline (tag &&& children -> (EOperate OApp, [f, a])) = do
     (ae, av) <- inline a
 
     let argCount = eCArgs f
-    return $ if argCount == 1
-       then (fe ++ ae, R.Call fv [av])
+    -- temporarily stick with Call, until we fully implement binds
+    --return $ if argCount == 1
+    return $ if True
+     then (fe ++ ae, R.Call fv [av])
        else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
                     (fv : av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders"))
                                      (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))

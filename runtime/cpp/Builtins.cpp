@@ -69,16 +69,24 @@ namespace K3 {
 
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
     Vector<R_elem<double>> result;
-    result.getContainer().resize(i);
+    auto& c = result.getContainer();
+    c.resize(i);
+    for(int j = 0; j < i; j++) {
+     c[j] = R_elem<double>{0.0};
+    }
     return result;
 
   }
 
+  // TODO
   Vector<R_elem<double>> __standard_context::randomVector(int i) {
     Vector<R_elem<double>> result;
-    result.getContainer().resize(i);
+    auto& c = result.getContainer();
+    c.resize(i);
+    for(int j = 0; j < i; j++) {
+     c[j] = R_elem<double>{0.0};
+    }
     return result;
-
   }
 
   // TODO Builtins that require a handle to peers?

@@ -1069,6 +1069,21 @@ class Vector : public VectorDS<Elem> {
     return sqrt(d);
   }
 
+  string toString(unit_t) const {
+    std::ostringstream oss;
+    auto& c = Super::getConstContainer();
+    int i =0;
+    oss << "[";
+    for (auto& relem : c) {
+      oss << relem.elem;
+      i++;
+      if (i < c.size()) {
+        oss << ",";
+      }
+    }
+    oss << "]";
+    return oss.str();
+  }
 
 };
 

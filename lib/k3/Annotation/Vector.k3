@@ -30,5 +30,7 @@ annotation Vector given type a{
 
   provides lifted dot : self -> real
   provides lifted distance: self -> real
+
+  provides lifted toString : () -> string
  
 }

@@ -8,6 +8,8 @@ namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
       internal_codec = _internal_codec;
+      std::cout << "Engine log level: " << log_level << std::endl;
+      log_enabled = false;
       if (log_level != "") { log_enabled = true; }
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
