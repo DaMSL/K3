@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Language.K3.Analysis.CArgs (convertProgram, eCArgs) where
+module Language.K3.Analysis.CArgs (convertProgram, eCArgs, isECArgs) where
 
 import Control.Monad.Identity
 import Control.Monad.State

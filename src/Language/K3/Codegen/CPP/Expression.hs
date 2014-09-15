@@ -20,6 +20,7 @@ import Language.K3.Core.Type
 import Language.K3.Analysis.CArgs
 
 import Language.K3.Codegen.Common
+import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
@@ -184,19 +185,12 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
            , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
-inline (tag &&& children -> (EOperate OApp, [f, a])) = do
+inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
-    (ae, av) <- inline a
+    (aes, avs) <- unzip <$> mapM inline as
 
-    let argCount = eCArgs f
-    -- temporarily stick with Call, until we fully implement binds
-    --return $ if argCount == 1
-    return $ if True
-     then (fe ++ ae, R.Call fv [av])
-       else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
-                    (fv : av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders"))
-                                     (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
+    return (fe ++ concat aes, R.Call fv avs)
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
