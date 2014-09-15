@@ -183,7 +183,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
     return ( []
-           , R.Lambda capture [(arg, ta)] (Just tr) body'
+           , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
 inline (tag &&& children -> (EOperate OApp, [f, a])) = do
