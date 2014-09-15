@@ -117,7 +117,6 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     cta <- genCType ta
     return [R.Forward $ R.FunctionDecl (R.Name i) [cta] ctr]
 cDecl t i = do
-    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
     return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
 
@@ -126,7 +125,6 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
     Just ac -> do
         ct <- genCType t
-        addComposite (namedEAnnotations as)
         return ([], R.Initialization (R.Collection ac ct) [])
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
