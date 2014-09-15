@@ -1,82 +1,90 @@
 {-# LANGUAGE ViewPatterns #-}
 
--- | Alias analysis for bind expressions.
---   This is used by the interpreter to ensure consistent modification
---   of alias variables following the interpretation of a bind expression.
-module Language.K3.Analysis.Interpreter.BindAlias (
-    labelBindAliases
-  , labelBindAliasesExpr
+-- | Insert annotation member data into the expression tree
+module Language.K3.Analysis.InsertMembers (
+    runAnalysis
 )
 where
 
+import Control.Monad.Identity
 import Control.Arrow ( (&&&), first )
 
-import Data.Map
+import qualified Data.Map as Map
+import Data.Map(Map)
 import Data.Maybe
 import Data.Tree
+import Data.List(foldl')
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
+import Language.K3.Core.Type
+import Language.K3.Analysis.Common
 
+-- Map of collection annotations to attributes to properties
 type AnnoMap = Map Identifier (Map Identifier [Annotation Declaration])
 
-liftMemberAnnos :: K3 Declaration -> K3 Declaration
-liftMemberAnnos prog =
+runAnalysis :: K3 Declaration -> K3 Declaration
+runAnalysis prog =
   let annos = collectAnnos prog
       map = annosToMap annos
-  in insertInExpr prog map
+  in placeAnnosInExprs map prog
 
 -- Collect all the collection annotations in the tree
-collectAnnos :: K3 Declaration -> [DAnnotation]
+collectAnnos :: K3 Declaration -> [Declaration]
 collectAnnos prog = runIdentity $ foldTree addDecl [] prog
   where
-    addDecl acc n@(tag -> DAnnotation _ _ _) = n::acc
-    addDecl acc _ = acc
+    addDecl acc n@(tag -> x@(DAnnotation _ _ _)) = return $ x:acc
+    addDecl acc _ = return acc
 
 -- Convert the collection annotations to a map
-annosToMap :: [DAnnotation] -> AnnoMap
+annosToMap :: [Declaration] -> AnnoMap
 annosToMap annos = foldr addAnno Map.empty annos
   where addAnno (DAnnotation i _ annMems) acc =
           let m = foldr addMember Map.empty annMems
           in Map.insert i m acc
 
-        addMember (Lifted _ i _ _ annDecs) acc    = addMemberIdDecs i annDecs
-        addMember (Attribute _ i _ _ annDecs) acc = addMemberIdDecs i annDecs
-        addMemberIdDecs i annDecs =
+        addMember (Lifted _ i _ _ annDecs) acc    = addMemberIdDecs i annDecs acc
+        addMember (Attribute _ i _ _ annDecs) acc = addMemberIdDecs i annDecs acc
+        addMemberIdDecs i annDecs map =
           case filter isValuable annDecs of
-            []   -> acc
-            decs -> Map.insert i decs acc
-        isValuable (DProperty _) = True
-        isValuable (DSyntax _)   = True
-        isValuable _ = False
+            []   -> map
+            decs -> Map.insert i decs map
+        isValuable (DProperty _ _) = True
+        isValuable (DSyntax _)     = True
+        isValuable _               = False
 
-placeAnnosInExprs :: K3 Declaration -> AnnoM (K3 Declaration)
-placeAnnosInExprs annoMap prog = runIdentity $ mapProgram id id placeInExpr prog
+-- Insert the annotations in the expression tree
+placeAnnosInExprs :: AnnoMap -> K3 Declaration -> K3 Declaration
+placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr prog
   where
+    m_id x = return x
+
+    placeInExpr :: Monad m => K3 Expression -> m (K3 Expression)
     placeInExpr expr = modifyTree handleExpr expr
 
-    handleExpr n@(tag &&& children -> EProject p, [ch]) =
+    handleExpr :: Monad m => K3 Expression -> m (K3 Expression)
+    handleExpr n@(tag &&& children -> (EProject p, [ch])) =
       case ch @~ isEType of
         Nothing -> error "No type found on projection"
-        Just (Node (TCollection :@: annos) _) ->
-          case annos @~ isTAnnotation of
-            Nothing     -> n
-            Just tAnnos ->
-              let ids = mapTAnnos tAnnos
-                  props = findProps ids p
-              in fold @+ n $ concatMap decToExpr props
-        Just _ -> n
-
-    -- Return ids of Tannotations
-    mapTAnnos annos = concatMap unwrapTAnno annos
+        Just (EType t@(tag &&& annotations -> (TCollection, tannos))) ->
+          -- Find out which collection annoations we're using
+          case filter isTAnnotation tannos of
+            []     -> return n
+            tAnnos ->
+              let ids    = concatMap unwrapTAnno tAnnos -- get collection ids
+                  props  = findProps ids p
+                  props' = concatMap decToExpr props
+              in return $ foldl' (@+) n props'
+        Just _ -> return n
 
     unwrapTAnno (TAnnotation i) = [i]
     unwrapTAnno _               = []
 
-    decToExpr (DProperty i m) = [EProptery i m]
+    -- Translate declaration annotations to expression annoations
+    decToExpr (DProperty i m) = [EProperty i m]
     decToExpr (DSyntax s)     = [ESyntax s]
     decToExpr _               = []
 
@@ -84,7 +92,7 @@ placeAnnosInExprs annoMap prog = runIdentity $ mapProgram id id placeInExpr prog
       case catMaybes $ map (lookupId project) ids of
         [ps] -> ps
         []   -> []
-         _   -> error $ "multiple definitions for same projection "++project++" found"
+        _    -> error $ "multiple definitions for same projection "++project++" found"
 
     lookupId project i = do
       innermap <- Map.lookup i annoMap
