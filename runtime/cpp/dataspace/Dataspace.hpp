@@ -1018,6 +1018,8 @@ class Vector : public VectorDS<Elem> {
     for (int i =0; i < vec.size(); i++) {
       vec[i].elem += other_vec[i].elem;
     }
+
+    return unit_t {};
   }
 
   Vector<Elem> add(const Vector<Elem>& other) const {
