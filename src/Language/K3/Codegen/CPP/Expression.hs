@@ -133,7 +133,7 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 -- dereferenced.
 inline e@(tag -> EVariable v)
     | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
-    | otherwise = globals <$> get >>= attachTemplateVars v e >>= \n -> return ([], R.Variable n)
+    | otherwise = return ([], R.Variable $ R.Name v)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -226,10 +226,7 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
-    vv <- globals <$> get >>= attachTemplateVars v e
-
-    -- TODO: Curry object with member functions at projection.
-    return (ke, R.Project kv vv)
+    return (ke, R.Project kv (R.Name v))
 
 inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
 
