@@ -2,7 +2,7 @@ import random
 
 D = 5
 K = 5
-N = 10
+N = 18 * 1000000
 
 means = [[j * 10 for i in range(D)] for j in range(-2, 3)]
 
