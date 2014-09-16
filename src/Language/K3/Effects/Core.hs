@@ -18,8 +18,12 @@ data Provenance
     = FRecord Identifier
     | FTuple Integer
     | FIndirection
-    | FOrigin
-    | FRoot
+    | FLet
+    | FCase
+    -- The following can be roots
+    | FLambdaVar        
+    | FTemporary
+    | FGlobal
   deriving (Eq, Read, Show)
 
 data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
@@ -34,6 +38,11 @@ data Effect
     | FApply
     | FLambda Identifier
     | FSeq
+    | FSet   -- Set of effects, all of which are possible
+    | FLoop                   -- a flattened loop
   deriving (Eq, Read, Show)
 
-data instance Annotation Effect = FAnnotation deriving (Eq, Read, Show)
+data instance Annotation Effect = FAnnotation 
+                                | FId Int
+                                deriving (Eq, Read, Show)
+

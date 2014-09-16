@@ -17,6 +17,7 @@ import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
+import Language.K3.Core.Effects.Core
 
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
@@ -97,6 +98,7 @@ data instance Annotation Expression
     | EProperty   Identifier (Maybe (K3 Literal))
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
+    | EEffect     Effect
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
@@ -195,6 +197,10 @@ isETypeOrBound _           = False
 isEQType :: Annotation Expression -> Bool
 isEQType (EQType _) = True
 isEQType _          = False
+
+isEEffect :: Annotation Expression -> Bool
+isEEffect (EEffect _) = True
+isEEffect _           = False
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns

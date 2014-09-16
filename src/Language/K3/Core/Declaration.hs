@@ -26,6 +26,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Effects.Core
 
 import Language.K3.Utils.Pretty
 
@@ -65,6 +66,7 @@ data instance Annotation Declaration
     | DProperty Identifier (Maybe (K3 Literal))
     | DSyntax   SyntaxAnnotation
     | DConflict UnorderedConflict  -- TODO: organize into categories.
+    | DEffect   Effect
   deriving (Eq, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
@@ -148,6 +150,10 @@ isDUID _        = False
 isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True
 isDSyntax _           = False
+
+isDEffect :: Annotation Declaration -> Bool
+isDEffect (DEffect _) = True
+isDEffect _           = False
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST
