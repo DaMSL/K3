@@ -3,13 +3,12 @@ include "Core/CppBuiltins.k3"
 
 // Generate a builtin to load data into a collection
 @:CArgs 2
-declare dataLoader : string -> collection {pageURL: string,pageRank: int, avgDuration: int} @ { Collection } -> ()
+declare dataLoader: string -> collection {pageURL: string,pageRank: int, avgDuration: int} @ { Collection } -> ()
 
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 10 //pageRank threshold for the select statement
-declare num_peers: int = 2
-declare data_file : string = "/k3/data/amplab/rankings_10.k3"
+declare rankings_file: string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
 declare peers_ready: mut int = 0
@@ -17,16 +16,16 @@ declare peers_finished: mut int = 0
 
 // Data
 declare local_rankings: collection {pageRank: int, pageURL: string, avgDuration: int} @ { Collection }
-declare local_q1_results: collection {pageRank: int,pageURL: string} @ { Collection }
+declare local_q1_results: collection {pageRank: int, pageURL: string} @ { Collection }
 
 // Time
-declare start_ms : mut int = 0
-declare end_ms : mut int = 0
-declare elapsed_ms : mut int = 0
+declare start_ms: mut int = 0
+declare end_ms: mut int = 0
+declare elapsed_ms: mut int = 0
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
-trigger q1_local : () = \_ -> (
+trigger q1_local: () = \_ -> (
   local_rankings.iterate (\row ->
     if row.pageRank > x
     then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
@@ -36,9 +35,9 @@ trigger q1_local : () = \_ -> (
 )
 
 // Signal to the master that a peer has finished the query locally.
-trigger finished : () = \_ -> (
+trigger finished: () = \_ -> (
   peers_finished = peers_finished + 1;
-  if peers_finished == num_peers
+  if peers_finished == peers.size ()
   then end_ms = now ();
        elapsed_ms = end_ms - start_ms;
        printLine (itos elapsed_ms);
@@ -46,23 +45,23 @@ trigger finished : () = \_ -> (
   else ()
 )
 
-trigger shutdown : () = \_ -> (
+trigger shutdown: () = \_ -> (
   haltEngine ()
 )
 
 // Signal to the master that a peer is ready.
 // Once all peers are ready, the master will start the query.
-trigger ready : () = \_ -> (
+trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
-  if peers_ready == num_peers
+  if peers_ready == peers.size ()
   then start_ms = now (); peers.iterate (\p -> (q1_local, p.addr) <- ())
   else ()
 )
 
-trigger load_all : () = \_ -> (
-  (dataLoader data_file local_rankings);
+trigger load_all: () = \_ -> (
+  (dataLoader rankings_file local_rankings);
   ((ready, master) <- ())
 )
 
-source rows : () = value ()
+source rows: () = value ()
 feed rows |> load_all
