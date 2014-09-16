@@ -12,7 +12,7 @@ class K3Peer:
     self.remote_log_dir  = "/tmp/log/" + self.binary_name + "/"
 
     self.remote_log_file = self.remote_log_dir + "stdouterr.log"
-    self.remote_script_path = "/tmp/" + self.binary_name + ".txt"
+    self.remote_script_path = "/tmp/run" + self.binary_name + ".txt"
     self.k3_bindings = config.get("k3_bindings",{})
     self.loggingEnabled = bool(config.get("enable_logging", False))
     self.stashOutput = bool(config.get("stash_output", False))
@@ -29,7 +29,7 @@ class K3Peer:
     local_kill_file = "kill_" + self.binary_name + ".txt"
     remote_kill_file = self.remote_binary_path + "kill_" + self.binary_name;
     script = ("""#!/bin/bash\n"""
-              """for j in `pgrep -f "/tmp/.*"`;do kill -9 $j; done\n""")
+              """for j in `pgrep -f "/tmp/run.*"`;do kill -9 $j; done\n""")
 
 
     # Dump to a local file
