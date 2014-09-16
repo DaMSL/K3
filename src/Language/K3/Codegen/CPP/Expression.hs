@@ -20,6 +20,7 @@ import Language.K3.Core.Type
 import Language.K3.Analysis.CArgs
 
 import Language.K3.Codegen.Common
+import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
@@ -117,7 +118,6 @@ cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
     cta <- genCType ta
     return [R.Forward $ R.FunctionDecl (R.Name i) [cta] ctr]
 cDecl t i = do
-    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
     ct <- genCType t
     return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
 
@@ -126,7 +126,6 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
     Just ac -> do
         ct <- genCType t
-        addComposite (namedEAnnotations as)
         return ([], R.Initialization (R.Collection ac ct) [])
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
@@ -135,7 +134,7 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 -- dereferenced.
 inline e@(tag -> EVariable v)
     | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
-    | otherwise = globals <$> get >>= attachTemplateVars v e >>= \n -> return ([], R.Variable n)
+    | otherwise = return ([], R.Variable $ R.Name v)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -183,20 +182,15 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
     return ( []
-           , R.Lambda capture [(arg, ta)] (Just tr) body'
+           , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
-inline (tag &&& children -> (EOperate OApp, [f, a])) = do
+inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
-    (ae, av) <- inline a
+    (aes, avs) <- unzip <$> mapM inline as
 
-    let argCount = eCArgs f
-    return $ if argCount == 1
-       then (fe ++ ae, R.Call fv [av])
-       else (fe ++ ae, R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Name "bind")
-                    (fv : av : [R.Variable $ R.Qualified (R.Qualified (R.Name "std") (R.Name "placeholders"))
-                                     (R.Name $ "_" ++ show i) | i <- [1..argCount - 1]]))
+    return (fe ++ concat aes, R.Call fv avs)
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
@@ -226,10 +220,7 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
-    vv <- globals <$> get >>= attachTemplateVars v e
-
-    -- TODO: Curry object with member functions at projection.
-    return (ke, R.Project kv vv)
+    return (ke, R.Project kv (R.Name v))
 
 inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
 

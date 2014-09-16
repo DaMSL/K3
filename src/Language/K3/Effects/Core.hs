@@ -6,7 +6,7 @@ module Language.K3.Effects.Core where
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 
-data EffectKind
+data Kind
     = FAtom
     | FSymbol
     | FFunction

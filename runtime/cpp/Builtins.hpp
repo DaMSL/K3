@@ -35,6 +35,14 @@ namespace K3 {
     unit_t printLine(std::string message);
 
     // TODO move to seperate context
+    Seq<R_elem<int>> range(int i) {
+      Seq<R_elem<int>> result;
+      for (int j = 0; j < i; j++) {
+        result.insert(R_elem<int> {j});
+      }
+      return result;
+    }
+
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 

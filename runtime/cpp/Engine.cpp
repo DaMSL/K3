@@ -8,6 +8,8 @@ namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
       internal_codec = _internal_codec;
+      std::cout << "Engine log level: " << log_level << std::endl;
+      log_enabled = false;
       if (log_level != "") { log_enabled = true; }
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
@@ -87,12 +89,14 @@ namespace K3 {
               sent = true;
             } else {
               if (ep && !ep->hasWrite()) {
-                logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
+                if (log_enabled)
+		  logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
                 boost::this_thread::sleep_for( boost::chrono::milliseconds(20) );
 
               }
               else {
-                logAt(trivial::trace, "Creating endpoint: " + eid);
+		if (log_enabled)
+                  logAt(trivial::trace, "Creating endpoint: " + eid);
                 openSocketInternal(eid, addr, IOMode::Write);
               }
             }

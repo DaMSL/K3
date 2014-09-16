@@ -1,7 +1,14 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module Language.K3.Codegen.CPP.Preprocessing where
 
+import Control.Arrow ((&&&))
+
 import Data.Functor
+import Data.Maybe
 import Data.Tree
+
+import Language.K3.Analysis.CArgs
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -72,6 +79,24 @@ mangleReservedNames'' (BRecord iis)
 
 mangleName :: Identifier -> Identifier
 mangleName s = s ++ "_"
+
+flattenApplicationD :: K3 Declaration -> K3 Declaration
+flattenApplicationD (Node (DGlobal i t me :@: as) cs)
+    = Node (DGlobal i t (flattenApplicationE <$> me) :@: as) (map flattenApplicationD cs)
+flattenApplicationD (Node (DTrigger i t e :@: as) cs)
+    = Node (DTrigger i t (flattenApplicationE e) :@: as) (map flattenApplicationD cs)
+flattenApplicationD (Node t cs) = Node t (map flattenApplicationD cs)
+
+flattenApplicationE :: K3 Expression -> K3 Expression
+flattenApplicationE e@(tag &&& annotations &&& children -> (EOperate OApp, (as, [f, a])))
+    = case flattened of
+        (tag &&& children -> (EOperate OApp, cs)) ->
+            if (isJust $ flattened @~ isECArgs)
+              then Node (EOperate OApp :@: as) (cs ++ [a])
+              else Node (EOperate OApp :@: as) [flattened, a]
+        _ -> Node (EOperate OApp :@: as) [flattened, a]
+  where flattened = flattenApplicationE f
+flattenApplicationE e = e
 
 cppReservedNames :: [Identifier]
 cppReservedNames =

@@ -1,84 +1,71 @@
 include "Annotation/Vector.k3"
 include "Annotation/Map.k3"
+include "Annotation/Seq.k3"
 include "Core/CppBuiltins.k3"
 
 // Constants
 declare k : int = 3
 declare dimensionality : int = 3
 declare master : address
+declare data_file: string
 
-
+// Global vars
 declare iterations_remaining : mut int = 5
 declare peers_ready : mut int = 0
-
-// Outstanding requests for partial aggregation
 declare requests : mut int = 0
 
-declare foo : collection {elem: real} @ {Vector}
-
-
-// Collection of data points. Each point represented as a vector
-declare data:
-  collection {
-    elem: collection {elem: real} @ {Vector}
-  } @ {Collection}
+// Sequence of data points. Each point represented as a vector
+declare data :collection {
+  elem: collection {elem: real} @ {Vector}
+} @ {Seq}
 
 // Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
-declare means :
-  mut collection {
-    key: int
-  , value: collection {elem: real} @ {Vector}
-  } @ {Collection}
+declare means : mut collection {
+  key: int,
+  value: collection {elem: real} @ {Vector}
+} @ {Collection}
 
 
-declare aggregates :
-  mut collection {
-    key: int
-  , value: {
-      count: int
-    , sum : collection {elem: real} @ {Vector}
-    }
-  } @ {Map}
+// Collection of partial aggregates for each mean.
+declare aggregates : mut collection {
+  key: int,
+  value: {
+    count: int,
+    sum : collection {elem: real} @ {Vector}
+  }
+} @ {Map}
 
-
+// Utility functions
+// Send the current means to each peer for the assignment (E) step
 declare broadcastMeans : () -> () = \_ -> (
+  printLine "Broadcasting current means to each peer";
   peers.iterate \p -> (
     requests = requests + 1;
     (assign, p.addr) <- means
   )
 )
-
-
-trigger load : () = \_ -> (
-  (ready, master) <- ()
+declare printMeans : () -> () = \_ -> (
+  means.iterate (\kv ->
+    printLine (kv.value.toString ())
+  )
 )
 
-
+// Initialize the means and send out the initial broadcast
 declare start : () -> () = \_ -> (
-  // initialize means
-  let ignore = data.fold
-    (\a -> (\p -> (
-      if a == 0
-        then a
-        else (
-          (means.insert {key: a, value: p.elem});
-          (a - 1)
-        )
-    )))
-    k
+  (range k).iterate (\i ->
+    means.insert {key: i.elem +1, value: (data.at i.elem).elem}
+  );
+
+  // Log initial means
+  printLine "Intial Means: ";
+  printMeans ();
   // broadcast initial means
-  in broadcastMeans ()
+  broadcastMeans ();
+
+  printLine "---------------"
 )
 
-
-trigger ready : () = \_ -> (
-  peers_ready = peers_ready + 1;
-  if (peers_ready == peers.size())
-    then start ()
-    else ()
-)
-
-// Function that returns the key of nearest mean (in the global variable means)
+// Returns the key of the nearest current mean for the provided point
 declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
@@ -95,22 +82,8 @@ declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
     { None -> (-1) } // Error
 )
 
-trigger assign : collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
-  // update state
-  means = new_means;
-  // compute aggregate statistics:
-  let aggs = data.groupBy
-    (\p -> nearest_mean p.elem)
-    (\sc -> \p ->
-      {count: sc.count + 1, sum: sc.sum.add p.elem}
-    )
-    {count: 0, sum: zeroVector dimensionality}
-  // return results to master
-  in (aggregate, master) <- aggs
-)
-
-
-declare merge_results : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Collection} -> () = \peer_aggs -> (
+// Merge a collection of partial aggregates into the global state
+declare merge_results : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} -> () = \peer_aggs -> (
   requests = requests -1;
   peer_aggs.iterate (\v ->
     case aggregates.lookup v of
@@ -126,16 +99,48 @@ declare merge_results : collection {key: int, value: {count: int, sum: collectio
   )
 )
 
-trigger aggregate : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Collection} = \peer_aggs -> (
-  // merge the peers partial aggregates into global state
+// Triggers
+// Load data into global variable, then notify master.
+trigger load : () = \_ -> (
+  printLine ("Loading data from disk");
+  loadVector data_file data;
+  (ready, master) <- ()
+)
+
+// Increment the count of peers who are ready to start
+trigger ready : () = \_ -> (
+  printLine ("Received a ready signal from a peer");
+  peers_ready = peers_ready + 1;
+  if (peers_ready == peers.size())
+    then start ()
+    else ()
+)
+
+// Given the new means, assign each data point to the nearest.
+// Keeping a running aggregate of the sum and count for each mean.
+trigger assign : collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
+  // update state
+  means = new_means;
+  // compute aggregate statistics:
+  let aggs = data.groupBy
+    (\p -> nearest_mean p.elem)
+    (\sc -> \p ->
+      {count: sc.count + 1, sum: sc.sum.add p.elem}
+    )
+    {count: 0, sum: zeroVector dimensionality}
+  // return results to master
+  in (aggregate, master) <- aggs
+)
+
+trigger aggregate : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} = \peer_aggs -> (
   merge_results peer_aggs;
-  // determine if all partial aggregates have been received.
   if requests == 0
     then (maximize, master) <- ()
     else ()
 )
 
 trigger maximize : () = \_ -> (
+  printLine "Received all partial aggregates from peers, computing new means";
   means = empty {key: int, value: collection {elem: real} @ {Vector}} @ {Collection};
   aggregates.iterate (\x ->
     means.insert
@@ -144,17 +149,24 @@ trigger maximize : () = \_ -> (
       }
   );
   iterations_remaining = iterations_remaining - 1;
+  printLine "Iterations remaining:";
+  printLine (itos iterations_remaining); 
   if iterations_remaining == 0
     then (
+      printLine "Zero iterations remaining. Final means: ";
+      printMeans ();
       peers.iterate (\p -> (shutdown, p.addr) <- () )
     )
     else (
       aggregates = empty {key:int, value: {count: int, sum: collection {elem: real} @ {Vector}}} @ {Map};
+      printLine "New means: ";
+      printMeans ();
       peers.iterate \p -> (
         requests = requests + 1;
         (assign, p.addr) <- means
       )
-    )
+    );
+  printLine "---------------"
 )
 
 trigger shutdown : () = \_ -> haltEngine ()
