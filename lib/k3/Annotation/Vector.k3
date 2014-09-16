@@ -6,22 +6,22 @@ annotation Vector given type a{
   provides lifted at  : int -> content
   provides lifted set : int -> content -> ()
   provides lifted size : () -> int
-  
+
   @:Transformer
   provides lifted add : self -> self
-  
+
   @:Transformer
   provides lifted inPlaceAdd : self -> ()
-  
+
   @:Transformer
   provides lifted sub : self -> self
-  
+
   @:Transformer
   provides lifted inPlaceSub : self -> ()
 
   @:Transformer
   provides lifted iterate : (content -> ()) -> ()
-  
+
   @:Transformer
   provides lifted map: (content -> real) -> self
 
@@ -32,5 +32,4 @@ annotation Vector given type a{
   provides lifted distance: self -> real
 
   provides lifted toString : () -> string
- 
 }
