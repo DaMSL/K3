@@ -4,23 +4,22 @@ name: Kmeans bpti
 local_binary_path: "/tmp/kmeans" #Mandatory
 stash_output: True # Redirect stdout and stderr to a log file, and collect after execution.
 k3_bindings: # All values are strings. String literals should have quotes!
-  dimensionality: "43"
+  dimensionality: "5"
   iterations_remaining: "10"
-  k: "3"
+  k: "5"
   role: '"s1"'
   master: '<192.168.1.34:40000>'
-  data_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'  
   num_peers: "128"
 
 k3_peers:
     - ip: "192.168.1.34"
-      stash_output: False
       k3_port: "40000"
       k3_bindings:
         user_visits_file: '"/local_data/sf5/128l/uservisits_sf5_pp_128l/uservisits_sf5_pp_128l_000"'
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_000"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_000"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.34"
       k3_port: "40001"
       k3_bindings:
@@ -28,6 +27,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_001"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_001"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.34"
       k3_port: "40002"
       k3_bindings:
@@ -35,6 +35,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_002"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_002"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.34"
       k3_port: "40003"
       k3_bindings:
@@ -42,6 +43,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_003"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_003"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.34"
       k3_port: "40004"
       k3_bindings:
@@ -49,6 +51,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_004"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_004"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.34"
       k3_port: "40005"
       k3_bindings:
@@ -56,6 +59,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_005"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_005"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.34"
       k3_port: "40006"
       k3_bindings:
@@ -63,6 +67,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_006"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_006"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.34"
       k3_port: "40007"
       k3_bindings:
@@ -70,6 +75,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_007"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_007"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.34"
       k3_port: "40008"
       k3_bindings:
@@ -77,6 +83,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_008"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_008"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.34"
       k3_port: "40009"
       k3_bindings:
@@ -84,6 +91,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_009"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_009"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.34"
       k3_port: "40010"
       k3_bindings:
@@ -91,6 +99,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_010"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_010"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.34"
       k3_port: "40011"
       k3_bindings:
@@ -98,6 +107,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_011"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_011"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.34"
       k3_port: "40012"
       k3_bindings:
@@ -105,6 +115,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_012"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_012"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.34"
       k3_port: "40013"
       k3_bindings:
@@ -112,6 +123,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_013"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_013"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.34"
       k3_port: "40014"
       k3_bindings:
@@ -119,6 +131,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_014"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_014"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.34"
       k3_port: "40015"
       k3_bindings:
@@ -126,6 +139,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_015"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_015"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.35"
       k3_port: "40016"
       k3_bindings:
@@ -133,6 +147,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_016"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_016"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.35"
       k3_port: "40017"
       k3_bindings:
@@ -140,6 +155,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_017"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_017"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.35"
       k3_port: "40018"
       k3_bindings:
@@ -147,6 +163,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_018"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_018"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.35"
       k3_port: "40019"
       k3_bindings:
@@ -154,6 +171,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_019"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_019"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.35"
       k3_port: "40020"
       k3_bindings:
@@ -161,6 +179,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_020"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_020"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.35"
       k3_port: "40021"
       k3_bindings:
@@ -168,6 +187,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_021"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_021"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.35"
       k3_port: "40022"
       k3_bindings:
@@ -175,6 +195,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_022"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_022"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.35"
       k3_port: "40023"
       k3_bindings:
@@ -182,6 +203,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_023"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_023"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.35"
       k3_port: "40024"
       k3_bindings:
@@ -189,6 +211,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_024"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_024"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.35"
       k3_port: "40025"
       k3_bindings:
@@ -196,6 +219,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_025"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_025"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.35"
       k3_port: "40026"
       k3_bindings:
@@ -203,6 +227,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_026"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_026"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.35"
       k3_port: "40027"
       k3_bindings:
@@ -210,6 +235,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_027"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_027"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.35"
       k3_port: "40028"
       k3_bindings:
@@ -217,6 +243,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_028"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_028"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.35"
       k3_port: "40029"
       k3_bindings:
@@ -224,6 +251,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_029"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_029"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.35"
       k3_port: "40030"
       k3_bindings:
@@ -231,6 +259,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_030"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_030"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.35"
       k3_port: "40031"
       k3_bindings:
@@ -238,6 +267,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_031"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_031"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.36"
       k3_port: "40032"
       k3_bindings:
@@ -245,6 +275,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_032"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_032"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.36"
       k3_port: "40033"
       k3_bindings:
@@ -252,6 +283,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_033"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_033"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.36"
       k3_port: "40034"
       k3_bindings:
@@ -259,6 +291,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_034"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_034"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.36"
       k3_port: "40035"
       k3_bindings:
@@ -266,6 +299,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_035"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_035"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.36"
       k3_port: "40036"
       k3_bindings:
@@ -273,6 +307,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_036"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_036"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.36"
       k3_port: "40037"
       k3_bindings:
@@ -280,6 +315,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_037"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_037"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.36"
       k3_port: "40038"
       k3_bindings:
@@ -287,6 +323,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_038"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_038"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.36"
       k3_port: "40039"
       k3_bindings:
@@ -294,6 +331,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_039"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_039"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.36"
       k3_port: "40040"
       k3_bindings:
@@ -301,6 +339,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_040"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_040"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.36"
       k3_port: "40041"
       k3_bindings:
@@ -308,6 +347,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_041"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_041"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.36"
       k3_port: "40042"
       k3_bindings:
@@ -315,6 +355,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_042"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_042"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.36"
       k3_port: "40043"
       k3_bindings:
@@ -322,6 +363,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_043"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_043"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.36"
       k3_port: "40044"
       k3_bindings:
@@ -329,6 +371,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_044"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_044"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.36"
       k3_port: "40045"
       k3_bindings:
@@ -336,6 +379,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_045"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_045"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.36"
       k3_port: "40046"
       k3_bindings:
@@ -343,6 +387,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_046"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_046"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.36"
       k3_port: "40047"
       k3_bindings:
@@ -350,6 +395,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_047"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_047"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.38"
       k3_port: "40064"
       k3_bindings:
@@ -357,6 +403,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_064"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_064"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.38"
       k3_port: "40065"
       k3_bindings:
@@ -364,6 +411,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_065"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_065"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.38"
       k3_port: "40066"
       k3_bindings:
@@ -371,6 +419,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_066"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_066"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.38"
       k3_port: "40067"
       k3_bindings:
@@ -378,6 +427,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_067"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_067"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.38"
       k3_port: "40068"
       k3_bindings:
@@ -385,6 +435,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_068"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_068"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.38"
       k3_port: "40069"
       k3_bindings:
@@ -392,6 +443,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_069"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_069"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.38"
       k3_port: "40070"
       k3_bindings:
@@ -399,6 +451,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_070"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_070"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.38"
       k3_port: "40071"
       k3_bindings:
@@ -406,6 +459,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_071"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_071"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.38"
       k3_port: "40072"
       k3_bindings:
@@ -413,6 +467,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_072"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_072"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.38"
       k3_port: "40073"
       k3_bindings:
@@ -420,6 +475,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_073"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_073"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.38"
       k3_port: "40074"
       k3_bindings:
@@ -427,6 +483,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_074"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_074"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.38"
       k3_port: "40075"
       k3_bindings:
@@ -434,6 +491,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_075"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_075"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.38"
       k3_port: "40076"
       k3_bindings:
@@ -441,6 +499,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_076"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_076"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.38"
       k3_port: "40077"
       k3_bindings:
@@ -448,6 +507,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_077"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_077"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.38"
       k3_port: "40078"
       k3_bindings:
@@ -455,6 +515,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_078"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_078"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.38"
       k3_port: "40079"
       k3_bindings:
@@ -462,6 +523,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_079"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_079"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.39"
       k3_port: "40080"
       k3_bindings:
@@ -469,6 +531,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_080"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_080"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.39"
       k3_port: "40081"
       k3_bindings:
@@ -476,6 +539,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_081"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_081"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.39"
       k3_port: "40082"
       k3_bindings:
@@ -483,6 +547,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_082"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_082"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.39"
       k3_port: "40083"
       k3_bindings:
@@ -490,6 +555,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_083"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_083"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.39"
       k3_port: "40084"
       k3_bindings:
@@ -497,6 +563,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_084"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_084"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.39"
       k3_port: "40085"
       k3_bindings:
@@ -504,6 +571,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_085"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_085"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.39"
       k3_port: "40086"
       k3_bindings:
@@ -511,6 +579,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_086"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_086"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.39"
       k3_port: "40087"
       k3_bindings:
@@ -518,6 +587,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_087"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_087"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.39"
       k3_port: "40088"
       k3_bindings:
@@ -525,6 +595,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_088"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_088"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.39"
       k3_port: "40089"
       k3_bindings:
@@ -532,6 +603,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_089"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_089"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.39"
       k3_port: "40090"
       k3_bindings:
@@ -539,6 +611,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_090"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_090"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.39"
       k3_port: "40091"
       k3_bindings:
@@ -546,6 +619,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_091"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_091"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.39"
       k3_port: "40092"
       k3_bindings:
@@ -553,6 +627,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_092"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_092"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.39"
       k3_port: "40093"
       k3_bindings:
@@ -560,6 +635,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_093"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_093"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.39"
       k3_port: "40094"
       k3_bindings:
@@ -567,6 +643,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_094"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_094"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.39"
       k3_port: "40095"
       k3_bindings:
@@ -574,6 +651,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_095"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_095"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.40"
       k3_port: "40096"
       k3_bindings:
@@ -581,6 +659,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_096"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_096"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.40"
       k3_port: "40097"
       k3_bindings:
@@ -588,6 +667,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_097"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_097"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.40"
       k3_port: "40098"
       k3_bindings:
@@ -595,6 +675,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_098"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_098"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.40"
       k3_port: "40099"
       k3_bindings:
@@ -602,6 +683,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_099"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_099"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.40"
       k3_port: "40100"
       k3_bindings:
@@ -609,6 +691,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_100"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_100"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.40"
       k3_port: "40101"
       k3_bindings:
@@ -616,6 +699,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_101"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_101"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.40"
       k3_port: "40102"
       k3_bindings:
@@ -623,6 +707,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_102"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_102"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.40"
       k3_port: "40103"
       k3_bindings:
@@ -630,6 +715,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_103"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_103"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.40"
       k3_port: "40104"
       k3_bindings:
@@ -637,6 +723,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_104"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_104"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.40"
       k3_port: "40105"
       k3_bindings:
@@ -644,6 +731,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_105"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_105"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.40"
       k3_port: "40106"
       k3_bindings:
@@ -651,6 +739,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_106"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_106"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.40"
       k3_port: "40107"
       k3_bindings:
@@ -658,6 +747,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_107"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_107"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.40"
       k3_port: "40108"
       k3_bindings:
@@ -665,6 +755,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_108"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_108"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.40"
       k3_port: "40109"
       k3_bindings:
@@ -672,6 +763,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_109"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_109"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.40"
       k3_port: "40110"
       k3_bindings:
@@ -679,6 +771,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_110"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_110"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.40"
       k3_port: "40111"
       k3_bindings:
@@ -686,6 +779,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_111"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_111"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
     - ip: "192.168.1.41"
       k3_port: "40112"
       k3_bindings:
@@ -693,6 +787,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_112"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_112"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means0.txt"'
     - ip: "192.168.1.41"
       k3_port: "40113"
       k3_bindings:
@@ -700,6 +795,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_113"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_113"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means1.txt"'
     - ip: "192.168.1.41"
       k3_port: "40114"
       k3_bindings:
@@ -707,6 +803,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_114"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_114"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means2.txt"'
     - ip: "192.168.1.41"
       k3_port: "40115"
       k3_bindings:
@@ -714,6 +811,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_115"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_115"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means3.txt"'
     - ip: "192.168.1.41"
       k3_port: "40116"
       k3_bindings:
@@ -721,6 +819,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_116"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_116"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means4.txt"'
     - ip: "192.168.1.41"
       k3_port: "40117"
       k3_bindings:
@@ -728,6 +827,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_117"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_117"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means5.txt"'
     - ip: "192.168.1.41"
       k3_port: "40118"
       k3_bindings:
@@ -735,6 +835,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_118"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_118"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means6.txt"'
     - ip: "192.168.1.41"
       k3_port: "40119"
       k3_bindings:
@@ -742,6 +843,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_119"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_119"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means7.txt"'
     - ip: "192.168.1.41"
       k3_port: "40120"
       k3_bindings:
@@ -749,6 +851,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_120"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_120"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means8.txt"'
     - ip: "192.168.1.41"
       k3_port: "40121"
       k3_bindings:
@@ -756,6 +859,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_121"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_121"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means9.txt"'
     - ip: "192.168.1.41"
       k3_port: "40122"
       k3_bindings:
@@ -763,6 +867,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_122"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_122"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means10.txt"'
     - ip: "192.168.1.41"
       k3_port: "40123"
       k3_bindings:
@@ -770,6 +875,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_123"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_123"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means11.txt"'
     - ip: "192.168.1.41"
       k3_port: "40124"
       k3_bindings:
@@ -777,6 +883,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_124"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_124"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means12.txt"'
     - ip: "192.168.1.41"
       k3_port: "40125"
       k3_bindings:
@@ -784,6 +891,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_125"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_125"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means13.txt"'
     - ip: "192.168.1.41"
       k3_port: "40126"
       k3_bindings:
@@ -791,6 +899,7 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_126"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_126"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means14.txt"'
     - ip: "192.168.1.41"
       k3_port: "40127"
       k3_bindings:
@@ -798,3 +907,4 @@ k3_peers:
         rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_127"'
         crawl_file: '"/local_data/sf5/128l/crawl_sf5_128l/crawl_sf5_128l_127"'
         bpti_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'
+        data_file: '"/local_data/means15.txt"'
