@@ -141,7 +141,7 @@ declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], k3Decls, edgeDecls, driverDecls >> return []]
 
   where k3Decls     = choice $ map normalizeDeclAsList
-                        [Right dGlobal, Right dTrigger, Right dRole, Left dMacroAnnotation, Right dAnnotation]
+                        [Right dGlobal, Right dTrigger, Right dRole, Left dMacroAnnotation, Right dAnnotation, Left dTypeAlias]
         edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
         driverDecls = choice [dSelector, dFeed]
         ignores     = pInclude >> return ()
@@ -206,7 +206,10 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 dMacroAnnotation :: K3Parser (Maybe (K3 Declaration))
 dMacroAnnotation = namedIdentifier "macro annotation" "annotation" rule
-  where rule x = mkGenerator =<< ((,,,) <$> x <*> spliceParameters <*> typeParameters <*> braces (some annotationMember))
+  where rule x = mkGenerator =<< ((,,) <$> x <*> spliceParameters <*> typesParamsAndMembers)
+
+        --typesParamsAndMembers = (,) <$> typeParameters <*> braces (some annotationMember)
+        typesParamsAndMembers = protectedVarDecls typeParameters $ braces (some annotationMember)
 
         typeParameters   = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
         spliceParameters = brackets (commaSep spliceParameter)
@@ -214,8 +217,8 @@ dMacroAnnotation = namedIdentifier "macro annotation" "annotation" rule
         typeSParam       = keyword "type" *> identifier
         labelTypeSParam  = identifier
 
-        mkGenerator (n, [], tp, mems) = spliceAnnMems mems >>= return . Just . DC.annotation n tp
-        mkGenerator (n, sp, tp, mems) =
+        mkGenerator (n, [], (tp, mems)) = spliceAnnMems mems >>= return . Just . DC.annotation n tp
+        mkGenerator (n, sp, (tp, mems)) =
           -- TODO: match splice parameter types (e.g., types vs label-types vs exprs.)
           let validateSplice env = Map.filterWithKey (\k _ -> k `elem` sp) env
               splicer spliceEnv  = SRDecl $ do
@@ -293,8 +296,10 @@ dMacroAnnotation = namedIdentifier "macro annotation" "annotation" rule
 
 
 dAnnotation :: DeclParser
-dAnnotation = namedDecl "annotation" "annotation" $ rule . (DC.annotation <$>)
-  where rule x = x <*> typeParameters <*> braces (some annotationMember)
+dAnnotation = namedDecl "annotation" "annotation" $ rule
+  where rule x = (\i (tp,m) -> DC.annotation i tp m) <$> x <*> typesParamsAndMembers
+          --typesParamsAndMembers = (,) <$> typeParameters <*> braces (some annotationMember)
+        typesParamsAndMembers = protectedVarDecls typeParameters $ braces (some annotationMember)
         typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
 
 {- Annotation declaration members -}
@@ -337,6 +342,11 @@ polarity = choice [keyword "provides" >> return Provides,
 uidOver :: K3Parser (UID -> a) -> K3Parser a
 uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
 
+dTypeAlias :: K3Parser (Maybe (K3 Declaration))
+dTypeAlias = namedIdentifier "typedef" "typedef" rule
+  where rule x = mkTypeAlias =<< ((,) <$> x <*> equateTypeExpr)
+        mkTypeAlias (n, t) = modifyTAEnvF_ (Right . appendTAliasE n t) >> return Nothing
+
 pInclude :: K3Parser String
 pInclude = keyword "include" >> stringLiteral
 
@@ -350,13 +360,24 @@ qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable
 
 polymorphicTypeExpr :: TypeParser
 polymorphicTypeExpr =
-  typeExprError "polymorphic" $
-        (TUID # TC.forAll <$ keyword "forall" <*> typeVarDecls <*
-            symbol "." <*> qualifiedTypeExpr)
-    <|> qualifiedTypeExpr
+  typeExprError "polymorphic" $ (TUID # forAllParser) <|> qualifiedTypeExpr
+  where
+    --oldForAllParser = TC.forAll <$ keyword "forall" <*> typeVarDecls <* symbol "." <*> qualifiedTypeExpr
+    forAllParser = (uncurry TC.forAll) <$> (keyword "forall" *> protectedVarDecls typeVarDecls (symbol "." *> qualifiedTypeExpr))
 
 typeVarDecls :: K3Parser [TypeVarDecl]
 typeVarDecls = sepBy typeVarDecl (symbol ",")
+
+-- | Parses a set of type variable declarations and subsequently applies a parser
+--   in a type alias environment where the new declarations are protected (i.e., shadow)
+--   any existing matching aliases.
+protectedVarDecls :: K3Parser [TypeVarDecl] -> K3Parser a -> K3Parser ([TypeVarDecl], a)
+protectedVarDecls declP p = do
+  tvdecls <- declP
+  void $ modifyTAEnvF_ (Right . (pushTAliasE $ map (\(TypeVarDecl i _ _) -> (i, TC.declaredVar i)) tvdecls))
+  r <- p
+  void $ modifyTAEnvF_ $ Right . popTAliasE
+  return (tvdecls, r)
 
 typeVarDecl :: K3Parser TypeVarDecl
 typeVarDecl = TypeVarDecl <$> identifier <*> pure Nothing <*> option Nothing (Just <$ symbol "<=" <*> typeExpr)
@@ -428,7 +449,8 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
               , ("content",TContent) ]
 
 tDeclared :: TypeParser
-tDeclared = typeExprError "declared" $ ( TUID # ) $ TC.declaredVar <$> identifier
+tDeclared = typeExprError "declared" $ TUID # ( aliasOrDecl =<< identifier )
+  where aliasOrDecl i = withTAEnv $ \tae -> maybe (TC.declaredVar i) id $ lookupTAliasE i tae
 
 
 {- Expressions -}
@@ -860,6 +882,9 @@ iArrow k = iPrefix k <* symbol "->"
 
 iArrowS :: String -> K3Parser Identifier
 iArrowS s = symbol s *> identifier <* symbol "->"
+
+equateTypeExpr :: TypeParser
+equateTypeExpr = symbol "=" *> typeExpr
 
 equateExpr :: ExpressionParser
 equateExpr = symbol "=" *> expr

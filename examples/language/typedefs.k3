@@ -1,0 +1,9 @@
+typedef myRecordT = {a:int, b:int}
+declare myCollection : collection myRecordT @Collection
+
+typedef myCollectionT = collection myRecordT @Collection
+declare myCollection2 : myCollectionT
+
+trigger t : () = \_ -> ()
+source s1 : () = value ()
+feed s1 |> t
