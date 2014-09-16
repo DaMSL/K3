@@ -613,6 +613,8 @@ fuseTransformers expr = mapTree fuse expr
         (EProject "map",     EProject "map") -> rewriteMapMap n ch
         -- (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
         -- (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
+        -- (EProject "filter",  EProject "map") -> rebuildE n ch -- TODO
+        -- (EProject "iterate", EProject "map") -> rebuildE n ch -- TODO
         _ -> rebuildE ch n
 
     fuse ch n = rebuildE ch n

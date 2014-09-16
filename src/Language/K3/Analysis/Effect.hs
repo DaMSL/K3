@@ -20,7 +20,10 @@ import Language.K3.Core.Type
 type Property   = (Identifier, Maybe (K3 Literal))
 type NamedEnv a = Map Identifier a
 
+-- | An environment storing effect properties as a nested list to support name shadowing.
 type NamedEffectEnv = NamedEnv [[Property]]
+
+-- | A pair of environments for annotation definitions and realizations.
 data AnnEffectEnv   = AnnEffectEnv { definitions  :: NamedEnv (NamedEnv [Property])
                                    , realizations :: NamedEnv (NamedEnv [Property]) }
                         deriving (Eq, Show)

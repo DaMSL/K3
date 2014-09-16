@@ -64,6 +64,14 @@ data SpliceResult = SRType TypeParser
 
 type GeneratorState = (Int, GeneratorEnv, SpliceContext, [K3 Declaration])
 
+{-| Type alias support.
+    This is a framed environment, with frames managed based on type variable scopes.
+    The outer key is the alias identifier, while the inner key is the frame level.
+    The datatype maintains a level counter on every push or pop of the environment frame.
+-}
+type TAEnv        = Map Identifier (Map Int [K3 Type])
+data TypeAliasEnv = TypeAliasEnv Int TAEnv
+
 {-| Parser environment type.
     This includes two scoped frames, one for source metadata, and another as a
     list of K3 program entry points as role-qualified sources that can be consumed.
@@ -75,7 +83,7 @@ type ParserEnv    = [EnvFrame]
     This includes a UID counter, a program generator environment, a splicing context
     for the current parse, and a parser environment as defined above.
 -}
-type ParserState  = (Int, GeneratorState, ParserEnv)
+type ParserState  = (Int, GeneratorState, TypeAliasEnv, ParserEnv)
 
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
@@ -215,50 +223,62 @@ emptySpliceContext = []
 emptyGeneratorState :: GeneratorState
 emptyGeneratorState = (0, emptyGeneratorEnv, emptySpliceContext, [])
 
-emptyParserState :: ParserState
-emptyParserState = (0, emptyGeneratorState, emptyParserEnv)
+emptyTypeAliasEnv :: TypeAliasEnv
+emptyTypeAliasEnv = TypeAliasEnv 0 Map.empty
 
-getParserEnv :: ParserState -> ParserEnv
-getParserEnv (_, _, env) = env
+emptyParserState :: ParserState
+emptyParserState = (0, emptyGeneratorState, emptyTypeAliasEnv, emptyParserEnv)
 
 getGeneratorUID :: ParserState -> Int
-getGeneratorUID (_, (c, _, _, _), _) = c
+getGeneratorUID (_, (c, _, _, _), _, _) = c
 
 getGeneratorEnv :: ParserState -> GeneratorEnv
-getGeneratorEnv (_, (_, env, _, _), _) = env
+getGeneratorEnv (_, (_, env, _, _), _, _) = env
 
 getSpliceContext :: ParserState -> SpliceContext
-getSpliceContext (_, (_, _, ctxt, _), _) = ctxt
+getSpliceContext (_, (_, _, ctxt, _), _, _) = ctxt
 
 getGeneratedDecls :: ParserState -> [K3 Declaration]
-getGeneratedDecls (_, (_, _,_,decls), _) = decls
+getGeneratedDecls (_, (_, _,_,decls), _, _) = decls
+
+getTypeAliasEnv :: ParserState -> TypeAliasEnv
+getTypeAliasEnv (_, _, tae, _) = tae
+
+getParserEnv :: ParserState -> ParserEnv
+getParserEnv (_, _, _, env) = env
 
 modifyParserEnv :: (ParserEnv -> Either String (ParserEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyParserEnv f (x,y,z) = either Left (\(nz,r) -> Right ((x,y,nz), r)) $ f z
+modifyParserEnv f (uc,gs,ta,p) = either Left (\(np,r) -> Right ((uc,gs,ta,np), r)) $ f p
 
 modifyGeneratorEnv :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyGeneratorEnv f (u,(v,w,x,y),z) = either Left (\(nw,r) -> Right ((u,(v,nw,x,y),z), r)) $ f w
+modifyGeneratorEnv f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nge,r) -> Right ((uc,(ac,nge,sc,gd),ta,p), r)) $ f ge
 
 modifySpliceContext :: (SpliceContext -> Either String (SpliceContext, a)) -> ParserState -> Either String (ParserState, a)
-modifySpliceContext f (u,(v,w,x,y),z) = either Left (\(nx,r) -> Right ((u,(v,w,nx,y),z),r)) $ f x
+modifySpliceContext f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nsc,r) -> Right ((uc,(ac,ge,nsc,gd),ta,p),r)) $ f sc
 
 modifyGeneratedDecls :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> ParserState -> Either String (ParserState, a)
-modifyGeneratedDecls f (u,(v,w,x,y),z) = either Left (\(ny,r) -> Right ((u,(v,w,x,ny),z), r)) $ f y
+modifyGeneratedDecls f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(ngd,r) -> Right ((uc,(ac,ge,sc,ngd),ta,p), r)) $ f gd
+
+modifyTypeAliasEnv :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> ParserState -> Either String (ParserState, a)
+modifyTypeAliasEnv f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nta,r) -> Right ((uc,(ac,ge,sc,gd),nta,p),r)) $ f ta
 
 modifyParserState :: (ParserState -> Either String (ParserState, a)) -> K3Parser a
 modifyParserState f = PP.getState >>= \st -> either PP.parserFail (\(nst,r) -> PP.putState nst >> return r) $ f st
 
 parserWithUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithUID f = PP.getState >>= (\(x,y,z) -> PP.putState (x+1, y, z) >> f x)
+parserWithUID f = PP.getState >>= (\(uc,gs,ta,p) -> PP.putState (uc+1, gs, ta, p) >> f uc)
 
 parserWithGUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithGUID f = PP.getState >>= (\(u,(v,w,x,y),z) -> PP.putState (u,(v+1,w,x,y),z) >> f v)
+parserWithGUID f = PP.getState >>= (\(uc,(ac,ge,sc,gd),ta,p) -> PP.putState (uc,(ac+1,ge,sc,gd),ta,p) >> f ac)
 
 parserWithGEnv :: (GeneratorEnv -> K3Parser a) -> K3Parser a
 parserWithGEnv f = PP.getState >>= f . getGeneratorEnv
 
 parserWithSCtxt :: (SpliceContext -> K3Parser a) -> K3Parser a
 parserWithSCtxt f = PP.getState >>= f . getSpliceContext
+
+parserWithTAEnv :: (TypeAliasEnv -> K3Parser a) -> K3Parser a
+parserWithTAEnv f = PP.getState >>= f . getTypeAliasEnv
 
 withUID :: (Int -> a) -> K3Parser a
 withUID f = parserWithUID $ return . f
@@ -271,6 +291,9 @@ withGEnv f = parserWithGEnv $ return . f
 
 withSCtxt :: (SpliceContext -> a) -> K3Parser a
 withSCtxt f = parserWithSCtxt $ return . f
+
+withTAEnv :: (TypeAliasEnv -> a) -> K3Parser a
+withTAEnv f = parserWithTAEnv $ return . f
 
 withEnv :: (ParserEnv -> a) -> K3Parser a
 withEnv f = PP.getState >>= return . f . getParserEnv
@@ -310,6 +333,13 @@ modifyGDeclsF f = modifyParserState $ modifyGeneratedDecls f
 
 modifyGDeclsF_ :: ([K3 Declaration] -> Either String [K3 Declaration]) -> K3Parser ()
 modifyGDeclsF_ f = modifyGDeclsF $ (>>= Right . (,())) . f
+
+modifyTAEnvF :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> K3Parser a
+modifyTAEnvF f = modifyParserState $ modifyTypeAliasEnv f
+
+modifyTAEnvF_ :: (TypeAliasEnv -> Either String TypeAliasEnv) -> K3Parser ()
+modifyTAEnvF_ f = modifyTAEnvF $ (>>= Right . (,())) . f
+
 
 {- Note: unused
 modifyUID :: (Int -> (Int,a)) -> K3Parser a
@@ -406,6 +436,30 @@ mkSpliceReprEnv = Map.fromList
 mkSpliceEnv :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
 mkSpliceEnv = Map.fromList
 
+{- Type alias enviroment helpers -}
+lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)
+lookupTAliasE n (TypeAliasEnv lvl env) = Map.lookup n env >>= Map.lookupLE lvl >>= tryHead . snd
+  where tryHead []    = Nothing
+        tryHead (h:_) = Just h
+
+appendTAliasEAtLevel :: Identifier -> K3 Type -> Int -> Int -> TypeAliasEnv -> TypeAliasEnv
+appendTAliasEAtLevel n t ilvl nlvl (TypeAliasEnv _ env) = TypeAliasEnv nlvl appendAlias
+  where slvl                 = Map.singleton ilvl [t]
+        appendAlias          = Map.insertWith appendLevel n slvl env
+        appendLevel _ lvlEnv = Map.insertWith (++) ilvl [t] lvlEnv
+
+appendTAliasE :: Identifier -> K3 Type -> TypeAliasEnv -> TypeAliasEnv
+appendTAliasE n t tae@(TypeAliasEnv lvl _) = appendTAliasEAtLevel n t lvl lvl tae
+
+pushTAliasE :: [(Identifier, K3 Type)] -> TypeAliasEnv -> TypeAliasEnv
+pushTAliasE taBindings tae@(TypeAliasEnv lvl _) =
+  foldl (\accTAE (n,t) -> appendTAliasEAtLevel n t lvl (lvl+1) accTAE) tae taBindings
+
+popTAliasE :: TypeAliasEnv -> TypeAliasEnv
+popTAliasE (TypeAliasEnv lvl env) = TypeAliasEnv (lvl-1) rebuildEnv
+  where rebuildEnv = Map.foldlWithKey deleteLevel Map.empty env
+        deleteLevel nEnv n lvlEnv = let nlvlEnv = Map.delete lvl lvlEnv
+                                    in if Map.null nlvlEnv then nEnv else Map.insert n nlvlEnv nEnv
 
 {- Helpers -}
 set :: [String] -> HashSet String
