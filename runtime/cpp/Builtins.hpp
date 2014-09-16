@@ -91,6 +91,7 @@ namespace K3 {
     public:
     __string_context();
 
+    std::string concat(string s1, string s2);
     std::string itos(int i);
 
     std::string rtos(double d);

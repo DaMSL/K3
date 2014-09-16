@@ -33,6 +33,9 @@ declare substring : string -> int -> int -> string
 // 1. target string 2. split text
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
+@:Cargs 2
+declare concat : string -> string -> string
+
 declare range: int -> collection {elem: int} @ {Seq}
 
 // Vector Utilities

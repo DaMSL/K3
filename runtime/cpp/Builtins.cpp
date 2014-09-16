@@ -118,6 +118,10 @@ namespace K3 {
     return to_string(i);
   }
 
+  string __string_context::concat(string s1, string s2) {
+    return s1 + s2;
+  }
+
   string __string_context::rtos(double d) {
     return to_string(d);
   }
