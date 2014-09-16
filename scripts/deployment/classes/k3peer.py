@@ -8,7 +8,7 @@ class K3Peer:
     self.ip = config["ip"]
     self.port = config["k3_port"]
     self.remote_binary_path = "/tmp/"
-    self.binary_name = "k3_" + str(self.ip) + str(self.port)
+    self.binary_name = "k3binary_" + str(self.ip) + str(self.port)
     self.remote_log_dir  = "/tmp/log/" + self.binary_name + "/"
 
     self.remote_log_file = self.remote_log_dir + "stdouterr.log"
@@ -29,7 +29,7 @@ class K3Peer:
     local_kill_file = "kill_" + self.binary_name + ".txt"
     remote_kill_file = self.remote_binary_path + "kill_" + self.binary_name;
     script = ("""#!/bin/bash\n"""
-              """for j in `pgrep -f "/tmp/run.*"`;do kill -9 $j; done\n""")
+              """pkill -f k3binary\n""")
 
 
     # Dump to a local file
