@@ -4,7 +4,8 @@
 --   the InsertMembers analysis, so that collection annotation effects
 --   are present in the expression tree
 --
---  TODO: handle recursive scope properly
+--  TODO: handle cyclic scope properly
+--        cyclic scope can create loops
 
 module Language.K3.Effects.Insert where (
   runAnalysis
@@ -27,8 +28,8 @@ startEnv = Env {
 insertGlobal :: Identifier -> Effect -> Env -> Env
 insertGlobal id e env = env {globalEnv=Map.insert id e globalEnv env}
 
-getEffId :: Env -> (Int, Env)
-getEffId env = (count env, env {count = 1 + count env})
+getEffectId :: Env -> (Int, Env)
+getEffectId env = (count env, env {count = 1 + count env})
 
 insertBind :: Identifier -> K3 Symbol -> Env -> Env
 insertBind id s env =
@@ -62,17 +63,15 @@ lookupBindM id = do
   env <- get
   lookupBind id env
 
-getEffIdM :: MEnv Int
-getEffIdM = do
+getEffectIdM :: MEnv Int
+getEffectIdM = do
   e <- get
-  let (i, e') = getEffId e
+  let (i, e') = getEffectId e
   put e'
   return i
 
-effectM :: Effect -> MEnv (Effect)
-effectM eff = do
-  i <- getEffIdM
-  eff :@: FId i
+singleton :: a -> [a]
+singleton x = [x]
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
@@ -101,6 +100,10 @@ runAnalysis prog = flip evalState startEnv $
 
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
 
+    extractBindData BIndirection i = [(i, FIndirection)]
+    extractBindData BTuple ids     = zip ids [FTuple j | j <- [0..length ids - 1]]
+    extractBindData BRecord ijs    = map (\(i, i') -> (i', FRecord i)) ijs
+
     pre _ n@(tag -> ELambda i) =
       -- Add to the environment
       addEnvM i $ symbol i FLambdaVar
@@ -112,15 +115,12 @@ runAnalysis prog = flip evalState startEnv $
       -- Add to the environment
       addEnvM i $ symbol i $ Node (FLet :@: []) effs
 
-    sideways _ n@(tag -> EBindAs b) =
+    sideways _ n@(tag -> EBindAs b) = do
       -- Look for read effect symbols in ch1
-      let iProvs = case b of
-            BIndirection i -> [(i, FIndirection)]
-            BTuple ids     -> zip ids [FTuple j | j <- [0..length ids - 1]]
-            BRecord ijs    -> map (\(i, i') -> (i', FRecord i)) ijs
+      let iProvs = extractBindData b
           effs = maybe err extractReadSym $ ch1 @~ isEEffect
           err  = error "Missing effect in 1st child of BindAs"
-      mapM (\(i, prov) -> insertBindM i $ symbol i $ Node (prov :@: [])) effs
+      mapM_ (\(i, prov) -> insertBindM i $ symbol i $ Node (prov :@: [])) effs
 
     sidewyas ch1 n@(tag -> ECaseIn i) = do
       -- Look for read effect symbols in ch1
@@ -129,18 +129,74 @@ runAnalysis prog = flip evalState startEnv $
       [insertBindM i $ symbol i $ Node (FCase :@: []) syms,
        deleteBindM i]
 
-    handleExpr n@(tag &&& children -> (EIfThenElse, [p, t, e])) = do
-      -- Be pessimistic: include effects of both paths
+    -- A variable access generates a read
+    handleExpr n@(tag -> EVariable i) = do
+      sym <- lookupBindM i
+      num <- getEffectId
+      n @+ read num sym
+
+    -- An assinment generates a write
+    handleExpr [ch] n@(tag -> EAssign i) = do
+      sym <- lookupBindM i
+      num <- getEffectId
+      -- Check if we have existing child effects
+      case ch @~ isEEffect of
+        Nothing     -> replaceCh (n @+ write num sym) ch
+        Just chEff  -> do
+          num' <- getEffectId
+          replaceCh (n @+ seq num' chEff $ write num sym) ch
+
+    -- For ifThenElse be pessimistic: include effects of both paths
+    handleExpr [p,t,e] n@(tag -> EIfThenElse) = do
       let (pE, tE, eE) = (p @~ isEEffect, tE @~ isEEffect, eE @~ isEEffect)
           -- Get the childrens' effects
           chE = case (tE, eE) of
-                  Just tE', Just eE' -> effectM $ set [tE', eE']
+                  Just tE', Just eE' -> do
+                    i <- getEffectIdM
+                    set i [tE', eE']
                   Just tE', _        -> tE'
                   _       , Just eE' -> eE'
           -- If's effects come first
           case pE of
             Nothing -> return $ n @+ chE
-            Just e  -> return $ n @+ effectM $ seq e chE
+            Just e  -> getEffectIdM >>= \i -> return $ n @+ effectM $ seq i e chE
+
+    -- ELambda simply wraps up the child effect
+    handleExpr ch@[e] n@(tag -> ELambda i) = do
+      deleteBindM i
+      num <- getEffectIdM
+      let chEff = maybe [] (\eff -> [eff]) $ e @~ isEEffect
+      return $ replaceCh (n @+ lambda num i chEff) ch
+
+    -- Apply creates a scope and substitutes
+    -- TODO: evaluate the argument before the lambda
+    -- could encounter a read of just a lambda var, in which case we can't do anything
+    handleExpr [l,a] n@(tag -> EOperate(OApp)) = do
+
+    -- Bind
+    handleExpr ch@[b,e] n@(tag -> EBindAs b) = do
+      let bindData = extractBindData b
+      -- get the symbols for the bind env
+      bindSyms <- mapM (lookupBindM . fst) bindData
+      -- Remove binds from env
+      mapM_ deleteBindM $ map fst $ bindData
+      -- Generate the new effects
+      let eEff = maybe [] singleton $ e @~ isEEffect
+      i <- getEffectIdM
+      let bScope = scope i bindSyms eEff
+          nEff = case b @~ isEEffect of
+                   Nothing   -> bScope
+                   Just bEff -> getEffectIdM >>= \j -> seq j bEff bScope
+      return $ replaceCh (n @+ nEff) ch
+
+    -- CaseOf
+    handleExpr ch@[e,s,none] n@(tag -> ECaseOf i) = do
+      -- We already removed from env
+
+          sEff = maybe [] singleton $ s @~ isEEffect
+          eEff = maybe [] singleton $ e @~ isEEffect
+          nEff = maybe [] singleton $ none @~ isEEffect
+      i <- getEffectIdM
 
     -- Extract the symbols of a read effect
     extractReadSym :: Effect -> [K3 Symbol]
@@ -151,23 +207,4 @@ runAnalysis prog = flip evalState startEnv $
         (FSet, ch)     -> concatMap extractRead ch
         _              -> [FTemporary]
         -- TODO: do we need any other cases?
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

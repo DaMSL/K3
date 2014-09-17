@@ -21,7 +21,7 @@ data Provenance
     | FLet
     | FCase
     -- The following can be roots
-    | FLambdaVar        
+    | FLambdaVar
     | FTemporary
     | FGlobal
   deriving (Eq, Read, Show)
@@ -35,14 +35,14 @@ data Effect
     | FWrite (K3 Symbol)
     | FScope [K3 Symbol]
     | FVariable Identifier
-    | FApply
+    | FSubst
     | FLambda Identifier
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop                   -- a flattened loop
   deriving (Eq, Read, Show)
 
-data instance Annotation Effect = FAnnotation 
+data instance Annotation Effect = FAnnotation
                                 | FId Int
                                 deriving (Eq, Read, Show)
 
