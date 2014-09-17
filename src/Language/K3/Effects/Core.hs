@@ -20,7 +20,7 @@ data Provenance
     | FIndirection
     | FLet
     -- The following can be roots
-    | FLambdaVar
+    | FVar
     | FTemporary
     | FGlobal
   deriving (Eq, Read, Show)
@@ -34,7 +34,7 @@ data Effect
     | FWrite (K3 Symbol)
     | FScope [K3 Symbol]
     | FVariable Identifier
-    | FSubst
+    | FApply
     | FLambda Identifier
     | FSeq
     | FSet   -- Set of effects, all of which are possible

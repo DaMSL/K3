@@ -98,7 +98,7 @@ data instance Annotation Expression
     | EProperty   Identifier (Maybe (K3 Literal))
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
-    | EEffect     Effect
+    | EEffect     (K3 Effect)
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
