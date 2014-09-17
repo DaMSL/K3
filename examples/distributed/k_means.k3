@@ -4,50 +4,50 @@ include "Annotation/Seq.k3"
 include "Core/CppBuiltins.k3"
 
 // Constants
-declare k : int = 3
-declare dimensionality : int = 3
-declare master : address
+declare k: int
+declare dimensionality: int = 3
+declare master: address
 declare data_file: string
 
 // Global vars
-declare iterations_remaining : mut int = 5
-declare peers_ready : mut int = 0
-declare requests : mut int = 0
+declare iterations_remaining: mut int = 5
+declare peers_ready: mut int = 0
+declare requests: mut int = 0
 
 // Sequence of data points. Each point represented as a vector
-declare data :collection {
+declare data: collection {
   elem: collection {elem: real} @ {Vector}
 } @ {Seq}
 
 // Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
-declare means : mut collection {
+declare means: mut collection {
   key: int,
   value: collection {elem: real} @ {Vector}
 } @ {Collection}
 
 
 // Collection of partial aggregates for each mean.
-declare aggregates : mut collection {
+declare aggregates: mut collection {
   key: int,
   value: {
     count: int,
-    sum : collection {elem: real} @ {Vector}
+    sum: collection {elem: real} @ {Vector}
   }
 } @ {Map}
 
 
 // Timing
-declare times : collection {ms: int} @ {Seq}
-declare start_ms : mut int = 0
-declare end_ms : mut int = 0
+declare times: collection {ms: int} @ {Seq}
+declare start_ms: mut int = 0
+declare end_ms: mut int = 0
 
-declare start_timer : () -> () = \_ -> (
+declare start_timer: () -> () = \_ -> (
   start_ms = 0;
   end_ms = 0;
   start_ms = now()
 )
 
-declare printStats : () -> () = \_ -> (
+declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
   printLine (concat "Avg time per iteration:" (rtos avg))
@@ -56,7 +56,7 @@ declare printStats : () -> () = \_ -> (
 
 // Utility functions
 // Send the current means to each peer for the assignment (E) step
-declare broadcastMeans : () -> () = \_ -> (
+declare broadcastMeans: () -> () = \_ -> (
   printLine "Broadcasting current means to each peer";
   start_timer ();
   peers.iterate \p -> (
@@ -65,7 +65,7 @@ declare broadcastMeans : () -> () = \_ -> (
   )
 )
 
-declare printMeans : () -> () = \_ -> (
+declare printMeans: () -> () = \_ -> (
   means.iterate (\kv ->
     printLine (kv.value.toString ())
   )
@@ -73,7 +73,7 @@ declare printMeans : () -> () = \_ -> (
 
 // Initialize the means and send out the initial broadcast
 // For now, we use the first k data points.
-declare start : () -> () = \_ -> (
+declare start: () -> () = \_ -> (
   (range k).iterate (\i ->
     means.insert {key: i.elem +1, value: (data.at i.elem).elem}
   );
@@ -88,7 +88,7 @@ declare start : () -> () = \_ -> (
 )
 
 // Returns the key of the nearest current mean for the provided point
-declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
+declare nearest_mean: collection {elem: real} @ {Vector} -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
         let nearest = means.fold (\acc -> \curr_mean ->
@@ -105,7 +105,7 @@ declare nearest_mean : collection {elem: real} @ {Vector} -> int = (\p ->
 )
 
 // Merge a collection of partial aggregates into the global state
-declare merge_results : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} -> () = \peer_aggs -> (
+declare merge_results: collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} -> () = \peer_aggs -> (
   requests = requests -1;
   peer_aggs.iterate (\v ->
     case aggregates.lookup v of
@@ -123,19 +123,19 @@ declare merge_results : collection {key: int, value: {count: int, sum: collectio
 
 // Triggers
 // Load data into global variable, then notify master.
-trigger load : () = \_ -> (
+trigger load: () = \_ -> (
   printLine ("Loading data from disk");
   loadVector data_file data;
   (ready, master) <- ()
 )
 
 // Increment the count of peers who are ready to start
-trigger ready : () = \_ -> (
+trigger ready: () = \_ -> (
   let n = peers.size () in
   peers_ready = peers_ready + 1;
   let s = concat (itos peers_ready) (concat "/" (itos n)) in
   printLine (concat "Received a ready signal from a peer:" s);
-  
+
   if (peers_ready == n)
     then start ()
     else ()
@@ -143,10 +143,10 @@ trigger ready : () = \_ -> (
 
 // Given the new means, assign each data point to the nearest.
 // Keeping a running aggregate of the sum and count for each mean.
-trigger assign : collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
+trigger assign: collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
   // update state
   means = new_means;
- 
+
   // compute aggregate statistics:
   let aggs = data.groupBy
     (\p -> nearest_mean p.elem)
@@ -154,21 +154,21 @@ trigger assign : collection { key: int, value: collection {elem: real} @ {Vector
       {count: sc.count + 1, sum: sc.sum.add p.elem}
     )
     {count: 0, sum: zeroVector dimensionality}
-  
+
   // return results to master
   in (aggregate, master) <- aggs
 )
 
-trigger aggregate : collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} = \peer_aggs -> (
+trigger aggregate: collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} = \peer_aggs -> (
   merge_results peer_aggs;
   if requests == 0
     then (maximize, master) <- ()
     else ()
 )
 
-trigger maximize : () = \_ -> (
+trigger maximize: () = \_ -> (
   printLine "Received all partial aggregates from peers, computing new means";
-  
+
   // Compute new means
   means = empty {key: int, value: collection {elem: real} @ {Vector}} @ {Collection};
   aggregates.iterate (\x ->
@@ -182,10 +182,10 @@ trigger maximize : () = \_ -> (
   end_ms = now ();
   iterations_remaining = iterations_remaining - 1;
   let elapsed = end_ms - start_ms in
-  times.insert {ms: elapsed}; 
+  times.insert {ms: elapsed};
   printLine (concat "Iteration complete, Elapsed time (ms): " (itos elapsed));
   printLine (concat "Iterations remaining:" (itos iterations_remaining));
-  
+
   // Decide to iterate, or terminate
   if iterations_remaining == 0
     then (
@@ -203,8 +203,8 @@ trigger maximize : () = \_ -> (
   printLine "---------------"
 )
 
-trigger shutdown : () = \_ -> haltEngine ()
+trigger shutdown: () = \_ -> haltEngine ()
 
 
-source s1 : () = value ()
+source s1: () = value ()
 feed s1 |> load
