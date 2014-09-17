@@ -26,7 +26,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
-import Language.K3.Core.Effects.Core
+import Language.K3.Effects.Core
 
 import Language.K3.Utils.Pretty
 

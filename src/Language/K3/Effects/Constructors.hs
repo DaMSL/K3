@@ -2,22 +2,32 @@ module Language.K3.Effects.Constructors where
 
 import Language.K3.Effects.Core
 
+symbol :: Identifier -> Provenance -> K3 Symbol
 symbol id prov = Node (Symbol id prov :@: []) []
 
-read i sym = Node (FRead sym :@: [FId i]) []
+read :: K3 Symbol -> K3 Effect
+read sym = Node (FRead sym) []
 
-write i sym = Node (FWrite sym :@: [FId i]) []
+write :: K3 Symbol -> K3 Effect
+write sym = Node (FWrite sym :@: []) []
 
-scope i sym x = Node (FScope sym :@: [FId i]) [x]
+scope :: K3 Symbol -> K3 Effect -> K3 Effect
+scope sym x = Node (FScope sym :@: []) [x]
 
-var i id = Node (FVariable id :@: [FId i]) []
+var :: Identifier -> K3 Effect
+var id = Node (FVariable id :@: []) []
 
-apply i x y = Node (FApply :@: [FId i]) [x, y]
+subst :: K3 Effect -> K3 Effect -> K3 Effect
+subst x y = Node (FSubst :@: []) [x, y]
 
-lambda i id x = Node (FLambda is :@: [FId i]) [x]
+lambda :: Identifier -> K3 Effect
+lambda id x = Node (FLambda is :@: []) [x]
 
-seq i x y = Node (FSeq :@: [FId i]) [x,y]
+seq :: K3 Effect -> K3 Effect -> K3 Effect
+seq x y = Node (FSeq :@: []) [x,y]
 
-set i xs = Node (FSeq :@: [FId i]) xs
+set :: [K3 Effect] -> K3 Effect
+set xs = Node (FSeq :@: []) xs
 
-loop x = Node (FSeq :@: [FId i]) [x]
+loop :: K3 Effect -> K3 Effect
+loop x = Node (FSeq :@: []) [x]
