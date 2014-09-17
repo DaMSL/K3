@@ -3,7 +3,7 @@
 // ii.  types,  syntax: '::[param]'
 // iii. expressions, syntax: '$[param]'
 // The example below shows that label splices are automatically concatenated
-// if multiple splices are provided. 
+// if multiple splices are provided.
 // Type and expression splices cannot be composed.
 //
 //
@@ -13,7 +13,7 @@ annotation Index[key,value,customLabel] {
 
 // Splice parameters are specified as keyword arguments.
 // By default, parameters are assumed to be record fields,
-// and enable label and type splicing in an annotation. 
+// and enable label and type splicing in an annotation.
 //
 //
 declare employees : collection {id: int, name: string}
