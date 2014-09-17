@@ -7,15 +7,17 @@
 --  TODO: handle cyclic scope properly
 --        cyclic scope can create loops
 
-module Language.K3.Effects.Insert where (
+module Language.K3.Effects.Insert (
   runAnalysis
 )
+where
 
 import Control.Arrow ( (&&&) )
 
 data Env = Env {
-                globalEnv :: Map Identfier Effect,
-                count :: Int
+                globalEnv :: Map Identfier (K3 Effect),
+                count :: Int,
+                bindEnv :: Map Identifier [(K3 Effect, K3 Symbol)]
                }
 
 startEnv :: Env
@@ -31,9 +33,9 @@ insertGlobal id e env = env {globalEnv=Map.insert id e globalEnv env}
 getEffectId :: Env -> (Int, Env)
 getEffectId env = (count env, env {count = 1 + count env})
 
-insertBind :: Identifier -> K3 Symbol -> Env -> Env
-insertBind id s env =
-  env {bindEnv=Map.insertWith (++) id [s] $ bindEnv env}
+insertBind :: Identifier -> Maybe (K3 Effect) -> K3 Symbol -> Env -> Env
+insertBind id e s env =
+  env {bindEnv=Map.insertWith (++) id [(e, s)] $ bindEnv env}
 
 deleteBind :: Identifier -> Env -> Env
 deleteBind id env =
@@ -44,21 +46,28 @@ deleteBind id env =
   in
   env {bindEnv=m'}
 
-lookupBind :: Identifier -> Env -> Env
-lookupBind id env = head $ Map.lookup id $ bindEnv env
+globalSym :: Identifier -> K3 Symbol
+globalSym id = symbol id FGlobal
+
+-- Lookup either in the bind environment or the global environment
+lookupBind :: Identifier -> Env -> Maybe (Maybe (K3 Effect), K3 Symbol)
+lookupBind id env =
+  case Map.lookup id $ bindEnv env of
+    Nothing -> maybe Nothing (\e -> (Just e, globalSym i)) $ Map.lookup id $ globalEnv env
+    e       -> e
 
 type MEnv = State Env
 
 insertGlobalM :: Identifier -> Effect -> MEnv ()
 insertGlobalM id eff = modify $ insertGlobal id eff
 
-insertBindM :: Identifier -> K3 Symbol -> MEnv ()
-insertBindM id s = modify $ insertBind id s
+insertBindM :: Identifier -> Maybe (K3 Effect) -> K3 Symbol -> MEnv ()
+insertBindM id e s = modify $ insertBind id e s
 
 deleteBindM :: Identifier -> MEnv ()
 deleteBindM id = modify $ deleteBind id
 
-lookupBindM :: Identifier -> MEnv (K3 Symbol)
+lookupBindM :: Identifier -> MEnv (Maybe (Maybe(K3 Effect), K3 Symbol))
 lookupBindM id = do
   env <- get
   lookupBind id env
@@ -72,6 +81,12 @@ getEffectIdM = do
 
 singleton :: a -> [a]
 singleton x = [x]
+
+-- Add an id to an effect
+addId :: K3 Effect -> K3 Effect
+addId eff = do
+  i <- getEffectIdM
+  eff @+ FId i
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
@@ -106,7 +121,7 @@ runAnalysis prog = flip evalState startEnv $
 
     pre _ n@(tag -> ELambda i) =
       -- Add to the environment
-      addEnvM i $ symbol i FLambdaVar
+      addEnvM i $ symbol i FVar
 
     sideways ch1 n@(tag -> ELetIn i) = do
       -- Look for read effect symbols in ch1
@@ -123,20 +138,28 @@ runAnalysis prog = flip evalState startEnv $
       mapM_ (\(i, prov) -> insertBindM i $ symbol i $ Node (prov :@: [])) effs
 
     sidewyas ch1 n@(tag -> ECaseIn i) = do
-      -- Look for read effect symbols in ch1
+      -- Case always binds to a temporary
       let syms = maybe err extractReadSym $ ch1 @~ isEEffect
           err = error "Missing effect in 1st child of CaseOf"
-      [insertBindM i $ symbol i $ Node (FCase :@: []) syms,
+      [insertBindM i $ symbol i $ Node (FTemporary :@: []) [],
        deleteBindM i]
 
-    -- A variable access generates a read
-    handleExpr n@(tag -> EVariable i) = do
-      sym <- lookupBindM i
-      num <- getEffectId
-      n @+ read num sym
+    -- A variable access looks up in the environemnt and generates a read
+    handleExpr _ n@(tag -> EVariable i) = do
+      mEffSym <- lookupBindM i
+      let n' = case mEffSym of
+        Just (Just e, sym)  -> do
+          r  <- addId $ read sym
+          e' <- createSeq e r
+          n @+ e'
+        Just (Nothing, sym) -> do
+          r <- addId $ read sym
+          n @+ r
+        Nothing -> error "variable "++show i++" not found in environment"
+      return n'
 
     -- An assinment generates a write
-    handleExpr [ch] n@(tag -> EAssign i) = do
+    handleExpr ch@[e] n@(tag -> EAssign i) = do
       sym <- lookupBindM i
       num <- getEffectId
       -- Check if we have existing child effects
@@ -169,9 +192,13 @@ runAnalysis prog = flip evalState startEnv $
       return $ replaceCh (n @+ lambda num i chEff) ch
 
     -- Apply creates a scope and substitutes
-    -- TODO: evaluate the argument before the lambda
-    -- could encounter a read of just a lambda var, in which case we can't do anything
+    -- We only directly apply any lambda that is unnamed
+    -- Any other lambda is left for the optimizer to apply
     handleExpr [l,a] n@(tag -> EOperate(OApp)) = do
+      case a @~ isEEffect of
+        Nothing -> substitute Nothing l
+        Just e  -> 
+      
 
     -- Bind
     handleExpr ch@[b,e] n@(tag -> EBindAs b) = do
@@ -191,12 +218,21 @@ runAnalysis prog = flip evalState startEnv $
 
     -- CaseOf
     handleExpr ch@[e,s,none] n@(tag -> ECaseOf i) = do
-      -- We already removed from env
+      eff  <- createSet (e @~ isEEffect) (s @~ isEEffect)
+      eff' <- createSeq e eff
+      let n' = maybe n (n @+) eff'
+      return $ replaceCh n' ch
 
-          sEff = maybe [] singleton $ s @~ isEEffect
-          eEff = maybe [] singleton $ e @~ isEEffect
-          nEff = maybe [] singleton $ none @~ isEEffect
+    -- Combine 2 effects if they're present. Otherwise keep whatever we have
+    combine constF (Just e1) (Just e2) = do
       i <- getEffectIdM
+      return $ Just $ (constF [e1, e2]) :@: FId i
+    combine (Just e1) _ = return $ Just e1
+    combine _ (Just e2) = return $ Just e2
+    combine _ _         = return Nothing
+
+    createSet = combine set
+    createSeq = combine seq
 
     -- Extract the symbols of a read effect
     extractReadSym :: Effect -> [K3 Symbol]
