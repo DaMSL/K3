@@ -20,8 +20,8 @@ var id = Node (FVariable id :@: []) []
 subst :: K3 Effect -> K3 Effect -> K3 Effect
 subst x y = Node (FSubst :@: []) [x, y]
 
-lambda :: Identifier -> K3 Effect
-lambda id x = Node (FLambda is :@: []) [x]
+lambda :: Identifier -> [K3 Effect] -> K3 Effect
+lambda id x = Node (FLambda is :@: []) x
 
 seq :: K3 Effect -> K3 Effect -> K3 Effect
 seq x y = Node (FSeq :@: []) [x,y]

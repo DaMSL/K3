@@ -99,6 +99,7 @@ data instance Annotation Expression
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
     | EEffect     (K3 Effect)
+    | ESymbol     (K3 Symbol)
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
@@ -201,6 +202,10 @@ isEQType _          = False
 isEEffect :: Annotation Expression -> Bool
 isEEffect (EEffect _) = True
 isEEffect _           = False
+
+isESymbol :: Annotation Expression -> Bool
+isESymbol (ESymbol _) = True
+isESymbol _           = False
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns

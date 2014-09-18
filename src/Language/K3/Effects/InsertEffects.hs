@@ -50,11 +50,12 @@ globalSym :: Identifier -> K3 Symbol
 globalSym id = symbol id FGlobal
 
 -- Lookup either in the bind environment or the global environment
-lookupBind :: Identifier -> Env -> Maybe (Maybe (K3 Effect), K3 Symbol)
-lookupBind id env =
-  case Map.lookup id $ bindEnv env of
-    Nothing -> maybe Nothing (\e -> (Just e, globalSym i)) $ Map.lookup id $ globalEnv env
-    e       -> e
+lookupBind :: Identifier -> Env -> (Maybe (K3 Effect), K3 Symbol)
+lookupBind i env =
+  case Map.lookup i $ bindEnv env of
+    Nothing -> maybe (err i) (Just e, globalSym i) $ Map.lookup id $ globalEnv env
+    Just e  -> e
+  where err i = error "failed to find " ++ id ++ " in environment"
 
 type MEnv = State Env
 
@@ -83,10 +84,28 @@ singleton :: a -> [a]
 singleton x = [x]
 
 -- Add an id to an effect
-addId :: K3 Effect -> K3 Effect
+addId :: K3 Effect -> MEnv (K3 Effect)
 addId eff = do
   i <- getEffectIdM
   eff @+ FId i
+
+getUID :: K3 Expression -> UID
+getUID n = maybe (error "No UID found") extract $ n @~ isEUID
+  where extract (EUID uid) = uid
+        extract _          = error "unexpected"
+
+-- Generate a symbol
+genSym :: K3 Expression -> [K3 Symbol] -> K3 Symbol
+genSym n ch = replaceCh (symbol ("_"++show uid) FTemporary) ch
+
+genTempSym :: K3 Expression -> K3 Symbol
+genTempSym = genSym FTemporary
+
+getEEffect :: K3 Expression -> K3 Effect
+getEEffect n = case n @~ isEEffect of
+                 Just (EEffect e) -> Just e
+                 Nothing          -> Nothing
+                 _                -> error "unexpected"
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
@@ -115,9 +134,9 @@ runAnalysis prog = flip evalState startEnv $
 
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
 
-    extractBindData BIndirection i = [(i, FIndirection)]
-    extractBindData BTuple ids     = zip ids [FTuple j | j <- [0..length ids - 1]]
-    extractBindData BRecord ijs    = map (\(i, i') -> (i', FRecord i)) ijs
+    extractBindData (BIndirection i) = [(i, FIndirection)]
+    extractBindData (BTuple ids)     = zip ids [FTuple j | j <- [0..length ids - 1]]
+    extractBindData (BRecord ijs)    = map (\(i, i') -> (i', FRecord i)) ijs
 
     pre _ n@(tag -> ELambda i) =
       -- Add to the environment
@@ -145,60 +164,54 @@ runAnalysis prog = flip evalState startEnv $
        deleteBindM i]
 
     -- A variable access looks up in the environemnt and generates a read
+    -- It also creates a symbol
     handleExpr _ n@(tag -> EVariable i) = do
-      mEffSym <- lookupBindM i
-      let n' = case mEffSym of
-        Just (Just e, sym)  -> do
-          r  <- addId $ read sym
+      (mEff, sym) <- lookupBindM i
+      r  <- addId $ read sym
+      let eff = case mEff of
+        Just e  -> do
           e' <- createSeq e r
-          n @+ e'
-        Just (Nothing, sym) -> do
-          r <- addId $ read sym
-          n @+ r
-        Nothing -> error "variable "++show i++" not found in environment"
-      return n'
+          return $ EEffect e'
+        Nothing -> EEffect r
+      return $ n @+ eff @+ sym
 
-    -- An assinment generates a write
+    noEffectErr = error "Expected an effect but got none"
+
+    -- An assignment generates a write, and no symbol
     handleExpr ch@[e] n@(tag -> EAssign i) = do
-      sym <- lookupBindM i
-      num <- getEffectId
-      -- Check if we have existing child effects
-      case ch @~ isEEffect of
-        Nothing     -> replaceCh (n @+ write num sym) ch
-        Just chEff  -> do
-          num' <- getEffectId
-          replaceCh (n @+ seq num' chEff $ write num sym) ch
+      (_, sym) <- lookupBindM i
+      w        <- addId $ write sym
+      -- Add the write to any existing child effects
+      nEff     <- createSeq (getEEffect e) $ Just w
+      let n' = maybe noEffectErr (n @+ EEffect) nEff
+      return $ replaceCh n' ch
 
-    -- For ifThenElse be pessimistic: include effects of both paths
-    handleExpr [p,t,e] n@(tag -> EIfThenElse) = do
-      let (pE, tE, eE) = (p @~ isEEffect, tE @~ isEEffect, eE @~ isEEffect)
-          -- Get the childrens' effects
-          chE = case (tE, eE) of
-                  Just tE', Just eE' -> do
-                    i <- getEffectIdM
-                    set i [tE', eE']
-                  Just tE', _        -> tE'
-                  _       , Just eE' -> eE'
-          -- If's effects come first
-          case pE of
-            Nothing -> return $ n @+ chE
-            Just e  -> getEffectIdM >>= \i -> return $ n @+ effectM $ seq i e chE
+    -- For ifThenElse be pessimistic: include effects and symbols of both paths
+    handleExpr ch@[p,t,f] n@(tag -> EIfThenElse) = do
+      tfEff <- createSet (t @~ isEEffect) (f @~ isEEffect)
+      -- Combine with predicate effects
+      nEff  <- createSeq (p @~ isEEffect) chE
+      -- Combine path symbols into a new symbol
+      nSym  <- combineSym (t @~ isESymbol) (f @~ isESymbol)
+      let n'  = maybe n  (n  @+ EEffect) nEff
+          n'' = maybe n' (n' @+ ESymbol) nSym
+      return $ replaceCh n'' ch
 
-    -- ELambda simply wraps up the child effect
+    -- ELambda wraps up the child effect. A new scope will be created at application
     handleExpr ch@[e] n@(tag -> ELambda i) = do
       deleteBindM i
-      num <- getEffectIdM
-      let chEff = maybe [] (\eff -> [eff]) $ e @~ isEEffect
-      return $ replaceCh (n @+ lambda num i chEff) ch
+      let eEff = maybe [] singleton $ getEEffect e
+      lE <- addId $ lambda i eEff 
+      return $ replaceCh (n @+ EEffect lE) ch
 
-    -- Apply creates a scope and substitutes
-    -- We only directly apply any lambda that is unnamed
+    -- On application, Apply creates a scope and substitutes into it
+    -- We only create the effect of apply
     -- Any other lambda is left for the optimizer to apply
     handleExpr [l,a] n@(tag -> EOperate(OApp)) = do
       case a @~ isEEffect of
         Nothing -> substitute Nothing l
-        Just e  -> 
-      
+        Just e  ->
+
 
     -- Bind
     handleExpr ch@[b,e] n@(tag -> EBindAs b) = do
@@ -218,7 +231,7 @@ runAnalysis prog = flip evalState startEnv $
 
     -- CaseOf
     handleExpr ch@[e,s,none] n@(tag -> ECaseOf i) = do
-      eff  <- createSet (e @~ isEEffect) (s @~ isEEffect)
+      eff  <- createSet (getEEffect e) (s @~ isEEffect)
       eff' <- createSeq e eff
       let n' = maybe n (n @+) eff'
       return $ replaceCh n' ch
@@ -232,7 +245,18 @@ runAnalysis prog = flip evalState startEnv $
     combine _ _         = return Nothing
 
     createSet = combine set
-    createSeq = combine seq
+
+    createSeq :: Maybe (K3 Effect) -> Maybe (K3 Effect) -> Maybe (K3 Effect)
+    createSeq = combine seqF
+      where seqF [x,y] = seq x y
+            seqF _     = error "Bad input to seqF"
+
+    -- Combine 2 symbols into 1 temporary symbol (if needed)
+    -- otherwise just use one of the symbols/don't generate anything
+    combineSym n (Just e) (Just e') = Just $ genSym n [e, e']
+    combineSym _ (Just e) _         = Just e
+    combineSym _ _ (Just e)         = Just e
+    combineSym _ _ _                = Nothing
 
     -- Extract the symbols of a read effect
     extractReadSym :: Effect -> [K3 Symbol]

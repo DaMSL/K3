@@ -19,6 +19,7 @@ data Provenance
     | FTuple Integer
     | FIndirection
     | FLet
+    | FCase
     -- The following can be roots
     | FVar
     | FTemporary

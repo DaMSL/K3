@@ -66,7 +66,7 @@ data instance Annotation Declaration
     | DProperty Identifier (Maybe (K3 Literal))
     | DSyntax   SyntaxAnnotation
     | DConflict UnorderedConflict  -- TODO: organize into categories.
-    | DEffect   (K3 Effect)
+    | DEffect   (K3 Effect, Maybe (K3 Symbol))
   deriving (Eq, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
