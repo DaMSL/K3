@@ -67,6 +67,7 @@ library
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Literal,
         Language.K3.Core.Constructor.Type,
+        Language.K3.Effects.Core
         Language.K3.Utils.Conditional,
         Language.K3.Utils.Either,
         Language.K3.Utils.Logger,
