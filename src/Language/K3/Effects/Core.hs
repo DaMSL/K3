@@ -15,28 +15,34 @@ data EffectKind
 data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
 
 data Provenance
-    = FRecord Identifier
-    | FTuple Integer
-    | FIndirection
-    | FLet
-    | FCase
+    = PRecord Identifier
+    | PTuple Integer
+    | PIndirection
+    | PLet
+    | PCase  -- not a reliable alias. Doesn't fully allow pulling out of effects
+    -- A symbol can be 'applied' to produce effects and a new symbol
+    | PLambda Identifier (Maybe (K3 Effect))
+    | PApply
+    -- Any of the children of PSet can occur
+    | PSet
     -- The following can be roots
-    | FVar
-    | FTemporary
-    | FGlobal
+    | PVar
+    | PTemporary
+    | PGlobal
   deriving (Eq, Read, Show)
 
 data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
 
-data instance Annotation Symbol = SAnnotation deriving (Eq, Read, Show)
+data instance Annotation Symbol = SAnnotation 
+                                | SId Int 
+                                deriving (Eq, Read, Show)
 
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
     | FScope [K3 Symbol]
     | FVariable Identifier
-    | FApply
-    | FLambda Identifier
+    | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop                   -- a flattened loop

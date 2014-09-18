@@ -17,11 +17,8 @@ scope sym x = Node (FScope sym :@: []) [x]
 var :: Identifier -> K3 Effect
 var id = Node (FVariable id :@: []) []
 
-subst :: K3 Effect -> K3 Effect -> K3 Effect
-subst x y = Node (FSubst :@: []) [x, y]
-
-lambda :: Identifier -> [K3 Effect] -> K3 Effect
-lambda id x = Node (FLambda is :@: []) x
+apply :: K3 Symbol -> K3 Symbol -> K3 Effect
+apply x y = Node (FApply :@: []) [x, y]
 
 seq :: K3 Effect -> K3 Effect -> K3 Effect
 seq x y = Node (FSeq :@: []) [x,y]
