@@ -49,14 +49,17 @@ deleteBind id env =
   env {bindEnv=m'}
 
 globalSym :: Identifier -> K3 Symbol
-globalSym id = symbol id FGlobal
+globalSym id = symbol id PGlobal
 
 -- Lookup either in the bind environment or the global environment
-lookupBind :: Identifier -> Env -> Maybe (K3 Symbol)
-lookupBind i env =
+lookupBindInner :: Identifier -> Env -> Maybe (K3 Symbol)
+lookupBindInner i env =
   case Map.lookup i $ bindEnv env of
-    Nothing -> maybe (err i) (Just e, globalSym i) $ Map.lookup id $ globalEnv env
-    Just e  -> e
+    Nothing -> Map.lookup i $ globalEnv env
+    s       -> s
+
+lookupBind :: Identifier -> Env -> K3 Symbol
+lookupBind i env = fromMaybe err $ lookupBindInner i env
   where err i = error "failed to find " ++ id ++ " in environment"
 
 type MEnv = State Env
@@ -86,13 +89,13 @@ singleton :: a -> [a]
 singleton x = [x]
 
 -- Add an id to an effect
-addIdE :: K3 Effect -> MEnv (K3 Effect)
-addIdE eff = do
+addFId :: K3 Effect -> MEnv (K3 Effect)
+addFId eff = do
   i <- getIdM
   eff @+ FId i
 
-addIdS :: K3 Symbol -> MEnv (K3 Symbol)
-addIdS eff = do
+addSId :: K3 Symbol -> MEnv (K3 Symbol)
+addSId eff = do
   i <- getIdM
   eff @+ SId i
 
@@ -100,6 +103,16 @@ getUID :: K3 Expression -> UID
 getUID n = maybe (error "No UID found") extract $ n @~ isEUID
   where extract (EUID uid) = uid
         extract _          = error "unexpected"
+
+getSId :: K3 Symbol -> Int
+getSId sym = maybe err extract $ sym @~ isSID
+  where extract (SID i) = i
+        extract _       = error "symbol id not found!"
+
+getFId :: K3 Symbol -> Int
+getFId sym = maybe err extract $ sym @~ isFID
+  where extract (FID i) = i
+        extract _       = error "effect id not found!"
 
 -- Generate a symbol
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
@@ -114,7 +127,7 @@ genSym p ch = do
    let s = symbol ("sym_"++show i) p @+ SId i
    return $ replaceCh s ch
 
-genSymTemp :: K3 Expression -> [K3 Symbol] -> MEnv (K3 Symbol)
+genSymTemp :: [K3 Symbol] -> MEnv (K3 Symbol)
 genSymTemp n ch = genSym FTemporary
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
@@ -253,8 +266,8 @@ runAnalysis prog = flip evalState startEnv $
       bindSyms <- mapM lookupBindM ids
       -- Remove binds from env
       mapM_ deleteBindM ids
-      -- TODO: peel off until you get to local bind
-      let fullSym = getESymbol e
+      -- peel off until we get to a scope we know
+      let fullSym = peelSymbol [] getESymbol e
           eEff = maybe [] singleton $ getEEffect e
       bScope  <- addId $ scope bindSyms eEff
       fullEff <- createSeq (getEEffects bind) $ Just bScope
@@ -269,8 +282,10 @@ runAnalysis prog = flip evalState startEnv $
       scopeEff <- addId $ scope [bindSym] someEff
       -- Conservative approximation
       setEff   <- createSet (getEEffect none) (Just scopeEff)
-      -- TODO: peel off until you get to local binds
-      fullSym  <- combineSym (getESymbol some) (getESymbol none)
+      -- peel off symbols until we get ones in our outer scope
+      -- for case, we need to special-case, making sure that the particular symbol
+      -- is always gensymed away
+      fullSym  <- peelSymbol [bindSym] $ combineSym (getESymbol some) (getESymbol none)
       fullEff  <- createSeq (getEEffect e) setEff
       return $ addEffSymCh fullEff fullSym ch
 
@@ -281,8 +296,14 @@ runAnalysis prog = flip evalState startEnv $
       eEff = listOfMaybe $ getEEffect e
       scopeEff <- addId $ scope [bindSym] eEff
       fullEff  <- createSeq (getEEffect l) (Just scopeEff)
-      let fullSym = bindSym -- TODO: peel off top layer
+      -- peel off symbols until we get to ones in our outer scope
+      fullSym  <- peelSymbol [] $ getSymbol e
       return $ addEffSymCh fullEff fullSym ch
+
+    -- Generic case: combine effects, ignore symbols
+    handleExpr ch n = do
+      eff <- foldrM createSeq Nothing $ map getEEffect ch
+      return $ replaceCh (n @+ EEffect eff) ch
 
     ------ Utilities ------
     -- Combine 2 effects if they're present. Otherwise keep whatever we have
@@ -324,3 +345,40 @@ runAnalysis prog = flip evalState startEnv $
       let n'  = maybe n  (n  @+ EEffect) eff
           n'' = maybe n' (n' @+ ESymbol) sym
       in replaceCh n'' ch
+
+    -- If necessary, remove layers of symbols to get to those just above the bind symbols
+    -- This function assumes that the direct bindsymbols have only one child each
+    -- @exclude: always delete this particular symbol (for CaseOf)
+    peelSymbol :: [K3 Symbol] -> K3 Symbol -> Menv (K3 Symbol)
+    peelSymbol excludes sym = symOfSymList True $ loop sym
+      where
+        -- Apply's demand that we check their children and include the apply instead
+        loop n@(tag &&& children -> (Symbol i Apply, [lam, arg])) =
+          case loop lam, loop arg of
+            -- If both arguments are local, elide the Apply
+            [], [] -> return []
+            -- Otherwise, keep the apply and it's possible tree
+            xs, ys -> do
+              s  <- symOfSymList False xs
+              s' <- symOfSymList False ys
+              return $ [replaceCh n [s, s']
+
+        loop n@(tag &&& children -> (Symbol i prov, ch)) =
+          -- Check for exclusion
+          if any (n `symEqual`) excludes then return []
+          else
+            case lookupBindInner i env of
+              Nothing -> return $ concatMap loop ch
+              -- If we find a match, report back
+              -- Just make sure it's really equivalent
+              Just s  -> if symEqual s n return [n] else
+                         return $ concatMap loop ch
+
+    -- Convert a list of symbols to a symbol (if possible)
+    symOfSymList :: Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
+    symOfSymList _ []    = genSymTemp []
+    symOfSymList alwaysGen [sym] =
+      if alwaysGen then genSymTemp [sym] else return sym
+    symOfSymList syms  = genSym PSet syms
+
+    symEqual s s' = getSID s = getSID s'
