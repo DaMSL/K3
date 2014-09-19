@@ -1,6 +1,6 @@
-module Language.K3.Effects.Constructors where
+module Language.K3.Analysis.Effects.Constructors where
 
-import Language.K3.Effects.Core
+import Language.K3.Analysis.Effects.Core
 
 symbol :: Identifier -> Provenance -> K3 Symbol
 symbol id prov = Node (Symbol id prov :@: []) []

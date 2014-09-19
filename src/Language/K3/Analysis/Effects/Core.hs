@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Data Representations for K3 Effects
-module Language.K3.Effects.Core where
+module Language.K3.Analysis.Effects.Core where
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -52,10 +52,10 @@ data instance Annotation Effect = FAnnotation
                                 | FID Int
                                 deriving (Eq, Read, Show)
 
-isSId :: Annotation Symbol -> Bool
-isSId (SID _) = True
-isSId _       = False
+isSID :: Annotation Symbol -> Bool
+isSID (SID _) = True
+isSID _       = False
 
-isFId :: Annotation Effect -> Bool
-isFId (FID _) = True
-isFId _       = False
+isFID :: Annotation Effect -> Bool
+isFID (FID _) = True
+isFID _       = False

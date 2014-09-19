@@ -9,12 +9,15 @@
 --
 --  TODO: switch symbol gensym to use monad
 
-module Language.K3.Effects.Insert (
+module Language.K3.Analysis.Effects.InsertEffects (
   runAnalysis
 )
 where
 
 import Control.Arrow ( (&&&), second )
+
+import Lanague.K3.Analysis.Effects.Core
+import Lanague.K3.Analysis.Effects.Constructors
 
 data Env = Env {
                 globalEnv :: Map Identfier (K3 Symbol),
