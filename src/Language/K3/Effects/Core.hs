@@ -33,8 +33,8 @@ data Provenance
 
 data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
 
-data instance Annotation Symbol = SAnnotation 
-                                | SId Int 
+data instance Annotation Symbol = SAnnotation
+                                | SID Int
                                 deriving (Eq, Read, Show)
 
 data Effect
@@ -49,13 +49,13 @@ data Effect
   deriving (Eq, Read, Show)
 
 data instance Annotation Effect = FAnnotation
-                                | FId Int
+                                | FID Int
                                 deriving (Eq, Read, Show)
 
 isSId :: Annotation Symbol -> Bool
 isSId (SID _) = True
 isSId _       = False
 
-isFId :: Annotation Symbol -> Bool
+isFId :: Annotation Effect -> Bool
 isFId (FID _) = True
 isFId _       = False
