@@ -89,28 +89,28 @@ singleton :: a -> [a]
 singleton x = [x]
 
 -- Add an id to an effect
-addFId :: K3 Effect -> MEnv (K3 Effect)
-addFId eff = do
+addFID :: K3 Effect -> MEnv (K3 Effect)
+addFID eff = do
   i <- getIdM
-  eff @+ FId i
+  eff @+ FID i
 
-addSId :: K3 Symbol -> MEnv (K3 Symbol)
-addSId eff = do
+addSID :: K3 Symbol -> MEnv (K3 Symbol)
+addSID eff = do
   i <- getIdM
-  eff @+ SId i
+  eff @+ SID i
 
 getUID :: K3 Expression -> UID
 getUID n = maybe (error "No UID found") extract $ n @~ isEUID
   where extract (EUID uid) = uid
         extract _          = error "unexpected"
 
-getSId :: K3 Symbol -> Int
-getSId sym = maybe err extract $ sym @~ isSID
+getSID :: K3 Symbol -> Int
+getSID sym = maybe err extract $ sym @~ isSID
   where extract (SID i) = i
         extract _       = error "symbol id not found!"
 
-getFId :: K3 Symbol -> Int
-getFId sym = maybe err extract $ sym @~ isFID
+getFID :: K3 Symbol -> Int
+getFID sym = maybe err extract $ sym @~ isFID
   where extract (FID i) = i
         extract _       = error "effect id not found!"
 
@@ -118,13 +118,13 @@ getFId sym = maybe err extract $ sym @~ isFID
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
 symbolM name prov ch = do
   i <- getIdM
-  let s = symbol name prov @+ SId i
+  let s = symbol name prov @+ SID i
   return $ replaceCh s ch
 
 genSym :: Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
 genSym p ch = do
    i <- getIdM
-   let s = symbol ("sym_"++show i) p @+ SId i
+   let s = symbol ("sym_"++show i) p @+ SID i
    return $ replaceCh s ch
 
 genSymTemp :: [K3 Symbol] -> MEnv (K3 Symbol)
@@ -309,7 +309,7 @@ runAnalysis prog = flip evalState startEnv $
     -- Combine 2 effects if they're present. Otherwise keep whatever we have
     combine constF (Just e1) (Just e2) = do
       i <- getEffectIdM
-      return $ Just $ (constF [e1, e2]) :@: FId i
+      return $ Just $ (constF [e1, e2]) :@: FID i
     combine (Just e) _ = return $ Just e
     combine _ (Just e) = return $ Just e
     combine _ _        = return Nothing
