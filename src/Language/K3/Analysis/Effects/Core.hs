@@ -33,9 +33,7 @@ data Provenance
 
 data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
 
-data instance Annotation Symbol = SAnnotation
-                                | SID Int
-                                deriving (Eq, Read, Show)
+data instance Annotation Symbol = SID Int deriving (Eq, Read, Show)
 
 data Effect
     = FRead (K3 Symbol)
@@ -48,9 +46,7 @@ data Effect
     | FLoop                   -- a flattened loop
   deriving (Eq, Read, Show)
 
-data instance Annotation Effect = FAnnotation
-                                | FID Int
-                                deriving (Eq, Read, Show)
+data instance Annotation Effect = FID Int deriving (Eq, Read, Show)
 
 isSID :: Annotation Symbol -> Bool
 isSID (SID _) = True
