@@ -119,6 +119,7 @@ library
         Language.K3.Analysis.AnnotationGraph,
         Language.K3.Analysis.InsertMembers,
         Language.K3.Analysis.Effects.Core
+        Language.K3.Analysis.Effects.Constructors
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
