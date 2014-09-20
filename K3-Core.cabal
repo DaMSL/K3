@@ -118,8 +118,8 @@ library
         Language.K3.Analysis.Interpreter.BindAlias,
         Language.K3.Analysis.AnnotationGraph,
         Language.K3.Analysis.InsertMembers,
-        Language.K3.Analysis.Effects.Core
-        Language.K3.Analysis.Effects.Constructors
+        Language.K3.Analysis.Effects.Core,
+        Language.K3.Analysis.Effects.Constructors,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -180,7 +180,7 @@ library
         Language.K3.TypeSystem.Data.Environments.Type,
         Language.K3.TypeSystem.Data.Constraints,
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
-        Language.K3.TypeSystem.Data.Result
+        Language.K3.TypeSystem.Data.Result,
         Language.K3.Codegen.CPP.Representation
 
     ghc-options: -Wall -fno-warn-orphans -O2
