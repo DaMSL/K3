@@ -386,4 +386,4 @@ runAnalysis prog = flip evalState startEnv $
       if alwaysGen then genSymTemp [sym] else return sym
     symOfSymList syms  = genSym PSet syms
 
-    symEqual s s' = getSID s = getSID s'
+    symEqual s s' = getSID s == getSID s'
