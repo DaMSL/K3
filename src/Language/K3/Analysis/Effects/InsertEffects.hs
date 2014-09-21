@@ -376,7 +376,7 @@ runAnalysis prog = flip evalState startEnv $
               Nothing -> return $ concatMap loop ch
               -- If we find a match, report back
               -- Just make sure it's really equivalent
-              Just s  -> if symEqual s n return [n] else
+              Just s  -> if symEqual s n then return [n] else
                          return $ concatMap loop ch
 
     -- Convert a list of symbols to a symbol (if possible)
