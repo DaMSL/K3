@@ -16,8 +16,10 @@ where
 
 import Control.Arrow ( (&&&), second )
 
-import Lanague.K3.Analysis.Effects.Core
-import Lanague.K3.Analysis.Effects.Constructors
+import Language.K3.Core.Annotation
+
+import Language.K3.Analysis.Effects.Core
+import Language.K3.Analysis.Effects.Constructors
 
 data Env = Env {
                 globalEnv :: Map Identfier (K3 Symbol),
