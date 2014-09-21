@@ -283,7 +283,7 @@ runAnalysis prog = flip evalState startEnv $
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
       -- Wrap some in a scope
-      someEff = listOfMaybe $ getEEffect some
+      let someEff = listOfMaybe $ getEEffect some
       scopeEff <- addId $ scope [bindSym] someEff
       -- Conservative approximation
       setEff   <- createSet (getEEffect none) (Just scopeEff)
@@ -298,7 +298,7 @@ runAnalysis prog = flip evalState startEnv $
     handleExpr ch@[l,e] n@(tag -> ELetIn i) = do
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
-      eEff = listOfMaybe $ getEEffect e
+      let eEff = listOfMaybe $ getEEffect e
       scopeEff <- addId $ scope [bindSym] eEff
       fullEff  <- createSeq (getEEffect l) (Just scopeEff)
       -- peel off symbols until we get to ones in our outer scope
