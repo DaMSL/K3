@@ -359,14 +359,14 @@ runAnalysis prog = flip evalState startEnv $
       where
         -- Apply's demand that we check their children and include the apply instead
         loop n@(tag &&& children -> (Symbol i Apply, [lam, arg])) =
-          case loop lam, loop arg of
+          case (loop lam, loop arg) of
             -- If both arguments are local, elide the Apply
-            [], [] -> return []
+            ([], []) -> return []
             -- Otherwise, keep the apply and it's possible tree
-            xs, ys -> do
+            (xs, ys) -> do
               s  <- symOfSymList False xs
               s' <- symOfSymList False ys
-              return $ [replaceCh n [s, s']
+              return $ [replaceCh n [s, s']]
 
         loop n@(tag &&& children -> (Symbol i prov, ch)) =
           -- Check for exclusion
