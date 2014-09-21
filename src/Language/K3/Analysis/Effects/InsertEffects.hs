@@ -47,9 +47,9 @@ insertBind id e s env =
 deleteBind :: Identifier -> Env -> Env
 deleteBind id env =
   let m' = case Map.lookup id $ bindEnv env of
-    []   -> Map.delete id env
-    [_]  -> Map.delete id env
-    _:xs -> Map.insert id xs env
+             []   -> Map.delete id env
+             [_]  -> Map.delete id env
+             _:xs -> Map.insert id xs env
   in
   env {bindEnv=m'}
 
@@ -218,10 +218,10 @@ runAnalysis prog = flip evalState startEnv $
       (mEff, sym) <- lookupBindM i
       r  <- addIdE $ read sym
       let eff = case mEff of
-        Just e  -> do
-          e' <- createSeq e r
-          return $ EEffect e'
-        Nothing -> EEffect r
+                  Just e  -> do
+                            e' <- createSeq e r
+                            return $ EEffect e'
+                  Nothing -> EEffect r
       return $ n @+ eff @+ sym
 
     noEffectErr = error "Expected an effect but got none"
@@ -338,10 +338,10 @@ runAnalysis prog = flip evalState startEnv $
     extractReadSym :: Effect -> [K3 Symbol]
     extractReadSym eff = nub $ loop eff
       where loop eff = case tag &&& children eff of
-        (FRead x, _)   -> [x]
-        (FSeq, [_,ch]) -> extractRead ch
-        (FSet, ch)     -> concatMap extractRead ch
-        _              -> [FTemporary]
+                         (FRead x, _)   -> [x]
+                         (FSeq, [_,ch]) -> extractRead ch
+                         (FSet, ch)     -> concatMap extractRead ch
+                         _              -> [FTemporary]
         -- TODO: do we need any other cases?
 
     -- Common procedure for adding back the symbols, effects and children
