@@ -173,10 +173,19 @@ getOrGenSymbol n = case getESymbol n of
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
-  mapProgram handleDecl mId handleExprs prog
+  -- handle recursive/cyclic scope
+  mapProgram preHandleDecl mId mId prog >>=
+  -- actual modification of AST
+  mapProgram handleDecl mId handleExprs
   where
     mId x = return x
     listOfMaybe m = maybe [] singleton m
+
+    -- add everything to global environment for cyclic/recursive scope
+    -- we'll fix it up the second time through
+    preHandleDecl n@(tag -> DGlobal id _ _)  = genSymTemp [] >>= insertGlobalM id >> return n
+    preHandleDecl n@(tag -> DTrigger id _ _) = genSymTemp [] >>= insertGlobalM id >> return n
+    preHandleDecl n = return n
 
     -- TODO: handle recursive scope
     -- external functions
@@ -199,6 +208,8 @@ runAnalysis prog = flip evalState startEnv $
         Nothing          -> return n
         Just (ESymbol s) -> insertGlobalM id s >> return (n @+ DSymbol s)
 
+    handleDecl n = return n
+
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
 
@@ -206,10 +217,16 @@ runAnalysis prog = flip evalState startEnv $
     extractBindData (BTuple ids)     = zip ids [PTuple j | j <- [0..fromIntegral $ length ids - 1]]
     extractBindData (BRecord ijs)    = map (\(i, j) -> (j, PRecord i)) ijs
 
+    doNothing = return ()
+
+    doNothings n = return $ replicate n doNothing
+
     pre :: K3 Expression -> K3 Expression -> MEnv ()
     pre _ n@(tag -> ELambda i) =
       -- Add to the environment
       insertBindM i $ symbol i PVar
+
+    pre _ _ = doNothing
 
     sideways :: K3 Expression -> K3 Expression -> MEnv [MEnv ()]
 
@@ -227,10 +244,12 @@ runAnalysis prog = flip evalState startEnv $
       return [mapM_ (uncurry insertBindM) syms]
 
     -- We take the first child's symbol and bind to it
-    sidewyas ch1 n@(tag -> ECaseOf i) = do
+    sideways ch1 n@(tag -> ECaseOf i) = do
       chSym <- getOrGenSymbol ch1
       s     <- symbolM i PLet [chSym]
       return [insertBindM i s, deleteBindM i]
+
+    sideways _ (children -> ch) = doNothings (length ch - 1)
 
     -- A variable access looks up in the environemnt and generates a read
     -- It also creates a symbol
