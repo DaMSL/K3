@@ -15,12 +15,12 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
---import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
-import Language.K3.Analysis.Effect
+-- import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
 import Language.K3.Analysis.Properties
+import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 
 import qualified Language.K3.Transform.Normalization as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
@@ -109,7 +109,8 @@ run opts = do
     analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
     analyzer EffectNormalization x = first Normalization.normalizeProgram x
     analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
-    analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
+    --old: analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
+    analyzer Effects x             = first Effects.runAnalysis x
     analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
