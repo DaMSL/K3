@@ -395,7 +395,7 @@ runAnalysis prog = flip evalState startEnv $
               -- Just make sure it's really equivalent
               Just s  -> if symEqual s n then return [n] else
                          mapM loop ch >>= return . concat
-                         
+
 
     -- Convert a list of symbols to a symbol (if possible)
     symOfSymList :: Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
