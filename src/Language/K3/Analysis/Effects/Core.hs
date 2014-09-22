@@ -35,6 +35,9 @@ data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
 
 data instance Annotation Symbol = SID Int deriving (Eq, Read, Show)
 
+isSID :: Annotation Symbol -> Bool
+isSID _ = True
+
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
@@ -47,9 +50,6 @@ data Effect
   deriving (Eq, Read, Show)
 
 data instance Annotation Effect = FID Int deriving (Eq, Read, Show)
-
-isSID :: Annotation Symbol -> Bool
-isSID _ = True
 
 isFID :: Annotation Effect -> Bool
 isFID _ = True

@@ -15,6 +15,7 @@ module Language.K3.Core.Declaration (
 
     isDSpan,
     isDUID,
+    isDEffect,
     isDSyntax
 ) where
 
