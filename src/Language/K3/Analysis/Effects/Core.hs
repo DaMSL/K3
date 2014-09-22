@@ -49,9 +49,7 @@ data Effect
 data instance Annotation Effect = FID Int deriving (Eq, Read, Show)
 
 isSID :: Annotation Symbol -> Bool
-isSID (SID _) = True
-isSID _       = False
+isSID _ = True
 
 isFID :: Annotation Effect -> Bool
-isFID (FID _) = True
-isFID _       = False
+isFID _ = True

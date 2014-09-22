@@ -15,14 +15,19 @@ module Language.K3.Analysis.Effects.InsertEffects (
 where
 
 import Control.Arrow ( (&&&), second )
+import Control.Monad.State.State
+import Data.Maybe
+import Data.Map(Map)
+import qualified Data.Map as Map
 
+import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
 
 data Env = Env {
-                globalEnv :: Map Identfier (K3 Symbol),
+                globalEnv :: Map Identifier (K3 Symbol),
                 count :: Int,
                 bindEnv :: Map Identifier [K3 Symbol]
                }
