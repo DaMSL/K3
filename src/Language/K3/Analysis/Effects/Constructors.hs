@@ -17,8 +17,8 @@ read sym = Node (FRead sym :@: []) []
 write :: K3 Symbol -> K3 Effect
 write sym = Node (FWrite sym :@: []) []
 
-scope :: [K3 Symbol] -> K3 Effect -> K3 Effect
-scope syms x = Node (FScope syms :@: []) [x]
+scope :: [K3 Symbol] -> [K3 Effect] -> K3 Effect
+scope syms es = Node (FScope syms :@: []) es
 
 var :: Identifier -> K3 Effect
 var id = Node (FVariable id :@: []) []

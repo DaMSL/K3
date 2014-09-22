@@ -15,7 +15,7 @@ module Language.K3.Core.Declaration (
 
     isDSpan,
     isDUID,
-    isDEffect,
+    isDSymbol,
     isDSyntax
 ) where
 
@@ -67,7 +67,7 @@ data instance Annotation Declaration
     | DProperty Identifier (Maybe (K3 Literal))
     | DSyntax   SyntaxAnnotation
     | DConflict UnorderedConflict  -- TODO: organize into categories.
-    | DEffect   (K3 Effect, Maybe (K3 Symbol))
+    | DSymbol   (K3 Symbol)
   deriving (Eq, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
@@ -152,9 +152,9 @@ isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True
 isDSyntax _           = False
 
-isDEffect :: Annotation Declaration -> Bool
-isDEffect (DEffect _) = True
-isDEffect _           = False
+isDSymbol :: Annotation Declaration -> Bool
+isDSymbol (DSymbol _) = True
+isDSymbol _           = False
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST

@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 -- | Insertion of effects into the expression/declaration tree
 --
 --   We rely on the fact that we run after typechecking and after
@@ -21,7 +22,7 @@ import Control.Monad.State.Lazy
 import Data.Maybe
 import Data.Map(Map)
 import qualified Data.Map as Map
-import Data.Foldable hiding (mapM_, any, concatMap)
+import Data.Foldable hiding (mapM_, any, concatMap, concat)
 
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
@@ -127,11 +128,10 @@ getSID sym = maybe (error "no SID found") extract $ sym @~ isSID
   where extract (SID i) = i
         extract _       = error "symbol id not found!"
 
-getFID :: K3 Symbol -> Int
-getFID sym = maybe err extract $ sym @~ isFID
+getFID :: K3 Effect -> Int
+getFID sym = maybe (error "no FID found") extract $ sym @~ isFID
   where extract (FID i) = i
         extract _       = error "effect id not found!"
-        err             = error "no FID found!"
 
 -- Generate a symbol
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
@@ -147,7 +147,7 @@ genSym p ch = do
    return $ replaceCh s ch
 
 genSymTemp :: [K3 Symbol] -> MEnv (K3 Symbol)
-genSymTemp n ch = genSym PTemporary
+genSymTemp = genSym PTemporary
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
@@ -168,7 +168,7 @@ forceGetSymbol n = maybe err id $ getESymbol n
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
 getOrGenSymbol n = case getESymbol n of
-                     Nothing -> genSymTemp n [] >>= return
+                     Nothing -> genSymTemp [] >>= return
                      Just i  -> return i
 
 runAnalysis :: K3 Declaration -> K3 Declaration
@@ -180,101 +180,102 @@ runAnalysis prog = flip evalState startEnv $
 
     -- TODO: handle recursive scope
     -- external functions
+    handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
+
     handleDecl n@(tag -> DGlobal id _ Nothing) =
-      case n @~ isDEffect of
-        Nothing -> return n
-        Just (DEffect e) -> insertGlobal id e
+      case n @~ isDSymbol of
+        Nothing          -> return n
+        Just (DSymbol s) -> insertGlobalM id s >> return n
 
     -- global functions
     handleDecl n@(tag -> DGlobal id _ (Just e)) =
-      case e @~ isEEffect of
-        Nothing -> return n
-        Just (EEffect e) -> insertGlobal id e
+      case e @~ isESymbol of
+        Nothing          -> return n
+        Just (ESymbol s) -> insertGlobalM id s >> return (n @+ DSymbol s)
 
     -- triggers
     handleDecl n@(tag -> DTrigger id _ e) =
-      case e @~ isEEffect of
-        Nothing -> return n
-        Just (EEffect e) -> insertGlobal id e
+      case e @~ isESymbol of
+        Nothing          -> return n
+        Just (ESymbol s) -> insertGlobalM id s >> return (n @+ DSymbol s)
 
+    handleExprs :: K3 Expression -> MEnv (K3 Expression)
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
 
     extractBindData (BIndirection i) = [(i, PIndirection)]
-    extractBindData (BTuple ids)     = zip ids [PTuple j | j <- [0..length ids - 1]]
+    extractBindData (BTuple ids)     = zip ids [PTuple j | j <- [0..fromIntegral $ length ids - 1]]
     extractBindData (BRecord ijs)    = map (\(i, j) -> (j, PRecord i)) ijs
 
+    pre :: K3 Expression -> K3 Expression -> MEnv ()
     pre _ n@(tag -> ELambda i) =
       -- Add to the environment
       insertBindM i $ symbol i PVar
 
+    sideways :: K3 Expression -> K3 Expression -> MEnv [MEnv ()]
+
     -- We take the first child's symbol and bind to it
     sideways ch1 n@(tag -> ELetIn i) = do
       chSym <- getOrGenSymbol ch1
-      s     <- symbolM i PLet chSym
-      insertBindM i s
+      s     <- symbolM i PLet [chSym]
+      return [insertBindM i s]
 
     -- We take the first child's symbol and bind to it
     sideways ch1 n@(tag -> EBindAs b) = do
       chSym <- getOrGenSymbol ch1
       let iProvs = extractBindData b
-          syms   = mapM (\(i, prov) -> symbolM i prov chSym) iProvs
-      mapM_ (\(i, sym) -> insertBindM i sym) syms
+      syms <- mapM (\(i, prov) -> liftM (i,) $ symbolM i prov [chSym]) iProvs
+      return [mapM_ (uncurry insertBindM) syms]
 
     -- We take the first child's symbol and bind to it
     sidewyas ch1 n@(tag -> ECaseOf i) = do
       chSym <- getOrGenSymbol ch1
-      s     <- symbolM i PLet chSym
-      [insertBindM i s, deleteBindM i]
+      s     <- symbolM i PLet [chSym]
+      return [insertBindM i s, deleteBindM i]
 
     -- A variable access looks up in the environemnt and generates a read
     -- It also creates a symbol
     handleExpr :: [K3 Expression] -> K3 Expression -> MEnv (K3 Expression)
 
     handleExpr _ n@(tag -> EVariable i) = do
-      (mEff, sym) <- lookupBindM i
-      r  <- addFID $ read sym
-      let eff = case mEff of
-                  Just e  -> do
-                            e' <- createSeq e r
-                            return $ EEffect e'
-                  Nothing -> EEffect r
-      return $ (n @+ eff) @+ sym
+      sym <- lookupBindM i
+      eff <- addFID $ read sym
+      return $ addEffSymCh (Just eff) (Just sym) [] n
 
     -- An assignment generates a write, and no symbol
     handleExpr ch@[e] n@(tag -> EAssign i) = do
-      (_, sym) <- lookupBindM i
-      w        <- addFID $ write sym
+      sym    <- lookupBindM i
+      w      <- addFID $ write sym
       -- Add the write to any existing child effects
-      nEff     <- createSeq (getEEffect e) $ Just w
-      let n' = maybe noEffectErr (n @+ EEffect) nEff
-      return $ replaceCh n' ch
+      nEff   <- combineEffSeq (getEEffect e) $ Just w
+      return $ addEffSymCh nEff Nothing ch n
 
     -- For ifThenElse be pessimistic: include effects and symbols of both paths
     handleExpr ch@[p,t,f] n@(tag -> EIfThenElse) = do
-      tfEff <- createSet (t @~ isEEffect) (f @~ isEEffect)
-      -- Combine with predicate effects
-      nEff  <- createSeq (p @~ isEEffect) tfEff
-      -- Combine path symbols into a new symbol
-      nSym  <- combineSym (t @~ isESymbol) (f @~ isESymbol)
+      tfEff <- combineEffSet (getEEffect t) (getEEffect f)
+      -- combineEff with predicate effects
+      nEff  <- combineEffSeq (getEEffect p) tfEff
+      -- combineEff path symbols into a new symbol
+      nSym  <- combineSymSet (getESymbol t) (getESymbol f)
       return $ addEffSymCh nEff nSym ch n
 
-    -- ELambda wraps up the child effect and sticks it in a symbol.
+    -- ELambda wraps up the child effect and sticks it in a symbol, but has no effect per se
     -- A new scope will be created at application
     handleExpr ch@[e] n@(tag -> ELambda i) = do
       deleteBindM i
-      -- Create a gensym for the lambda, containing the effects, and leading to the symbols
+      -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       let eSym = maybe [] singleton $ getESymbol e
-          lSym = genSym (PLambda i $ getEEffect e) eSym
-      return $ replaceCh (n @+ ESymbol lSym) ch
+      lSym    <- genSym (PLambda i $ getEEffect e) eSym
+      return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- On application, Apply creates a scope and substitutes into it
     -- We only create the effect of apply here
     handleExpr ch@[l,a] n@(tag -> EOperate(OApp)) = do
-      seqE    <- createSeq (getEEffect l) $ getEEffect a
+      seqE    <- combineEffSeq (getEEffect l) $ getEEffect a
       -- Create the effect of application
-      appE    <- addFID $ apply (forceGetSymbol l) $ getOrGenSymbol a
-      fullEff <- createSeq seqE $ Just appE
-      fullSym <- combineSym (Just $ forceGetSymbol l) $ getOrGenSymbol a
+      aSym    <- getOrGenSymbol a
+      appE    <- addFID $ apply (forceGetSymbol l) aSym
+      fullEff <- combineEffSeq seqE $ Just appE
+      fullSym <- combineSymApply (Just $ forceGetSymbol l) (Just aSym)
       return $ addEffSymCh fullEff fullSym ch n
 
     -- Bind
@@ -286,11 +287,11 @@ runAnalysis prog = flip evalState startEnv $
       -- Remove binds from env
       mapM_ deleteBindM ids
       -- peel off until we get to a scope we know
-      let fullSym = peelSymbol [] getESymbol e
-          eEff = maybe [] singleton $ getEEffect e
+      fullSym <- peelSymbol [] $ getESymbol e
+      let eEff = maybe [] singleton $ getEEffect e
       bScope  <- addFID $ scope bindSyms eEff
-      fullEff <- createSeq (getEEffect bind) $ Just bScope
-      return $ addEffSymCh fullEff fullSym ch n
+      fullEff <- combineEffSeq (getEEffect bind) $ Just bScope
+      return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- CaseOf
     handleExpr ch@[e,some,none] n@(tag -> ECaseOf i) = do
@@ -300,13 +301,14 @@ runAnalysis prog = flip evalState startEnv $
       let someEff = listOfMaybe $ getEEffect some
       scopeEff <- addFID $ scope [bindSym] someEff
       -- Conservative approximation
-      setEff   <- createSet (getEEffect none) (Just scopeEff)
+      setEff   <- combineEffSet (getEEffect none) (Just scopeEff)
+      combSym  <- combineSymSet (getESymbol some) (getESymbol none)
       -- peel off symbols until we get ones in our outer scope
       -- for case, we need to special-case, making sure that the particular symbol
       -- is always gensymed away
-      fullSym  <- peelSymbol [bindSym] $ combineSym (getESymbol some) (getESymbol none)
-      fullEff  <- createSeq (getEEffect e) setEff
-      return $ addEffSymCh fullEff fullSym ch n
+      fullSym  <- peelSymbol [bindSym] combSym
+      fullEff  <- combineEffSeq (getEEffect e) setEff
+      return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- LetIn
     handleExpr ch@[l,e] n@(tag -> ELetIn i) = do
@@ -314,58 +316,66 @@ runAnalysis prog = flip evalState startEnv $
       deleteBindM i -- remove bind from env
       let eEff = listOfMaybe $ getEEffect e
       scopeEff <- addFID $ scope [bindSym] eEff
-      fullEff  <- createSeq (getEEffect l) (Just scopeEff)
+      fullEff  <- combineEffSeq (getEEffect l) (Just scopeEff)
       -- peel off symbols until we get to ones in our outer scope
       fullSym  <- peelSymbol [] $ getESymbol e
-      return $ addEffSymCh fullEff fullSym ch n
+      return $ addEffSymCh fullEff (Just fullSym) ch n
 
-    -- Generic case: combine effects, ignore symbols
+    -- Generic case: combineEff effects, ignore symbols
     handleExpr ch n = do
-      eff <- foldrM createSeq Nothing $ map getEEffect ch
-      return $ replaceCh (n @+ EEffect eff) ch
+      eff <- foldrM combineEffSeq Nothing $ map getEEffect ch
+      return $ addEffSymCh eff Nothing ch n
 
     ------ Utilities ------
     noEffectErr = error "Expected an effect but got none"
 
-    -- Combine 2 effects if they're present. Otherwise keep whatever we have
-    combine constF (Just e1) (Just e2) = do
+    -- combineEff 2 effects if they're present. Otherwise keep whatever we have
+    combineEff :: ([K3 Effect] -> K3 Effect) -> Maybe (K3 Effect) -> Maybe (K3 Effect) -> MEnv (Maybe (K3 Effect))
+    combineEff constF (Just e1) (Just e2) = do
       i <- getIdM
-      return $ Just $ (constF [e1, e2]) :@: FID i
-    combine (Just e) _ = return $ Just e
-    combine _ (Just e) = return $ Just e
-    combine _ _        = return Nothing
+      return $ Just ((constF [e1, e2]) @+ FID i)
+    combineEff _ (Just e) _               = return $ Just e
+    combineEff _ _ (Just e)               = return $ Just e
+    combineEff _ _ _                      = return Nothing
 
-    createSet = combine set
+    combineEffSet = combineEff set
 
-    createSeq :: Maybe (K3 Effect) -> Maybe (K3 Effect) -> MEnv (Maybe (K3 Effect))
-    createSeq = combine seqF
+    combineEffSeq :: Maybe (K3 Effect) -> Maybe (K3 Effect) -> MEnv (Maybe (K3 Effect))
+    combineEffSeq = combineEff seqF
       where seqF [x,y] = seq x y
             seqF _     = error "Bad input to seqF"
 
-    -- Combine 2 symbols into 1 set symbol (if needed)
+    -- combineEff 2 symbols into 1 set symbol (if needed)
     -- otherwise just use one of the symbols/don't generate anything
-    combineSym :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
-    combineSym (Just s) (Just s') = genSym PSet [s, s'] >>= return
-    combineSym (Just s) _         = return $ Just s
-    combineSym _ (Just s)         = return $ Just s
-    combineSym _ _                = return Nothing
+    combineSym :: Provenance -> Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
+    combineSym p (Just s) (Just s') = liftM Just $ genSym p [s, s']
+    combineSym _ (Just s) _         = return $ Just s
+    combineSym _ _ (Just s)         = return $ Just s
+    combineSym _ _ _                = return Nothing
+
+    combineSymSet   = combineSym PSet
+    combineSymApply = combineSym PApply
 
     -- Common procedure for adding back the symbols, effects and children
-    addEffSymCh :: Maybe(K3 Effect) -> Maybe(K3 Symbol) -> [K3 Expression] -> K3 Expression
+    addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
     addEffSymCh eff sym ch n =
-      let n'  = maybe n  (n  @+ EEffect) eff
-          n'' = maybe n' (n' @+ ESymbol) sym
+      let n'  = maybe n  ((@+) n  . EEffect) eff
+          n'' = maybe n' ((@+) n' . ESymbol) sym
       in replaceCh n'' ch
 
     -- If necessary, remove layers of symbols to get to those just above the bind symbols
     -- This function assumes that the direct bindsymbols have only one child each
     -- @exclude: always delete this particular symbol (for CaseOf)
-    peelSymbol :: [K3 Symbol] -> K3 Symbol -> MEnv (K3 Symbol)
-    peelSymbol excludes sym = symOfSymList True $ loop sym
+    peelSymbol :: [K3 Symbol] -> Maybe (K3 Symbol) -> MEnv (K3 Symbol)
+    peelSymbol _ Nothing = genSymTemp []
+    peelSymbol excludes (Just sym) = loop sym >>= symOfSymList True
       where
+        loop :: K3 Symbol -> MEnv [K3 Symbol]
         -- Apply's demand that we check their children and include the apply instead
-        loop n@(tag &&& children -> (Symbol i PApply, [lam, arg])) =
-          case (loop lam, loop arg) of
+        loop n@(tag &&& children -> (Symbol i PApply, [lam, arg])) = do
+          lS <- loop lam
+          lA <- loop arg
+          case (lS, lA) of
             -- If both arguments are local, elide the Apply
             ([], []) -> return []
             -- Otherwise, keep the apply and it's possible tree
@@ -380,18 +390,19 @@ runAnalysis prog = flip evalState startEnv $
           else do
             env <- get
             case lookupBindInner i env of
-              Nothing -> return $ concatMap loop ch
+              Nothing -> mapM loop ch >>= return . concat
               -- If we find a match, report back
               -- Just make sure it's really equivalent
               Just s  -> if symEqual s n then return [n] else
-                         return $ concatMap loop ch
+                         mapM loop ch >>= return . concat
+                         
 
     -- Convert a list of symbols to a symbol (if possible)
     symOfSymList :: Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
-    symOfSymList _ []    = genSymTemp []
+    symOfSymList _ []            = genSymTemp []
     symOfSymList alwaysGen [sym] =
       if alwaysGen then genSymTemp [sym] else return sym
-    symOfSymList syms  = genSym PSet syms
+    symOfSymList _ syms          = genSym PSet syms
 
     symEqual :: K3 Symbol -> K3 Symbol -> Bool
     symEqual s s' = getSID s == getSID s'
