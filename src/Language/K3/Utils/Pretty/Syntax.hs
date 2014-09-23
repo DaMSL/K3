@@ -164,6 +164,7 @@ rewriteRule (pat, rewrite, extensions) =
 ctrlExtension :: K3 Declaration -> SyntaxPrinter
 ctrlExtension d = (text "+>" <+>) C.<$> decl d
 
+{- Unused.
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = case t of
   STLabel     -> return $ text "label" <+> text i
@@ -171,7 +172,7 @@ typedSpliceVar (t, i) = case t of
   STExpr      -> return $ text "expr"  <+> text i
   STDecl      -> return $ text "decl"  <+> text i
   STLabelType -> return $ text i
-
+-}
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d

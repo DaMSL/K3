@@ -21,7 +21,6 @@ module Language.K3.Core.Declaration (
     isDSyntax
 ) where
 
-import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
