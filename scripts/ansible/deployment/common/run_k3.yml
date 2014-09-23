@@ -1,0 +1,59 @@
+  - name: Build the 'peers' string.
+    set_fact: 
+      peers: "[{% for key in play_hosts -%} {% for d in hostvars[key].local_peers -%} {addr:<{{hostvars[key].ip}}:{{d.port}}>} {%- if not loop.last %},{% endif %} {%- endfor %} {%- if not loop.last %},{% endif %}{%- endfor %}]"
+      # local:
+      results_dir: /tmp/k3_{{app_name}}
+      # remote:
+      data_dir: /tmp/k3_{{app_name}}/data
+      setup_dir: /tmp/k3_{{app_name}}/setup 
+      docker_image: k3_{{app_name}} 
+  
+  # Create the setup directory, and one data directory per local_peer
+  - name: Setup directories on the remote host.
+    shell: mkdir -p {{setup_dir}} {{data_dir}}/{{item}}
+    with_items: "{{local_peers | map(attribute='port') | list }}"
+    
+    # Copy over files for building a Docker image
+  - name: Copy the the binary to the remote host
+    copy: src={{binary_path}} dest={{setup_dir}}/k3
+
+  - name: Copy the Dockerfile to the remote host
+    copy: src=../common/Dockerfile dest={{setup_dir}}/
+
+  - name: Copy the Run script to the remote host
+    copy: src=../common/run_k3.sh dest={{setup_dir}}/
+ 
+    # Cleanup existing Docker image / containers
+  - name: Kill existing Docker containers
+    docker: name="{{docker_image}}_{{item}}" image={{docker_image}} state=killed
+    ignore_errors: yes
+    with_items:  "{{ local_peers | map(attribute='port') | list }}"
+  
+  - name: Delete the container
+    shell: docker rm -f {{docker_image}}_{{item}}
+    ignore_errors: yes
+    with_items: "{{ local_peers | map(attribute='port') | list }}"
+  
+  - name: Delete the temporary Docker image
+    command: docker rmi -f {{docker_image}}
+    ignore_errors: yes
+  
+  - name: Build the docker image for this app
+    shell: docker build -t {{docker_image}} {{setup_dir}}
+
+  - name: Run the binary in a docker container
+    shell: docker run -d --net=host --name="{{docker_image}}_{{item.port}}" -v {{data_dir}}/{{item.port}}:/app_data -v /local:/local_data {{docker_image}} /run_k3.sh {% if item.enable_logging | default(False) %} -l 2 {% endif %} -p 'peers:{{peers}},me:<{{ip}}:{{item.port}}>,{% for key, value in item.overrides.iteritems()|list + k3_bindings.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %}'
+    with_items: "{{ local_peers | list }}"
+
+  - name: Block until all containers have completed 
+    command: docker wait {{docker_image}}_{{item}}
+    with_items: "{{ local_peers | map(attribute='port') | list }}"
+
+  - name: Create local directories for the results
+    local_action: shell mkdir -p {{results_dir}}
+ 
+  - name: Retreive the results from each host
+    synchronize: mode=pull src={{data_dir}}  dest={{results_dir}}/{{ip}}
+
+  - name: Cleanup remote folders
+    shell: rm -rf {{data_dir}} {{setup_dir}}
