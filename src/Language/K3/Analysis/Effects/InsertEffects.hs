@@ -33,10 +33,13 @@ import Language.K3.Analysis.Common
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
 
+type GlobalEnv = Map Identifier (K3 Symbol)
+type LocalEnv  = Map Identifier [K3 Symbol]
+
 data Env = Env {
-                globalEnv :: Map Identifier (K3 Symbol),
+                globalEnv :: GlobalEnv,
                 count :: Int,
-                bindEnv :: Map Identifier [K3 Symbol]
+                bindEnv :: LocalEnv
                }
 
 startEnv :: Env
@@ -171,21 +174,27 @@ getOrGenSymbol n = case getESymbol n of
                      Nothing -> genSymTemp [] >>= return
                      Just i  -> return i
 
+addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
+addAllGlobals n = mapProgram preHandleDecl mId mId n
+  where
+    -- add everything to global environment for cyclic/recursive scope
+    -- we'll fix it up the second time through
+    addGenId id = genSymTemp [] >>= insertGlobalM id >> return n
+    preHandleDecl n@(tag -> DGlobal id _ _)  = addGenId id
+    preHandleDecl n@(tag -> DTrigger id _ _) = addGenId id
+    preHandleDecl n = return n
+
+mId :: Monad m => a -> m a
+mId x = return x
+
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
   -- handle recursive/cyclic scope
-  mapProgram preHandleDecl mId mId prog >>=
+  addAllGlobals prog >>=
   -- actual modification of AST
   mapProgram handleDecl mId handleExprs
   where
-    mId x = return x
     listOfMaybe m = maybe [] singleton m
-
-    -- add everything to global environment for cyclic/recursive scope
-    -- we'll fix it up the second time through
-    preHandleDecl n@(tag -> DGlobal id _ _)  = genSymTemp [] >>= insertGlobalM id >> return n
-    preHandleDecl n@(tag -> DTrigger id _ _) = genSymTemp [] >>= insertGlobalM id >> return n
-    preHandleDecl n = return n
 
     -- TODO: handle recursive scope
     -- external functions
@@ -425,3 +434,20 @@ runAnalysis prog = flip evalState startEnv $
 
     symEqual :: K3 Symbol -> K3 Symbol -> Bool
     symEqual s s' = getSID s == getSID s'
+
+---- Utilities to work with effects dynamically
+
+-- Build a global environment for using state monad functions dynamically
+buildEnv :: K3 Declaration -> Env
+buildEnv n = snd $ flip runState startEnv $
+               addAllGlobals n >>
+               mapProgram handleDecl mId mId n
+  where
+    handleDecl n@(tag -> DGlobal i _ _)  = possibleInsert n i
+    handleDecl n@(tag -> DTrigger i _ _) = possibleInsert n i
+
+    possibleInsert n i =
+      case n @~ isDSymbol of
+        Nothing          -> return n
+        Just (DSymbol s) -> insertGlobalM i s >> return n
+
