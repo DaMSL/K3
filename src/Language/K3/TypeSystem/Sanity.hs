@@ -42,9 +42,10 @@ sanityCheck decl =
       DRole i -> i
       DGlobal i _ _ -> i
       DTrigger i _ _ -> i
-      DAnnotation i _ _ -> i
+      DDataAnnotation i _ _ _ -> i
+      DCtrlAnnotation i _ _ -> i
     unAnn d = case tag d of
-      DAnnotation _ _ mems -> Just mems
+      DDataAnnotation _ [] _ mems -> Just mems
       _ -> Nothing
     checkMembersForDupes :: [AnnMemDecl] -> m ()
     checkMembersForDupes mems = do

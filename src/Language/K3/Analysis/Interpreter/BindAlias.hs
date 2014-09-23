@@ -40,10 +40,10 @@ labelBindAliases prog = snd $ labelDecl 0 prog
         let (ncnt2, ne) = labelBindAliasesExpr ncnt e
         in (ncnt2, Node (DTrigger n t ne :@: annotations d) nch))
 
-    labelDecl cnt d@(tag &&& children -> (DAnnotation n tVars annMems, ch)) =
+    labelDecl cnt d@(tag &&& children -> (DDataAnnotation n sVars tVars annMems, ch)) =
       withDeclChildren cnt ch (\(ncnt,nch) ->
         let (ncnt2, nAnnMems) = withAnnMems ncnt annMems
-        in (ncnt2, Node (DAnnotation n tVars nAnnMems :@: annotations d) nch))
+        in (ncnt2, Node (DDataAnnotation n sVars tVars nAnnMems :@: annotations d) nch))
 
     labelDecl cnt (Node t ch) = withDeclChildren cnt ch (\(ncnt,nch) -> (ncnt, Node t nch))
 

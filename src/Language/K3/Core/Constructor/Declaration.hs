@@ -4,7 +4,8 @@ module Language.K3.Core.Constructor.Declaration (
     Language.K3.Core.Constructor.Declaration.trigger,
     endpoint,
     role,
-    annotation,
+    dataAnnotation,
+    ctrlAnnotation,
     typeDef
 ) where
 
@@ -34,7 +35,12 @@ role i = Node (DRole i :@: [])
 
 typeDef :: Identifier -> K3 Type -> K3 Declaration
 typeDef i t = Node (DTypeDef i t :@: []) []
+
 -- | Create a user-defined annotation.  Arguments are annotation name,
 --   declared type parameters, and member declarations.
-annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
-annotation i vdecls members = Node (DAnnotation i vdecls members :@: []) []
+dataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
+dataAnnotation i svdecls tvdecls members = Node (DDataAnnotation i svdecls tvdecls members :@: []) []
+
+-- | Create a user-defined control annotation.
+ctrlAnnotation :: Identifier -> [PatternRewriteRule] -> [K3 Declaration] -> K3 Declaration
+ctrlAnnotation i rules commonDecls = Node (DCtrlAnnotation i rules commonDecls :@: []) []

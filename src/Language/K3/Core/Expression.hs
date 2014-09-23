@@ -107,6 +107,7 @@ data instance Annotation Expression
     | EQType  (K3 QType)
     | ETypeLB (K3 Type)
     | ETypeUB (K3 Type)
+    | EPType  (K3 Type)  -- Annotation embedding for pattern types
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Read, Show)
 
@@ -144,11 +145,12 @@ instance Pretty (K3 Expression) where
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
-  let (typeAnns, anns) = partition (\a -> isETypeOrBound a || isEQType a) as
+  let (typeAnns, anns) = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
       prettyTypeAnns   = case typeAnns of
                           []         -> []
                           [EType t]  -> drawETypeAnnotation $ EType t
                           [EQType t] -> drawETypeAnnotation $ EQType t
+                          [EPType t] -> drawETypeAnnotation $ EPType t
                           [t, l, u]  -> drawETypeAnnotation t
                                          %+ indent 2 (drawETypeAnnotation l
                                          %+ indent 2 (drawETypeAnnotation u))
@@ -159,6 +161,7 @@ drawExprAnnotations as =
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
         drawETypeAnnotation (EType   t) = ["EType   "] %+ prettyLines t
         drawETypeAnnotation (EQType  t) = ["EQType  "] %+ prettyLines t
+        drawETypeAnnotation (EPType  t) = ["EPType  "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
 
@@ -198,6 +201,10 @@ isETypeOrBound _           = False
 isEQType :: Annotation Expression -> Bool
 isEQType (EQType _) = True
 isEQType _          = False
+
+isEPType :: Annotation Expression -> Bool
+isEPType (EPType _) = True
+isEPType _          = False
 
 isEEffect :: Annotation Expression -> Bool
 isEEffect (EEffect _) = True

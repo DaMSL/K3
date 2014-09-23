@@ -143,7 +143,7 @@ staticEnvironment pc prog = do
     extractDeclCombos :: [[Identifier]] -> K3 Declaration -> Identity [[Identifier]]
     extractDeclCombos st (tag -> DGlobal _ t eOpt)     = return $ st ++ typeCombos t ++ (maybe [] exprCombos eOpt)
     extractDeclCombos st (tag -> DTrigger _ t e)       = return $ st ++ typeCombos t ++ exprCombos e
-    extractDeclCombos st (tag -> DAnnotation _ _ mems) = return $ st ++ concatMap memCombos mems
+    extractDeclCombos st (tag -> DDataAnnotation _ _ _ mems) = return $ st ++ concatMap memCombos mems
     extractDeclCombos st _ = return st
 
     extractTypeCombos :: [[Identifier]] -> K3 Type -> Identity [[Identifier]]

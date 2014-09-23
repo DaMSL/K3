@@ -125,7 +125,7 @@ globalCArgsEnv program = map makeEnvEntry cArgsDecls
 annotationCArgsEnv :: K3 Declaration -> AnnotationCArgsEnv
 annotationCArgsEnv program = map makeAnnotationEnvEntry annotationCArgsDecls
   where
-    makeAnnotationEnvEntry (tag -> (DAnnotation name _ members)) = (name, (concatMap getCArgs members))
+    makeAnnotationEnvEntry (tag -> (DDataAnnotation name _ _ members)) = (name, (concatMap getCArgs members))
     makeAnnotationEnvEntry _ = error "Expecting Annotation Declaration"
 
     annotationCArgsDecls = fst . runIdentity $ result
@@ -143,7 +143,7 @@ annotationCArgsEnv program = map makeAnnotationEnvEntry annotationCArgsDecls
     getCArgs _ = []
 
     annotationContainsCArgs :: K3 Declaration -> Bool
-    annotationContainsCArgs (tag -> DAnnotation _ _ members) = any memberHasCArgs members
+    annotationContainsCArgs (tag -> DDataAnnotation _ _ _ members) = any memberHasCArgs members
     annotationContainsCArgs _ = False
 
     memberHasCArgs (Lifted _ _ _ _ anns) = any isCArgs anns

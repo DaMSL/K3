@@ -113,12 +113,15 @@ decl' (details -> (DRole n, cs, _)) =
                       <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
 
 
-decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
+decl' (details -> (DDataAnnotation n svars tvars mems, cs, _)) = do
+  ssps <- mapM typedSpliceVar svars
   tsps <- mapM typeVarDecl tvars
   msps <- mapM memberDecl mems
   csps <- mapM decl cs
   return $ vsep . (: csps) $
-    text "annotation" <+> text n <+> text "given" <+> text "type"
+    text "annotation" <+> text n
+      <> brackets (cat $ punctuate comma ssps)
+      <+> text "given" <+> text "type"
       <+> cat (punctuate comma tsps)
       <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
   where
@@ -143,7 +146,33 @@ decl' (details -> (DAnnotation n tvars mems, cs, _)) = do
 
     initializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
 
+
+decl' (details -> (DCtrlAnnotation n rules commonDecls, cs, _)) = do
+  rsps  <- return . indent 2 . vsep =<< mapM rewriteRule rules
+  cdsps <- return . indent 2 . vsep =<< mapM ctrlExtension commonDecls
+  csps  <- mapM decl cs
+  return $ vsep . (: csps) $ text "control" <+> text n <$> rsps <$> cdsps
+
 decl' _ = throwSP "Invalid declaration"
+
+
+rewriteRule :: PatternRewriteRule -> SyntaxPrinter
+rewriteRule (pat, rewrite, extensions) =
+    printRule C.<$> expr pat <*> expr rewrite <*> mapM ctrlExtension extensions
+  where
+    printRule patd rewrited extds =
+      patd <$> (indent 2 $ text "=>") <$> (indent 4 rewrited) <$> (indent 2 $ vsep extds)
+
+ctrlExtension :: K3 Declaration -> SyntaxPrinter
+ctrlExtension d = (text "+>" <+>) C.<$> decl d
+
+typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
+typedSpliceVar (t, i) = case t of
+  STLabel     -> return $ text "label" <+> text i
+  STType      -> return $ text "type"  <+> text i
+  STExpr      -> return $ text "expr"  <+> text i
+  STDecl      -> return $ text "decl"  <+> text i
+  STLabelType -> return $ text i
 
 
 subDecls :: [K3 Declaration] -> Printer [Doc]

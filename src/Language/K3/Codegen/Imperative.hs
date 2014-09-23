@@ -102,7 +102,7 @@ declaration (Node (DTrigger i t e :@: as) cs) = do
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DTrigger i t ne' :@: as) cs'
-declaration t@(tag -> DAnnotation _ _ amds) = do
+declaration t@(tag -> DDataAnnotation _ _ _ amds) = do
     forM_ amds $ \case
         Lifted Provides j u _ _ -> addGlobal j u
         _ -> return ()

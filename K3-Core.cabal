@@ -85,6 +85,7 @@ library
         Language.K3.Parser.Operator,
         Language.K3.Parser.Preprocessor,
         Language.K3.Parser.ProgramBuilder,
+        Language.K3.Parser.Metaprogram,
         Language.K3.Parser,
         Language.K3.Interpreter.Data.Types,
         Language.K3.Interpreter.Data.Instances,

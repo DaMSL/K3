@@ -36,13 +36,13 @@ runAnalysis prog =
 collectAnnos :: K3 Declaration -> [Declaration]
 collectAnnos prog = runIdentity $ foldTree addDecl [] prog
   where
-    addDecl acc n@(tag -> x@(DAnnotation _ _ _)) = return $ x:acc
+    addDecl acc n@(tag -> x@(DDataAnnotation _ _ _ _)) = return $ x:acc
     addDecl acc _ = return acc
 
 -- Convert the collection annotations to a map
 annosToMap :: [Declaration] -> AnnoMap
 annosToMap annos = foldr addAnno Map.empty annos
-  where addAnno (DAnnotation i _ annMems) acc =
+  where addAnno (DDataAnnotation i _ _ annMems) acc =
           let m = foldr addMember Map.empty annMems
           in Map.insert i m acc
 

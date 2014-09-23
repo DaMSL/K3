@@ -11,25 +11,27 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
 
-type GraphExtractor a = Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> (a, [Identifier])
+type GraphExtractor a = Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> (a, [Identifier])
 
 annotationGraph :: GraphExtractor a -> K3 Declaration -> (Graph Identifier a)
 annotationGraph annotationF prog = G.fromList $ maybe [] id $ foldMapTree concatChildAcc [] prog
-  where concatChildAcc childAccs (tag -> DAnnotation n tvars mems) =
-          let (node, edges) = annotationF n tvars mems
+  where concatChildAcc childAccs (tag -> DDataAnnotation n svars tvars mems) =
+          let (node, edges) = annotationF n svars tvars mems
           in Just $ [(n, node, edges)] ++ concat childAccs
         concatChildAcc childAccs _ = Just $ concat childAccs
 
 providesGraph :: K3 Declaration -> Graph Identifier ([TypeVarDecl], [AnnMemDecl])
 providesGraph prog = annotationGraph extractProvides prog
-  where extractProvides _ tvars mems = (\(x,y) -> ((tvars,y), x)) $ foldl memberOrProvide ([], []) mems
+  where extractProvides _ [] tvars mems = (\(x,y) -> ((tvars,y), x)) $ foldl memberOrProvide ([], []) mems
+        extractProvides n _ _ _ = error $ unwords ["Invalid annotation for providesGraph", n, ":", "non-empty splice parameters"]
         memberOrProvide (provideAcc, memberAcc) (MAnnotation Provides n _) = (n:provideAcc,     memberAcc)
         memberOrProvide (provideAcc, memberAcc) (MAnnotation _ _ _)        = (  provideAcc,     memberAcc)
         memberOrProvide (provideAcc, memberAcc) mem                        = (  provideAcc, mem:memberAcc)
 
 requiresGraph :: K3 Declaration -> Graph Identifier ([TypeVarDecl], [AnnMemDecl])
 requiresGraph prog = annotationGraph extractRequires prog
-  where extractRequires _ tvars mems = (\(x,y) -> ((tvars,y), x)) $ foldl memberOrRequire ([], []) mems
+  where extractRequires _ [] tvars mems = (\(x,y) -> ((tvars,y), x)) $ foldl memberOrRequire ([], []) mems
+        extractRequires n _ _ _ = error $ unwords ["Invalid annotation for requiresGraph", n, ":", "non-empty splice parameters"]
         memberOrRequire (requireAcc, memberAcc) (MAnnotation Requires n _) = (n:requireAcc,     memberAcc)
         memberOrRequire (requireAcc, memberAcc) (MAnnotation _ _ _)        = (  requireAcc,     memberAcc)
         memberOrRequire (requireAcc, memberAcc) mem                        = (  requireAcc, mem:memberAcc)
