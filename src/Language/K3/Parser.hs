@@ -64,7 +64,8 @@ import Language.K3.Parser.DataTypes
 import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
-import Language.K3.Parser.Metaprogram
+import Language.K3.Parser.Metaprogram.DataTypes
+import Language.K3.Parser.Metaprogram.Evaluation
 import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
@@ -131,10 +132,15 @@ declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], k3Decls, edgeDecls, driverDecls >> return []]
 
   where k3Decls     = choice $ map normalizeDeclAsList
-                        [Right dGlobal, Right dTrigger, Right dRole, Right dDataAnnotation, Right dControlAnnotation, Left dTypeAlias]
+                        [Right dGlobal, Right dTrigger, Right dRole,
+                         Right (mpDecl dDataAnnotation), Right (mpDecl dControlAnnotation),
+                         Left dTypeAlias]
+
         edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
         driverDecls = choice [dSelector, dFeed]
         ignores     = pInclude >> return ()
+
+        mpDecl  mp = mp >>= evalMetaprogram
 
         props    p = DUID # withProperties True dProperties p
         optProps p = uidOfOpt =<< optWithProperties True dProperties p
@@ -200,12 +206,12 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 -- | Data annotation parsing.
 --   This covers metaprogramming for data annotations when an annotation defines splice parameters.
 --   TODO: build generators for data annotations with splice parameters in a separate pass.
-dDataAnnotation :: DeclParser
-dDataAnnotation = namedDecl "data annotation" "annotation" rule
+dDataAnnotation :: MPDeclParser
+dDataAnnotation = namedIdentifier "data annotation" "annotation" rule
   where rule x = mkAnnotation <$> x <*> option [] spliceParameters <*> typesParamsAndMembers
         typesParamsAndMembers = parseInMode Splice $ protectedVarDecls typeParameters $ braces (some annotationMember)
         typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
-        mkAnnotation n sp (tp, mems) = DC.dataAnnotation n sp tp mems
+        mkAnnotation n sp (tp, mems) = mpDataAnnotation n sp tp mems
 
 
 {- Annotation declaration members -}
@@ -246,9 +252,9 @@ polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
 -- | Control annotation parsing
-dControlAnnotation :: DeclParser
-dControlAnnotation = namedDecl "control annotation" "control" $ rule
-  where rule x = DC.ctrlAnnotation <$> x <*> some pattern <*> extensions
+dControlAnnotation :: MPDeclParser
+dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
+  where rule x = mpCtrlAnnotation <$> x <*> some pattern <*> extensions
         pattern = do
           (spliceEnv, patExpr) <- mkPatternSpliceEnv <$> parseInMode SourcePattern expr
           parseInSpliceEnv spliceEnv $ rewrite patExpr
@@ -707,12 +713,14 @@ annotationUse sEnv aCtor = try macroOrAnn
 
         mkAnnDecl (n, params) = parserWithGEnv $ \gEnv ->
           let nsenv = mkSpliceEnv $ catMaybes params
-          in maybe (spliceLookupErr n) (expectSpliceAnnotation . ($ nsenv)) $ Map.lookup n gEnv
+          in maybe (spliceLookupErr n) (expectSpliceAnnotation . applyGenerator nsenv) $ Map.lookup n gEnv
+
+        applyGenerator nsenv (K3Generator g) = g nsenv
 
         expectSpliceAnnotation (SRDecl p) = do
           decl <- p
           case tag decl of
-            DDataAnnotation n _ _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
+            DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
             _ -> P.parserFail $ boxToString $ ["Invalid annotation splice"] %+ prettyLines decl
 
         expectSpliceAnnotation _ = P.parserFail "Invalid annotation splice"
@@ -987,7 +995,7 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 
         DRole n -> rebuildDecl d uid $ DRole n
 
-        DDataAnnotation n sis tis mems -> rebuildDecl d uid $ DDataAnnotation n sis tis mems
+        DDataAnnotation n tis mems -> rebuildDecl d uid $ DDataAnnotation n tis mems
           --  TODO: recur through members (e.g., attributes w/ initializers)
           --  and ensure they have a uid
 

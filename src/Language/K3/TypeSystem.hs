@@ -181,7 +181,7 @@ annotateProgramTypes p typeBounds = runIdentity $ traverse annotateDecl p
     annotateDecl (dt :@: anns) = return . (:@: anns) $ case dt of
       DGlobal n t (Just e)   -> DGlobal n t . Just . runIdentity $ traverse annotateExpr e
       DTrigger n t e         -> DTrigger n t . runIdentity $ traverse annotateExpr e
-      DDataAnnotation n sis tis mems -> DDataAnnotation n sis tis $ map annotateAnnMem mems
+      DDataAnnotation n tis mems -> DDataAnnotation n tis $ map annotateAnnMem mems
       _ -> dt
 
     annotateExpr e@(_ :@: anns) = return $ case partition isETypeOrBound anns of

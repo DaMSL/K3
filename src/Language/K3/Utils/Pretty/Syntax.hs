@@ -113,14 +113,12 @@ decl' (details -> (DRole n, cs, _)) =
                       <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
 
 
-decl' (details -> (DDataAnnotation n svars tvars mems, cs, _)) = do
-  ssps <- mapM typedSpliceVar svars
+decl' (details -> (DDataAnnotation n tvars mems, cs, _)) = do
   tsps <- mapM typeVarDecl tvars
   msps <- mapM memberDecl mems
   csps <- mapM decl cs
   return $ vsep . (: csps) $
     text "annotation" <+> text n
-      <> brackets (cat $ punctuate comma ssps)
       <+> text "given" <+> text "type"
       <+> cat (punctuate comma tsps)
       <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line

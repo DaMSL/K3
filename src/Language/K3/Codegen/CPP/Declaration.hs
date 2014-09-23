@@ -99,7 +99,7 @@ declaration _ = return []
 --             ++ recordDecls
 --             ++ [subDecls, i, tablePop]
 
--- declaration (tag -> DDataAnnotation i _ _ amds) = addAnnotation i amds >> return empty
+-- declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return empty
 -- declaration _ = return empty
 
 

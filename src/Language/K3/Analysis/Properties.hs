@@ -151,8 +151,7 @@ inferProgramUsageProperties prog =
   where
         initDeclF d@(tag &&& annotations -> (DGlobal n t _, anns)) | isTFunction t = extDeclProps n anns >> return d
         initDeclF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d
-        initDeclF d@(tag -> DDataAnnotation n [] _ mems) = extAnnProps n mems >> return d
-        initDeclF d@(tag -> DDataAnnotation _ _ _ _)  = left $ "Invalid annotation with splice parameters in inferProgramUsageProperties"
+        initDeclF d@(tag -> DDataAnnotation n _ mems) = extAnnProps n mems >> return d
         initDeclF d = return d
 
         declF d@(tag &&& annotations -> (DGlobal n t _, anns)) | not (isTFunction t) = extDeclProps n anns >> return d

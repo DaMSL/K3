@@ -185,7 +185,7 @@ convertAstToRepr ast =
   where
     declToRepr :: K3 Declaration -> m (Maybe (Identifier, (TypeParameterContext, TaggedAnnRepr)))
     declToRepr decl = case tag decl of
-      DDataAnnotation i _ vdecls mems -> do
+      DDataAnnotation i vdecls mems -> do
         u <- uidOf decl
         -- TODO: for parametricity, also include the bounding expression(s)
         --       in the type params map

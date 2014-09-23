@@ -1419,7 +1419,7 @@ declaration decl = case (tag &&& children) decl of
     return . HDeclarations $ concat decls
       -- TODO: qualify names?
 
-  (DDataAnnotation n [] vdecls members, []) ->
+  (DDataAnnotation n vdecls members, []) ->
     annotation n vdecls members >> return HNoRepr
 
   _ -> throwCG $ CodeGenerationError "Invalid declaration"

@@ -111,7 +111,7 @@ deriveDeclaration aEnv env decl =
               , csSing $ a4 <: STuple []
               , qa2 ~= STrigger a3 ]
 
-    DDataAnnotation iAnn _ _ mems -> do
+    DDataAnnotation iAnn _ mems -> do
       rEnv <- globalREnv <$> typecheckingContext
       qEnv <- envRequire (InternalError $
                 MissingIdentifierInGlobalQuantifiedEnvironment rEnv iAnn)

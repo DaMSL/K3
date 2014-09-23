@@ -894,7 +894,7 @@ inferProgramTypes prog = do
       withUnique n $ trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
 
-    initDeclF d@(tag -> DDataAnnotation n [] tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
+    initDeclF d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
       where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
             memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
             memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
@@ -902,9 +902,6 @@ inferProgramTypes prog = do
             unifyMemInit lifted mn mt = do
               qpt <- qpType (TC.forAll tdeclvars mt)
               return (Just (mn, (qpt, lifted)))
-
-    initDeclF (tag -> DDataAnnotation n _ _ _) = left $ unwords
-      ["Invalid annotation", n, "with splice parameters in inferProgramTypes.initDeclF"]
 
     initDeclF d = return d
 
@@ -951,9 +948,9 @@ inferProgramTypes prog = do
                  return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
           _ -> trigTypeErr n
 
-    declF d@(tag -> DDataAnnotation n svars tvars mems) =
+    declF d@(tag -> DDataAnnotation n tvars mems) =
         get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
-          return (Node (DDataAnnotation n svars tvars nmems :@: annotations d) $ children d)
+          return (Node (DDataAnnotation n tvars nmems :@: annotations d) $ children d)
 
       where chkAnnMemEnv amEnv = mapM (memType amEnv) mems
 

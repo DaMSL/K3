@@ -2,9 +2,10 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Parser.Metaprogram where
+module Language.K3.Parser.Metaprogram.Evaluation where
 
 import Control.Applicative
+import Control.Arrow
 
 import qualified Data.Map as Map
 import Data.Tree
@@ -23,6 +24,7 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+import Language.K3.Parser.Metaprogram.DataTypes
 import Language.K3.Parser.DataTypes
 
 {- Basic parsers -}
@@ -38,49 +40,71 @@ spliceParameter  = choice $ map try [labelSParam, typeSParam, exprSParam, declSP
         labelTypeSParam  = (STLabelType,) <$> identifier
 
 {- Top-level AST transformations -}
-makeDataAnnGenerators :: K3 Declaration -> DeclParser
-makeDataAnnGenerators prog = undefined
---genOrCtor (n, [], (tp, mems)) = return . Just $ DC.dataAnnotation n [] tp mems
---genOrCtor (n, sp, (tp, mems)) =
---  let extendGen genEnv =
---        case lookupGenE n genEnv of
---          Nothing -> Right $ addGenE n (annotationSplicer (n,sp,(tp,mems))) genEnv
---          Just _  -> Left $ unwords ["Duplicate macro annotation for", n]
---  in modifyGEnvF_ extendGen >> return Nothing
+evalMetaprogram :: K3 MPDeclaration -> DeclParser
+evalMetaprogram mp = foldMapTree evalMPDecl [] mp >>= \case
+    [x] -> return x
+    _   -> P.parserFail "Invalid metaprogram evaluation result"
 
-applyDataAnnGenerators :: K3 Declaration -> DeclParser
-applyDataAnnGenerators prog = undefined
+  where
+    evalMPDecl :: [[K3 Declaration]] -> K3 MPDeclaration -> K3Parser [K3 Declaration]
+    evalMPDecl ch (tag &&& annotations -> (Staged (MDataAnnotation n [] tVars mems), anns)) =
+      return $ rwNode (DC.dataAnnotation n tVars mems) (rwAnns anns) ch
 
-makeCtrlAnnGenerators :: K3 Declaration -> DeclParser
-makeCtrlAnnGenerators prog = undefined
+    evalMPDecl [] (tag -> Staged (MDataAnnotation n sVars tVars mems)) =
+      let extendGen genEnv =
+            case lookupGenE n genEnv of
+              Nothing -> Right $ addGenE n (annotationSplicer n sVars tVars mems) genEnv
+              Just _  -> Left $ unwords ["Duplicate macro annotation for", n]
+      in modifyGEnvF_ extendGen >> return []
 
-applyCtrlAnnGenerators :: K3 Declaration -> DeclParser
-applyCtrlAnnGenerators prog = undefined
+    evalMPDecl _ (tag -> Staged (MDataAnnotation n _ _ _)) =
+      P.parserFail $ unwords ["Invalid data annotation generator", n, "with non-empty children"]
+
+    evalMPDecl ch (tag &&& annotations -> (Staged (MCtrlAnnotation n rewriteRules extensions), anns)) =
+      return $ rwNode (DC.ctrlAnnotation n rewriteRules extensions) (rwAnns anns) ch
+
+    evalMPDecl ch (tag &&& annotations -> (Unstaged d, anns)) = return $ mkNode d (rwAnns anns) ch
+
+    evalMPDecl _ n = P.parserFail $ unwords ["Invalid metaprogram node", show n]
+
+    mkNode :: Declaration -> [Annotation Declaration] -> [[K3 Declaration]] -> [K3 Declaration]
+    mkNode t anns ch = [Node (t :@: anns) $ concat ch]
+
+    rwNode :: K3 Declaration -> [Annotation Declaration] -> [[K3 Declaration]] -> [K3 Declaration]
+    rwNode (Node (t :@: anns) _) nanns ch = [Node (t :@: (anns ++ nanns)) $ concat ch]
+
+    rwAnns :: [Annotation MPDeclaration] -> [Annotation Declaration]
+    rwAnns l = map unwrap l
+
+    unwrap :: Annotation MPDeclaration -> Annotation Declaration
+    unwrap (MPSpan sp) = DSpan sp
+
 
 {- Splice-checking -}
 -- TODO: match splice parameter types (e.g., types vs label-types vs exprs.)
-validateSplice :: [Identifier] -> SpliceEnv -> SpliceEnv
-validateSplice spliceParams spliceEnv = Map.filterWithKey (\k _ -> k `elem` spliceParams) spliceEnv
+validateSplice :: [TypedSpliceVar] -> SpliceEnv -> SpliceEnv
+validateSplice spliceParams spliceEnv =
+  let paramIds = map snd spliceParams
+  in Map.filterWithKey (\k _ -> k `elem` paramIds) spliceEnv
 
 {- Generator and splicer construction -}
-globalSplicer :: Identifier -> K3 Type -> Maybe (K3 Expression) -> SpliceEnv -> SpliceResult
-globalSplicer n t eOpt spliceEnv = SRDecl $ do
+globalSplicer :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3Generator
+globalSplicer n t eOpt = K3Generator $ \spliceEnv -> SRDecl $ do
   nt <- parseInSpliceEnv spliceEnv $ spliceType t
   neOpt <- maybe (return Nothing) (\e -> parseInSpliceEnv spliceEnv (spliceExpression e) >>= return . Just) eOpt
   return $ DC.global n nt neOpt
 
-annotationSplicer :: (Identifier, [Identifier], ([TypeVarDecl], [AnnMemDecl]))
-                  -> SpliceEnv -> SpliceResult
-annotationSplicer (n, spliceParams, (typeParams, mems)) spliceEnv = SRDecl $ do
+annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3Generator
+annotationSplicer n spliceParams typeParams mems = K3Generator $ \spliceEnv -> SRDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- parseInSpliceEnv vspliceEnv $ spliceAnnMems mems
-  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) [] typeParams nmems
+  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams nmems
 
-exprSplicer :: K3 Expression -> SpliceEnv -> SpliceResult
-exprSplicer e spliceEnv = SRExpr $ parseInSpliceEnv spliceEnv $ spliceExpression e
+exprSplicer :: K3 Expression -> K3Generator
+exprSplicer e = K3Generator $ \spliceEnv -> SRExpr $ parseInSpliceEnv spliceEnv $ spliceExpression e
 
-typeSplicer :: K3 Type -> SpliceEnv -> SpliceResult
-typeSplicer t spliceEnv = SRType $ parseInSpliceEnv spliceEnv $ spliceType t
+typeSplicer :: K3 Type -> K3Generator
+typeSplicer t = K3Generator $ \spliceEnv -> SRType $ parseInSpliceEnv spliceEnv $ spliceType t
 
 {- Splice evaluation -}
 spliceAnnMems :: [AnnMemDecl] -> K3Parser [AnnMemDecl]

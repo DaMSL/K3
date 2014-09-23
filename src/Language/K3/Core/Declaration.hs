@@ -42,12 +42,14 @@ data Declaration
         -- ^ Trigger declaration.  Type is argument type of trigger.  Expression
         --   must be a function taking that argument type and returning unit.
 
-    | DDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
+    | DDataAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
         -- ^ Name, annotation splice and type parameters, and members
 
     | DCtrlAnnotation Identifier [PatternRewriteRule] [K3 Declaration]
         -- ^ Name, a list of pattern-based rewrite rules, and a set of common
         --   declarations for any match.
+        --   Control annotations are currently only kept in the AST for lineage,
+        --   and should be fully synthesized at all use cases by metaprogram evaluation.
 
     | DRole           Identifier
         -- ^ Roles, as lightweight modules. These are deprecated.
@@ -126,9 +128,8 @@ instance Pretty (K3 Declaration) where
   prettyLines (Node (DRole i :@: as) ds) =
     ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
 
-  prettyLines (Node (DDataAnnotation i svars tvars members :@: as) ds) =
+  prettyLines (Node (DDataAnnotation i tvars members :@: as) ds) =
       ["DDataAnnotation " ++ i
-          ++ (intercalate ", " $ map (\(t,n) -> unwords [show t, n]) svars)
           ++ if null tvars
               then ""
               else ("[" ++ (removeTrailingWhitespace . boxToString $

@@ -35,6 +35,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
+import Language.K3.Parser.Metaprogram.DataTypes
+
 {- Type synonyms for parser return types -}
 
 -- | Endpoint name => endpoint spec, bound triggers, qualified name, initializer expression
@@ -44,22 +46,9 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
 -- | Role name, default name
 type DefaultEntries    = [(Identifier, Identifier)]
 
-{-| Macro environment and datatypes -}
-type GeneratorEnv  = Map Identifier (SpliceEnv -> SpliceResult)
-type SpliceEnv     = Map Identifier SpliceReprEnv
-type SpliceReprEnv = Map Identifier SpliceValue
-type SpliceContext = [SpliceEnv]
-
-data SpliceValue = SLabel Identifier
-                 | SType (K3 Type)
-                 | SExpr (K3 Expression)
-                 | SDecl (K3 Declaration)
-                 deriving (Eq, Read, Show)
-
-data SpliceResult = SRType TypeParser
-                  | SRExpr ExpressionParser
-                  | SRDecl DeclParser
-
+{-| Metaprogram environment -}
+newtype K3Generator = K3Generator (SpliceEnv -> SpliceResult K3Parser)
+type GeneratorEnv   = Map Identifier K3Generator
 type GeneratorState = (Int, GeneratorEnv, SpliceContext, [K3 Declaration])
 
 {-| Type alias support.
@@ -96,6 +85,7 @@ type LiteralParser     = K3Parser (K3 Literal)
 type ExpressionParser  = K3Parser (K3 Expression)
 type BinderParser      = K3Parser Binder
 type DeclParser        = K3Parser (K3 Declaration)
+type MPDeclParser      = K3Parser (K3 MPDeclaration)
 
 -- | Additional parsing type synonyms.
 type EndpointMethods   = (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
@@ -432,10 +422,10 @@ safePopFrame (h:t) = (h,t)
 
 
 {- Generator environment accessors -}
-lookupGenE :: Identifier -> GeneratorEnv -> Maybe (SpliceEnv -> SpliceResult)
+lookupGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator
 lookupGenE = Map.lookup
 
-addGenE :: Identifier -> (SpliceEnv -> SpliceResult) -> GeneratorEnv -> GeneratorEnv
+addGenE :: Identifier -> K3Generator -> GeneratorEnv -> GeneratorEnv
 addGenE = Map.insert
 
 {- Splice context accessors -}

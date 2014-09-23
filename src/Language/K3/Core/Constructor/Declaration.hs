@@ -38,9 +38,9 @@ typeDef i t = Node (DTypeDef i t :@: []) []
 
 -- | Create a user-defined annotation.  Arguments are annotation name,
 --   declared type parameters, and member declarations.
-dataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
-dataAnnotation i svdecls tvdecls members = Node (DDataAnnotation i svdecls tvdecls members :@: []) []
+dataAnnotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
+dataAnnotation i tvdecls members = Node (DDataAnnotation i tvdecls members :@: []) []
 
 -- | Create a user-defined control annotation.
 ctrlAnnotation :: Identifier -> [PatternRewriteRule] -> [K3 Declaration] -> K3 Declaration
-ctrlAnnotation i rules commonDecls = Node (DCtrlAnnotation i rules commonDecls :@: []) []
+ctrlAnnotation i rules decls = Node (DCtrlAnnotation i rules decls :@: []) []

@@ -29,9 +29,9 @@ foldProgram declF annMemF exprF a prog = foldRebuildTree rebuildDecl a prog
       (acc2, ne) <- exprF acc e
       declF acc2 $ Node (DTrigger i t ne :@: anns) ch
 
-    rebuildDecl acc ch (tag &&& annotations -> (DDataAnnotation i sVars tVars mems, anns)) = do
+    rebuildDecl acc ch (tag &&& annotations -> (DDataAnnotation i tVars mems, anns)) = do
       (acc2, nMems) <- foldM rebuildAnnMem (acc, []) mems
-      declF acc2 $ Node (DDataAnnotation i sVars tVars nMems :@: anns) ch
+      declF acc2 $ Node (DDataAnnotation i tVars nMems :@: anns) ch
 
     rebuildDecl acc ch (Node t _) = declF acc $ Node t ch
 
