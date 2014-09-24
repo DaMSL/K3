@@ -4,7 +4,10 @@ include "Annotation/Collection.k3"
 annotation Vector given type a{
   // TODO: bounds checking
   provides lifted at  : int -> content
+
+  @CArgs 2
   provides lifted set : int -> content -> ()
+
   provides lifted size : () -> int
 
   @:Transformer
@@ -25,7 +28,7 @@ annotation Vector given type a{
   @:Transformer
   provides lifted map: (content -> real) -> self
 
-  @:Transformer
+  @:{Transformer, CArgs 2}
   provides lifted fold: (a -> (content -> a)) -> a -> a
 
   provides lifted dot : self -> real

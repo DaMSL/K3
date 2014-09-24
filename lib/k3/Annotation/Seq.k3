@@ -5,6 +5,8 @@ annotation Seq given type a,b {
 
   provides lifted insert  : content -> ()
   provides lifted erase  : content -> ()
+
+  @:CArgs 2
   provides lifted update  : content -> (content -> ())
   provides lifted size : () -> int
 
