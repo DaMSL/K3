@@ -47,10 +47,10 @@ declare start_ms : mut int = 0
 declare end_ms : mut int = 0
 declare elapsed_ms : mut int = 0
 
-declare agg_vals : mut collection {key:string, value:real} @ {Map}
+declare agg_vals : mut collection {key:string, value:real} @ {Collection}
 declare peer_aggs : mut collection {key: int, value:
-                   collection {key: string, value: real} @ {Map}
-                   } @ {Map}
+                   collection {key: string, value: real} @ {Collection}
+                   } @ {Collection}
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -66,7 +66,7 @@ trigger q2_local : () = \_ -> (
     agg_vals.groupBy
       (\v -> index_by_hash v.key)
       (\acc -> \v -> (acc.insert(v); acc))
-      (empty {key: string, value: real} @ {Map});
+      (empty {key: string, value: real} @ {Collection});
   peer_aggs.iterate (\v ->
     (aggregate, peer_by_index v.key) <- v.value
   );
@@ -74,15 +74,15 @@ trigger q2_local : () = \_ -> (
   peers.iterate(\p -> (peer_barrier, p.addr) <- ())
 )
 
-declare merge_results: collection { key: string, value: real } @ { Map } -> () = \vals -> (
+declare merge_results: collection { key: string, value: real } @ { Collection } -> () = \vals -> (
     vals.iterate (
-        \v -> case lookup local_q2_results v.key of
-            { Some a -> local_q2_results.insert { key: v.key, value: a + v.value } }
+        \v -> case local_q2_results.lookup {key: v.key, value: 0.0}  of
+            { Some kv -> local_q2_results.insert { key: v.key, value: kv.value + v.value } }
             { None -> local_q2_results.insert v }
     )
 )
 
-trigger aggregate : collection { key: string, value: real } @ {Map} = \vals -> (
+trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
   merge_results vals
 )
 
@@ -102,7 +102,7 @@ trigger master_done : () = \_ -> (
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
-  
+
 
 trigger shutdown : () = \_ -> (
   haltEngine ()
