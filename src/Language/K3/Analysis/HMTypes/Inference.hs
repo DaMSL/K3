@@ -46,12 +46,29 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
-logVoid :: (Functor m, Monad m) => String -> m ()
+--logVoid :: (Functor m, Monad m) => String -> m ()
 --logVoid s = void $ _debug s
-logVoid s = trace s $ return ()
+--logVoid s = trace s $ return ()
+
+logVoid :: String -> TInfM ()
+logVoid s = do
+  env <- get
+  logVoid' (verbose $ config env) s
+
+logVoid' :: (Functor m, Monad m) => Bool -> String -> m ()
+logVoid' verbose s = if verbose then trace s $ return () else return ()
 
 -- | Misc. helpers
-logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+-- logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+-- logAction msgF action = do
+--   doLog (msgF Nothing)
+--   result <- action
+--   doLog (msgF $ Just result)
+--   return result
+--   where doLog Nothing  = return ()
+--         doLog (Just s) = logVoid s
+
+logAction :: (Maybe a -> Maybe String) -> TInfM a -> TInfM a
 logAction msgF action = do
   doLog (msgF Nothing)
   result <- action
@@ -59,6 +76,7 @@ logAction msgF action = do
   return result
   where doLog Nothing  = return ()
         doLog (Just s) = logVoid s
+
 
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
 (.+) e qt = e @+ (EQType $ mutabilityE e qt)
@@ -872,14 +890,15 @@ substituteDeepQt e = mapTree subNode e
         subAnns x = return x
 
 -- | Top-level type inference methods
-inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-inferProgramTypes prog = do
-    (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
+inferProgramTypes :: Bool -> K3 Declaration -> Either String (K3 Declaration)
+inferProgramTypes verbose prog = do
+    (_, initEnv) <- let tienv = mcfg (cSetVerbose verbose) tienv0
+                        (a,b) = runTInfM tienv $ initializeTypeEnv
                     in a >>= return . (, b)
     (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
                          in a >>= return . (, b)
-    logVoid $ "Final type environment"
-    logVoid $ pretty finalEnv
+    logVoid' verbose $ "Final type environment"
+    logVoid' verbose $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
@@ -935,7 +954,7 @@ inferProgramTypes prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          logVoid $ prettyTaggedPair ("unify init ") qt1 qt2
+          logVoid' verbose $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           --return $ Just e
           substituteDeepQt e >>= return . Just
