@@ -42,7 +42,6 @@ data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
     | FScope [K3 Symbol]
-    | FVariable Identifier
     | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible
