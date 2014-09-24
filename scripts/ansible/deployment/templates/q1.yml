@@ -1,12 +1,12 @@
 data_files:
   - variable_name: "rankings_file"
-    path_prefix: "/local_data/sf5/128/rankings_sf5_128l/rankings_sf5_128l_"
+    path_prefix: "/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_"
     path_suffix_fmt: "%03d"
 
 k3_bindings:
   x: 1000
-  role: '"s1"'
-  master: "<192.168.0.40>"
+  role: '"rows"'
+  master: "<192.168.0.40:40000>"
 
 hosts:
   - name: qp-hm1

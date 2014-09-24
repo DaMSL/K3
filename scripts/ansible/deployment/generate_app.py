@@ -27,7 +27,6 @@ def createHostVars(path, d):
   for host in d['hosts']:
     with open(path + "%s.yml" % host['name'], "w") as f:
       result = {'ip': host['ip'], 'local_peers':[]}
-      print(host['num_peers'])
       for i in range(host['num_peers']):
         peer = {'port': 40000 + i,
                 'overrides': {} }
