@@ -1,4 +1,4 @@
-  - name: Build the 'peers' string.
+  - name: Define constants
     set_fact: 
       peers: "[{% for key in play_hosts -%} {% for d in hostvars[key].local_peers -%} {addr:<{{hostvars[key].ip}}:{{d.port}}>} {%- if not loop.last %},{% endif %} {%- endfor %} {%- if not loop.last %},{% endif %}{%- endfor %}]"
       # local:
@@ -25,22 +25,18 @@
  
     # Cleanup existing Docker image / containers
   - name: Kill existing Docker containers
-    docker: name="{{docker_image}}_{{item}}" image={{docker_image}} state=killed
+    docker: name="{{docker_image}}_{{item}}" image={{docker_image}} state=absent
     ignore_errors: yes
     with_items:  "{{ local_peers | map(attribute='port') | list }}"
   
-  - name: Delete the container
-    shell: docker rm -f {{docker_image}}_{{item}}
-    ignore_errors: yes
-    with_items: "{{ local_peers | map(attribute='port') | list }}"
-  
   - name: Delete the temporary Docker image
-    command: docker rmi -f {{docker_image}}
+    docker_image: name={{docker_image}} state=absent
     ignore_errors: yes
   
   - name: Build the docker image for this app
     shell: docker build -t {{docker_image}} {{setup_dir}}
 
+    # Mount the app's data directory in the container, pass along all k3 command line args.
   - name: Run the binary in a docker container
     shell: docker run -d --net=host --name="{{docker_image}}_{{item.port}}" -v {{data_dir}}/{{item.port}}:/app_data -v /local:/local_data {{docker_image}} /run_k3.sh {% if item.enable_logging | default(False) %} -l 2 {% endif %} -p 'peers:{{peers}},me:<{{ip}}:{{item.port}}>,{% for key, value in item.overrides.iteritems()|list + k3_bindings.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %}'
     with_items: "{{ local_peers | list }}"
