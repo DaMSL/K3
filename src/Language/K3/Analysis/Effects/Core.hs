@@ -29,11 +29,11 @@ data Provenance
     | PVar
     | PTemporary
     | PGlobal
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
+data Symbol = Symbol Identifier Provenance deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Symbol = SID Int deriving (Eq, Read, Show)
+data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
 
 isSID :: Annotation Symbol -> Bool
 isSID _ = True
@@ -47,9 +47,9 @@ data Effect
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop                   -- a flattened loop
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Effect = FID Int deriving (Eq, Read, Show)
+data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)
 
 isFID :: Annotation Effect -> Bool
 isFID _ = True
