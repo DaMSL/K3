@@ -3,7 +3,7 @@ import sys
 import os
 
 group_name = "all_peers"
-
+run_play = "../../common/run_k3.yml"
 
 def loadYmlFile(path):
   with open(path,"r") as f:
@@ -39,22 +39,36 @@ def createHostVars(path, d):
       f.write(yaml.dump(result))
 
 
+def createDeploy(path, d):
+  result = {}
+  result['hosts'] = group_name
+  result['tasks'] = [{'include': run_play, 
+                      'vars':
+                         {'app_name':    d['app_name'], 
+                          'binary_path': d['binary_path'] }
+                    }]
 
+  with open(path, "w") as f:
+    f.write(yaml.dump([result]))
 
 if __name__ == "__main__":
-  if (len(sys.argv) < 3):
-    print("Usage: %s config_file app_name", sys.argv[0])
+  if (len(sys.argv) < 2):
+    print("Usage: %s config_file", sys.argv[0])
     sys.exit(1)
 
   config_file = sys.argv[1]
-  app_name = sys.argv[2]
 
-  os.system("mkdir %s" % app_name)
-  os.system("mkdir %s/%s" % (app_name, "group_vars"))
-  os.system("mkdir %s/%s" % (app_name, "host_vars"))
-
-  out_folder = app_name + "/"
   d = loadYmlFile(config_file)
+  app_name = d['app_name']
+
+
+  out_folder = "apps/" + app_name + "/"
+
+  os.system("mkdir -p %s" % (out_folder) )
+  os.system("mkdir -p %s%s" % (out_folder, "group_vars"))
+  os.system("mkdir -p %s%s" % (out_folder, "host_vars"))
+  
   createInventoryFile(out_folder + "inventory.ini", d)
   createGroupVars(out_folder + "group_vars/" + group_name + ".yml", d)
   createHostVars(out_folder + "host_vars/", d)
+  createDeploy(out_folder + "deploy.yml", d)

@@ -1,3 +1,6 @@
+app_name: amplab_q1
+binary_path: /tmp/q1
+
 data_files:
   - variable_name: "rankings_file"
     path_prefix: "/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_"
@@ -28,3 +31,18 @@ hosts:
     ip: "192.168.0.44"
     num_peers: 16
     file_start_index: 64
+
+  - name: qp-hm6
+    ip: "192.168.0.45"
+    num_peers: 16
+    file_start_index: 80
+  
+  - name: qp-hm7
+    ip: "192.168.0.46"
+    num_peers: 16
+    file_start_index: 96
+
+  - name: qp-hm8
+    ip: "192.168.0.47"
+    num_peers: 16
+    file_start_index: 112
