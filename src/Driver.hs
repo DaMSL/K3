@@ -19,7 +19,7 @@ import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 -- import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
-import Language.K3.Analysis.Properties
+-- import Language.K3.Analysis.Properties
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 
 import qualified Language.K3.Transform.Normalization as Normalization
@@ -65,13 +65,13 @@ run opts = do
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     quickTypecheckAux f p = do
-      qtp <- inferProgramTypes p;
+      qtp <- inferProgramTypes True p;
       f qtp
 
     quickTypecheckOpts opts' p = flip quickTypecheckAux p $
       \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
 
-    quickTypecheck p = quickTypecheckAux translateProgramTypes p
+    -- quickTypecheck p = quickTypecheckAux translateProgramTypes p
 
     chooseTypechecker opts' p =
       if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
@@ -126,9 +126,9 @@ run opts = do
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
 
     -- Temporary testing function.
-    testProperties p = inferProgramUsageProperties p
-                         >>= Simplification.inferFusableProgramApplies
-                         >>= Simplification.fuseProgramTransformers
+    -- testProperties p = inferProgramUsageProperties p
+    --                      >>= Simplification.inferFusableProgramApplies
+    --                      >>= Simplification.fuseProgramTransformers
 
 
 -- | Top-Level.
