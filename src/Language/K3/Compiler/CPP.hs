@@ -56,7 +56,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
-    quickTypecheck =  inferProgramTypes False prog >>= translateProgramTypes
+    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
@@ -127,14 +127,13 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
 
         pruneBadSubDirs = filter (not . hasBadSubDir)
 
-        -- Options that aren't in the lists are always included in both
-        compilePrefix = ["-I", "-D"]
-        linkPrefix = ["-l", "-L"]
+        compilePrefix = ["-I", "-D", "-f", "-w", "-O", "-pg", "-g"]
+        linkPrefix = ["-l", "-L", "-f", "-w", "-O", "-pg", "-g"]
 
         hasPrefixIn l x = foldr (\pre acc -> acc || pre `L.isPrefixOf` x) False l
 
-        filterLinkOptions = filter (not . hasPrefixIn compilePrefix)
-        filterCompileOptions = filter (not . hasPrefixIn linkPrefix)
+        filterLinkOptions = filter (hasPrefixIn linkPrefix)
+        filterCompileOptions = filter (hasPrefixIn compilePrefix)
 
         pName    = programName copts
         cc       = case ccCmd copts of
