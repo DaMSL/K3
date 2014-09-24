@@ -25,6 +25,9 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
+import Language.K3.Analysis.Effects.InsertEffects (runAnalysis)
+import Language.K3.Optimization (runOptimization)
+
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
@@ -63,7 +66,10 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram cppIr)
+    preprocess = runOptimization . runAnalysis
+
+    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
+                           (CPP.stringifyProgram $ preprocess cppIr)
     genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
 
     outputCPP (Right doc) =
