@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE OverloadedLists #-}
 
 module Language.K3.Codegen.CPP.Expression where
 
@@ -11,6 +12,8 @@ import Data.Functor
 import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
+
+import qualified Data.Set as S
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -23,6 +26,9 @@ import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
+
+import Language.K3.Optimization.Core
+import Language.K3.Optimization.Bind
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
@@ -269,7 +275,15 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
     return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
 
-reify r (tag &&& children -> (EBindAs b, [a, e])) = do
+reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
+    let (refBinds, copyBinds, writeBinds)
+            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
+                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
+                Nothing -> ([], [], S.fromList $ bindingVariables b)
+
+    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
+    let isWriteBound i = i `S.member` writeBinds
+
     (ae, g) <- case a of
         (tag -> EVariable _) -> inline a
         _ -> do
@@ -282,8 +296,8 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
     bindInit <- case b of
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
-                di <- cDecl ti i
-                return $ di ++ [R.Assignment (R.Variable $ R.Name i) (R.Dereference g)]
+                let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
+                return $ [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
             BTuple is -> do
                 let (tag &&& children -> (TTuple, ts)) = ta
                 ds <- zipWithM cDecl ts is
@@ -294,7 +308,9 @@ reify r (tag &&& children -> (EBindAs b, [a, e])) = do
 
     let bindWriteback = case b of
 
-            BIndirection i -> [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
+            BIndirection i ->
+                if not (isWriteBound i) then []
+                  else [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
             BTuple is -> zipWith (genTupleAssign g) [0..] is
             BRecord iis -> map (uncurry $ genRecordAssign g) iis
 
