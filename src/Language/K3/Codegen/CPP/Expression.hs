@@ -17,8 +17,6 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
-import Language.K3.Analysis.CArgs
-
 import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
@@ -60,7 +58,8 @@ attachTemplateVars v e g
                                   t@(tag -> TFunction) -> return t
                                   (tag &&& children -> (TForall _, [t'])) -> return t'
                                   _ -> throwE $ CPPGenE "Unreachable Error."
-            let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust $ functionType e)
+            let ts = snd . unzip . dedup $ matchTrees signatureType $ 
+                       fromMaybe (error "attachTemplateVars: expected just") $ functionType e
             cts <- mapM genCType ts
             return $ if null cts
                then R.Name v
