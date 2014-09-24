@@ -25,6 +25,7 @@ module Language.K3.Core.Constructor.Expression (
     address,
     self,
 
+    Binder(..),
     Constant(..),
     Operator(..)
 ) where
