@@ -31,7 +31,7 @@ data Literal
     | LEmpty      (K3 Type)
     | LCollection (K3 Type)
     | LAddress
-  deriving (Eq, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotations on literals.
 data instance Annotation Literal
@@ -42,7 +42,7 @@ data instance Annotation Literal
     | LAnnotation Identifier
     | LSyntax SyntaxAnnotation
     | LType (K3 Type)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Literal) where
   getUID (LUID u) = Just u

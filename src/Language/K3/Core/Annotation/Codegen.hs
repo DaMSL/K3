@@ -7,15 +7,15 @@ data EmbeddingAnnotation
     | IOStore
     | IOAction
     | IOStructure PStructure
-    deriving (Eq, Read, Show)
+    deriving (Eq, Ord, Read, Show)
 
 data PQualifier
     = PImmutable
     | PMutable
-    deriving (Eq, Read, Show)
+    deriving (Eq, Ord, Read, Show)
 
 data PStructure
     = PLeaf     PQualifier
     | PSingle   PQualifier  PStructure
     | PComplex  PQualifier [PStructure]
-    deriving (Eq, Read, Show)
+    deriving (Eq, Ord, Read, Show)

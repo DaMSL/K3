@@ -32,6 +32,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Metaprogram
 
 import Text.PrettyPrint.ANSI.Leijen
 
@@ -90,11 +91,9 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
 
     globalDecl (qualTOpt, t') eqeOpt =
       hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') (<+> (align t')) qualTOpt
-                                         <+> initializer eqeOpt <> line
+                                         <+> declInitializer eqeOpt <> line
 
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
-
-    initializer = maybe empty (\(qualE, e) -> equals <+> qualE <$> e)
 
 
 decl' (details -> (DTrigger n t e, cs, _)) =
@@ -114,48 +113,70 @@ decl' (details -> (DRole n, cs, _)) =
 
 
 decl' (details -> (DDataAnnotation n tvars mems, cs, _)) = do
-  tsps <- mapM typeVarDecl tvars
-  msps <- mapM memberDecl mems
-  csps <- mapM decl cs
-  return $ vsep . (: csps) $
-    text "annotation" <+> text n
-      <+> text "given" <+> text "type"
-      <+> cat (punctuate comma tsps)
-      <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
-  where
-    -- TODO: generate syntax for member property annotations.
-    memberDecl (Lifted pol i t eOpt _) =
-      attrDecl pol "lifted" i C.<$> qualifierAndType t
-                                <*> optionalPrinter qualifierAndExpr eOpt
+  pfxsp <- dAnnPrefix n [] tvars
+  msps  <- mapM annMemDecl mems
+  csps  <- mapM decl cs
+  return $ vsep . (: csps) $ pfxsp <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace <> line
 
-    memberDecl (Attribute pol i t eOpt _) =
-      attrDecl pol "" i C.<$> qualifierAndType t
-                          <*> optionalPrinter qualifierAndExpr eOpt
-
-    memberDecl (MAnnotation pol i _) =
-      return $ polarity pol <+> text "annotation" <+> text i
-
-    attrDecl pol kw j (qualT, t') eqeOpt =
-      hang 2 $ polarity pol <+> (if null kw then text j else text kw <+> text j)
-                            <+> colon <+> qualT <+> (align t') <+> initializer eqeOpt
-
-    polarity Provides = text "provides"
-    polarity Requires = text "requires"
-
-    initializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
-
-
-decl' (details -> (DCtrlAnnotation n svars rules commonDecls, cs, _)) = do
-  svsps  <- mapM typedSpliceVar svars
-  rsps   <- return . indent 2 . vsep =<< mapM rewriteRule rules
-  cdsps  <- return . indent 2 . vsep =<< mapM ctrlExtension commonDecls
+decl' (details -> (DGenerator mp, cs, _)) = do
+  msp    <- mpDeclaration mp
   csps   <- mapM decl cs
-  headsp <- return $ if null svsps then text "control" <+> text n
-                     else text "control" <+> text n <+> (brackets $ cat (punctuate comma svsps))
-  return $ vsep . (: csps) $ headsp <$> rsps <$> cdsps
+  return . vsep $ msp : csps
 
 decl' _ = throwSP "Invalid declaration"
 
+declInitializer :: Maybe (Doc, Doc) -> Doc
+declInitializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
+
+-- TODO: generate syntax for member property annotations.
+annMemDecl :: AnnMemDecl -> SyntaxPrinter
+annMemDecl (Lifted pol i t eOpt _) =
+  attrDecl pol "lifted" i C.<$> qualifierAndType t
+                            <*> optionalPrinter qualifierAndExpr eOpt
+
+annMemDecl (Attribute pol i t eOpt _) =
+  attrDecl pol "" i C.<$> qualifierAndType t
+                      <*> optionalPrinter qualifierAndExpr eOpt
+
+annMemDecl (MAnnotation pol i _) =
+  return $ polarity pol <+> text "annotation" <+> text i
+
+attrDecl :: Polarity -> String -> Identifier -> (Doc, Doc) -> Maybe (Doc, Doc) -> Doc
+attrDecl pol kw j (qualT, t') eqeOpt =
+  hang 2 $ polarity pol <+> (if null kw then text j else text kw <+> text j)
+                        <+> colon <+> qualT <+> (align t') <+> declInitializer eqeOpt
+
+polarity :: Polarity -> Doc
+polarity Provides = text "provides"
+polarity Requires = text "requires"
+
+mpDeclaration :: MPDeclaration -> SyntaxPrinter
+mpDeclaration (MPDataAnnotation i svars tvars members) = do
+  pfxsp <- dAnnPrefix i svars tvars
+  msps  <- mapM annMemDecl members
+  return $ pfxsp <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace
+
+mpDeclaration (MPCtrlAnnotation i svars rewriteRules extensions) = do
+  svsps  <- mapM typedSpliceVar svars
+  rsps   <- return . indent 2 . vsep =<< mapM rewriteRule rewriteRules
+  cdsps  <- return . indent 2 . vsep =<< mapM ctrlExtension extensions
+  headsp <- return $ if null svsps then text "control" <+> text i
+                     else text "control" <+> text i <+> (brackets $ cat (punctuate comma svsps))
+  return $ headsp <$> rsps <$> cdsps
+
+dAnnPrefix :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> SyntaxPrinter
+dAnnPrefix i svars tvars = do
+    svsps  <- mapM typedSpliceVar svars
+    tsps   <- mapM typeVarDecl tvars
+    return $ case (svsps, tsps) of
+      ([], []) -> name i
+      (_,  []) -> name i <+> sparams svsps
+      ([], _)  -> name i <+> tparams tsps
+      (_, _)   -> name i <+> sparams svsps <+> tparams tsps
+  where
+    name n        = text "annotation" <+> text n
+    sparams svsps = brackets $ cat (punctuate comma svsps)
+    tparams tsps  = text "given" <+> text "type" <+> cat (punctuate comma tsps)
 
 rewriteRule :: PatternRewriteRule -> SyntaxPrinter
 rewriteRule (pat, rewrite, extensions) =

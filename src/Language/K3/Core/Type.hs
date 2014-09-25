@@ -33,6 +33,9 @@ import Language.K3.Core.Common
 
 import Language.K3.Utils.Pretty
 
+-- | Cycle-breaking import for metaprogramming
+import {-# SOURCE #-} Language.K3.Core.Metaprogram ( SpliceEnv )
+
 -- * Basic types
 
 -- | Tags in the Type Tree. Every type can be qualified with a mutability
@@ -121,9 +124,10 @@ data instance Annotation Type
     = TMutable
     | TImmutable
     | TWitness
-    | TSpan Span
-    | TUID UID
+    | TSpan       Span
+    | TUID        UID
     | TAnnotation Identifier
+    | TApplyGen   Identifier SpliceEnv
     | TSyntax SyntaxAnnotation
   deriving (Eq, Ord, Read, Show)
 

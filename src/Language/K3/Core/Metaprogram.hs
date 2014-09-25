@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Language.K3.Parser.Metaprogram.DataTypes where
+module Language.K3.Core.Metaprogram where
 
 import Data.List
 import qualified Data.Map as Map
@@ -23,17 +23,17 @@ import Language.K3.Utils.Pretty
     For now, metaprogramming expressions and types are fully embedded
     into standard expression and type ASTs through identifiers.
 -}
-data MPDeclaration = Staged   MetaDeclaration
-                   | Unstaged Declaration
-                   deriving (Eq, Show, Read)
+data MetaDeclaration = Staged   MPDeclaration
+                     | Unstaged Declaration
+                     deriving (Eq, Ord, Show, Read)
 
-data MetaDeclaration = MDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
-                     | MCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-                     deriving (Eq, Show, Read)
+data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
+                   | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
+                   deriving (Eq, Ord, Show, Read)
 
-data instance Annotation MPDeclaration
+data instance Annotation MetaDeclaration
   = MPSpan Span
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 
 type SpliceEnv     = Map Identifier SpliceReprEnv
@@ -44,16 +44,16 @@ data SpliceValue = SLabel Identifier
                  | SType (K3 Type)
                  | SExpr (K3 Expression)
                  | SDecl (K3 Declaration)
-                 deriving (Eq, Read, Show)
+                 deriving (Eq, Ord, Read, Show)
 
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]))
 
-instance Pretty (K3 MPDeclaration) where
-  prettyLines (Node (Staged (MDataAnnotation i svars tvars members) :@: as) ds) =
-      ["Staged MDataAnnotation " ++ i
+instance Pretty (K3 MetaDeclaration) where
+  prettyLines (Node (Staged (MPDataAnnotation i svars tvars members) :@: as) ds) =
+      ["Staged MPDataAnnotation " ++ i
           ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
           ++ if null tvars then "" else ("[" ++ multiLineSep tvars ++ "]")
           ++ drawAnnotations as, "|"]
@@ -68,8 +68,8 @@ instance Pretty (K3 MPDeclaration) where
       drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
                                     ++ terminalShift (last x)
 
-  prettyLines (Node (Staged (MCtrlAnnotation i svars rewriteRules extensions) :@: as) ds) =
-      ["Staged MCtrlAnnotation " ++ i
+  prettyLines (Node (Staged (MPCtrlAnnotation i svars rewriteRules extensions) :@: as) ds) =
+      ["Staged MPCtrlAnnotation " ++ i
         ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
         ++ drawAnnotations as, "|"]
       ++ concatMap drawRule rewriteRules
@@ -92,11 +92,46 @@ instance Pretty (K3 MPDeclaration) where
     where asK3 :: Declaration -> K3 Declaration
           asK3 d = Node (d :@: []) []
 
-mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3 MPDeclaration
-mpDataAnnotation n svars tvars mems = Node ((Staged $ MDataAnnotation n svars tvars mems) :@: []) []
+instance Pretty MPDeclaration where
+  prettyLines (MPDataAnnotation i svars tvars members) =
+      ["MPDataAnnotation " ++ i
+          ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
+          ++ if null tvars then "" else ("[" ++ multiLineSep tvars ++ "]")
+          , "|"]
+      ++ drawAnnotationMembers members
+    where
+      multiLineSep l = removeTrailingWhitespace . boxToString
+                         $ foldl1 (\a b -> a %+ [", "] %+ b) $ map prettyLines l
 
-mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3 MPDeclaration
-mpCtrlAnnotation n svars rules extensions = Node ((Staged $ MCtrlAnnotation n svars rules extensions) :@: []) []
+      drawAnnotationMembers []  = []
+      drawAnnotationMembers [x] = terminalShift x
+      drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                                    ++ terminalShift (last x)
+
+  prettyLines (MPCtrlAnnotation i svars rewriteRules extensions) =
+      ["MPCtrlAnnotation " ++ i
+        ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
+        , "|"]
+      ++ concatMap drawRule rewriteRules
+      ++ drawDecls "common" extensions
+    where
+      drawRule (p,r,decls) =
+        nonTerminalShift p ++ ["|"] ++
+          (if null decls
+             then (shift "=> " "   " $ prettyLines r)
+             else (shift "=> " "|  " $ prettyLines r) ++ drawDecls "" decls)
+
+      drawDecls tagStr decls =
+        if null decls then []
+        else ["| " ++ tagStr ++ " +>"] ++ concatMap (\d -> nonTerminalShift d ++ ["|"]) (init decls)
+                     ++ terminalShift (last decls)
+
+
+mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3 MetaDeclaration
+mpDataAnnotation n svars tvars mems = Node ((Staged $ MPDataAnnotation n svars tvars mems) :@: []) []
+
+mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3 MetaDeclaration
+mpCtrlAnnotation n svars rules extensions = Node ((Staged $ MPCtrlAnnotation n svars rules extensions) :@: []) []
 
 {- Splice context accessors -}
 lookupSCtxt :: Identifier -> Identifier -> SpliceContext -> Maybe SpliceValue
@@ -148,6 +183,10 @@ emptySpliceEnv = Map.empty
 
 mkSpliceEnv :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
 mkSpliceEnv = Map.fromList
+
+mkRecordSpliceEnv :: [Identifier] -> [K3 Type] -> SpliceEnv
+mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
+  where mkSpliceEnvEntry (i,t) = (i, mkSpliceReprEnv [(spliceVIdSym, SLabel i), (spliceVTSym, SType t)])
 
 -- | Splice environment merge, favoring elements in the RHS operand.
 mergeSpliceEnv :: SpliceEnv -> SpliceEnv -> SpliceEnv

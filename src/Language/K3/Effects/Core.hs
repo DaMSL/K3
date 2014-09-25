@@ -29,13 +29,13 @@ data Provenance
     | PVar
     | PTemporary
     | PGlobal
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance deriving (Eq, Read, Show)
+data Symbol = Symbol Identifier Provenance deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Symbol = SAnnotation 
-                                | SId Int 
-                                deriving (Eq, Read, Show)
+data instance Annotation Symbol = SAnnotation
+                                | SId Int
+                                deriving (Eq, Ord, Read, Show)
 
 data Effect
     = FRead (K3 Symbol)
@@ -46,9 +46,9 @@ data Effect
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop                   -- a flattened loop
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Effect = FAnnotation
                                 | FId Int
-                                deriving (Eq, Read, Show)
+                                deriving (Eq, Ord, Read, Show)
 

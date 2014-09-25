@@ -19,4 +19,4 @@ data AnalysisAnnotation
     -- ^ Annotation to mark the ids that are never written to in a bind
     --   False = used by variables which cannot access the unbound variable
     --          due to name conflicts
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)

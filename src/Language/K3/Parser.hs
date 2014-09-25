@@ -64,11 +64,15 @@ import Language.K3.Parser.DataTypes
 import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
-import Language.K3.Parser.Metaprogram.DataTypes
-import Language.K3.Parser.Metaprogram.Evaluation
+
+import Language.K3.Core.Metaprogram
+import Language.K3.Metaprogram.Evaluation
+
 import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
+type AnnotationCtor a = Identifier -> Annotation a
+type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
 {- Main parsing functions -}
 parseType :: String -> Maybe (K3 Type)
@@ -205,9 +209,9 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 -- | Data annotation parsing.
 --   This covers metaprogramming for data annotations when an annotation defines splice parameters.
-dDataAnnotation :: MPDeclParser
+dDataAnnotation :: MDeclParser
 dDataAnnotation = namedIdentifier "data annotation" "annotation" rule
-  where rule x = mkAnnotation <$> x <*> option [] spliceParameters <*> typesParamsAndMembers
+  where rule x = mkAnnotation <$> x <*> option [] spliceParameterDecls <*> typesParamsAndMembers
         typesParamsAndMembers = parseInMode Splice $ protectedVarDecls typeParameters $ braces (some annotationMember)
         typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
         mkAnnotation n sp (tp, mems) = mpDataAnnotation n sp tp mems
@@ -251,9 +255,9 @@ polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
 -- | Control annotation parsing
-dControlAnnotation :: MPDeclParser
+dControlAnnotation :: MDeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
-  where rule x = mpCtrlAnnotation <$> x <*> option [] spliceParameters <*> some pattern <*> extensions
+  where rule x = mpCtrlAnnotation <$> x <*> option [] spliceParameterDecls <*> some pattern <*> extensions
         pattern    = (,,) <$> parseInMode SourcePattern expr <*> (symbol "=>" *> rewrite) <*> extensions
         rewrite    = clean =<< parseInMode Splice expr
         extensions = concat <$> option [] (symbol "+>" *> many (parseInMode Splice declaration))
@@ -417,12 +421,11 @@ eTerm = do
     eProject = prjWithAnnotations $ dot *> identifier
 
     attachProjection e (((i, tOpt), anns), sp) =
-      EUID # (return $ foldl (@+) (EC.project i e) $ maybe [] ((:[]) . EPType) tOpt ++ anns ++ [ESpan sp])
+      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType) tOpt ++ anns)
 
     eWithProperties    p = withProperties False eProperties p
-    eWithAnnotations   p = p >>= withCAnnotations
-    prjWithAnnotations p = (,) <$> asSourcePattern (,) (,Nothing) p <*> withAnnotations (eAnnotations Nothing)
-                              -- ^ TODO: these should be control annotations not data annotations.
+    eWithAnnotations   p = foldl (@+) <$> p <*> withAnnotations eCAnnotations
+    prjWithAnnotations p = (,) <$> asSourcePattern (,) (,Nothing) p <*> withAnnotations eCAnnotations
 
     asSourcePattern pctor ctor p = parserWithPMode $ \case
       SourcePattern -> pctor <$> p <*> optional (colon *> typeExpr)
@@ -695,27 +698,35 @@ withAnnotations p = try $ option [] (symbol "@" *> p)
 
 tAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Type]
 tAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv TAnnotation
+  where p = dAnnotationUse sEnv TAnnotation (Just $ TApplyGen)
 
 eAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Expression]
 eAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv EAnnotation
+  where p = dAnnotationUse sEnv EAnnotation (Just $ EApplyGen False)
 
 lAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Literal]
 lAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv LAnnotation
+  where p = dAnnotationUse sEnv LAnnotation Nothing
 
-dAnnotationUse :: Maybe SpliceEnv -> (Identifier -> Annotation a) -> K3Parser (Annotation a)
-dAnnotationUse sEnv aCtor = try mpOrAnn
-  where mpOrAnn = mkMpOrAnn =<< ((,) <$> identifier <*> option [] (parens $ commaSep1 spliceParam))
-        mkMpOrAnn (n, []) = return $ aCtor n
-        mkMpOrAnn np = mkAnnDecl np
+dAnnotationUse :: Maybe SpliceEnv -> AnnotationCtor a -> Maybe (ApplyAnnCtor a) -> K3Parser (Annotation a)
+dAnnotationUse sEnvOpt aCtor apCtorOpt = try mpOrAnn
+  where mpOrAnn = mkMpOrAnn =<< ((,) <$> identifier <*> option [] (parens $ commaSep1 $ contextualizedSpliceParameter sEnvOpt))
+        mkMpOrAnn (n, [])    = return $ aCtor n
+        mkMpOrAnn (n,params) = let nsenv = mkSpliceEnv $ catMaybes params
+                               in maybe (applyDAnnotation aCtor n nsenv) (\ctor -> return $ ctor n nsenv) $ apCtorOpt
 
-        mkAnnDecl (n, params) = parserWithGEnv $ \gEnv ->
-          let nsenv = mkSpliceEnv $ catMaybes params
-          in maybe (spliceLookupErr n) (expectSpliceAnnotation . ($ nsenv)) $ lookupDSPGenE n gEnv
+eCAnnotations :: K3Parser [Annotation Expression]
+eCAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = cAnnotationUse (EApplyGen True)
 
-        expectSpliceAnnotation (SRDecl p) = do
+cAnnotationUse :: ApplyAnnCtor Expression -> K3Parser (Annotation Expression)
+cAnnotationUse aCtor = (\a b -> aCtor a $ mkSpliceEnv $ catMaybes b) <$> identifier <*> option [] (parens $ commaSep1 spliceParameter)
+
+applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3Parser (Annotation a)
+applyDAnnotation aCtor annId sEnv = parserWithGEnv $ \gEnv ->
+    maybe (spliceLookupErr annId) (expectSpliceAnnotation . ($ sEnv)) $ lookupDSPGenE annId gEnv
+
+  where expectSpliceAnnotation (SRDecl p) = do
           decl <- p
           case tag decl of
             DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
@@ -723,46 +734,11 @@ dAnnotationUse sEnv aCtor = try mpOrAnn
 
         expectSpliceAnnotation _ = P.parserFail "Invalid data annotation splice"
 
-        spliceParam = choice [sLabel, sType, sExpr, sLabelType]
-        sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
-        sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
-        sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
-        sLabelType  = mkLabelTypeSRepr sEnv <$> identifier <*> optional (symbol "=" *> identifier)
-
-        mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
-
-        mkLabelTypeSRepr Nothing _ _ = Nothing
-        mkLabelTypeSRepr (Just sEnv') a bOpt =
-          let lvOpt = lookupSpliceE (maybe a id bOpt) spliceVIdSym sEnv'
-              tvOpt = lookupSpliceE (maybe a id bOpt) spliceVTSym  sEnv'
-          in case (lvOpt, tvOpt) of
-               (Just lv, Just tv) -> Just (a, mkSpliceReprEnv [(spliceVIdSym, lv), (spliceVTSym, tv)])
-               (_, _) -> Nothing
-
         spliceLookupErr n = P.parserFail $ unwords ["Could not find macro", n]
 
-mkRecordSpliceEnv :: [Identifier] -> [K3 Type] -> SpliceEnv
-mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
-  where mkSpliceEnvEntry (i,t) = (i, mkSpliceReprEnv [(spliceVIdSym, SLabel i), (spliceVTSym, SType t)])
-
-
-withCAnnotations :: K3 Expression -> ExpressionParser
-withCAnnotations e = try $ option e (symbol "@" *> oneOrManyAnns)
-  where oneOrManyAnns = try (applyMany . (:[]) =<< cAnnApp) <|> try (applyMany =<< (braces $ commaSep1 cAnnApp))
-        cAnnApp       = (,) <$> identifier <*> option [] (parens $ commaSep1 spliceParam)
-        applyMany npl = foldM (\accE (n,params) -> cAnnotationUse accE n params) e npl
-
-        spliceParam = choice [sLabel, sType, sExpr]
-        sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
-        sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
-        sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
-
-        mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
-
-cAnnotationUse :: K3 Expression -> Identifier -> [Maybe (Identifier, SpliceReprEnv)] -> ExpressionParser
-cAnnotationUse targetE cAnnId cAnnParams = parserWithGEnv $ \gEnv ->
-    let nsenv = mkSpliceEnv $ catMaybes cAnnParams
-    in maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE nsenv) $ lookupERWGenE cAnnId gEnv
+applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExpressionParser
+applyCAnnotation targetE cAnnId sEnv = parserWithGEnv $ \gEnv ->
+    maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
 
   where
     injectRewrite (SRExpr p) = p
@@ -801,6 +777,40 @@ dProperties = properties DProperty
 
 eProperties :: K3Parser [Annotation Expression]
 eProperties = properties EProperty
+
+{- Metaprogramming -}
+{- Basic parsers -}
+spliceParameterDecls :: K3Parser [TypedSpliceVar]
+spliceParameterDecls = brackets (commaSep spliceParameterDecl)
+
+spliceParameterDecl :: K3Parser TypedSpliceVar
+spliceParameterDecl  = choice $ map try [labelSParam, typeSParam, exprSParam, declSParam, labelTypeSParam]
+  where labelSParam      = (STLabel,)     <$> (keyword "label" *> identifier)
+        typeSParam       = (STType,)      <$> (keyword "type"  *> identifier)
+        exprSParam       = (STExpr,)      <$> (keyword "expr"  *> identifier)
+        declSParam       = (STDecl,)      <$> (keyword "decl"  *> identifier)
+        labelTypeSParam  = (STLabelType,) <$> identifier
+
+spliceParameter :: K3Parser (Maybe (Identifier, SpliceReprEnv))
+spliceParameter = choice [sLabel, sType, sExpr]
+  where
+    sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
+    sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
+    sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
+    mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
+
+contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceReprEnv))
+contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, sLabelType]
+  where
+    sLabelType  = mkLabelTypeSRepr sEnvOpt <$> identifier <*> optional (symbol "=" *> identifier)
+
+    mkLabelTypeSRepr Nothing _ _ = Nothing
+    mkLabelTypeSRepr (Just sEnv') a bOpt =
+      let lvOpt = lookupSpliceE (maybe a id bOpt) spliceVIdSym sEnv'
+          tvOpt = lookupSpliceE (maybe a id bOpt) spliceVTSym  sEnv'
+      in case (lvOpt, tvOpt) of
+           (Just lv, Just tv) -> Just (a, mkSpliceReprEnv [(spliceVIdSym, lv), (spliceVTSym, tv)])
+           (_, _) -> Nothing
 
 
 {- Identifiers and their list forms -}
@@ -1024,9 +1034,8 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
           --  TODO: recur through members (e.g., attributes w/ initializers)
           --  and ensure they have a uid
 
-        DCtrlAnnotation n svars rules decls -> rebuildDecl d uid $ DCtrlAnnotation n svars rules decls
-          -- TODO: recur through pattern and rule expressions, as well as declarations
-          -- to ensure they have a uid
+        DGenerator mp -> rebuildDecl d uid $ DGenerator mp
+          -- TODO: recur on all subexpressions in metaprogram annotations to ensure they have a uid
 
         DTypeDef _ _ -> fail "Invalid type alias in AST"
 

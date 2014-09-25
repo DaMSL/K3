@@ -22,6 +22,9 @@ import Language.K3.Effects.Core
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
 
+-- | Cycle-breaking import for metaprogramming
+import {-# SOURCE #-} Language.K3.Core.Metaprogram ( SpliceEnv )
+
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression
     = EConstant   Constant
@@ -41,11 +44,11 @@ data Expression
     | EAddress
     | ESelf
     | EImperative ImperativeExpression
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data ImperativeExpression
     = EWhile
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Constant expression values.
 data Constant
@@ -56,7 +59,7 @@ data Constant
     | CString  String
     | CNone    NoneMutability
     | CEmpty   (K3 Type)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Operators (unary and binary).
 data Operator
@@ -79,14 +82,14 @@ data Operator
     | OSeq
     | OApp
     | OSnd
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Binding Forms.
 data Binder
     = BIndirection Identifier
     | BTuple       [Identifier]
     | BRecord      [(Identifier, Identifier)]
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Annotations on expressions.
 data instance Annotation Expression
@@ -94,22 +97,27 @@ data instance Annotation Expression
     | EUID UID
     | EMutable
     | EImmutable
+
     | EAnnotation Identifier
     | EProperty   Identifier (Maybe (K3 Literal))
+    | EApplyGen   Bool Identifier SpliceEnv
+        -- ^ Apply a K3 generator, with a bool indicating a control annotation generator (vs a data annotation),
+        --   a generator name, and a splice environment.
+
     | ESyntax     SyntaxAnnotation
     | EAnalysis   AnalysisAnnotation
-    | EEffect     (K3 Effect)
-    | ESymbol     (K3 Symbol)
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
-    | EType   (K3 Type)
-    | EQType  (K3 QType)
-    | ETypeLB (K3 Type)
-    | ETypeUB (K3 Type)
-    | EPType  (K3 Type)  -- Annotation embedding for pattern types
+    | EEffect     (K3 Effect)
+    | ESymbol     (K3 Symbol)
+    | EType       (K3 Type)
+    | EQType      (K3 QType)
+    | ETypeLB     (K3 Type)
+    | ETypeUB     (K3 Type)
+    | EPType      (K3 Type)  -- Annotation embedding for pattern types
     | EEmbedding EmbeddingAnnotation
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Expression) where
   getUID (EUID u) = Just u
@@ -187,6 +195,10 @@ isEAnnotation _               = False
 isEProperty :: Annotation Expression -> Bool
 isEProperty (EProperty _ _) = True
 isEProperty _               = False
+
+isEApplyGen :: Annotation Expression -> Bool
+isEApplyGen (EApplyGen _ _ _) = True
+isEApplyGen _ = False
 
 isEType :: Annotation Expression -> Bool
 isEType (EType   _) = True

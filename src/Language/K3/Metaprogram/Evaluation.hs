@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Parser.Metaprogram.Evaluation where
+module Language.K3.Metaprogram.Evaluation where
 
 import Control.Applicative
 import Control.Arrow
@@ -15,7 +15,6 @@ import Data.Tree
 
 import qualified Text.Parsec as P
 import Text.Parser.Combinators
-import Text.Parser.Token
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -27,53 +26,40 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
-import Language.K3.Parser.Metaprogram.DataTypes
+import Language.K3.Core.Metaprogram
 import Language.K3.Parser.DataTypes
 
 import Language.K3.Utils.Pretty
 
-
-{- Basic parsers -}
-spliceParameters :: K3Parser [TypedSpliceVar]
-spliceParameters = brackets (commaSep spliceParameter)
-
-spliceParameter :: K3Parser TypedSpliceVar
-spliceParameter  = choice $ map try [labelSParam, typeSParam, exprSParam, declSParam, labelTypeSParam]
-  where labelSParam      = (STLabel,)     <$> (keyword "label" *> identifier)
-        typeSParam       = (STType,)      <$> (keyword "type"  *> identifier)
-        exprSParam       = (STExpr,)      <$> (keyword "expr"  *> identifier)
-        declSParam       = (STDecl,)      <$> (keyword "decl"  *> identifier)
-        labelTypeSParam  = (STLabelType,) <$> identifier
-
 {- Top-level AST transformations -}
-evalMetaprogram :: K3 MPDeclaration -> K3Parser (Maybe (K3 Declaration))
+evalMetaprogram :: K3 MetaDeclaration -> K3Parser (Maybe (K3 Declaration))
 evalMetaprogram mp = foldMapTree evalMPDecl [] mp >>= \case
     []  -> return Nothing
     [x] -> return (Just x)
     l   -> evalErrL l $ unwords ["Invalid metaprogram evaluation (", show (length l), "results):"]
 
   where
-    evalMPDecl :: [[K3 Declaration]] -> K3 MPDeclaration -> K3Parser [K3 Declaration]
-    evalMPDecl ch (tag &&& annotations -> (Staged (MDataAnnotation n [] tvars mems), anns)) =
+    evalMPDecl :: [[K3 Declaration]] -> K3 MetaDeclaration -> K3Parser [K3 Declaration]
+    evalMPDecl ch (tag &&& annotations -> (Staged (MPDataAnnotation n [] tvars mems), anns)) =
       return $ rwNode (DC.dataAnnotation n tvars mems) (rwAnns anns) ch
 
-    evalMPDecl ch (tag -> Staged (MDataAnnotation n svars tvars mems))
+    evalMPDecl ch (tag &&& annotations -> (Staged mpd@(MPDataAnnotation n svars tvars mems), anns))
       | null (concat ch) =
         let extendGen genEnv =
               case lookupDGenE n genEnv of
                 Nothing -> Right $ addDGenE n (annotationSplicer n svars tvars mems) genEnv
                 Just _  -> Left $ unwords ["Duplicate metaprogrammed data annotation for", n]
-        in modifyGEnvF_ extendGen >> return []
+        in modifyGEnvF_ extendGen >> return (rwNode (DC.generator mpd) (rwAnns anns) ch)
 
       | otherwise = evalErrLL ch
                       $ unwords ["Invalid data annotation generator", n, "with non-empty children"]
 
-    evalMPDecl ch (tag &&& annotations -> (Staged (MCtrlAnnotation n svars rewriteRules extensions), anns)) =
+    evalMPDecl ch (tag &&& annotations -> (Staged mpd@(MPCtrlAnnotation n svars rewriteRules extensions), anns)) =
       let extendGen genEnv =
             case lookupCGenE n genEnv of
               Nothing -> Right $ addCGenE n (exprPatternMatcher svars rewriteRules extensions) genEnv
               Just _  -> Left $ unwords ["Duplicate metaprogrammed control annotation for", n]
-      in modifyGEnvF_ extendGen >> return (rwNode (DC.ctrlAnnotation n svars rewriteRules extensions) (rwAnns anns) ch)
+      in modifyGEnvF_ extendGen >> return (rwNode (DC.generator mpd) (rwAnns anns) ch)
 
     evalMPDecl ch (tag &&& annotations -> (Unstaged d, anns)) = return $ mkNode d (rwAnns anns) ch
 
@@ -85,7 +71,7 @@ evalMetaprogram mp = foldMapTree evalMPDecl [] mp >>= \case
     rwNode :: K3 Declaration -> [Annotation Declaration] -> [[K3 Declaration]] -> [K3 Declaration]
     rwNode (Node (t :@: anns) _) nanns ch = [Node (t :@: (anns ++ nanns)) $ concat ch]
 
-    rwAnns :: [Annotation MPDeclaration] -> [Annotation Declaration]
+    rwAnns :: [Annotation MetaDeclaration] -> [Annotation Declaration]
     rwAnns l = map (\case { MPSpan sp -> DSpan sp }) l
 
     evalErrL  ch msg = P.parserFail $ boxToString $ [msg] ++ concatMap prettyLines ch

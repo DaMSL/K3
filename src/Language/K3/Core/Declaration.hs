@@ -21,7 +21,6 @@ module Language.K3.Core.Declaration (
     isDSyntax
 ) where
 
-import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -34,6 +33,9 @@ import Language.K3.Effects.Core
 
 import Language.K3.Utils.Pretty
 
+-- | Cycle-breaking import for metaprogramming
+import {-# SOURCE #-} Language.K3.Core.Metaprogram
+
 -- | Top-Level Declarations
 data Declaration
     = DGlobal         Identifier (K3 Type) (Maybe (K3 Expression))
@@ -45,11 +47,8 @@ data Declaration
     | DDataAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
         -- ^ Name, annotation type parameters, and members
 
-    | DCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-        -- ^ Name, splice parameters, a list of pattern-based rewrite rules, and a set of common
-        --   declarations for any match.
-        --   Control annotations are currently only kept in the AST for lineage,
-        --   and should be fully synthesized at all use cases by metaprogram evaluation.
+    | DGenerator      MPDeclaration
+        -- ^ Metaprogramming declarations, maintained in the tree for lineage.
 
     | DRole           Identifier
         -- ^ Roles, as lightweight modules. These are deprecated.
@@ -57,7 +56,7 @@ data Declaration
     | DTypeDef        Identifier (K3 Type)
         -- ^ Type synonym declaration.
 
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Annotation declaration members
 data AnnMemDecl
@@ -70,14 +69,10 @@ data AnnMemDecl
                   [Annotation Declaration]
 
     | MAnnotation Polarity Identifier [Annotation Declaration]
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Annotation member polarities
-data Polarity = Provides | Requires deriving (Eq, Read, Show)
-
--- | Metaprogramming parameters
-data SpliceType = STLabel | STType | STExpr | STDecl | STLabelType deriving (Eq, Read, Show)
-type TypedSpliceVar = (SpliceType, Identifier)
+data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show)
 
 -- | A pattern-based rewrite rule, as used in control annotations.
 --   This includes a pattern matching expression, a rewritten expression,
@@ -93,13 +88,13 @@ data instance Annotation Declaration
     | DSyntax   SyntaxAnnotation
     | DConflict UnorderedConflict  -- TODO: organize into categories.
     | DEffect   (K3 Effect, Maybe (K3 Symbol))
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
 data UnorderedConflict
     = URW [(Annotation Expression)] (Annotation Expression)
     | UWW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Declaration) where
   getUID (DUID u) = Just u
@@ -144,24 +139,8 @@ instance Pretty (K3 Declaration) where
       drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
                                     ++ terminalShift (last x)
 
-  prettyLines (Node (DCtrlAnnotation i svars rewriteRules commonDecls :@: as) ds) =
-      ["DCtrlAnnotation " ++ i
-        ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
-        ++ drawAnnotations as, "|"]
-      ++ concatMap drawRule rewriteRules
-      ++ drawDecls "common" commonDecls
-      ++ drawSubTrees ds
-    where
-      drawRule (p,r,decls) =
-        nonTerminalShift p ++ ["|"] ++
-          (if null decls
-             then (shift "=> " "   " $ prettyLines r)
-             else (shift "=> " "|  " $ prettyLines r) ++ drawDecls "" decls)
-
-      drawDecls tagStr decls =
-        if null decls then []
-        else ["| " ++ tagStr ++ " +>"] ++ concatMap (\d -> nonTerminalShift d ++ ["|"]) (init decls)
-                     ++ terminalShift (last decls)
+  prettyLines (Node (DGenerator mp :@: as) ds) =
+      ["DGenerator" ++ drawAnnotations as, "|"] ++ terminalShift mp ++ drawSubTrees ds
 
   prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
 

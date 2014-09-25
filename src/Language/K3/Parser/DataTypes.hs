@@ -36,7 +36,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
-import Language.K3.Parser.Metaprogram.DataTypes
+import Language.K3.Core.Metaprogram
 
 {- Type synonyms for parser return types -}
 
@@ -92,7 +92,7 @@ type LiteralParser     = K3Parser (K3 Literal)
 type ExpressionParser  = K3Parser (K3 Expression)
 type BinderParser      = K3Parser Binder
 type DeclParser        = K3Parser (K3 Declaration)
-type MPDeclParser      = K3Parser (K3 MPDeclaration)
+type MDeclParser       = K3Parser (K3 MetaDeclaration)
 
 -- | Additional parsing type synonyms.
 type EndpointMethods   = (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
