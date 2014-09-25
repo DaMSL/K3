@@ -8,6 +8,8 @@
 #include "boost/serialization/list.hpp"
 #include "external/boost_ext/unordered_map.hpp"
 #include <boost/serialization/base_object.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
 
 #include <list>
 #include <vector>
@@ -1004,17 +1006,286 @@ class Vector : public VectorDS<Vector, Elem> {
 
 };
 
+template <typename Elem, typename... Indicies>
+class MultiIndex {
+  public:
+  typedef boost::multi_index_container<
+    Elem,
+    boost::multi_index::indexed_by<
+      boost::multi_index::sequenced<>,
+      Indicies...
+    >
+  > Container;
+
+  Container container;
+
+  // Defaul
+  MultiIndex()
+    : container()
+  { }
+
+  // Copy
+  MultiIndex(const MultiIndex& other)
+    : container(other.container)
+  { }
+
+
+  // Move Constructor
+  MultiIndex(MultiIndex&& other)
+    : container(std::move(other.container))
+  { }
+
+  // Copy Constructor from container
+  MultiIndex(const Container& con)
+    : container(con)
+  { }
+
+  // Move Constructor from container
+  MultiIndex(Container&& con)
+    : container(std::move(con))
+  { }
+
+  // Construct from (container) iterators
+  template<typename Iterator>
+  MultiIndex(Iterator begin, Iterator end)
+    : container(begin,end)
+  {}
+
+  ~MultiIndex() {}
+
+  // Assign Operators:
+  // Copy Assign Operator
+  MultiIndex& operator=(const MultiIndex& other) {
+    container = other.container;
+    return *this;
+  }
+
+  // Move Assign Operator
+  MultiIndex& operator=(MultiIndex&& other) {
+    // Proxy to the move assign operator of the container
+    container = std::move(other.container);
+    return *this;
+  }
+
+
+  // Maybe return the first element in the ds
+  shared_ptr<Elem> peek(unit_t) const {
+    shared_ptr<Elem> res;
+    auto it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<Elem>(*it);
+    }
+    return res;
+  }
+
+   // Insert by move
+  unit_t insert(Elem &&e) {
+    container.insert(container.end(), std::move(e));
+    return unit_t();
+  }
+
+  // Insert by copy
+  unit_t insert(const Elem& e) {
+    // Create a copy, then delegate to a insert-by-move
+    return insert(Elem(e));
+  }
+
+  // If v is found in the container, proxy a call to erase on the container.
+  // Behavior depends on the container's erase implementation
+  unit_t erase(const Elem& v) {
+    auto it = std::find(container.begin(), container.end(), v);
+    if (it != container.end()) {
+      container.erase(it);
+    }
+    return unit_t();
+  }
+
+  // Update by move
+  // Find v in the container. Insert (by move) v2 in its position. Erase v.
+  unit_t update(const Elem& v, const Elem&& v2) {
+    auto it = std::find(container.begin(), container.end(), v);
+    if (it != container.end()) {
+      container.insert(it, v2);
+      container.erase(it);
+    }
+    return unit_t();
+  }
+
+  // Update by copy
+  unit_t update(const Elem& v, const Elem& v2) {
+    // Copy v2, then update by move
+    return update(v, Elem(v2));
+  }
+
+  // Return the number of elements in this ds
+  int size(const unit_t&) const {
+    return container.size();
+  }
+
+  // Return a new DS with data from this and other
+  MultiIndex<Elem, Indicies...> combine(const MultiIndex& other) const {
+    // copy this DS
+    MultiIndex<Elem, Indicies...> result;
+    result = MultiIndex(*this);
+    // copy other DS
+    for (const Elem &e : other.container) {
+      result.insert(e);
+    }
+    return result;
+  }
+
+  // Split the ds at its midpoint
+  tuple<MultiIndex<Elem, Indicies...>, MultiIndex<Elem, Indicies...>> split(const unit_t&) const {
+    // Find midpoint
+    const size_t size = container.size();
+    const size_t half = size / 2;
+    // Setup iterators
+    auto  beg = container.begin();
+    auto mid = container.begin();
+    std::advance(mid, half);
+    auto end = container.end();
+    // Construct from iterators
+    return std::make_tuple(MultiIndex(beg,mid), MultiIndex(mid,end));
+  }
+
+  // Apply a function to each element of this ds
+  template<typename Fun>
+  unit_t iterate(Fun f) {
+    for (const Elem& e : container) {
+      f(e);
+    }
+    return unit_t();
+  }
+
+  // Produce a new ds by mapping a function over this ds
+  template<typename Fun>
+  auto map(Fun f) -> MultiIndex<R_elem<RT<Fun, Elem>>> {
+    MultiIndex<R_elem<RT<Fun, Elem>>> result;
+    for (const Elem &e : container) {
+      result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
+    }
+    return result;
+  }
+
+  // Create a new DS consisting of elements from this ds that satisfy the predicate
+  template<typename Fun>
+  MultiIndex<Elem, Indicies...> filter(Fun predicate) {
+    MultiIndex<Elem, Indicies...> result;
+    for (const Elem &e : container) {
+      if (predicate(e)) {
+        result.insert(e);
+      }
+    }
+    return result;
+  }
+
+  // Fold a function over this ds
+  template<typename Fun, typename Acc>
+  Acc fold(Fun f, const Acc& init_acc) {
+    Acc acc = init_acc;
+    for (const Elem &e : container) { acc = f(acc)(e); }
+    return acc;
+  }
+
+  // Group By
+  template<typename F1, typename F2, typename Z>
+  MultiIndex<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
+       // Create a map to hold partial results
+       typedef RT<F1, Elem> K;
+       unordered_map<K, Z> accs;
+
+       for (const auto& elem : container) {
+          K key = grouper(elem);
+          if (accs.find(key) == accs.end()) {
+            accs[key] = init;
+          }
+          accs[key] = folder(accs[key])(elem);
+       }
+
+      // Build the R_key_value records and insert them into resul
+      // TODO can we move into the R_key_value constructor?
+      MultiIndex<R_key_value<RT<F1, Elem>,Z>> result;
+      for(const auto& it : accs) {
+        result.insert(R_key_value<K, Z>{it.first, it.second});
+
+      }
+
+      return result;
+  }
+
+  // TODO optimize copies
+  template <class Fun>
+  auto ext(Fun expand) -> MultiIndex<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    MultiIndex<T> result;
+    for (const Elem& elem : container) {
+      for (const T& elem2 : expand(elem).container) {
+        // TODO can we force a move here?
+        result.insert(elem2);
+      }
+    }
+
+    return result;
+  }
+
+  bool operator==(const MultiIndex& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const MultiIndex& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const MultiIndex& other) const {
+    return container < other.container;
+  }
+
+
+  Container& getContainer() { return container; }
+
+  // Return a constant reference to the container
+  const Container& getConstContainer() const {return container;}
+
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
+  }
+
+};
+
+
 } // Namespace K3
+
+template <class K3Collection>
+std::size_t hash_collection(K3Collection const& b) {
+  const auto& c = b.getConstContainer();
+  return boost::hash_range(c.begin(), c.end());
+
+}
 
 template <template<typename> class Derived, template<typename...> class Container, class Elem>
 std::size_t hash_value(K3::StlDS<Derived, Container,Elem> const& b) {
-  const auto& c  = b.getConstContainer();
-  return boost::hash_range(c.begin(), c.end());
+  return hash_collection(b);
 }
 
 template <class Elem>
 std::size_t hash_value(K3::Map<Elem> const& b) {
-  const auto& c  = b.getConstContainer();
-  return boost::hash_range(c.begin(), c.end());
+  return hash_collection(b);
 }
+
+
+template <class Elem>
+std::size_t hash_value(K3::Vector<Elem> const& b) {
+  return hash_collection(b);
+}
+
+template <typename... Args>
+std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
+  return hash_collection(b);
+}
+
+
+
 #endif
