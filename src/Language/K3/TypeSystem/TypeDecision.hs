@@ -74,6 +74,6 @@ typeDecision decl = do
         -- Finally, generate the result
         return (Map.singleton (TEnvIdentifier i) qt, Map.empty)
       DDataAnnotation _ _ _ -> return (Map.empty, Map.empty)
-      DCtrlAnnotation _ _ _ -> return (Map.empty, Map.empty)
+      DCtrlAnnotation _ _ _ _ -> return (Map.empty, Map.empty)
       DTypeDef _ _ -> return (Map.empty, Map.empty)
       DRole _ -> internalTypeError $ NonTopLevelDeclarationRole decl'

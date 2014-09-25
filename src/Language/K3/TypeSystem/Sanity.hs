@@ -43,7 +43,7 @@ sanityCheck decl =
       DGlobal i _ _ -> i
       DTrigger i _ _ -> i
       DDataAnnotation i _ _ -> i
-      DCtrlAnnotation i _ _ -> i
+      DCtrlAnnotation i _ _ _ -> i
       DTypeDef i _ -> i
     unAnn d = case tag d of
       DDataAnnotation _ _ mems -> Just mems

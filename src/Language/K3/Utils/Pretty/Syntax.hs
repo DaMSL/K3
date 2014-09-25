@@ -145,11 +145,14 @@ decl' (details -> (DDataAnnotation n tvars mems, cs, _)) = do
     initializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
 
 
-decl' (details -> (DCtrlAnnotation n rules commonDecls, cs, _)) = do
-  rsps  <- return . indent 2 . vsep =<< mapM rewriteRule rules
-  cdsps <- return . indent 2 . vsep =<< mapM ctrlExtension commonDecls
-  csps  <- mapM decl cs
-  return $ vsep . (: csps) $ text "control" <+> text n <$> rsps <$> cdsps
+decl' (details -> (DCtrlAnnotation n svars rules commonDecls, cs, _)) = do
+  svsps  <- mapM typedSpliceVar svars
+  rsps   <- return . indent 2 . vsep =<< mapM rewriteRule rules
+  cdsps  <- return . indent 2 . vsep =<< mapM ctrlExtension commonDecls
+  csps   <- mapM decl cs
+  headsp <- return $ if null svsps then text "control" <+> text n
+                     else text "control" <+> text n <+> (brackets $ cat (punctuate comma svsps))
+  return $ vsep . (: csps) $ headsp <$> rsps <$> cdsps
 
 decl' _ = throwSP "Invalid declaration"
 
@@ -164,7 +167,6 @@ rewriteRule (pat, rewrite, extensions) =
 ctrlExtension :: K3 Declaration -> SyntaxPrinter
 ctrlExtension d = (text "+>" <+>) C.<$> decl d
 
-{- Unused.
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = case t of
   STLabel     -> return $ text "label" <+> text i
@@ -172,7 +174,6 @@ typedSpliceVar (t, i) = case t of
   STExpr      -> return $ text "expr"  <+> text i
   STDecl      -> return $ text "decl"  <+> text i
   STLabelType -> return $ text i
--}
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d

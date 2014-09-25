@@ -42,5 +42,5 @@ dataAnnotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
 dataAnnotation i tvdecls members = Node (DDataAnnotation i tvdecls members :@: []) []
 
 -- | Create a user-defined control annotation.
-ctrlAnnotation :: Identifier -> [PatternRewriteRule] -> [K3 Declaration] -> K3 Declaration
-ctrlAnnotation i rules decls = Node (DCtrlAnnotation i rules decls :@: []) []
+ctrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3 Declaration
+ctrlAnnotation i svars rules decls = Node (DCtrlAnnotation i svars rules decls :@: []) []

@@ -82,7 +82,7 @@ deriveDeclaration aEnv env decl =
     -- Skip any validation of type aliases and control annotations.
     -- These can be considered as sugared declarations.
     DTypeDef _ _          -> assert0Children decl >> return Nothing
-    DCtrlAnnotation _ _ _ -> assert0Children decl >> return Nothing
+    DCtrlAnnotation _ _ _ _ -> assert0Children decl >> return Nothing
 
     DGlobal i _ Nothing -> do
       assert0Children decl

@@ -21,6 +21,7 @@ module Language.K3.Core.Declaration (
     isDSyntax
 ) where
 
+import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -42,10 +43,10 @@ data Declaration
         --   must be a function taking that argument type and returning unit.
 
     | DDataAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
-        -- ^ Name, annotation splice and type parameters, and members
+        -- ^ Name, annotation type parameters, and members
 
-    | DCtrlAnnotation Identifier [PatternRewriteRule] [K3 Declaration]
-        -- ^ Name, a list of pattern-based rewrite rules, and a set of common
+    | DCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
+        -- ^ Name, splice parameters, a list of pattern-based rewrite rules, and a set of common
         --   declarations for any match.
         --   Control annotations are currently only kept in the AST for lineage,
         --   and should be fully synthesized at all use cases by metaprogram evaluation.
@@ -143,14 +144,19 @@ instance Pretty (K3 Declaration) where
       drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
                                     ++ terminalShift (last x)
 
-  prettyLines (Node (DCtrlAnnotation i rewriteRules commonDecls :@: as) ds) =
-      ["DCtrlAnnotation " ++ i ++ drawAnnotations as, "|"]
+  prettyLines (Node (DCtrlAnnotation i svars rewriteRules commonDecls :@: as) ds) =
+      ["DCtrlAnnotation " ++ i
+        ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
+        ++ drawAnnotations as, "|"]
       ++ concatMap drawRule rewriteRules
       ++ drawDecls "common" commonDecls
       ++ drawSubTrees ds
     where
       drawRule (p,r,decls) =
-        nonTerminalShift p ++ ["|=>"] ++ nonTerminalShift r ++ drawDecls "" decls
+        nonTerminalShift p ++ ["|"] ++
+          (if null decls
+             then (shift "=> " "   " $ prettyLines r)
+             else (shift "=> " "|  " $ prettyLines r) ++ drawDecls "" decls)
 
       drawDecls tagStr decls =
         if null decls then []

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -47,8 +48,14 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
 type DefaultEntries    = [(Identifier, Identifier)]
 
 {-| Metaprogram environment -}
-newtype K3Generator = K3Generator (SpliceEnv -> SpliceResult K3Parser)
-type GeneratorEnv   = Map Identifier K3Generator
+data K3Generator = Splicer  (SpliceEnv -> SpliceResult K3Parser)
+                 | TypeRewriter (K3 Type -> SpliceEnv -> SpliceResult K3Parser)
+                 | ExprRewriter (K3 Expression -> SpliceEnv -> SpliceResult K3Parser)
+                 | DeclRewriter (K3 Declaration -> SpliceEnv -> SpliceResult K3Parser)
+
+data GeneratorEnv = GeneratorEnv { dataAGEnv :: Map Identifier K3Generator
+                                 , ctrlAGEnv :: Map Identifier K3Generator }
+
 type GeneratorState = (Int, GeneratorEnv, SpliceContext, [K3 Declaration])
 
 {-| Type alias support.
@@ -127,25 +134,35 @@ k3Keywords = [
     "true", "false", "ind", "Some", "None", "empty",
 
     {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires",
+    "annotation", "lifted", "provides", "requires", "given", "type",
 
     {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall"
+    "self", "structure", "horizon", "content", "forall",
+
+    {- Metaprogramming keyworks -}
+    "label", "expr", "decl"
   ]
 
 {- Style definitions for parsers library -}
 
-k3Ops :: TokenParsing m => IdentifierStyle m
+k3Ops :: IdentifierStyle K3Parser
 k3Ops = emptyOps { _styleReserved = set k3Operators }
 
-k3Idents :: TokenParsing m => IdentifierStyle m
+k3Idents :: IdentifierStyle K3Parser
 k3Idents = emptyIdents { _styleReserved = set k3Keywords }
 
-operator :: (TokenParsing m, Monad m) => String -> m ()
+k3PatternIdents :: IdentifierStyle K3Parser
+k3PatternIdents = emptyIdents { _styleStart    = letter <|> char '_' <|> char '?'
+                              , _styleReserved = set k3Keywords }
+
+keyword :: String -> K3Parser ()
+keyword = reserve k3Idents
+
+operator :: String -> K3Parser ()
 operator = reserve k3Ops
 
 -- Copied from parsers to push splice concatenation inside tokenization.
-nonTokenIdent :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
+nonTokenIdent :: IdentifierStyle K3Parser -> K3Parser String
 nonTokenIdent s = do
   name <- highlight (_styleHighlight s)
             ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
@@ -166,9 +183,11 @@ exprSplice idOnly = fmap fromString $ ctor <$> string  "$[" <*> many (noneOf "]"
 
 identifier :: K3Parser String
 identifier = fmap fromString $ token $ concat <$> some (choice . map try =<< parserWithPMode parts)
-  where parts Normal = return [i]
-        parts _      = return [i, identSplice False, typeSplice False, exprSplice False]
-        i = nonTokenIdent k3Idents
+  where parts Normal        = return [i]
+        parts SourcePattern = return [patI]
+        parts _             = return [i, identSplice False, typeSplice False, exprSplice False]
+        i    = nonTokenIdent k3Idents
+        patI = nonTokenIdent k3PatternIdents
 
 identParts :: K3Parser [Either String TypedSpliceVar]
 identParts = token $ some (choice $ map try parts)
@@ -176,9 +195,6 @@ identParts = token $ some (choice $ map try parts)
         i = nonTokenIdent k3Idents
         r v x = x >>= return . Right . (v,)
         l x = x >>= return . Left
-
-keyword :: (TokenParsing m, Monad m) => String -> m ()
-keyword = reserve k3Idents
 
 
 {- Comments -}
@@ -211,7 +227,7 @@ emptyParserEnv :: ParserEnv
 emptyParserEnv = []
 
 emptyGeneratorEnv :: GeneratorEnv
-emptyGeneratorEnv = Map.empty
+emptyGeneratorEnv = GeneratorEnv Map.empty Map.empty
 
 emptySpliceContext :: SpliceContext
 emptySpliceContext = []
@@ -422,53 +438,30 @@ safePopFrame (h:t) = (h,t)
 
 
 {- Generator environment accessors -}
-lookupGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator
-lookupGenE = Map.lookup
+lookupDGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator
+lookupDGenE n (GeneratorEnv env _)= Map.lookup n env
 
-addGenE :: Identifier -> K3Generator -> GeneratorEnv -> GeneratorEnv
-addGenE = Map.insert
+lookupCGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator
+lookupCGenE n (GeneratorEnv _ env)= Map.lookup n env
 
-{- Splice context accessors -}
-lookupSCtxt :: Identifier -> Identifier -> SpliceContext -> Maybe SpliceValue
-lookupSCtxt n k ctxt = find (Map.member n) ctxt >>= Map.lookup n >>= Map.lookup k
+addDGenE :: Identifier -> K3Generator -> GeneratorEnv -> GeneratorEnv
+addDGenE n g (GeneratorEnv d c) = GeneratorEnv (Map.insert n g d) c
 
-addSCtxt :: Identifier -> SpliceReprEnv -> SpliceContext -> SpliceContext
-addSCtxt n vals [] = [Map.insert n vals Map.empty]
-addSCtxt n vals ctxt = (Map.insert n vals $ head ctxt):(tail ctxt)
+addCGenE :: Identifier -> K3Generator -> GeneratorEnv -> GeneratorEnv
+addCGenE n g (GeneratorEnv d c) = GeneratorEnv d (Map.insert n g c)
 
-removeSCtxt :: Identifier -> SpliceContext -> SpliceContext
-removeSCtxt _ [] = []
-removeSCtxt n ctxt = (Map.delete n $ head ctxt):(tail ctxt)
+lookupDSPGenE :: Identifier -> GeneratorEnv -> Maybe (SpliceEnv -> SpliceResult K3Parser)
+lookupDSPGenE n env = lookupDGenE n env >>= \case { Splicer f -> Just f; _ -> Nothing }
 
-removeSCtxtFirst :: Identifier -> SpliceContext -> SpliceContext
-removeSCtxtFirst n ctxt = snd $ foldl removeOnFirst (False, []) ctxt
-  where removeOnFirst (done, acc) senv = if done then (done, acc++[senv]) else removeIfPresent acc senv
-        removeIfPresent acc senv = if Map.member n senv then (True, acc++[Map.delete n senv]) else (False, acc++[senv])
+lookupTRWGenE :: Identifier -> GeneratorEnv -> Maybe (K3 Type -> SpliceEnv -> SpliceResult K3Parser)
+lookupTRWGenE n env = lookupCGenE n env >>= \case { TypeRewriter f -> Just f; _ -> Nothing }
 
-pushSCtxt :: SpliceEnv -> SpliceContext -> SpliceContext
-pushSCtxt senv ctxt = senv:ctxt
+lookupERWGenE :: Identifier -> GeneratorEnv -> Maybe (K3 Expression -> SpliceEnv -> SpliceResult K3Parser)
+lookupERWGenE n env = lookupCGenE n env >>= \case { ExprRewriter f -> Just f; _ -> Nothing }
 
-popSCtxt :: SpliceContext -> SpliceContext
-popSCtxt = tail
+lookupDRWGenE :: Identifier -> GeneratorEnv -> Maybe (K3 Declaration -> SpliceEnv -> SpliceResult K3Parser)
+lookupDRWGenE n env = lookupCGenE n env >>= \case { DeclRewriter f -> Just f; _ -> Nothing }
 
-{- Splice environment helpers -}
-spliceVIdSym :: Identifier
-spliceVIdSym = "identifier"
-
-spliceVTSym :: Identifier
-spliceVTSym  = "type"
-
-spliceVESym :: Identifier
-spliceVESym  = "expr"
-
-lookupSpliceE :: Identifier -> Identifier -> SpliceEnv -> Maybe SpliceValue
-lookupSpliceE n k senv = Map.lookup n senv >>= Map.lookup k
-
-mkSpliceReprEnv :: [(Identifier, SpliceValue)] -> SpliceReprEnv
-mkSpliceReprEnv = Map.fromList
-
-mkSpliceEnv :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
-mkSpliceEnv = Map.fromList
 
 {- Type alias enviroment helpers -}
 lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)
