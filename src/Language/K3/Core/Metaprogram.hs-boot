@@ -5,11 +5,9 @@ module Language.K3.Core.Metaprogram where
 
 import Data.Map ( Map )
 
-import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
 
-data MetaDeclaration
 data MPDeclaration
 
 type SpliceEnv     = Map Identifier SpliceReprEnv
@@ -18,11 +16,6 @@ type SpliceContext = [SpliceEnv]
 
 data SpliceValue
 data SpliceResult (m :: * -> *)
-
-instance Eq   MetaDeclaration
-instance Ord  MetaDeclaration
-instance Read MetaDeclaration
-instance Show MetaDeclaration
 
 instance Eq   MPDeclaration
 instance Ord  MPDeclaration
@@ -34,7 +27,6 @@ instance Ord  SpliceValue
 instance Read SpliceValue
 instance Show SpliceValue
 
-instance Pretty (K3 MetaDeclaration)
 instance Pretty MPDeclaration
 
 {- Splice context accessors -}

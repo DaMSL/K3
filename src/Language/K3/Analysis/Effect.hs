@@ -16,6 +16,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 type Property   = (Identifier, Maybe (K3 Literal))
 type NamedEnv a = Map Identifier a

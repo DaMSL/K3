@@ -21,7 +21,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
-import Language.K3.Analysis.Common
+import Language.K3.Core.Utils
 
 -- Map of collection annotations to attributes to properties
 type AnnoMap = Map Identifier (Map Identifier [Annotation Declaration])
@@ -58,7 +58,7 @@ annosToMap annos = foldr addAnno Map.empty annos
 
 -- Insert the annotations in the expression tree
 placeAnnosInExprs :: AnnoMap -> K3 Declaration -> K3 Declaration
-placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr prog
+placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr Nothing prog
   where
     m_id x = return x
 

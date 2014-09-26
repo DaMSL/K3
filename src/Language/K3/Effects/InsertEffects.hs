@@ -141,7 +141,7 @@ getOrGenSymbol n = case getESymbol n of
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
-  mapProgram handleDecl mId handleExprs prog
+  mapProgram handleDecl mId handleExprs Nothing prog
   where
     mId x = return x
     listOfMaybe m = maybe [] singleton m

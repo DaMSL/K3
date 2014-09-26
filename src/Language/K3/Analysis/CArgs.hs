@@ -12,11 +12,11 @@ import Data.List (delete)
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
-import Language.K3.Analysis.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 -- Map variable names (Function Declarations) to the expected number of arguments in the backend implementation.
 type CArgsEnv           = [(Identifier, Int)]
@@ -31,7 +31,7 @@ type CArgsM a = State AllCArgs a
 -- Top Level
 convertProgram :: K3 Declaration -> K3 Declaration
 convertProgram prog =
-  fst $ runState (mapProgram m_id m_id (transformTriggerExpr globals) prog) cargs
+  fst $ runState (mapProgram m_id m_id (transformTriggerExpr globals) Nothing prog) cargs
   where
     cargs = allCArgs prog
     globals = catMaybes $ map globalVarName (children prog)
@@ -107,7 +107,7 @@ globalCArgsEnv program = map makeEnvEntry cArgsDecls
   where
     cArgsDecls = fst . runIdentity $ result -- All declarations with an attached 'CArgs' property
 
-    result = foldProgram accumCArgs m_id m_id [] program
+    result = foldProgram accumCArgs m_id m_id Nothing [] program
 
     m_id acc x = return (acc, x)
 
@@ -130,7 +130,7 @@ annotationCArgsEnv program = map makeAnnotationEnvEntry annotationCArgsDecls
 
     annotationCArgsDecls = fst . runIdentity $ result
 
-    result = foldProgram accumAnnotationCArgs m_id m_id [] program
+    result = foldProgram accumAnnotationCArgs m_id m_id Nothing [] program
 
     m_id acc x = return (acc, x)
 

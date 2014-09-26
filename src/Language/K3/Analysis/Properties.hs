@@ -19,7 +19,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 import Language.K3.Core.Constructor.Expression as EC
-import Language.K3.Analysis.Common
+import Language.K3.Core.Utils
 
 type NamedEnv a = [(Identifier, a)]
 type PList = [(Identifier, Maybe (K3 Literal))]
@@ -146,8 +146,8 @@ liftEitherM = either left return
 
 inferProgramUsageProperties :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramUsageProperties prog =
-    let (result, initEnv) = runPInfM pienv0 $ mapProgram initDeclF return return prog
-    in result >> (fst $ runPInfM initEnv $ mapProgram declF annMemF exprF prog)
+    let (result, initEnv) = runPInfM pienv0 $ mapProgram initDeclF return return Nothing prog
+    in result >> (fst $ runPInfM initEnv $ mapProgram declF annMemF exprF Nothing prog)
   where
         initDeclF d@(tag &&& annotations -> (DGlobal n t _, anns)) | isTFunction t = extDeclProps n anns >> return d
         initDeclF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d

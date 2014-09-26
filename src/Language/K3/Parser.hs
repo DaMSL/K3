@@ -42,7 +42,7 @@ import Data.Tree
 import Debug.Trace
 
 import System.FilePath
-import qualified Text.Parsec          as P
+import qualified Text.Parsec as P
 import Text.Parser.Char
 import Text.Parser.Combinators
 import Text.Parser.Token
@@ -53,26 +53,24 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
+import Language.K3.Core.Metaprogram
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+import Language.K3.Metaprogram.DataTypes
+import Language.K3.Metaprogram.Evaluation
+
 import Language.K3.Parser.DataTypes
 import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
 
-import Language.K3.Core.Metaprogram
-import Language.K3.Metaprogram.Evaluation
-
-import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.Pretty.Syntax as S
-
-type AnnotationCtor a = Identifier -> Annotation a
-type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
 {- Main parsing functions -}
 parseType :: String -> Maybe (K3 Type)
@@ -115,7 +113,12 @@ parseK3 noFeed includePaths s = do
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
   where rule = mkProgram =<< (spaces *> endBy1 (roleBody noDriver "") eof)
-        mkProgram l = P.getState >>= return . DC.role defaultRoleName . ((concat l) ++) . getGeneratedDecls
+        mkProgram l =
+          let (prgE, genSt) = evalMetaprogram $ DC.role defaultRoleName (concat l)
+          in either P.parserFail (addDecls $ getGeneratedDecls genSt) prgE
+
+        addDecls decls p@(tag -> DRole n) = return $ Node (DRole n :@: annotations p) $ children p ++ decls
+        addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
 
         selfContainedProgram d = if noDriver then return d else (mkEntryPoints d >>= mkBuiltins)
         mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
@@ -137,14 +140,12 @@ declaration = (//) attachComment <$> comment False <*>
 
   where k3Decls     = choice $ map normalizeDeclAsList
                         [Right dGlobal, Right dTrigger, Right dRole,
-                         Left (mpDecl dDataAnnotation), Left (mpDecl dControlAnnotation),
+                         Right dDataAnnotation, Right dControlAnnotation,
                          Left dTypeAlias]
 
         edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
         driverDecls = choice [dSelector, dFeed]
         ignores     = pInclude >> return ()
-
-        mpDecl  mp = mp >>= evalMetaprogram
 
         props    p = DUID # withProperties True dProperties p
         optProps p = uidOfOpt =<< optWithProperties True dProperties p
@@ -209,12 +210,12 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 -- | Data annotation parsing.
 --   This covers metaprogramming for data annotations when an annotation defines splice parameters.
-dDataAnnotation :: MDeclParser
+dDataAnnotation :: DeclParser
 dDataAnnotation = namedIdentifier "data annotation" "annotation" rule
   where rule x = mkAnnotation <$> x <*> option [] spliceParameterDecls <*> typesParamsAndMembers
         typesParamsAndMembers = parseInMode Splice $ protectedVarDecls typeParameters $ braces (some annotationMember)
         typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
-        mkAnnotation n sp (tp, mems) = mpDataAnnotation n sp tp mems
+        mkAnnotation n sp (tp, mems) = DC.generator $ mpDataAnnotation n sp tp mems
 
 
 {- Annotation declaration members -}
@@ -255,12 +256,14 @@ polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
 
 -- | Control annotation parsing
-dControlAnnotation :: MDeclParser
+dControlAnnotation :: DeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
-  where rule x = mpCtrlAnnotation <$> x <*> option [] spliceParameterDecls <*> some pattern <*> extensions
+  where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> some pattern <*> extensions
         pattern    = (,,) <$> parseInMode SourcePattern expr <*> (symbol "=>" *> rewrite) <*> extensions
         rewrite    = clean =<< parseInMode Splice expr
         extensions = concat <$> option [] (symbol "+>" *> many (parseInMode Splice declaration))
+
+        mkCtrlAnn n svars rw exts = DC.generator $ mpCtrlAnnotation n svars rw exts
 
         clean         e = mapTree cleanNode e
         cleanNode  ch e = return $ Node ((tag $ foldl (flip stripAnnot) e [isESpan, isEUID]) :@: []) ch
@@ -698,22 +701,21 @@ withAnnotations p = try $ option [] (symbol "@" *> p)
 
 tAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Type]
 tAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv TAnnotation (Just $ TApplyGen)
+  where p = dAnnotationUse sEnv TAnnotation TApplyGen
 
 eAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Expression]
 eAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv EAnnotation (Just $ EApplyGen False)
+  where p = dAnnotationUse sEnv EAnnotation $ EApplyGen False
 
 lAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Literal]
 lAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
-  where p = dAnnotationUse sEnv LAnnotation Nothing
+  where p = dAnnotationUse sEnv LAnnotation LApplyGen
 
-dAnnotationUse :: Maybe SpliceEnv -> AnnotationCtor a -> Maybe (ApplyAnnCtor a) -> K3Parser (Annotation a)
-dAnnotationUse sEnvOpt aCtor apCtorOpt = try mpOrAnn
+dAnnotationUse :: Maybe SpliceEnv -> AnnotationCtor a -> ApplyAnnCtor a -> K3Parser (Annotation a)
+dAnnotationUse sEnvOpt aCtor apCtor = try mpOrAnn
   where mpOrAnn = mkMpOrAnn =<< ((,) <$> identifier <*> option [] (parens $ commaSep1 $ contextualizedSpliceParameter sEnvOpt))
         mkMpOrAnn (n, [])    = return $ aCtor n
-        mkMpOrAnn (n,params) = let nsenv = mkSpliceEnv $ catMaybes params
-                               in maybe (applyDAnnotation aCtor n nsenv) (\ctor -> return $ ctor n nsenv) $ apCtorOpt
+        mkMpOrAnn (n,params) = return $ apCtor n $ mkSpliceEnv $ catMaybes params
 
 eCAnnotations :: K3Parser [Annotation Expression]
 eCAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
@@ -721,32 +723,6 @@ eCAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
 
 cAnnotationUse :: ApplyAnnCtor Expression -> K3Parser (Annotation Expression)
 cAnnotationUse aCtor = (\a b -> aCtor a $ mkSpliceEnv $ catMaybes b) <$> identifier <*> option [] (parens $ commaSep1 spliceParameter)
-
-applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3Parser (Annotation a)
-applyDAnnotation aCtor annId sEnv = parserWithGEnv $ \gEnv ->
-    maybe (spliceLookupErr annId) (expectSpliceAnnotation . ($ sEnv)) $ lookupDSPGenE annId gEnv
-
-  where expectSpliceAnnotation (SRDecl p) = do
-          decl <- p
-          case tag decl of
-            DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
-            _ -> P.parserFail $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
-
-        expectSpliceAnnotation _ = P.parserFail "Invalid data annotation splice"
-
-        spliceLookupErr n = P.parserFail $ unwords ["Could not find macro", n]
-
-applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExpressionParser
-applyCAnnotation targetE cAnnId sEnv = parserWithGEnv $ \gEnv ->
-    maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
-
-  where
-    injectRewrite (SRExpr p) = p
-    injectRewrite (SRRewrite p) = p >>= \(rewriteE, decls) -> modifyGDeclsF_ (Right . (++ decls)) >> return rewriteE
-    injectRewrite _ = P.parserFail "Invalid control annotation rewrite"
-
-    spliceLookupErr n = P.parserFail $ unwords ["Could not find macro", n]
-
 
 withPropertiesF :: (Eq (Annotation a))
                 => Bool -> K3Parser [Annotation a] -> K3Parser b -> (b -> [Annotation a] -> b) -> K3Parser b

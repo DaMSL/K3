@@ -5,7 +5,6 @@
 -- | Expressions in K3.
 module Language.K3.Core.Expression where
 
-import Control.Monad.Identity
 import Data.List
 import Data.Tree
 import Data.Word (Word8)
@@ -230,33 +229,3 @@ namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns
   where extractId (EAnnotation n) = n
         extractId _ = error "Invalid named annotation"
-
-
-{- Expression utilities -}
-
--- | Retrieves all free variables in an expression.
-freeVariables :: K3 Expression -> [Identifier]
-freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
-
--- | Retrieves all variables introduced by a binder
-bindingVariables :: Binder -> [Identifier]
-bindingVariables (BIndirection i) = [i]
-bindingVariables (BTuple is)      = is
-bindingVariables (BRecord ivs)    = snd (unzip ivs)
-
--- | Strips all annotations from an expression.
-stripAnnotations :: K3 Expression -> K3 Expression
-stripAnnotations = runIdentity . mapTree strip
-  where strip ch n = return $ Node (tag n :@: []) ch
-
--- | Compares two expressions for identical AST structures while ignoring annotations
---   (such as UIDs, spans, etc.)
-compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
-compareWithoutAnnotations e1 e2 = stripAnnotations e1 == stripAnnotations e2

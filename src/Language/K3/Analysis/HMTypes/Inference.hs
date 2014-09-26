@@ -36,9 +36,9 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 import Language.K3.Core.Constructor.Type as TC
 
-import Language.K3.Analysis.Common
 import Language.K3.Analysis.HMTypes.DataTypes
 
 import Language.K3.Utils.Logger
@@ -864,14 +864,14 @@ inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramTypes prog = do
     (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
                     in a >>= return . (, b)
-    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
+    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF Nothing prog
                          in a >>= return . (, b)
     logVoid $ "Final type environment"
     logVoid $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
-    initializeTypeEnv = mapProgram initDeclF initAMemF initExprF prog
+    initializeTypeEnv = mapProgram initDeclF initAMemF initExprF Nothing prog
 
     withUnique :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
     withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilkupe n) >>= const m
@@ -1405,7 +1405,7 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
 -- | Converts all QType annotations on program expressions to K3 types.
 translateProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-translateProgramTypes prog = mapProgram declF annMemF exprF prog
+translateProgramTypes prog = mapProgram declF annMemF exprF Nothing prog
   where declF   d = return d
         annMemF m = return m
         exprF   e = translateExprTypes e
