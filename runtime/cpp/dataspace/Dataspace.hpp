@@ -8,6 +8,8 @@
 #include "boost/serialization/list.hpp"
 #include "external/boost_ext/unordered_map.hpp"
 #include <boost/serialization/base_object.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
 
 #include <list>
 #include <vector>
@@ -32,7 +34,7 @@ using unordered_set = std::tr1::unordered_set<K>;
 
 // StlDS provides the basic Collection transformers via generic implementations
 // that should work with any STL container.
-template <template<typename...> class StlContainer, class Elem>
+template <template <typename> class Derived, template<typename...> class StlContainer, class Elem>
 class StlDS {
   // The underlying STL container type backing this dataspace:
   typedef StlContainer<Elem> Container;
@@ -150,9 +152,10 @@ class StlDS {
   }
 
   // Return a new DS with data from this and other
-  StlDS combine(const StlDS& other) const {
+  Derived<Elem> combine(const StlDS& other) const {
     // copy this DS
-    StlDS result = StlDS(*this);
+    Derived<Elem> result;
+    result = StlDS(*this);
     // copy other DS
     for (const Elem &e : other.container) {
       result.insert(e);
@@ -161,7 +164,7 @@ class StlDS {
   }
 
   // Split the ds at its midpoint
-  tuple<StlDS, StlDS> split(const unit_t&) const {
+  tuple<Derived<Elem>, Derived<Elem>> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -170,8 +173,8 @@ class StlDS {
     const_iterator_type mid = container.begin();
     std::advance(mid, half);
     const_iterator_type end = container.end();
-    // Construct DS from iterators
-    return std::make_tuple(StlDS(beg,mid), StlDS(mid,end));
+    // Construct from iterators
+    return std::make_tuple(Derived<Elem>(StlDS(beg,mid)), Derived<Elem>(StlDS(mid,end)));
   }
 
   // Apply a function to each element of this ds
@@ -184,9 +187,19 @@ class StlDS {
   }
 
   // Produce a new ds by mapping a function over this ds
+  template<template <typename E> class Subclass, typename Fun>
+  auto map2(Fun f) -> Subclass<R_elem<RT<Fun, Elem>>> {
+    Subclass<R_elem<RT<Fun, Elem>>> result;
+    for (const Elem &e : container) {
+      result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
+    }
+    return result;
+  }
+
+  // Produce a new ds by mapping a function over this ds
   template<typename Fun>
-  auto map(Fun f) -> StlDS<StlContainer, R_elem<RT<Fun, Elem>>> {
-    StlDS<StlContainer, R_elem<RT<Fun, Elem>>> result;
+  auto map(Fun f) -> Derived<R_elem<RT<Fun, Elem>>> {
+    Derived<Elem> result;
     for (const Elem &e : container) {
       result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
     }
@@ -195,8 +208,8 @@ class StlDS {
 
   // Create a new DS consisting of elements from this ds that satisfy the predicate
   template<typename Fun>
-  StlDS filter(Fun predicate) {
-    StlDS<StlContainer, Elem> result;
+  Derived<Elem> filter(Fun predicate) {
+    Derived<Elem> result;
     for (const Elem &e : container) {
       if (predicate(e)) {
         result.insert(e);
@@ -215,7 +228,7 @@ class StlDS {
 
   // Group By
   template<typename F1, typename F2, typename Z>
-  StlDS<StlContainer, R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
+  Derived<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
        // Create a map to hold partial results
        typedef RT<F1, Elem> K;
        unordered_map<K, Z> accs;
@@ -229,23 +242,24 @@ class StlDS {
        }
 
       // Build the R_key_value records and insert them into result
-      StlDS<StlContainer, R_key_value<K,Z>> result;
+      // TODO can we move into the R_key_value constructor?
+      Derived<R_key_value<RT<F1, Elem>,Z>> result;
       for(const auto& it : accs) {
         result.insert(R_key_value<K, Z>{it.first, it.second});
 
       }
 
-       return result;
+      return result;
   }
 
   // TODO optimize copies
   template <class Fun>
-  auto ext(Fun expand) -> StlDS<StlContainer, typename RT<Fun, Elem>::ElemType > {
+  auto ext(Fun expand) -> Derived<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
-    StlDS<StlContainer, T> result;
+    Derived<T> result;
     for (const Elem& elem : container) {
       for (const T& elem2 : expand(elem).container) {
-        // can we force a move here?
+        // TODO can we force a move here?
         result.insert(elem2);
       }
     }
@@ -283,17 +297,17 @@ class StlDS {
 };
 
 // Various DS's achieved through typedefs
-template <class Elem>
-using ListDS = StlDS<std::list, Elem>;
+template <template <typename> class Derived, class Elem>
+using ListDS = StlDS<Derived, std::list, Elem>;
 
-template <class Elem>
-using SetDS = StlDS<unordered_set, Elem>;
+template <template <typename> class Derived, class Elem>
+using SetDS = StlDS<Derived, unordered_set, Elem>;
 
-template <class Elem>
-using SortedDS = StlDS<std::multiset, Elem>;
+template <template <typename> class Derived, class Elem>
+using SortedDS = StlDS<Derived, std::multiset, Elem>;
 
-template <class Elem>
-using VectorDS = StlDS<std::vector, Elem>;
+template <template <typename> class Derived, class Elem>
+using VectorDS = StlDS<Derived, std::vector, Elem>;
 
 
 // The Colllection variants inherit functionality from a dataspace.
@@ -301,108 +315,76 @@ using VectorDS = StlDS<std::vector, Elem>;
 // explicit conversion/wrapping in its sub-classes. (call to Superclass constructor)
 // Each variant may also add extra functionality.
 template <class Elem>
-class Collection : public VectorDS<Elem> {
-  typedef VectorDS<Elem> Super;
+class Collection : public VectorDS<Collection, Elem> {
+  typedef VectorDS<Collection, Elem> Super;
 
  public:
   // Constructors:
   // Default:
-  Collection() : VectorDS<Elem>() { }
+  Collection() : VectorDS<Collection, Elem>() { }
 
   // Copy:
-  Collection(const Collection& c): VectorDS<Elem>(c) { }
+  Collection(const Collection& c): VectorDS<Collection, Elem>(c) { }
 
   // Move:
-  Collection(Collection&& c): VectorDS<Elem>(std::move(c)) { }
+  Collection(Collection&& c): VectorDS<Collection, Elem>(std::move(c)) { }
 
   // Assign operators:
   // Copy:
   Collection& operator=(const Collection& other) {
-    VectorDS<Elem>::operator=(other);
+    VectorDS<Collection, Elem>::operator=(other);
     return *this;
   }
 
   // Move:
   Collection& operator=(Collection&& other) {
-    VectorDS<Elem>::operator=(std::move(other));
+    VectorDS<Collection, Elem>::operator=(std::move(other));
     return *this;
   }
 
   // Superclass constructors: (for conversion from Super to this-type)
   // Copy:
-  Collection(const VectorDS<Elem>& c): VectorDS<Elem>(c) { }
+  Collection(const VectorDS<Collection, Elem>& c): VectorDS<Collection, Elem>(c) { }
 
   // Move:
-  Collection(VectorDS<Elem>&& c): VectorDS<Elem>(std::move(c)) { }
-
-  // Wrapped Dataspace Functions: (call DS function, then construct-by-move)
-  Collection combine(const Collection& other) const {
-    return Collection<Elem>(Super::combine(other));
-  }
-
-  // TODO: force a move when constructing the Collections?
-  tuple<Collection, Collection> split(unit_t) const {
-    auto t = Super::split(unit_t());
-    return std::make_tuple(Collection<Elem>(std::get<0>(t)), Collection<Elem>(std::get<1>(t)));
-  }
-
-  template<typename Fun>
-  auto map(Fun f) -> Collection<R_elem<RT<Fun, Elem>>> {
-    return Collection<R_elem<RT<Fun, Elem>>>(Super::map(f));
-  }
-
-  template<typename Fun>
-  Collection filter(Fun predicate) {
-    return Collection<Elem>(Super::filter(predicate));
-  }
-
-  template<typename F1, typename F2, typename Z>
-  Collection< R_key_value<RT<F1, Elem>,Z> > groupBy(F1 grouper, F2 folder, const Z& init) {
-    return Collection< R_key_value<RT<F1, Elem>,Z> >(Super::groupBy(grouper, folder, init));
-  }
-
-  template <class Fun>
-  auto ext(Fun expand) -> Collection< typename RT<Fun, Elem>::ElemType > {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    return Collection<T> (Super::ext(expand));
-  }
+  Collection(VectorDS<Collection, Elem>&& c): VectorDS<Collection, Elem>(std::move(c)) { }
 
 };
 
 template <class Elem>
-class Set : public SetDS<Elem> {
-  typedef SetDS<Elem> Super;
+class Set : public SetDS<Set, Elem> {
+  typedef SetDS<Set, Elem> Super;
 
  public:
   // Constructors:
   // Default:
-  Set() : SetDS<Elem>() { }
+  Set() : SetDS<Set, Elem>() { }
 
   // Copy:
-  Set(const Set& c): SetDS<Elem>(c) { }
+  Set(const Set& c): SetDS<Set, Elem>(c) { }
 
   // Move:
-  Set(Set&& c): SetDS<Elem>(std::move(c)) { }
+  Set(Set&& c): SetDS<Set, Elem>(std::move(c)) { }
 
   // Assign operators:
   // Copy:
   Set& operator=(const Set& other) {
-    SetDS<Elem>::operator=(other);
+    SetDS<Set, Elem>::operator=(other);
     return *this;
   }
 
   // Move:
   Set& operator=(Set&& other) {
-    SetDS<Elem>::operator=(std::move(other));
+    SetDS<Set, Elem>::operator=(std::move(other));
     return *this;
   }
 
   // Superclass constructors: (for conversion from Super to this-type)
   // Copy:
-  Set(const SetDS<Elem>& c): SetDS<Elem>(c) { }
+  Set(const SetDS<Set, Elem>& c): SetDS<Set, Elem>(c) { }
 
   // Move:
-  Set(SetDS<Elem>&& c): SetDS<Elem>(std::move(c)) { }
+  Set(SetDS<Set, Elem>&& c): SetDS<Set, Elem>(std::move(c)) { }
 
   // Set specific functions
   bool member(const Elem& e) {
@@ -448,75 +430,42 @@ class Set : public SetDS<Elem> {
     }
     return result;
   }
-
-  // Wrapped Dataspace Functions: (call DS function, then construct-by-move)
-  Set combine(const Set& other) const {
-    return Set<Elem>(Super::combine(other));
-  }
-
-  // TODO: force a move when constructing the Sets?
-  tuple<Set, Set> split(unit_t) const {
-    auto t = Super::split(unit_t());
-    return std::make_tuple(Set<Elem>(std::get<0>(t)), Set<Elem>(std::get<1>(t)));
-  }
-
-  template<typename Fun>
-  auto map(Fun f) -> Set<R_elem<RT<Fun, Elem>>> {
-    return Set<R_elem<RT<Fun, Elem>>>(Super::map(f));
-  }
-
-  template<typename Fun>
-  Set filter(Fun predicate) {
-    return Set<Elem>(Super::filter(predicate));
-  }
-
-  template<typename F1, typename F2, typename Z>
-  Set< R_key_value<RT<F1, Elem>,Z> > groupBy(F1 grouper, F2 folder, const Z& init) {
-    return Set< R_key_value<RT<F1, Elem>,Z> >(Super::groupBy(grouper, folder, init));
-  }
-
-  template <class Fun>
-  auto ext(Fun expand) -> Set< typename RT<Fun, Elem>::ElemType > {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    return Set<T> (Super::ext(expand));
-  }
-
 };
 
 template <class Elem>
-class Seq : public ListDS<Elem> {
-  typedef ListDS<Elem> Super;
+class Seq : public ListDS<Seq, Elem> {
+  typedef ListDS<Seq, Elem> Super;
 
  public:
   // Constructors:
   // Default:
-  Seq() : ListDS<Elem>() { }
+  Seq() : ListDS<Seq, Elem>() { }
 
   // Copy:
-  Seq(const Seq& c): ListDS<Elem>(c) { }
+  Seq(const Seq& c): ListDS<Seq, Elem>(c) { }
 
   // Move:
-  Seq(Seq&& c): ListDS<Elem>(std::move(c)) { }
+  Seq(Seq&& c): ListDS<Seq, Elem>(std::move(c)) { }
 
   // Assign operators:
   // Copy:
   Seq& operator=(const Seq& other) {
-    ListDS<Elem>::operator=(other);
+    ListDS<Seq, Elem>::operator=(other);
     return *this;
   }
 
   // Move:
   Seq& operator=(Seq&& other) {
-    ListDS<Elem>::operator=(std::move(other));
+    ListDS<Seq, Elem>::operator=(std::move(other));
     return *this;
   }
 
   // Superclass constructors: (for conversion from Super to this-type)
   // Copy:
-  Seq(const ListDS<Elem>& c): ListDS<Elem>(c) { }
+  Seq(const ListDS<Seq, Elem>& c): ListDS<Seq, Elem>(c) { }
 
   // Move:
-  Seq(ListDS<Elem>&& c): ListDS<Elem>(std::move(c)) { }
+  Seq(ListDS<Seq, Elem>&& c): ListDS<Seq, Elem>(std::move(c)) { }
 
   // Seq specific functions
   Seq sort(const F<F<int(Elem)>(Elem)>& comp) {
@@ -572,39 +521,39 @@ class Seq : public ListDS<Elem> {
 };
 
 template <class Elem>
-class Sorted : public SortedDS<Elem> {
-  typedef SortedDS<Elem> Super;
+class Sorted : public SortedDS<Sorted, Elem> {
+  typedef SortedDS<Sorted, Elem> Super;
 
  public:
   // Constructors:
   // Default:
-  Sorted() : SortedDS<Elem>() { }
+  Sorted() : SortedDS<Sorted, Elem>() { }
 
   // Copy:
-  Sorted(const Sorted& c): SortedDS<Elem>(c) { }
+  Sorted(const Sorted& c): SortedDS<Sorted, Elem>(c) { }
 
   // Move:
-  Sorted(Sorted&& c): SortedDS<Elem>(std::move(c)) { }
+  Sorted(Sorted&& c): SortedDS<Sorted, Elem>(std::move(c)) { }
 
   // Assign operators:
   // Copy:
   Sorted& operator=(const Sorted& other) {
-    SortedDS<Elem>::operator=(other);
+    SortedDS<Sorted, Elem>::operator=(other);
     return *this;
   }
 
   // Move:
   Sorted& operator=(Sorted&& other) {
-    SortedDS<Elem>::operator=(std::move(other));
+    SortedDS<Sorted, Elem>::operator=(std::move(other));
     return *this;
   }
 
   // Superclass constructors: (for conversion from Super to this-type)
   // Copy:
-  Sorted(const SortedDS<Elem>& c): SortedDS<Elem>(c) { }
+  Sorted(const SortedDS<Sorted, Elem>& c): SortedDS<Sorted, Elem>(c) { }
 
   // Move:
-  Sorted(SortedDS<Elem>&& c): SortedDS<Elem>(std::move(c)) { }
+  Sorted(SortedDS<Sorted, Elem>&& c): SortedDS<Sorted, Elem>(std::move(c)) { }
 
   // Sorted specific functions
   std::shared_ptr<Elem> min() {
@@ -664,40 +613,8 @@ class Sorted : public SortedDS<Elem> {
     }
     return result;
   }
-
-  // Wrapped Dataspace Functions: (call DS function, then construct-by-move)
-  Sorted combine(const Sorted& other) const {
-    return Sorted<Elem>(Super::combine(other));
-  }
-
-  // TODO: force a move when constructing the Sets?
-  tuple<Sorted, Sorted> split(unit_t) const {
-    auto t = Super::split(unit_t());
-    return std::make_tuple(Sorted<Elem>(std::get<0>(t)), Sorted<Elem>(std::get<1>(t)));
-  }
-
-  template<typename Fun>
-  auto map(Fun f) -> Sorted<R_elem<RT<Fun, Elem>>> {
-    return Sorted<R_elem<RT<Fun, Elem>>>(Super::map(f));
-  }
-
-  template<typename Fun>
-  Sorted filter(Fun predicate) {
-    return Sorted<Elem>(Super::filter(predicate));
-  }
-
-  template<typename F1, typename F2, typename Z>
-  Sorted< R_key_value<RT<F1, Elem>,Z> > groupBy(F1 grouper, F2 folder, const Z& init) {
-    return Sorted< R_key_value<RT<F1, Elem>,Z> >(Super::groupBy(grouper, folder, init));
-  }
-
-  template <class Fun>
-  auto ext(Fun expand) -> Sorted< typename RT<Fun, Elem>::ElemType > {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    return Sorted<T> (Super::ext(expand));
-  }
-
 };
+
 
 // TODO reorder functions to match the others
 template<class R>
@@ -957,39 +874,39 @@ class Map {
 }; // class Map
 
 template <class Elem>
-class Vector : public VectorDS<Elem> {
-  typedef VectorDS<Elem> Super;
+class Vector : public VectorDS<Vector, Elem> {
+  typedef VectorDS<Vector, Elem> Super;
 
  public:
   // Constructors:
   // Default:
-  Vector() : VectorDS<Elem>() { }
+  Vector() : VectorDS<Vector, Elem>() { }
 
   // Copy:
-  Vector(const Vector& c): VectorDS<Elem>(c) { }
+  Vector(const Vector& c): VectorDS<Vector, Elem>(c) { }
 
   // Move:
-  Vector(Vector&& c): VectorDS<Elem>(std::move(c)) { }
+  Vector(Vector&& c): VectorDS<Vector, Elem>(std::move(c)) { }
 
   // Assign operators:
   // Copy:
   Vector& operator=(const Vector& other) {
-    VectorDS<Elem>::operator=(other);
+    VectorDS<Vector, Elem>::operator=(other);
     return *this;
   }
 
   // Move:
   Vector& operator=(Vector&& other) {
-    VectorDS<Elem>::operator=(std::move(other));
+    VectorDS<Vector, Elem>::operator=(std::move(other));
     return *this;
   }
 
   // Superclass constructors: (for conversion from Super to this-type)
   // Copy:
-  Vector(const VectorDS<Elem>& c): VectorDS<Elem>(c) { }
+  Vector(const VectorDS<Vector, Elem>& c): VectorDS<Vector, Elem>(c) { }
 
   // Move:
-  Vector(VectorDS<Elem>&& c): VectorDS<Elem>(std::move(c)) { }
+  Vector(VectorDS<Vector, Elem>&& c): VectorDS<Vector, Elem>(std::move(c)) { }
 
   template<typename Fun>
   auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> {
@@ -1089,17 +1006,286 @@ class Vector : public VectorDS<Elem> {
 
 };
 
+template <typename Elem, typename... Indicies>
+class MultiIndex {
+  public:
+  typedef boost::multi_index_container<
+    Elem,
+    boost::multi_index::indexed_by<
+      boost::multi_index::sequenced<>,
+      Indicies...
+    >
+  > Container;
+
+  Container container;
+
+  // Defaul
+  MultiIndex()
+    : container()
+  { }
+
+  // Copy
+  MultiIndex(const MultiIndex& other)
+    : container(other.container)
+  { }
+
+
+  // Move Constructor
+  MultiIndex(MultiIndex&& other)
+    : container(std::move(other.container))
+  { }
+
+  // Copy Constructor from container
+  MultiIndex(const Container& con)
+    : container(con)
+  { }
+
+  // Move Constructor from container
+  MultiIndex(Container&& con)
+    : container(std::move(con))
+  { }
+
+  // Construct from (container) iterators
+  template<typename Iterator>
+  MultiIndex(Iterator begin, Iterator end)
+    : container(begin,end)
+  {}
+
+  ~MultiIndex() {}
+
+  // Assign Operators:
+  // Copy Assign Operator
+  MultiIndex& operator=(const MultiIndex& other) {
+    container = other.container;
+    return *this;
+  }
+
+  // Move Assign Operator
+  MultiIndex& operator=(MultiIndex&& other) {
+    // Proxy to the move assign operator of the container
+    container = std::move(other.container);
+    return *this;
+  }
+
+
+  // Maybe return the first element in the ds
+  shared_ptr<Elem> peek(unit_t) const {
+    shared_ptr<Elem> res;
+    auto it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<Elem>(*it);
+    }
+    return res;
+  }
+
+   // Insert by move
+  unit_t insert(Elem &&e) {
+    container.insert(container.end(), std::move(e));
+    return unit_t();
+  }
+
+  // Insert by copy
+  unit_t insert(const Elem& e) {
+    // Create a copy, then delegate to a insert-by-move
+    return insert(Elem(e));
+  }
+
+  // If v is found in the container, proxy a call to erase on the container.
+  // Behavior depends on the container's erase implementation
+  unit_t erase(const Elem& v) {
+    auto it = std::find(container.begin(), container.end(), v);
+    if (it != container.end()) {
+      container.erase(it);
+    }
+    return unit_t();
+  }
+
+  // Update by move
+  // Find v in the container. Insert (by move) v2 in its position. Erase v.
+  unit_t update(const Elem& v, const Elem&& v2) {
+    auto it = std::find(container.begin(), container.end(), v);
+    if (it != container.end()) {
+      container.insert(it, v2);
+      container.erase(it);
+    }
+    return unit_t();
+  }
+
+  // Update by copy
+  unit_t update(const Elem& v, const Elem& v2) {
+    // Copy v2, then update by move
+    return update(v, Elem(v2));
+  }
+
+  // Return the number of elements in this ds
+  int size(const unit_t&) const {
+    return container.size();
+  }
+
+  // Return a new DS with data from this and other
+  MultiIndex<Elem, Indicies...> combine(const MultiIndex& other) const {
+    // copy this DS
+    MultiIndex<Elem, Indicies...> result;
+    result = MultiIndex(*this);
+    // copy other DS
+    for (const Elem &e : other.container) {
+      result.insert(e);
+    }
+    return result;
+  }
+
+  // Split the ds at its midpoint
+  tuple<MultiIndex<Elem, Indicies...>, MultiIndex<Elem, Indicies...>> split(const unit_t&) const {
+    // Find midpoint
+    const size_t size = container.size();
+    const size_t half = size / 2;
+    // Setup iterators
+    auto  beg = container.begin();
+    auto mid = container.begin();
+    std::advance(mid, half);
+    auto end = container.end();
+    // Construct from iterators
+    return std::make_tuple(MultiIndex(beg,mid), MultiIndex(mid,end));
+  }
+
+  // Apply a function to each element of this ds
+  template<typename Fun>
+  unit_t iterate(Fun f) {
+    for (const Elem& e : container) {
+      f(e);
+    }
+    return unit_t();
+  }
+
+  // Produce a new ds by mapping a function over this ds
+  template<typename Fun>
+  auto map(Fun f) -> MultiIndex<R_elem<RT<Fun, Elem>>> {
+    MultiIndex<R_elem<RT<Fun, Elem>>> result;
+    for (const Elem &e : container) {
+      result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
+    }
+    return result;
+  }
+
+  // Create a new DS consisting of elements from this ds that satisfy the predicate
+  template<typename Fun>
+  MultiIndex<Elem, Indicies...> filter(Fun predicate) {
+    MultiIndex<Elem, Indicies...> result;
+    for (const Elem &e : container) {
+      if (predicate(e)) {
+        result.insert(e);
+      }
+    }
+    return result;
+  }
+
+  // Fold a function over this ds
+  template<typename Fun, typename Acc>
+  Acc fold(Fun f, const Acc& init_acc) {
+    Acc acc = init_acc;
+    for (const Elem &e : container) { acc = f(acc)(e); }
+    return acc;
+  }
+
+  // Group By
+  template<typename F1, typename F2, typename Z>
+  MultiIndex<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
+       // Create a map to hold partial results
+       typedef RT<F1, Elem> K;
+       unordered_map<K, Z> accs;
+
+       for (const auto& elem : container) {
+          K key = grouper(elem);
+          if (accs.find(key) == accs.end()) {
+            accs[key] = init;
+          }
+          accs[key] = folder(accs[key])(elem);
+       }
+
+      // Build the R_key_value records and insert them into resul
+      // TODO can we move into the R_key_value constructor?
+      MultiIndex<R_key_value<RT<F1, Elem>,Z>> result;
+      for(const auto& it : accs) {
+        result.insert(R_key_value<K, Z>{it.first, it.second});
+
+      }
+
+      return result;
+  }
+
+  // TODO optimize copies
+  template <class Fun>
+  auto ext(Fun expand) -> MultiIndex<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    MultiIndex<T> result;
+    for (const Elem& elem : container) {
+      for (const T& elem2 : expand(elem).container) {
+        // TODO can we force a move here?
+        result.insert(elem2);
+      }
+    }
+
+    return result;
+  }
+
+  bool operator==(const MultiIndex& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const MultiIndex& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const MultiIndex& other) const {
+    return container < other.container;
+  }
+
+
+  Container& getContainer() { return container; }
+
+  // Return a constant reference to the container
+  const Container& getConstContainer() const {return container;}
+
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
+  }
+
+};
+
+
 } // Namespace K3
 
-template <template<typename...> class Container, class Elem>
-std::size_t hash_value(K3::StlDS<Container,Elem> const& b) {
-  const auto& c  = b.getConstContainer();
+template <class K3Collection>
+std::size_t hash_collection(K3Collection const& b) {
+  const auto& c = b.getConstContainer();
   return boost::hash_range(c.begin(), c.end());
+
+}
+
+template <template<typename> class Derived, template<typename...> class Container, class Elem>
+std::size_t hash_value(K3::StlDS<Derived, Container,Elem> const& b) {
+  return hash_collection(b);
 }
 
 template <class Elem>
 std::size_t hash_value(K3::Map<Elem> const& b) {
-  const auto& c  = b.getConstContainer();
-  return boost::hash_range(c.begin(), c.end());
+  return hash_collection(b);
 }
+
+
+template <class Elem>
+std::size_t hash_value(K3::Vector<Elem> const& b) {
+  return hash_collection(b);
+}
+
+template <typename... Args>
+std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
+  return hash_collection(b);
+}
+
+
+
 #endif

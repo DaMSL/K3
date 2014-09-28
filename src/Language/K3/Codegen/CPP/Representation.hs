@@ -51,7 +51,7 @@ binaryParens _ (Variable _) = id
 binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
   where
     precedence :: Identifier -> Int
-    precedence x = fromJust $ lookup x precedences
+    precedence x = fromMaybe (error "binaryParens: expected just") $ lookup x precedences
 
     precedences :: [(Identifier, Int)]
     precedences
@@ -60,7 +60,8 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
           , ("+", 6), ("-", 6)
           , (">>", 7)
           , ("<<", 7)
-          , ("==", 9)
+          , ("<", 8), (">", 8), ("<=", 8), (">=", 8)
+          , ("==", 9), ("!=", 9)
           , ("|", 12)
           , ("&&", 13)
           , ("||", 14)

@@ -13,6 +13,7 @@ declare rankings_file: string = "/k3/data/amplab/rankings_10.k3"
 // Globals
 declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
+declare num_results: mut int = 0
 
 // Data
 declare local_rankings: collection {pageRank: int, pageURL: string, avgDuration: int} @ { Collection }
@@ -31,16 +32,18 @@ trigger q1_local: () = \_ -> (
     then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
     else ()
   );
-  (finished, master) <- ()
+  (finished, master) <- (local_q1_results.size ())
 )
 
 // Signal to the master that a peer has finished the query locally.
-trigger finished: () = \_ -> (
+trigger finished: int = \num_peer_results -> (
+  num_results = num_results + num_peer_results;
   peers_finished = peers_finished + 1;
   if peers_finished == peers.size ()
   then end_ms = now ();
        elapsed_ms = end_ms - start_ms;
-       printLine (itos elapsed_ms);
+       printLine (concat "# Results: " (itos num_results));
+       printLine (concat "Elapsed time (ms):" (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )

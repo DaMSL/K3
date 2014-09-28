@@ -52,10 +52,10 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
                       TDeclaredVar t -> return (R.Named (R.Name t), Just t)
                       _ -> genCType ta >>= \cta -> return (cta, Nothing)
 
-    let templatize = if isJust template then R.TemplateDefn [(fromJust template, Nothing)] else id
+    let templatize = maybe id (\t -> R.TemplateDefn [(t, Nothing)]) template
 
-    addForward $ (if isJust template then R.TemplateDecl [(fromJust template, Nothing)] else id)
-                 (R.FunctionDecl (R.Name i) [argumentType] returnType)
+    addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
+                   R.FunctionDecl (R.Name i) [argumentType] returnType
 
     body' <- reify RReturn body
     return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] body']

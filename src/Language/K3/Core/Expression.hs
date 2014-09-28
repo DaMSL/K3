@@ -19,6 +19,8 @@ import Language.K3.Core.Type
 import Language.K3.Core.Literal
 import Language.K3.Analysis.Effects.Core
 
+import Language.K3.Optimization.Core
+
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
 
@@ -100,6 +102,7 @@ data instance Annotation Expression
     | EAnalysis   AnalysisAnnotation
     | EEffect     (K3 Effect)
     | ESymbol     (K3 Symbol)
+    | EOpt        OptHint
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)

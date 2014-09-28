@@ -133,17 +133,17 @@ namespace K3
         if ( ctxt ) {
           if ( socket_ ) {
             ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
-            socket_->async_connect(ep,
-              [=] (const boost::system::error_code& error) {
-                if (!error) {
-                  connected_ = true;
-                  //logAt(boost::log::trivial::warning, "connected");
-                  //BOOST_LOG(*this) << "Connected! ";
+	    boost::system::error_code error;
+	    socket_->connect(ep, error);
+            if (!error) {
+              connected_ = true;
+              //logAt(boost::log::trivial::warning, "connected");
+              //BOOST_LOG(*this) << "Connected! ";
 
-                } else {
-                  BOOST_LOG(*this) << "Connect error: " << error.message();
-                }
-              } );
+            } else {
+              BOOST_LOG(*this) << "Connect error: " << error.message();
+	      throw std::runtime_error("Connect error");
+            }
           } else { logAt(boost::log::trivial::warning, "Uninitialized socket in constructing an NConnection"); }
         } else { logAt(boost::log::trivial::warning, "Invalid network context in constructing an NConnection"); }
       }

@@ -46,12 +46,29 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
-logVoid :: (Functor m, Monad m) => String -> m ()
+--logVoid :: (Functor m, Monad m) => String -> m ()
 --logVoid s = void $ _debug s
-logVoid s = trace s $ return ()
+--logVoid s = trace s $ return ()
+
+logVoid :: String -> TInfM ()
+logVoid s = do
+  env <- get
+  logVoid' (verbose $ config env) s
+
+logVoid' :: (Functor m, Monad m) => Bool -> String -> m ()
+logVoid' verbose s = if verbose then trace s $ return () else return ()
 
 -- | Misc. helpers
-logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+-- logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+-- logAction msgF action = do
+--   doLog (msgF Nothing)
+--   result <- action
+--   doLog (msgF $ Just result)
+--   return result
+--   where doLog Nothing  = return ()
+--         doLog (Just s) = logVoid s
+
+logAction :: (Maybe a -> Maybe String) -> TInfM a -> TInfM a
 logAction msgF action = do
   doLog (msgF Nothing)
   result <- action
@@ -59,6 +76,7 @@ logAction msgF action = do
   return result
   where doLog Nothing  = return ()
         doLog (Just s) = logVoid s
+
 
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
 (.+) e qt = e @+ (EQType $ mutabilityE e qt)
@@ -120,11 +138,26 @@ type TMEnv = [(Identifier, (QPType, Bool))]
 -- | A type variable environment.
 data TVEnv = TVEnv QTVarId (Map QTVarId (K3 QType)) deriving Show
 
+data TConfig = TConfig { verbose :: Bool } deriving Show
+
 -- | A type inference environment.
-type TIEnv = (TEnv, TAEnv, TDVEnv, TVEnv)
+data TIEnv = TIEnv {
+               tenv :: TEnv,
+               taenv :: TAEnv,
+               tdvenv :: TDVEnv,
+               tvenv :: TVEnv,
+               config :: TConfig
+            }
 
 -- | The type inference monad
 type TInfM = EitherT String (State TIEnv)
+
+{- Config helpers -}
+config0 :: TConfig
+config0 = TConfig { verbose=False }
+
+cSetVerbose :: Bool -> TConfig -> TConfig
+cSetVerbose v conf = conf { verbose=v }
 
 {- TEnv helpers -}
 tenv0 :: TEnv
@@ -132,7 +165,7 @@ tenv0 = []
 
 tlkup :: TEnv -> Identifier -> Either String QPType
 tlkup env x = maybe err Right $ lookup x env
- where err = Left $ "Unbound variable in type environment: " ++ x
+  where err = Left $ "Unbound variable in type environment: " ++ x
 
 text :: TEnv -> Identifier -> QPType -> TEnv
 text env x t = (x,t) : env
@@ -169,60 +202,57 @@ tdvdel env x = deleteBy ((==) `on` fst) (x,-1) env
 
 {- TIEnv helpers -}
 tienv0 :: TIEnv
-tienv0 = (tenv0, taenv0, tdvenv0, tvenv0)
-
--- | Getters.
-tiee :: TIEnv -> TEnv
-tiee (te,_,_,_) = te
-
-tiae :: TIEnv -> TAEnv
-tiae (_,ta,_,_) = ta
-
-tidve :: TIEnv -> TDVEnv
-tidve (_,_,tdv,_) = tdv
-
-tive :: TIEnv -> TVEnv
-tive (_,_,_,tv) = tv
+tienv0 = TIEnv {
+           tenv = tenv0,
+           taenv = taenv0,
+           tdvenv = tdvenv0,
+           tvenv = tvenv0,
+           config = config0
+         }
 
 -- | Modifiers.
 mtiee :: (TEnv -> TEnv) -> TIEnv -> TIEnv
-mtiee f (te,x,y,z) = (f te, x, y, z)
+mtiee f env = env {tenv = f $ tenv env}
 
 mtiae :: (TAEnv -> TAEnv) -> TIEnv -> TIEnv
-mtiae f (x,ta,y,z) = (x, f ta, y, z)
+mtiae f env = env {taenv = f $ taenv env}
 
 mtidve :: (TDVEnv -> TDVEnv) -> TIEnv -> TIEnv
-mtidve f (x,y,tdv,z) = (x, y, f tdv, z)
+mtidve f env = env {tdvenv = f $ tdvenv env}
 
 mtive :: (TVEnv -> TVEnv) -> TIEnv -> TIEnv
-mtive f (x,y,z,tv) = (x, y, z, f tv)
+mtive f env = env {tvenv = f $ tvenv env}
+
+mcfg :: (TConfig -> TConfig) -> TIEnv -> TIEnv
+mcfg f env = env {config = f $ config env}
 
 tilkupe :: TIEnv -> Identifier -> Either String QPType
-tilkupe (te,_,_,_) x = tlkup te x
+tilkupe env x = tlkup (tenv env) x
 
 tilkupa :: TIEnv -> Identifier -> Either String TMEnv
-tilkupa (_,ta,_,_) x = talkup ta x
+tilkupa env x = talkup (taenv env) x
 
 tilkupdv :: TIEnv -> Identifier -> Either String (K3 QType)
-tilkupdv (_,_,tdv,_) x = tdvlkup tdv x
+tilkupdv env x = tdvlkup (tdvenv env) x
 
 tiexte :: TIEnv -> Identifier -> QPType -> TIEnv
-tiexte (te,ta,tdv,tv) x t = (text te x t, ta, tdv, tv)
+tiexte env x t = env {tenv=text (tenv env) x t}
 
 tiexta :: TIEnv -> Identifier -> TMEnv -> TIEnv
-tiexta (te,ta,tdv,tv) x ate = (te, taext ta x ate, tdv, tv)
+tiexta env x ate = env {taenv=taext (taenv env) x ate}
 
 tiextdv :: TIEnv -> Identifier -> QTVarId -> TIEnv
-tiextdv (te, ta, tdv, tv) x v = (te, ta, tdvext tdv x v, tv)
+tiextdv env x v = env {tdvenv=tdvext (tdvenv env) x v}
 
 tidele :: TIEnv -> Identifier -> TIEnv
-tidele (te,x,y,z) i = (tdel te i,x,y,z)
+tidele env i = env {tenv=tdel (tenv env) i}
 
 tideldv :: TIEnv -> Identifier -> TIEnv
-tideldv (x,y,tdv,z) i = (x,y,tdvdel tdv i,z)
+tideldv env i = env {tdvenv=tdvdel (tdvenv env) i}
 
 tiincrv :: TIEnv -> (QTVarId, TIEnv)
-tiincrv (te, ta, tdv, TVEnv n s) = (n, (te, ta, tdv, TVEnv (succ n) s))
+tiincrv env = let TVEnv n s = tvenv env
+  in (n, env {tvenv=TVEnv (succ n) s})
 
 
 {- TVEnv helpers -}
@@ -316,7 +346,7 @@ liftEitherM :: Either String a -> TInfM a
 liftEitherM = either left return
 
 getTVE :: TInfM TVEnv
-getTVE = get >>= return . tive
+getTVE = get >>= return . tvenv
 
 -- Allocate a fresh type variable
 newtv :: TInfM (K3 QType)
@@ -860,14 +890,15 @@ substituteDeepQt e = mapTree subNode e
         subAnns x = return x
 
 -- | Top-level type inference methods
-inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-inferProgramTypes prog = do
-    (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
+inferProgramTypes :: Bool -> K3 Declaration -> Either String (K3 Declaration)
+inferProgramTypes verbose prog = do
+    (_, initEnv) <- let tienv = mcfg (cSetVerbose verbose) tienv0
+                        (a,b) = runTInfM tienv $ initializeTypeEnv
                     in a >>= return . (, b)
     (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
                          in a >>= return . (, b)
-    logVoid $ "Final type environment"
-    logVoid $ pretty finalEnv
+    logVoid' verbose $ "Final type environment"
+    logVoid' verbose $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
@@ -923,7 +954,7 @@ inferProgramTypes prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          logVoid $ prettyTaggedPair ("unify init ") qt1 qt2
+          logVoid' verbose $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           --return $ Just e
           substituteDeepQt e >>= return . Just
@@ -1095,7 +1126,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       eqt <- qTypeOfM $ head ch
       case ipt of
         QPType [] iqt@(tag -> QTVar _) ->
-          let nqt = tvchase (tive env) iqt in
+          let nqt = tvchase (tvenv env) iqt in
           if nqt == iqt
             then do { void $ unifyWithOverrideM iqt (eqt @+ QTMutable) $ mkErrorF n $ assignErrF i;
                       return $ ("assign",) $ rebuildE n ch .+ tunit }
@@ -1496,11 +1527,12 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
 
 {- Instances -}
 instance Pretty TIEnv where
-  prettyLines (te, ta, tdv, tve) =
-    ["TEnv: "]   %$ (indent 2 $ prettyLines te)  ++
-    ["TAEnv: "]  %$ (indent 2 $ prettyLines ta)  ++
-    ["TDVEnv: "] %$ (indent 2 $ prettyLines tdv) ++
-    ["TVEnv: "]  %$ (indent 2 $ prettyLines tve)
+  prettyLines e =
+    ["TEnv: "]   %$ (indent 2 $ prettyLines $ tenv   e) ++
+    ["TAEnv: "]  %$ (indent 2 $ prettyLines $ taenv  e) ++
+    ["TDVEnv: "] %$ (indent 2 $ prettyLines $ tdvenv e) ++
+    ["TVEnv: "]  %$ (indent 2 $ prettyLines $ tvenv  e) ++
+    ["Config: "] %$ (indent 2 $ prettyLines $ config e)
 
 instance Pretty TEnv where
   prettyLines te = prettyPairList te
@@ -1517,6 +1549,9 @@ instance Pretty TDVEnv where
 instance Pretty TVEnv where
   prettyLines (TVEnv n m) = ["# vars: " ++ show n] ++
                             (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+
+instance Pretty TConfig where
+  prettyLines c = [show c]
 
 instance Pretty (QPType, Bool) where
   prettyLines (a,b) = (if b then ["(Lifted) "] else ["(Attr) "]) %+ prettyLines a

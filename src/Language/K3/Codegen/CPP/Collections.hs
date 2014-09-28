@@ -238,4 +238,4 @@ record (sort -> ids) = do
     return [recordStructDefn, patcherStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
-reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"]
+reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "MultiIndex"]
