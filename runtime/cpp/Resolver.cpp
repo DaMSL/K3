@@ -16,6 +16,7 @@
 
 constexpr int REDIS_PORT    =  6379;
 constexpr int SENTINEL_PORT = 26379;
+
 #define redisCommand(ctx, ...) reinterpret_cast<redisReply*>(redisCommand(ctx, __VA_ARGS__))
 
 struct RedisContextDeleter
@@ -143,63 +144,80 @@ static inline int checkHDeleteReply(redisReply * reply)
   return parseRedisResponse<int>(reply);
 }
 
-void redisHSET(redisContext * ctx, const std::string& map, const std::string& key, const std::string& value)
+class RedisConnection
 {
-  redisReply * reply = redisCommand(ctx, "HSET %s %s %s", map.c_str(), key.c_str(), value.c_str());
-  checkHSetReply(reply);
-  freeReplyObject(reply);
-}
+  private:
+  std::unique_ptr<redisContext, RedisContextDeleter> ctx;
 
-void redisHDELETE(redisContext * ctx, const std::string& map, const std::string& key)
-{
-  redisReply * reply = redisCommand(ctx, "HDEL %s %s", map.c_str(), key.c_str());
-  checkHDeleteReply(reply);
-  freeReplyObject(reply);
-}
-
-void redisPUBLISH(redisContext * ctx, const std::string& channel, const std::string& value)
-{
-  redisReply * reply = redisCommand(ctx, "PUBLISH %s %s", channel.c_str(), value.c_str());
-  parseRedisResponse<int>(reply);
-  freeReplyObject(reply);
-}
-
-void redisSUBSCRIBE(redisContext * ctx, const std::string& channel)
-{
-  redisReply * reply = redisCommand(ctx, "SUBSCRIBE %s", channel.c_str());
-  freeReplyObject(reply);
-}
-
-std::vector<std::string> redisGETALL(redisContext * ctx, const std::string& key)
-{
-  redisReply * reply = redisCommand(ctx, "HGETALL %s", key.c_str());
-  auto result = parseRedisResponse<std::vector<std::string>>(reply);
-  freeReplyObject(reply);
-  return result;
-}
-
-// since redisConnect is already taken
-typedef std::unique_ptr<redisContext, RedisContextDeleter> UniqueRedisContext;
-UniqueRedisContext connectRedis(const std::string& address, int port)
-{
-  UniqueRedisContext ctx(redisConnect(address.c_str(), port));
-  if (!ctx)
+  public:
+  RedisConnection(const std::string& address, int port)
+    : ctx()
   {
-    throw std::runtime_error("Error connecting to Redis");
+    ctx = decltype(ctx)(redisConnect(address.c_str(), port));
+
+    if (!ctx)
+    {
+      throw std::runtime_error("Error connecting to Redis");
+    }
+    // implicit ctx != nullptr
+    else if (ctx->err)
+    {
+      throw std::runtime_error("Error connecting to Redis (" + std::to_string(ctx->err) + ") " + ctx->errstr);
+    }
   }
-  // implicit ctx != nullptr
-  else if (ctx->err)
+
+  template<typename... T>
+  redisReply * command(const char * cmd, T... args)
   {
-    throw std::runtime_error("Error connecting to Redis (" + std::to_string(ctx->err) + ") " + ctx->errstr);
+    return redisCommand(ctx.get(), cmd, args...);
   }
-  return ctx;
-}
+
+  void HSET(const std::string& map, const std::string& key, const std::string& value)
+  {
+    redisReply * reply = command("HSET %s %s %s", map.c_str(), key.c_str(), value.c_str());
+    checkHSetReply(reply);
+    freeReplyObject(reply);
+  }
+
+  void HDELETE(const std::string& map, const std::string& key)
+  {
+    redisReply * reply = command("HDEL %s %s", map.c_str(), key.c_str());
+    checkHDeleteReply(reply);
+    freeReplyObject(reply);
+  }
+
+  void PUBLISH(const std::string& channel, const std::string& value)
+  {
+    redisReply * reply = command("PUBLISH %s %s", channel.c_str(), value.c_str());
+    parseRedisResponse<int>(reply);
+    freeReplyObject(reply);
+  }
+
+  void SUBSCRIBE(const std::string& channel)
+  {
+    redisReply * reply = command("SUBSCRIBE %s", channel.c_str());
+    freeReplyObject(reply);
+  }
+
+  std::vector<std::string> GETALL(const std::string& key)
+  {
+    redisReply * reply = command("HGETALL %s", key.c_str());
+    auto result = parseRedisResponse<std::vector<std::string>>(reply);
+    freeReplyObject(reply);
+    return result;
+  }
+
+  int getReply(redisReply ** reply)
+  {
+    return redisGetReply(ctx.get(), reinterpret_cast<void**>(reply));
+  }
+};
 
 static std::vector<std::string> redisGetMasterAddress(const std::string& address)
 {
-  UniqueRedisContext sentinelContext = connectRedis(address, SENTINEL_PORT);
+  RedisConnection sentinelContext(address, SENTINEL_PORT);
 
-  redisReply * reply = redisCommand(sentinelContext.get(), "SENTINEL get-master-addr-by-name %s", K3_MASTER_NAME.c_str());
+  redisReply * reply = sentinelContext.command("SENTINEL get-master-addr-by-name %s", K3_MASTER_NAME.c_str());
   auto result = parseRedisResponse<std::vector<std::string>>(reply);
 
   freeReplyObject(reply);
@@ -252,10 +270,10 @@ void K3::RedisResolver::sayHello(PeerID me)
   int master_port = std::stoi(master_location.at(1));
 
   {
-    std::shared_ptr<redisContext> writeContext = connectRedis(master_address, master_port);
-    redisHSET(writeContext.get(), K3_PEER_MAP, me, my_address);
+    RedisConnection writeContext(master_address, master_port);
+    writeContext.HSET(K3_PEER_MAP, me, my_address);
 
-    redisPUBLISH(writeContext.get(), K3_UPDATE_CHANEL.c_str(), (HELLO + me + " " + my_address).c_str());
+    writeContext.PUBLISH(K3_UPDATE_CHANEL.c_str(), (HELLO + me + " " + my_address).c_str());
   }
 
   subscription_listener = boost::thread([=] { this->subscriptionWork(); });
@@ -269,8 +287,9 @@ void K3::RedisResolver::sayHello(PeerID me)
     }
   }
 
-  std::shared_ptr<redisContext> directoryCtx = connectRedis(LOCALHOST, REDIS_PORT);
-  std::vector<std::string> directory = redisGETALL(directoryCtx.get(), K3_PEER_MAP);
+  RedisConnection directoryCon(LOCALHOST, REDIS_PORT);
+  std::vector<std::string> directory = directoryCon.GETALL(K3_PEER_MAP);
+  // TODO fill in peers with the directory
 }
 
 void K3::RedisResolver::sayGoodbye()
@@ -279,9 +298,9 @@ void K3::RedisResolver::sayGoodbye()
   std::string& master_address = master_location.at(0);
   int master_port = std::stoi(master_location.at(1));
 
-  std::shared_ptr<redisContext> writeContext = connectRedis(master_address, master_port);
-  redisHDELETE(writeContext.get(), K3_PEER_MAP, me.c_str());
-  redisPUBLISH(writeContext.get(), K3_UPDATE_CHANEL, (GOODBYE + " " + me).c_str());
+  RedisConnection writeContext(master_address, master_port);
+  writeContext.HDELETE(K3_PEER_MAP, me.c_str());
+  writeContext.PUBLISH(K3_UPDATE_CHANEL, (GOODBYE + " " + me).c_str());
 
   // join with the worker thread
   subscription_listener.join();
@@ -290,16 +309,16 @@ void K3::RedisResolver::sayGoodbye()
 
 void K3::RedisResolver::subscriptionWork()
 {
-  UniqueRedisContext readContext = connectRedis(LOCALHOST.c_str(), REDIS_PORT);
+  RedisConnection readContext(LOCALHOST.c_str(), REDIS_PORT);
   {
     boost::unique_lock<boost::mutex> lock(mutex);
-    redisSUBSCRIBE(readContext.get(), K3_UPDATE_CHANEL);
+    readContext.SUBSCRIBE(K3_UPDATE_CHANEL);
     subscription_started = true;
   }
   cv.notify_all();
 
   redisReply * reply = nullptr;
-  while(redisGetReply(readContext.get(), reinterpret_cast<void**>(&reply)) == REDIS_OK)
+  while(readContext.getReply(&reply) == REDIS_OK)
   {
     // Possible commands are:
     // HELLO peer_id ip_address port
