@@ -23,7 +23,8 @@ namespace K3
   typedef tuple<int, int> BufferSpec;
 
   enum class EndpointNotification {
-    NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose
+    NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose,
+    PeerHello, PeerGoodbye
   };
 
   class BufferException : public runtime_error {
