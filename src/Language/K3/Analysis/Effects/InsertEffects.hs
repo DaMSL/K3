@@ -179,9 +179,9 @@ addAllGlobals n = mapProgram preHandleDecl mId mId n
   where
     -- add everything to global environment for cyclic/recursive scope
     -- we'll fix it up the second time through
-    addGenId id = genSymTemp [] >>= insertGlobalM id >> return n
-    preHandleDecl n@(tag -> DGlobal id _ _)  = addGenId id
-    preHandleDecl n@(tag -> DTrigger id _ _) = addGenId id
+    addGenId id = genSymTemp [] >>= insertGlobalM id
+    preHandleDecl n@(tag -> DGlobal id _ _)  = addGenId id >> return n
+    preHandleDecl n@(tag -> DTrigger id _ _) = addGenId id >> return n
     preHandleDecl n = return n
 
 mId :: Monad m => a -> m a
