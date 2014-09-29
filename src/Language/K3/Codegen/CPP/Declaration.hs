@@ -73,6 +73,7 @@ declaration (tag -> DGlobal i t me) = do
 -- Triggers are implementationally identical to functions returning unit, except they also generate
 -- dispatch wrappers.
 declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
+declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return []
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 

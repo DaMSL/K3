@@ -5,12 +5,13 @@
 
 module Language.K3.Codegen.CPP.Collections where
 
-import Data.List (intercalate, partition, sort)
+import Data.List (intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 
 import Language.K3.Codegen.CPP.Types
+import Language.K3.Codegen.CPP.MultiIndex (indexes)
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -27,7 +28,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
 composite name ans = do
-    let (ras, _) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
+    let (ras, as) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
 
     -- Inlining is only done for provided (positive) declarations.
     -- let positives = filter isPositiveDecl (concat . snd $ unzip nras)
@@ -35,7 +36,13 @@ composite name ans = do
     -- Split data and method declarations, for access specifiers.
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
-    let baseClasses = map (R.Qualified (R.Name "K3") . R.Specialized [R.Named $ R.Name "__CONTENT"] . R.Name . fst) ras
+    -- When dealing with Indexes, we need to specialize the MultiIndex class on each index type
+    (indexTypes, indexDefns) <- indexes as
+
+    let addnSpecializations n = if "MultiIndex" `isInfixOf` n  then indexTypes else []
+
+    let baseClass (n,_) = R.Qualified (R.Name "K3") (R.Specialized ((R.Named $ R.Name "__CONTENT") :  addnSpecializations n ) (R.Name n) )
+    let baseClasses = map baseClass ras
 
     let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
@@ -44,9 +51,9 @@ composite name ans = do
                           [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
 
     let superConstructor = R.FunctionDefn (R.Name name)
-                             [("__other" ++ (show i), R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses [1..] ]
+                             [("__other" ++ (show i), R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
                              Nothing
-                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ (show i)] | (b,i) <- zip baseClasses [1..] ]                                []
+                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ (show i)] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
 
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
@@ -83,7 +90,8 @@ composite name ans = do
                            (R.ClassDefn (R.Name "patcher") [selfType] [] [patcherFnDefn] [] [])
                      ]
 
-    let methods = [defaultConstructor, copyConstructor, superConstructor, serializeFn]
+    let addnDefns = indexDefns
+    let methods = [defaultConstructor, copyConstructor, superConstructor, serializeFn] ++ addnDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])

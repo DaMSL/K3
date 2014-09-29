@@ -212,6 +212,10 @@ requiredIncludes = return
                    , "string"
                    , "tuple"
 
+                   , "boost/multi_index_container.hpp"
+                   , "boost/multi_index/ordered_index.hpp"
+                   , "boost/multi_index/member.hpp"
+
                    , "BaseTypes.hpp"
                    , "Common.hpp"
                    , "Context.hpp"
@@ -231,14 +235,6 @@ requiredIncludes = return
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS <- triggers <$> get
-  let initNames = R.Forward $ R.ScalarDecl
-                    (R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names"))
-                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Name "string"] (R.Name "map"))
-                    Nothing
-  let initDisps = R.Forward $ R.ScalarDecl
-                    (R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers"))
-                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Specialized [R.Named $ R.Name "Dispatcher"] (R.Name "shared_ptr")] (R.Name "map") )
-                    Nothing
   names <- mapM assignTrigName triggerS
   dispatchers <- mapM assignClonableDispatcher triggerS
   return $ names ++ dispatchers;
