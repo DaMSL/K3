@@ -103,6 +103,7 @@ data Type
     | Primitive Primitive
     | Reference Type
     | RValueReference Type
+    | Static Literal
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -124,6 +125,7 @@ instance Stringifiable Type where
     stringify (Primitive p) = stringify p
     stringify (Reference t) = stringify t <> "&"
     stringify (RValueReference t) = stringify t <> "&&"
+    stringify (Static c) = stringify c
 
 data Literal
     = LBool Bool
@@ -132,7 +134,7 @@ data Literal
     | LDouble Double
     | LString String
     | LNullptr
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Literal where
     stringify (LBool b) = if b then "true" else "false"
