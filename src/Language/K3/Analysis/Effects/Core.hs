@@ -46,6 +46,7 @@ data Effect
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop                   -- a flattened loop
+    | FNop
   deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)

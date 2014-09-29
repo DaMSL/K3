@@ -19,6 +19,7 @@ where
 import Prelude hiding (read, seq)
 import Control.Arrow ( (&&&), second )
 import Control.Monad.State.Lazy
+import Control.Monad.Identity
 import Data.Maybe
 import Data.Map(Map)
 import qualified Data.Map as Map
@@ -451,44 +452,50 @@ buildEnv n = snd $ flip runState startEnv $
         Nothing          -> return n
         Just (DSymbol s) -> insertGlobalM i s >> return n
 
--- Look variables up in the environment and drop a level, recursively
-chaseVar :: K3 Symbol -> Env -> K3 Symbol
-chaseVar s@(tag -> Symbol i PVar) env = chaseVar (lookupBind i env) env
-chaseVar sym _ = sym
-
 -- TODO: we need to substitute for every (effect,symbol) pair inside the lambda
 -- AST, given a target id to substitute for
 
 -- Apply (substitute) a symbol into a lambda symbol, generating effects and a new symbol
-applyLambda :: K3 Symbol -> K3 Symbol -> Env -> (Maybe (K3 Effect), K3 Symbol)
+-- If we return Nothing, we cannot apply because of a missing lambda
+applyLambda :: K3 Symbol -> K3 Symbol -> Env -> Maybe (Maybe (K3 Effect), K3 Symbol)
 applyLambda sLam sArg env =
-  let sArg' = chaseVar sArg env
-  case tag &&& children $ chaseVar sLam env of
-    (Symbol _ (PLambda i mEffects), chSym) ->
-      -- We need to substitute for i
-      let eff = maybe Nothing (modifyTree subEff) mEffects
-          sym = modifyTree (subSym i sArg') chSym
-      in eff, sym
+  case tnc $ sLam of
+    (Symbol _ (PLambda i mEffects), [chSym]) ->
+      -- Substitute for i
+      let eff = maybe Nothing (Just . modEff i sArg) mEffects
+          sym = runIdentity $ modifyTree (wrap $ subSym i sArg) chSym
+      in Just (eff, sym)
 
-    _ -> error "Not a lambda"
+    _ -> Nothing
+
   where
-    subSym i sym (tag -> Symbol i' PVar | i == i') = sym
-    -- Apply Lambda? Need to be able to generate effects
-    subSym _ _   s = s
+    wrap f x = return $ f x
 
-    -- TODO: handle Apply below -- requires further substitution
-    -- don't forget occurs check (somehow)
+    modEff :: Identifier -> K3 Symbol -> K3 Effect -> K3 Effect
+    modEff i sym e = runIdentity $ modifyTree (wrap $ subEff i sym) e
+
+    subSym :: Identifier -> K3 Symbol -> K3 Symbol -> K3 Symbol
+    subSym i sym (tag -> Symbol i' PVar) | i == i'    = sym
+    subSym i _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = maybe n snd $ applyLambda sL sA env
+    subSym _ _ n = n
+
+    -- TODO: don't forget occurs check (somehow)
+    -- Substitute an id and symbol in an effect
+    subEff :: Identifier -> K3 Symbol -> K3 Effect -> K3 Effect
     subEff i sym n =
       case tag n of
         FRead s     -> replaceTag n $ FRead $ sub s
         FWrite s    -> replaceTag n $ FWrite $ sub s
         FScope ss   -> replaceTag n $ FScope $ map sub ss
-        FApply s s' -> replaceTag n $ FApply (sub s) $ sub s'
+        FApply s s' ->
+          case applyLambda (sub s) (sub s') env of
+            Nothing -> n            -- We couldn't apply
+            Just (Just x, _)  -> x  -- Get just the effect
+            Just (Nothing,_)  -> replaceTag n $ FNop
         _           -> n
-      where sub = subSym i sum
+      where
+        sub n = runIdentity $ modifyTree (wrap $ subSym i sym) n
 
-execApply :: K3 Symbol -> Env -> K3 Symbol
-execApply (tnc -> (Symbol _ PApply, [l, a])) env = applyLambda l a env
+execApply :: K3 Symbol -> Env -> (Maybe (K3 Effect), K3 Symbol)
+execApply n@(tnc -> (Symbol _ PApply, [l, a])) env = fromMaybe (Nothing, n) $ applyLambda l a env
 execApply _ _ = error "Not an apply"
-
-
