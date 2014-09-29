@@ -298,7 +298,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
                 let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
-                return $ [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
+                return [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
             BTuple is -> do
                 let (tag &&& children -> (TTuple, ts)) = ta
                 ds <- zipWithM cDecl ts is
