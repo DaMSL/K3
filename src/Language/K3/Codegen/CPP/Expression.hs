@@ -313,12 +313,9 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                                   | (i, v) <- iis]
 
     let bindWriteback = case b of
-
-            BIndirection i ->
-                if not (isWriteBound i) then []
-                  else [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
-            BTuple is -> zipWith (genTupleAssign g) [0..] is
-            BRecord iis -> map (uncurry $ genRecordAssign g) iis
+            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | not (isWriteBound i)]
+            BTuple is -> [genTupleAssign g n i | i <- is, isWriteBound i | n <- [0..]]
+            BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
 
     (bindBody, k) <- case r of
         RReturn -> do
