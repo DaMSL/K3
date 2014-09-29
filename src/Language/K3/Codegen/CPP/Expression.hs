@@ -299,13 +299,18 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
                 let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
                 return [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
-            BTuple is -> do
-                let (tag &&& children -> (TTuple, ts)) = ta
-                ds <- zipWithM cDecl ts is
-                let bindVars = [R.Variable (R.Name i) | i <- is]
-                let tieCall = R.Call (R.Variable $ R.Qualified (R.Name "std" )(R.Name "tie")) bindVars
-                return $ concat ds ++ [R.Assignment tieCall g]
-            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
+            BTuple is ->
+                return [ R.Forward $ R.ScalarDecl (R.Name i)
+                           (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
+                           (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
+                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                       | i <- is
+                       | n <- [0..]
+                       ]
+            BRecord iis -> return [ R.Forward $ R.ScalarDecl (R.Name v)
+                                      (if isCopyBound v then R.Inferred else R.Reference R.Inferred)
+                                      (Just $ R.Project g (R.Name i))
+                                  | (i, v) <- iis]
 
     let bindWriteback = case b of
 
