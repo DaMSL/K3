@@ -37,7 +37,7 @@ composite name ans = do
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
     -- When dealing with Indexes, we need to specialize the MultiIndex class on each index type
-    (indexTypes, indexDefns) <- indexes as
+    (indexTypes, indexDefns) <- indexes name as
 
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n  then indexTypes else []
 

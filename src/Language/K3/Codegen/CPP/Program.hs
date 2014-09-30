@@ -341,7 +341,7 @@ prettifyExpr base_t e =
    opt ct = do
        cType <- genCType base_t
        inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
-       return $ wrap (singleton $ R.IfThenElse e [R.Return $ stringConcat (lit_string "Some ") inner] [R.Return $ lit_string "None"]) [] e (R.Const $ R.Reference cType)
+       return $ wrap (singleton $ R.IfThenElse (R.Variable $ R.Name "x") [R.Return $ stringConcat (std_string "Some ") inner] [R.Return $ std_string "None"]) [] e (R.Const $ R.Reference cType)
    -- Indirection
    ind_to_string ct = do
        inner <- prettifyExpr ct (R.Dereference e)

@@ -10,6 +10,7 @@
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
+#include <boost/lambda/lambda.hpp>
 
 #include <list>
 #include <vector>
@@ -1006,14 +1007,14 @@ class Vector : public VectorDS<Vector, Elem> {
 
 };
 
-template <typename Elem, typename... Indicies>
+template <typename Elem, typename... Indexes>
 class MultiIndex {
   public:
   typedef boost::multi_index_container<
     Elem,
     boost::multi_index::indexed_by<
       boost::multi_index::sequenced<>,
-      Indicies...
+      Indexes...
     >
   > Container;
 
@@ -1123,9 +1124,9 @@ class MultiIndex {
   }
 
   // Return a new DS with data from this and other
-  MultiIndex<Elem, Indicies...> combine(const MultiIndex& other) const {
+  MultiIndex<Elem, Indexes...> combine(const MultiIndex& other) const {
     // copy this DS
-    MultiIndex<Elem, Indicies...> result;
+    MultiIndex<Elem, Indexes...> result;
     result = MultiIndex(*this);
     // copy other DS
     for (const Elem &e : other.container) {
@@ -1135,7 +1136,7 @@ class MultiIndex {
   }
 
   // Split the ds at its midpoint
-  tuple<MultiIndex<Elem, Indicies...>, MultiIndex<Elem, Indicies...>> split(const unit_t&) const {
+  tuple<MultiIndex<Elem, Indexes...>, MultiIndex<Elem, Indexes...>> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -1169,8 +1170,8 @@ class MultiIndex {
 
   // Create a new DS consisting of elements from this ds that satisfy the predicate
   template<typename Fun>
-  MultiIndex<Elem, Indicies...> filter(Fun predicate) {
-    MultiIndex<Elem, Indicies...> result;
+  MultiIndex<Elem, Indexes...> filter(Fun predicate) {
+    MultiIndex<Elem, Indexes...> result;
     for (const Elem &e : container) {
       if (predicate(e)) {
         result.insert(e);
@@ -1240,6 +1241,29 @@ class MultiIndex {
     return container < other.container;
   }
 
+  template <class Index, class Key>
+  shared_ptr<Elem> lookup_with_index(const Index& index, Key key) {
+    const auto& it = index.find(key);
+
+    shared_ptr<Elem> result;
+    if (it != index.end()) {
+      result = make_shared<Elem>(*it);
+
+    }
+    return result;
+  }
+
+  template <class Index, class Key>
+  MultiIndex<Elem, Indexes...> slice_with_index(const Index& index, Key a, Key b) {
+    MultiIndex<Elem, Indexes...> result;
+    std::pair<typename Index::iterator, typename Index::iterator> p = index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      result.insert(*it);
+
+    }
+
+    return result;
+  }
 
   Container& getContainer() { return container; }
 
