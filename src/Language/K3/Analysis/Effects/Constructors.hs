@@ -20,9 +20,6 @@ write sym = Node (FWrite sym :@: []) []
 scope :: [K3 Symbol] -> [K3 Effect] -> K3 Effect
 scope syms es = Node (FScope syms :@: []) es
 
-var :: Identifier -> K3 Effect
-var id = Node (FVariable id :@: []) []
-
 apply :: K3 Symbol -> K3 Symbol -> K3 Effect
 apply x y = Node (FApply x y :@: []) []
 

@@ -16,7 +16,10 @@ module Language.K3.Core.Annotation (
 
     children,
     replaceCh,
+    replaceTag,
     details,
+    tna,
+    tnc,
 
     mapTree,
     modifyTree,
@@ -33,6 +36,7 @@ module Language.K3.Core.Annotation (
     foldMapIn1RebuildTree
 ) where
 
+import Control.Arrow ((&&&))
 import Control.Monad
 import Data.List (delete, find)
 import Data.Tree
@@ -164,9 +168,18 @@ children = subForest
 replaceCh :: Tree a -> Forest a -> Tree a
 replaceCh (Node x _) ch = Node x ch
 
+replaceTag :: K3 a -> a -> K3 a
+replaceTag (Node (_ :@: anns) ch) tg = Node (tg :@: anns) ch 
+
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details (Node (tg :@: anns) ch) = (tg, ch, anns)
+
+tna :: K3 a -> (a, [Annotation a])
+tna = tag &&& annotations
+
+tnc :: K3 a -> (a, [K3 a])
+tnc = tag &&& children
 
 
 -- | Transform a tree by mapping a function over every tree node. The function
