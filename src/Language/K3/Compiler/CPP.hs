@@ -25,6 +25,9 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
+import Language.K3.Analysis.Effects.InsertEffects (runAnalysis)
+import Language.K3.Optimization (runOptimization)
+
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
@@ -56,14 +59,17 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
-    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
+    quickTypecheck =  inferProgramTypes False prog >>= translateProgramTypes
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.program cppIr)
+    preprocess = runOptimization . runAnalysis
+
+    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
+                           (CPP.stringifyProgram $ preprocess cppIr)
     genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
 
     outputCPP (Right doc) =
@@ -108,7 +114,7 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
             bDir ++ "//*.o" *> \out -> do
               let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++11"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
+              () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
               needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x
@@ -127,13 +133,14 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
 
         pruneBadSubDirs = filter (not . hasBadSubDir)
 
-        compilePrefix = ["-I", "-D", "-f", "-w", "-O", "-pg", "-g"]
-        linkPrefix = ["-l", "-L", "-f", "-w", "-O", "-pg", "-g"]
+        -- Options that aren't in the lists are always included in both
+        compilePrefix = ["-I", "-D"]
+        linkPrefix = ["-l", "-L"]
 
         hasPrefixIn l x = foldr (\pre acc -> acc || pre `L.isPrefixOf` x) False l
 
-        filterLinkOptions = filter (hasPrefixIn linkPrefix)
-        filterCompileOptions = filter (hasPrefixIn compilePrefix)
+        filterLinkOptions = filter (not . hasPrefixIn compilePrefix)
+        filterCompileOptions = filter (not . hasPrefixIn linkPrefix)
 
         pName    = programName copts
         cc       = case ccCmd copts of

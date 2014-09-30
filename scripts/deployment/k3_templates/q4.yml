@@ -1,7 +1,7 @@
 name: Amplab Query 4
 
 # Peer Bootstrap
-local_binary_path: "/temp/q4" #Mandatory
+local_binary_path: "/tmp/q4" #Mandatory
 k3_port: "40000"
 k3_bindings: # All values are strings. String literals should have quotes!
   role: '"rows"'

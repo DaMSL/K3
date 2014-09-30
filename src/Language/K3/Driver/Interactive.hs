@@ -20,7 +20,7 @@ runInteractive = readline ">>> " >>= \case
 -- | A single round of parsing, interpretation and pretty-printing.
 repl :: String -> IO ()
 repl input = do
-    case runK3Parser expr input of
+    case runK3Parser Nothing expr input of
         Left e -> print e
         Right t -> do
             putStr $ pretty t

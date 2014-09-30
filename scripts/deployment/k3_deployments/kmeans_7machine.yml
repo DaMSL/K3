@@ -1,0 +1,462 @@
+name: Kmeans bpti
+
+# Peer Bootstrap
+local_binary_path: "/tmp/kmeans" #Mandatory
+stash_output: True # Redirect stdout and stderr to a log file, and collect after execution.
+k3_bindings: # All values are strings. String literals should have quotes!
+  dimensionality: "5"
+  iterations_remaining: "10"
+  k: "5"
+  role: '"s1"'
+  master: '<192.168.1.34:40000>'
+
+k3_peers:
+    - ip: "192.168.1.34"
+      k3_port: "40000"
+      stash_output: False # Directly print output
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40001"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40002"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40003"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40004"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40005"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40006"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40007"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40008"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40009"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40010"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40011"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40012"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40013"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40014"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.34"
+      k3_port: "40015"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40016"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40017"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40018"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40019"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40020"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40021"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40022"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40023"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40024"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40025"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40026"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40027"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40028"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40029"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40030"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.35"
+      k3_port: "40031"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40032"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40033"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40034"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40035"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40036"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40037"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40038"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40039"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40040"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40041"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40042"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40043"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40044"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40045"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40046"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.36"
+      k3_port: "40047"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40064"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40065"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40066"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40067"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40068"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40069"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40070"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40071"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40072"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40073"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40074"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40075"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40076"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40077"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40078"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.38"
+      k3_port: "40079"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40080"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40081"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40082"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40083"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40084"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40085"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40086"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40087"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40088"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40089"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40090"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40091"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40092"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40093"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40094"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.39"
+      k3_port: "40095"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40096"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40097"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40098"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40099"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40100"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40101"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40102"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40103"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40104"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40105"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40106"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40107"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40108"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40109"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40110"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.40"
+      k3_port: "40111"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40112"
+      k3_bindings:
+        data_file: '"/local_data/means0.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40113"
+      k3_bindings:
+        data_file: '"/local_data/means1.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40114"
+      k3_bindings:
+        data_file: '"/local_data/means2.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40115"
+      k3_bindings:
+        data_file: '"/local_data/means3.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40116"
+      k3_bindings:
+        data_file: '"/local_data/means4.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40117"
+      k3_bindings:
+        data_file: '"/local_data/means5.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40118"
+      k3_bindings:
+        data_file: '"/local_data/means6.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40119"
+      k3_bindings:
+        data_file: '"/local_data/means7.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40120"
+      k3_bindings:
+        data_file: '"/local_data/means8.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40121"
+      k3_bindings:
+        data_file: '"/local_data/means9.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40122"
+      k3_bindings:
+        data_file: '"/local_data/means10.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40123"
+      k3_bindings:
+        data_file: '"/local_data/means11.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40124"
+      k3_bindings:
+        data_file: '"/local_data/means12.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40125"
+      k3_bindings:
+        data_file: '"/local_data/means13.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40126"
+      k3_bindings:
+        data_file: '"/local_data/means14.txt"'
+    - ip: "192.168.1.41"
+      k3_port: "40127"
+      k3_bindings:
+        data_file: '"/local_data/means15.txt"'

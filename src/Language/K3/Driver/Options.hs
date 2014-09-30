@@ -194,7 +194,7 @@ progNameOpt = strOption (   short   'n'
                       <> metavar "PROGNAME" )
 
 runtimePathOpt :: Parser FilePath
-runtimePathOpt = option auto (
+runtimePathOpt = strOption (
                        short   'r'
                     <> long    "runtime"
                     <> help    "Specify runtime path"

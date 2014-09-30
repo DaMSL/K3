@@ -30,7 +30,7 @@ def gen_peers(handle, num_machines, start_addr):
       uv_file = uv_prefix + "%03d" % curr_file
       rankings_file = rankings_prefix + "%03d" % curr_file
       crawl_file = crawl_prefix + "%03d" % curr_file
-
+      means_file = "/local_data/means%d.txt" % j  
 
 
       ip_line         = '    - ip: "%s"' % addr
@@ -40,6 +40,7 @@ def gen_peers(handle, num_machines, start_addr):
       rankings_line = """        rankings_file: '"%s"'""" % rankings_file
       crawl_line    = """        crawl_file: '"%s"'""" % crawl_file
       bpti_line     = """        bpti_file: '"%s"'""" % bpti_file
+      means_line    = """        data_file: '"%s"'""" % means_file
       handle.write(ip_line + "\n")
       handle.write(port_line + "\n")
       handle.write(bindings_line + "\n")
@@ -47,6 +48,7 @@ def gen_peers(handle, num_machines, start_addr):
       handle.write(rankings_line + "\n")
       handle.write(crawl_line + "\n")
       handle.write(bpti_line + "\n")
+      handle.write(means_line + "\n")
       curr_port = curr_port + 1
       curr_file = curr_file + 1
 

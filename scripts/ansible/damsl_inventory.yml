@@ -1,0 +1,19 @@
+[qp-hm]
+qp-hm1 docker_ip=192.168.1.34 name=hm1
+qp-hm2 docker_ip=192.168.1.35 name=hm2
+qp-hm3 docker_ip=192.168.1.36 name=hm3
+qp-hm4 docker_ip=192.168.1.37 name=hm4
+qp-hm5 docker_ip=192.168.1.38 name=hm5
+qp-hm6 docker_ip=192.168.1.39 name=hm6
+qp-hm7 docker_ip=192.168.1.40 name=hm7
+qp-hm8 docker_ip=192.168.1.41 name=hm8
+
+[qp-hd]
+qp-hd[1:16]
+
+[qp]
+qp[1:6]
+
+[damsls]
+damsl
+damsl2
