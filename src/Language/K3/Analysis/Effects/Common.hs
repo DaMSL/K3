@@ -16,4 +16,4 @@ readSet (children -> cs) = mconcat $ map readSet cs
 
 writeSet :: K3 Effect -> S.Set (K3 Symbol)
 writeSet (tag -> FWrite s) = S.singleton s
-writeSet (children -> cs) = mconcat $ map readSet cs
+writeSet (children -> cs) = mconcat $ map writeSet cs

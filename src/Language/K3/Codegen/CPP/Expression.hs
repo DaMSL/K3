@@ -1,7 +1,8 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE OverloadedLists #-}
 
 module Language.K3.Codegen.CPP.Expression where
 
@@ -297,22 +298,24 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
                 let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
-                return $ [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
-            BTuple is -> do
-                let (tag &&& children -> (TTuple, ts)) = ta
-                ds <- zipWithM cDecl ts is
-                let bindVars = [R.Variable (R.Name i) | i <- is]
-                let tieCall = R.Call (R.Variable $ R.Qualified (R.Name "std" )(R.Name "tie")) bindVars
-                return $ concat ds ++ [R.Assignment tieCall g]
-            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
+                return [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
+            BTuple is ->
+                return [ R.Forward $ R.ScalarDecl (R.Name i)
+                           (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
+                           (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
+                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                       | i <- is
+                       | n <- [0..]
+                       ]
+            BRecord iis -> return [ R.Forward $ R.ScalarDecl (R.Name v)
+                                      (if isCopyBound v then R.Inferred else R.Reference R.Inferred)
+                                      (Just $ R.Project g (R.Name i))
+                                  | (i, v) <- iis]
 
     let bindWriteback = case b of
-
-            BIndirection i ->
-                if not (isWriteBound i) then []
-                  else [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
-            BTuple is -> zipWith (genTupleAssign g) [0..] is
-            BRecord iis -> map (uncurry $ genRecordAssign g) iis
+            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | not (isWriteBound i)]
+            BTuple is -> [genTupleAssign g n i | i <- is, isWriteBound i | n <- [0..]]
+            BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
 
     (bindBody, k) <- case r of
         RReturn -> do

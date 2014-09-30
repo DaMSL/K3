@@ -1,0 +1,16 @@
+include "Annotation/MultiIndex.k3"
+
+annotation Index[key] {
+  provides lifted lookup_by_#[key] : ::[key] -> option content
+}
+
+declare employees : collection {id: int, name: string}
+                      @{MultiIndex, Index(key=name)}
+
+
+declare result : mut option {id: int, name: string}
+
+trigger t : () = \_ -> (result = employees.lookup_by_name "John")
+
+source s1 : () = value ()
+feed s1 |> t
