@@ -9,7 +9,9 @@
 --  TODO: handle cyclic scope properly
 --        cyclic scope can create loops
 --
---  TODO: switch symbol gensym to use monad
+--  TODO: handle collection attributes (pass lambda var of self immediate)
+--  TODO: distinguish temporaries from aliases
+--  TODO: handle recursive scope
 
 module Language.K3.Analysis.Effects.InsertEffects (
   runAnalysis
@@ -70,9 +72,6 @@ deleteBind id env =
              Nothing     -> m
   in
   env {bindEnv=m'}
-
-globalSym :: Identifier -> K3 Symbol
-globalSym id = symbol id PGlobal
 
 -- Lookup either in the bind environment or the global environment
 lookupBindInner :: Identifier -> Env -> Maybe (K3 Symbol)
@@ -150,8 +149,8 @@ genSym p ch = do
    let s = symbol ("sym_"++show i) p @+ SID i
    return $ replaceCh s ch
 
-genSymTemp :: [K3 Symbol] -> MEnv (K3 Symbol)
-genSymTemp = genSym PTemporary
+genSymTemp :: TempType -> [K3 Symbol] -> MEnv (K3 Symbol)
+genSymTemp tempType = genSym $ PTemporary tempType
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
@@ -172,7 +171,7 @@ forceGetSymbol n = maybe err id $ getESymbol n
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
 getOrGenSymbol n = case getESymbol n of
-                     Nothing -> genSymTemp [] >>= return
+                     Nothing -> genSymTemp TTemp [] >>= return
                      Just i  -> return i
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
@@ -180,7 +179,8 @@ addAllGlobals n = mapProgram preHandleDecl mId mId n
   where
     -- add everything to global environment for cyclic/recursive scope
     -- we'll fix it up the second time through
-    addGenId id = genSymTemp [] >>= insertGlobalM id
+    addGenId id = symbolM id (PTemporary TUnbound) [] >>= insertGlobalM id
+
     preHandleDecl n@(tag -> DGlobal id _ _)  = addGenId id >> return n
     preHandleDecl n@(tag -> DTrigger id _ _) = addGenId id >> return n
     preHandleDecl n = return n
@@ -190,35 +190,32 @@ mId x = return x
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog = flip evalState startEnv $
-  -- handle recursive/cyclic scope
+  -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
-  -- actual modification of AST
-  mapProgram handleDecl mId handleExprs
+  -- actual modification of AST (no need to decorate declarations here)
+  mapProgram mId mId handleExprs >>=
+  -- fix up any globals that couldn't be looked up due to cyclic scope
+  mapProgram handleDecl mId fixUpExprs
+
   where
     listOfMaybe m = maybe [] singleton m
 
-    -- TODO: handle recursive scope
-    -- external functions
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
+    handleDecl n =
+      case n of
+        DGlobal id _ Nothing  -> addSym []
+        DGlobal id _ (Just e) -> addE e
+        DTrigger id _ e       -> addE e
+        _                     -> return n
+      where
+        addE e = case e @~ isESymbol of
+                   Nothing           -> addSym []
+                   Just (ESymbol s)  -> addSym [s]
 
-    handleDecl n@(tag -> DGlobal id _ Nothing) =
-      case n @~ isDSymbol of
-        Nothing          -> return n
-        Just (DSymbol s) -> insertGlobalM id s >> return n
-
-    -- global functions
-    handleDecl n@(tag -> DGlobal id _ (Just e)) =
-      case e @~ isESymbol of
-        Nothing          -> return n
-        Just (ESymbol s) -> insertGlobalM id s >> return (n @+ DSymbol s)
-
-    -- triggers
-    handleDecl n@(tag -> DTrigger id _ e) =
-      case e @~ isESymbol of
-        Nothing          -> return n
-        Just (ESymbol s) -> insertGlobalM id s >> return (n @+ DSymbol s)
-
-    handleDecl n = return n
+        addSym ss = do
+          sym <- symbolM id PGlobal ss
+          insertGlobalM id sym
+          return (n @+ DSymbol sym)
 
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
@@ -232,9 +229,10 @@ runAnalysis prog = flip evalState startEnv $
     doNothings n = return $ replicate n doNothing
 
     pre :: K3 Expression -> K3 Expression -> MEnv ()
-    pre _ n@(tag -> ELambda i) =
+    pre _ n@(tag -> ELambda i) = do
       -- Add to the environment
-      insertBindM i $ symbol i PVar
+      sym <- symbolM i PVar []
+      insertBindM i sym
 
     pre _ _ = doNothing
 
@@ -290,10 +288,12 @@ runAnalysis prog = flip evalState startEnv $
     -- ELambda wraps up the child effect and sticks it in a symbol, but has no effect per se
     -- A new scope will be created at application
     handleExpr ch@[e] n@(tag -> ELambda i) = do
+      bindSym <- lookupBindM i
       deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       let eSym = maybe [] singleton $ getESymbol e
-      lSym    <- genSym (PLambda i $ getEEffect e) eSym
+      eScope <- addFID $ scope [bindSym] $ getEEffect e
+      lSym   <- genSym (PLambda i $ eScope) eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- On application, Apply creates a scope and substitutes into it
@@ -354,6 +354,19 @@ runAnalysis prog = flip evalState startEnv $
     handleExpr ch n = do
       eff <- foldrM combineEffSeq Nothing $ map getEEffect ch
       return $ addEffSymCh eff Nothing ch n
+
+    -- Post-processing for cyclic scope
+    fixUpExprs :: K3 Expression -> MEnv (K3 Expression)
+    fixUpExprs n = modifyTree fixupExpr n
+      where
+        fixupExpr n@(annotations -> as) =
+          case as @~ isESymbol of
+            Nothing -> return n
+            Just s  -> return $ n @- s @+ modifyTree fixupSym s
+
+        -- Any unbound globals should be translated
+        fixupSym (Symbol i (PTemporary TUnbound)) = lookupBindM i
+        fixupSym s = return s
 
     ------ Utilities ------
     noEffectErr = error "Expected an effect but got none"
@@ -454,48 +467,51 @@ buildEnv n = snd $ flip runState startEnv $
 
 -- TODO: we need to substitute for every (effect,symbol) pair inside the lambda
 -- AST, given a target id to substitute for
+--
+-- If the symbol is a global, substitute from the global environment
 
 -- Apply (substitute) a symbol into a lambda symbol, generating effects and a new symbol
--- If we return Nothing, we cannot apply because of a missing lambda
-applyLambda :: K3 Symbol -> K3 Symbol -> Env -> Maybe (Maybe (K3 Effect), K3 Symbol)
+-- If we return Nothing, we cannot apply yet because of a missing lambda
+applyLambda :: K3 Symbol -> K3 Symbol -> Env -> Maybe (K3 Effect, K3 Symbol)
 applyLambda sLam sArg env =
   case tnc $ sLam of
-    (Symbol _ (PLambda i mEffects), [chSym]) ->
-      -- Substitute for i
-      let eff = maybe Nothing (Just . modEff i sArg) mEffects
-          sym = runIdentity $ modifyTree (wrap $ subSym i sArg) chSym
+    (Symbol _ (PLambda _ e@(tag -> FScope [sOld])), [chSym]) ->
+      let eff = maybe Nothing (Just . modEff sOld sArg) mEffects
+          sym = runIdentity $ modifyTree (wrap $ subSym sOld sArg) chSym
+          scopeEff = scope ([eff]
       in Just (eff, sym)
 
+    (Symbol _ PGlobal, [ch]) -> applyLambda ch sArg env
     _ -> Nothing
 
   where
     wrap f x = return $ f x
 
-    modEff :: Identifier -> K3 Symbol -> K3 Effect -> K3 Effect
-    modEff i sym e = runIdentity $ modifyTree (wrap $ subEff i sym) e
+    modEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> K3 Effect
+    modEff s s' e = runIdentity $ modifyTree (wrap $ subEff s s') e
 
-    subSym :: Identifier -> K3 Symbol -> K3 Symbol -> K3 Symbol
-    subSym i sym (tag -> Symbol i' PVar) | i == i'    = sym
-    subSym i _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = maybe n snd $ applyLambda sL sA env
+    -- Substitute a symbol: old, new, symbol in which to replace
+    subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> K3 Symbol
+    subSym s s' n@(tag -> Symbol _ PVar) | n == s      = s'
+    -- Lambda: modifyTree will already do substitution. Just apply
+    subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = maybe n snd $ applyLambda sL sA env
     subSym _ _ n = n
 
-    -- TODO: don't forget occurs check (somehow)
+    -- TODO: occurs check (somehow)
     -- Substitute an id and symbol in an effect
     subEff :: Identifier -> K3 Symbol -> K3 Effect -> K3 Effect
-    subEff i sym n =
-      case tag n of
-        FRead s     -> replaceTag n $ FRead $ sub s
-        FWrite s    -> replaceTag n $ FWrite $ sub s
-        FScope ss   -> replaceTag n $ FScope $ map sub ss
-        FApply s s' ->
-          case applyLambda (sub s) (sub s') env of
-            Nothing -> n            -- We couldn't apply
-            Just (Just x, _)  -> x  -- Get just the effect
-            Just (Nothing,_)  -> replaceTag n $ FNop
-        _           -> n
+    subEff sym sym' n =
+      let ch = concatMap handleApply $ children n
+      in case tag n of
+           FRead s      -> newTagAndCh $ FRead  $ sub s
+           FWrite s     -> newTagAndCh $ FWrite $ sub s
+           FScope ss    -> newTagAndCh $ FScope $ map sub ss
+           FApply sL sA -> maybe n fst $ applyLambda (sub sL) (sub sA) env
+           _            -> replaceCh ch n
       where
-        sub n = runIdentity $ modifyTree (wrap $ subSym i sym) n
+        newTagAndCh x = replaceCh ch $ replaceTag n x
+        sub n = runIdentity $ modifyTree (wrap $ subSym sym sym') n
 
-execApply :: K3 Symbol -> Env -> (Maybe (K3 Effect), K3 Symbol)
-execApply n@(tnc -> (Symbol _ PApply, [l, a])) env = fromMaybe (Nothing, n) $ applyLambda l a env
+execApply :: K3 Symbol -> Env -> Maybe (K3 Effect), K3 Symbol)
+execApply n@(tnc -> (Symbol _ PApply, [l, a])) env = applyLambda l a env
 execApply _ _ = error "Not an apply"
