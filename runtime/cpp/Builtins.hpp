@@ -14,8 +14,6 @@
 #include "dataspace/Dataspace.hpp"
 
 
-std::size_t hash_value(boost::asio::ip::address const& b);
-
 namespace K3 {
   using std::string;
 
@@ -35,6 +33,26 @@ namespace K3 {
     unit_t printLine(std::string message);
 
     // TODO move to seperate context
+
+    template <class T>
+    int hash(T x) {
+      // We implement hash_value for all of our types.
+      // for ordered containers, so we may as well delegate to that.
+      return static_cast<int>(hash_value(x));
+    }
+
+    template <class T>
+    T error(unit_t) {
+      throw std::runtime_error("Error. Terminating");
+      return *((T *) nullptr);
+    }
+
+    // TODO, implement, sharing code with prettify()
+    template <class T>
+    std::string show(T t) {
+      return std::string("TODO: implement show()");
+    }
+
     Seq<R_elem<int>> range(int i) {
       Seq<R_elem<int>> result;
       for (int j = 0; j < i; j++) {
@@ -96,24 +114,11 @@ namespace K3 {
 
     std::string rtos(double d);
 
-    F<F<string(const int&)>(const int&)> substring(const string& s);
+    string substring(const string& s, int i, int n);
 
     // Split a std::string by substrings
     F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
   };
-
-  // Vector operations:
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1);
-
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1);
-
-  F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1);
-
-  F<double(const Collection<R_elem<double>>&)> squared_distance(const Collection<R_elem<double>>& c1);
-
-  Collection<R_elem<double>> zero_vector(int n);
-
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d);
 
   // TODO clean this up. extract what is needed. delete the rest.
   //class Builtins: public __k3_context {
@@ -137,55 +142,24 @@ namespace K3 {
 
   //    int get_max_int(unit_t x) { return INT_MAX; }
   //};
-  // // Map-specific template function to look up
-  // template <class Key, class Value>
-  // F<Value*(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-  //   return [&] (const Key& key) -> Value* {
-  //     auto &container(map.getContainer());
-  //     auto it(container.find(key));
-  //     if (it != container.end()) {
-  //       return &(it->second);
-  //     } else {
-  //       return nullptr;
-  //     }
-  //   };
-  // }
-
-  // Map-specific template function to look up
-  //template <class Key, class Value>
-  //F<shared_ptr<Value>(const Key&)> lookup(Map<R_key_value<Key, Value> >& map) {
-  //  return [&] (const Key& key) -> shared_ptr<Value> {
-  //    auto &container(map.getContainer());
-  //    auto it(container.find(key));
-  //    if (it != container.end()) {
-  //      return std::make_shared<Value>(it->second);
-  //    } else {
-  //      return nullptr;
-  //    }
-  //  };
-  //}
-
-  // template <class E>
-  // F<F<F<unit_t(F<typename E::ValueType(const typename E::ValueType&)>)>(const typename E::ValueType&)>(const typename E::KeyType&)>
-  // insert_with(Map<E>& map) {
-  //   return [&] (const typename E::KeyType& key) {
-  //     return [&] (const typename E::ValueType& value) {
-  //       return [&] (std::function<typename E::ValueType(const typename E::ValueType&)> f) {
-  //         auto &c = map.getContainer();
-  //         auto it(c.find(key));
-  //         if (it == map.end()) {
-  //           map.insert(E(key, value));
-  //         } else {
-  //           map.insert(E(key, f(value)));
-  //         }
-
-  //         return unit_t();
-  //       };
-  //     };
-  //   };
-  // }
 
 
 } // namespace K3
 
+// Hashing:
+namespace boost {
+  template<>
+  struct hash<boost::asio::ip::address> {
+    size_t operator()(boost::asio::ip::address const& a) const {
+      return hash_value(a.to_string());
+    }
+  };
+
+}
+
+template <class T>
+std::size_t hash_value(T const& t) {
+  boost::hash<T> hasher;
+  return hasher(t);
+}
 #endif /* K3_RUNTIME_BUILTINS_H */
