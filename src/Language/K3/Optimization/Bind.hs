@@ -43,7 +43,7 @@ bindOptE e@(TAC t@(EBindAs bs) as [s, b])
     = TAC t ((EOpt $ BindHint (refBound, [], writeBound)) : as) (map bindOptE [s, b])
   where
     bindSet = S.fromList $ bindingVariables bs
-    EEffect bodyEffect = fromJust (e @~ \case { EEffect _ -> True; _ -> False })
+    EEffect bodyEffect = fromJust $ e @~ isEEffect
     writeBound = S.map (\(tag -> Symbol i _) -> i) $ writeSet bodyEffect
     refBound = bindSet S.\\ writeBound
 bindOptE (TAC t as cs)  = TAC t as (map bindOptE cs)
