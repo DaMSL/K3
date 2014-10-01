@@ -14,6 +14,23 @@
 #include "dataspace/Dataspace.hpp"
 
 
+// Hashing:
+namespace boost {
+  template<>
+  struct hash<boost::asio::ip::address> {
+    size_t operator()(boost::asio::ip::address const& a) const {
+      return hash_value(a.to_string());
+    }
+  };
+
+}
+
+template <class T>
+std::size_t hash_value(T const& t) {
+  boost::hash<T> hasher;
+  return hasher(t);
+}
+
 namespace K3 {
   using std::string;
 
@@ -146,20 +163,4 @@ namespace K3 {
 
 } // namespace K3
 
-// Hashing:
-namespace boost {
-  template<>
-  struct hash<boost::asio::ip::address> {
-    size_t operator()(boost::asio::ip::address const& a) const {
-      return hash_value(a.to_string());
-    }
-  };
-
-}
-
-template <class T>
-std::size_t hash_value(T const& t) {
-  boost::hash<T> hasher;
-  return hasher(t);
-}
 #endif /* K3_RUNTIME_BUILTINS_H */

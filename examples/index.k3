@@ -13,7 +13,10 @@ declare employees : mut collection {id: int, name: string}
 
 declare result1 : mut option {id: int, name: string}
 
-trigger t : () = \_ -> (result1 = employees.lookup_by_name "John";
+trigger t : () = \_ -> (
+                        employees.insert {id: 1, name: "John"};
+                        employees.insert {id:2, name: "alice"};
+                        result1 = employees.lookup_by_name "John";
                         employees = employees.slice_by_name "a" "b")
 
 source s1 : () = value ()
