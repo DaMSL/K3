@@ -32,6 +32,10 @@ declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (`L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
                                                                | otherwise = return []
 
+-- Global polymorphic functions without implementations -- Built-Ins
+declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [_, _])]))
+                        Nothing) = return []
+
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
                         (Just (tag &&& children -> (ELambda x, [body])))) = do
