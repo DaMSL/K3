@@ -37,7 +37,6 @@ bindOpt :: K3 Declaration -> K3 Declaration
 bindOpt (TAC (DGlobal i t me) as cs) = TAC (DGlobal i t (bindOptE <$> me)) as cs
 bindOpt (TAC (DTrigger i t e) as cs) = TAC (DTrigger i t (bindOptE e)) as cs
 bindOpt (TAC (DRole n) as cs) = TAC (DRole n) as (map bindOpt cs)
-bindOpt d = d @<- []
 
 bindOptE :: K3 Expression -> K3 Expression
 bindOptE e@(TAC t@(EBindAs bs) as [s, b])
