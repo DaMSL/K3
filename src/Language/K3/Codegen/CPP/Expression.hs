@@ -289,8 +289,10 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
         (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
+            ta <- getKType a
+            da <- cDecl ta g'
             ae' <- reify (RName g') a
-            return (ae', R.Variable $ R.Name g')
+            return (da ++ ae', R.Variable $ R.Name g')
 
     ta <- getKType a
 
