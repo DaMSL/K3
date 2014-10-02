@@ -5,7 +5,7 @@ FROM phusion/baseimage:0.9.13
 RUN mkdir /software
 
 # Update apt-get
-RUN apt-get update
+RUN echo "cache-bust" && apt-get update
 
 # Locale setup
 RUN apt-get install -y language-pack-en-base
@@ -15,7 +15,7 @@ ENV LC_ALL en_US.UTF-8
 
 ## Install Clang 3.4, Boost and utilities
 RUN apt-get install -y \
-      wget vim make git \
+      wget vim emacs make git mercurial \
       zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
       clang-3.4 libboost1.55-all-dev 
 
@@ -36,7 +36,9 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 RUN apt-get install -y ocaml opam camlp4-extra
 
 # Install GHC and cabal
-ADD haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz /
+WORKDIR /
+RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz
+RUN tar xvf haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz
 RUN /usr/local/haskell/ghc-7.8.3-x86_64/bin/activate-hs && \
     cabal update && \
     cabal install cabal-install
@@ -46,7 +48,7 @@ ENV PATH /root/.cabal/bin/:$PATH
 ## Download and Build nanomsg
 RUN mkdir -p /software/nanomsg/build
 WORKDIR /software/nanomsg/build
-RUN wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
+RUN wget --no-verbose http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
     tar -xvzf nanomsg-0.3-beta.tar.gz && \
     ./nanomsg-0.3-beta/configure --prefix /software/nanomsg && \
     make && make install && \
