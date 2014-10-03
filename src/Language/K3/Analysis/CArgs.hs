@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Language.K3.Analysis.CArgs (runAnalysis, eCArgs, isECArgs) where
+module Language.K3.Analysis.CArgs (runAnalysis, eCArgs, isECArgs, isErrorFn) where
 
 import Control.Monad.Identity
 import Control.Arrow ((&&&))
@@ -51,3 +51,7 @@ eCArgs (annotations -> anns) =
 isECArgs :: Annotation Expression -> Bool
 isECArgs (EProperty "CArgs" (Just _)) = True
 isECArgs _ = False
+
+isErrorFn :: Annotation Expression -> Bool
+isErrorFn (EProperty "ErrorFn" _) = True
+isErrorFn _ = False

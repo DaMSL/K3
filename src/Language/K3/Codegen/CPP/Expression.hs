@@ -28,6 +28,8 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import qualified Language.K3.Analysis.CArgs as CArgs
+
 import Language.K3.Optimization.Core
 import Language.K3.Optimization.Bind
 
@@ -65,7 +67,7 @@ attachTemplateVars v e g
                                   t@(tag -> TFunction) -> return t
                                   (tag &&& children -> (TForall _, [t'])) -> return t'
                                   _ -> throwE $ CPPGenE "Unreachable Error."
-            let ts = snd . unzip . dedup $ matchTrees signatureType $ 
+            let ts = snd . unzip . dedup $ matchTrees signatureType $
                        fromMaybe (error "attachTemplateVars: expected just") $ functionType e
             cts <- mapM genCType ts
             return $ if null cts
@@ -191,11 +193,21 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
            , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
-inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
+inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-    return (fe ++ concat aes, R.Call fv avs)
+    c <- call fv avs
+    return (fe ++ concat aes, c)
+  where
+    call fn@(R.Variable n) args =
+      if isJust $ f @~ CArgs.isErrorFn
+        then do
+          kType <- getKType e
+          returnType <- genCType kType
+          return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
+        else return $ R.Call fn args
+    call fn args = return $ R.Call fn args
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
