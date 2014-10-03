@@ -15,10 +15,12 @@ data EffectKind
 data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
 
 data TempType
-    = TAlias   -- The temporary is an alias
-    | TSub     -- The temporary is a subtype of the next element
-    | TUnbound -- Unbound global
-    | TTemp    -- The temp has no connection to any other element
+    = TAlias    -- The temporary is an alias
+    | TSub      -- The temporary is a subtype of the next element
+    | TIndirect -- The temporary is an indirection
+    | TUnbound  -- Unbound global
+    | TTemp     -- The temp has no connection to any other element
+    deriving (Eq, Ord, Read, Show)
 
 data Provenance
     = PRecord Identifier
@@ -44,10 +46,13 @@ data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
 isSID :: Annotation Symbol -> Bool
 isSID _ = True
 
+type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
+
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
-    | FScope [K3 Symbol]
+    -- bound, read, written, applied within the scope
+    | FScope [K3 Symbol] ClosureInfo
     | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible

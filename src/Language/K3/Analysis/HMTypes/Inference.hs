@@ -56,7 +56,7 @@ logVoid s = do
   logVoid' (verbose $ config env) s
 
 logVoid' :: (Functor m, Monad m) => Bool -> String -> m ()
-logVoid' verbose s = if verbose then trace s $ return () else return ()
+logVoid' verbose' s = if verbose' then trace s $ return () else return ()
 
 -- | Misc. helpers
 -- logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
@@ -891,14 +891,14 @@ substituteDeepQt e = mapTree subNode e
 
 -- | Top-level type inference methods
 inferProgramTypes :: Bool -> K3 Declaration -> Either String (K3 Declaration)
-inferProgramTypes verbose prog = do
-    (_, initEnv) <- let tienv = mcfg (cSetVerbose verbose) tienv0
+inferProgramTypes verbose' prog = do
+    (_, initEnv) <- let tienv = mcfg (cSetVerbose verbose') tienv0
                         (a,b) = runTInfM tienv $ initializeTypeEnv
                     in a >>= return . (, b)
     (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
                          in a >>= return . (, b)
-    logVoid' verbose $ "Final type environment"
-    logVoid' verbose $ pretty finalEnv
+    logVoid' verbose' $ "Final type environment"
+    logVoid' verbose' $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
@@ -954,7 +954,7 @@ inferProgramTypes verbose prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          logVoid' verbose $ prettyTaggedPair ("unify init ") qt1 qt2
+          logVoid' verbose' $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
           --return $ Just e
           substituteDeepQt e >>= return . Just
