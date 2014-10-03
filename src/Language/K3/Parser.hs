@@ -268,14 +268,16 @@ polarity = choice [keyword "provides" >> return Provides,
 -- | Control annotation parsing
 dControlAnnotation :: DeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
-  where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> some pattern <*> extensions
-        pattern    = (,,) <$> parseInMode SourcePattern expr <*> (symbol "=>" *> rewrite) <*> extensions
-        rewrite    = clean =<< parseInMode Splice expr
-        extensions = concat <$> option [] (symbol "+>" *> many (parseInMode Splice declaration))
+  where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls
+                                 <*> some pattern <*> (extensions $ keyword "shared")
+        pattern        = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
+        rewriteE       = cleanUIDSpan =<< parseInMode Splice expr
+        patternE       = cleanUIDSpan =<< parseInMode SourcePattern expr
+        extensions pfx = concat <$> option [] (pfx *> braces (many $ parseInMode Splice declaration))
 
         mkCtrlAnn n svars rw exts = DC.generator $ mpCtrlAnnotation n svars rw exts
 
-        clean         e = mapTree cleanNode e
+        cleanUIDSpan  e = mapTree cleanNode e
         cleanNode  ch e = return $ Node ((tag $ foldl (flip stripAnnot) e [isESpan, isEUID]) :@: []) ch
         stripAnnot  f e = maybe e (e @-) $ e @~ f
 

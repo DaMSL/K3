@@ -129,8 +129,8 @@ k3Keywords = [
     {- Annotation keywords -}
     "self", "structure", "horizon", "content", "forall",
 
-    {- Metaprogramming keyworks -}
-    "label", "expr", "decl"
+    {- Metaprogramming keywords -}
+    "label", "expr", "decl", "shared"
   ]
 
 {- Style definitions for parsers library -}
