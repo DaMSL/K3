@@ -195,7 +195,6 @@ inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = 
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-
     return (fe ++ concat aes, R.Call fv avs)
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do

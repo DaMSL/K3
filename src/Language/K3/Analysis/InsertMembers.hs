@@ -25,12 +25,18 @@ import Language.K3.Analysis.Common
 
 -- Map of collection annotations to attributes to properties
 type AnnoMap = Map Identifier (Map Identifier [Annotation Declaration])
+type GlobalMap = Map Identifier [Annotation Declaration]
+
 
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis prog =
   let annos = collectAnnos prog
       map = annosToMap annos
-  in placeAnnosInExprs map prog
+
+      gMap = globalMap prog
+      prog' = placeGlobalsInExprs gMap prog
+
+  in placeAnnosInExprs map prog'
 
 -- Collect all the collection annotations in the tree
 collectAnnos :: K3 Declaration -> [Declaration]
@@ -79,14 +85,11 @@ placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr 
                   props' = concatMap decToExpr props
               in return $ foldl' (@+) n props'
         Just _ -> return n
+    handleExpr e = return e
 
     unwrapTAnno (TAnnotation i) = [i]
     unwrapTAnno _               = []
 
-    -- Translate declaration annotations to expression annoations
-    decToExpr (DProperty i m) = [EProperty i m]
-    decToExpr (DSyntax s)     = [ESyntax s]
-    decToExpr _               = []
 
     findProps ids project =
       case catMaybes $ map (lookupId project) ids of
@@ -99,3 +102,48 @@ placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr 
       props    <- Map.lookup project innermap
       return props
 
+-- For each global in the tree, add an entry to the globals map.
+globalMap :: K3 Declaration -> GlobalMap
+globalMap prog = runIdentity $ foldTree addDecl Map.empty prog
+  where
+  addDecl acc ((tag &&& annotations) -> ((DGlobal n _ _), as) ) = return $ Map.insert n (filter isProperty as) acc
+  addDecl acc _ = return acc
+
+  isProperty (DProperty _ _) = True
+  isProperty _                = False
+
+placeGlobalsInExprs :: GlobalMap -> K3 Declaration -> K3 Declaration
+placeGlobalsInExprs gMap prog = runIdentity $ mapProgram return return (visitE gMap) prog
+  where
+  -- Attempt to attach properties to an expression.
+  -- Then recurse onto its children, shadowing globals along the way.
+  visitE :: GlobalMap -> K3 Expression -> Identity (K3 Expression)
+  visitE gs e = do
+    let new_e  = attachProperties gs e
+    let new_gs = tryBind gs e
+    new_cs <- mapM (visitE new_gs) (children e)
+    return $ replaceCh new_e new_cs
+
+  -- Return the new globalMap, removing any shadowed identifiers
+  tryBind :: GlobalMap -> K3 Expression -> GlobalMap
+  tryBind gs (tag -> ELetIn i)                  = Map.delete i gs
+  tryBind gs (tag -> ELambda i)                 = Map.delete i gs
+  tryBind gs (tag -> EBindAs (BTuple ns))       = foldr (Map.delete) gs ns
+  tryBind gs (tag -> EBindAs (BIndirection i))  = Map.delete i gs
+  tryBind gs (tag -> EBindAs (BRecord tups))    = foldl (\acc -> \(_,b) -> Map.delete b acc) gs tups
+  tryBind gs _ = gs
+
+  -- Attach properties associated with this global identifier, if there are any.
+  attachProperties :: GlobalMap -> K3 Expression -> K3 Expression
+  attachProperties gs e@(tag -> EVariable i) = case Map.lookup i gs of
+    Nothing -> e
+    Just l -> foldl (\e ann -> foldl (@+) e $ decToExpr ann) e l
+  attachProperties _ e = e
+
+  isGlobal gs (tag -> EVariable i) = Map.member i gs
+  isGlobal _ _ = False
+
+-- Translate declaration annotations to expression annoations
+decToExpr (DProperty i m) = [EProperty i m]
+decToExpr (DSyntax s)     = [ESyntax s]
+decToExpr _               = []
