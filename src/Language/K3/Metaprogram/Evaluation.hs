@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -9,9 +10,12 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
+import Data.Functor.Identity
 import Data.List
 import qualified Data.Map as Map
 import Data.Tree
+
+import Debug.Trace
 
 import qualified Text.Parsec as P
 import Text.Parser.Combinators
@@ -32,16 +36,45 @@ import qualified Language.K3.Core.Constructor.Literal     as LC
 
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Parser.DataTypes
+import Language.K3.Analysis.HMTypes.Inference hiding ( logVoid, logAction )
+
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
+$(loggingFunctions)
+
+logVoid :: (Functor m, Monad m) => String -> m ()
+--logVoid s = void $ _debug s
+logVoid s = trace s $ return ()
+
 {- Top-level AST transformations -}
-evalMetaprogram :: K3 Declaration -> (Either String (K3 Declaration), GeneratorState)
-evalMetaprogram mp = runGeneratorM emptyGeneratorState synthesizedProg
+evalMetaprogram :: (K3 Declaration -> GeneratorM (K3 Declaration))
+                -> K3 Declaration -> (Either String (K3 Declaration), GeneratorState)
+evalMetaprogram analyzeF mp = runGeneratorM emptyGeneratorState synthesizedProg
   where synthesizedProg = do
+          logVoid $ generatorInput mp
           pWithDataAnns  <- mpGenerators mp
           pWithMDataAnns <- applyDAnnGens pWithDataAnns
-          -- TODO: typecheck
-          applyCAnnGens pWithMDataAnns
+          analyzedP      <- analyzeF pWithMDataAnns
+          logVoid $ debugAnalysis analyzedP
+          applyCAnnGens analyzedP
+
+        generatorInput = metalog "Evaluating metaprogram "
+        debugAnalysis  = metalog "Analyzed metaprogram "
+        metalog msg p  = boxToString $ [msg] %$ (indent 2 $ prettyLines p)
+
+defaultMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
+defaultMetaAnalysis p = do
+    strippedP <- mapExpression removeTypes p
+    liftError (liftError return . translateProgramTypes) $ inferProgramTypes strippedP
+
+  where
+    -- | Match any type annotation except pattern types which are user-defined in patterns.
+    removeTypes e = return $ stripAnnotations (\a -> isETypeOrBound a || isEQType a) e
+    liftError = either throwE
+
+nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
+nullMetaAnalysis p = return p
 
 mpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
 mpGenerators mp = mapTree evalMPDecl mp
@@ -137,7 +170,7 @@ applyDAnnotation aCtor annId sEnv = generatorWithGEnv $ \gEnv ->
 
         expectSpliceAnnotation _ = throwE "Invalid data annotation splice"
 
-        spliceLookupErr n = throwE $ unwords ["Could not find macro", n]
+        spliceLookupErr n = throwE $ unwords ["Could not find data macro", n]
 
 
 applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
@@ -153,21 +186,31 @@ applyCAnnGens mp = mapProgram applyCAnnDecl applyCAnnMemDecl applyCAnnExprTree N
       let (appAnns, rest) = partition isEApplyGen anns
       in foldM (eApplyAnn rest) (Node (t :@: rest) ch) appAnns
 
-    eApplyAnn ncAnns e (EApplyGen True n senv) = applyCAnnotation e n senv >>= \ne -> return (foldl (@+) ne ncAnns)
+    eApplyAnn ncAnns e (EApplyGen True n senv) =
+      applyCAnnotation e n senv >>= \ne -> return (foldl (@+) ne ncAnns)
     eApplyAnn _ e _ = return e
 
 
 applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExprGenerator
-applyCAnnotation targetE cAnnId sEnv = generatorWithGEnv $ \gEnv ->
-    maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
+applyCAnnotation targetE cAnnId sEnv = do
+   logVoid $ "Applying control annotation " ++ cAnnId
+   generatorWithGEnv $ \gEnv ->
+     maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
 
   where
-    injectRewrite (SRExpr p) = p
-    injectRewrite (SRRewrite p) = p >>= \(rewriteE, decls) -> modifyGDeclsF_ (Right . (++ decls)) >> return rewriteE
+    injectRewrite (SRExpr p) = logVoid debugPassThru >> p
+
+    injectRewrite (SRRewrite p) = do
+      (rewriteE, decls) <- p
+      logVoid (debugRewrite rewriteE)
+      modifyGDeclsF_ (Right . (++ decls)) >> return rewriteE
+
     injectRewrite _ = throwE "Invalid control annotation rewrite"
 
-    spliceLookupErr n = throwE $ unwords ["Could not find macro", n]
+    debugPassThru   = unwords ["Passed on generator", cAnnId]
+    debugRewrite  e = boxToString $ [unwords ["Generator", cAnnId, "rewrote as "]] %+ prettyLines e
 
+    spliceLookupErr n = throwE $ unwords ["Could not find control macro", n]
 
 
 
@@ -294,40 +337,50 @@ isPatternVariable i = isPrefixOf "?" i
 patternVariable :: Identifier -> Maybe Identifier
 patternVariable i = stripPrefix "?" i
 
-matchTree :: (Monad m) => (b -> K3 a -> K3 a -> m b) -> K3 a -> K3 a -> b -> m b
-matchTree matchF t1 t2 z = matchF z t1 t2 >>= \acc ->
-  let (ch1, ch2) = (children t1, children t2) in
-  if length ch1 == length ch2
-    then foldM rcr acc $ zip ch1 ch2
-    else fail "Mismatched children during matchTree"
-  where rcr z' (t1',t2') = matchTree matchF t1' t2' z'
+matchTree :: (Monad m) => (b -> K3 a -> K3 a -> m (Bool, b)) -> K3 a -> K3 a -> b -> m b
+matchTree matchF t1 t2 z = matchF z t1 t2 >>= \(stop, acc) ->
+  if stop then return acc
+  else let (ch1, ch2) = (children t1, children t2) in
+       if length ch1 == length ch2
+         then foldM rcr acc $ zip ch1 ch2
+         else fail "Mismatched children during matchTree"
+       where rcr z' (t1',t2') = matchTree matchF t1' t2' z'
 
 -- | Matches the first expression to the second, returning a splice environment
 --   of pattern variables present in the second expression.
 matchExpr :: K3 Expression -> K3 Expression -> Maybe SpliceEnv
 matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
-  where matchTag sEnv e1 e2@(tag -> EVariable i)
-          | isPatternVariable i =
-              let nrEnv = mkSpliceReprEnv $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
-                  nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
-              in matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv
+  where
+    matchTag sEnv e1 e2@(tag -> EVariable i)
+      | isPatternVariable i =
+          let nrEnv = mkSpliceReprEnv $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
+              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
+          in do
+              logVoid $ debugMatchPVar i
+              matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
 
-        matchTag sEnv e1@(tag -> x) e2@(tag -> y)
-          | x == y    = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv
-          | otherwise = Nothing
+    matchTag sEnv e1@(tag -> x) e2@(tag -> y)
+      | x == y    = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
+      | otherwise = Nothing
 
-        matchTypesAndAnnotations :: [Annotation Expression] -> [Annotation Expression] -> SpliceEnv -> Maybe SpliceEnv
-        matchTypesAndAnnotations anns1 anns2 sEnv = case (find isEType anns1, find isEPType anns2) of
-          (Just (EType ty), Just (EPType pty)) ->
-              if matchAnnotations ignoreUIDSpan anns1 anns2
-              then matchType ty pty >>= return . mergeSpliceEnv sEnv else Nothing
+    matchTypesAndAnnotations :: [Annotation Expression] -> [Annotation Expression] -> SpliceEnv
+                             -> Maybe SpliceEnv
+    matchTypesAndAnnotations anns1 anns2 sEnv = case (find isEType anns1, find isEPType anns2) of
+      (Just (EType ty), Just (EPType pty)) ->
+          if   matchAnnotations ignoreUIDSpan anns1 anns2
+          then matchType ty pty >>= return . mergeSpliceEnv sEnv
+          else Nothing
 
-          (_, _) -> if matchAnnotations ignoreUIDSpan anns1 anns2 then Just sEnv else Nothing
+      (_, _) -> if matchAnnotations ignoreUIDSpan anns1 anns2 then Just sEnv else Nothing
 
-        typeRepr (EType ty) = [(spliceVTSym, SType ty)]
-        typeRepr _ = []
+    typeRepr (EType ty) = [(spliceVTSym, SType ty)]
+    typeRepr _ = []
 
-        ignoreUIDSpan a = not (isEUID a || isESpan a)
+    ignoreUIDSpan a = not (isEUID a || isESpan a)
+
+    debugMatchPVar i =
+      unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
+
 
 -- | Match two types, returning any pattern variables bound in the second argument.
 matchType :: K3 Type -> K3 Type -> Maybe SpliceEnv
@@ -336,11 +389,11 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
           | isPatternVariable i =
               let extend n =
                     if null n then Nothing
-                    else Just $ addSpliceE n (mkSpliceReprEnv [(spliceVTSym, SType t1)]) sEnv
+                    else Just . (True,) $ addSpliceE n (mkSpliceReprEnv [(spliceVTSym, SType t1)]) sEnv
               in maybe Nothing extend $ patternVariable i
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
-          | x == y && matchMutability t1 t2 = Just sEnv
+          | x == y && matchMutability t1 t2 = Just (False, sEnv)
           | otherwise = Nothing
 
         matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified)
@@ -356,16 +409,35 @@ matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
 
 exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3Generator
 exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEnv ->
-    let vspliceEnv = validateSplice spliceParams spliceEnv
-    in maybe (inputSR expr) (exprDeclSR vspliceEnv) $ foldl (tryMatch expr) Nothing rules
+    let vspliceEnv  = validateSplice spliceParams spliceEnv
+        matchResult = foldl (tryMatch expr) Nothing rules
+    in logValue (debugMatchResult matchResult)
+         $ maybe (inputSR expr) (exprDeclSR vspliceEnv) matchResult
+
   where
+    logValue msg v = runIdentity (logVoid msg >> return v)
+
+    logAction preMsg postMsgF v =
+      logVoid preMsg >> v >>= \r -> (logVoid $ postMsgF r) >> return r
+
     inputSR expr = SRExpr $ return expr
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
       SRRewrite $ generateInSpliceEnv (mergeSpliceEnv spliceEnv sEnv) $
         (,) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
-    tryMatch expr Nothing (pat, rewrite, ruleExts) = matchExpr expr pat >>= return . (, rewrite, ruleExts)
+    tryMatch expr Nothing (pat, rewrite, ruleExts) =
+      (logAction (debugMatchStep expr pat) (debugMatchStepResult expr pat) $ matchExpr expr pat)
+        >>= return . (, rewrite, ruleExts)
+
+    debugMatchStep expr pat = boxToString $
+          ["Trying match step "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
+
+    debugMatchStepResult expr pat r = boxToString $
+          ["Match step result "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
+      %$ (["Result "] %+ [show r])
+
+    debugMatchResult opt = unwords ["Match result", show opt]
 
     spliceNonAnnotationTree d = mapTree spliceNonAnnotationDecl d
 

@@ -925,7 +925,6 @@ inferProgramTypes prog = do
           qt2 <- qTypeOfM e
           logVoid $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
-          --return $ Just e
           substituteDeepQt e >>= return . Just
 
         Nothing -> return Nothing

@@ -68,10 +68,10 @@ type ParserEnv    = [EnvFrame]
 data ParseMode = Normal | Splice | SourcePattern
 
 {-| Parsing state.
-    This includes a parse mode, a UID counter, a type alias environment
-    and a parser environment as defined above.
+    This includes a parse mode, a UID counter, a list of generated declarations,
+    a type alias environment and a parser environment as defined above.
 -}
-type ParserState  = (ParseMode, Int, TypeAliasEnv, ParserEnv)
+type ParserState  = (ParseMode, Int, [K3 Declaration], TypeAliasEnv, ParserEnv)
 
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
@@ -223,46 +223,58 @@ defaultParseMode :: ParseMode
 defaultParseMode = Normal
 
 emptyParserState :: ParserState
-emptyParserState = (defaultParseMode, 0, emptyTypeAliasEnv, emptyParserEnv)
-
-getTypeAliasEnv :: ParserState -> TypeAliasEnv
-getTypeAliasEnv (_, _, tae, _) = tae
+emptyParserState = (defaultParseMode, 0, [], emptyTypeAliasEnv, emptyParserEnv)
 
 getParseMode :: ParserState -> ParseMode
-getParseMode (pmd, _, _, _) = pmd
+getParseMode (pmd, _, _, _, _) = pmd
+
+getBuilderDecls :: ParserState -> [K3 Declaration]
+getBuilderDecls (_, _, decls, _, _) = decls
+
+getTypeAliasEnv :: ParserState -> TypeAliasEnv
+getTypeAliasEnv (_, _, _, tae, _) = tae
 
 getParserEnv :: ParserState -> ParserEnv
-getParserEnv (_, _, _, env) = env
+getParserEnv (_, _, _, _, env) = env
 
 modifyParserEnv :: (ParserEnv -> Either String (ParserEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyParserEnv f (pmd,uc,ta,p) = either Left (\(np,r) -> Right ((pmd,uc,ta,np), r)) $ f p
-
-modifyTypeAliasEnv :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyTypeAliasEnv f (pmd,uc,ta,p) = either Left (\(nta,r) -> Right ((pmd,uc,nta,p),r)) $ f ta
+modifyParserEnv f (pmd,uc,gd,ta,p) = either Left (\(np,r) -> Right ((pmd,uc,gd,ta,np), r)) $ f p
 
 modifyParseMode :: (ParseMode -> Either String (ParseMode, a)) -> ParserState -> Either String (ParserState, a)
-modifyParseMode f (pmd,uc,ta,p) = either Left (\(npmd,r) -> Right ((npmd,uc,ta,p),r)) $ f pmd
+modifyParseMode f (pmd,uc,gd,ta,p) = either Left (\(npmd,r) -> Right ((npmd,uc,gd,ta,p),r)) $ f pmd
+
+modifyBuilderDecls :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> ParserState -> Either String (ParserState, a)
+modifyBuilderDecls f (pmd,uc,gd,ta,p) = either Left (\(ngd,r) -> Right ((pmd,uc,ngd,ta,p),r)) $ f gd
+
+modifyTypeAliasEnv :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> ParserState -> Either String (ParserState, a)
+modifyTypeAliasEnv f (pmd,uc,gd,ta,p) = either Left (\(nta,r) -> Right ((pmd,uc,gd,nta,p),r)) $ f ta
 
 modifyParserState :: (ParserState -> Either String (ParserState, a)) -> K3Parser a
 modifyParserState f = PP.getState >>= \st -> either PP.parserFail (\(nst,r) -> PP.putState nst >> return r) $ f st
 
 parserWithUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithUID f = PP.getState >>= (\(pmd,uc,ta,p) -> PP.putState (pmd,uc+1, ta, p) >> f uc)
+parserWithUID f = PP.getState >>= (\(pmd,uc,gd,ta,p) -> PP.putState (pmd,uc+1,gd,ta,p) >> f uc)
 
 parserWithPMode :: (ParseMode -> K3Parser a) -> K3Parser a
 parserWithPMode f = PP.getState >>= f . getParseMode
 
+parserWithBuilderDecls :: ([K3 Declaration] -> K3Parser a) -> K3Parser a
+parserWithBuilderDecls f = PP.getState >>= f . getBuilderDecls
+
 parserWithTAEnv :: (TypeAliasEnv -> K3Parser a) -> K3Parser a
 parserWithTAEnv f = PP.getState >>= f . getTypeAliasEnv
+
+withPMode :: (ParseMode -> a) -> K3Parser a
+withPMode f = parserWithPMode $ return . f
 
 withUID :: (Int -> a) -> K3Parser a
 withUID f = parserWithUID $ return . f
 
+withBuilderDecls :: ([K3 Declaration] -> a) -> K3Parser a
+withBuilderDecls f = parserWithBuilderDecls $ return . f
+
 withTAEnv :: (TypeAliasEnv -> a) -> K3Parser a
 withTAEnv f = parserWithTAEnv $ return . f
-
-withPMode :: (ParseMode -> a) -> K3Parser a
-withPMode f = parserWithPMode $ return . f
 
 withEnv :: (ParserEnv -> a) -> K3Parser a
 withEnv f = PP.getState >>= return . f . getParserEnv
@@ -279,17 +291,23 @@ modifyEnvF f = modifyParserState $ modifyParserEnv f
 modifyEnvF_ :: (ParserEnv -> Either String ParserEnv) -> K3Parser ()
 modifyEnvF_ f = modifyEnvF $ (>>= Right . (,())) . f
 
-modifyTAEnvF :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> K3Parser a
-modifyTAEnvF f = modifyParserState $ modifyTypeAliasEnv f
-
-modifyTAEnvF_ :: (TypeAliasEnv -> Either String TypeAliasEnv) -> K3Parser ()
-modifyTAEnvF_ f = modifyTAEnvF $ (>>= Right . (,())) . f
-
 modifyPModeF :: (ParseMode -> Either String (ParseMode, a)) -> K3Parser a
 modifyPModeF f = modifyParserState $ modifyParseMode f
 
 modifyPModeF_ :: (ParseMode -> Either String ParseMode) -> K3Parser ()
 modifyPModeF_ f = modifyPModeF $ (>>= Right . (,())) . f
+
+modifyBuilderDeclsF :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> K3Parser a
+modifyBuilderDeclsF f = modifyParserState $ modifyBuilderDecls f
+
+modifyBuilderDeclsF_ :: ([K3 Declaration] -> Either String [K3 Declaration]) -> K3Parser ()
+modifyBuilderDeclsF_ f = modifyBuilderDeclsF $ (>>= Right . (,())) . f
+
+modifyTAEnvF :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> K3Parser a
+modifyTAEnvF f = modifyParserState $ modifyTypeAliasEnv f
+
+modifyTAEnvF_ :: (TypeAliasEnv -> Either String TypeAliasEnv) -> K3Parser ()
+modifyTAEnvF_ f = modifyTAEnvF $ (>>= Right . (,())) . f
 
 
 {- Note: unused

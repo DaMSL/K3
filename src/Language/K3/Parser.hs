@@ -112,17 +112,27 @@ parseK3 noFeed includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = mkProgram =<< (spaces *> endBy1 (roleBody noDriver "") eof)
-        mkProgram l =
-          let (prgE, genSt) = evalMetaprogram $ DC.role defaultRoleName (concat l)
-          in either P.parserFail (addDecls $ getGeneratedDecls genSt) prgE
+  where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver "") eof)
 
         addDecls decls p@(tag -> DRole n) = return $ Node (DRole n :@: annotations p) $ children p ++ decls
         addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
 
-        selfContainedProgram d = if noDriver then return d else (mkEntryPoints d >>= mkBuiltins)
+        selfContainedProgram d =
+          if noDriver then return d
+          else (mkBuilderDecls d >>= mkEntryPoints >>= mkBuiltins >>= runMP)
+
+        mkBuilderDecls d
+          | DRole n <- tag d, n == defaultRoleName =
+              withBuilderDecls $ \decls -> Node (tag d :@: annotations d) (children d ++ decls)
+          | otherwise = return d
+
         mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
+
+        runMP mp =
+          let (prgE, genSt) = evalMetaprogram defaultMetaAnalysis mp
+          in either P.parserFail (addDecls $ getGeneratedDecls genSt) prgE
+
 
 roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
 roleBody noDriver n =
@@ -955,14 +965,17 @@ postProcessRole :: Identifier -> ([K3 Declaration], EnvFrame) -> K3Parser [K3 De
 postProcessRole n (dl, frame) =
   modifyEnvF_ (ensureQualified frame) >> processEndpoints frame
 
-  where processEndpoints (s,_) = return . flip concatMap dl $ annotateEndpoint s . attachSource s
-        attachSource s         = bindSource $ sourceBindings s
+  where processEndpoints (s,_) = addBuilderDecls $ map (annotateEndpoint s . attachSource s) dl
 
-        annotateEndpoint _ [] = []
-        annotateEndpoint s (d:drest)
-          | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s):drest
-          | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s):drest
-          | otherwise = d:drest
+        addBuilderDecls dAndExtras =
+          let (ndl, extrasl) = unzip dAndExtras
+          in modifyBuilderDeclsF_ (Right . ((concat extrasl) ++)) >> return ndl
+
+        attachSource s = bindSource $ sourceBindings s
+        annotateEndpoint s (d, extraDecls)
+          | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
+          | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
+          | otherwise = (d, extraDecls)
 
         syntaxAnnotation en s =
           lookup en s
