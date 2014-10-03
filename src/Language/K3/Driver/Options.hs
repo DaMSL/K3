@@ -36,7 +36,6 @@ data Mode
     | Compile   CompileOptions
     | Interpret InterpretOptions
     | Typecheck TypecheckOptions
-    | Analyze   AnalyzeOptions
   deriving (Eq, Read, Show)
 
 data PrintMode
@@ -45,7 +44,8 @@ data PrintMode
   deriving (Eq, Read, Show)
 
 -- | Parsing options.
-data ParseOptions = ParseOptions { parsePrintMode :: PrintMode }
+data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
+                                   poTransform :: TransformOptions}
                     deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
@@ -60,6 +60,7 @@ data CompileOptions = CompileOptions
                       , cppOptions   :: String
                       , coTransform  :: TransformOptions
                       , useSubTypes  :: Bool
+                      , optimizationLevel     :: Maybe OptimizationLevel
                       }
   deriving (Eq, Read, Show)
 
@@ -86,11 +87,6 @@ data TypecheckOptions
                        , printQuickTypes :: Bool }
   deriving (Eq, Read, Show)
 
--- | Analyze Options.
-data AnalyzeOptions
-    = AnalyzeOptions { aoTransform      :: TransformOptions
-                     , analyzePrintMode :: PrintMode   }
-  deriving (Eq, Read, Show)
 
 type TransformOptions = [TransformMode]
 
@@ -108,6 +104,8 @@ data TransformMode
     | Profiling
     | ReadOnlyBinds
   deriving (Eq, Read, Show)
+
+data OptimizationLevel = O1 deriving (Eq, Read, Show)
 
 -- | Logging and information output options.
 data InfoSpec = InfoSpec { logging   :: LoggerOptions
@@ -137,7 +135,6 @@ modeOptions = subparser (
       <> command "compile"   (info compileOptions   $ progDesc compileDesc)
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
-      <> command "analyze"   (info analyzeOptions   $ progDesc analyzeDesc)
     )
   where parseDesc     = "Parse a K3 program"
         compileDesc   = "Compile a K3 binary"
@@ -159,7 +156,7 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
 
 -- | Parse mode
 parseOptions :: Parser Mode
-parseOptions = Parse . ParseOptions <$> printModeOpt
+parseOptions = Parse <$> (ParseOptions <$> printModeOpt <*> transformOptions)
 
 -- | Transformation options
 transformOptions :: Parser TransformOptions
@@ -178,6 +175,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> cppOpt
                             <*> transformOptions
                             <*> noQuickTypesOpt
+                            <*> optimizationOpt
 
 outLanguageOpt :: Parser String
 outLanguageOpt = strOption ( short   'l'
@@ -371,10 +369,6 @@ printQuickTypesOpt = switch (
                       <> help    "Show quicktypes as typechecker output"
                    )
 
--- | Analyze options
-analyzeOptions :: Parser Mode
-analyzeOptions = Analyze <$> (AnalyzeOptions <$> transformOptions <*> printModeOpt)
-
 -- Accept a precursor string
 transformMode :: Parser [TransformMode]
 transformMode   =  wrap <$> conflictsOpt
@@ -392,6 +386,13 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> readOnlyBindOpts
   where
     wrap x = [x]
+
+
+optimizationOpt :: Parser (Maybe OptimizationLevel)
+optimizationOpt = optional o1Opt
+
+o1Opt :: Parser OptimizationLevel
+o1Opt = flag' O1 (long "O1" <> help "Optimization Level 1")
 
 conflictsOpt :: Parser TransformMode
 conflictsOpt = flag' Conflicts (   long "fconflicts"
@@ -521,7 +522,6 @@ instance Pretty Mode where
   prettyLines (Compile   cOpts) = ["Compile " ++ show cOpts]
   prettyLines (Interpret iOpts) = ["Interpret"] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]
-  prettyLines (Analyze   aOpts) = ["Analyze" ++ show aOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console transform) =

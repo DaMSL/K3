@@ -56,13 +56,12 @@ run opts = do
     transform ts prog      = foldl' (flip analyzer) (prog, "") ts
 
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Parse popts) p = printer (parsePrintMode popts) p
+    dispatch (Parse popts) p = analyzeThenPrint popts p
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
       Left s   -> putStrLn s          >> putStrLn "ERROR"
       Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
-    dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     quickTypecheckAux f p = do
       qtp <- inferProgramTypes True p;
@@ -94,9 +93,9 @@ run opts = do
     printer PrintAST    = putStrLn . pretty
     printer PrintSyntax = either syntaxError putStrLn . programS
 
-    doAnalyze prtMode ts prog = do
-      let (p, str) = transform ts prog
-      printer prtMode p
+    analyzeThenPrint popts prog = do
+      let (p, str) = transform (poTransform popts) prog
+      printer (parsePrintMode popts) p
       putStrLn str
 
       -- Using arrow combinators to make this simpler
