@@ -609,62 +609,65 @@ buildEnv n = snd $ flip runState startEnv $
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
 applyLambda sArg sLam =
     case tnc sLam of
-      (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, lamEff))), [chSym]) -> do
+      (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
         -- Substitute into the old effects and symbol
-        e'               <- modEff sOld sArg e
-        (mChEff, chSym') <- subSymTree sOld sArg chSym
-        effSeq           <- combineEffSeq [maybeOfList lamEff, mChEff]
-        let scopeEff = replaceCh e' [effSeq]
-        return $ Just (scopeEff, chSym')
+        e'      <- subEffTree sOld sArg lamEff
+        chSym'  <- subSymTree sOld sArg chSym
+        return $ Just (e', chSym')
 
       (Symbol _ PGlobal, [ch]) -> applyLambda sArg ch
 
-      -- For a set, we need to combine results
+      -- For a set 'lambda', we need to combine results
       (Symbol _ PSet, ch)      -> do
         xs <- mapM (applyLambda sArg) ch
-        let (es, ss) = second (map Just) . unzip xs
-            sSet     = fromMaybe (error "expected symbols") $ combineSymSet ss
-            eSet     = combineEffSet es
-        return $ Just (eSet, sSet)
+        let (es, ss) = unzip $ catMaybes xs
+            (es', ss') = (map Just es, map Just ss)
+        sSet <- combineSymSet ss'
+        eSet <- combineEffSet es'
+        return $ Just (fromJust eSet, fromJust sSet)
 
       _ -> return Nothing
 
   where
     wrap f x = return $ f x
 
-    modEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv(K3 Effect)
-    modEff s s' e = modifyTree (wrap $ subEff s s') e
+    -- substitute in one symbol for another
+    -- effect can only be from application of lambdas
+    subSymTree :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
+    subSymTree s s' n = modifyTree (subSym s s') n
 
     -- Substitute a symbol: old, new, symbol in which to replace
     -- Returns possible result effects and the new symbol
-    subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect), K3 Symbol)
-    subSym s s' n@(tag -> Symbol _ PVar) | n == s      = return (Nothing, s')
-    -- Lambda: modifyTree will already do substitution. Just apply
-    subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = return $ maybe n (first Just) $ applyLambda sA sL
-    subSym _ _ n = return (Nothing, n)
+    subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 
-    -- substitute in one symbol for another
-    -- effect can only be from application of lambdas
-    subSymTree :: K3 Symbol -> K3 Symbol -> MEnv(Maybe (K3 Effect, K3 Symbol)
-    subSymTree s s' n = foldMapRebuildTree (wrap $ subSym s s') Nothing n
-      where
-        doFold accs ch n =
+    subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return s'
+
+    -- Apply: recurse
+    subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
+      x <- applyLambda sA sL
+      return $ maybe n snd x
+
+    subSym _ _ n = return n
+
+    -- Substitute a symbol into an effect tree
+    subEffTree :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv(K3 Effect)
+    subEffTree s s' e = modifyTree (subEff s s') e
 
     -- TODO: occurs check (somehow)
-    -- Substitute an id and symbol in an effect
-    subEff :: Identifier -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
+    -- Substitute one symbol for another in an effect
+    subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
     subEff sym sym' n =
-      case tnc n of
-        (FRead s, _)  -> newTag $ FRead  $ sub s
-        (FWrite s, _) -> newTag $ FWrite $ sub s
-        (FScope ss x, [ch]) -> do
+      case tag n of
+        FRead s      -> sub s >>= newTag . FRead
+        FWrite s     -> sub s >>= newTag . FWrite
+        FScope ss x  -> do
           ss' <- mapM sub ss
           newTag $ FScope ss' x
         FApply sL sA -> do
-          mEff <- applyLambda (sub sA) (sub sL)
-          case mEff of
-            Nothing -> return n
-            Just x  -> return $ fst x
+          sA' <- sub sA
+          sL' <- sub sL
+          x <- applyLambda sA' sL'
+          return $ maybe n fst x
 
         _            -> return n
       where

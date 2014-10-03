@@ -30,6 +30,7 @@ data Provenance
     | PCase
     -- A symbol can be 'applied' to produce effects and a new symbol
     | PLambda Identifier (K3 Effect)
+    -- A symbol application only generates symbols
     | PApply
     -- Any of the children of PSet can occur
     | PSet
@@ -53,6 +54,7 @@ data Effect
     | FWrite (K3 Symbol)
     -- bound, read, written, applied within the scope
     | FScope [K3 Symbol] ClosureInfo
+    -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible
