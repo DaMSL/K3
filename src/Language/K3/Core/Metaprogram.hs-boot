@@ -8,14 +8,15 @@ import Data.Map ( Map )
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
 
+data SpliceValue
+data SpliceType
+type TypedSpliceVar = (SpliceType, Identifier)
+data SpliceResult (m :: * -> *)
+
 data MPDeclaration
 
-type SpliceEnv     = Map Identifier SpliceReprEnv
-type SpliceReprEnv = Map Identifier SpliceValue
+type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
-
-data SpliceValue
-data SpliceResult (m :: * -> *)
 
 instance Eq   MPDeclaration
 instance Ord  MPDeclaration
@@ -29,9 +30,17 @@ instance Show SpliceValue
 
 instance Pretty MPDeclaration
 
+{- Splice value and type constructors -}
+spliceRecord  :: [(Identifier, SpliceValue)] -> SpliceValue
+spliceSet     :: [SpliceValue] -> SpliceValue
+spliceRecordT :: [(Identifier, SpliceType)] -> SpliceType
+spliceSetT    :: SpliceType -> SpliceType
+
+spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
+
 {- Splice context accessors -}
-lookupSCtxt      :: Identifier -> Identifier -> SpliceContext -> Maybe SpliceValue
-addSCtxt         :: Identifier -> SpliceReprEnv -> SpliceContext -> SpliceContext
+lookupSCtxt      :: Identifier -> SpliceContext -> Maybe SpliceValue
+addSCtxt         :: Identifier -> SpliceValue -> SpliceContext -> SpliceContext
 removeSCtxt      :: Identifier -> SpliceContext -> SpliceContext
 removeSCtxtFirst :: Identifier -> SpliceContext -> SpliceContext
 pushSCtxt        :: SpliceEnv -> SpliceContext -> SpliceContext
@@ -42,10 +51,8 @@ spliceVIdSym :: Identifier
 spliceVTSym :: Identifier
 spliceVESym :: Identifier
 
-lookupSpliceE      :: Identifier -> Identifier -> SpliceEnv -> Maybe SpliceValue
-addSpliceE         :: Identifier -> SpliceReprEnv -> SpliceEnv -> SpliceEnv
-emptySpliceReprEnv :: SpliceReprEnv
-mkSpliceReprEnv    :: [(Identifier, SpliceValue)] -> SpliceReprEnv
+lookupSpliceE      :: Identifier -> SpliceEnv -> Maybe SpliceValue
+addSpliceE         :: Identifier -> SpliceValue -> SpliceEnv -> SpliceEnv
 emptySpliceEnv     :: SpliceEnv
-mkSpliceEnv        :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
+mkSpliceEnv        :: [(Identifier, SpliceValue)] -> SpliceEnv
 mergeSpliceEnv     :: SpliceEnv -> SpliceEnv -> SpliceEnv

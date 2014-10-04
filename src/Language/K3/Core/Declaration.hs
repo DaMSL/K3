@@ -10,8 +10,6 @@ module Language.K3.Core.Declaration (
     Polarity(..),
     AnnMemDecl(..),
     PatternRewriteRule,
-    SpliceType(..),
-    TypedSpliceVar,
     UnorderedConflict(..),
 
     getTriggerIds,

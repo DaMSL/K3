@@ -1,11 +1,14 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Core.Metaprogram where
 
 import Data.List
 import qualified Data.Map as Map
 import Data.Map ( Map )
+import qualified Data.Set as Set
+import Data.Set ( Set )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -22,24 +25,39 @@ import Language.K3.Utils.Pretty
     For now, metaprogramming expressions and types are fully embedded
     into standard expression and type ASTs through identifiers.
 -}
-data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
-                   | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-                   deriving (Eq, Ord, Show, Read)
 
-type SpliceEnv     = Map Identifier SpliceReprEnv
-type SpliceReprEnv = Map Identifier SpliceValue
-type SpliceContext = [SpliceEnv]
-
-data SpliceValue = SLabel Identifier
-                 | SType (K3 Type)
-                 | SExpr (K3 Expression)
-                 | SDecl (K3 Declaration)
+data SpliceValue = SLabel  Identifier
+                 | SType   (K3 Type)
+                 | SExpr   (K3 Expression)
+                 | SDecl   (K3 Declaration)
+                 | SVar    Identifier
+                 | SRecord NamedSpliceValues
+                 | SSet    (Set SpliceValue)
                  deriving (Eq, Ord, Read, Show)
+
+data SpliceType = STLabel
+                | STType
+                | STExpr
+                | STDecl
+                | STRecord NamedSpliceTypes
+                | STSet    SpliceType
+                deriving (Eq, Ord, Read, Show)
+
+type NamedSpliceValues = Map Identifier SpliceValue
+type NamedSpliceTypes  = Map Identifier SpliceType
+type TypedSpliceVar    = (SpliceType, Identifier)
 
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]))
+
+data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
+                   | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
+                   deriving (Eq, Ord, Show, Read)
+
+type SpliceEnv     = Map Identifier SpliceValue
+type SpliceContext = [SpliceEnv]
 
 instance Pretty MPDeclaration where
   prettyLines (MPDataAnnotation i svars tvars members) =
@@ -62,7 +80,7 @@ instance Pretty MPDeclaration where
         ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
         , "|"]
       ++ concatMap drawRule rewriteRules
-      ++ drawDecls "common" extensions
+      ++ drawDecls "shared" extensions
     where
       drawRule (p,r,decls) =
         nonTerminalShift p ++ ["|"] ++
@@ -72,9 +90,31 @@ instance Pretty MPDeclaration where
 
       drawDecls tagStr decls =
         if null decls then []
-        else ["| " ++ tagStr ++ " +>"] ++ concatMap (\d -> nonTerminalShift d ++ ["|"]) (init decls)
-                     ++ terminalShift (last decls)
+        else ["|"] ++ concatMap (\d -> nonTermExt tagStr d ++ ["|"]) (init decls)
+                   ++ termExt tagStr (last decls)
 
+      extensionPrefix tagStr = "+> " ++ (if null tagStr then "" else "(" ++ tagStr ++ ")")
+
+      nonTermExt tagStr d = shift (extensionPrefix tagStr) "|  " $ prettyLines d
+      termExt    tagStr d = shift (extensionPrefix tagStr) "   " $ prettyLines d
+
+
+{- Splice value and type constructors -}
+spliceRecord :: [(Identifier, SpliceValue)] -> SpliceValue
+spliceRecord l = SRecord $ Map.fromList l
+
+spliceSet :: [SpliceValue] -> SpliceValue
+spliceSet l = SSet $ Set.fromList l
+
+spliceRecordT :: [(Identifier, SpliceType)] -> SpliceType
+spliceRecordT l = STRecord $ Map.fromList l
+
+spliceSetT :: SpliceType -> SpliceType
+spliceSetT st = STSet st
+
+spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
+spliceRecordField (SRecord r) n = Map.lookup n r
+spliceRecordField _ _ = Nothing
 
 mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> MPDeclaration
 mpDataAnnotation n svars tvars mems = MPDataAnnotation n svars tvars mems
@@ -83,12 +123,12 @@ mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K
 mpCtrlAnnotation n svars rules extensions = MPCtrlAnnotation n svars rules extensions
 
 {- Splice context accessors -}
-lookupSCtxt :: Identifier -> Identifier -> SpliceContext -> Maybe SpliceValue
-lookupSCtxt n k ctxt = find (Map.member n) ctxt >>= Map.lookup n >>= Map.lookup k
+lookupSCtxt :: Identifier -> SpliceContext -> Maybe SpliceValue
+lookupSCtxt n ctxt = find (Map.member n) ctxt >>= Map.lookup n
 
-addSCtxt :: Identifier -> SpliceReprEnv -> SpliceContext -> SpliceContext
-addSCtxt n vals [] = [Map.insert n vals Map.empty]
-addSCtxt n vals ctxt = (Map.insert n vals $ head ctxt):(tail ctxt)
+addSCtxt :: Identifier -> SpliceValue -> SpliceContext -> SpliceContext
+addSCtxt n val [] = [Map.insert n val Map.empty]
+addSCtxt n val ctxt = (Map.insert n val $ head ctxt):(tail ctxt)
 
 removeSCtxt :: Identifier -> SpliceContext -> SpliceContext
 removeSCtxt _ [] = []
@@ -115,27 +155,21 @@ spliceVTSym  = "type"
 spliceVESym :: Identifier
 spliceVESym  = "expr"
 
-lookupSpliceE :: Identifier -> Identifier -> SpliceEnv -> Maybe SpliceValue
-lookupSpliceE n k senv = Map.lookup n senv >>= Map.lookup k
+lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
+lookupSpliceE n senv = Map.lookup n senv
 
-addSpliceE :: Identifier -> SpliceReprEnv -> SpliceEnv -> SpliceEnv
-addSpliceE n renv senv = Map.insert n renv senv
-
-emptySpliceReprEnv :: SpliceReprEnv
-emptySpliceReprEnv = Map.empty
-
-mkSpliceReprEnv :: [(Identifier, SpliceValue)] -> SpliceReprEnv
-mkSpliceReprEnv = Map.fromList
+addSpliceE :: Identifier -> SpliceValue -> SpliceEnv -> SpliceEnv
+addSpliceE n v senv = Map.insert n v senv
 
 emptySpliceEnv :: SpliceEnv
 emptySpliceEnv = Map.empty
 
-mkSpliceEnv :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
+mkSpliceEnv :: [(Identifier, SpliceValue)] -> SpliceEnv
 mkSpliceEnv = Map.fromList
 
 mkRecordSpliceEnv :: [Identifier] -> [K3 Type] -> SpliceEnv
 mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
-  where mkSpliceEnvEntry (i,t) = (i, mkSpliceReprEnv [(spliceVIdSym, SLabel i), (spliceVTSym, SType t)])
+  where mkSpliceEnvEntry (i,t) = (i, spliceRecord [(spliceVIdSym, SLabel i), (spliceVTSym, SType t)])
 
 -- | Splice environment merge, favoring elements in the RHS operand.
 mergeSpliceEnv :: SpliceEnv -> SpliceEnv -> SpliceEnv

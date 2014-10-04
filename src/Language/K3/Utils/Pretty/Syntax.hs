@@ -22,6 +22,7 @@ import Control.Applicative ( (<*>) )
 import qualified Control.Applicative as C ( (<$>) )
 import Control.Monad
 
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.List hiding ( group )
 
@@ -188,13 +189,19 @@ rewriteRule (pat, rewrite, extensions) =
 ctrlExtension :: K3 Declaration -> SyntaxPrinter
 ctrlExtension d = (text "+>" <+>) C.<$> decl d
 
+spliceType :: SpliceType -> SyntaxPrinter
+spliceType st = case st of
+    STLabel    -> return $ text "label"
+    STType     -> return $ text "type"
+    STExpr     -> return $ text "expr"
+    STDecl     -> return $ text "decl"
+    STRecord r -> mapM field (Map.toList r) >>= return . braces . cat . punctuate comma
+    STSet    t -> spliceType t >>= return . (text "set" <+>)
+
+  where field (i,t) = spliceType t >>= return . ((text i <+> colon) <+>)
+
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
-typedSpliceVar (t, i) = case t of
-  STLabel     -> return $ text "label" <+> text i
-  STType      -> return $ text "type"  <+> text i
-  STExpr      -> return $ text "expr"  <+> text i
-  STDecl      -> return $ text "decl"  <+> text i
-  STLabelType -> return $ text i
+typedSpliceVar (t, i) = spliceType t >>= return . ((text i <+> colon) <+>)
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl $ filter (not . generatedDecl) d

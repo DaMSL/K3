@@ -36,8 +36,13 @@ module Language.K3.Core.Utils
 
 , freeVariables
 , bindingVariables
-, stripAnnotations
 , compareWithoutAnnotations
+, stripDeclAnnotations
+, stripExprAnnotations
+, stripTypeAnnotations
+, stripAllDeclAnnotations
+, stripAllExprAnnotations
+, stripAllTypeAnnotations
 ) where
 
 import Control.Applicative
@@ -345,12 +350,58 @@ bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
 
--- | Strips all annotations from an expression given an annotation filtering function.
-stripAnnotations :: (Annotation Expression -> Bool) -> K3 Expression -> K3 Expression
-stripAnnotations stripF e = runIdentity $ mapTree strip e
-  where strip ch n = return $ Node (tag n :@: (filter (not . stripF) $ annotations n)) ch
-
 -- | Compares two expressions for identical AST structures while ignoring annotations
 --   (such as UIDs, spans, etc.)
 compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
-compareWithoutAnnotations e1 e2 = stripAnnotations (const False) e1 == stripAnnotations (const False) e2
+compareWithoutAnnotations e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
+
+{- Annotation cleaning -}
+
+-- | Strips all annotations from a declaration (including in any contained types and expressions)
+stripDeclAnnotations :: (Annotation Declaration -> Bool)
+                     -> (Annotation Expression -> Bool)
+                     -> (Annotation Type -> Bool)
+                     -> K3 Declaration -> K3 Declaration
+stripDeclAnnotations dStripF eStripF tStripF d =
+    runIdentity $ mapProgram stripDeclF stripMemF stripExprF (Just stripTypeF) d
+  where
+    stripDeclF (Node (tg :@: anns) ch) =  return $ Node (tg :@: (filter (not . dStripF) anns)) ch
+
+    stripMemF (Lifted    p n t eOpt anns) = return $ Lifted      p n t eOpt $ stripDAnns anns
+    stripMemF (Attribute p n t eOpt anns) = return $ Attribute   p n t eOpt $ stripDAnns anns
+    stripMemF (MAnnotation p n anns)      = return $ MAnnotation p n $ stripDAnns anns
+
+    stripExprF e = return $ stripExprAnnotations eStripF tStripF e
+    stripTypeF t = return $ stripTypeAnnotations tStripF t
+
+    stripDAnns anns = filter (not . dStripF) anns
+
+-- | Strips all annotations from an expression given expression and type annotation filtering functions.
+stripExprAnnotations :: (Annotation Expression -> Bool) -> (Annotation Type -> Bool)
+                     -> K3 Expression -> K3 Expression
+stripExprAnnotations eStripF tStripF e = runIdentity $ mapTree strip e
+  where
+    strip ch n@(tag -> EConstant (CEmpty t)) =
+      let nct = stripTypeAnnotations tStripF t
+      in return $ Node (EConstant (CEmpty nct) :@: stripEAnns n) ch
+
+    strip ch n = return $ Node (tag n :@: stripEAnns n) ch
+
+    stripEAnns n = filter (not . eStripF) $ annotations n
+
+-- | Strips all annotations from a type given a type annotation filtering function.
+stripTypeAnnotations :: (Annotation Type -> Bool) -> K3 Type -> K3 Type
+stripTypeAnnotations tStripF t = runIdentity $ mapTree strip t
+  where strip ch n = return $ Node (tag n :@: (filter (not . tStripF) $ annotations n)) ch
+
+-- | Strips all annotations from a declaration deeply.
+stripAllDeclAnnotations :: K3 Declaration -> K3 Declaration
+stripAllDeclAnnotations = stripDeclAnnotations (const False) (const False) (const False)
+
+-- | Strips all annotations from an expression deeply.
+stripAllExprAnnotations :: K3 Expression -> K3 Expression
+stripAllExprAnnotations = stripExprAnnotations (const False) (const False)
+
+-- | Strips all annotations from a type deeply.
+stripAllTypeAnnotations :: K3 Type -> K3 Type
+stripAllTypeAnnotations = stripTypeAnnotations (const False)

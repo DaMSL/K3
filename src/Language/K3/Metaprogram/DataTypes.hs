@@ -9,6 +9,8 @@ import Control.Monad.Trans.Either
 import Data.Functor.Identity
 import qualified Data.Map as Map
 import Data.Map ( Map )
+import qualified Data.Set as Set
+import Data.Set ( Set )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -26,7 +28,10 @@ data K3Generator = Splicer  (SpliceEnv -> SpliceResult GeneratorM)
 data GeneratorEnv = GeneratorEnv { dataAGEnv :: Map Identifier K3Generator
                                  , ctrlAGEnv :: Map Identifier K3Generator }
 
-type GeneratorState = (Int, GeneratorEnv, SpliceContext, [K3 Declaration])
+data GeneratorDecls = GeneratorDecls { dataADecls :: Map Identifier [K3 Declaration]
+                                     , ctrlADecls :: Map Identifier (Set (K3 Declaration)) }
+
+type GeneratorState = (Int, GeneratorEnv, SpliceContext, GeneratorDecls)
 
 type GeneratorM = EitherT String (StateT GeneratorState Identity)
 
@@ -49,8 +54,11 @@ emptyGeneratorEnv = GeneratorEnv Map.empty Map.empty
 emptySpliceContext :: SpliceContext
 emptySpliceContext = []
 
+emptyGeneratorDecls :: GeneratorDecls
+emptyGeneratorDecls = GeneratorDecls Map.empty Map.empty
+
 emptyGeneratorState :: GeneratorState
-emptyGeneratorState = (0, emptyGeneratorEnv, emptySpliceContext, [])
+emptyGeneratorState = (0, emptyGeneratorEnv, emptySpliceContext, emptyGeneratorDecls)
 
 getGeneratorUID :: GeneratorState -> Int
 getGeneratorUID (c, _, _, _) = c
@@ -61,7 +69,7 @@ getGeneratorEnv (_, env, _, _) = env
 getSpliceContext :: GeneratorState -> SpliceContext
 getSpliceContext (_, _, ctxt, _) = ctxt
 
-getGeneratedDecls :: GeneratorState -> [K3 Declaration]
+getGeneratedDecls :: GeneratorState -> GeneratorDecls
 getGeneratedDecls (_, _,_,decls) = decls
 
 modifyGeneratorEnv :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> GeneratorState -> Either String (GeneratorState, a)
@@ -70,7 +78,7 @@ modifyGeneratorEnv f (ac,ge,sc,gd) = either Left (\(nge,r) -> Right ((ac,nge,sc,
 modifySpliceContext :: (SpliceContext -> Either String (SpliceContext, a)) -> GeneratorState -> Either String (GeneratorState, a)
 modifySpliceContext f (ac,ge,sc,gd) = either Left (\(nsc,r) -> Right ((ac,ge,nsc,gd),r)) $ f sc
 
-modifyGeneratedDecls :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> GeneratorState -> Either String (GeneratorState, a)
+modifyGeneratedDecls :: (GeneratorDecls -> Either String (GeneratorDecls, a)) -> GeneratorState -> Either String (GeneratorState, a)
 modifyGeneratedDecls f (ac,ge,sc,gd) = either Left (\(ngd,r) -> Right ((ac,ge,sc,ngd), r)) $ f gd
 
 modifyGeneratorState :: (GeneratorState -> Either String (GeneratorState, a)) -> GeneratorM a
@@ -112,10 +120,10 @@ modifySCtxtF f = modifyGeneratorState $ modifySpliceContext f
 modifySCtxtF_ :: (SpliceContext -> Either String SpliceContext) -> GeneratorM ()
 modifySCtxtF_ f = modifySCtxtF $ (>>= Right . (,())) . f
 
-modifyGDeclsF :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> GeneratorM a
+modifyGDeclsF :: (GeneratorDecls -> Either String (GeneratorDecls, a)) -> GeneratorM a
 modifyGDeclsF f = modifyGeneratorState $ modifyGeneratedDecls f
 
-modifyGDeclsF_ :: ([K3 Declaration] -> Either String [K3 Declaration]) -> GeneratorM ()
+modifyGDeclsF_ :: (GeneratorDecls -> Either String GeneratorDecls) -> GeneratorM ()
 modifyGDeclsF_ f = modifyGDeclsF $ (>>= Right . (,())) . f
 
 generateInSpliceEnv :: SpliceEnv -> GeneratorM a -> GeneratorM a
@@ -149,3 +157,17 @@ lookupERWGenE n env = lookupCGenE n env >>= \case { ExprRewriter f -> Just f; _ 
 
 lookupDRWGenE :: Identifier -> GeneratorEnv -> Maybe (K3 Declaration -> SpliceEnv -> SpliceResult GeneratorM)
 lookupDRWGenE n env = lookupCGenE n env >>= \case { DeclRewriter f -> Just f; _ -> Nothing }
+
+
+{- Generated declaration accessors -}
+addDGenDecl :: Identifier -> K3 Declaration -> GeneratorDecls -> GeneratorDecls
+addDGenDecl n decl (GeneratorDecls dd cd) =
+  GeneratorDecls (Map.insertWith (flip (++)) n [decl] dd) cd
+
+addCGenDecls :: Identifier -> [K3 Declaration] -> GeneratorDecls -> GeneratorDecls
+addCGenDecls n decls (GeneratorDecls dd cd) =
+  GeneratorDecls dd (Map.insertWith Set.union n (Set.fromList decls) cd)
+
+generatorDeclsToList :: GeneratorDecls -> ([K3 Declaration], [K3 Declaration])
+generatorDeclsToList (GeneratorDecls dd cd) =
+  (concat $ Map.elems dd, Set.toList $ Set.unions $ Map.elems cd)

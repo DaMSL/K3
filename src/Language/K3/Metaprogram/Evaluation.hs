@@ -70,7 +70,7 @@ defaultMetaAnalysis p = do
 
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.
-    removeTypes e = return $ stripAnnotations (\a -> isETypeOrBound a || isEQType a) e
+    removeTypes e = return $ stripExprAnnotations (\a -> isETypeOrBound a || isEQType a) (const True) e
     liftError = either throwE
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
@@ -165,7 +165,7 @@ applyDAnnotation aCtor annId sEnv = generatorWithGEnv $ \gEnv ->
   where expectSpliceAnnotation (SRDecl p) = do
           decl <- p
           case tag decl of
-            DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . (++[decl])) >> return (aCtor n)
+            DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . addDGenDecl annId decl) >> return (aCtor n)
             _ -> throwE $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
         expectSpliceAnnotation _ = throwE "Invalid data annotation splice"
@@ -203,7 +203,7 @@ applyCAnnotation targetE cAnnId sEnv = do
     injectRewrite (SRRewrite p) = do
       (rewriteE, decls) <- p
       logVoid (debugRewrite rewriteE)
-      modifyGDeclsF_ (Right . (++ decls)) >> return rewriteE
+      modifyGDeclsF_ (Right . addCGenDecls cAnnId decls) >> return rewriteE
 
     injectRewrite _ = throwE "Invalid control annotation rewrite"
 
@@ -295,39 +295,41 @@ typeFromParts sctxt = evalTypeSplice sctxt =<< identParts
 exprFromParts :: SpliceContext -> ExpressionParser
 exprFromParts sctxt = evalExprSplice sctxt =<< identParts
 
-evalIdSplice :: SpliceContext -> [Either String TypedSpliceVar] -> K3Parser Identifier
-evalIdSplice sctxt l = return . concat =<< (flip mapM l $ \case
-  Left n -> return n
-  Right (STLabel, i) -> evalSplice sctxt i spliceVIdSym $ \case { SLabel n -> return n; _ -> spliceTypeFail i spliceVIdSym }
-  Right (_, i) -> spliceTypeFail i spliceVIdSym)
+evalIdSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> K3Parser Identifier
+evalIdSplice sctxt l = return . concat =<< mapM (either return asLabel) l
+  where asLabel (var, path) = evalSplice sctxt var path >>= \case
+                                SLabel n -> return n
+                                _ -> spliceTypeFail var path
 
-evalTypeSplice :: SpliceContext -> [Either String TypedSpliceVar] -> TypeParser
-evalTypeSplice sctxt = \case
-  [Right (STType, i)] -> evalSplice sctxt i spliceVTSym $ \case { SType  t -> return t; _ -> spliceTypeFail i spliceVTSym }
-  l -> spliceTypeFail (partsAsString l) spliceVTSym
 
-evalExprSplice :: SpliceContext -> [Either String TypedSpliceVar] -> ExpressionParser
-evalExprSplice sctxt = \case
-  [Right (STExpr, i)] -> evalSplice sctxt i spliceVESym $ \case { SExpr  e -> return e; _ -> spliceTypeFail i spliceVESym }
-  l -> spliceTypeFail (partsAsString l) spliceVESym
+evalTypeSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> TypeParser
+evalTypeSplice sctxt [Right (var, path)] = evalSplice sctxt var path >>= \case
+    SType t -> return t
+    _ -> spliceTypeFail var path
 
-evalSplice :: SpliceContext -> Identifier -> String -> (SpliceValue -> K3Parser a) -> K3Parser a
-evalSplice sctxt i kind f = maybe (spliceFail i kind "lookup failed") f $ lookupSCtxt i kind sctxt
+evalTypeSplice _ _ = spliceFail "Invalid type splice identifier"
 
-partsAsString :: [Either String TypedSpliceVar] -> String
-partsAsString l = concat $ flip map l $ \case
-  Left n -> n
-  Right (STLabel, i)     -> "#["   ++ i ++ "]"
-  Right (STType,  i)     -> "::["  ++ i ++ "]"
-  Right (STExpr,  i)     -> "$["   ++ i ++ "]"
-  Right (STLabelType, i) -> "#::[" ++ i ++ "]"
-  Right (STDecl, i)      -> "$d["  ++ i ++ "]"
+evalExprSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> ExpressionParser
+evalExprSplice sctxt [Right (var, path)] = evalSplice sctxt var path >>= \case
+    SExpr e -> return e
+    _ -> spliceTypeFail var path
 
-spliceTypeFail :: Identifier -> String -> K3Parser a
-spliceTypeFail i kind = spliceFail i kind "invalid type"
+evalExprSplice _ _ = spliceFail "Invalid type splice identifier"
 
-spliceFail :: Identifier -> String -> String -> K3Parser a
-spliceFail n kind msg = P.parserFail $ unwords ["Failed to splice a", kind , "symbol", n, ":", msg]
+evalSplice :: SpliceContext -> Identifier -> [Identifier] -> K3Parser SpliceValue
+evalSplice sctxt i path = maybe evalErr (flip matchPath path) $ lookupSCtxt i sctxt
+  where matchPath v [] = return v
+        matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
+        evalErr = spliceIdPathFail i path "lookup failed"
+
+spliceTypeFail :: Identifier -> [Identifier] -> K3Parser a
+spliceTypeFail i path = spliceIdPathFail i path "invalid type"
+
+spliceIdPathFail :: Identifier -> [Identifier] -> String -> K3Parser a
+spliceIdPathFail i path msg = P.parserFail $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]
+
+spliceFail :: String -> K3Parser a
+spliceFail msg = P.parserFail $ unwords ["Splice failed:", msg]
 
 
 {- Pattern matching -}
@@ -353,7 +355,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
   where
     matchTag sEnv e1 e2@(tag -> EVariable i)
       | isPatternVariable i =
-          let nrEnv = mkSpliceReprEnv $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
+          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
               nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
           in do
               logVoid $ debugMatchPVar i
@@ -389,7 +391,7 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
           | isPatternVariable i =
               let extend n =
                     if null n then Nothing
-                    else Just . (True,) $ addSpliceE n (mkSpliceReprEnv [(spliceVTSym, SType t1)]) sEnv
+                    else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
               in maybe Nothing extend $ patternVariable i
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)

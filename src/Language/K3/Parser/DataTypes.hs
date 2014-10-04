@@ -19,6 +19,8 @@ import qualified Data.Map     as Map
 import Data.HashSet ( HashSet )
 import Data.Map     ( Map )
 
+import Debug.Trace
+
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
 
@@ -159,32 +161,38 @@ nonTokenIdent s = do
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return $ fromString name
 
-identSplice :: Bool -> K3Parser String
-identSplice idOnly = fmap fromString $ ctor <$> string  "#[" <*> try (nonTokenIdent k3Idents) <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
-
-typeSplice :: Bool -> K3Parser String
-typeSplice idOnly = fmap fromString $ ctor <$> string "::[" <*> many (noneOf "]") <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
-
-exprSplice :: Bool -> K3Parser String
-exprSplice idOnly = fmap fromString $ ctor <$> string  "$[" <*> many (noneOf "]") <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
-
 identifier :: K3Parser String
 identifier = fmap fromString $ token $ concat <$> some (choice . map try =<< parserWithPMode parts)
   where parts Normal        = return [i]
         parts SourcePattern = return [patI]
-        parts _             = return [i, identSplice False, typeSplice False, exprSplice False]
+        parts _             = return [i, spliceString]
         i    = nonTokenIdent k3Idents
         patI = nonTokenIdent k3PatternIdents
 
-identParts :: K3Parser [Either String TypedSpliceVar]
+identParts :: K3Parser [Either String (Identifier, [Identifier])]
 identParts = token $ some (choice $ map try parts)
-  where parts = [l i] ++ (map (\(p,c) -> r c (p True)) [(identSplice, STLabel), (typeSplice, STType), (exprSplice, STExpr)])
-        i = nonTokenIdent k3Idents
-        r v x = x >>= return . Right . (v,)
-        l x = x >>= return . Left
+  where parts = [Left <$> (nonTokenIdent k3Idents), Right <$> spliceParts]
+
+spliceSymbols :: [(String, [Identifier])]
+spliceSymbols = map (,[]) ["#", "::", "$"] ++ [("&#", [spliceVIdSym]), ("&::", [spliceVTSym])]
+
+splicePath :: K3Parser [String]
+splicePath = (nonTokenIdent k3Idents) `sepBy1` (string ".")
+
+spliceString :: K3Parser String
+spliceString = fmap fromString $ spliceCtor <$> spliceSyms <*> splicePath <*> char ']'
+  where
+    spliceSyms       = choice $ map (try . string . (++ "[") . fst) spliceSymbols
+    spliceCtor a b c = a ++ intercalate "." b ++ [c]
+
+spliceParts :: K3Parser (Identifier, [Identifier])
+spliceParts = partsCtor =<< ((,,) <$> spliceSyms <*> splicePath <*> char ']')
+  where
+    spliceSyms = choice $ map symForSuffix spliceSymbols
+    symForSuffix (sym,pathExt) = const pathExt <$> try (string $ sym ++ "[")
+
+    partsCtor      (_, [], _) = P.parserFail "Invalid splice path"
+    partsCtor (ext, (h:t), _) = return (h, t ++ ext)
 
 
 {- Comments -}
@@ -481,8 +489,15 @@ stringifyError :: Either P.ParseError a -> Either String a
 stringifyError = either (Left . show) Right
 
 runK3Parser :: Maybe ParserState -> K3Parser a -> String -> Either P.ParseError a
-runK3Parser Nothing   p s = P.runParser p emptyParserState "" s
-runK3Parser (Just st) p s = P.runParser p st "" s
+runK3Parser Nothing   p s = logParser s $ P.runParser p emptyParserState "" s
+runK3Parser (Just st) p s = logParser s $ P.runParser p st "" s
 
 maybeParser :: K3Parser a -> String -> Maybe a
 maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
+
+logParser :: (Functor m, Monad m) => String -> m a -> m a
+logParser s act = do
+  void $ trace ("Running parser on " ++ s) $ return ()
+  r <- act
+  void $ trace ("Done parsing") $ return ()
+  return r

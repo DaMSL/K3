@@ -7,8 +7,8 @@
 // Type and expression splices cannot be composed.
 //
 //
-annotation Index[key,value,customLabel] {
-  provides lookup_by_#[key]_#[customLabel] : ::[key] -> ::[value]
+annotation Index[key : labeltype, value : labeltype, customLabel : label] {
+  provides lookup_by_&#[key]_#[customLabel] : &::[key] -> &::[value]
 }
 
 // Splice parameters are specified as keyword arguments.
@@ -17,7 +17,7 @@ annotation Index[key,value,customLabel] {
 //
 //
 declare employees : collection {id: int, name: string}
-                      @Index(key=id,value=name, label customLabel=foo)
+                      @Index(key=id, value=name, customLabel=[# foo])
 
 // Splice parameters can also be explicitly constructed as
 // either a 'label', 'type', or 'expr'. For example, below
@@ -28,4 +28,4 @@ declare employees : collection {id: int, name: string}
 //
 //
 declare employees2 : collection {id: int, name: string, age : int}
-                       @Index(key=id, type value={name:string, age:int}, label customLabel=bar)
+                       @Index(key=id, value=[& nested, {name:string, age:int}], customLabel=[# bar])

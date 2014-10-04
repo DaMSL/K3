@@ -114,7 +114,11 @@ program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
   where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver "") eof)
 
-        addDecls decls p@(tag -> DRole n) = return $ Node (DRole n :@: annotations p) $ children p ++ decls
+        addDecls gd p@(tag -> DRole n)
+          | n == defaultRoleName =
+              let (dd, cd) = generatorDeclsToList gd
+              in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
+
         addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
 
         selfContainedProgram d =
@@ -271,15 +275,19 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
   where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls
                                  <*> some pattern <*> (extensions $ keyword "shared")
         pattern        = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
-        rewriteE       = cleanUIDSpan =<< parseInMode Splice expr
-        patternE       = cleanUIDSpan =<< parseInMode SourcePattern expr
-        extensions pfx = concat <$> option [] (pfx *> braces (many $ parseInMode Splice declaration))
+        extensions pfx = concat <$> option [] (pfx *> braces (many extensionD))
+        rewriteE       = cleanExpr =<< parseInMode Splice expr
+        patternE       = cleanExpr =<< parseInMode SourcePattern expr
+        extensionD     = mapM cleanDecl =<< parseInMode Splice declaration
 
         mkCtrlAnn n svars rw exts = DC.generator $ mpCtrlAnnotation n svars rw exts
 
-        cleanUIDSpan  e = mapTree cleanNode e
-        cleanNode  ch e = return $ Node ((tag $ foldl (flip stripAnnot) e [isESpan, isEUID]) :@: []) ch
-        stripAnnot  f e = maybe e (e @-) $ e @~ f
+        cleanExpr e = return $ stripExprAnnotations eAnnFilter tAnnFilter e
+        cleanDecl d = return $ stripDeclAnnotations dAnnFilter eAnnFilter tAnnFilter d
+
+        dAnnFilter a = isDUID a || isDSpan a
+        eAnnFilter a = isEUID a || isESpan a
+        tAnnFilter a = isTUID a || isTSpan a
 
 
 dTypeAlias :: K3Parser (Maybe (K3 Declaration))
@@ -734,7 +742,8 @@ eCAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
   where p = cAnnotationUse (EApplyGen True)
 
 cAnnotationUse :: ApplyAnnCtor Expression -> K3Parser (Annotation Expression)
-cAnnotationUse aCtor = (\a b -> aCtor a $ mkSpliceEnv $ catMaybes b) <$> identifier <*> option [] (parens $ commaSep1 spliceParameter)
+cAnnotationUse aCtor = mkSEnv <$> identifier <*> option [] (parens $ commaSep1 spliceParameter)
+  where mkSEnv a b = aCtor a $ mkSpliceEnv $ catMaybes b
 
 withPropertiesF :: (Eq (Annotation a))
                 => Bool -> K3Parser [Annotation a] -> K3Parser b -> (b -> [Annotation a] -> b) -> K3Parser b
@@ -767,37 +776,57 @@ eProperties :: K3Parser [Annotation Expression]
 eProperties = properties EProperty
 
 {- Metaprogramming -}
-{- Basic parsers -}
+stTerm :: K3Parser SpliceType
+stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLabelType, stRecord, stSet]
+  where
+    stLabel     = STLabel <$ keyword "label"
+    stType      = STType  <$ keyword "type"
+    stExpr      = STExpr  <$ keyword "expr"
+    stDecl      = STDecl  <$ keyword "decl"
+    stLabelType = mkLabelType <$ keyword "labeltype"
+    stSet       = spliceSetT    <$> braces stTerm
+    stRecord    = spliceRecordT <$> braces (commaSep1 stField)
+    stField     = (,) <$> identifier <* colon <*> stTerm
+    mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
+
+stVar :: K3Parser TypedSpliceVar
+stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
+
 spliceParameterDecls :: K3Parser [TypedSpliceVar]
-spliceParameterDecls = brackets (commaSep spliceParameterDecl)
+spliceParameterDecls = brackets (commaSep stVar)
 
-spliceParameterDecl :: K3Parser TypedSpliceVar
-spliceParameterDecl  = choice $ map try [labelSParam, typeSParam, exprSParam, declSParam, labelTypeSParam]
-  where labelSParam      = (STLabel,)     <$> (keyword "label" *> identifier)
-        typeSParam       = (STType,)      <$> (keyword "type"  *> identifier)
-        exprSParam       = (STExpr,)      <$> (keyword "expr"  *> identifier)
-        declSParam       = (STDecl,)      <$> (keyword "decl"  *> identifier)
-        labelTypeSParam  = (STLabelType,) <$> identifier
-
-spliceParameter :: K3Parser (Maybe (Identifier, SpliceReprEnv))
-spliceParameter = choice [sLabel, sType, sExpr]
+svTerm :: K3Parser SpliceValue
+svTerm = choice $ map try [sLabel, sType, sExpr, sDecl, sLabelType, sRecord, sSet]
   where
-    sLabel      = (\a b -> mkSRepr spliceVIdSym a $ SLabel b) <$> (symbol "label" *> identifier) <*> (symbol "=" *> identifier)
-    sType       = (\a b -> mkSRepr spliceVTSym  a $ SType  b) <$> (symbol "type"  *> identifier) <*> (symbol "=" *> typeExpr)
-    sExpr       = (\a b -> mkSRepr spliceVESym  a $ SExpr  b) <$> (symbol "expr"  *> identifier) <*> (symbol "=" *> expr)
-    mkSRepr sym n v = Just (n, mkSpliceReprEnv [(sym, v)])
+    sLabel      = SLabel <$> wrap "[#" "]" identifier
+    sType       = SType  <$> wrap "[:" "]" typeExpr
+    sExpr       = SExpr  <$> wrap "[|" "]" expr
+    sDecl       = mkDecl =<< wrap "[^" "]" declaration
+    sLabelType  = mkLabelType  <$> wrap "[&" "]" ((,) <$> identifier <* comma <*> typeExpr)
+    sRecord     = spliceRecord <$> wrap "[%" "]" (commaSep ((,) <$> identifier <* colon <*> svTerm))
+    sSet        = spliceSet    <$> wrap "[*" "]" (commaSep svTerm)
 
-contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceReprEnv))
-contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, sLabelType]
+    mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType st)]
+
+    mkDecl [x] = return $ SDecl x
+    mkDecl _   = P.parserFail "Invalid splice declaration"
+
+    wrap l r p = between (symbol l) (symbol r) p
+
+spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
+spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> svTerm)
+
+contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
+contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, try sLabelType]
   where
-    sLabelType  = mkLabelTypeSRepr sEnvOpt <$> identifier <*> optional (symbol "=" *> identifier)
+    sLabelType  = mkSRec sEnvOpt <$> identifier <*> optional (symbol "=" *> identifier)
 
-    mkLabelTypeSRepr Nothing _ _ = Nothing
-    mkLabelTypeSRepr (Just sEnv') a bOpt =
-      let lvOpt = lookupSpliceE (maybe a id bOpt) spliceVIdSym sEnv'
-          tvOpt = lookupSpliceE (maybe a id bOpt) spliceVTSym  sEnv'
+    mkSRec Nothing _ _ = Nothing
+    mkSRec (Just sEnv') a bOpt =
+      let lvOpt = lookupSpliceE (maybe a id bOpt) sEnv' >>= \v -> spliceRecordField v spliceVIdSym
+          tvOpt = lookupSpliceE (maybe a id bOpt) sEnv' >>= \v -> spliceRecordField v spliceVTSym
       in case (lvOpt, tvOpt) of
-           (Just lv, Just tv) -> Just (a, mkSpliceReprEnv [(spliceVIdSym, lv), (spliceVTSym, tv)])
+           (Just lv, Just tv) -> Just (a, spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)])
            (_, _) -> Nothing
 
 

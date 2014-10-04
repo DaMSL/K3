@@ -17,9 +17,6 @@ module Language.K3.Core.Common (
 
     EndpointSpec(..),
 
-    SpliceType(..),
-    TypedSpliceVar,
-
     IShow(..),
     IRead(..),
     ireadEither,
@@ -85,13 +82,6 @@ data EndpointSpec
   | FileEP    String String    -- ^ File path, format
   | NetworkEP String String    -- ^ Address, format
   deriving (Eq, Ord, Read, Show)
-
--- | Metaprogramming parameters
-data SpliceType = STLabel | STType | STExpr | STDecl | STLabelType
-                deriving (Eq, Ord, Read, Show)
-
-type TypedSpliceVar = (SpliceType, Identifier)
-
 
 -- | Union two spans.
 coverSpans :: Span -> Span -> Span
