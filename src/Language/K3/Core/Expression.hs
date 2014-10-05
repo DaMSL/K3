@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Expressions in K3.
@@ -7,6 +8,7 @@ module Language.K3.Core.Expression where
 
 import Data.List
 import Data.Tree
+import Data.Typeable
 import Data.Word (Word8)
 
 import Language.K3.Core.Annotation
@@ -43,11 +45,11 @@ data Expression
     | EAddress
     | ESelf
     | EImperative ImperativeExpression
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 data ImperativeExpression
     = EWhile
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Constant expression values.
 data Constant
@@ -58,7 +60,7 @@ data Constant
     | CString  String
     | CNone    NoneMutability
     | CEmpty   (K3 Type)
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Operators (unary and binary).
 data Operator
@@ -81,14 +83,14 @@ data Operator
     | OSeq
     | OApp
     | OSnd
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Binding Forms.
 data Binder
     = BIndirection Identifier
     | BTuple       [Identifier]
     | BRecord      [(Identifier, Identifier)]
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotations on expressions.
 data instance Annotation Expression
@@ -132,7 +134,7 @@ data Conflict
     = RW [(Annotation Expression)] (Annotation Expression)
     | WR (Annotation Expression) [(Annotation Expression)]
     | WW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) =

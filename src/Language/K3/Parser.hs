@@ -672,10 +672,10 @@ lTuple :: LiteralParser
 lTuple = choice [try unit, try lNested, litTuple]
   where unit       = symbol "(" *> symbol ")" >> return (LC.tuple [])
         lNested    = stripSpan <$> parens literal
-        litTuple   = mkTuple   <$> (parens $ commaSep1 qualifiedLiteral)
+        litTuple   = mkLTuple  <$> (parens $ commaSep1 qualifiedLiteral)
 
-        mkTuple [x] = stripSpan <$> x
-        mkTuple l   = LC.tuple l
+        mkLTuple [x] = stripSpan <$> x
+        mkLTuple l   = LC.tuple l
         stripSpan l = maybe l (l @-) $ l @~ isLSpan
 
 lRecord :: LiteralParser
@@ -777,14 +777,15 @@ eProperties = properties EProperty
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLabelType, stRecord, stSet]
+stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelType, stRecord, stList]
   where
-    stLabel     = STLabel <$ keyword "label"
-    stType      = STType  <$ keyword "type"
-    stExpr      = STExpr  <$ keyword "expr"
-    stDecl      = STDecl  <$ keyword "decl"
+    stLabel     = STLabel     <$ keyword "label"
+    stType      = STType      <$ keyword "type"
+    stExpr      = STExpr      <$ keyword "expr"
+    stDecl      = STDecl      <$ keyword "decl"
+    stLiteral   = STLiteral   <$ keyword "literal"
     stLabelType = mkLabelType <$ keyword "labeltype"
-    stSet       = spliceSetT    <$> braces stTerm
+    stList      = spliceListT   <$> brackets stTerm
     stRecord    = spliceRecordT <$> braces (commaSep1 stField)
     stField     = (,) <$> identifier <* colon <*> stTerm
     mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
@@ -796,15 +797,16 @@ spliceParameterDecls :: K3Parser [TypedSpliceVar]
 spliceParameterDecls = brackets (commaSep stVar)
 
 svTerm :: K3Parser SpliceValue
-svTerm = choice $ map try [sLabel, sType, sExpr, sDecl, sLabelType, sRecord, sSet]
+svTerm = choice $ map try [sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
   where
-    sLabel      = SLabel <$> wrap "[#" "]" identifier
-    sType       = SType  <$> wrap "[:" "]" typeExpr
-    sExpr       = SExpr  <$> wrap "[|" "]" expr
-    sDecl       = mkDecl =<< wrap "[^" "]" declaration
-    sLabelType  = mkLabelType  <$> wrap "[&" "]" ((,) <$> identifier <* comma <*> typeExpr)
-    sRecord     = spliceRecord <$> wrap "[%" "]" (commaSep ((,) <$> identifier <* colon <*> svTerm))
-    sSet        = spliceSet    <$> wrap "[*" "]" (commaSep svTerm)
+    sLabel      = SLabel   <$> wrap "[#"  "]" identifier
+    sType       = SType    <$> wrap "[:"  "]" typeExpr
+    sExpr       = SExpr    <$> wrap "[$"  "]" expr
+    sLiteral    = SLiteral <$> wrap "[$#" "]" literal
+    sDecl       = mkDecl   =<< wrap "[$^" "]" declaration
+    sLabelType  = mkLabelType  <$> wrap "[&" "]" ((,) <$> identifier <* colon <*> typeExpr)
+    sRecord     = spliceRecord <$> wrap "[%" "]" (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
+    sList       = spliceList   <$> wrap "[*" "]" (commaSep1 svTerm)
 
     mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType st)]
 
@@ -817,17 +819,20 @@ spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> svTerm)
 
 contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
-contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, try sLabelType]
+contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, try fromContext]
   where
-    sLabelType  = mkSRec sEnvOpt <$> identifier <*> optional (symbol "=" *> identifier)
+    fromContext = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
+    contextParams = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
 
-    mkSRec Nothing _ _ = Nothing
-    mkSRec (Just sEnv') a bOpt =
-      let lvOpt = lookupSpliceE (maybe a id bOpt) sEnv' >>= \v -> spliceRecordField v spliceVIdSym
-          tvOpt = lookupSpliceE (maybe a id bOpt) sEnv' >>= \v -> spliceRecordField v spliceVTSym
-      in case (lvOpt, tvOpt) of
-           (Just lv, Just tv) -> Just (a, spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)])
-           (_, _) -> Nothing
+    mkCtxtVal Nothing _ _                     = Nothing
+    mkCtxtVal (Just sEnv) a Nothing           = mkCtxtLt sEnv a >>= return . (a,)
+    mkCtxtVal (Just sEnv) a (Just (Left b))   = mkCtxtLt sEnv b >>= return . (a,)
+    mkCtxtVal (Just sEnv) a (Just (Right bs)) = mapM (mkCtxtLt sEnv) bs >>= return . (a,) . SList
+
+    mkCtxtLt sEnv sn = do
+      lv <- lookupSpliceE sn sEnv >>= ltLabel
+      tv <- lookupSpliceE sn sEnv >>= ltType
+      return $ spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)]
 
 
 {- Identifiers and their list forms -}

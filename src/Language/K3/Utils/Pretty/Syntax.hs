@@ -196,7 +196,7 @@ spliceType st = case st of
     STExpr     -> return $ text "expr"
     STDecl     -> return $ text "decl"
     STRecord r -> mapM field (Map.toList r) >>= return . braces . cat . punctuate comma
-    STSet    t -> spliceType t >>= return . (text "set" <+>)
+    STList   t -> spliceType t >>= return . brackets
 
   where field (i,t) = spliceType t >>= return . ((text i <+> colon) <+>)
 

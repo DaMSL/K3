@@ -1,4 +1,6 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -26,6 +28,7 @@ import Control.Arrow
 
 import Data.Maybe
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -88,7 +91,7 @@ data Type
     -- | Implementation Types. These should never be produced by the parser, nor should they be
     -- considered by the typechecker.
     | TImperative ImperativeType
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Types specific to an imperative implementation backend.
 data ImperativeType
@@ -99,7 +102,7 @@ data ImperativeType
     -- | An imperative class type. Requires the name of the class, list of superclasses, and the
     -- list of named template variables.
     | TClass Identifier [Identifier] [Identifier]
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | The built-in type references.
 data TypeBuiltIn
@@ -107,17 +110,17 @@ data TypeBuiltIn
     | TStructure
     | THorizon
     | TContent
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Type variable declarations.  These consist of the identifier for the
 --   declared variable and, optionally, a type expression for the lower and
 --   upper bounds (respectively).
 data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type)) (Maybe (K3 Type))
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | The operations which may occur on a collection of opaque variables.
 data TypeVariableOperator = TyVarOpUnion | TyVarOpIntersection
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotations on types are the mutability qualifiers.
 data instance Annotation Type
@@ -128,8 +131,9 @@ data instance Annotation Type
     | TUID        UID
     | TAnnotation Identifier
     | TApplyGen   Identifier SpliceEnv
-    | TSyntax SyntaxAnnotation
+    | TSyntax     SyntaxAnnotation
   deriving (Eq, Ord, Read, Show)
+
 
 instance HasUID (Annotation Type) where
   getUID (TUID u) = Just u

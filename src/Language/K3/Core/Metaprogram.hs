@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -7,14 +8,17 @@ module Language.K3.Core.Metaprogram where
 import Data.List
 import qualified Data.Map as Map
 import Data.Map ( Map )
-import qualified Data.Set as Set
-import Data.Set ( Set )
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
+
+import Language.K3.Core.Constructor.Type    as TC
+import Language.K3.Core.Constructor.Literal as LC
 
 import Language.K3.Utils.Pretty
 
@@ -26,22 +30,23 @@ import Language.K3.Utils.Pretty
     into standard expression and type ASTs through identifiers.
 -}
 
-data SpliceValue = SLabel  Identifier
-                 | SType   (K3 Type)
-                 | SExpr   (K3 Expression)
-                 | SDecl   (K3 Declaration)
-                 | SVar    Identifier
-                 | SRecord NamedSpliceValues
-                 | SSet    (Set SpliceValue)
-                 deriving (Eq, Ord, Read, Show)
+data SpliceValue = SLabel   Identifier
+                 | SType    (K3 Type)
+                 | SExpr    (K3 Expression)
+                 | SDecl    (K3 Declaration)
+                 | SLiteral (K3 Literal)
+                 | SRecord  NamedSpliceValues
+                 | SList    [SpliceValue]
+                 deriving (Eq, Ord, Read, Show, Typeable)
 
 data SpliceType = STLabel
                 | STType
                 | STExpr
                 | STDecl
+                | STLiteral
                 | STRecord NamedSpliceTypes
-                | STSet    SpliceType
-                deriving (Eq, Ord, Read, Show)
+                | STList   SpliceType
+                deriving (Eq, Ord, Read, Show, Typeable)
 
 type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
@@ -50,11 +55,12 @@ type TypedSpliceVar    = (SpliceType, Identifier)
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
+                    | SRLiteral (m (K3 Literal))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]))
 
 data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
                    | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-                   deriving (Eq, Ord, Show, Read)
+                   deriving (Eq, Ord, Show, Read, Typeable)
 
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
@@ -103,18 +109,24 @@ instance Pretty MPDeclaration where
 spliceRecord :: [(Identifier, SpliceValue)] -> SpliceValue
 spliceRecord l = SRecord $ Map.fromList l
 
-spliceSet :: [SpliceValue] -> SpliceValue
-spliceSet l = SSet $ Set.fromList l
+spliceList :: [SpliceValue] -> SpliceValue
+spliceList l = SList l
 
 spliceRecordT :: [(Identifier, SpliceType)] -> SpliceType
 spliceRecordT l = STRecord $ Map.fromList l
 
-spliceSetT :: SpliceType -> SpliceType
-spliceSetT st = STSet st
+spliceListT :: SpliceType -> SpliceType
+spliceListT st = STList st
 
 spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
 spliceRecordField (SRecord r) n = Map.lookup n r
 spliceRecordField _ _ = Nothing
+
+ltLabel :: SpliceValue -> Maybe SpliceValue
+ltLabel v = spliceRecordField v spliceVIdSym
+
+ltType :: SpliceValue -> Maybe SpliceValue
+ltType v = spliceRecordField v spliceVTSym
 
 mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> MPDeclaration
 mpDataAnnotation n svars tvars mems = MPDataAnnotation n svars tvars mems
@@ -174,3 +186,50 @@ mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
 -- | Splice environment merge, favoring elements in the RHS operand.
 mergeSpliceEnv :: SpliceEnv -> SpliceEnv -> SpliceEnv
 mergeSpliceEnv = Map.unionWith (\_ v -> v)
+
+{- Splice value operations -}
+concatLabel :: SpliceValue -> SpliceValue -> SpliceValue
+concatLabel (SLabel a) (SLabel b) = SLabel $ a ++ b
+concatLabel _ _ = error "Invalid splice labels"
+
+concatLabels :: SpliceValue -> SpliceValue
+concatLabels (SList vs) = foldl concatLabel (SLabel "") vs
+concatLabels _ = error "Invalid splice value container for concatLabels"
+
+mkRecord :: SpliceValue -> SpliceValue
+mkRecord (SList vs) = maybe err (SType . TC.record) $ mapM mkRecField vs
+  where mkRecField v = do
+          (SLabel n) <- ltLabel v
+          (SType t)  <- ltType v
+          return (n,t)
+        err = error "Invalid splice container elements for mkRecord"
+
+mkRecord _ = error "Invalid splice value container for mkRecord"
+
+mkTuple :: SpliceValue -> SpliceValue
+mkTuple (SList vs) = maybe err (SType . TC.tuple) $ mapM asType vs
+  where asType (SType t) = Just t
+        asType _ = Nothing
+        err = error "Invalid splice container elements for mkTuple"
+
+mkTuple _ = error "Invalid splice value container for mkTuple"
+
+listLabels :: SpliceValue -> SpliceValue
+listLabels (SList vs) = maybe err SList $ mapM ltLabel vs
+  where err = error "Invalid splice container elements for listLabels"
+
+listLabels _ = error "Invalid splice value container for listLabels"
+
+listTypes :: SpliceValue -> SpliceValue
+listTypes (SList vs) = maybe err SList $ mapM ltType vs
+  where err = error "Invalid splice container elements for listTypes"
+
+listTypes _ = error "Invalid splice value container for listTypes"
+
+literalLabel :: SpliceValue -> SpliceValue
+literalLabel (SLabel i) = SLiteral $ LC.string i
+literalLabel _ = error "Invalid splice label for literalLabel"
+
+literalType :: SpliceValue -> SpliceValue
+literalType (SType t) = SLiteral . LC.string $ show t
+literalType _ = error "Invalid splice label for literalType"

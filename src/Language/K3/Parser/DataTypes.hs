@@ -95,12 +95,12 @@ type K3UnaryOperator      = K3 Expression -> K3 Expression
 type AnnotationCtor a = Identifier -> Annotation a
 type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
-{- Note: debugging helper
-import Debug.Trace
+-- | Metaprogram embedding as identifiers.
+data MPEmbedding = MPENull  Identifier
+                 | MPEPath  Identifier [Identifier]
+                 | MPEHProg String
+                 deriving (Eq, Ord, Read, Show)
 
-myTrace :: String -> K3Parser a -> K3Parser a
-myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
--}
 
 {- Language definition constants -}
 k3Operators :: [[Char]]
@@ -132,7 +132,7 @@ k3Keywords = [
     "self", "structure", "horizon", "content", "forall",
 
     {- Metaprogramming keywords -}
-    "label", "expr", "decl", "shared"
+    "label", "expr", "decl", "literal", "labeltype", "shared"
   ]
 
 {- Style definitions for parsers library -}
@@ -165,34 +165,43 @@ identifier :: K3Parser String
 identifier = fmap fromString $ token $ concat <$> some (choice . map try =<< parserWithPMode parts)
   where parts Normal        = return [i]
         parts SourcePattern = return [patI]
-        parts _             = return [i, spliceString]
+        parts _             = return [i, spliceIdentifierEmbedding]
         i    = nonTokenIdent k3Idents
         patI = nonTokenIdent k3PatternIdents
 
-identParts :: K3Parser [Either String (Identifier, [Identifier])]
+identParts :: K3Parser [MPEmbedding]
 identParts = token $ some (choice $ map try parts)
-  where parts = [Left <$> (nonTokenIdent k3Idents), Right <$> spliceParts]
+  where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
 spliceSymbols :: [(String, [Identifier])]
-spliceSymbols = map (,[]) ["#", "::", "$"] ++ [("&#", [spliceVIdSym]), ("&::", [spliceVTSym])]
+spliceSymbols = map (,[]) ["$"] ++ [("&#", [spliceVIdSym]), ("&::", [spliceVTSym])]
 
 splicePath :: K3Parser [String]
-splicePath = (nonTokenIdent k3Idents) `sepBy1` (string ".")
+splicePath = i `sepBy1` (string ".")
+  where i = try $ nonTokenIdent k3Idents
 
-spliceString :: K3Parser String
-spliceString = fmap fromString $ spliceCtor <$> spliceSyms <*> splicePath <*> char ']'
+spliceHExpr :: K3Parser String
+spliceHExpr = char '|' *> manyTill anyChar (try (char '|'))
+
+spliceBody :: K3Parser (Either [String] String)
+spliceBody = (Left <$> splicePath) <|> (Right <$> spliceHExpr)
+
+spliceIdentifierEmbedding :: K3Parser String
+spliceIdentifierEmbedding = fmap fromString $ spliceCtor <$> spliceSyms <*> spliceBody <*> char ']'
   where
     spliceSyms       = choice $ map (try . string . (++ "[") . fst) spliceSymbols
-    spliceCtor a b c = a ++ intercalate "." b ++ [c]
+    spliceCtor a (Left  b) c = a ++ intercalate "." b ++ [c]
+    spliceCtor a (Right b) c = a ++ "|" ++ b ++ "|" ++ [c]
 
-spliceParts :: K3Parser (Identifier, [Identifier])
-spliceParts = partsCtor =<< ((,,) <$> spliceSyms <*> splicePath <*> char ']')
+spliceEmbedding :: K3Parser MPEmbedding
+spliceEmbedding = embeddingCtor =<< ((,,) <$> spliceSyms <*> spliceBody <*> char ']')
   where
     spliceSyms = choice $ map symForSuffix spliceSymbols
     symForSuffix (sym,pathExt) = const pathExt <$> try (string $ sym ++ "[")
 
-    partsCtor      (_, [], _) = P.parserFail "Invalid splice path"
-    partsCtor (ext, (h:t), _) = return (h, t ++ ext)
+    embeddingCtor (_,   Left [],    _) = P.parserFail "Invalid splice path"
+    embeddingCtor (ext, Left (h:t), _) = return $ MPEPath h $ t ++ ext
+    embeddingCtor (_,   Right expr, _) = return $ MPEHProg expr
 
 
 {- Comments -}
@@ -488,16 +497,16 @@ instance UIDAttachable (K3 Declaration) where
 stringifyError :: Either P.ParseError a -> Either String a
 stringifyError = either (Left . show) Right
 
-runK3Parser :: Maybe ParserState -> K3Parser a -> String -> Either P.ParseError a
+runK3Parser :: (Show a) => Maybe ParserState -> K3Parser a -> String -> Either P.ParseError a
 runK3Parser Nothing   p s = logParser s $ P.runParser p emptyParserState "" s
 runK3Parser (Just st) p s = logParser s $ P.runParser p st "" s
 
-maybeParser :: K3Parser a -> String -> Maybe a
+maybeParser :: (Show a) => K3Parser a -> String -> Maybe a
 maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
 
-logParser :: (Functor m, Monad m) => String -> m a -> m a
+logParser :: (Functor m, Monad m, Show a) => String -> m a -> m a
 logParser s act = do
   void $ trace ("Running parser on " ++ s) $ return ()
   r <- act
-  void $ trace ("Done parsing") $ return ()
+  void $ trace ("Done parsing: " ++ show r) $ return ()
   return r

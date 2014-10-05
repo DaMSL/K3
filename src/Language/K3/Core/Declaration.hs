@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -20,6 +21,7 @@ module Language.K3.Core.Declaration (
 ) where
 
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -54,7 +56,7 @@ data Declaration
     | DTypeDef        Identifier (K3 Type)
         -- ^ Type synonym declaration.
 
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotation declaration members
 data AnnMemDecl
@@ -67,10 +69,10 @@ data AnnMemDecl
                   [Annotation Declaration]
 
     | MAnnotation Polarity Identifier [Annotation Declaration]
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotation member polarities
-data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show)
+data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | A pattern-based rewrite rule, as used in control annotations.
 --   This includes a pattern matching expression, a rewritten expression,

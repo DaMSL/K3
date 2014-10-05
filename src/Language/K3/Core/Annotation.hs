@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -22,6 +23,7 @@ module Language.K3.Core.Annotation (
 
 import Data.List (delete, find)
 import Data.Tree
+import Data.Typeable
 
 -- | Every tag type defines the set of annotations that can be associated with that tag.
 data family Annotation t :: *
@@ -100,7 +102,7 @@ instance AContainer a => AContainer (Tree a) where
     Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
-data a :@: b = a :@: b deriving (Eq, Ord, Read, Show)
+data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where

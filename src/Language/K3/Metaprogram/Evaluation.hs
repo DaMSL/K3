@@ -18,6 +18,7 @@ import Data.Tree
 import Debug.Trace
 
 import qualified Text.Parsec as P
+import Text.Parser.Char ( anyChar )
 import Text.Parser.Combinators
 
 import Language.K3.Core.Annotation
@@ -35,6 +36,8 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 
 import Language.K3.Metaprogram.DataTypes
+import Language.K3.Metaprogram.MetaHK3
+
 import Language.K3.Parser.DataTypes
 import Language.K3.Analysis.HMTypes.Inference hiding ( logVoid, logAction )
 
@@ -231,7 +234,7 @@ globalSplicer n t eOpt = Splicer $ \spliceEnv -> SRDecl $ do
 annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3Generator
 annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
-  nmems <- generateInSpliceEnv vspliceEnv $ spliceAnnMems mems
+  nmems <- generateInSpliceEnv vspliceEnv $ mapM spliceAnnMem mems
   withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams nmems
 
 exprSplicer :: K3 Expression -> K3Generator
@@ -241,89 +244,140 @@ typeSplicer :: K3 Type -> K3Generator
 typeSplicer t = Splicer $ \spliceEnv -> SRType $ generateInSpliceEnv spliceEnv $ spliceType t
 
 {- Splice evaluation -}
-spliceAnnMems :: [AnnMemDecl] -> GeneratorM [AnnMemDecl]
-spliceAnnMems mems = flip mapM mems $ \case
-  Lifted    p n t eOpt mAnns -> spliceDeclParts n t eOpt >>= \(sn, st, seOpt) -> return $ Lifted    p sn st seOpt mAnns
-  Attribute p n t eOpt mAnns -> spliceDeclParts n t eOpt >>= \(sn, st, seOpt) -> return $ Attribute p sn st seOpt mAnns
-  m -> return m
+spliceDeclaration :: K3 Declaration -> DeclGenerator
+spliceDeclaration = mapProgram doSplice spliceAnnMem spliceExpression (Just spliceType)
+  where
+    doSplice d@(tag -> DGlobal n t eOpt) = do
+      ((nn, nt, neOpt), nanns) <- spliceDeclParts n t eOpt >>= newAnns d
+      return $ Node (DGlobal nn nt neOpt :@: nanns) $ children d
+
+    doSplice d@(tag -> DTrigger n t e) = do
+      ((nn, nt, Just ne), nanns) <- spliceDeclParts n t (Just e) >>= newAnns d
+      return $ Node (DTrigger nn nt ne :@: nanns) $ children d
+
+    doSplice d@(tag -> DDataAnnotation n tvars mems) =
+      mapM spliceAnnMem mems >>= newAnns d >>= \(nmems, nanns) ->
+        return $ Node (DDataAnnotation n tvars nmems :@: nanns) $ children d
+
+    doSplice d@(tag -> DTypeDef n t) =
+      spliceType t >>= newAnns d >>= \(nt, nanns) -> return $ Node (DTypeDef n nt :@: nanns) $ children d
+
+    doSplice d@(Node (tg :@: _) ch) =
+      newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
+
+    newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
+
+spliceAnnMem :: AnnMemDecl -> AnnMemGenerator
+spliceAnnMem = \case
+    Lifted      p n t eOpt anns -> spliceDeclParts n t eOpt >>= newAnns anns >>= \((sn, st, seOpt), nanns) -> return $ Lifted    p sn st seOpt nanns
+    Attribute   p n t eOpt anns -> spliceDeclParts n t eOpt >>= newAnns anns >>= \((sn, st, seOpt), nanns) -> return $ Attribute p sn st seOpt nanns
+    MAnnotation p n anns -> newAnns anns () >>= \(_,nanns) -> return $ MAnnotation p n nanns
+
+  where newAnns anns v = mapM spliceDAnnotation anns >>= return . (v,)
 
 spliceDeclParts :: Identifier -> K3 Type -> Maybe (K3 Expression) -> GeneratorM (Identifier, K3 Type, Maybe (K3 Expression))
 spliceDeclParts n t eOpt = do
-  sn <- spliceIdentifier n
-  st <- spliceType t
+  sn    <- spliceIdentifier n
+  st    <- spliceType t
   seOpt <- maybe (return Nothing) (\e -> spliceExpression e >>= return . Just) eOpt
   return (sn, st, seOpt)
-
-spliceIdentifier :: Identifier -> GeneratorM Identifier
-spliceIdentifier i = expectIdSplicer i
-
-spliceType :: K3 Type -> TypeGenerator
-spliceType = mapTree doSplice
-  where
-    doSplice [] t@(tag -> TDeclaredVar i) = expectTypeSplicer i >>= \nt -> return $ foldl (@+) nt $ annotations t
-    doSplice ch t@(tag -> TRecord ids) = mapM spliceIdentifier ids >>= \nids -> return $ Node (TRecord nids :@: annotations t) ch
-    doSplice ch (Node tg _) = return $ Node tg ch
 
 spliceExpression :: K3 Expression -> ExprGenerator
 spliceExpression = mapTree doSplice
   where
-    doSplice [] e@(tag -> EVariable i)           = expectExprSplicer i      >>= \ne   -> return $ foldl (@+) ne $ annotations e
-    doSplice ch e@(tag -> ERecord ids)           = mapM expectIdSplicer ids >>= \nids -> return $ Node (ERecord nids :@: annotations e) ch
-    doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= \nid  -> return $ Node (EProject nid :@: annotations e) ch
-    doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= \nid  -> return $ Node (EAssign nid :@: annotations e) ch
-    doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= \nct  -> return $ Node (EConstant (CEmpty nct) :@: annotations e) ch
+    doSplice [] e@(tag -> EVariable i)           = expectExprSplicer i      >>= newAnns e >>= \(ne, nanns)   -> return $ foldl (@+) ne nanns
+    doSplice ch e@(tag -> ERecord ids)           = mapM expectIdSplicer ids >>= newAnns e >>= \(nids, nanns) -> return $ Node (ERecord  nids :@: nanns) ch
+    doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EProject nid  :@: nanns) ch
+    doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EAssign  nid  :@: nanns) ch
+    doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= newAnns e >>= \(nct, nanns)  -> return $ Node (EConstant (CEmpty nct) :@: nanns) ch
+    doSplice ch e@(Node (tg :@: _) _) = newAnns e () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
+
+    newAnns e v = mapM spliceEAnnotation (annotations e) >>= return . (v,)
+
+spliceType :: K3 Type -> TypeGenerator
+spliceType = mapTree doSplice
+  where
+    doSplice [] t@(tag -> TDeclaredVar i) = expectTypeSplicer i       >>= \nt   -> return $ foldl (@+) nt $ annotations t
+    doSplice ch t@(tag -> TRecord ids)    = mapM spliceIdentifier ids >>= \nids -> return $ Node (TRecord nids :@: annotations t) ch
     doSplice ch (Node tg _) = return $ Node tg ch
+
+spliceLiteral :: K3 Literal -> LiteralGenerator
+spliceLiteral = mapTree doSplice
+  where doSplice [] l@(tag -> LString s)      = expectLiteralSplicer s   >>= \ns   -> return $ foldl (@+) ns $ annotations l
+        doSplice ch l@(tag -> LRecord ids)    = mapM expectIdSplicer ids >>= \nids -> return $ Node (LRecord nids    :@: annotations l) ch
+        doSplice ch l@(tag -> LEmpty ct)      = spliceType ct            >>= \nct  -> return $ Node (LEmpty nct      :@: annotations l) ch
+        doSplice ch l@(tag -> LCollection ct) = spliceType ct            >>= \nct  -> return $ Node (LCollection nct :@: annotations l) ch
+        doSplice ch (Node tg _) = return $ Node tg ch
+
+spliceIdentifier :: Identifier -> GeneratorM Identifier
+spliceIdentifier i = expectIdSplicer i
+
+spliceDAnnotation :: Annotation Declaration -> DeclAnnGenerator
+spliceDAnnotation (DProperty n (Just l)) = spliceLiteral l >>= return . DProperty n . Just
+spliceDAnnotation da = return da
+
+spliceEAnnotation :: Annotation Expression  -> ExprAnnGenerator
+spliceEAnnotation (EProperty n (Just l)) = spliceLiteral l >>= return . EProperty n . Just
+spliceEAnnotation ea = return ea
+
 
 expectIdSplicer :: Identifier -> GeneratorM Identifier
 expectIdSplicer   i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (idFromParts sctxt), identifier]
 
 expectTypeSplicer :: Identifier -> TypeGenerator
-expectTypeSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (typeFromParts sctxt), identifier >>= return . TC.declaredVar]
+expectTypeSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (typeEmbedding sctxt), TC.declaredVar <$> identifier]
 
 expectExprSplicer :: Identifier -> ExprGenerator
-expectExprSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (exprFromParts sctxt), identifier >>= return . EC.variable]
+expectExprSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (exprEmbedding sctxt), EC.variable <$> identifier]
 
-parseSplice :: String -> K3Parser a -> GeneratorM a
+expectLiteralSplicer :: String -> LiteralGenerator
+expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (literalEmbedding sctxt), LC.string <$> many anyChar]
+
+parseSplice :: (Show a) => String -> K3Parser a -> GeneratorM a
 parseSplice s p = either throwE return $ stringifyError $ runK3Parser Nothing p s
 
 idFromParts :: SpliceContext -> K3Parser Identifier
 idFromParts sctxt = evalIdSplice sctxt =<< identParts
 
-typeFromParts :: SpliceContext -> TypeParser
-typeFromParts sctxt = evalTypeSplice sctxt =<< identParts
+typeEmbedding :: SpliceContext -> TypeParser
+typeEmbedding sctxt = evalTypeSplice sctxt =<< spliceEmbedding
 
-exprFromParts :: SpliceContext -> ExpressionParser
-exprFromParts sctxt = evalExprSplice sctxt =<< identParts
+exprEmbedding :: SpliceContext -> ExpressionParser
+exprEmbedding sctxt = evalExprSplice sctxt =<< spliceEmbedding
 
-evalIdSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> K3Parser Identifier
-evalIdSplice sctxt l = return . concat =<< mapM (either return asLabel) l
-  where asLabel (var, path) = evalSplice sctxt var path >>= \case
-                                SLabel n -> return n
-                                _ -> spliceTypeFail var path
+literalEmbedding :: SpliceContext -> LiteralParser
+literalEmbedding sctxt = evalLiteralSplice sctxt =<< spliceEmbedding
 
+evalIdSplice :: SpliceContext -> [MPEmbedding] -> K3Parser Identifier
+evalIdSplice sctxt l = return . concat =<< mapM evalAsId l
+  where evalAsId b = evalEmbedding sctxt b >>= \case
+                       SLabel i -> return i
+                       _ -> spliceFail "Invalid splice identifier embedding"
 
-evalTypeSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> TypeParser
-evalTypeSplice sctxt [Right (var, path)] = evalSplice sctxt var path >>= \case
+evalTypeSplice :: SpliceContext -> MPEmbedding -> TypeParser
+evalTypeSplice sctxt b = evalEmbedding sctxt b >>= \case
     SType t -> return t
-    _ -> spliceTypeFail var path
+    _ -> spliceFail "Invalid splice type value"
 
-evalTypeSplice _ _ = spliceFail "Invalid type splice identifier"
-
-evalExprSplice :: SpliceContext -> [Either String (Identifier, [Identifier])] -> ExpressionParser
-evalExprSplice sctxt [Right (var, path)] = evalSplice sctxt var path >>= \case
+evalExprSplice :: SpliceContext -> MPEmbedding -> ExpressionParser
+evalExprSplice sctxt b = evalEmbedding sctxt b >>= \case
     SExpr e -> return e
-    _ -> spliceTypeFail var path
+    _ -> spliceFail "Invalid splice expression value"
 
-evalExprSplice _ _ = spliceFail "Invalid type splice identifier"
+evalLiteralSplice :: SpliceContext -> MPEmbedding -> LiteralParser
+evalLiteralSplice sctxt b = evalEmbedding sctxt b >>= \case
+    SLiteral l -> return l
+    _ -> spliceFail "Invalid splice literal value"
 
-evalSplice :: SpliceContext -> Identifier -> [Identifier] -> K3Parser SpliceValue
-evalSplice sctxt i path = maybe evalErr (flip matchPath path) $ lookupSCtxt i sctxt
+evalEmbedding :: SpliceContext -> MPEmbedding -> K3Parser SpliceValue
+evalEmbedding _ (MPENull i) = return $ SLabel i
+
+evalEmbedding sctxt (MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
   where matchPath v [] = return v
         matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
-        evalErr = spliceIdPathFail i path "lookup failed"
+        evalErr = spliceIdPathFail var path "lookup failed"
 
-spliceTypeFail :: Identifier -> [Identifier] -> K3Parser a
-spliceTypeFail i path = spliceIdPathFail i path "invalid type"
+evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
 
 spliceIdPathFail :: Identifier -> [Identifier] -> String -> K3Parser a
 spliceIdPathFail i path msg = P.parserFail $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]

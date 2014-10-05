@@ -8,7 +8,7 @@
 //
 //
 annotation Index[key : labeltype, value : labeltype, customLabel : label] {
-  provides lookup_by_&#[key]_#[customLabel] : &::[key] -> &::[value]
+  provides lookup_by_&#[key]_$[customLabel] : &::[key] -> &::[value]
 }
 
 // Splice parameters are specified as keyword arguments.
@@ -28,4 +28,4 @@ declare employees : collection {id: int, name: string}
 //
 //
 declare employees2 : collection {id: int, name: string, age : int}
-                       @Index(key=id, value=[& nested, {name:string, age:int}], customLabel=[# bar])
+                       @Index(key=id, value=[& nested:{name:string, age:int}], customLabel=[# bar])

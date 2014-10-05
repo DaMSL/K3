@@ -4,6 +4,7 @@
 module Language.K3.Core.Metaprogram where
 
 import Data.Map ( Map )
+import Data.Typeable
 
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
@@ -18,23 +19,31 @@ data MPDeclaration
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
 
-instance Eq   MPDeclaration
-instance Ord  MPDeclaration
-instance Read MPDeclaration
-instance Show MPDeclaration
+instance Eq       SpliceValue
+instance Ord      SpliceValue
+instance Read     SpliceValue
+instance Show     SpliceValue
+instance Typeable SpliceValue
 
-instance Eq   SpliceValue
-instance Ord  SpliceValue
-instance Read SpliceValue
-instance Show SpliceValue
+instance Eq       SpliceType
+instance Ord      SpliceType
+instance Read     SpliceType
+instance Show     SpliceType
+instance Typeable SpliceType
+
+instance Eq       MPDeclaration
+instance Ord      MPDeclaration
+instance Read     MPDeclaration
+instance Show     MPDeclaration
+instance Typeable MPDeclaration
 
 instance Pretty MPDeclaration
 
 {- Splice value and type constructors -}
 spliceRecord  :: [(Identifier, SpliceValue)] -> SpliceValue
-spliceSet     :: [SpliceValue] -> SpliceValue
+spliceList    :: [SpliceValue] -> SpliceValue
 spliceRecordT :: [(Identifier, SpliceType)] -> SpliceType
-spliceSetT    :: SpliceType -> SpliceType
+spliceListT   :: SpliceType -> SpliceType
 
 spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
 
@@ -56,3 +65,13 @@ addSpliceE         :: Identifier -> SpliceValue -> SpliceEnv -> SpliceEnv
 emptySpliceEnv     :: SpliceEnv
 mkSpliceEnv        :: [(Identifier, SpliceValue)] -> SpliceEnv
 mergeSpliceEnv     :: SpliceEnv -> SpliceEnv -> SpliceEnv
+
+{- Splice value operations -}
+concatLabel  :: SpliceValue -> SpliceValue -> SpliceValue
+concatLabels :: SpliceValue -> SpliceValue
+mkRecord     :: SpliceValue -> SpliceValue
+mkTuple      :: SpliceValue -> SpliceValue
+listLabels   :: SpliceValue -> SpliceValue
+listTypes    :: SpliceValue -> SpliceValue
+literalLabel :: SpliceValue -> SpliceValue
+literalType  :: SpliceValue -> SpliceValue

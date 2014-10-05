@@ -17,6 +17,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
 import Language.K3.Core.Metaprogram
 
 {-| Metaprogram environment -}
@@ -35,9 +36,15 @@ type GeneratorState = (Int, GeneratorEnv, SpliceContext, GeneratorDecls)
 
 type GeneratorM = EitherT String (StateT GeneratorState Identity)
 
-type TypeGenerator = GeneratorM (K3 Type)
-type ExprGenerator = GeneratorM (K3 Expression)
-type DeclGenerator = GeneratorM (K3 Declaration)
+type TypeGenerator    = GeneratorM (K3 Type)
+type ExprGenerator    = GeneratorM (K3 Expression)
+type LiteralGenerator = GeneratorM (K3 Literal)
+type DeclGenerator    = GeneratorM (K3 Declaration)
+
+type AnnMemGenerator  = GeneratorM AnnMemDecl
+
+type DeclAnnGenerator = GeneratorM (Annotation Declaration)
+type ExprAnnGenerator = GeneratorM (Annotation Expression)
 
 {- Generator monad helpers -}
 runGeneratorM :: GeneratorState -> GeneratorM a -> (Either String a, GeneratorState)
