@@ -19,7 +19,7 @@ module Language.K3.Analysis.Effects.InsertEffects (
 where
 
 import Prelude hiding (read, seq)
-import Control.Arrow ( (&&&), first, second )
+import Control.Arrow ( (&&&) )
 import Control.Monad.State.Lazy
 import Data.Maybe
 import Data.Map(Map)
@@ -120,39 +120,16 @@ getIdM = do
 singleton :: a -> [a]
 singleton x = [x]
 
-listOfMaybe :: Maybe a -> [a]
-listOfMaybe (Just x) = [x]
-listOfMaybe Nothing  = []
-
-maybeOfList []  = Nothing
-maybeOfList [x] = Just x
-maybeOfList _   = error "unexpected"
-
 -- Add an id to an effect
 addFID :: K3 Effect -> MEnv (K3 Effect)
 addFID eff = do
   i <- getIdM
   return $ eff @+ FID i
 
-addSID :: K3 Symbol -> MEnv (K3 Symbol)
-addSID s = do
-  i <- getIdM
-  return $ s @+ SID i
-
-getUID :: K3 Expression -> UID
-getUID n = maybe (error "No UID found") extract $ n @~ isEUID
-  where extract (EUID uid) = uid
-        extract _          = error "unexpected"
-
 getSID :: K3 Symbol -> Int
 getSID sym = maybe (error "no SID found") extract $ sym @~ isSID
   where extract (SID i) = i
         extract _       = error "symbol id not found!"
-
-getFID :: K3 Effect -> Int
-getFID sym = maybe (error "no FID found") extract $ sym @~ isFID
-  where extract (FID i) = i
-        extract _       = error "effect id not found!"
 
 -- Generate a symbol
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
@@ -195,9 +172,9 @@ getOrGenSymbol n = case getESymbol n of
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
 createClosure :: K3 Effect -> MEnv ClosureInfo
 createClosure n = foldTree addClosure ([],[],[]) n >>=
-                  \(a,b,c) -> return (nub a, nub b, nub c)
+                  return . nubtuple
   where
-    nubtuple (a,b,c) = return (nub a, nub b, nub c)
+    nubtuple (a,b,c) = (nub a, nub b, nub c)
 
     addClosure :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
     addClosure (a,b,c) (tag -> FRead s)     = do
@@ -222,7 +199,9 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
         Just s' | s `symEqual` s' -> return [s']
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
-    handleApply acc (tag -> Symbol i (PLambda _ eff)) = foldTree addClosure acc eff
+    handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
+    handleApply acc n@(tnc -> (Symbol _ PSet, ch)) = foldrM (flip handleApply) acc ch
+    handleApply acc _ = return acc
 
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
@@ -230,10 +209,10 @@ addAllGlobals n = mapProgram preHandleDecl mId mId n
   where
     -- add everything to global environment for cyclic/recursive scope
     -- we'll fix it up the second time through
-    addGenId id = symbolM id (PTemporary TUnbound) [] >>= insertGlobalM id
+    addGeni i = symbolM i (PTemporary TUnbound) [] >>= insertGlobalM i
 
-    preHandleDecl n@(tag -> DGlobal id _ _)  = addGenId id >> return n
-    preHandleDecl n@(tag -> DTrigger id _ _) = addGenId id >> return n
+    preHandleDecl n@(tag -> DGlobal i _ _)  = addGeni i >> return n
+    preHandleDecl n@(tag -> DTrigger i _ _) = addGeni i >> return n
     preHandleDecl n = return n
 
 mId :: Monad m => a -> m a
@@ -252,8 +231,6 @@ runAnalysis prog = flip evalState startEnv $
   mapProgram handleDecl mId fixUpExprs
 
   where
-    listOfMaybe m = maybe [] singleton m
-
     -- Add all globals and decorate tree
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
     handleDecl n =
@@ -264,8 +241,8 @@ runAnalysis prog = flip evalState startEnv $
         _                     -> return n
       where
         addE i e = case e @~ isESymbol of
-                     Nothing           -> addSym i []
                      Just (ESymbol s)  -> addSym i [s]
+                     _                 -> addSym i []
 
         addSym i ss = do
           sym <- symbolM i PGlobal ss
@@ -346,13 +323,13 @@ runAnalysis prog = flip evalState startEnv $
       bindSym <- lookupBindM i
       deleteBindM i
       let eEff = getEEffect e
-          eSym = listOfMaybe $ getESymbol e
+          eSym = maybeToList $ getESymbol e
       -- Create a closure for the lambda by finding every read/written/applied closure variable
       closure <- case eEff of
                    Nothing -> return emptyClosure
                    Just e  -> createClosure e
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
-      eScope  <- addFID $ scope [bindSym] closure $ listOfMaybe eEff
+      eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
       lSym    <- genSym (PLambda i eScope) eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
@@ -408,7 +385,7 @@ runAnalysis prog = flip evalState startEnv $
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
       -- Wrap some in a scope
-      let someEff = listOfMaybe $ getEEffect some
+      let someEff = maybeToList $ getEEffect some
       scopeEff <- addFID $ scope [bindSym] emptyClosure someEff
       -- Conservative approximation
       setEff   <- combineEffSet [getEEffect none, Just scopeEff]
@@ -424,7 +401,7 @@ runAnalysis prog = flip evalState startEnv $
     handleExpr ch@[l,e] n@(tag -> ELetIn i) = do
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
-      let eEff = listOfMaybe $ getEEffect e
+      let eEff = maybeToList $ getEEffect e
       scopeEff <- addFID $ scope [bindSym] emptyClosure eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
       -- peel off symbols until we get to ones in our outer scope
@@ -487,7 +464,7 @@ runAnalysis prog = flip evalState startEnv $
               s' <- symOfSymList lA
               return [(Nothing, replaceCh n [s, s'])]
 
-        loop mLast n@(tnc -> (s@(Symbol i prov), ch)) =
+        loop mLast n@(tnc -> (s@(Symbol i _), ch)) =
           -- Check for exclusion. Terminate this branch if we match
           if any (n `symEqual`) excludes then return []
           else do
@@ -558,27 +535,28 @@ buildEnv n = snd $ flip runState startEnv $
   where
     handleDecl n@(tag -> DGlobal i _ _)  = possibleInsert n i
     handleDecl n@(tag -> DTrigger i _ _) = possibleInsert n i
+    handleDecl n = return n
 
     possibleInsert n i = do
       highestDeclId n
       case n @~ isDSymbol of
-        Nothing          -> return n
         Just (DSymbol s) -> do
           insertGlobalM i s
           return n
+        _          -> return n
 
     highestDeclId n = do
       case n @~ isDSymbol of
-        Nothing -> return ()
         Just (DSymbol s) -> highestSymId s
+        _ -> return ()
 
     highestExprId n = do
       case n @~ isESymbol of
-        Nothing -> return ()
         Just (ESymbol s) -> highestSymId s
+        _ -> return ()
       case n @~ isEEffect of
-        Nothing -> return n
         Just (EEffect e) -> highestEffId e >> return n
+        _ -> return n
 
     highestSymId :: K3 Symbol -> MEnv ()
     highestSymId n = do
@@ -667,7 +645,7 @@ applyLambda sArg sLam =
           sA' <- sub sA
           sL' <- sub sL
           x <- applyLambda sA' sL'
-          return $ maybe n fst x
+          return $ maybe (replaceTag n $ FApply sL' sA') fst x
 
         _            -> return n
       where
