@@ -39,6 +39,10 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Core.Metaprogram
 
+import qualified Language.K3.Core.Constructor.Type        as TC
+import qualified Language.K3.Core.Constructor.Expression  as EC
+import qualified Language.K3.Core.Constructor.Literal     as LC
+
 {- Type synonyms for parser return types -}
 
 -- | Endpoint name => endpoint spec, bound triggers, qualified name, initializer expression
@@ -100,6 +104,8 @@ data MPEmbedding = MPENull  Identifier
                  | MPEPath  Identifier [Identifier]
                  | MPEHProg String
                  deriving (Eq, Ord, Read, Show)
+
+type EmbeddingParser a = K3Parser (Either MPEmbedding (K3 a))
 
 
 {- Language definition constants -}
@@ -202,6 +208,19 @@ spliceEmbedding = embeddingCtor =<< ((,,) <$> spliceSyms <*> spliceBody <*> char
     embeddingCtor (_,   Left [],    _) = P.parserFail "Invalid splice path"
     embeddingCtor (ext, Left (h:t), _) = return $ MPEPath h $ t ++ ext
     embeddingCtor (_,   Right expr, _) = return $ MPEHProg expr
+
+
+idFromParts :: K3Parser (Either [MPEmbedding] Identifier)
+idFromParts = choice [try (Left <$> identParts), Right <$> identifier]
+
+typeEmbedding :: EmbeddingParser Type
+typeEmbedding = choice [try (Left <$> spliceEmbedding), Right . TC.declaredVar <$> identifier]
+
+exprEmbedding :: EmbeddingParser Expression
+exprEmbedding = choice [try (Left <$> spliceEmbedding), Right . EC.variable <$> identifier]
+
+literalEmbedding :: EmbeddingParser Literal
+literalEmbedding = choice [try (Left <$> spliceEmbedding), Right . LC.string <$> many anyChar]
 
 
 {- Comments -}

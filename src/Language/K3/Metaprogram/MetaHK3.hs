@@ -19,7 +19,6 @@ module Language.K3.Metaprogram.MetaHK3 where
 import Control.Monad
 import Debug.Trace
 import System.IO.Unsafe
-import qualified Text.Parsec as P
 
 import Language.Haskell.Interpreter hiding ( TemplateHaskell )
 import Language.Haskell.Interpreter.Unsafe
@@ -30,18 +29,18 @@ import Language.Haskell.Exts.Pretty
 import Language.Haskell.Exts.Syntax
 
 import Language.K3.Core.Metaprogram
-import Language.K3.Parser.DataTypes hiding ( defaultParseMode, set )
+import Language.K3.Metaprogram.DataTypes
 
 {- K3-Haskell AST splicing -}
 
-evalHaskellProg :: SpliceContext -> String -> K3Parser SpliceValue
+evalHaskellProg :: SpliceContext -> String -> GeneratorM SpliceValue
 evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
     ParseOk exprAST   -> evalHaskell $ spliceQuotesExp sctxt exprAST
-    ParseFailed _ msg -> P.parserFail $ unwords ["Haskell splice parse failed:", msg]
+    ParseFailed _ msg -> throwG $ unwords ["Haskell splice parse failed:", msg]
   where
     pm = defaultParseMode {extensions = [EnableExtension TemplateHaskell]}
 
-    -- TODO: change K3Parser transformer stack to bottom out at IO instead of Identity.
+    -- TODO: change GeneratorM transformer stack to bottom out at IO instead of Identity.
     evalHaskell ast =
       let astStr = prettyPrint ast
       in trace ("Eval Haskell " ++ astStr) $ evalWithError $ astStr
@@ -72,7 +71,7 @@ evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
                   , "Language.K3.Core.Declaration"
                   , "Language.K3.Core.Metaprogram" ]
 
-    interpFail err = P.parserFail $ unwords ["Haskell splice eval failed:", show err]
+    interpFail err = throwG $ unwords ["Haskell splice eval failed:", show err]
 
 injectSpliceValue :: SpliceValue -> Maybe Exp
 injectSpliceValue v = case parseExp $ show v of

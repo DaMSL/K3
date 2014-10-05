@@ -20,6 +20,8 @@ import Language.K3.Core.Type
 import Language.K3.Core.Literal
 import Language.K3.Core.Metaprogram
 
+import Language.K3.Parser.DataTypes
+
 {-| Metaprogram environment -}
 data K3Generator = Splicer  (SpliceEnv -> SpliceResult GeneratorM)
                  | TypeRewriter (K3 Type -> SpliceEnv -> SpliceResult GeneratorM)
@@ -50,9 +52,13 @@ type ExprAnnGenerator = GeneratorM (Annotation Expression)
 runGeneratorM :: GeneratorState -> GeneratorM a -> (Either String a, GeneratorState)
 runGeneratorM st action = runIdentity . flip runStateT st $ runEitherT action
 
+-- | Run a parser and return its result in the generator monad.
+liftParser :: (Show a) => String -> K3Parser a -> GeneratorM a
+liftParser s p = either throwG return $ stringifyError $ runK3Parser Nothing p s
+
 -- | Raise an exception in the generator monad.
-throwE :: String -> GeneratorM a
-throwE msg = Control.Monad.Trans.Either.left msg
+throwG :: String -> GeneratorM a
+throwG msg = Control.Monad.Trans.Either.left msg
 
 {- Generator state constructors and accessors -}
 emptyGeneratorEnv :: GeneratorEnv
@@ -89,7 +95,7 @@ modifyGeneratedDecls :: (GeneratorDecls -> Either String (GeneratorDecls, a)) ->
 modifyGeneratedDecls f (ac,ge,sc,gd) = either Left (\(ngd,r) -> Right ((ac,ge,sc,ngd), r)) $ f gd
 
 modifyGeneratorState :: (GeneratorState -> Either String (GeneratorState, a)) -> GeneratorM a
-modifyGeneratorState f = get >>= \st -> either throwE (\(nst,r) -> put nst >> return r) $ f st
+modifyGeneratorState f = get >>= \st -> either throwG (\(nst,r) -> put nst >> return r) $ f st
 
 generatorWithGUID :: (Int -> GeneratorM a) -> GeneratorM a
 generatorWithGUID f = get >>= (\(ac,ge,sc,gd) -> put (ac+1,ge,sc,gd) >> f ac)

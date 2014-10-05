@@ -17,10 +17,6 @@ import Data.Tree
 
 import Debug.Trace
 
-import qualified Text.Parsec as P
-import Text.Parser.Char ( anyChar )
-import Text.Parser.Combinators
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -74,7 +70,7 @@ defaultMetaAnalysis p = do
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.
     removeTypes e = return $ stripExprAnnotations (\a -> isETypeOrBound a || isEQType a) (const True) e
-    liftError = either throwE
+    liftError = either throwG
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
@@ -169,11 +165,11 @@ applyDAnnotation aCtor annId sEnv = generatorWithGEnv $ \gEnv ->
           decl <- p
           case tag decl of
             DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . addDGenDecl annId decl) >> return (aCtor n)
-            _ -> throwE $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+            _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
-        expectSpliceAnnotation _ = throwE "Invalid data annotation splice"
+        expectSpliceAnnotation _ = throwG "Invalid data annotation splice"
 
-        spliceLookupErr n = throwE $ unwords ["Could not find data macro", n]
+        spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
 applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
@@ -208,12 +204,12 @@ applyCAnnotation targetE cAnnId sEnv = do
       logVoid (debugRewrite rewriteE)
       modifyGDeclsF_ (Right . addCGenDecls cAnnId decls) >> return rewriteE
 
-    injectRewrite _ = throwE "Invalid control annotation rewrite"
+    injectRewrite _ = throwG "Invalid control annotation rewrite"
 
     debugPassThru   = unwords ["Passed on generator", cAnnId]
     debugRewrite  e = boxToString $ [unwords ["Generator", cAnnId, "rewrote as "]] %+ prettyLines e
 
-    spliceLookupErr n = throwE $ unwords ["Could not find control macro", n]
+    spliceLookupErr n = throwG $ unwords ["Could not find control macro", n]
 
 
 
@@ -322,54 +318,48 @@ spliceEAnnotation ea = return ea
 
 
 expectIdSplicer :: Identifier -> GeneratorM Identifier
-expectIdSplicer   i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (idFromParts sctxt), identifier]
+expectIdSplicer   i = generatorWithSCtxt $ \sctxt -> liftParser i idFromParts >>= evalIdPartsSplice sctxt
 
 expectTypeSplicer :: Identifier -> TypeGenerator
-expectTypeSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (typeEmbedding sctxt), TC.declaredVar <$> identifier]
+expectTypeSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i typeEmbedding >>= evalTypeSplice sctxt
 
 expectExprSplicer :: Identifier -> ExprGenerator
-expectExprSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (exprEmbedding sctxt), EC.variable <$> identifier]
+expectExprSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i exprEmbedding >>= evalExprSplice sctxt
 
 expectLiteralSplicer :: String -> LiteralGenerator
-expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> parseSplice i $ choice [try (literalEmbedding sctxt), LC.string <$> many anyChar]
+expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
-parseSplice :: (Show a) => String -> K3Parser a -> GeneratorM a
-parseSplice s p = either throwE return $ stringifyError $ runK3Parser Nothing p s
+evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
+evalIdPartsSplice sctxt (Left l)  = return . concat =<< mapM (evalIdSplice sctxt) l
+evalIdPartsSplice _ (Right i) = return i
 
-idFromParts :: SpliceContext -> K3Parser Identifier
-idFromParts sctxt = evalIdSplice sctxt =<< identParts
+evalIdSplice :: SpliceContext -> MPEmbedding -> GeneratorM Identifier
+evalIdSplice sctxt m = evalEmbedding sctxt m >>= \case
+  SLabel i -> return i
+  _ -> spliceFail "Invalid splice identifier embedding"
 
-typeEmbedding :: SpliceContext -> TypeParser
-typeEmbedding sctxt = evalTypeSplice sctxt =<< spliceEmbedding
-
-exprEmbedding :: SpliceContext -> ExpressionParser
-exprEmbedding sctxt = evalExprSplice sctxt =<< spliceEmbedding
-
-literalEmbedding :: SpliceContext -> LiteralParser
-literalEmbedding sctxt = evalLiteralSplice sctxt =<< spliceEmbedding
-
-evalIdSplice :: SpliceContext -> [MPEmbedding] -> K3Parser Identifier
-evalIdSplice sctxt l = return . concat =<< mapM evalAsId l
-  where evalAsId b = evalEmbedding sctxt b >>= \case
-                       SLabel i -> return i
-                       _ -> spliceFail "Invalid splice identifier embedding"
-
-evalTypeSplice :: SpliceContext -> MPEmbedding -> TypeParser
-evalTypeSplice sctxt b = evalEmbedding sctxt b >>= \case
+evalTypeSplice :: SpliceContext -> Either MPEmbedding (K3 Type) -> TypeGenerator
+evalTypeSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
     SType t -> return t
     _ -> spliceFail "Invalid splice type value"
 
-evalExprSplice :: SpliceContext -> MPEmbedding -> ExpressionParser
-evalExprSplice sctxt b = evalEmbedding sctxt b >>= \case
+evalTypeSplice _ (Right t) = return t
+
+evalExprSplice :: SpliceContext -> Either MPEmbedding (K3 Expression) -> ExprGenerator
+evalExprSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
     SExpr e -> return e
     _ -> spliceFail "Invalid splice expression value"
 
-evalLiteralSplice :: SpliceContext -> MPEmbedding -> LiteralParser
-evalLiteralSplice sctxt b = evalEmbedding sctxt b >>= \case
+evalExprSplice _ (Right e) = return e
+
+evalLiteralSplice :: SpliceContext -> Either MPEmbedding (K3 Literal) -> LiteralGenerator
+evalLiteralSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
     SLiteral l -> return l
     _ -> spliceFail "Invalid splice literal value"
 
-evalEmbedding :: SpliceContext -> MPEmbedding -> K3Parser SpliceValue
+evalLiteralSplice _ (Right l) = return l
+
+evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $ SLabel i
 
 evalEmbedding sctxt (MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
@@ -379,11 +369,11 @@ evalEmbedding sctxt (MPEPath var path) = maybe evalErr (flip matchPath path) $ l
 
 evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
 
-spliceIdPathFail :: Identifier -> [Identifier] -> String -> K3Parser a
-spliceIdPathFail i path msg = P.parserFail $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]
+spliceIdPathFail :: Identifier -> [Identifier] -> String -> GeneratorM a
+spliceIdPathFail i path msg = throwG $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]
 
-spliceFail :: String -> K3Parser a
-spliceFail msg = P.parserFail $ unwords ["Splice failed:", msg]
+spliceFail :: String -> GeneratorM a
+spliceFail msg = throwG $ unwords ["Splice failed:", msg]
 
 
 {- Pattern matching -}
@@ -504,9 +494,9 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     spliceNonAnnotationDecl ch d@(tag -> DTrigger n t e) =
       spliceDeclParts n t (Just e) >>= \(nn, nt, neOpt) ->
         case neOpt of
-          Nothing -> throwE "Invalid trigger body resulting from pattern splicing"
+          Nothing -> throwG "Invalid trigger body resulting from pattern splicing"
           Just ne -> return (overrideChildren ch $ foldl (@+) (DC.trigger nn nt ne) $ annotations d)
 
-    spliceNonAnnotationDecl _ _ = throwE "Invalid declaration in control annotation extensions"
+    spliceNonAnnotationDecl _ _ = throwG "Invalid declaration in control annotation extensions"
 
     overrideChildren ch (Node n _) = Node n ch

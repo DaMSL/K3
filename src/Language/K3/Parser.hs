@@ -10,7 +10,6 @@
 -- | K3 Parser.
 module Language.K3.Parser (
   K3Parser,
-  identifier,
   qualifiedTypeExpr,
   typeExpr,
   qualifiedLiteral,
@@ -25,7 +24,6 @@ module Language.K3.Parser (
   parseDeclaration,
   parseSimpleK3,
   parseK3,
-  runK3Parser,
   ensureUIDs
 ) where
 
@@ -62,13 +60,13 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
-import Language.K3.Metaprogram.DataTypes
-import Language.K3.Metaprogram.Evaluation
-
 import Language.K3.Parser.DataTypes
 import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
+
+import Language.K3.Metaprogram.DataTypes
+import Language.K3.Metaprogram.Evaluation
 
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
@@ -114,13 +112,6 @@ program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
   where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver "") eof)
 
-        addDecls gd p@(tag -> DRole n)
-          | n == defaultRoleName =
-              let (dd, cd) = generatorDeclsToList gd
-              in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
-
-        addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
-
         selfContainedProgram d =
           if noDriver then return d
           else (mkBuilderDecls d >>= mkEntryPoints >>= mkBuiltins >>= runMP)
@@ -136,6 +127,13 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
         runMP mp =
           let (prgE, genSt) = evalMetaprogram defaultMetaAnalysis mp
           in either P.parserFail (addDecls $ getGeneratedDecls genSt) prgE
+
+        addDecls gd p@(tag -> DRole n)
+          | n == defaultRoleName =
+              let (dd, cd) = generatorDeclsToList gd
+              in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
+
+        addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
 
 
 roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
