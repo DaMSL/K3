@@ -15,6 +15,8 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Metaprogram.Evaluation
+
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 -- import Language.K3.Analysis.Effect
@@ -46,11 +48,12 @@ run opts = do
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  -- 1. Parsing
-  parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
+  -- Parse, splice, and dispatch based on command mode.
+  parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
-    Right prog -> dispatch (mode opts) prog
-    Left err -> parseError err
+    Left err      -> parseError err
+    Right parsedP -> runMetaprogram Nothing parsedP >>= either spliceError (dispatch $ mode opts)
+
   where
     -- perform all transformations
     transform ts prog      = foldl' (flip analyzer) (prog, "") ts
@@ -121,8 +124,9 @@ run opts = do
       Left s   -> (p, str++s)
       Right p' -> (p', str)
 
-    parseError    s = putStrLn $ "Could not parse input: " ++ s
-    syntaxError   s = putStrLn $ "Could not print program: " ++ s
+    parseError  s = putStrLn $ "Could not parse input: " ++ s
+    spliceError s = putStrLn $ "Could not process metaprogram: " ++ s
+    syntaxError s = putStrLn $ "Could not print program: " ++ s
 
     -- Temporary testing function.
     -- testProperties p = inferProgramUsageProperties p
