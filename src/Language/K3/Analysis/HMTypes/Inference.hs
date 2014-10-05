@@ -32,7 +32,7 @@ import Data.Tree
 import Debug.Trace
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Common
+import Language.K3.Core.Common hiding ( logVoid, logAction )
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
@@ -46,10 +46,6 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
---logVoid :: (Functor m, Monad m) => String -> m ()
---logVoid s = void $ _debug s
---logVoid s = trace s $ return ()
-
 logVoid :: String -> TInfM ()
 logVoid s = do
   env <- get
@@ -59,15 +55,6 @@ logVoid' :: (Functor m, Monad m) => Bool -> String -> m ()
 logVoid' verbose' s = if verbose' then trace s $ return () else return ()
 
 -- | Misc. helpers
--- logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
--- logAction msgF action = do
---   doLog (msgF Nothing)
---   result <- action
---   doLog (msgF $ Just result)
---   return result
---   where doLog Nothing  = return ()
---         doLog (Just s) = logVoid s
-
 logAction :: (Maybe a -> Maybe String) -> TInfM a -> TInfM a
 logAction msgF action = do
   doLog (msgF Nothing)

@@ -19,8 +19,6 @@ import qualified Data.Map     as Map
 import Data.HashSet ( HashSet )
 import Data.Map     ( Map )
 
-import Debug.Trace
-
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
 
@@ -524,8 +522,5 @@ maybeParser :: (Show a) => K3Parser a -> String -> Maybe a
 maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
 
 logParser :: (Functor m, Monad m, Show a) => String -> m a -> m a
-logParser s act = do
-  void $ trace ("Running parser on " ++ s) $ return ()
-  r <- act
-  void $ trace ("Done parsing: " ++ show r) $ return ()
-  return r
+logParser s act = logAction loggerF act
+  where loggerF = maybe (Just $ "Running parser on " ++ s) (\r -> Just $ "Done parsing: " ++ show r)

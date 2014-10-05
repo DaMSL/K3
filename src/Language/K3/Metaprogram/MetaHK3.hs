@@ -46,7 +46,7 @@ evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
       in trace ("Eval Haskell " ++ astStr) $ evalWithError $ astStr
 
     evalWithError str = do
-      let r = unsafePerformIO $ unsafeRunInterpreterWithArgs []
+      let r = unsafePerformIO $ unsafeRunInterpreterWithArgs interpArgs
                 $ interpretWithContext str
       trace ("Eval Haskell result: " ++ show r) $ either interpFail return r
 
@@ -59,6 +59,7 @@ evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
       resStr <- eval str
       return $ ((read resStr) :: SpliceValue)
 
+    interpArgs  = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
     searchPaths = [".", "../K3-Core/src"]
     loadPaths   = ["Language.K3.Core.Metaprogram"]
     importPaths = [ "Prelude"

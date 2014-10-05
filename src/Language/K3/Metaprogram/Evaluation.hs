@@ -15,8 +15,6 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Tree
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -37,14 +35,8 @@ import Language.K3.Metaprogram.MetaHK3
 import Language.K3.Parser.DataTypes
 import Language.K3.Analysis.HMTypes.Inference hiding ( logVoid, logAction )
 
-import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
-$(loggingFunctions)
-
-logVoid :: (Functor m, Monad m) => String -> m ()
---logVoid s = void $ _debug s
-logVoid s = trace s $ return ()
 
 {- Top-level AST transformations -}
 evalMetaprogram :: (K3 Declaration -> GeneratorM (K3 Declaration))
@@ -463,9 +455,6 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
   where
     logValue msg v = runIdentity (logVoid msg >> return v)
 
-    logAction preMsg postMsgF v =
-      logVoid preMsg >> v >>= \r -> (logVoid $ postMsgF r) >> return r
-
     inputSR expr = SRExpr $ return expr
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
       SRRewrite $ generateInSpliceEnv (mergeSpliceEnv spliceEnv sEnv) $
@@ -473,8 +462,9 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
     tryMatch _ acc@(Just _) _ = acc
     tryMatch expr Nothing (pat, rewrite, ruleExts) =
-      (logAction (debugMatchStep expr pat) (debugMatchStepResult expr pat) $ matchExpr expr pat)
-        >>= return . (, rewrite, ruleExts)
+      (logAction (tryMatchLogger expr pat) $ matchExpr expr pat) >>= return . (, rewrite, ruleExts)
+
+    tryMatchLogger expr pat = maybe (Just $ debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
 
     debugMatchStep expr pat = boxToString $
           ["Trying match step "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
