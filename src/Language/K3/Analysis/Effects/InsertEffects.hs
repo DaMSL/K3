@@ -383,7 +383,6 @@ runAnalysis prog = flip evalState startEnv $
     -- CaseOf
     handleExpr ch@[e,some,none] n@(tag -> ECaseOf i) = do
       bindSym <- lookupBindM i
-      deleteBindM i -- remove bind from env
       -- Wrap some in a scope
       let someEff = maybeToList $ getEEffect some
       scopeEff <- addFID $ scope [bindSym] emptyClosure someEff
