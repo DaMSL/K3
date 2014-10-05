@@ -14,11 +14,6 @@ char *sdup (const char *s) {
     return d;                            // Return new memory
 }
 
-std::size_t hash_value(boost::asio::ip::address const& b) {
-  boost::hash<std::string> hasher;
-  return hasher(b.to_string());
-}
-
 namespace K3 {
   using std::string;
   using std::endl;
@@ -127,12 +122,8 @@ namespace K3 {
   }
 
 
-  F<F<string(const int&)>(const int&)> __string_context::substring(const string& s) {
-      return [&] (const int& i) {
-            return [&] (const int& n) {
-                return s.substr(i,n);
-            };
-      };
+  string __string_context::substring(const string&s, int i, int n) {
+    return s.substr(i,n);
   }
 
   // Split a string by substrings
@@ -151,93 +142,5 @@ namespace K3 {
       return results;
     };
   }
-  // Vector operations:
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_add(const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        const vector<R_elem<double>> &v1 = c1.getConstContainer();
-        const vector<R_elem<double>> &v2 = c2.getConstContainer();
-        Collection<R_elem<double>> result;
-
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem + v2[i].elem;
-          R_elem<double> r(d);
-          result.insert(r);
-        }
-
-        return result;
-      };
-
-  }
-
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> vector_sub(const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        const auto &v1 = c1.getConstContainer();
-        const auto &v2 = c2.getConstContainer();
-        Collection<R_elem<double>> result;
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem - v2[i].elem;
-          R_elem<double> r(d);
-          result.insert(r);
-        }
-
-        return result;
-      };
-
-  }
-
-  F<double(const Collection<R_elem<double>>&)> dot(const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        double ans = 0;
-        const auto &v1 = c1.getConstContainer();
-        const auto &v2 = c2.getConstContainer();
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem * v2[i].elem;
-          ans += d;
-        }
-
-        return ans;
-      };
-  }
-
-  F<double(const Collection<R_elem<double>>&)> squared_distance(const Collection<R_elem<double>>& c1) {
-      return [&] (const Collection<R_elem<double>>& c2) {
-        using namespace K3;
-        double ans = 0;
-        const auto &v1 = c1.getConstContainer();
-        const auto &v2 = c2.getConstContainer();
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d = v1[i].elem - v2[i].elem;
-          ans += d * d;
-        }
-
-        return ans;
-      };
-  }
-
-  Collection<R_elem<double>> zero_vector(int n) {
-    Collection<R_elem<double>> c;
-    auto &cc(c.getContainer());
-    cc.resize(n, R_elem<double> { 0.0 });
-    return c;
-  }
-
-  F<Collection<R_elem<double>>(const Collection<R_elem<double>>&)> scalar_mult(const double& d) {
-      return [&] (const Collection<R_elem<double>>& c) {
-        using namespace K3;
-        const auto& v1 = c.getConstContainer();
-        Collection<R_elem<double>> result;
-        for (auto i = 0; i < v1.size(); ++i) {
-          double d2 = d * v1[i].elem;
-          R_elem<double> r(d2);
-          result.insert(r);
-        }
-
-        return result;
-      };
-  }
-
 
 } // namespace K3

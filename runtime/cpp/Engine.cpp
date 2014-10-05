@@ -97,7 +97,19 @@ namespace K3 {
               else {
 		if (log_enabled)
                   logAt(trivial::trace, "Creating endpoint: " + eid);
-                openSocketInternal(eid, addr, IOMode::Write);
+		// Peer may not be accepting connections yet, wait:
+		try {
+		  if (i > 0) {
+		    boost::this_thread::sleep_for( boost::chrono::milliseconds(200));
+		    if (log_enabled)
+		      logAt(trivial::trace, "Retry: Creating endpoint.");
+		  }
+                  openSocketInternal(eid, addr, IOMode::Write);
+		}
+		catch (std::runtime_error e) {
+                  // Try again next iteration.
+		}
+
               }
             }
           }

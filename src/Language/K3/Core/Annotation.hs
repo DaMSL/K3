@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -17,13 +16,17 @@ module Language.K3.Core.Annotation (
 
     children,
     replaceCh,
-    details
-
+    replaceTag,
+    details,
+    tna,
+    tnc
 ) where
+
+import Control.Arrow ((&&&))
+import Control.Monad
 
 import Data.List (delete, find)
 import Data.Tree
-import Data.Typeable
 
 -- | Every tag type defines the set of annotations that can be associated with that tag.
 data family Annotation t :: *
@@ -102,7 +105,7 @@ instance AContainer a => AContainer (Tree a) where
     Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
-data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable)
+data a :@: b = a :@: b deriving (Eq, Ord, Read, Show)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where
@@ -151,6 +154,16 @@ children = subForest
 replaceCh :: Tree a -> Forest a -> Tree a
 replaceCh (Node x _) ch = Node x ch
 
+-- | Replace node type
+replaceTag :: K3 a -> a -> K3 a
+replaceTag (Node (_ :@: anns) ch) tg = Node (tg :@: anns) ch
+
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
 details (Node (tg :@: anns) ch) = (tg, ch, anns)
+
+tna :: K3 a -> (a, [Annotation a])
+tna = tag &&& annotations
+
+tnc :: K3 a -> (a, [K3 a])
+tnc = tag &&& children

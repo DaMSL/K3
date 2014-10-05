@@ -1,4 +1,5 @@
-annotation Sorted given type a, b {
+include "Annotation/Collection.k3"
+annotation MultiIndex given type a, b {
   provides lifted peek    : () -> option content
 
   provides lifted insert  : content -> ()
@@ -18,10 +19,7 @@ annotation Sorted given type a, b {
   provides lifted iterate : (content -> ()) -> ()
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Sorted}
-
-  @:Transformer
-  provides lifted selfMap     : (content -> a) -> collection {elem : a} @ {Sorted}
+  provides lifted map     : (content -> a) -> collection {elem : a} @ {MultiIndex}
 
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
@@ -31,20 +29,10 @@ annotation Sorted given type a, b {
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Sorted}
+                             -> collection { key : a, value : b } @ {MultiIndex}
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Sorted})
-                             -> collection {elem : a} @ {Sorted}
-
-  provides lifted min         : () -> option content
-
-  provides lifted max         : () -> option content
-
-  provides lifted lowerBound  : content -> option content
-
-  provides lifted upperBound  : content -> option content
-
-  provides lifted slice       : content -> (content -> self)
+  provides lifted ext     : (content -> collection {elem : a} @ {MultiIndex})
+                             -> collection {elem : a} @ {MultiIndex}
 
 }

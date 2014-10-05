@@ -5,6 +5,8 @@ annotation Set given type a, b {
 
   provides lifted insert  : content -> ()
   provides lifted erase  : content -> ()
+
+  @:CArgs 2
   provides lifted update  : content -> (content -> ())
   provides lifted size : () -> int
 
@@ -23,10 +25,10 @@ annotation Set given type a, b {
   @:Transformer
   provides lifted filter  : (content -> bool) -> self
 
-  @:Transformer
+  @:{Transformer, CArgs 2}
   provides lifted fold    : (a -> (content -> a)) -> a -> a
 
-  @:Transformer
+  @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {Set}
 

@@ -18,7 +18,9 @@ import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
-import Language.K3.Effects.Core
+import Language.K3.Analysis.Effects.Core
+
+import Language.K3.Optimization.Core
 
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
@@ -112,6 +114,7 @@ data instance Annotation Expression
     -- an annotation category (e.g., EType, EAnalysis, etc)
     | EEffect     (K3 Effect)
     | ESymbol     (K3 Symbol)
+    | EOpt        OptHint
     | EType       (K3 Type)
     | EQType      (K3 QType)
     | ETypeLB     (K3 Type)

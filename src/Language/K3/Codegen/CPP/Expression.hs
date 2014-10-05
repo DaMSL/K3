@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -12,13 +14,13 @@ import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 
+import qualified Data.Set as S
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
-
-import Language.K3.Analysis.CArgs
 
 import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Preprocessing
@@ -26,6 +28,11 @@ import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
+
+import qualified Language.K3.Analysis.CArgs as CArgs
+
+import Language.K3.Optimization.Core
+import Language.K3.Optimization.Bind
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
@@ -61,7 +68,8 @@ attachTemplateVars v e g
                                   t@(tag -> TFunction) -> return t
                                   (tag &&& children -> (TForall _, [t'])) -> return t'
                                   _ -> throwE $ CPPGenE "Unreachable Error."
-            let ts = snd . unzip . dedup $ matchTrees signatureType (fromJust $ functionType e)
+            let ts = snd . unzip . dedup $ matchTrees signatureType $
+                       fromMaybe (error "attachTemplateVars: expected just") $ functionType e
             cts <- mapM genCType ts
             return $ if null cts
                then R.Name v
@@ -186,12 +194,21 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
            , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
-inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
+inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-
-    return (fe ++ concat aes, R.Call fv avs)
+    c <- call fv avs
+    return (fe ++ concat aes, c)
+  where
+    call fn@(R.Variable n) args =
+      if isJust $ f @~ CArgs.isErrorFn
+        then do
+          kType <- getKType e
+          returnType <- genCType kType
+          return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
+        else return $ R.Call fn args
+    call fn args = return $ R.Call fn args
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
@@ -271,34 +288,48 @@ reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
     return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
 
-reify r (tag &&& children -> (EBindAs b, [a, e])) = do
+reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
+    let (refBinds, copyBinds, writeBinds)
+            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
+                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
+                Nothing -> ([], [], S.fromList $ bindingVariables b)
+
+    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
+    let isWriteBound i = i `S.member` writeBinds
+
     (ae, g) <- case a of
         (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
+            ta <- getKType a
+            da <- cDecl ta g'
             ae' <- reify (RName g') a
-            return (ae', R.Variable $ R.Name g')
+            return (da ++ ae', R.Variable $ R.Name g')
 
     ta <- getKType a
 
     bindInit <- case b of
             BIndirection i -> do
                 let (tag &&& children -> (TIndirection, [ti])) = ta
-                di <- cDecl ti i
-                return $ di ++ [R.Assignment (R.Variable $ R.Name i) (R.Dereference g)]
-            BTuple is -> do
-                let (tag &&& children -> (TTuple, ts)) = ta
-                ds <- zipWithM cDecl ts is
-                let bindVars = [R.Variable (R.Name i) | i <- is]
-                let tieCall = R.Call (R.Variable $ R.Qualified (R.Name "std" )(R.Name "tie")) bindVars
-                return $ concat ds ++ [R.Assignment tieCall g]
-            BRecord iis -> return [R.Assignment (R.Variable $ R.Name v) (R.Project g (R.Name i)) | (i, v) <- iis]
+                let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
+                return [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
+            BTuple is ->
+                return [ R.Forward $ R.ScalarDecl (R.Name i)
+                           (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
+                           (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
+                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                       | i <- is
+                       | n <- [0..]
+                       ]
+            BRecord iis -> return [ R.Forward $ R.ScalarDecl (R.Name v)
+                                      (if isCopyBound v then R.Inferred else R.Reference R.Inferred)
+                                      (Just $ R.Project g (R.Name i))
+                                  | (i, v) <- iis]
 
     let bindWriteback = case b of
-
-            BIndirection i -> [R.Assignment g (R.Call (R.Variable (R.Name "make_shared")) [R.Variable $ R.Name i])]
-            BTuple is -> zipWith (genTupleAssign g) [0..] is
-            BRecord iis -> map (uncurry $ genRecordAssign g) iis
+            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | not (isWriteBound i)]
+            BTuple is -> [genTupleAssign g n i | i <- is, isWriteBound i | n <- [0..]]
+            BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
 
     (bindBody, k) <- case r of
         RReturn -> do

@@ -3,23 +3,26 @@ include "Annotation/Map.k3"
 include "Core/CppBuiltins.k3"
 
 declare dataLoader : string -> collection {
-    adRevenue: real,
-    countryCode: string,
+    sourceIP: string,
     destURL: string,
-    duration: int,
+    visitDate: string,
+    adRevenue: real,
+    userAgent: string,
+    countryCode: string,
     languageCode: string,
     searchWord: string,
-    sourceIP: string,
-    userAgent: string,
-    visitDate: string
+    duration: int
     } @ { Collection } -> ()
 
 // Constants
+declare peers_seq : collection {addr: address} @ {Seq}
+
 declare master: address = 127.0.0.1:40000
-declare index_by_hash: string -> int
+declare index_by_hash: string -> int = \s -> (hash s) % (peers_seq.size ())
+
+
 declare peer_by_index: int -> address
 declare x: mut int = 3
-declare num_peers: int = 2
 declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
@@ -47,10 +50,10 @@ declare start_ms : mut int = 0
 declare end_ms : mut int = 0
 declare elapsed_ms : mut int = 0
 
-declare agg_vals : mut collection {key:string, value:real} @ {Map}
+declare agg_vals : mut collection {key:string, value:real} @ {Collection}
 declare peer_aggs : mut collection {key: int, value:
-                   collection {key: string, value: real} @ {Map}
-                   } @ {Map}
+                   collection {key: string, value: real} @ {Collection}
+                   } @ {Collection}
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -66,43 +69,43 @@ trigger q2_local : () = \_ -> (
     agg_vals.groupBy
       (\v -> index_by_hash v.key)
       (\acc -> \v -> (acc.insert(v); acc))
-      (empty {key: string, value: real} @ {Map});
+      (empty {key: string, value: real} @ {Collection});
   peer_aggs.iterate (\v ->
-    (aggregate, peer_by_index v.key) <- v.value
+    (aggregate, (peers_seq.at v.key).addr) <- v.value
   );
   // Send punctuation: we're done
   peers.iterate(\p -> (peer_barrier, p.addr) <- ())
 )
 
-declare merge_results: collection { key: string, value: real } @ { Map } -> () = \vals -> (
+declare merge_results: collection { key: string, value: real } @ { Collection } -> () = \vals -> (
     vals.iterate (
-        \v -> case lookup local_q2_results v.key of
-            { Some a -> local_q2_results.insert { key: v.key, value: a + v.value } }
+        \v -> case local_q2_results.lookup {key: v.key, value: 0.0}  of
+            { Some kv -> local_q2_results.insert { key: v.key, value: kv.value + v.value } }
             { None -> local_q2_results.insert v }
     )
 )
 
-trigger aggregate : collection { key: string, value: real } @ {Map} = \vals -> (
+trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
   merge_results vals
 )
 
 trigger peer_barrier : () = \_ -> (
   peers_finished = peers_finished + 1;
-  if peers_finished == num_peers
+  if peers_finished == peers.size ()
   then (master_done, master) <- ()
   else ()
 )
 
 trigger master_done : () = \_ -> (
   master_peers_finished = master_peers_finished + 1;
-  if master_peers_finished == num_peers
+  if master_peers_finished == peers.size ()
   then end_ms = now ();
        elapsed_ms = end_ms - start_ms;
        printLine (itos elapsed_ms);
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
-  
+
 
 trigger shutdown : () = \_ -> (
   haltEngine ()
@@ -112,12 +115,13 @@ trigger shutdown : () = \_ -> (
 // Once all peers are ready, the master will start the query.
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
-  if peers_ready == num_peers
+  if peers_ready == peers.size ()
   then start_ms = now (); peers.iterate (\p -> (q2_local, p.addr) <- ())
   else ()
 )
 
 trigger load_all : () = \_ -> (
+  peers.iterate (\i -> peers_seq.insert i);
   (dataLoader data_file local_uservisits);
   ((ready, master) <- ())
 )

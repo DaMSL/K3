@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Data Representations for K3 Effects
-module Language.K3.Effects.Core where
+module Language.K3.Analysis.Effects.Core where
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -33,22 +33,23 @@ data Provenance
 
 data Symbol = Symbol Identifier Provenance deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Symbol = SAnnotation
-                                | SId Int
-                                deriving (Eq, Ord, Read, Show)
+data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
+
+isSID :: Annotation Symbol -> Bool
+isSID _ = True
 
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
     | FScope [K3 Symbol]
-    | FVariable Identifier
     | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible
-    | FLoop                   -- a flattened loop
+    | FLoop  -- a flattened loop
+    | FNop
   deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Effect = FAnnotation
-                                | FId Int
-                                deriving (Eq, Ord, Read, Show)
+data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)
 
+isFID :: Annotation Effect -> Bool
+isFID _ = True

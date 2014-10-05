@@ -6,6 +6,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <exception>
 #include <tuple>
 
 #include "Common.hpp"

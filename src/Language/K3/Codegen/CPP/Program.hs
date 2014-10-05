@@ -26,7 +26,6 @@ import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives (genCType)
 import Language.K3.Codegen.CPP.Types
 
-import qualified Language.K3.Analysis.CArgs as CArgs
 import qualified Language.K3.Codegen.Imperative as I
 
 import qualified Language.K3.Codegen.CPP.Representation as R
@@ -50,10 +49,9 @@ stringifyProgram d = vsep . map R.stringify <$> program d
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
 program :: K3 Declaration -> CPPGenM [R.Definition]
-program (mangleReservedNames . CArgs.convertProgram -> (tag &&& children -> (DRole name, decls))) = do
+program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
-
     -- Generate program preamble.
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
@@ -212,6 +210,10 @@ requiredIncludes = return
                    , "string"
                    , "tuple"
 
+                   , "boost/multi_index_container.hpp"
+                   , "boost/multi_index/ordered_index.hpp"
+                   , "boost/multi_index/member.hpp"
+
                    , "BaseTypes.hpp"
                    , "Common.hpp"
                    , "Context.hpp"
@@ -231,14 +233,6 @@ requiredIncludes = return
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS <- triggers <$> get
-  let initNames = R.Forward $ R.ScalarDecl
-                    (R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names"))
-                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Name "string"] (R.Name "map"))
-                    Nothing
-  let initDisps = R.Forward $ R.ScalarDecl
-                    (R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers"))
-                    (R.Named $ R.Specialized [R.Primitive R.PInt, R.Named $ R.Specialized [R.Named $ R.Name "Dispatcher"] (R.Name "shared_ptr")] (R.Name "map") )
-                    Nothing
   names <- mapM assignTrigName triggerS
   dispatchers <- mapM assignClonableDispatcher triggerS
   return $ names ++ dispatchers;
@@ -345,7 +339,7 @@ prettifyExpr base_t e =
    opt ct = do
        cType <- genCType base_t
        inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
-       return $ wrap (singleton $ R.IfThenElse e [R.Return $ stringConcat (lit_string "Some ") inner] [R.Return $ lit_string "None"]) [] e (R.Const $ R.Reference cType)
+       return $ wrap (singleton $ R.IfThenElse (R.Variable $ R.Name "x") [R.Return $ stringConcat (std_string "Some ") inner] [R.Return $ std_string "None"]) [] e (R.Const $ R.Reference cType)
    -- Indirection
    ind_to_string ct = do
        inner <- prettifyExpr ct (R.Dereference e)

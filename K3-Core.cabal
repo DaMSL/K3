@@ -69,7 +69,6 @@ library
         Language.K3.Core.Constructor.Expression,
         Language.K3.Core.Constructor.Literal,
         Language.K3.Core.Constructor.Type,
-        Language.K3.Effects.Core
         Language.K3.Utils.Conditional,
         Language.K3.Utils.Either,
         Language.K3.Utils.Logger,
@@ -123,6 +122,11 @@ library
         Language.K3.Analysis.Interpreter.BindAlias,
         Language.K3.Analysis.AnnotationGraph,
         Language.K3.Analysis.InsertMembers,
+        Language.K3.Analysis.Effects.Common,
+        Language.K3.Analysis.Effects.Core,
+        Language.K3.Analysis.Effects.Constructors,
+        Language.K3.Analysis.Effects.InsertEffects,
+        Language.K3.Optimization,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -183,7 +187,7 @@ library
         Language.K3.TypeSystem.Data.Environments.Type,
         Language.K3.TypeSystem.Data.Constraints,
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
-        Language.K3.TypeSystem.Data.Result
+        Language.K3.TypeSystem.Data.Result,
         Language.K3.Codegen.CPP.Representation
 
     ghc-options: -Wall -fno-warn-orphans -O2
@@ -193,10 +197,13 @@ library
         Language.K3.Codegen.CPP.Common,
         Language.K3.Codegen.CPP.Declaration,
         Language.K3.Codegen.CPP.Expression,
+        Language.K3.Codegen.CPP.MultiIndex,
         Language.K3.Codegen.CPP.Preprocessing,
         Language.K3.Codegen.CPP.Primitives,
         Language.K3.Codegen.CPP.Program,
         Language.K3.Codegen.CPP.Types,
+        Language.K3.Optimization.Core,
+        Language.K3.Optimization.Bind,
         Language.K3.Utils.Pretty.Common,
         Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
         Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
