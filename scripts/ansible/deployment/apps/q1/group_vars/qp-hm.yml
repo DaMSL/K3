@@ -1,0 +1,5 @@
+enable_logging: False
+k3_bindings:
+  master: "<192.168.0.40:40000>"
+  x: 1000
+  role: '"rows"'

@@ -1,0 +1,34 @@
+ip: 192.168.0.46
+local_peers:
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_096"'}
+  port: 40000
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_097"'}
+  port: 40001
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_098"'}
+  port: 40002
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_099"'}
+  port: 40003
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_100"'}
+  port: 40004
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_101"'}
+  port: 40005
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_102"'}
+  port: 40006
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_103"'}
+  port: 40007
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_104"'}
+  port: 40008
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_105"'}
+  port: 40009
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_106"'}
+  port: 40010
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_107"'}
+  port: 40011
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_108"'}
+  port: 40012
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_109"'}
+  port: 40013
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_110"'}
+  port: 40014
+- overrides: {rankings_file: '"/local_data/sf5/128l/rankings_sf5_128l/rankings_sf5_128l_111"'}
+  port: 40015

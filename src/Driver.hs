@@ -15,12 +15,12 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
---import Language.K3.Analysis.Conflicts
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
-import Language.K3.Analysis.Effect
+-- import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
-import Language.K3.Analysis.Properties
+-- import Language.K3.Analysis.Properties
+import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 
 import qualified Language.K3.Transform.Normalization as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
@@ -56,13 +56,12 @@ run opts = do
     transform ts prog      = foldl' (flip analyzer) (prog, "") ts
 
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Parse popts) p = printer (parsePrintMode popts) p
+    dispatch (Parse popts) p = analyzeThenPrint popts p
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
       Left s   -> putStrLn s          >> putStrLn "ERROR"
       Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
-    dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     quickTypecheckAux f p = do
       qtp <- inferProgramTypes False p;
@@ -71,7 +70,7 @@ run opts = do
     quickTypecheckOpts opts' p = flip quickTypecheckAux p $
       \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
 
-    quickTypecheck p = quickTypecheckAux translateProgramTypes p
+    -- quickTypecheck p = quickTypecheckAux translateProgramTypes p
 
     chooseTypechecker opts' p =
       if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
@@ -94,9 +93,9 @@ run opts = do
     printer PrintAST    = putStrLn . pretty
     printer PrintSyntax = either syntaxError putStrLn . programS
 
-    doAnalyze prtMode ts prog = do
-      let (p, str) = transform ts prog
-      printer prtMode p
+    analyzeThenPrint popts prog = do
+      let (p, str) = transform (poTransform popts) prog
+      printer (parsePrintMode popts) p
       putStrLn str
 
       -- Using arrow combinators to make this simpler
@@ -109,7 +108,8 @@ run opts = do
     analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
     analyzer EffectNormalization x = first Normalization.normalizeProgram x
     analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
-    analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
+    --old: analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
+    analyzer Effects x             = first Effects.runAnalysis x
     analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
@@ -125,9 +125,9 @@ run opts = do
     syntaxError   s = putStrLn $ "Could not print program: " ++ s
 
     -- Temporary testing function.
-    testProperties p = inferProgramUsageProperties p
-                         >>= Simplification.inferFusableProgramApplies
-                         >>= Simplification.fuseProgramTransformers
+    -- testProperties p = inferProgramUsageProperties p
+    --                      >>= Simplification.inferFusableProgramApplies
+    --                      >>= Simplification.fuseProgramTransformers
 
 
 -- | Top-Level.
