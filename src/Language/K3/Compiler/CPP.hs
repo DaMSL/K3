@@ -56,7 +56,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
-    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
+    quickTypecheck =  inferProgramTypes False prog >>= translateProgramTypes
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes

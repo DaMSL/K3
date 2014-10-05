@@ -82,7 +82,7 @@ data InterpretOptions
 
 -- | Typechecking options
 data TypecheckOptions
-    = TypecheckOptions { noQuickTypes    :: Bool 
+    = TypecheckOptions { noQuickTypes    :: Bool
                        , printQuickTypes :: Bool }
   deriving (Eq, Read, Show)
 

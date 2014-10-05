@@ -65,7 +65,7 @@ run opts = do
     dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
     quickTypecheckAux f p = do
-      qtp <- inferProgramTypes p;
+      qtp <- inferProgramTypes False p;
       f qtp
 
     quickTypecheckOpts opts' p = flip quickTypecheckAux p $
