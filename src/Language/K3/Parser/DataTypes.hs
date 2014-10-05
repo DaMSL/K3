@@ -97,7 +97,7 @@ type K3UnaryOperator      = K3 Expression -> K3 Expression
 type AnnotationCtor a = Identifier -> Annotation a
 type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
--- | Metaprogram embedding as identifiers.
+-- | Metaprogram expression embedding as identifiers.
 data MPEmbedding = MPENull  Identifier
                  | MPEPath  Identifier [Identifier]
                  | MPEHProg String

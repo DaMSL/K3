@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {-| K3-Haskell Metaprogramming Bridge.
     This allows Haskell expressions to be used in K3 metaprogramming expressions
@@ -16,10 +17,6 @@
 
 module Language.K3.Metaprogram.MetaHK3 where
 
-import Control.Monad
-import Debug.Trace
-import System.IO.Unsafe
-
 import Language.Haskell.Interpreter hiding ( TemplateHaskell )
 import Language.Haskell.Interpreter.Unsafe
 
@@ -28,6 +25,7 @@ import Language.Haskell.Exts.Parser
 import Language.Haskell.Exts.Pretty
 import Language.Haskell.Exts.Syntax
 
+import Language.K3.Core.Common
 import Language.K3.Core.Metaprogram
 import Language.K3.Metaprogram.DataTypes
 
@@ -40,37 +38,16 @@ evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
   where
     pm = defaultParseMode {extensions = [EnableExtension TemplateHaskell]}
 
-    -- TODO: change GeneratorM transformer stack to bottom out at IO instead of Identity.
-    evalHaskell ast =
-      let astStr = prettyPrint ast
-      in trace ("Eval Haskell " ++ astStr) $ evalWithError $ astStr
+    evalHaskell (prettyPrint -> astStr) =
+      logAction (evalLoggerF astStr) $ generatorWithEvalOptions $ \evalOpts -> generatorWithInterpreter $ \itptr -> do
+        r <- liftIO $ unsafeRunInterpreterWithArgs (mpInterpArgs evalOpts) $ interpretWithOptions itptr astStr
+        either interpFail return r
 
-    evalWithError str = do
-      let r = unsafePerformIO $ unsafeRunInterpreterWithArgs interpArgs
-                $ interpretWithContext str
-      trace ("Eval Haskell result: " ++ show r) $ either interpFail return r
+    evalLoggerF astStr = maybe (Just $ "Eval Haskell " ++ astStr) (\r -> Just $ "Eval Haskell result: " ++ show r)
 
-    interpretWithContext str = do
-      void $ set [searchPath := searchPaths]
-      void $ loadModules loadPaths
-      void $ setImports importPaths
-      mods <- getLoadedModules
-      void $ trace ("Loaded: " ++ show mods) $ return ()
+    interpretWithOptions itptr str = itptr >> do
       resStr <- eval str
       return $ ((read resStr) :: SpliceValue)
-
-    interpArgs  = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
-    searchPaths = [".", "../K3-Core/src"]
-    loadPaths   = ["Language.K3.Core.Metaprogram"]
-    importPaths = [ "Prelude"
-                  , "Data.Map"
-                  , "Data.Tree"
-                  , "Language.K3.Core.Annotation"
-                  , "Language.K3.Core.Common"
-                  , "Language.K3.Core.Type"
-                  , "Language.K3.Core.Expression"
-                  , "Language.K3.Core.Declaration"
-                  , "Language.K3.Core.Metaprogram" ]
 
     interpFail err = throwG $ unwords ["Haskell splice eval failed:", show err]
 

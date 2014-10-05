@@ -22,8 +22,7 @@ module Language.K3.Core.Annotation (
     tnc
 ) where
 
-import Control.Arrow ((&&&))
-import Control.Monad
+import Control.Arrow ( (&&&) )
 
 import Data.List (delete, find)
 import Data.Tree

@@ -6,11 +6,13 @@ module Language.K3.Metaprogram.DataTypes where
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import Data.Functor.Identity
 import qualified Data.Map as Map
 import Data.Map ( Map )
 import qualified Data.Set as Set
 import Data.Set ( Set )
+
+import Language.Haskell.Interpreter ( Interpreter )
+import qualified Language.Haskell.Interpreter as HI
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -34,9 +36,20 @@ data GeneratorEnv = GeneratorEnv { dataAGEnv :: Map Identifier K3Generator
 data GeneratorDecls = GeneratorDecls { dataADecls :: Map Identifier [K3 Declaration]
                                      , ctrlADecls :: Map Identifier (Set (K3 Declaration)) }
 
-type GeneratorState = (Int, GeneratorEnv, SpliceContext, GeneratorDecls)
+-- | Haskell-K3 metaprogramming bridge options.
+data MPEvalOptions = MPEvalOptions { mpInterpArgs  :: [String]
+                                   , mpSearchPaths :: [String]
+                                   , mpLoadPaths   :: [String]
+                                   , mpImportPaths :: [String] }
 
-type GeneratorM = EitherT String (StateT GeneratorState Identity)
+data GeneratorState = GeneratorState { generatorUid    :: Int
+                                     , generatorEnv    :: GeneratorEnv
+                                     , spliceCtxt      :: SpliceContext
+                                     , generatorDecls  :: GeneratorDecls
+                                     , mpEvalOpts      :: MPEvalOptions
+                                     , initInterpreter :: Interpreter () }
+
+type GeneratorM = EitherT String (StateT GeneratorState IO)
 
 type TypeGenerator    = GeneratorM (K3 Type)
 type ExprGenerator    = GeneratorM (K3 Expression)
@@ -48,9 +61,10 @@ type AnnMemGenerator  = GeneratorM AnnMemDecl
 type DeclAnnGenerator = GeneratorM (Annotation Declaration)
 type ExprAnnGenerator = GeneratorM (Annotation Expression)
 
+
 {- Generator monad helpers -}
-runGeneratorM :: GeneratorState -> GeneratorM a -> (Either String a, GeneratorState)
-runGeneratorM st action = runIdentity . flip runStateT st $ runEitherT action
+runGeneratorM :: GeneratorState -> GeneratorM a -> IO (Either String a, GeneratorState)
+runGeneratorM st action = flip runStateT st $ runEitherT action
 
 -- | Run a parser and return its result in the generator monad.
 liftParser :: (Show a) => String -> K3Parser a -> GeneratorM a
@@ -71,40 +85,57 @@ emptyGeneratorDecls :: GeneratorDecls
 emptyGeneratorDecls = GeneratorDecls Map.empty Map.empty
 
 emptyGeneratorState :: GeneratorState
-emptyGeneratorState = (0, emptyGeneratorEnv, emptySpliceContext, emptyGeneratorDecls)
+emptyGeneratorState = GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls
+                                       defaultMPEvalOptions (initializeInterpreter defaultMPEvalOptions)
+
+mkGeneratorState :: MPEvalOptions -> GeneratorState
+mkGeneratorState evalOpts = GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls
+                                             evalOpts (initializeInterpreter evalOpts)
 
 getGeneratorUID :: GeneratorState -> Int
-getGeneratorUID (c, _, _, _) = c
+getGeneratorUID  = generatorUid
 
 getGeneratorEnv :: GeneratorState -> GeneratorEnv
-getGeneratorEnv (_, env, _, _) = env
+getGeneratorEnv = generatorEnv
 
 getSpliceContext :: GeneratorState -> SpliceContext
-getSpliceContext (_, _, ctxt, _) = ctxt
+getSpliceContext = spliceCtxt
 
 getGeneratedDecls :: GeneratorState -> GeneratorDecls
-getGeneratedDecls (_, _,_,decls) = decls
+getGeneratedDecls = generatorDecls
+
+getMPEvalOptions :: GeneratorState -> MPEvalOptions
+getMPEvalOptions = mpEvalOpts
+
+getInterpreter :: GeneratorState -> Interpreter ()
+getInterpreter = initInterpreter
 
 modifyGeneratorEnv :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> GeneratorState -> Either String (GeneratorState, a)
-modifyGeneratorEnv f (ac,ge,sc,gd) = either Left (\(nge,r) -> Right ((ac,nge,sc,gd), r)) $ f ge
+modifyGeneratorEnv f gs = either Left (\(nge,r) -> Right (gs {generatorEnv = nge}, r)) $ f $ getGeneratorEnv gs
 
 modifySpliceContext :: (SpliceContext -> Either String (SpliceContext, a)) -> GeneratorState -> Either String (GeneratorState, a)
-modifySpliceContext f (ac,ge,sc,gd) = either Left (\(nsc,r) -> Right ((ac,ge,nsc,gd),r)) $ f sc
+modifySpliceContext f gs = either Left (\(nsc,r) -> Right (gs {spliceCtxt = nsc}, r)) $ f $ getSpliceContext gs
 
 modifyGeneratedDecls :: (GeneratorDecls -> Either String (GeneratorDecls, a)) -> GeneratorState -> Either String (GeneratorState, a)
-modifyGeneratedDecls f (ac,ge,sc,gd) = either Left (\(ngd,r) -> Right ((ac,ge,sc,ngd), r)) $ f gd
+modifyGeneratedDecls f gs = either Left (\(ngd,r) -> Right (gs {generatorDecls = ngd}, r)) $ f $ getGeneratedDecls gs
 
 modifyGeneratorState :: (GeneratorState -> Either String (GeneratorState, a)) -> GeneratorM a
 modifyGeneratorState f = get >>= \st -> either throwG (\(nst,r) -> put nst >> return r) $ f st
 
 generatorWithGUID :: (Int -> GeneratorM a) -> GeneratorM a
-generatorWithGUID f = get >>= (\(ac,ge,sc,gd) -> put (ac+1,ge,sc,gd) >> f ac)
+generatorWithGUID f = get >>= \gs -> put (gs {generatorUid = (getGeneratorUID gs + 1)}) >> (f $ getGeneratorUID gs)
 
 generatorWithGEnv :: (GeneratorEnv -> GeneratorM a) -> GeneratorM a
 generatorWithGEnv f = get >>= f . getGeneratorEnv
 
 generatorWithSCtxt :: (SpliceContext -> GeneratorM a) -> GeneratorM a
 generatorWithSCtxt f = get >>= f . getSpliceContext
+
+generatorWithEvalOptions :: (MPEvalOptions -> GeneratorM a) -> GeneratorM a
+generatorWithEvalOptions f = get >>= f . getMPEvalOptions
+
+generatorWithInterpreter :: (Interpreter () -> GeneratorM a) -> GeneratorM a
+generatorWithInterpreter f = get >>= f . getInterpreter
 
 withGUID :: (Int -> a) -> GeneratorM a
 withGUID f = generatorWithGUID $ return . f
@@ -184,3 +215,30 @@ addCGenDecls n decls (GeneratorDecls dd cd) =
 generatorDeclsToList :: GeneratorDecls -> ([K3 Declaration], [K3 Declaration])
 generatorDeclsToList (GeneratorDecls dd cd) =
   (concat $ Map.elems dd, Set.toList $ Set.unions $ Map.elems cd)
+
+
+{- Haskell-K3 metaprogram evaluation options -}
+
+defaultMPEvalOptions :: MPEvalOptions
+defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths
+  where
+    dInterpArgs  = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
+    dSearchPaths = [".", "../K3-Core/src"]
+    dLoadPaths   = ["Language.K3.Core.Metaprogram"]
+    dImportPaths = [ "Prelude"
+                   , "Data.Map"
+                   , "Data.Tree"
+                   , "Language.K3.Core.Annotation"
+                   , "Language.K3.Core.Common"
+                   , "Language.K3.Core.Type"
+                   , "Language.K3.Core.Expression"
+                   , "Language.K3.Core.Declaration"
+                   , "Language.K3.Core.Metaprogram" ]
+
+initializeInterpreter :: MPEvalOptions -> Interpreter ()
+initializeInterpreter evalOpts = do
+  void $  HI.set [HI.searchPath HI.:= (mpSearchPaths evalOpts)]
+  void $  HI.loadModules $ (mpLoadPaths evalOpts)
+  void $  HI.setImports $ (mpImportPaths evalOpts)
+  mods <- HI.getLoadedModules
+  logVoid $ ("Loaded: " ++ show mods)

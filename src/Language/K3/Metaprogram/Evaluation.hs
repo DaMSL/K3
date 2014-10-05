@@ -32,27 +32,46 @@ import qualified Language.K3.Core.Constructor.Literal     as LC
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.MetaHK3
 
+import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.DataTypes
+
 import Language.K3.Analysis.HMTypes.Inference hiding ( logVoid, logAction )
 
 import Language.K3.Utils.Pretty
 
 
 {- Top-level AST transformations -}
-evalMetaprogram :: (K3 Declaration -> GeneratorM (K3 Declaration))
-                -> K3 Declaration -> (Either String (K3 Declaration), GeneratorState)
-evalMetaprogram analyzeF mp = runGeneratorM emptyGeneratorState synthesizedProg
-  where synthesizedProg = do
-          logVoid $ generatorInput mp
-          pWithDataAnns  <- mpGenerators mp
-          pWithMDataAnns <- applyDAnnGens pWithDataAnns
-          analyzedP      <- analyzeF pWithMDataAnns
-          logVoid $ debugAnalysis analyzedP
-          applyCAnnGens analyzedP
+runMetaprogram :: Maybe MPEvalOptions -> K3 Declaration -> IO (Either String (K3 Declaration))
+runMetaprogram evalOpts mp = do
+    (prgE, genSt) <- evalMetaprogram evalOpts defaultMetaAnalysis mp
+    return $ prgE >>= (addDecls $ getGeneratedDecls genSt)
+  where
+    addDecls genDecls p@(tag -> DRole n)
+      | n == defaultRoleName =
+          let (dd, cd) = generatorDeclsToList genDecls
+          in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
 
-        generatorInput = metalog "Evaluating metaprogram "
-        debugAnalysis  = metalog "Analyzed metaprogram "
-        metalog msg p  = boxToString $ [msg] %$ (indent 2 $ prettyLines p)
+    addDecls _ p = Left . boxToString $ [addErrMsg] %$ prettyLines p
+    addErrMsg = "Invalid top-level role resulting from metaprogram evaluation"
+
+
+evalMetaprogram :: Maybe MPEvalOptions -> (K3 Declaration -> GeneratorM (K3 Declaration)) -> K3 Declaration
+                -> IO (Either String (K3 Declaration), GeneratorState)
+evalMetaprogram evalOpts analyzeF mp = runGeneratorM initGState synthesizedProg
+  where
+    initGState = maybe emptyGeneratorState mkGeneratorState evalOpts
+
+    synthesizedProg = do
+      logVoid $ generatorInput mp
+      pWithDataAnns  <- mpGenerators mp
+      pWithMDataAnns <- applyDAnnGens pWithDataAnns
+      analyzedP      <- analyzeF pWithMDataAnns
+      logVoid $ debugAnalysis analyzedP
+      applyCAnnGens analyzedP
+
+    generatorInput = metalog "Evaluating metaprogram "
+    debugAnalysis  = metalog "Analyzed metaprogram "
+    metalog msg p  = boxToString $ [msg] %$ (indent 2 $ prettyLines p)
 
 defaultMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 defaultMetaAnalysis p = do

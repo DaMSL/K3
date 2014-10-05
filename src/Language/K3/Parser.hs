@@ -65,9 +65,6 @@ import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
 
-import Language.K3.Metaprogram.DataTypes
-import Language.K3.Metaprogram.Evaluation
-
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
 {- Main parsing functions -}
@@ -114,7 +111,7 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
 
         selfContainedProgram d =
           if noDriver then return d
-          else (mkBuilderDecls d >>= mkEntryPoints >>= mkBuiltins >>= runMP)
+          else (mkBuilderDecls d >>= mkEntryPoints >>= mkBuiltins)
 
         mkBuilderDecls d
           | DRole n <- tag d, n == defaultRoleName =
@@ -123,17 +120,6 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
 
         mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
-
-        runMP mp =
-          let (prgE, genSt) = evalMetaprogram defaultMetaAnalysis mp
-          in either P.parserFail (addDecls $ getGeneratedDecls genSt) prgE
-
-        addDecls gd p@(tag -> DRole n)
-          | n == defaultRoleName =
-              let (dd, cd) = generatorDeclsToList gd
-              in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
-
-        addDecls _ _ = P.parserFail "Invalid top-level role resulting from metaprogram evaluation"
 
 
 roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
