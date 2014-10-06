@@ -46,10 +46,10 @@ bindOptE :: K3 Expression -> K3 Expression
 bindOptE e@(TAC t@(EBindAs bs) as [s, b])
     = TAC t ((EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)) : as) (map bindOptE [s, b])
   where
-    findScope f@(tag -> FScope _) = f
+    findScope f@(tag -> FScope _ _) = f
     findScope (children -> fs) = findScope (last fs)
 
-    (TAC (FScope ss) _ [c]) = findScope $ let (EEffect k) = fromJust $ e @~ isEEffect in k
+    (TAC (FScope ss _) _ [c]) = findScope $ let (EEffect k) = fromJust $ e @~ isEEffect in k
     (writeBound, refBound) = S.partition (conflicts c) $ S.fromList ss
     symIDs = S.map (\(tag -> Symbol i _) -> i)
 
