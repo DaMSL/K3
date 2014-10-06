@@ -204,7 +204,7 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
 
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
-addAllGlobals n = mapProgram preHandleDecl mId mId n
+addAllGlobals n = mapProgram preHandleDecl mId mId Nothing n
   where
     -- add everything to global environment for cyclic/recursive scope
     -- we'll fix it up the second time through
@@ -225,9 +225,9 @@ runAnalysis prog = flip evalState startEnv $
   -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
   -- actual modification of AST (no need to decorate declarations here)
-  mapProgram mId mId handleExprs >>=
+  mapProgram mId mId handleExprs Nothing >>=
   -- fix up any globals that couldn't be looked up due to cyclic scope
-  mapProgram handleDecl mId fixUpExprs
+  mapProgram handleDecl mId fixUpExprs Nothing
 
   where
     -- Add all globals and decorate tree
@@ -528,7 +528,7 @@ combineSymApply l a = combineSym PApply [l,a]
 buildEnv :: K3 Declaration -> Env
 buildEnv n = snd $ flip runState startEnv $
                addAllGlobals n >>
-               mapProgram handleDecl mId highestExprId n
+               mapProgram handleDecl mId highestExprId Nothing n
   where
     handleDecl n@(tag -> DGlobal i _ _)  = possibleInsert n i
     handleDecl n@(tag -> DTrigger i _ _) = possibleInsert n i
