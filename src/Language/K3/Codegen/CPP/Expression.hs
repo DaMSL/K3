@@ -31,8 +31,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 
 import qualified Language.K3.Analysis.CArgs as CArgs
 
-import Language.K3.Optimization.Core
-import Language.K3.Optimization.Bind
+import Language.K3.Transform.Hints
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
