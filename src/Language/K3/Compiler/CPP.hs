@@ -62,7 +62,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
-    quickTypecheck =  inferProgramTypes False prog >>= translateProgramTypes
+    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
 
 applyAnalyses :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimizationLevel cOpts))

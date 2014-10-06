@@ -52,12 +52,9 @@ run opts = do
   parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Left err      -> parseError err
-    Right parsedP -> runMetaprogram Nothing parsedP >>= either spliceError (dispatch $ mode opts)
+    Right parsedP -> evalMetaprogram Nothing Nothing parsedP >>= either spliceError (dispatch $ mode opts)
 
   where
-    -- perform all transformations
-    transform ts prog      = foldl' (flip analyzer) (prog, "") ts
-
     dispatch :: Mode -> K3 Declaration -> IO ()
     dispatch (Parse popts) p = analyzeThenPrint popts p
     dispatch (Compile c)   p = compile c p
@@ -66,18 +63,7 @@ run opts = do
       Left s   -> putStrLn s          >> putStrLn "ERROR"
       Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
 
-    quickTypecheckAux f p = do
-      qtp <- inferProgramTypes False p;
-      f qtp
-
-    quickTypecheckOpts opts' p = flip quickTypecheckAux p $
-      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
-
-    -- quickTypecheck p = quickTypecheckAux translateProgramTypes p
-
-    chooseTypechecker opts' p =
-      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
-
+    -- Compilation dispatch.
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
       putStrLn str
@@ -86,11 +72,24 @@ run opts = do
         _         -> error $ outLanguage cOpts ++ " compilation not supported."
         --"haskell" -> HaskellC.compile opts cOpts p
 
+    -- Interpreter dispatch.
     interpret im@(Batch {}) prog = do
       let (p, str) = transform (ioTransform im) prog
       putStrLn str
       runBatch opts im p
     interpret Interactive _      = error "Interactive Mode is not yet implemented."
+
+    -- Typechecking dispatch.
+    chooseTypechecker opts' p =
+      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
+
+    quickTypecheckOpts opts' p = inferProgramTypes p >>=
+      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
+
+    -- quickTypecheck p = inferProgramTypes p >>= translateProgramTypes
+
+    -- Perform all transformations
+    transform ts prog = foldl' (flip analyzer) (prog, "") ts
 
     -- Print out the program
     printer PrintAST    = putStrLn . pretty
