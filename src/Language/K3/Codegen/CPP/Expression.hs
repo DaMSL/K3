@@ -294,7 +294,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
                (Just $ R.Dereference ev)]
 
-    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x])]
+    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x]) | isWriteBound x]
 
     return $ ee ++ [R.IfThenElse ev (d ++ se ++ reconstruct) ne]
 
