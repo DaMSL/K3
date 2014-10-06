@@ -25,7 +25,10 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import Language.K3.Analysis.Effects.InsertEffects (runAnalysis)
+import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
+import qualified Language.K3.Analysis.InsertMembers as InsertMembers
+import qualified Language.K3.Analysis.CArgs as CArgs
+
 import Language.K3.Optimization (runOptimization)
 
 import Language.K3.Driver.Options
@@ -59,14 +62,33 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
-    quickTypecheck =  inferProgramTypes False prog >>= translateProgramTypes
+    quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
+
+applyAnalyses :: CompileOptions -> K3 Declaration -> K3 Declaration
+applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimizationLevel cOpts))
+
+requiredAnalyses :: Maybe OptimizationLevel -> [K3 Declaration -> K3 Declaration]
+requiredAnalyses Nothing   = mandatoryAnalyses
+requiredAnalyses (Just O1) = InsertEffects.runAnalysis : mandatoryAnalyses
+
+-- CArgs is mandatory for CPP codegen, and depends on InsertMembers
+mandatoryAnalyses :: [K3 Declaration -> K3 Declaration]
+mandatoryAnalyses = [InsertMembers.runAnalysis, CArgs.runAnalysis]
+
+applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
+applyOptimizations cOpts prog = case optimizationLevel cOpts of
+  Nothing -> prog
+  -- TODO: simple flag for now
+  -- runOptimization could take a list of required optimization passes
+  -- for the various levels of optimization
+  Just _  -> runOptimization prog
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    preprocess = runOptimization . runAnalysis
+    preprocess = (applyOptimizations copts) . (applyAnalyses copts)
 
     genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
                            (CPP.stringifyProgram $ preprocess cppIr)

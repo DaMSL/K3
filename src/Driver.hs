@@ -15,6 +15,8 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Metaprogram.Evaluation
+
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 -- import Language.K3.Analysis.Effect
@@ -46,36 +48,23 @@ run opts = do
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  -- 1. Parsing
-  parseResult <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
+  -- Parse, splice, and dispatch based on command mode.
+  parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
-    Right prog -> dispatch (mode opts) prog
-    Left err -> parseError err
-  where
-    -- perform all transformations
-    transform ts prog      = foldl' (flip analyzer) (prog, "") ts
+    Left err      -> parseError err
+    Right parsedP -> evalMetaprogram Nothing Nothing Nothing parsedP
+                       >>= either spliceError (dispatch $ mode opts)
 
+  where
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Parse popts) p = printer (parsePrintMode popts) p
+    dispatch (Parse popts) p = analyzeThenPrint popts p
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
       Left s   -> putStrLn s          >> putStrLn "ERROR"
       Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
-    dispatch (Analyze a) p   = doAnalyze (analyzePrintMode a) (aoTransform a) p
 
-    quickTypecheckAux f p = do
-      qtp <- inferProgramTypes True p;
-      f qtp
-
-    quickTypecheckOpts opts' p = flip quickTypecheckAux p $
-      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
-
-    -- quickTypecheck p = quickTypecheckAux translateProgramTypes p
-
-    chooseTypechecker opts' p =
-      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
-
+    -- Compilation dispatch.
     compile cOpts prog = do
       let (p, str) = transform (coTransform cOpts) prog
       putStrLn str
@@ -84,19 +73,32 @@ run opts = do
         _         -> error $ outLanguage cOpts ++ " compilation not supported."
         --"haskell" -> HaskellC.compile opts cOpts p
 
+    -- Interpreter dispatch.
     interpret im@(Batch {}) prog = do
       let (p, str) = transform (ioTransform im) prog
       putStrLn str
       runBatch opts im p
     interpret Interactive _      = error "Interactive Mode is not yet implemented."
 
+    -- Typechecking dispatch.
+    chooseTypechecker opts' p =
+      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
+
+    quickTypecheckOpts opts' p = inferProgramTypes p >>=
+      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
+
+    -- quickTypecheck p = inferProgramTypes p >>= translateProgramTypes
+
+    -- Perform all transformations
+    transform ts prog = foldl' (flip analyzer) (prog, "") ts
+
     -- Print out the program
     printer PrintAST    = putStrLn . pretty
     printer PrintSyntax = either syntaxError putStrLn . programS
 
-    doAnalyze prtMode ts prog = do
-      let (p, str) = transform ts prog
-      printer prtMode p
+    analyzeThenPrint popts prog = do
+      let (p, str) = transform (poTransform popts) prog
+      printer (parsePrintMode popts) p
       putStrLn str
 
       -- Using arrow combinators to make this simpler
@@ -122,8 +124,9 @@ run opts = do
       Left s   -> (p, str++s)
       Right p' -> (p', str)
 
-    parseError    s = putStrLn $ "Could not parse input: " ++ s
-    syntaxError   s = putStrLn $ "Could not print program: " ++ s
+    parseError  s = putStrLn $ "Could not parse input: " ++ s
+    spliceError s = putStrLn $ "Could not process metaprogram: " ++ s
+    syntaxError s = putStrLn $ "Could not print program: " ++ s
 
     -- Temporary testing function.
     -- testProperties p = inferProgramUsageProperties p
