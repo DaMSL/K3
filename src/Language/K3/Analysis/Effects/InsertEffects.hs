@@ -261,7 +261,7 @@ runAnalysis prog = flip evalState startEnv $
     doNothings n = return $ replicate n doNothing
 
     pre :: K3 Expression -> K3 Expression -> MEnv ()
-    pre _ n@(tag -> ELambda i) = do
+    pre _ (tag -> ELambda i) = do
       -- Add to the environment
       sym <- symbolM i PVar []
       insertBindM i sym
@@ -271,23 +271,23 @@ runAnalysis prog = flip evalState startEnv $
     sideways :: K3 Expression -> K3 Expression -> MEnv [MEnv ()]
 
     -- We take the first child's symbol and bind to it
-    sideways ch1 n@(tag -> ELetIn i) = do
+    sideways ch1 (tag -> ELetIn i) = do
       chSym <- getOrGenSymbol ch1
       s     <- symbolM i PLet [chSym]
       return [insertBindM i s]
 
     -- We take the first child's symbol and bind to it
-    sideways ch1 n@(tag -> EBindAs b) = do
+    sideways ch1 (tag -> EBindAs b) = do
       chSym <- getOrGenSymbol ch1
       let iProvs = extractBindData b
       syms <- mapM (\(i, prov) -> liftM (i,) $ symbolM i prov [chSym]) iProvs
       return [mapM_ (uncurry insertBindM) syms]
 
     -- We take the first child's symbol and bind to it
-    sideways ch1 n@(tag -> ECaseOf i) = do
+    sideways ch1 (tag -> ECaseOf i) = do
       chSym <- getOrGenSymbol ch1
       s     <- symbolM i PLet [chSym]
-      return [insertBindM i s, deleteBindM i]
+      return [insertBindM i s, deleteBindM i, insertBindM i s]
 
     sideways _ (children -> ch) = doNothings (length ch - 1)
 
@@ -327,7 +327,7 @@ runAnalysis prog = flip evalState startEnv $
       -- Create a closure for the lambda by finding every read/written/applied closure variable
       closure <- case eEff of
                    Nothing -> return emptyClosure
-                   Just e  -> createClosure e
+                   Just e' -> createClosure e'
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
       lSym    <- genSym (PLambda i eScope) eSym
@@ -345,11 +345,11 @@ runAnalysis prog = flip evalState startEnv $
           case getESymbol n of
             Nothing   -> error $ "Missing symbol for projection " ++ i
             Just nSym -> do
-              eSym    <- getOrGenSymbol e
+              eSym'   <- getOrGenSymbol e
               selfSym <- symbolM "self" PVar []
               scope'  <- addFID $ scope [selfSym] emptyClosure []
               sLam    <- genSym (PLambda "self" scope') [nSym]
-              sApp    <- genSym PApply [sLam, eSym]
+              sApp    <- genSym PApply [sLam, eSym']
               return $ addEffSymCh Nothing (Just sApp) ch n
 
         _ -> genericExpr ch n  -- not a collection member function
@@ -383,6 +383,7 @@ runAnalysis prog = flip evalState startEnv $
     -- CaseOf
     handleExpr ch@[e,some,none] n@(tag -> ECaseOf i) = do
       bindSym <- lookupBindM i
+      deleteBindM i -- remove bind from env
       -- Wrap some in a scope
       let someEff = maybeToList $ getEEffect some
       scopeEff <- addFID $ scope [bindSym] emptyClosure someEff
@@ -431,8 +432,6 @@ runAnalysis prog = flip evalState startEnv $
         fixupSym s = return s
 
     ------ Utilities ------
-    noEffectErr = error "Expected an effect but got none"
-
     -- Common procedure for adding back the symbols, effects and children
     addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
     addEffSymCh eff sym ch n =
