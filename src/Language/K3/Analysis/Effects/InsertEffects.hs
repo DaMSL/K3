@@ -129,7 +129,6 @@ addFID eff = do
 getSID :: K3 Symbol -> Int
 getSID sym = maybe (error "no SID found") extract $ sym @~ isSID
   where extract (SID i) = i
-        extract _       = error "symbol id not found!"
 
 -- Generate a symbol
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
@@ -443,7 +442,7 @@ runAnalysis prog = flip evalState startEnv $
     -- This function assumes that the direct bindsymbols have only one child each
     -- @exclude: always delete this particular symbol (for CaseOf)
     peelSymbol :: [K3 Symbol] -> Maybe (K3 Symbol) -> MEnv (K3 Symbol)
-    peelSymbol _ Nothing = genSymTemp TUnbound []
+    peelSymbol _ Nothing = genSymTemp TTemp []
     peelSymbol excludes (Just sym) = loop Nothing sym >>= symOfSymList
       where
         -- Sending last symbol along allows us to know which kind of temporary to make
