@@ -52,7 +52,8 @@ run opts = do
   parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Left err      -> parseError err
-    Right parsedP -> evalMetaprogram Nothing Nothing parsedP >>= either spliceError (dispatch $ mode opts)
+    Right parsedP -> evalMetaprogram Nothing Nothing Nothing parsedP
+                       >>= either spliceError (dispatch $ mode opts)
 
   where
     dispatch :: Mode -> K3 Declaration -> IO ()
