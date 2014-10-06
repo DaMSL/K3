@@ -1,4 +1,4 @@
-module Language.K3.Optimization.Core where
+module Language.K3.Transform.Hints where
 
 import qualified Data.Set as S
 

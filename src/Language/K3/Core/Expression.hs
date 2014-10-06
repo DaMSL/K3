@@ -20,7 +20,7 @@ import Language.K3.Core.Type
 import Language.K3.Core.Literal
 import Language.K3.Analysis.Effects.Core
 
-import Language.K3.Optimization.Core
+import Language.K3.Transform.Hints
 
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Utils.Pretty
