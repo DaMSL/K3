@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -276,22 +275,34 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     return [R.Block $ d ++ ee ++ be]
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
-reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    ct <- getKType e
-    d <- cDecl (head $ children ct) x
-    g <- genSym
-    p <- cDecl ct g
-    ee <- reify (RName g) e
+reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
+    let (refBinds, copyBinds, writeBinds)
+            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
+                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
+                Nothing -> (S.empty, S.empty, S.singleton x)
+
+    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
+    let isWriteBound i = i `S.member` writeBinds
+
+    (ee, ev) <- inline e
     se <- reify r s
     ne <- reify r n
-    let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
-    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
+
+    et <- getKType e
+    ec <- genCType et
+
+    let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
+               (Just $ R.Dereference ev)]
+
+    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x])]
+
+    return $ ee ++ [R.IfThenElse ev (d ++ se ++ reconstruct) ne]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds)
             = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
                 Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
-                Nothing -> ([], [], S.fromList $ bindingVariables b)
+                Nothing -> (S.empty, S.empty, S.fromList $ bindingVariables b)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
