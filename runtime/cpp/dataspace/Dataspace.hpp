@@ -280,6 +280,9 @@ class StlDS {
     return container < other.container;
   }
 
+  bool operator>(const StlDS& other) const {
+    return container < other.container;
+  }
 
   Container& getContainer() { return container; }
 
@@ -858,6 +861,10 @@ class Map {
     return container < other.container;
   }
 
+  bool operator>(const Map& other) const {
+    return container > other.container;
+  }
+
   unordered_map<Key, Value>& getContainer() { return container; }
 
   const unordered_map<Key, Value>& getConstContainer() const { return container; }
@@ -1239,6 +1246,10 @@ class MultiIndex {
 
   bool operator<(const MultiIndex& other) const {
     return container < other.container;
+  }
+
+  bool operator>(const MultiIndex& other) const {
+    return container > other.container;
   }
 
   template <class Index, class Key>

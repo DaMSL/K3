@@ -57,7 +57,7 @@ deriveDeclarations aEnv env aEnv' env' decls =
     (DRole _, globals) -> do
       let aEnv'' = aEnv `envMerge` aEnv'
       let env'' = env `envMerge` env'
-      ids <- (Set.fromList . map TEnvIdentifier) <$> gatherParallelErrors
+      ids <- (Set.fromList . map TEnvIdentifier . catMaybes) <$> gatherParallelErrors
               (map (deriveDeclaration aEnv'' env'') globals)
       let namedIds =
             Set.fromList (Map.keys aEnv'') `Set.union` -- TODO: disjoint union
@@ -73,15 +73,20 @@ deriveDeclarations aEnv env aEnv' env' decls =
 deriveDeclaration :: TAliasEnv -- ^The type alias environment in which to check.
                   -> TNormEnv -- ^The type environment in which to check.
                   -> K3 Declaration -- ^The AST of the declaration to check.
-                  -> TypecheckM Identifier
+                  -> TypecheckM (Maybe Identifier)
 deriveDeclaration aEnv env decl =
   case tag decl of
 
     DRole _ -> typecheckError $ InternalError $ NonTopLevelDeclarationRole decl
 
+    -- Skip any validation of type aliases and control annotations.
+    -- These can be considered as sugared declarations.
+    DTypeDef _ _          -> assert0Children decl >> return Nothing
+    DGenerator _ -> assert0Children decl >> return Nothing
+
     DGlobal i _ Nothing -> do
       assert0Children decl
-      return i
+      return $ Just i
 
     DGlobal i _ (Just expr) -> do
       rEnv <- globalREnv <$> typecheckingContext
@@ -111,7 +116,7 @@ deriveDeclaration aEnv env decl =
               , csSing $ a4 <: STuple []
               , qa2 ~= STrigger a3 ]
 
-    DAnnotation iAnn _ mems -> do
+    DDataAnnotation iAnn _ mems -> do
       rEnv <- globalREnv <$> typecheckingContext
       qEnv <- envRequire (InternalError $
                 MissingIdentifierInGlobalQuantifiedEnvironment rEnv iAnn)
@@ -308,7 +313,7 @@ deriveDeclaration aEnv env decl =
                           (map verifySignaturePair posSignaturePairs)
       mconcat <$> gatherParallelErrors
                     (map (uncurry checkPositiveMatches) [(ms1,ms1'),(ms2,ms2')])
-      return iAnn
+      return $ Just iAnn
   where
     -- |A common implementation of both initialized variables and triggers.
     --  These rules only vary by (1) the derivation used on the type expression
@@ -332,7 +337,7 @@ deriveDeclaration aEnv env decl =
                                   (someVar v1) (someVar v2) . Foldable.toList)
              return
            $ checkConsistent cs''
-      return i
+      return $ Just i
     digestMemFromPol :: TPolarity -> NormalAnnMemType
                      -> Maybe (Identifier,(QVar,ConstraintSet))
     digestMemFromPol pol' (AnnMemType i pol _ qa cs) =

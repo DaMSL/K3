@@ -23,10 +23,10 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
-import Language.K3.Analysis.Common
 import Language.K3.Analysis.Effect
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors

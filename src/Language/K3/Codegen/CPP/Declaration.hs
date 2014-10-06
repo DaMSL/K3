@@ -6,8 +6,6 @@ module Language.K3.Codegen.CPP.Declaration where
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
-import Data.Maybe
-
 import qualified Data.List as L
 
 import Language.K3.Core.Annotation
@@ -77,7 +75,7 @@ declaration (tag -> DGlobal i t me) = do
 -- Triggers are implementationally identical to functions returning unit, except they also generate
 -- dispatch wrappers.
 declaration (tag -> DTrigger i t e) = declaration (D.global i (T.function t T.unit) (Just e))
-declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return []
+declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return []
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 
@@ -104,7 +102,7 @@ declaration _ = return []
 --             ++ recordDecls
 --             ++ [subDecls, i, tablePop]
 
--- declaration (tag -> DAnnotation i _ amds) = addAnnotation i amds >> return empty
+-- declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return empty
 -- declaration _ = return empty
 
 

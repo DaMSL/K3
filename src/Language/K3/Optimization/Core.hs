@@ -15,4 +15,4 @@ data OptHint
 
     -- | Whether or not a function should accept its argument by copy (True) or by reference.
     | FuncHint Bool
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)

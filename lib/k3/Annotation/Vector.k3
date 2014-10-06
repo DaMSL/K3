@@ -5,7 +5,7 @@ annotation Vector given type a{
   // TODO: bounds checking
   provides lifted at  : int -> content
 
-  @CArgs 2
+  @:CArgs 2
   provides lifted set : int -> content -> ()
 
   provides lifted size : () -> int

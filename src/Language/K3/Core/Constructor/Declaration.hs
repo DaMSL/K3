@@ -4,7 +4,8 @@ module Language.K3.Core.Constructor.Declaration (
     Language.K3.Core.Constructor.Declaration.trigger,
     endpoint,
     role,
-    annotation,
+    dataAnnotation,
+    generator,
     typeDef
 ) where
 
@@ -15,6 +16,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Metaprogram
 
 -- | Create a global declaration.
 global :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
@@ -34,7 +36,12 @@ role i = Node (DRole i :@: [])
 
 typeDef :: Identifier -> K3 Type -> K3 Declaration
 typeDef i t = Node (DTypeDef i t :@: []) []
+
 -- | Create a user-defined annotation.  Arguments are annotation name,
 --   declared type parameters, and member declarations.
-annotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
-annotation i vdecls members = Node (DAnnotation i vdecls members :@: []) []
+dataAnnotation :: Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> K3 Declaration
+dataAnnotation i tvdecls members = Node (DDataAnnotation i tvdecls members :@: []) []
+
+-- | Create a generator declaration.
+generator :: MPDeclaration -> K3 Declaration
+generator mp = Node (DGenerator mp :@: []) []

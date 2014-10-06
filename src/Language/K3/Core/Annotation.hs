@@ -19,25 +19,11 @@ module Language.K3.Core.Annotation (
     replaceTag,
     details,
     tna,
-    tnc,
-
-    mapTree,
-    modifyTree,
-    foldMapTree,
-    foldTree,
-
-    biFoldTree,
-    biFoldMapTree,
-
-    foldRebuildTree,
-    foldMapRebuildTree,
-    mapIn1RebuildTree,
-    foldIn1RebuildTree,
-    foldMapIn1RebuildTree
+    tnc
 ) where
 
-import Control.Arrow ((&&&))
-import Control.Monad
+import Control.Arrow ( (&&&) )
+
 import Data.List (delete, find)
 import Data.Tree
 
@@ -159,7 +145,6 @@ type K3 a = Tree (a :@: [Annotation a])
 instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
   compare a b = compare (flatten a) (flatten b)
 
-
 -- | Subtree extraction
 children :: Tree a -> Forest a
 children = subForest
@@ -168,8 +153,9 @@ children = subForest
 replaceCh :: Tree a -> Forest a -> Tree a
 replaceCh (Node x _) ch = Node x ch
 
+-- | Replace node type
 replaceTag :: K3 a -> a -> K3 a
-replaceTag (Node (_ :@: anns) ch) tg = Node (tg :@: anns) ch 
+replaceTag (Node (_ :@: anns) ch) tg = Node (tg :@: anns) ch
 
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
@@ -180,171 +166,3 @@ tna = tag &&& annotations
 
 tnc :: K3 a -> (a, [K3 a])
 tnc = tag &&& children
-
-
--- | Transform a tree by mapping a function over every tree node. The function
---   is provided transformed children for every new node built.
-mapTree :: (Monad m) => ([Tree b] -> Tree a -> m (Tree b)) -> Tree a -> m (Tree b)
-mapTree f n@(Node _ []) = f [] n
-mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
-
--- | Transform a tree by mapping a function over every tree node.
---   The children of a node are pre-transformed recursively
-modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
-modifyTree f n@(Node _ []) = f n
-modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch
-   f (Node x ch')
-
--- | Map an accumulator over a tree, recurring independently over each child.
---   The result is produced by transforming independent subresults in bottom-up fashion.
-foldMapTree :: (Monad m) => ([b] -> Tree a -> m b) -> b -> Tree a -> m b
-foldMapTree f x n@(Node _ []) = f [x] n
-foldMapTree f x n@(Node _ ch) = mapM (foldMapTree f x) ch >>= flip f n
-
--- | Fold over a tree, threading the accumulator between children.
-foldTree :: (Monad m) => (b -> Tree a -> m b) -> b -> Tree a -> m b
-foldTree f x n@(Node _ []) = f x n
-foldTree f x n@(Node _ ch) = foldM (foldTree f) x ch >>= flip f n
-
--- | Joint top-down and bottom-up traversal of a tree.
---   This variant threads an accumulator across all siblings, and thus all
---   nodes in the prefix of the tree to every node.
-biFoldTree :: (Monad m)
-           => (td -> Tree a -> m (td, [td]))
-           -> (td -> bu -> Tree a -> m bu)
-           -> td -> bu -> Tree a -> m bu
-biFoldTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td buAcc n
-biFoldTree tdF buF tdAcc buAcc n@(Node _ ch) = do
-  (ntd, cntd) <- tdF tdAcc n
-  if (length cntd) /= (length ch)
-    then fail "Invalid top-down accumulation in biFoldTree"
-    else do
-      nbu <- foldM (\nbuAcc (ctd, c) -> biFoldTree tdF buF ctd nbuAcc c) buAcc $ zip cntd ch
-      buF ntd nbu n
-
--- | Join top-down and bottom-up traversal of a tree.
---   This variant threads a bottom-up accumulator independently between siblings.
---   Thus there is no sideways information passing (except for top-down accumulation).
---   tdF: takes the top-down accumulator and node. Returns a top-down value for post-processing
---        at the same node, and messages for each child
-biFoldMapTree :: (Monad m)
-              => (td -> Tree a -> m (td, [td]))
-              -> (td -> [bu] -> Tree a -> m bu)
-              -> td -> bu -> Tree a -> m bu
-biFoldMapTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td [buAcc] n
-biFoldMapTree tdF buF tdAcc buAcc n@(Node _ ch) = do
-  (ntd, cntd) <- tdF tdAcc n
-  if (length cntd) /= (length ch)
-    then fail "Invalid top-down accumulation in biFoldMapTree"
-    else do
-      nbu <- mapM (\(ctd,c) -> biFoldMapTree tdF buF ctd buAcc c) $ zip cntd ch
-      buF ntd nbu n
-
--- | Rebuild a tree with an accumulator and transformed children at every node.
-foldRebuildTree :: (Monad m)
-                => (b -> [Tree a] -> Tree a -> m (b, Tree a))
-                -> b -> Tree a -> m (b, Tree a)
-foldRebuildTree f x n@(Node _ []) = f x [] n
-foldRebuildTree f x n@(Node _ ch) = foldM rebuild (x,[]) ch >>= uncurry (\a b -> f a b n)
-  where rebuild (acc, chAcc) c =
-          foldRebuildTree f acc c >>= (\(nAcc, nc) -> return (nAcc, chAcc++[nc]))
-
--- | Rebuild a tree with independent accumulators and transformed children at every node.
-foldMapRebuildTree :: (Monad m)
-                   => ([b] -> [Tree a] -> Tree a -> m (b, Tree a))
-                   -> b -> Tree a -> m (b, Tree a)
-foldMapRebuildTree f x n@(Node _ []) = f [x] [] n
-foldMapRebuildTree f x n@(Node _ ch) =
-    mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip
-
--- | Rebuild a tree with explicit pre and post transformers applied to the first
---   child of every tree node. This is useful for stateful monads that modify
---   environments based on the type of the first child.
-mapIn1RebuildTree :: (Monad m)
-                  => (Tree a -> Tree a -> m ())
-                  -> (Tree a -> Tree a -> m [m ()])
-                  -> ([Tree a] -> Tree a -> m (Tree a))
-                  -> Tree a -> m (Tree a)
-mapIn1RebuildTree _ _ allChF n@(Node _ []) = allChF [] n
-mapIn1RebuildTree preCh1F postCh1F allChF n@(Node _ ch) = do
-    preCh1F (head ch) n
-    nc1 <- rcr $ head ch
-    restm <- postCh1F nc1 n
-    -- Allow for a final action before the call to allChF
-    let len = length $ tail ch
-        goodLengths = [len, len + 1]
-    if length restm `notElem` goodLengths
-      then fail "Invalid mapIn1RebuildTree sequencing"
-      else do
-        nRestCh <- mapM (\(m, c) -> m >> rcr c) $ zip restm $ tail ch
-        case drop len restm of
-          []  -> allChF (nc1:nRestCh) n
-          [m] -> m >> allChF (nc1:nRestCh) n
-          _   -> error "unexpected"
-
-  where rcr = mapIn1RebuildTree preCh1F postCh1F allChF
-
--- | Tree accumulation and reconstruction, with a priviliged first child accumulation.
---   This function is useful for manipulating ASTs subject to bindings introduced by the first
---   child, for example with let-ins, bind-as and case-of.
---   This function takes a pre- and post-first child traversal accumulator transformation function.
---   The post-first-child transformation additionally returns siblings to which the accumulator
---   should be propagated, for example case-of should not propagate bindings to the None branch.
---   The traversal also takes a merge function to combine the running accumulator
---   passed through siblings with those that skip accumulator propagation.
---   Finally, the traversal takes a post-order accumulator and children transformation function.
-foldIn1RebuildTree :: (Monad m)
-                   => (b -> Tree a -> Tree a -> m b)
-                   -> (b -> Tree a -> Tree a -> m (b, [Bool]))
-                   -> (b -> b -> m b)
-                   -> (b -> [Tree a] -> Tree a -> m (b, Tree a))
-                   -> b -> Tree a -> m (b, Tree a)
-foldIn1RebuildTree _ _ _ allChF acc n@(Node _ []) = allChF acc [] n
-foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
-    nAcc                 <- preCh1F acc (head ch) n
-    (nAcc2, nc1)         <- rcr nAcc $ head ch
-    (nAcc3, useInitAccs) <- postCh1F nAcc2 nc1 n
-    if (length useInitAccs) /= (length $ tail ch)
-      then fail "Invalid foldIn1RebuildTree accumulation"
-      else do
-        (nAcc4, nch) <- foldM rebuild (nAcc3, [nc1]) $ zip useInitAccs $ tail ch
-        allChF nAcc4 nch n
-
-  where rcr = foldIn1RebuildTree preCh1F postCh1F mergeF allChF
-
-        rebuild (rAcc, chAcc) (True, c) = do
-          (nrAcc, nc) <- rcr rAcc c
-          return (nrAcc, chAcc++[nc])
-
-        rebuild (rAcc, chAcc) (False, c) = do
-          (cAcc, nc) <- rcr acc c
-          nrAcc      <- mergeF rAcc cAcc
-          return (nrAcc, chAcc++[nc])
-
--- | A mapping variant of foldIn1RebuildTree that threads a top-down accumulator
---   while reconstructing the tree.
--- preCh1F:  The pre-child function takes the top-down accumulator, the first child, and the node.
---           It returns a new accumulator
--- postCh1F: The post-child function takes the pre's accumulator, the processed first child, and the node.
---           It returns an accumulator, and a list of accumulators to be sent down while recursing
---           over the other children.
--- allChF:   The all-child function takes the post child's single accumulator, the processed children,
---           and the node, and returns a new tree.
-foldMapIn1RebuildTree :: (Monad m)
-                  => (b -> Tree a -> Tree a -> m b)
-                  -> (b -> Tree a -> Tree a -> m (b, [b]))
-                  -> (b -> [Tree a] -> Tree a -> m (Tree a))
-                  -> b -> Tree a -> m (Tree a)
-foldMapIn1RebuildTree _ _ allChF tdAcc n@(Node _ []) = allChF tdAcc [] n
-foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
-    nCh1Acc        <- preCh1F tdAcc (head ch) n
-    nc1            <- rcr nCh1Acc $ head ch
-    (nAcc, chAccs) <- postCh1F nCh1Acc nc1 n
-    if length chAccs /= (length $ tail ch)
-      then fail "Invalid foldMapIn1RebuildTree accumulation"
-      else do
-        nRestCh <- zipWithM rcr chAccs $ tail ch
-        allChF nAcc (nc1:nRestCh) n
-
-  where rcr = foldMapIn1RebuildTree preCh1F postCh1F allChF

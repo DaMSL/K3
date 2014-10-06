@@ -70,10 +70,11 @@ namespace K3 {
       return std::string("TODO: implement show()");
     }
 
-    Seq<R_elem<int>> range(int i) {
-      Seq<R_elem<int>> result;
+    template <class R>
+    Seq<R> range(int i) {
+      Seq<R> result;
       for (int j = 0; j < i; j++) {
-        result.insert(R_elem<int> {j});
+        result.insert(R{j});
       }
       return result;
     }

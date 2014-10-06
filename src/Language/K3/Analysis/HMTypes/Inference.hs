@@ -29,16 +29,14 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 import Language.K3.Core.Constructor.Type as TC
 
-import Language.K3.Analysis.Common
 import Language.K3.Analysis.HMTypes.DataTypes
 
 import Language.K3.Utils.Logger
@@ -46,36 +44,14 @@ import Language.K3.Utils.Pretty
 
 $(loggingFunctions)
 
---logVoid :: (Functor m, Monad m) => String -> m ()
---logVoid s = void $ _debug s
---logVoid s = trace s $ return ()
+hmtcTraceLogging :: Bool
+hmtcTraceLogging = False
 
-logVoid :: String -> TInfM ()
-logVoid s = do
-  env <- get
-  logVoid' (verbose $ config env) s
+localLog :: (Functor m, Monad m) => String -> m ()
+localLog = logVoid hmtcTraceLogging
 
-logVoid' :: (Functor m, Monad m) => Bool -> String -> m ()
-logVoid' verbose' s = if verbose' then trace s $ return () else return ()
-
--- | Misc. helpers
--- logAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
--- logAction msgF action = do
---   doLog (msgF Nothing)
---   result <- action
---   doLog (msgF $ Just result)
---   return result
---   where doLog Nothing  = return ()
---         doLog (Just s) = logVoid s
-
-logAction :: (Maybe a -> Maybe String) -> TInfM a -> TInfM a
-logAction msgF action = do
-  doLog (msgF Nothing)
-  result <- action
-  doLog (msgF $ Just result)
-  return result
-  where doLog Nothing  = return ()
-        doLog (Just s) = logVoid s
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+localLogAction = logAction hmtcTraceLogging
 
 
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
@@ -138,26 +114,17 @@ type TMEnv = [(Identifier, (QPType, Bool))]
 -- | A type variable environment.
 data TVEnv = TVEnv QTVarId (Map QTVarId (K3 QType)) deriving Show
 
-data TConfig = TConfig { verbose :: Bool } deriving Show
-
 -- | A type inference environment.
 data TIEnv = TIEnv {
-               tenv :: TEnv,
-               taenv :: TAEnv,
+               tenv   :: TEnv,
+               taenv  :: TAEnv,
                tdvenv :: TDVEnv,
-               tvenv :: TVEnv,
-               config :: TConfig
+               tvenv  :: TVEnv
             }
 
 -- | The type inference monad
 type TInfM = EitherT String (State TIEnv)
 
-{- Config helpers -}
-config0 :: TConfig
-config0 = TConfig { verbose=False }
-
-cSetVerbose :: Bool -> TConfig -> TConfig
-cSetVerbose v conf = conf { verbose=v }
 
 {- TEnv helpers -}
 tenv0 :: TEnv
@@ -206,8 +173,7 @@ tienv0 = TIEnv {
            tenv = tenv0,
            taenv = taenv0,
            tdvenv = tdvenv0,
-           tvenv = tvenv0,
-           config = config0
+           tvenv = tvenv0
          }
 
 -- | Modifiers.
@@ -222,9 +188,6 @@ mtidve f env = env {tdvenv = f $ tdvenv env}
 
 mtive :: (TVEnv -> TVEnv) -> TIEnv -> TIEnv
 mtive f env = env {tvenv = f $ tvenv env}
-
-mcfg :: (TConfig -> TConfig) -> TIEnv -> TIEnv
-mcfg f env = env {config = f $ config env}
 
 tilkupe :: TIEnv -> Identifier -> Either String QPType
 tilkupe env x = tlkup (tenv env) x
@@ -539,18 +502,18 @@ unifyv v1 t@(tag -> QTVar v2)
   | v1 == v2  = return ()
   | otherwise = getTVE >>= \tve ->
     if occurs v1 t tve
-      then logVoid $ prettyTaggedSPair "unifyv cycle" v1 t
-      else do { logVoid $ prettyTaggedSPair "unifyv var" v1 t;
+      then localLog $ prettyTaggedSPair "unifyv cycle" v1 t
+      else do { localLog $ prettyTaggedSPair "unifyv var" v1 t;
                 modify $ mtive $ \tve' -> tvext tve' v1 t }
 
 unifyv v t = getTVE >>= \tve -> do
   if not $ occurs v t tve
-    then do { logVoid $ prettyTaggedSPair "unifyv noc" v t;
+    then do { localLog $ prettyTaggedSPair "unifyv noc" v t;
               modify $ mtive $ \tve' -> tvext tve' v t }
 
     else do { subQt <- tvsub t;
               boundQt <- return $ substituteSelfQt t;
-              logVoid $ prettyTaggedTriple (unwords ["unifyv yoc", show v]) t subQt boundQt;
+              localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v]) t subQt boundQt;
               modify $ mtive $ \tve' -> tvext (tvmap tve' substituteSelfQt) v boundQt; }
 
   where
@@ -587,9 +550,9 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
         (p1, qt1') <- preF qt1
         (p2, qt2') <- preF qt2
         qt         <- unifyDrv' qt1' qt2'
-        logVoid $ prettyTaggedPair (unwords ["unifyDrvPreL", show p1]) qt1 qt1'
-        logVoid $ prettyTaggedPair (unwords ["unifyDrvPreR", show p2]) qt2 qt2'
-        logVoid $ prettyTaggedTriple "unifyDrv" qt1' qt2' qt
+        localLog $ prettyTaggedPair (unwords ["unifyDrvPreL", show p1]) qt1 qt1'
+        localLog $ prettyTaggedPair (unwords ["unifyDrvPreR", show p2]) qt2 qt2'
+        localLog $ prettyTaggedTriple "unifyDrv" qt1' qt2' qt
         postF (p1, p2) qt
 
     unifyDrv' :: K3 QType -> K3 QType -> TInfM (K3 QType)
@@ -652,7 +615,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
       void $ foldM rcr (head $ lbs) $ tail lbs
       let allChQT = children t1 ++ children t2
-      r <- logAction (binaryLowerMsgF allChQT) $ consistentTLower allChQT
+      r <- localLogAction (binaryLowerMsgF allChQT) $ consistentTLower allChQT
       case tag r of
         QTOperator QTLower -> return r
         _ -> return $ tlower [r]
@@ -667,12 +630,12 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     unifyDrv' t1@(tag -> QTOperator QTLower) t2 = do
       lb1 <- lowerBound t1
       nlb <- rcr lb1 t2
-      logAction (unaryLowerMsgF "L") $ consistentTLower $ children t1 ++ [nlb]
+      localLogAction (unaryLowerMsgF "L") $ consistentTLower $ children t1 ++ [nlb]
 
     unifyDrv' t1 t2@(tag -> QTOperator QTLower) = do
       lb2 <- lowerBound t2
       nlb <- rcr t1 lb2
-      logAction (unaryLowerMsgF "R") $ consistentTLower $ [nlb] ++ children t2
+      localLogAction (unaryLowerMsgF "R") $ consistentTLower $ [nlb] ++ children t2
 
     -- | Top unifies with any value. Bottom unifies with only itself. Self unifies with itself.
     unifyDrv' t1@(tag -> tg1) t2@(tag -> tg2)
@@ -693,8 +656,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     rcr :: K3 QType -> K3 QType -> TInfM (K3 QType)
     rcr a b = do
-      logVoid $ prettyTaggedPair "unifyDrv recurring from " qt1 qt2
-      logVoid $ prettyTaggedPair "unifyDrv recurring on "   a   b
+      localLog $ prettyTaggedPair "unifyDrv recurring from " qt1 qt2
+      localLog $ prettyTaggedPair "unifyDrv recurring on "   a   b
       let npath1 = extendPath path1 qt1
       let npath2 = extendPath path2 qt2
       unifyDrvWithPaths preF postF npath1 npath2 a b
@@ -768,7 +731,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
 -- | Type unification.
 unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
-unifyM t1 t2 errf = void $ logAction msgF $ reasonM errf $ unifyDrv preChase postId t1 t2
+unifyM t1 t2 errf = void $ localLogAction msgF $ reasonM errf $ unifyDrv preChase postId t1 t2
   where
     preChase qt = getTVE >>= \tve -> return ((), tvchase tve qt)
     postId _ qt = return qt
@@ -778,11 +741,11 @@ unifyM t1 t2 errf = void $ logAction msgF $ reasonM errf $ unifyDrv preChase pos
 -- | Type unification with variable overrides to the unification result.
 unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QType)
 unifyWithOverrideM qt1 qt2 errf =
-  logAction msgF $ reasonM errf $ unifyDrv preChase (\x y -> postUnifyCased x y >>= logPostUnify) qt1 qt2
+  localLogAction msgF $ reasonM errf $ unifyDrv preChase (\x y -> postUnifyCased x y >>= logPostUnify) qt1 qt2
   where
     preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
 
-    logPostUnify r = logVoid (boxToString $ ["postUnify "] %+ prettyLines r) >> return r
+    logPostUnify r = localLog (boxToString $ ["postUnify "] %+ prettyLines r) >> return r
 
     postUnifyCased (vo1, vo2) qt = case (vo1, vo2) of
         (Just v1, Just v2) -> unifyTwoChain v1 v2 qt
@@ -812,7 +775,7 @@ unifyWithOverrideM qt1 qt2 errf =
             else return (fst v1, snd v2, if snd v1 /= fst v2 then Just (snd v1, fst v2) else Nothing)
 
       checkedUnify trg qt
-      void $ maybe (logVoid "unifyTwoChain no chain") (\(s,t) -> checkedUnify s $ vtCtor t) chain
+      void $ maybe (localLog "unifyTwoChain no chain") (\(s,t) -> checkedUnify s $ vtCtor t) chain
       return $ vtCtor $ src
 
     commonSuffix l1 l2 =
@@ -828,7 +791,7 @@ unifyWithOverrideM qt1 qt2 errf =
         let uqt = case tag qt of
                     QTVar _ -> tvchase tve qt
                     _ -> qt
-        logVoid $ prettyTaggedSPair "checkedUnify adding cycle" v uqt
+        localLog $ prettyTaggedSPair "checkedUnify adding cycle" v uqt
         unifyv v uqt
 
     msgF Nothing  = Just $ prettyTaggedPair "unifyOvM call" qt1 qt2
@@ -890,19 +853,18 @@ substituteDeepQt e = mapTree subNode e
         subAnns x = return x
 
 -- | Top-level type inference methods
-inferProgramTypes :: Bool -> K3 Declaration -> Either String (K3 Declaration)
-inferProgramTypes verbose' prog = do
-    (_, initEnv) <- let tienv = mcfg (cSetVerbose verbose') tienv0
-                        (a,b) = runTInfM tienv $ initializeTypeEnv
+inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
+inferProgramTypes prog = do
+    (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
                     in a >>= return . (, b)
-    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF prog
+    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF Nothing prog
                          in a >>= return . (, b)
-    logVoid' verbose' $ "Final type environment"
-    logVoid' verbose' $ pretty finalEnv
+    localLog $ "Final type environment"
+    localLog $ pretty finalEnv
     return nProg
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
-    initializeTypeEnv = mapProgram initDeclF initAMemF initExprF prog
+    initializeTypeEnv = mapProgram initDeclF initAMemF initExprF Nothing prog
 
     withUnique :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
     withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilkupe n) >>= const m
@@ -925,7 +887,7 @@ inferProgramTypes verbose' prog = do
       withUnique n $ trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
       where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
 
-    initDeclF d@(tag -> DAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
+    initDeclF d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
       where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
             memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
             memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
@@ -954,9 +916,8 @@ inferProgramTypes verbose' prog = do
         Just e -> do
           qt1 <- instantiate qpt
           qt2 <- qTypeOfM e
-          logVoid' verbose' $ prettyTaggedPair ("unify init ") qt1 qt2
+          localLog $ prettyTaggedPair ("unify init ") qt1 qt2
           void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
-          --return $ Just e
           substituteDeepQt e >>= return . Just
 
         Nothing -> return Nothing
@@ -979,9 +940,9 @@ inferProgramTypes verbose' prog = do
                  return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
           _ -> trigTypeErr n
 
-    declF d@(tag -> DAnnotation n tvars mems) =
+    declF d@(tag -> DDataAnnotation n tvars mems) =
         get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
-          return (Node (DAnnotation n tvars nmems :@: annotations d) $ children d)
+          return (Node (DDataAnnotation n tvars nmems :@: annotations d) $ children d)
 
       where chkAnnMemEnv amEnv = mapM (memType amEnv) mems
 
@@ -1074,7 +1035,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     inferQType :: [K3 Expression] -> K3 Expression -> TInfM (K3 Expression)
     inferQType ch n = do
       (ruleTag, r) <- inferTagQType ch n
-      logVoid $ showTInfRule ruleTag ch r
+      localLog $ showTInfRule ruleTag ch r
       return r
 
     inferTagQType :: [K3 Expression] -> K3 Expression -> TInfM (String, K3 Expression)
@@ -1436,7 +1397,7 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
 -- | Converts all QType annotations on program expressions to K3 types.
 translateProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-translateProgramTypes prog = mapProgram declF annMemF exprF prog
+translateProgramTypes prog = mapProgram declF annMemF exprF Nothing prog
   where declF   d = return d
         annMemF m = return m
         exprF   e = translateExprTypes e
@@ -1531,8 +1492,7 @@ instance Pretty TIEnv where
     ["TEnv: "]   %$ (indent 2 $ prettyLines $ tenv   e) ++
     ["TAEnv: "]  %$ (indent 2 $ prettyLines $ taenv  e) ++
     ["TDVEnv: "] %$ (indent 2 $ prettyLines $ tdvenv e) ++
-    ["TVEnv: "]  %$ (indent 2 $ prettyLines $ tvenv  e) ++
-    ["Config: "] %$ (indent 2 $ prettyLines $ config e)
+    ["TVEnv: "]  %$ (indent 2 $ prettyLines $ tvenv  e)
 
 instance Pretty TEnv where
   prettyLines te = prettyPairList te
@@ -1549,9 +1509,6 @@ instance Pretty TDVEnv where
 instance Pretty TVEnv where
   prettyLines (TVEnv n m) = ["# vars: " ++ show n] ++
                             (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
-
-instance Pretty TConfig where
-  prettyLines c = [show c]
 
 instance Pretty (QPType, Bool) where
   prettyLines (a,b) = (if b then ["(Lifted) "] else ["(Attr) "]) %+ prettyLines a
