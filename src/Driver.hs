@@ -15,6 +15,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
 
 import Language.K3.Analysis.Interpreter.BindAlias
@@ -52,7 +53,7 @@ run opts = do
   parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Left err      -> parseError err
-    Right parsedP -> evalMetaprogram Nothing Nothing Nothing parsedP
+    Right parsedP -> evalMetaprogram (metaprogramOpts $ mpOpts opts) Nothing Nothing parsedP
                        >>= either spliceError (dispatch $ mode opts)
 
   where
@@ -117,6 +118,14 @@ run opts = do
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
+
+    -- Option handling utilities
+    metaprogramOpts (Just mpo) =
+      Just $ defaultMPEvalOptions { mpInterpArgs  = (unpair $ interpreterArgs  mpo)
+                                  , mpSearchPaths = (moduleSearchPath mpo) }
+      where unpair = concatMap (\(x,y) -> [x,y])
+
+    metaprogramOpts Nothing = Just $ defaultMPEvalOptions
 
     -- If we produce a proper program, put it first. Otherwise put the original program first
     -- and add to the string

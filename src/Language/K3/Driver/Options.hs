@@ -6,6 +6,9 @@ module Language.K3.Driver.Options where
 import Control.Applicative
 import Options.Applicative
 
+import Data.List.Split
+import Data.Maybe
+
 import System.FilePath
 import System.Log
 
@@ -27,6 +30,7 @@ data Options = Options {
     , paths     :: PathOptions
     , input     :: FilePath
     , noFeed    :: Bool
+    , mpOpts    :: Maybe MetaprogramOptions
     }
   deriving (Eq, Read, Show)
 
@@ -47,6 +51,18 @@ data PrintMode
 data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
                                    poTransform :: TransformOptions}
                     deriving (Eq, Read, Show)
+
+-- | Metaprogramming options
+data MetaprogramOptions
+    = MetaprogramOptions { interpreterArgs  :: [(String, String)]
+                         , moduleSearchPath :: [String] }
+    deriving (Eq, Read, Show)
+
+-- | Typechecking options
+data TypecheckOptions
+    = TypecheckOptions { noQuickTypes    :: Bool
+                       , printQuickTypes :: Bool }
+  deriving (Eq, Read, Show)
 
 -- | Compilation options datatype.
 data CompileOptions = CompileOptions
@@ -81,13 +97,8 @@ data InterpretOptions
     | Interactive
   deriving (Eq, Read, Show)
 
--- | Typechecking options
-data TypecheckOptions
-    = TypecheckOptions { noQuickTypes    :: Bool
-                       , printQuickTypes :: Bool }
-  deriving (Eq, Read, Show)
 
-
+-- | Transformation and optimization pass options.
 type TransformOptions = [TransformMode]
 
 data TransformMode
@@ -116,7 +127,7 @@ data InfoSpec = InfoSpec { logging   :: LoggerOptions
 type LoggerInstruction = (String,Priority)
 type LoggerOptions     = [LoggerInstruction]
 
--- | Path related options
+-- | K3 compiler path related options
 data PathOptions = PathOptions { includes :: [FilePath] }
   deriving (Eq, Read, Show)
 
@@ -127,6 +138,18 @@ data Verbosity
     | LoudV
   deriving (Enum, Eq, Read, Show)
 
+
+-- | Utility functions for options.
+
+-- | Constructs a path list from a string of colon-separated paths.
+pathList :: String -> [String]
+pathList = splitOn ":"
+
+keyValList :: String -> String -> [(String, String)]
+keyValList keyPrefix s = catMaybes $ map kvPair $ splitOn ":" s
+ where kvPair s' = case splitOn "=" s' of
+                     [x,y] -> Just (keyPrefix ++ x, y)
+                     _     -> Nothing
 
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
@@ -369,6 +392,22 @@ printQuickTypesOpt = switch (
                       <> help    "Show quicktypes as typechecker output"
                    )
 
+-- | Metaprogram option parsing.
+metaprogramOptions :: Parser (Maybe MetaprogramOptions)
+metaprogramOptions = optional (MetaprogramOptions <$> interpreterArgOpts <*> moduleSearchPathOpts)
+
+interpreterArgOpts :: Parser [(String, String)]
+interpreterArgOpts = keyValList "-" <$> strOption (   long    "mpargs"
+                                                   <> value   ""
+                                                   <> help    "Metaprogram interpreter args"
+                                                   <> metavar "MPINTERPARGS" )
+
+moduleSearchPathOpts :: Parser [String]
+moduleSearchPathOpts = pathList <$> strOption (   long    "mpsearch"
+                                               <> value   ""
+                                               <> help    "Metaprogram module search path"
+                                               <> metavar "MPSEARCHPATH" )
+
 -- Accept a precursor string
 transformMode :: Parser [TransformMode]
 transformMode   =  wrap <$> conflictsOpt
@@ -512,8 +551,9 @@ programOptions = mkOptions <$> modeOptions
                            <*> informOptions
                            <*> pathOptions
                            <*> noFeedOpt
+                           <*> metaprogramOptions
                            <*> inputOptions
-    where mkOptions m i p nf is = Options m i p (last is) nf
+    where mkOptions m i p nf mp is = Options m i p (last is) nf mp
 
 {- Instance definitions -}
 
