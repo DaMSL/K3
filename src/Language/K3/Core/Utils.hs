@@ -190,11 +190,18 @@ mapIn1RebuildTree preCh1F postCh1F allChF n@(Node _ ch) = do
     preCh1F (head ch) n
     nc1 <- rcr $ head ch
     restm <- postCh1F nc1 n
-    if (length restm) /= (length $ tail ch)
+    -- Allow for a final action before the call to allChF
+    let len = length $ tail ch
+        goodLengths = [len, len + 1]
+    if length restm `notElem` goodLengths
       then fail "Invalid mapIn1RebuildTree sequencing"
       else do
         nRestCh <- mapM (\(m, c) -> m >> rcr c) $ zip restm $ tail ch
-        allChF (nc1:nRestCh) n
+        case drop len restm of
+          []  -> allChF (nc1:nRestCh) n
+          [m] -> m >> allChF (nc1:nRestCh) n
+          _   -> error "unexpected"
+
 
   where rcr = mapIn1RebuildTree preCh1F postCh1F allChF
 
