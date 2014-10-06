@@ -51,32 +51,38 @@ localLogAction = logAction traceLogging
 
 
 {- Top-level AST transformations -}
-evalMetaprogram :: Maybe MPEvalOptions -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
+evalMetaprogram :: Maybe MPEvalOptions
+                -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
+                -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> K3 Declaration -> IO (Either String (K3 Declaration))
-evalMetaprogram evalOpts analyzeFOpt mp = runGeneratorM initGState synthesizedProg >>= return . fst
+evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
+    runGeneratorM initGState synthesizedProg >>= return . fst
   where
     synthesizedProg = do
       localLog $ generatorInput mp
       pWithDataAnns  <- mpGenerators mp
       pWithMDataAnns <- applyDAnnGens pWithDataAnns
-      analyzedP      <- analyzeF pWithMDataAnns
+      pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
+      analyzedP      <- analyzeF pWithDADecls
       localLog $ debugAnalysis analyzedP
       pWithMCtrlAnns <- applyCAnnGens analyzedP
-      pWithGDecls    <- generatorWithGDecls $ \gd -> addDecls gd pWithMCtrlAnns
-      if pWithGDecls == mp then return pWithGDecls
-                           else rcr    pWithGDecls -- Tail recursive fixpoint
+      pWithCADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMCtrlAnns
+      pRepaired      <- repairF pWithCADecls
+      if pRepaired == mp then return pRepaired
+                         else rcr    pRepaired -- Tail recursive fixpoint
 
     initGState = maybe emptyGeneratorState mkGeneratorState evalOpts
     analyzeF   = maybe defaultMetaAnalysis id analyzeFOpt
+    repairF    = maybe defaultMetaRepair   id repairFOpt
 
-    rcr p = (liftIO $ evalMetaprogram evalOpts analyzeFOpt p) >>= either throwG return
+    rcr p = (liftIO $ evalMetaprogram evalOpts analyzeFOpt repairFOpt p) >>= either throwG return
 
     addDecls genDecls p@(tag -> DRole n)
       | n == defaultRoleName =
           let (dd, cd) = generatorDeclsToList genDecls
-          in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
+          in return $ (emptyGeneratorDecls, Node (DRole n :@: annotations p) $ children p ++ dd ++ cd)
 
-    addDecls _ p = throwG . boxToString $ [addErrMsg] %$ prettyLines p
+    addDecls _ p = Left . boxToString $ [addErrMsg] %$ prettyLines p
 
     generatorInput = metalog "Evaluating metaprogram "
     debugAnalysis  = metalog "Analyzed metaprogram "
@@ -93,6 +99,9 @@ defaultMetaAnalysis p = do
     -- | Match any type annotation except pattern types which are user-defined in patterns.
     removeTypes e = return $ stripExprAnnotations (\a -> isETypeOrBound a || isEQType a) (const True) e
     liftError = either throwG
+
+defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
+defaultMetaRepair p = return $ repairProgram p
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p

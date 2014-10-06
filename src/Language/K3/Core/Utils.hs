@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -43,12 +44,18 @@ module Language.K3.Core.Utils
 , stripAllDeclAnnotations
 , stripAllExprAnnotations
 , stripAllTypeAnnotations
+
+, repairProgram
+, onProgramUID
+, maxProgramUID
+, minProgramUID
 ) where
 
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
 import Data.Functor.Identity
+import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -405,3 +412,66 @@ stripAllExprAnnotations = stripExprAnnotations (const False) (const False)
 -- | Strips all annotations from a type deeply.
 stripAllTypeAnnotations :: K3 Type -> K3 Type
 stripAllTypeAnnotations = stripTypeAnnotations (const False)
+
+
+{-| Tree repair utilities -}
+
+-- | Ensures every node has a valid UID and Span.
+--   This currently does not handle literals.
+
+repairProgram :: K3 Declaration -> K3 Declaration
+repairProgram p =
+    let maxUid = (\case { UID i -> i }) $ maxProgramUID p
+    in snd $ runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) (maxUid + 1) p
+
+  where repairDecl uid n = validateD uid (children n) n
+        repairExpr uid n = foldRebuildTree validateE uid n
+        repairType uid n = foldRebuildTree validateT uid n
+
+        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n t eOpt
+        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n t eOpt
+        repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
+
+        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n
+        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n
+        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n
+
+        rebuildMem uid anns ctor = return $ (\(nuid, nanns) -> (nuid, ctor nanns)) $ validateMem uid anns
+
+        validateMem uid anns =
+          let (nuid, extraAnns) =
+                (\spa -> maybe (uid+1, [DUID $ UID uid]++spa) (const (uid, spa)) $ find isDUID anns)
+                  $ maybe ([DSpan $ GeneratedSpan "repair"]) (const []) $ find isDSpan anns
+          in (nuid, anns ++ extraAnns)
+
+        ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
+          return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
+
+        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan "repair") t n
+        ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
+
+        addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
+
+onProgramUID :: (UID -> UID -> UID) -> UID -> K3 Declaration -> (UID, K3 Declaration)
+onProgramUID uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
+  where onDecl a n = return $ (dUID a n, n)
+        onExpr a n = foldTree (\a' n' -> return $ eUID a' n') a n >>= return . (,n)
+        onType a n = foldTree (\a' n' -> return $ tUID a' n') a n >>= return . (,n)
+
+        onMem a (Lifted    p n t eOpt anns) = return $ (dMemUID a anns, Lifted      p n t eOpt $ anns)
+        onMem a (Attribute p n t eOpt anns) = return $ (dMemUID a anns, Attribute   p n t eOpt $ anns)
+        onMem a (MAnnotation p n anns)      = return $ (dMemUID a anns, MAnnotation p n        $ anns)
+
+        dUID a n = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ n @~ isDUID
+        eUID a n = maybe a (\case {EUID b -> uidF a b; _ -> a}) $ n @~ isEUID
+        tUID a n = maybe a (\case {TUID b -> uidF a b; _ -> a}) $ n @~ isTUID
+
+        dMemUID a anns = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ find isDUID anns
+
+maxProgramUID :: K3 Declaration -> UID
+maxProgramUID d = fst $ onProgramUID maxUID (UID (minBound :: Int)) d
+  where maxUID (UID a) (UID b) = UID $ max a b
+
+minProgramUID :: K3 Declaration -> UID
+minProgramUID d = fst $ onProgramUID minUID (UID (maxBound :: Int)) d
+  where minUID (UID a) (UID b) = UID $ min a b
