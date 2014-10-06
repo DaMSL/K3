@@ -1372,7 +1372,9 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
     mkQType ch n@(tag -> TCollection) = do
         let cqt = head ch
         let annIds = namedTAnnotations $ annotations n
-        mkCollectionQType annIds cqt
+        case annIds of
+          [] -> left $ boxToString $ ["No collection annotations found on "] %+ prettyLines n
+          _ -> mkCollectionQType annIds cqt
 
     mkQType ch (tag -> TFunction) = return $ tfun (head ch) $ last ch
     mkQType ch (tag -> TTrigger)  = return $ ttrg $ head ch

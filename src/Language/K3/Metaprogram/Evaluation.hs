@@ -97,7 +97,7 @@ defaultMetaAnalysis p = do
 
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.
-    removeTypes e = return $ stripExprAnnotations (\a -> isETypeOrBound a || isEQType a) (const True) e
+    removeTypes e = return $ stripExprAnnotations (\a -> isETypeOrBound a || isEQType a) (const False) e
     liftError = either throwG
 
 defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
