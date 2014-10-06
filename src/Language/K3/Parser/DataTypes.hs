@@ -521,6 +521,9 @@ runK3Parser (Just st) p s = logParser s $ P.runParser p st "" s
 maybeParser :: (Show a) => K3Parser a -> String -> Maybe a
 maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
 
+parserTraceLogging :: Bool
+parserTraceLogging = False
+
 logParser :: (Functor m, Monad m, Show a) => String -> m a -> m a
-logParser s act = logAction loggerF act
+logParser s act = logAction parserTraceLogging loggerF act
   where loggerF = maybe (Just $ "Running parser on " ++ s) (\r -> Just $ "Done parsing: " ++ show r)

@@ -128,6 +128,9 @@ generatorWithGUID f = get >>= \gs -> put (gs {generatorUid = (getGeneratorUID gs
 generatorWithGEnv :: (GeneratorEnv -> GeneratorM a) -> GeneratorM a
 generatorWithGEnv f = get >>= f . getGeneratorEnv
 
+generatorWithGDecls :: (GeneratorDecls -> GeneratorM a) -> GeneratorM a
+generatorWithGDecls f = get >>= f . getGeneratedDecls
+
 generatorWithSCtxt :: (SpliceContext -> GeneratorM a) -> GeneratorM a
 generatorWithSCtxt f = get >>= f . getSpliceContext
 
@@ -241,4 +244,4 @@ initializeInterpreter evalOpts = do
   void $  HI.loadModules $ (mpLoadPaths evalOpts)
   void $  HI.setImports $ (mpImportPaths evalOpts)
   mods <- HI.getLoadedModules
-  logVoid $ ("Loaded: " ++ show mods)
+  logVoid False $ ("Loaded: " ++ show mods)

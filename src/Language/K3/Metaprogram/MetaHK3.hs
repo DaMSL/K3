@@ -29,27 +29,39 @@ import Language.K3.Core.Common
 import Language.K3.Core.Metaprogram
 import Language.K3.Metaprogram.DataTypes
 
+metaHK3TraceLogging :: Bool
+metaHK3TraceLogging = True
+
+localLog :: (Functor m, Monad m) => String -> m ()
+localLog = logVoid metaHK3TraceLogging
+
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+localLogAction = logAction metaHK3TraceLogging
+
+hk3Msg :: [String] -> String
+hk3Msg sl = unwords $ ["HK3"] ++ sl
+
 {- K3-Haskell AST splicing -}
 
 evalHaskellProg :: SpliceContext -> String -> GeneratorM SpliceValue
 evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
     ParseOk exprAST   -> evalHaskell $ spliceQuotesExp sctxt exprAST
-    ParseFailed _ msg -> throwG $ unwords ["Haskell splice parse failed:", msg]
+    ParseFailed _ msg -> throwG $ hk3Msg ["splice parse failed:", msg]
   where
     pm = defaultParseMode {extensions = [EnableExtension TemplateHaskell]}
 
-    evalHaskell (prettyPrint -> astStr) =
-      logAction (evalLoggerF astStr) $ generatorWithEvalOptions $ \evalOpts -> generatorWithInterpreter $ \itptr -> do
+    evalHaskell (prettyPrint -> astStr) = localLogAction (evalLoggerF astStr) $
+      generatorWithEvalOptions $ \evalOpts -> generatorWithInterpreter $ \itptr -> do
         r <- liftIO $ unsafeRunInterpreterWithArgs (mpInterpArgs evalOpts) $ interpretWithOptions itptr astStr
         either interpFail return r
 
-    evalLoggerF astStr = maybe (Just $ "Eval Haskell " ++ astStr) (\r -> Just $ "Eval Haskell result: " ++ show r)
+    evalLoggerF astStr = maybe (Just $ hk3Msg ["input:", astStr]) (\r -> Just $ hk3Msg ["result:", show r])
 
     interpretWithOptions itptr str = itptr >> do
       resStr <- eval str
       return $ ((read resStr) :: SpliceValue)
 
-    interpFail err = throwG $ unwords ["Haskell splice eval failed:", show err]
+    interpFail err = throwG $ hk3Msg ["splice eval failed:", show err]
 
 injectSpliceValue :: SpliceValue -> Maybe Exp
 injectSpliceValue v = case parseExp $ show v of

@@ -9,6 +9,7 @@ module Language.K3.Metaprogram.Evaluation where
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
+import Control.Monad.IO.Class
 
 import Data.Functor.Identity
 import Data.List
@@ -30,53 +31,63 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 
 import Language.K3.Metaprogram.DataTypes
-import Language.K3.Metaprogram.MetaHK3
+import Language.K3.Metaprogram.MetaHK3 hiding ( localLog, localLogAction )
 
 import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.DataTypes
 
-import Language.K3.Analysis.HMTypes.Inference hiding ( logVoid, logAction )
+import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction )
 
 import Language.K3.Utils.Pretty
 
+traceLogging :: Bool
+traceLogging = True
+
+localLog :: (Functor m, Monad m) => String -> m ()
+localLog = logVoid traceLogging
+
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+localLogAction = logAction traceLogging
+
 
 {- Top-level AST transformations -}
-runMetaprogram :: Maybe MPEvalOptions -> K3 Declaration -> IO (Either String (K3 Declaration))
-runMetaprogram evalOpts mp = do
-    (prgE, genSt) <- evalMetaprogram evalOpts defaultMetaAnalysis mp
-    return $ prgE >>= (addDecls $ getGeneratedDecls genSt)
+evalMetaprogram :: Maybe MPEvalOptions -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
+                -> K3 Declaration -> IO (Either String (K3 Declaration))
+evalMetaprogram evalOpts analyzeFOpt mp = runGeneratorM initGState synthesizedProg >>= return . fst
   where
+    synthesizedProg = do
+      localLog $ generatorInput mp
+      pWithDataAnns  <- mpGenerators mp
+      pWithMDataAnns <- applyDAnnGens pWithDataAnns
+      analyzedP      <- analyzeF pWithMDataAnns
+      localLog $ debugAnalysis analyzedP
+      pWithMCtrlAnns <- applyCAnnGens analyzedP
+      pWithGDecls    <- generatorWithGDecls $ \gd -> addDecls gd pWithMCtrlAnns
+      if pWithGDecls == mp then return pWithGDecls
+                           else rcr    pWithGDecls -- Tail recursive fixpoint
+
+    initGState = maybe emptyGeneratorState mkGeneratorState evalOpts
+    analyzeF   = maybe defaultMetaAnalysis id analyzeFOpt
+
+    rcr p = (liftIO $ evalMetaprogram evalOpts analyzeFOpt p) >>= either throwG return
+
     addDecls genDecls p@(tag -> DRole n)
       | n == defaultRoleName =
           let (dd, cd) = generatorDeclsToList genDecls
           in return $ Node (DRole n :@: annotations p) $ children p ++ dd ++ cd
 
-    addDecls _ p = Left . boxToString $ [addErrMsg] %$ prettyLines p
-    addErrMsg = "Invalid top-level role resulting from metaprogram evaluation"
-
-
-evalMetaprogram :: Maybe MPEvalOptions -> (K3 Declaration -> GeneratorM (K3 Declaration)) -> K3 Declaration
-                -> IO (Either String (K3 Declaration), GeneratorState)
-evalMetaprogram evalOpts analyzeF mp = runGeneratorM initGState synthesizedProg
-  where
-    initGState = maybe emptyGeneratorState mkGeneratorState evalOpts
-
-    synthesizedProg = do
-      logVoid $ generatorInput mp
-      pWithDataAnns  <- mpGenerators mp
-      pWithMDataAnns <- applyDAnnGens pWithDataAnns
-      analyzedP      <- analyzeF pWithMDataAnns
-      logVoid $ debugAnalysis analyzedP
-      applyCAnnGens analyzedP
+    addDecls _ p = throwG . boxToString $ [addErrMsg] %$ prettyLines p
 
     generatorInput = metalog "Evaluating metaprogram "
     debugAnalysis  = metalog "Analyzed metaprogram "
     metalog msg p  = boxToString $ [msg] %$ (indent 2 $ prettyLines p)
 
+    addErrMsg = "Invalid top-level role resulting from metaprogram evaluation"
+
 defaultMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 defaultMetaAnalysis p = do
     strippedP <- mapExpression removeTypes p
-    liftError (liftError return . translateProgramTypes) $ inferProgramTypes False strippedP
+    liftError (liftError return . translateProgramTypes) $ inferProgramTypes strippedP
 
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.
@@ -203,16 +214,16 @@ applyCAnnGens mp = mapProgram applyCAnnDecl applyCAnnMemDecl applyCAnnExprTree N
 
 applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExprGenerator
 applyCAnnotation targetE cAnnId sEnv = do
-   logVoid $ "Applying control annotation " ++ cAnnId
+   localLog $ "Applying control annotation " ++ cAnnId
    generatorWithGEnv $ \gEnv ->
      maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
 
   where
-    injectRewrite (SRExpr p) = logVoid debugPassThru >> p
+    injectRewrite (SRExpr p) = localLog debugPassThru >> p
 
     injectRewrite (SRRewrite p) = do
       (rewriteE, decls) <- p
-      logVoid (debugRewrite rewriteE)
+      localLog (debugRewrite rewriteE)
       modifyGDeclsF_ (Right . addCGenDecls cAnnId decls) >> return rewriteE
 
     injectRewrite _ = throwG "Invalid control annotation rewrite"
@@ -413,7 +424,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
           let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
               nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
           in do
-              logVoid $ debugMatchPVar i
+              localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
 
     matchTag sEnv e1@(tag -> x) e2@(tag -> y)
@@ -472,7 +483,7 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
          $ maybe (inputSR expr) (exprDeclSR vspliceEnv) matchResult
 
   where
-    logValue msg v = runIdentity (logVoid msg >> return v)
+    logValue msg v = runIdentity (localLog msg >> return v)
 
     inputSR expr = SRExpr $ return expr
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
@@ -481,7 +492,7 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
     tryMatch _ acc@(Just _) _ = acc
     tryMatch expr Nothing (pat, rewrite, ruleExts) =
-      (logAction (tryMatchLogger expr pat) $ matchExpr expr pat) >>= return . (, rewrite, ruleExts)
+      (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat) >>= return . (, rewrite, ruleExts)
 
     tryMatchLogger expr pat = maybe (Just $ debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
 
