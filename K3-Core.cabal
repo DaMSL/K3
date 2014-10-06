@@ -35,7 +35,7 @@ library
         hashtables,
         haskell-src-exts <= 1.15.0.1,
         haskell-src-exts-qq,
-        hint,
+        hint <= 0.4.2.0,
         hslogger,
         mtl,
         network,

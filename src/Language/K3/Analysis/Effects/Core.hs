@@ -14,20 +14,29 @@ data EffectKind
 
 data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
 
+data TempType
+    = TAlias    -- The temporary is an alias
+    | TSub      -- The temporary is a subtype of the next element
+    | TIndirect -- The temporary is an indirection
+    | TUnbound  -- Unbound global
+    | TTemp     -- The temp has no connection to any other element
+    deriving (Eq, Ord, Read, Show)
+
 data Provenance
     = PRecord Identifier
     | PTuple Integer
     | PIndirection
     | PLet
-    | PCase  -- not a reliable alias. Doesn't fully allow pulling out of effects
+    | PCase
     -- A symbol can be 'applied' to produce effects and a new symbol
-    | PLambda Identifier (Maybe (K3 Effect))
+    | PLambda Identifier (K3 Effect)
+    -- A symbol application only generates symbols
     | PApply
     -- Any of the children of PSet can occur
     | PSet
     -- The following can be roots
     | PVar
-    | PTemporary
+    | PTemporary TempType
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
@@ -38,15 +47,18 @@ data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
 isSID :: Annotation Symbol -> Bool
 isSID _ = True
 
+type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
+
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
-    | FScope [K3 Symbol]
+    -- bound, read, written, applied within the scope
+    | FScope [K3 Symbol] ClosureInfo
+    -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
     | FSeq
     | FSet   -- Set of effects, all of which are possible
-    | FLoop  -- a flattened loop
-    | FNop
+    | FLoop  -- a flattened loop. can only happen in a foreign function
   deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)
