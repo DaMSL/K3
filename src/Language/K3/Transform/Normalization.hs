@@ -9,8 +9,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-
-import Language.K3.Analysis.Common
+import Language.K3.Core.Utils
 
 normalizeProgram :: K3 Declaration -> K3 Declaration
 normalizeProgram p = runIdentity $ mapExpression normalizeExpr p

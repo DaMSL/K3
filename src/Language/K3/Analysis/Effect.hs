@@ -16,6 +16,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 type Property   = (Identifier, Maybe (K3 Literal))
 type NamedEnv a = Map Identifier a
@@ -170,11 +171,11 @@ analyzeDeclEffect env ch (tag &&& annotations -> (DTrigger n t e, anns)) = do
 
 -- | Build an effect environment for annotation members, and add it to the
 --   accumulating effect environment.
-analyzeDeclEffect env ch (tag &&& annotations -> (DAnnotation n tVars mems, anns)) = do
+analyzeDeclEffect env ch (tag &&& annotations -> (DDataAnnotation n tVars mems, anns)) = do
   initMemEnv             <- return $ initialAnnotationEnv mems
   (naEnv, memEnv, nMems) <- analyzeMembersEffects env initMemEnv mems
   nEnv                   <- return $ insertAnnDef n memEnv $ envWithAnnotations env naEnv
-  return (nEnv, Node (DAnnotation n tVars nMems :@: anns) ch)
+  return (nEnv, Node (DDataAnnotation n tVars nMems :@: anns) ch)
 
 analyzeDeclEffect env ch (Node n _) = return (env, Node n ch)
 

@@ -1,16 +1,22 @@
 include "Annotation/MultiIndex.k3"
 
-annotation Index[key] {
-  provides lifted lookup_by_#[key] : ::[key] -> option content
+annotation Index[key : [labeltype] ] {
+  @:IndexKey "$[|literalType $ mkRecord 'key|]"
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self 
 }
 
-declare employees : collection {id: int, name: string}
-                      @{MultiIndex, Index(key=name)}
+
+declare employees : mut collection {id: int, name: string} @{MultiIndex, Index(key=[name])}
 
 
-declare result : mut option {id: int, name: string}
+declare result1 : mut option {id: int, name: string}
 
-trigger t : () = \_ -> (result = employees.lookup_by_name "John")
+trigger t : () = \_ -> (
+                        employees.insert {id: 1, name: "John"} )
+                        //employees.insert {id:2, name: "alice"};
+                        //result1 = employees.lookup_by_name "John";
+                        //employees = employees.slice_by_name "a" "b")
 
 source s1 : () = value ()
 feed s1 |> t

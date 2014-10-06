@@ -37,7 +37,7 @@ composite name ans = do
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
     -- When dealing with Indexes, we need to specialize the MultiIndex class on each index type
-    (indexTypes, indexDefns) <- indexes as
+    (indexTypes, indexDefns) <- indexes name as
 
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n  then indexTypes else []
 
@@ -141,6 +141,10 @@ record (sort -> ids) = do
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
               [R.Return $ R.Binary "<" tieSelf (tieOther "__other")]
 
+    let greaterOperator
+            = R.FunctionDefn (R.Name "operator>")
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [R.Return $ R.Binary ">" tieSelf (tieOther "__other")]
 
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
                      | i <- ids
@@ -158,7 +162,8 @@ record (sort -> ids) = do
                        (Just $ R.Named $ R.Name "void")
                        [] serializeStatements)
 
-    let members = [defaultConstructor, initConstructor, copyConstructor, equalityOperator, inequalityOperator, lessOperator, serializeFn] ++ fieldDecls
+    let operators = [equalityOperator, inequalityOperator, lessOperator, greaterOperator]
+    let members = [defaultConstructor, initConstructor, copyConstructor, serializeFn] ++ operators ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $

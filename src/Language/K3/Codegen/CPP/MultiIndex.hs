@@ -19,17 +19,21 @@ import Data.List (isInfixOf)
 import Data.Maybe (catMaybes)
 
 
+
+
 -- Given a list of annotations
 -- Return a tuple
 -- fst: List of index types to use for specializing K3::MultiIndex
 -- snd: List of function definitions to attach as members for this annotation combination (lookup functions)
-indexes :: [(Identifier, [AnnMemDecl])] -> CPPGenM ([R.Type], [R.Definition])
-indexes ans = do
-  let flattened = concatMap (\(i, mems) -> zip (repeat i) mems) ans
+indexes ::  Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM ([R.Type], [R.Definition])
+indexes name ans = do
+  let indexed = zip [1..] ans
+  let flattened = concatMap (\(n, (i, mems)) -> zip (repeat (n,i)) mems) indexed
   index_types <- catMaybes <$> mapM index_type flattened
-  let base_name = R.Specialized ((R.Named $ R.Name "__CONTENT") : index_types) (R.Qualified (R.Name "K3") (R.Name "MultiIndex"))
-  defns <- catMaybes <$> mapM (lookup_fn base_name) (zip [1..] flattened)
-  return (index_types, defns)
+  --let base_name = R.Specialized ((R.Named $ R.Name "__CONTENT") : index_types) (R.Qualified (R.Name "K3") (R.Name "MultiIndex"))
+  lookup_defns <- catMaybes <$> mapM lookup_fn (flattened)
+  slice_defns <- catMaybes <$> mapM slice_fn (flattened)
+  return (index_types, lookup_defns ++ slice_defns)
   where
     key_field = "name"
     elem_type = R.Named $ R.Name "__CONTENT"
@@ -40,8 +44,8 @@ indexes ans = do
     get_key_type ((tag &&& children) -> (TFunction, [k, _])) = Just <$> genCType k
     get_key_type _ = return Nothing
 
-    index_type :: (Identifier, AnnMemDecl) -> CPPGenM (Maybe R.Type)
-    index_type (n, decl) = case "Index" `isInfixOf` n of
+    index_type :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Type)
+    index_type ((_,n), decl) = case "Index" `isInfixOf` n of
       False -> return Nothing
       True -> extract_type n decl
 
@@ -64,12 +68,14 @@ indexes ans = do
 
 
     -- Build a lookup function, wrapping boost 'find'
-    lookup_fn :: R.Name -> (Integer, (Identifier, AnnMemDecl)) -> CPPGenM (Maybe R.Definition)
-    lookup_fn base (i ,(_,(Lifted _ fname t _ _) )) = do
+    lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    lookup_fn ((i,_) ,(Lifted _ fname t _ _) ) = do
+
       key_t <- get_key_type t
+      let this = R.Dereference $ R.Variable $ R.Name "this"
 
       let container = R.Call
-                       (R.Variable $ R.Qualified base $ R.Name "getContainer")
+                       (R.Project (this) (R.Name "getConstContainer") )
                        []
 
       let index = R.Call
@@ -79,23 +85,49 @@ indexes ans = do
                    )
                    []
 
-      let find =  R.Call
-                   (R.Project
-                     index
-                     (R.Name "find")
-                   )
-                   [(R.Variable $ R.Name "key")]
-
-      let shared = R.Call
-                    (R.Variable $ R.Specialized [R.Named $ R.Name "__CONTENT"] (R.Name "shared_ptr") )
-                    [find]
+      let look = R.Call
+                   (R.Project (this) (R.Name "lookup_with_index") )
+                   [index, R.Variable $ R.Name "key"]
 
       let defn k_t = R.FunctionDefn
                        (R.Name fname)
                        [("key", k_t)]
                        (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
                        []
-                       [R.Return $ shared]
-      return $ maybe Nothing (Just . defn) key_t
+                       [R.Return $ look]
+      let result = maybe Nothing (Just . defn) key_t
+      return $ if "lookup" `isInfixOf` fname then result else Nothing
 
-    lookup_fn _ _ = return Nothing
+    lookup_fn _ = return Nothing
+
+    slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    slice_fn ((i,_),(Lifted _ fname t _ _) ) = do
+      key_t <- get_key_type t
+      let this = R.Dereference $ R.Variable $ R.Name "this"
+
+      let container = R.Call
+                       (R.Project (this) (R.Name "getConstContainer") )
+                       []
+
+      let index = R.Call
+                   (R.Project
+                      container
+                      (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get"))
+                   )
+                   []
+
+      let slice = R.Call
+                   (R.Project (this) (R.Name "slice_with_index") )
+                   [index, R.Variable $ R.Name "a", R.Variable $ R.Name "b"]
+
+      let defn k_t = R.FunctionDefn
+                       (R.Name fname)
+                       [("a", k_t), ("b", k_t)]
+                       (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
+                       []
+                       [R.Return $ slice]
+      let result = maybe Nothing (Just . defn) key_t
+      return $ if "slice" `isInfixOf` fname then result else Nothing
+    slice_fn _ = return Nothing
+
+

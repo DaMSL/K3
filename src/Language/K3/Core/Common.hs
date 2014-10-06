@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -28,21 +29,30 @@ module Language.K3.Core.Common (
     replaceAssoc,
     modifyAssoc,
 
+    logVoid,
+    logAction,
+
     HasUID(..),
     HasSpan(..)
 ) where
 
 import Control.Concurrent.MVar
+import Control.Monad
 
 import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
+import Debug.Trace
 
 import Text.ParserCombinators.ReadP    as TP
 import Text.ParserCombinators.ReadPrec as TRP
 import Text.Read                       as TR
 
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
+
+$(loggingFunctions)
+
 
 -- | Identifiers are used everywhere.
 type Identifier = String
@@ -73,7 +83,7 @@ data UID = UID Int deriving (Eq, Ord, Read, Show)
 data NoneMutability
     = NoneMut
     | NoneImmut
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Endpoint types.
 data EndpointSpec
@@ -119,6 +129,22 @@ modifyAssoc :: Eq a => [(a,b)] -> a -> (Maybe b -> (c, Maybe b)) -> (c, [(a,b)])
 modifyAssoc l k f = case f $ lookup k l of
   (r, Nothing) -> (r, l)
   (r, Just nv) -> (r, replaceAssoc l k nv)
+
+-- | Simple monadic logging.
+--   These functions are useful for debugging while developing, since it
+--   does not require a codebase rebuild with cabal debugging flags.
+logVoid :: (Functor m, Monad m) => Bool -> String -> m ()
+logVoid asTrace s = if asTrace then trace s $ return ()
+                               else void $ _debug s
+
+logAction :: (Functor m, Monad m) => Bool -> (Maybe a -> Maybe String) -> m a -> m a
+logAction asTrace msgF action = do
+ doLog (msgF Nothing)
+ result <- action
+ doLog (msgF $ Just result)
+ return result
+ where doLog Nothing  = return ()
+       doLog (Just s) = logVoid asTrace s
 
 
 {- Instance implementations -}

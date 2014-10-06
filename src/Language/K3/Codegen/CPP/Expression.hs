@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -20,6 +19,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Preprocessing
@@ -28,8 +28,9 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
-import Language.K3.Optimization.Core
-import Language.K3.Optimization.Bind
+import qualified Language.K3.Analysis.CArgs as CArgs
+
+import Language.K3.Transform.Hints
 
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
@@ -65,7 +66,7 @@ attachTemplateVars v e g
                                   t@(tag -> TFunction) -> return t
                                   (tag &&& children -> (TForall _, [t'])) -> return t'
                                   _ -> throwE $ CPPGenE "Unreachable Error."
-            let ts = snd . unzip . dedup $ matchTrees signatureType $ 
+            let ts = snd . unzip . dedup $ matchTrees signatureType $
                        fromMaybe (error "attachTemplateVars: expected just") $ functionType e
             cts <- mapM genCType ts
             return $ if null cts
@@ -191,12 +192,21 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
            , R.Lambda capture [(arg, ta)] Nothing body'
            )
 
-inline (flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
+inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-
-    return (fe ++ concat aes, R.Call fv avs)
+    c <- call fv avs
+    return (fe ++ concat aes, c)
+  where
+    call fn@(R.Variable n) args =
+      if isJust $ f @~ CArgs.isErrorFn
+        then do
+          kType <- getKType e
+          returnType <- genCType kType
+          return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
+        else return $ R.Call fn args
+    call fn args = return $ R.Call fn args
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
@@ -265,22 +275,34 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
     return [R.Block $ d ++ ee ++ be]
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
-reify r (tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    ct <- getKType e
-    d <- cDecl (head $ children ct) x
-    g <- genSym
-    p <- cDecl ct g
-    ee <- reify (RName g) e
+reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
+    let (refBinds, copyBinds, writeBinds)
+            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
+                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
+                Nothing -> (S.empty, S.empty, S.singleton x)
+
+    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
+    let isWriteBound i = i `S.member` writeBinds
+
+    (ee, ev) <- inline e
     se <- reify r s
     ne <- reify r n
-    let someAssignment = [R.Assignment (R.Variable $ R.Name x) (R.Dereference (R.Variable $ R.Name g))]
-    return $ p ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ someAssignment ++ se) ne]
+
+    et <- getKType e
+    ec <- genCType et
+
+    let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
+               (Just $ R.Dereference ev)]
+
+    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x]) | isWriteBound x]
+
+    return $ ee ++ [R.IfThenElse ev (d ++ se ++ reconstruct) ne]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds)
             = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
                 Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
-                Nothing -> ([], [], S.fromList $ bindingVariables b)
+                Nothing -> (S.empty, S.empty, S.fromList $ bindingVariables b)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
@@ -289,8 +311,10 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
         (tag -> EVariable _) -> inline a
         _ -> do
             g' <- genSym
+            ta <- getKType a
+            da <- cDecl ta g'
             ae' <- reify (RName g') a
-            return (ae', R.Variable $ R.Name g')
+            return (da ++ ae', R.Variable $ R.Name g')
 
     ta <- getKType a
 

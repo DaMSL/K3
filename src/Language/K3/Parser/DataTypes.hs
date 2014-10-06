@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -34,6 +35,11 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Metaprogram
+
+import qualified Language.K3.Core.Constructor.Type        as TC
+import qualified Language.K3.Core.Constructor.Expression  as EC
+import qualified Language.K3.Core.Constructor.Literal     as LC
 
 {- Type synonyms for parser return types -}
 
@@ -43,26 +49,6 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
 
 -- | Role name, default name
 type DefaultEntries    = [(Identifier, Identifier)]
-
-{-| Macro environment and datatypes -}
-type GeneratorEnv  = Map Identifier (SpliceEnv -> SpliceResult)
-type SpliceEnv     = Map Identifier SpliceReprEnv
-type SpliceReprEnv = Map Identifier SpliceValue
-type SpliceContext = [SpliceEnv]
-
-data SpliceVariable = SVLabel | SVType | SVExpr deriving (Eq, Read, Show)
-
-data SpliceValue = SLabel Identifier
-                 | SType (K3 Type)
-                 | SExpr (K3 Expression)
-                 | SDecl (K3 Declaration)
-                 deriving (Eq, Read, Show)
-
-data SpliceResult = SRType TypeParser
-                  | SRExpr ExpressionParser
-                  | SRDecl DeclParser
-
-type GeneratorState = (Int, GeneratorEnv, SpliceContext, [K3 Declaration])
 
 {-| Type alias support.
     This is a framed environment, with frames managed based on type variable scopes.
@@ -79,11 +65,17 @@ data TypeAliasEnv = TypeAliasEnv Int TAEnv
 type EnvFrame     = (EndpointsBQG, DefaultEntries)
 type ParserEnv    = [EnvFrame]
 
-{-| Parsing state.
-    This includes a UID counter, a program generator environment, a splicing context
-    for the current parse, and a parser environment as defined above.
+{-| Parsing mode, including pattern and splice modes as well as the default K3.
+    Rather than maintaining distinct ASTs for patterns and splices, we embed and strip
+    them out of the standard type, expression and declaration ASTs.
 -}
-type ParserState  = (Int, GeneratorState, TypeAliasEnv, ParserEnv)
+data ParseMode = Normal | Splice | SourcePattern
+
+{-| Parsing state.
+    This includes a parse mode, a UID counter, a list of generated declarations,
+    a type alias environment and a parser environment as defined above.
+-}
+type ParserState  = (ParseMode, Int, [K3 Declaration], TypeAliasEnv, ParserEnv)
 
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
@@ -102,12 +94,17 @@ type ParserOperator       = Text.Parser.Expression.Operator K3Parser
 type K3BinaryOperator     = K3 Expression -> K3 Expression -> K3 Expression
 type K3UnaryOperator      = K3 Expression -> K3 Expression
 
-{- Note: debugging helper
-import Debug.Trace
+type AnnotationCtor a = Identifier -> Annotation a
+type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
-myTrace :: String -> K3Parser a -> K3Parser a
-myTrace s p = PP.getInput >>= (\i -> trace (s++" "++i) p)
--}
+-- | Metaprogram expression embedding as identifiers.
+data MPEmbedding = MPENull  Identifier
+                 | MPEPath  Identifier [Identifier]
+                 | MPEHProg String
+                 deriving (Eq, Ord, Read, Show)
+
+type EmbeddingParser a = K3Parser (Either MPEmbedding (K3 a))
+
 
 {- Language definition constants -}
 k3Operators :: [[Char]]
@@ -133,56 +130,95 @@ k3Keywords = [
     "true", "false", "ind", "Some", "None", "empty",
 
     {- Annotation declarations -}
-    "annotation", "lifted", "provides", "requires",
+    "annotation", "lifted", "provides", "requires", "given", "type",
 
     {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall"
+    "self", "structure", "horizon", "content", "forall",
+
+    {- Metaprogramming keywords -}
+    "label", "expr", "decl", "literal", "labeltype", "shared"
   ]
 
 {- Style definitions for parsers library -}
 
-k3Ops :: TokenParsing m => IdentifierStyle m
+k3Ops :: IdentifierStyle K3Parser
 k3Ops = emptyOps { _styleReserved = set k3Operators }
 
-k3Idents :: TokenParsing m => IdentifierStyle m
+k3Idents :: IdentifierStyle K3Parser
 k3Idents = emptyIdents { _styleReserved = set k3Keywords }
 
-operator :: (TokenParsing m, Monad m) => String -> m ()
+k3PatternIdents :: IdentifierStyle K3Parser
+k3PatternIdents = emptyIdents { _styleStart    = letter <|> char '_' <|> char '?'
+                              , _styleReserved = set k3Keywords }
+
+keyword :: String -> K3Parser ()
+keyword = reserve k3Idents
+
+operator :: String -> K3Parser ()
 operator = reserve k3Ops
 
 -- Copied from parsers to push splice concatenation inside tokenization.
-nonTokenIdent :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
+nonTokenIdent :: IdentifierStyle K3Parser -> K3Parser String
 nonTokenIdent s = do
   name <- highlight (_styleHighlight s)
             ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return $ fromString name
 
-identSplice :: (TokenParsing m, Monad m, IsString s) => Bool -> m s
-identSplice idOnly = fmap fromString $ ctor <$> string  "#[" <*> try (nonTokenIdent k3Idents) <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
+identifier :: K3Parser String
+identifier = fmap fromString $ token $ concat <$> some (choice . map try =<< parserWithPMode parts)
+  where parts Normal        = return [i]
+        parts SourcePattern = return [patI]
+        parts _             = return [i, spliceIdentifierEmbedding]
+        i    = nonTokenIdent k3Idents
+        patI = nonTokenIdent k3PatternIdents
 
-typeSplice :: (TokenParsing m, Monad m, IsString s) => Bool -> m s
-typeSplice idOnly = fmap fromString $ ctor <$> string "::[" <*> many (noneOf "]") <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
-
-exprSplice :: (TokenParsing m, Monad m, IsString s) => Bool -> m s
-exprSplice idOnly = fmap fromString $ ctor <$> string  "$[" <*> many (noneOf "]") <*> char ']'
-  where ctor a b c = if idOnly then b else a ++ b ++ [c]
-
-identifier :: (TokenParsing m, Monad m, IsString s) => m s
-identifier = fmap fromString $ token $ concat <$> some (choice $ map try [i, identSplice False, typeSplice False, exprSplice False])
-  where i = nonTokenIdent k3Idents
-
-identParts :: (TokenParsing m, Monad m) => m [Either String (SpliceVariable, String)]
+identParts :: K3Parser [MPEmbedding]
 identParts = token $ some (choice $ map try parts)
-  where parts = [l i] ++ (map (\(p,c) -> r c (p True)) [(identSplice, SVLabel), (typeSplice, SVType), (exprSplice, SVExpr)])
-        i = nonTokenIdent k3Idents
-        r v x = x >>= return . Right . (v,)
-        l x = x >>= return . Left
+  where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
-keyword :: (TokenParsing m, Monad m) => String -> m ()
-keyword = reserve k3Idents
+spliceSymbols :: [(String, [Identifier])]
+spliceSymbols = map (,[]) ["$"] ++ [("&#", [spliceVIdSym]), ("&::", [spliceVTSym])]
+
+splicePath :: K3Parser [String]
+splicePath = i `sepBy1` (string ".")
+  where i = try $ nonTokenIdent k3Idents
+
+spliceHExpr :: K3Parser String
+spliceHExpr = char '|' *> manyTill anyChar (try (char '|'))
+
+spliceBody :: K3Parser (Either [String] String)
+spliceBody = (Left <$> splicePath) <|> (Right <$> spliceHExpr)
+
+spliceIdentifierEmbedding :: K3Parser String
+spliceIdentifierEmbedding = fmap fromString $ spliceCtor <$> spliceSyms <*> spliceBody <*> char ']'
+  where
+    spliceSyms       = choice $ map (try . string . (++ "[") . fst) spliceSymbols
+    spliceCtor a (Left  b) c = a ++ intercalate "." b ++ [c]
+    spliceCtor a (Right b) c = a ++ "|" ++ b ++ "|" ++ [c]
+
+spliceEmbedding :: K3Parser MPEmbedding
+spliceEmbedding = embeddingCtor =<< ((,,) <$> spliceSyms <*> spliceBody <*> char ']')
+  where
+    spliceSyms = choice $ map symForSuffix spliceSymbols
+    symForSuffix (sym,pathExt) = const pathExt <$> try (string $ sym ++ "[")
+
+    embeddingCtor (_,   Left [],    _) = P.parserFail "Invalid splice path"
+    embeddingCtor (ext, Left (h:t), _) = return $ MPEPath h $ t ++ ext
+    embeddingCtor (_,   Right expr, _) = return $ MPEHProg expr
+
+
+idFromParts :: K3Parser (Either [MPEmbedding] Identifier)
+idFromParts = choice [try (Left <$> identParts), Right <$> identifier]
+
+typeEmbedding :: EmbeddingParser Type
+typeEmbedding = choice [try (Left <$> spliceEmbedding), Right . TC.declaredVar <$> identifier]
+
+exprEmbedding :: EmbeddingParser Expression
+exprEmbedding = choice [try (Left <$> spliceEmbedding), Right . EC.variable <$> identifier]
+
+literalEmbedding :: EmbeddingParser Literal
+literalEmbedding = choice [try (Left <$> spliceEmbedding), Right . LC.string <$> many anyChar]
 
 
 {- Comments -}
@@ -214,83 +250,62 @@ comment post = many (choice [try $ multiComment post, try $ singleComment post])
 emptyParserEnv :: ParserEnv
 emptyParserEnv = []
 
-emptyGeneratorEnv :: GeneratorEnv
-emptyGeneratorEnv = Map.empty
-
-emptySpliceContext :: SpliceContext
-emptySpliceContext = []
-
-emptyGeneratorState :: GeneratorState
-emptyGeneratorState = (0, emptyGeneratorEnv, emptySpliceContext, [])
-
 emptyTypeAliasEnv :: TypeAliasEnv
 emptyTypeAliasEnv = TypeAliasEnv 0 Map.empty
 
+defaultParseMode :: ParseMode
+defaultParseMode = Normal
+
 emptyParserState :: ParserState
-emptyParserState = (0, emptyGeneratorState, emptyTypeAliasEnv, emptyParserEnv)
+emptyParserState = (defaultParseMode, 0, [], emptyTypeAliasEnv, emptyParserEnv)
 
-getGeneratorUID :: ParserState -> Int
-getGeneratorUID (_, (c, _, _, _), _, _) = c
+getParseMode :: ParserState -> ParseMode
+getParseMode (pmd, _, _, _, _) = pmd
 
-getGeneratorEnv :: ParserState -> GeneratorEnv
-getGeneratorEnv (_, (_, env, _, _), _, _) = env
-
-getSpliceContext :: ParserState -> SpliceContext
-getSpliceContext (_, (_, _, ctxt, _), _, _) = ctxt
-
-getGeneratedDecls :: ParserState -> [K3 Declaration]
-getGeneratedDecls (_, (_, _,_,decls), _, _) = decls
+getBuilderDecls :: ParserState -> [K3 Declaration]
+getBuilderDecls (_, _, decls, _, _) = decls
 
 getTypeAliasEnv :: ParserState -> TypeAliasEnv
-getTypeAliasEnv (_, _, tae, _) = tae
+getTypeAliasEnv (_, _, _, tae, _) = tae
 
 getParserEnv :: ParserState -> ParserEnv
-getParserEnv (_, _, _, env) = env
+getParserEnv (_, _, _, _, env) = env
 
 modifyParserEnv :: (ParserEnv -> Either String (ParserEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyParserEnv f (uc,gs,ta,p) = either Left (\(np,r) -> Right ((uc,gs,ta,np), r)) $ f p
+modifyParserEnv f (pmd,uc,gd,ta,p) = either Left (\(np,r) -> Right ((pmd,uc,gd,ta,np), r)) $ f p
 
-modifyGeneratorEnv :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyGeneratorEnv f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nge,r) -> Right ((uc,(ac,nge,sc,gd),ta,p), r)) $ f ge
+modifyParseMode :: (ParseMode -> Either String (ParseMode, a)) -> ParserState -> Either String (ParserState, a)
+modifyParseMode f (pmd,uc,gd,ta,p) = either Left (\(npmd,r) -> Right ((npmd,uc,gd,ta,p),r)) $ f pmd
 
-modifySpliceContext :: (SpliceContext -> Either String (SpliceContext, a)) -> ParserState -> Either String (ParserState, a)
-modifySpliceContext f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nsc,r) -> Right ((uc,(ac,ge,nsc,gd),ta,p),r)) $ f sc
-
-modifyGeneratedDecls :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> ParserState -> Either String (ParserState, a)
-modifyGeneratedDecls f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(ngd,r) -> Right ((uc,(ac,ge,sc,ngd),ta,p), r)) $ f gd
+modifyBuilderDecls :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> ParserState -> Either String (ParserState, a)
+modifyBuilderDecls f (pmd,uc,gd,ta,p) = either Left (\(ngd,r) -> Right ((pmd,uc,ngd,ta,p),r)) $ f gd
 
 modifyTypeAliasEnv :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> ParserState -> Either String (ParserState, a)
-modifyTypeAliasEnv f (uc,(ac,ge,sc,gd),ta,p) = either Left (\(nta,r) -> Right ((uc,(ac,ge,sc,gd),nta,p),r)) $ f ta
+modifyTypeAliasEnv f (pmd,uc,gd,ta,p) = either Left (\(nta,r) -> Right ((pmd,uc,gd,nta,p),r)) $ f ta
 
 modifyParserState :: (ParserState -> Either String (ParserState, a)) -> K3Parser a
 modifyParserState f = PP.getState >>= \st -> either PP.parserFail (\(nst,r) -> PP.putState nst >> return r) $ f st
 
 parserWithUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithUID f = PP.getState >>= (\(uc,gs,ta,p) -> PP.putState (uc+1, gs, ta, p) >> f uc)
+parserWithUID f = PP.getState >>= (\(pmd,uc,gd,ta,p) -> PP.putState (pmd,uc+1,gd,ta,p) >> f uc)
 
-parserWithGUID :: (Int -> K3Parser a) -> K3Parser a
-parserWithGUID f = PP.getState >>= (\(uc,(ac,ge,sc,gd),ta,p) -> PP.putState (uc,(ac+1,ge,sc,gd),ta,p) >> f ac)
+parserWithPMode :: (ParseMode -> K3Parser a) -> K3Parser a
+parserWithPMode f = PP.getState >>= f . getParseMode
 
-parserWithGEnv :: (GeneratorEnv -> K3Parser a) -> K3Parser a
-parserWithGEnv f = PP.getState >>= f . getGeneratorEnv
-
-parserWithSCtxt :: (SpliceContext -> K3Parser a) -> K3Parser a
-parserWithSCtxt f = PP.getState >>= f . getSpliceContext
+parserWithBuilderDecls :: ([K3 Declaration] -> K3Parser a) -> K3Parser a
+parserWithBuilderDecls f = PP.getState >>= f . getBuilderDecls
 
 parserWithTAEnv :: (TypeAliasEnv -> K3Parser a) -> K3Parser a
 parserWithTAEnv f = PP.getState >>= f . getTypeAliasEnv
 
+withPMode :: (ParseMode -> a) -> K3Parser a
+withPMode f = parserWithPMode $ return . f
+
 withUID :: (Int -> a) -> K3Parser a
 withUID f = parserWithUID $ return . f
 
-withGUID :: (Int -> a) -> K3Parser a
-withGUID f = parserWithGUID $ return . f
-
-withGEnv :: (GeneratorEnv -> a) -> K3Parser a
-withGEnv f = parserWithGEnv $ return . f
-
-withSCtxt :: (SpliceContext -> a) -> K3Parser a
-withSCtxt f = parserWithSCtxt $ return . f
+withBuilderDecls :: ([K3 Declaration] -> a) -> K3Parser a
+withBuilderDecls f = parserWithBuilderDecls $ return . f
 
 withTAEnv :: (TypeAliasEnv -> a) -> K3Parser a
 withTAEnv f = parserWithTAEnv $ return . f
@@ -310,29 +325,17 @@ modifyEnvF f = modifyParserState $ modifyParserEnv f
 modifyEnvF_ :: (ParserEnv -> Either String ParserEnv) -> K3Parser ()
 modifyEnvF_ f = modifyEnvF $ (>>= Right . (,())) . f
 
-modifyGEnv :: (GeneratorEnv -> (GeneratorEnv, a)) -> K3Parser a
-modifyGEnv f = modifyGEnvF $ Right . f
+modifyPModeF :: (ParseMode -> Either String (ParseMode, a)) -> K3Parser a
+modifyPModeF f = modifyParserState $ modifyParseMode f
 
-modifyGEnv_ :: (GeneratorEnv -> GeneratorEnv) -> K3Parser ()
-modifyGEnv_ f = modifyGEnv $ (,()) . f
+modifyPModeF_ :: (ParseMode -> Either String ParseMode) -> K3Parser ()
+modifyPModeF_ f = modifyPModeF $ (>>= Right . (,())) . f
 
-modifyGEnvF :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> K3Parser a
-modifyGEnvF f = modifyParserState $ modifyGeneratorEnv f
+modifyBuilderDeclsF :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> K3Parser a
+modifyBuilderDeclsF f = modifyParserState $ modifyBuilderDecls f
 
-modifyGEnvF_ :: (GeneratorEnv -> Either String GeneratorEnv) -> K3Parser ()
-modifyGEnvF_ f = modifyGEnvF $ (>>= Right . (,())) . f
-
-modifySCtxtF :: (SpliceContext -> Either String (SpliceContext, a)) -> K3Parser a
-modifySCtxtF f = modifyParserState $ modifySpliceContext f
-
-modifySCtxtF_ :: (SpliceContext -> Either String SpliceContext) -> K3Parser ()
-modifySCtxtF_ f = modifySCtxtF $ (>>= Right . (,())) . f
-
-modifyGDeclsF :: ([K3 Declaration] -> Either String ([K3 Declaration], a)) -> K3Parser a
-modifyGDeclsF f = modifyParserState $ modifyGeneratedDecls f
-
-modifyGDeclsF_ :: ([K3 Declaration] -> Either String [K3 Declaration]) -> K3Parser ()
-modifyGDeclsF_ f = modifyGDeclsF $ (>>= Right . (,())) . f
+modifyBuilderDeclsF_ :: ([K3 Declaration] -> Either String [K3 Declaration]) -> K3Parser ()
+modifyBuilderDeclsF_ f = modifyBuilderDeclsF $ (>>= Right . (,())) . f
 
 modifyTAEnvF :: (TypeAliasEnv -> Either String (TypeAliasEnv, a)) -> K3Parser a
 modifyTAEnvF f = modifyParserState $ modifyTypeAliasEnv f
@@ -351,6 +354,16 @@ modifyUID_ f = modifyUID $ (,()) . f
 
 nextUID :: K3Parser UID
 nextUID = withUID UID
+
+uidOver :: K3Parser (UID -> a) -> K3Parser a
+uidOver parser = parserWithUID $ ap (fmap (. UID) parser) . return
+
+parseInMode :: ParseMode -> K3Parser a -> K3Parser a
+parseInMode pMode p = parserWithPMode $ \curPMode -> do
+  void $ modifyPModeF_ $ const $ Right pMode
+  r <- p
+  void $ modifyPModeF_ $ const $ Right curPMode
+  return r
 
 
 {- Parser environment accessors  -}
@@ -386,55 +399,6 @@ safePopFrame :: ParserEnv -> (EnvFrame, ParserEnv)
 safePopFrame [] = (([],[]),[])
 safePopFrame (h:t) = (h,t)
 
-
-{- Generator environment accessors -}
-lookupGenE :: Identifier -> GeneratorEnv -> Maybe (SpliceEnv -> SpliceResult)
-lookupGenE = Map.lookup
-
-addGenE :: Identifier -> (SpliceEnv -> SpliceResult) -> GeneratorEnv -> GeneratorEnv
-addGenE = Map.insert
-
-{- Splice context accessors -}
-lookupSCtxt :: Identifier -> Identifier -> SpliceContext -> Maybe SpliceValue
-lookupSCtxt n k ctxt = find (Map.member n) ctxt >>= Map.lookup n >>= Map.lookup k
-
-addSCtxt :: Identifier -> SpliceReprEnv -> SpliceContext -> SpliceContext
-addSCtxt n vals [] = [Map.insert n vals Map.empty]
-addSCtxt n vals ctxt = (Map.insert n vals $ head ctxt):(tail ctxt)
-
-removeSCtxt :: Identifier -> SpliceContext -> SpliceContext
-removeSCtxt _ [] = []
-removeSCtxt n ctxt = (Map.delete n $ head ctxt):(tail ctxt)
-
-removeSCtxtFirst :: Identifier -> SpliceContext -> SpliceContext
-removeSCtxtFirst n ctxt = snd $ foldl removeOnFirst (False, []) ctxt
-  where removeOnFirst (done, acc) senv = if done then (done, acc++[senv]) else removeIfPresent acc senv
-        removeIfPresent acc senv = if Map.member n senv then (True, acc++[Map.delete n senv]) else (False, acc++[senv])
-
-pushSCtxt :: SpliceEnv -> SpliceContext -> SpliceContext
-pushSCtxt senv ctxt = senv:ctxt
-
-popSCtxt :: SpliceContext -> SpliceContext
-popSCtxt = tail
-
-{- Splice environment helpers -}
-spliceVIdSym :: Identifier
-spliceVIdSym = "identifier"
-
-spliceVTSym :: Identifier
-spliceVTSym  = "type"
-
-spliceVESym :: Identifier
-spliceVESym  = "expr"
-
-lookupSpliceE :: Identifier -> Identifier -> SpliceEnv -> Maybe SpliceValue
-lookupSpliceE n k senv = Map.lookup n senv >>= Map.lookup k
-
-mkSpliceReprEnv :: [(Identifier, SpliceValue)] -> SpliceReprEnv
-mkSpliceReprEnv = Map.fromList
-
-mkSpliceEnv :: [(Identifier, SpliceReprEnv)] -> SpliceEnv
-mkSpliceEnv = Map.fromList
 
 {- Type alias enviroment helpers -}
 lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)
@@ -545,3 +509,21 @@ instance UIDAttachable (K3 Type) where
   (#) = ensureUID isTUID
 instance UIDAttachable (K3 Declaration) where
   (#) = ensureUID isDUID
+
+{- Top-level parsing helpers -}
+stringifyError :: Either P.ParseError a -> Either String a
+stringifyError = either (Left . show) Right
+
+runK3Parser :: (Show a) => Maybe ParserState -> K3Parser a -> String -> Either P.ParseError a
+runK3Parser Nothing   p s = logParser s $ P.runParser p emptyParserState "" s
+runK3Parser (Just st) p s = logParser s $ P.runParser p st "" s
+
+maybeParser :: (Show a) => K3Parser a -> String -> Maybe a
+maybeParser p s = either (const Nothing) Just $ runK3Parser Nothing (head <$> endBy1 p eof) s
+
+parserTraceLogging :: Bool
+parserTraceLogging = False
+
+logParser :: (Functor m, Monad m, Show a) => String -> m a -> m a
+logParser s act = logAction parserTraceLogging loggerF act
+  where loggerF = maybe (Just $ "Running parser on " ++ s) (\r -> Just $ "Done parsing: " ++ show r)

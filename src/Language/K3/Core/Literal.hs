@@ -14,6 +14,9 @@ import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
+-- | Cycle-breaking import for metaprogramming
+import {-# SOURCE #-} Language.K3.Core.Metaprogram
+
 import Language.K3.Utils.Pretty
 
 -- | Literal variants include all builtin data types.
@@ -31,7 +34,7 @@ data Literal
     | LEmpty      (K3 Type)
     | LCollection (K3 Type)
     | LAddress
-  deriving (Eq, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotations on literals.
 data instance Annotation Literal
@@ -40,9 +43,10 @@ data instance Annotation Literal
     | LMutable
     | LImmutable
     | LAnnotation Identifier
-    | LSyntax SyntaxAnnotation
-    | LType (K3 Type)
-  deriving (Eq, Read, Show)
+    | LApplyGen   Identifier SpliceEnv
+    | LSyntax     SyntaxAnnotation
+    | LType       (K3 Type)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Literal) where
   getUID (LUID u) = Just u

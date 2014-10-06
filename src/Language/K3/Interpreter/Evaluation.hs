@@ -28,6 +28,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
@@ -659,8 +660,7 @@ declaration (details -> (DTrigger n t e, cs, anns)) =
     debugDecl n t $ (expression e >>= replaceTrigger n anns) >> mapM_ declaration cs
 
 declaration (tag &&& children -> (DRole r, ch))   = role r ch
-declaration (tag -> DAnnotation n vdecls members) = annotation n vdecls members
-
+declaration (tag -> DDataAnnotation n vdecls members) = annotation n vdecls members
 declaration _ = undefined
 
 

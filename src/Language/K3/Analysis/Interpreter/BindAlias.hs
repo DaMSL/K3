@@ -19,6 +19,7 @@ import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 
 labelBindAliases :: K3 Declaration -> K3 Declaration
 labelBindAliases prog = snd $ labelDecl 0 prog
@@ -40,10 +41,10 @@ labelBindAliases prog = snd $ labelDecl 0 prog
         let (ncnt2, ne) = labelBindAliasesExpr ncnt e
         in (ncnt2, Node (DTrigger n t ne :@: annotations d) nch))
 
-    labelDecl cnt d@(tag &&& children -> (DAnnotation n tVars annMems, ch)) =
+    labelDecl cnt d@(tag &&& children -> (DDataAnnotation n tVars annMems, ch)) =
       withDeclChildren cnt ch (\(ncnt,nch) ->
         let (ncnt2, nAnnMems) = withAnnMems ncnt annMems
-        in (ncnt2, Node (DAnnotation n tVars nAnnMems :@: annotations d) nch))
+        in (ncnt2, Node (DDataAnnotation n tVars nAnnMems :@: annotations d) nch))
 
     labelDecl cnt (Node t ch) = withDeclChildren cnt ch (\(ncnt,nch) -> (ncnt, Node t nch))
 

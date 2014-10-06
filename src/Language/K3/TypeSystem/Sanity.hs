@@ -19,6 +19,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Metaprogram
 import Language.K3.TypeSystem.Error
 import Language.K3.TypeSystem.Monad.Iface.TypeError
 
@@ -42,9 +43,12 @@ sanityCheck decl =
       DRole i -> i
       DGlobal i _ _ -> i
       DTrigger i _ _ -> i
-      DAnnotation i _ _ -> i
+      DDataAnnotation i _ _ -> i
+      DGenerator (MPDataAnnotation i _ _ _) -> i
+      DGenerator (MPCtrlAnnotation i _ _ _) -> i
+      DTypeDef i _ -> i
     unAnn d = case tag d of
-      DAnnotation _ _ mems -> Just mems
+      DDataAnnotation _ _ mems -> Just mems
       _ -> Nothing
     checkMembersForDupes :: [AnnMemDecl] -> m ()
     checkMembersForDupes mems = do

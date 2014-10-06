@@ -10,12 +10,13 @@ import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 type GraphExtractor a = Identifier -> [TypeVarDecl] -> [AnnMemDecl] -> (a, [Identifier])
 
 annotationGraph :: GraphExtractor a -> K3 Declaration -> (Graph Identifier a)
 annotationGraph annotationF prog = G.fromList $ maybe [] id $ foldMapTree concatChildAcc [] prog
-  where concatChildAcc childAccs (tag -> DAnnotation n tvars mems) =
+  where concatChildAcc childAccs (tag -> DDataAnnotation n tvars mems) =
           let (node, edges) = annotationF n tvars mems
           in Just $ [(n, node, edges)] ++ concat childAccs
         concatChildAcc childAccs _ = Just $ concat childAccs

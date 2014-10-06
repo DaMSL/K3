@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -9,6 +10,7 @@ module Language.K3.Core.Declaration (
     -- * User defined Annotations
     Polarity(..),
     AnnMemDecl(..),
+    PatternRewriteRule,
     UnorderedConflict(..),
 
     getTriggerIds,
@@ -20,6 +22,7 @@ module Language.K3.Core.Declaration (
 ) where
 
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -31,18 +34,30 @@ import Language.K3.Analysis.Effects.Core
 
 import Language.K3.Utils.Pretty
 
+-- | Cycle-breaking import for metaprogramming
+import {-# SOURCE #-} Language.K3.Core.Metaprogram
+
 -- | Top-Level Declarations
 data Declaration
-    = DGlobal       Identifier (K3 Type) (Maybe (K3 Expression))
-    -- | Trigger declaration.  Type is argument type of trigger.  Expression
-    --  must be a function taking that argument type and returning unit.
-    | DTrigger      Identifier (K3 Type) (K3 Expression)
-    | DRole         Identifier
-    | DAnnotation   Identifier [TypeVarDecl] [AnnMemDecl]
+    = DGlobal         Identifier (K3 Type) (Maybe (K3 Expression))
 
-    -- | Type synonym declaration.
-    | DTypeDef      Identifier (K3 Type)
-  deriving (Eq, Read, Show)
+    | DTrigger        Identifier (K3 Type) (K3 Expression)
+        -- ^ Trigger declaration.  Type is argument type of trigger.  Expression
+        --   must be a function taking that argument type and returning unit.
+
+    | DDataAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
+        -- ^ Name, annotation type parameters, and members
+
+    | DGenerator      MPDeclaration
+        -- ^ Metaprogramming declarations, maintained in the tree for lineage.
+
+    | DRole           Identifier
+        -- ^ Roles, as lightweight modules. These are deprecated.
+
+    | DTypeDef        Identifier (K3 Type)
+        -- ^ Type synonym declaration.
+
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotation declaration members
 data AnnMemDecl
@@ -55,10 +70,16 @@ data AnnMemDecl
                   [Annotation Declaration]
 
     | MAnnotation Polarity Identifier [Annotation Declaration]
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable)
 
 -- | Annotation member polarities
-data Polarity = Provides | Requires deriving (Eq, Read, Show)
+data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable)
+
+-- | A pattern-based rewrite rule, as used in control annotations.
+--   This includes a pattern matching expression, a rewritten expression,
+--   and any declarations used in the rewrite.
+type PatternRewriteRule = (K3 Expression, K3 Expression, [K3 Declaration])
+
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
@@ -68,13 +89,13 @@ data instance Annotation Declaration
     | DSyntax   SyntaxAnnotation
     | DConflict UnorderedConflict  -- TODO: organize into categories.
     | DSymbol   (K3 Symbol)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
 data UnorderedConflict
     = URW [(Annotation Expression)] (Annotation Expression)
     | UWW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance HasUID (Annotation Declaration) where
   getUID (DUID u) = Just u
@@ -85,41 +106,44 @@ instance HasSpan (Annotation Declaration) where
   getSpan _         = Nothing
 
 instance Pretty (K3 Declaration) where
-    prettyLines (Node (DGlobal i t me :@: as) ds) =
-        ["DGlobal " ++ i ++ drawAnnotations as, "|"]
-        ++ case (me, ds) of
-            (Nothing, []) -> terminalShift t
-            (Just e, [])  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
-            (Nothing, _)  -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
-            (Just e, _)   -> nonTerminalShift t ++ ["|"] ++ nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
+  prettyLines (Node (DGlobal i t me :@: as) ds) =
+    ["DGlobal " ++ i ++ drawAnnotations as, "|"]
+    ++ case (me, ds) of
+        (Nothing, []) -> terminalShift t
+        (Just e, [])  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
+        (Nothing, _)  -> nonTerminalShift t ++ ["|"] ++ drawSubTrees ds
+        (Just e, _)   -> nonTerminalShift t ++ ["|"] ++ nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
 
-    prettyLines (Node (DTrigger i t e :@: as) ds) =
-        ["DTrigger " ++ i ++ drawAnnotations as, "|"]
-        ++ nonTerminalShift t ++ ["|"]
-        ++ case ds of
-            [] -> terminalShift e
-            _  -> nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
+  prettyLines (Node (DTrigger i t e :@: as) ds) =
+    ["DTrigger " ++ i ++ drawAnnotations as, "|"]
+    ++ nonTerminalShift t ++ ["|"]
+    ++ case ds of
+        [] -> terminalShift e
+        _  -> nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
 
-    prettyLines (Node (DRole i :@: as) ds) =
-        ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
+  prettyLines (Node (DRole i :@: as) ds) =
+    ["DRole " ++ i ++ " :@: " ++ show as, "|"] ++ drawSubTrees ds
 
-    prettyLines (Node (DAnnotation i vdecls members :@: as) ds) =
-        ["DAnnotation " ++ i
-            ++ if null vdecls
-                then ""
-                else ("[" ++ (removeTrailingWhitespace . boxToString $
-                        foldl1 (\a b -> a %+ [", "] %+ b) $ map prettyLines vdecls)
-                    ++ "]"
-                ) ++ drawAnnotations as, "|"]
-        ++ drawAnnotationMembers members
-        ++ drawSubTrees ds
-      where
-        drawAnnotationMembers []  = []
-        drawAnnotationMembers [x] = terminalShift x
-        drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
-                                      ++ terminalShift (last x)
+  prettyLines (Node (DDataAnnotation i tvars members :@: as) ds) =
+      ["DDataAnnotation " ++ i
+          ++ if null tvars
+              then ""
+              else ("[" ++ (removeTrailingWhitespace . boxToString $
+                      foldl1 (\a b -> a %+ [", "] %+ b) $ map prettyLines tvars)
+                  ++ "]"
+              ) ++ drawAnnotations as, "|"]
+      ++ drawAnnotationMembers members
+      ++ drawSubTrees ds
+    where
+      drawAnnotationMembers []  = []
+      drawAnnotationMembers [x] = terminalShift x
+      drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                                    ++ terminalShift (last x)
 
-    prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
+  prettyLines (Node (DGenerator mp :@: as) ds) =
+      ["DGenerator" ++ drawAnnotations as, "|"] ++ terminalShift mp ++ drawSubTrees ds
+
+  prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
 
 instance Pretty AnnMemDecl where
   prettyLines (Lifted      pol n t eOpt anns) =

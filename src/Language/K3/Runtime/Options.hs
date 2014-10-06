@@ -10,6 +10,7 @@ import Text.Parser.Token
 
 import Language.K3.Core.Common
 import qualified Language.K3.Core.Constructor.Literal as LC
+import Language.K3.Parser.DataTypes
 import Language.K3.Parser
 import Language.K3.Runtime.Common ( PeerBootstrap, SystemEnvironment )
 
