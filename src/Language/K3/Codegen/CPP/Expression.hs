@@ -284,19 +284,27 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
 
-    (ee, ev) <- inline e
-    se <- reify r s
-    ne <- reify r n
-
     et <- getKType e
     ec <- genCType et
 
+    (g, gd, ee) <- case tag e of
+           EVariable k -> return (k, [], [])
+           _ -> do
+             g <- genSym
+             ee <- reify (RName g) e
+             return (g, [R.Forward $ R.ScalarDecl (R.Name g) ec Nothing], ee)
+
+    se <- reify r s
+    ne <- reify r n
+
     let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
-               (Just $ R.Dereference ev)]
+               (Just $ R.Dereference (R.Variable $ R.Name g))]
 
-    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x]) | isWriteBound x]
+    let reconstruct = [R.Assignment (R.Variable $ R.Name g)
+                            (R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Specialized [ec]
+                                          (R.Name "make_shared")) [R.Variable $ R.Name x]) | isWriteBound x]
 
-    return $ ee ++ [R.IfThenElse ev (d ++ se ++ reconstruct) ne]
+    return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ se ++ reconstruct) ne]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds)
