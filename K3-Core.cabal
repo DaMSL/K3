@@ -33,7 +33,7 @@ library
         hashable,
         hashable-extras,
         hashtables,
-        haskell-src-exts,
+        haskell-src-exts <= 1.15.0.1,
         haskell-src-exts-qq,
         hint,
         hslogger,
