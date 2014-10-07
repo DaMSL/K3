@@ -26,6 +26,7 @@ import Data.Map(Map)
 import Data.List(nub)
 import qualified Data.Map as Map
 import Data.Foldable hiding (mapM_, any, concatMap, concat)
+import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -359,10 +360,13 @@ runAnalysis prog = flip evalState startEnv $
       seqE    <- combineEffSeq [getEEffect l, getEEffect a]
       -- Create the effect of application
       aSym    <- getOrGenSymbol a
-      appE    <- addFID $ apply (forceGetSymbol l) aSym
-      fullEff <- combineEffSeq [seqE, Just appE]
-      fullSym <- combineSymApply (Just $ forceGetSymbol l) (Just aSym)
-      return $ addEffSymCh fullEff fullSym ch n
+      case getESymbol l of
+        Nothing   -> trace (show n) $ error "failed to find symbol at lambda"
+        Just lSym -> do
+          appE    <- addFID $ apply lSym aSym
+          fullEff <- combineEffSeq [seqE, Just appE]
+          fullSym <- combineSymApply (Just lSym) (Just aSym)
+          return $ addEffSymCh fullEff fullSym ch n
 
     -- Bind
     handleExpr ch@[bind,e] n@(tag -> EBindAs b) = do
