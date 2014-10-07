@@ -176,6 +176,11 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
+
+    let readOnly = case (e @~ \case { EOpt (FuncHint _) -> True; _ -> False}) of
+                     Nothing -> False
+                     Just (EOpt (FuncHint b)) -> b
+
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCInferredType ta
@@ -188,8 +193,9 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     let capture = R.ValueCapture (Just ("this", Nothing)) : [R.ValueCapture (Just (j, Nothing)) | j <- fvs \\exc]
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
+    let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
-           , R.Lambda capture [(arg, ta)] Nothing body'
+           , R.Lambda capture [(arg, hintedArgType)] Nothing body'
            )
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
