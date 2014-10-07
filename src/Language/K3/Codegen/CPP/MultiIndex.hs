@@ -15,7 +15,7 @@ import Control.Arrow ( (&&&) )
 
 import Data.Functor ((<$>))
 import Data.List (isInfixOf, nub)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 
 
 
@@ -52,9 +52,9 @@ indexes name ans = do
     -- Build a boost index type e.g. ordered_non_unique
     extract_type :: Identifier -> AnnMemDecl -> CPPGenM (Maybe R.Type)
     extract_type _ (Lifted _ _ t _ _) = do
-        let key_t = get_key_type
+        let key_t = get_key_type t
         let fields = maybe Nothing get_fields key_t
-        types <- maybe (return Nothing) (\x -> mapM single_field_type x >>= return . Just) (trace (show fields) fields)
+        types <- maybe (return Nothing) (\x -> mapM single_field_type x >>= return . Just) fields
         let i_t ts =
              R.Named $
                     R.Specialized
@@ -72,7 +72,7 @@ indexes name ans = do
 
     single_field_type :: (Identifier, K3 Type) -> CPPGenM R.Type
     single_field_type (n, t) = do
-      cType <- genCType
+      cType <- genCType t
       return $
               R.Named $ R.Specialized
                 [ elem_type
@@ -84,7 +84,7 @@ indexes name ans = do
 
     tuple :: R.Name -> K3 Type -> R.Expression
     tuple n t =
-      let fields = fromMaybe (error "not a record") get_fields
+      let fields = fromMaybe (error "not a record") (get_fields t)
           ids = map fst fields
           projs = map (R.Project (R.Variable n) . R.Name) ids
       in R.Call (R.Variable $ R.Qualified (R.Name "boost") (R.Name "make_tuple")) projs
@@ -94,7 +94,7 @@ indexes name ans = do
     lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     lookup_fn ((i,_) ,Lifted _ fname t _ _ ) = do
 
-      let key_t = get_key_type te
+      let key_t = get_key_type t
       let this = R.Dereference $ R.Variable $ R.Name "this"
 
       let container = R.Call
@@ -102,7 +102,7 @@ indexes name ans = do
                        []
 
       let index = R.Call
-                   (R.Projec
+                   (R.Project
                       container
                       (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get"))
                    )
@@ -118,15 +118,15 @@ indexes name ans = do
                        (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
                        []
                        [R.Return $ look k_t]
-      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_
-      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
       return $ if "lookup" `isInfixOf` fname then result else Nothing
 
     lookup_fn _ = return Nothing
 
     slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     slice_fn ((i,_),Lifted _ fname t _ _ ) = do
-      let key_t = get_key_type
+      let key_t = get_key_type t
       let this = R.Dereference $ R.Variable $ R.Name "this"
 
       let container = R.Call
@@ -134,7 +134,7 @@ indexes name ans = do
                        []
 
       let index = R.Call
-                   (R.Projec
+                   (R.Project
                       container
                       (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get"))
                    )
@@ -150,8 +150,8 @@ indexes name ans = do
                        (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
                        []
                        [R.Return $ slice k_t]
-      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_
-      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
       return $ if "slice" `isInfixOf` fname then result else Nothing
     slice_fn _ = return Nothing
 
