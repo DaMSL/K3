@@ -27,11 +27,13 @@ symIDs = S.map (\(tag -> Symbol i _) -> i)
 
 lambdaFormOptD :: K3 Declaration -> K3 Declaration
 lambdaFormOptD (Node (DGlobal i t me :@: as) cs) = Node (DGlobal i t (lambdaFormOptE <$> me) :@: as) cs
+lambdaFormOptD (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE $ e) :@: as) cs
+lambdaFormOptD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) (map lambdaFormOptD cs)
 
 lambdaFormOptE :: K3 Expression -> K3 Expression
 lambdaFormOptE e@(Node (ELambda x :@: as) cs) = Node (ELambda x :@: (a:c:as)) cs
   where
-    EEffect (tag &&& children -> (FScope [binding] closure, effects)) = fromJust $ e @~ isEEffect
+    EEffect (Node (FScope [binding] closure :@: _) effects) = fromJust $ e @~ isEEffect
     (cRead, cWritten, cApplied) = closure
     a = EOpt $ FuncHint (if null effects then False else hasRead binding $ head effects)
     c = EOpt $ CaptHint (if null effects then (symIDs $ S.fromList cRead, S.empty, symIDs $ S.fromList cWritten)
