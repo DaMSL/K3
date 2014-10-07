@@ -181,6 +181,10 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
                      Nothing -> False
                      Just (EOpt (FuncHint b)) -> b
 
+    let (cRef, cMove, cCopy) = case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
+                                 Nothing -> (S.empty, S.empty, S.empty)
+                                 Just (EOpt (CaptHint ch)) -> ch
+
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCInferredType ta
@@ -188,9 +192,13 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
-    exc <- fst . unzip . globals <$> get
-    let fvs = nub $ filter (/= arg) $ freeVariables body
-    let capture = R.ValueCapture (Just ("this", Nothing)) : [R.ValueCapture (Just (j, Nothing)) | j <- fvs \\exc]
+    let thisCapture = R.ValueCapture (Just ("this", Nothing))
+    let refCapture = S.map (\s -> R.RefCapture $ Just (s, Nothing)) cRef
+    let moveCapture = S.map (\s -> R.ValueCapture $
+                                   Just (s, Just $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                                              [R.Variable $ R.Name s])) cCopy
+    let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
+    let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
     let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
