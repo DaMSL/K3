@@ -30,4 +30,4 @@ set :: [K3 Effect] -> K3 Effect
 set xs = Node (FSeq :@: []) xs
 
 loop :: K3 Effect -> K3 Effect
-loop x = Node (FSeq :@: []) [x]
+loop x = Node (FLoop :@: []) [x]
