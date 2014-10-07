@@ -7,7 +7,6 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Common
 import Language.K3.Core.Type
 
-import Debug.Trace
 import Language.K3.Codegen.CPP.Primitives (genCType)
 import qualified Language.K3.Codegen.CPP.Representation as R
 import Language.K3.Codegen.CPP.Types
@@ -28,7 +27,7 @@ import Data.Maybe (catMaybes)
 indexes ::  Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM ([R.Type], [R.Definition])
 indexes name ans = do
   let indexed = zip [1..] ans
-  let flattened = concatMap (\(n, (i, mems)) -> zip (repeat (n,i)) mems) (trace (show indexed) indexed)
+  let flattened = concatMap (\(n, (i, mems)) -> zip (repeat (n,i)) mems) indexed
   index_types <- (nub . catMaybes) <$> mapM index_type flattened
   --let base_name = R.Specialized ((R.Named $ R.Name "__CONTENT") : index_types) (R.Qualified (R.Name "K3") (R.Name "MultiIndex"))
   lookup_defns <- catMaybes <$> mapM lookup_fn flattened
@@ -54,7 +53,7 @@ indexes name ans = do
     extract_type :: Identifier -> AnnMemDecl -> CPPGenM (Maybe R.Type)
     extract_type _ (Lifted _ _ t _ _) = do
         let key_t = get_key_type
-        let fields = maybe Nothing get_fields (trace (show key_t) key_t)
+        let fields = maybe Nothing get_fields key_t
         types <- maybe (return Nothing) (\x -> mapM single_field_type x >>= return . Just) (trace (show fields) fields)
         let i_t ts =
              R.Named $
@@ -78,28 +77,28 @@ indexes name ans = do
               R.Named $ R.Specialized
                 [ elem_type
                 ,   cType
-                , R.Named $ R.Qualified (elem_r) (R.Name n)
+                , R.Named $ R.Qualified elem_r (R.Name n)
                 ]
                 ( bmi $ R.Name "member")
 
 
     tuple :: R.Name -> K3 Type -> R.Expression
     tuple n t =
-      let fields = maybe (error "not a record") id $ get_fields
+      let fields = fromMaybe (error "not a record") get_fields
           ids = map fst fields
-          projs = map ((R.Project (R.Variable n)) . R.Name) ids
+          projs = map (R.Project (R.Variable n) . R.Name) ids
       in R.Call (R.Variable $ R.Qualified (R.Name "boost") (R.Name "make_tuple")) projs
 
 
     -- Build a lookup function, wrapping boost 'find'
     lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    lookup_fn ((i,_) ,(Lifted _ fname t _ _) ) = do
+    lookup_fn ((i,_) ,Lifted _ fname t _ _ ) = do
 
-      let key_t = get_key_type
+      let key_t = get_key_type te
       let this = R.Dereference $ R.Variable $ R.Name "this"
 
       let container = R.Call
-                       (R.Project (this) (R.Name "getConstContainer") )
+                       (R.Project this (R.Name "getConstContainer") )
                        []
 
       let index = R.Call
@@ -110,8 +109,8 @@ indexes name ans = do
                    []
 
       let look k_t = R.Call
-                   (R.Project (this) (R.Name "lookup_with_index") )
-                   [index,  (tuple (R.Name "key") k_t)]
+                   (R.Project this (R.Name "lookup_with_index") )
+                   [index,  tuple (R.Name "key") k_t]
 
       let defn k_t c_t = R.FunctionDefn
                        (R.Name fname)
@@ -126,12 +125,12 @@ indexes name ans = do
     lookup_fn _ = return Nothing
 
     slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    slice_fn ((i,_),(Lifted _ fname t _ _) ) = do
+    slice_fn ((i,_),Lifted _ fname t _ _ ) = do
       let key_t = get_key_type
       let this = R.Dereference $ R.Variable $ R.Name "this"
 
       let container = R.Call
-                       (R.Project (this) (R.Name "getConstContainer") )
+                       (R.Project this (R.Name "getConstContainer") )
                        []
 
       let index = R.Call
@@ -142,7 +141,7 @@ indexes name ans = do
                    []
 
       let slice k_t = R.Call
-                   (R.Project (this) (R.Name "slice_with_index") )
+                   (R.Project this (R.Name "slice_with_index") )
                    [index, tuple (R.Name "a") k_t, tuple (R.Name "b") k_t]
 
       let defn k_t c_t = R.FunctionDefn
