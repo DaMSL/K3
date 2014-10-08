@@ -27,6 +27,9 @@ import Language.K3.Core.Type
 pureE :: Annotation Expression
 pureE = EProperty "Pure" Nothing
 
+pureD :: Annotation Declaration
+pureD = DProperty "Pure" Nothing
+
 isPure :: K3 Expression -> Bool
 isPure e = isJust $ e @~ (\case { EProperty "Pure" _ -> True; _ -> False })
 
@@ -40,8 +43,14 @@ runPurity :: K3 Declaration -> K3 Declaration
 runPurity = runPurityD
 
 runPurityD :: K3 Declaration -> K3 Declaration
-runPurityD (Node (DGlobal i t me :@: as) cs) = Node (DGlobal i t (runPurityE <$> me) :@: as) cs
-runPurityD (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (runPurityE e) :@: as) cs
+runPurityD (Node (DGlobal i t me :@: as) cs) = Node (DGlobal i t (me') :@: as') cs
+  where
+    me' = runPurityE <$> me
+    as' = if maybe False isPure me' then (pureD:as) else as
+runPurityD (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t e' :@: as') cs
+  where
+    e' = runPurityE e
+    as' = if isPure e' then (pureD:as) else as
 runPurityD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) (map runPurityD cs)
 runPurityD d = d
 
