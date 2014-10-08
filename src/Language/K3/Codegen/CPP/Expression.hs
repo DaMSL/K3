@@ -298,7 +298,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
 
-    et <- getKType e
+    et <- head . children <$> getKType e
     ec <- genCType et
 
     (g, gd, ee) <- case tag e of
