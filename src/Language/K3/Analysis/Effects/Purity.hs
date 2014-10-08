@@ -24,6 +24,18 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
+pureE :: Annotation Expression
+pureE = EProperty "Pure" Nothing
+
+isPure :: K3 Expression -> Bool
+isPure e = isJust $ e @~ (\case { EProperty "Pure" _ -> True; _ -> False })
+
+guardAddPure :: K3 Expression -> [Annotation Expression] -> [Annotation Expression]
+guardAddPure = guardAddPureAll . (:[])
+
+guardAddPureAll :: [K3 Expression] -> [Annotation Expression] -> [Annotation Expression]
+guardAddPureAll es as = [pureE | all isPure es && not (null es)] ++ as
+
 runPurity :: K3 Declaration -> K3 Declaration
 runPurity = runPurityD
 
@@ -34,6 +46,13 @@ runPurityD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) (map runPurityD cs
 runPurityD d = d
 
 runPurityE :: K3 Expression -> K3 Expression
+runPurityE e@(tag -> EConstant _) = e @+ pureE
+runPurityE e@(tag -> EVariable _) = e @+ pureE
+runPurityE (Node (ESome :@: as) [c]) = Node (ESome :@: (guardAddPure c' as)) [c'] where c' = runPurityE c
+runPurityE (Node (EIndirect :@: as) [c]) = Node (EIndirect :@: (guardAddPure c' as)) [c'] where c' = runPurityE c
+runPurityE (Node (ETuple :@: as) cs) = Node (ETuple :@: (guardAddPureAll cs' as)) cs' where cs' = map runPurityE cs
+runPurityE (Node (ERecord ids :@: as) cs)
+    = Node (ERecord ids :@: (guardAddPureAll cs' as)) cs' where cs' = map runPurityE cs
 runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pure" Nothing) else e)
   where
     ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) [effects])))) = fromJust $ e @~ isESymbol
@@ -73,4 +92,23 @@ runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pur
     isScalar (findSymbolType -> Just (tag -> TCollection)) = False
     isScalar _ = True
 
-runPurityE (Node (t :@: as) cs) = Node (t :@: as) (map runPurityE cs)
+runPurityE (Node (EOperate OApp :@: as) cs)
+    = Node (EOperate OApp :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EOperate OSnd :@: as) cs) = Node (EOperate OSnd :@: as) (map runPurityE cs)
+runPurityE (Node (EOperate op :@: as) cs) = Node (EOperate op :@: (pureE:as)) (map runPurityE cs)
+runPurityE (Node (EProject i :@: as) [c]) = Node (EProject i :@: (guardAddPure c' as)) [c'] where c' = runPurityE c
+runPurityE (Node (ELetIn i :@: as) cs)
+    = Node (ELetIn i :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EAssign i :@: as) cs) = Node (EAssign i :@: as) (map runPurityE cs)
+runPurityE (Node (ECaseOf i :@: as) cs)
+    = Node (ECaseOf i :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EBindAs b :@: as) cs)
+    = Node (EBindAs b :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EIfThenElse :@: as) cs)
+    = Node (EIfThenElse :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EAddress :@: as) cs)
+    = Node (EAddress :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (ESelf :@: as) cs)
+    = Node (ESelf :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
+runPurityE (Node (EImperative e :@: as) cs)
+    = Node (EImperative e :@: guardAddPureAll cs' as) cs' where cs' = map runPurityE cs
