@@ -36,7 +36,7 @@ runPurityD d = d
 runPurityE :: K3 Expression -> K3 Expression
 runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pure" Nothing) else e)
   where
-    EEffect (Node (FScope [binding] closure :@: _) [effects]) = fromJust $ e @~ isEEffect
+    ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) [effects])))) = fromJust $ e @~ isESymbol
 
     isPure = noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
 
