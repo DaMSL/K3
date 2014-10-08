@@ -15,6 +15,7 @@ type TypedSpliceVar = (SpliceType, Identifier)
 data SpliceResult (m :: * -> *)
 
 data MPDeclaration
+data MPAnnMemDecl
 
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
@@ -37,6 +38,8 @@ instance Read     MPDeclaration
 instance Show     MPDeclaration
 instance Typeable MPDeclaration
 
+instance Pretty SpliceValue
+instance Pretty MPAnnMemDecl
 instance Pretty MPDeclaration
 
 {- Splice value and type constructors -}

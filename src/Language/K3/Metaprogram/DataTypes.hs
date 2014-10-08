@@ -180,6 +180,14 @@ generateInSpliceEnv spliceEnv g = do
    modifySCtxtF_ $ Right . popSCtxt
    return r
 
+generateInExtendedSpliceEnv :: Identifier -> SpliceValue -> GeneratorM a -> GeneratorM a
+generateInExtendedSpliceEnv i spliceValue g = do
+   modifySCtxtF_ $ \ctxt -> Right $ addSCtxt i spliceValue ctxt
+   r <- g
+   modifySCtxtF_ $ Right . removeSCtxt i
+   return r
+
+
 {- Generator environment accessors -}
 lookupDGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator
 lookupDGenE n (GeneratorEnv env _)= Map.lookup n env
