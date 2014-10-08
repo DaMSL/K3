@@ -113,6 +113,7 @@ data TransformMode
     | FoldConstants
     | DeadCodeElimination
     | Profiling
+    | Purity
     | ReadOnlyBinds
   deriving (Eq, Read, Show)
 
@@ -422,6 +423,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> deadCodeElimOpt
               <|> simplifyOpt
               <|> wrap <$> profilingOpt
+              <|> wrap <$> purityOpt
               <|> wrap <$> readOnlyBindOpts
   where
     wrap x = [x]
@@ -486,6 +488,11 @@ profilingOpt :: Parser TransformMode
 profilingOpt = flag' Profiling
                 (   long "fprofile"
                  <> (help $ "Add profiling points"))
+
+purityOpt :: Parser TransformMode
+purityOpt = flag' Purity
+                (   long "fpure"
+                 <> (help $ "Perform purity analysis"))
 
 readOnlyBindOpts :: Parser TransformMode
 readOnlyBindOpts = flag' ReadOnlyBinds

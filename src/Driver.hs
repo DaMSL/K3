@@ -24,11 +24,12 @@ import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.HMTypes.Inference
 -- import Language.K3.Analysis.Properties
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
+import qualified Language.K3.Analysis.Effects.Purity        as Pure
 
-import qualified Language.K3.Transform.Normalization as Normalization
+import qualified Language.K3.Transform.Normalization  as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
-import qualified Language.K3.Transform.Profiling as Profiling
-import qualified Language.K3.Transform.RemoveROBinds as RemoveROBinds
+import qualified Language.K3.Transform.Profiling      as Profiling
+import qualified Language.K3.Transform.RemoveROBinds  as RemoveROBinds
 import Language.K3.Transform.Common(cleanGeneration)
 
 import Language.K3.Driver.Batch
@@ -116,6 +117,7 @@ run opts = do
     analyzer Effects x             = first Effects.runAnalysis x
     analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
+    analyzer Purity x              = first (Pure.runPurity . Effects.runAnalysis) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
 
