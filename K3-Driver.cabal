@@ -22,7 +22,7 @@ executable k3
         haskeline,
         hslogger,
         mtl,
-        optparse-applicative, 
+        optparse-applicative <= 0.10.0, 
         readline,
         shake,
         split,
