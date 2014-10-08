@@ -42,10 +42,10 @@ runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pur
 
     nonLocals = let (cRead, cWritten, cApplied) = closure in S.fromList $ binding: concat [cRead, cWritten, cApplied]
 
-    noGlobalReads = any isGlobal $ readSet effects
-    noGlobalWrites = any isGlobal $ writeSet effects
+    noGlobalReads = not $ any isGlobal $ readSet effects
+    noGlobalWrites = not $ any isGlobal $ writeSet effects
 
-    noIndirections = any isIndirection nonLocals
+    noIndirections = not $ any isIndirection nonLocals
     readOnlyNonLocalScalars = all isScalar $ S.intersection nonLocals (writeSet effects)
 
     isGlobal :: K3 Symbol -> Bool
