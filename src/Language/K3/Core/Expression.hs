@@ -141,33 +141,51 @@ data Conflict
 
 instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) =
-      let (annStr, tAnnStrs) = drawExprAnnotations as
-      in ["EUnit" ++ annStr] ++ (shift "`- " "   " tAnnStrs)
+      let (annStr, pAnnStrs) = drawExprAnnotations as
+      in ["EUnit" ++ annStr] ++ (shift "`- " "   " pAnnStrs)
 
     prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
-      let (annStr, tAnnStrs) = drawExprAnnotations as
-      in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " tAnnStrs) ++ ["|"] ++ prettyLines t
+      let (annStr, pAnnStrs) = drawExprAnnotations as
+      in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " pAnnStrs) ++ ["|"] ++ prettyLines t
 
     prettyLines (Node (t :@: as) es) =
-      let (annStr, tAnnStrs) = drawExprAnnotations as
-          shiftedTAnns       = if null es then (shift "`- " "   " tAnnStrs)
-                                          else (shift "+- " "|  " tAnnStrs)
+      let (annStr, pAnnStrs) = drawExprAnnotations as
+          shiftedTAnns       = if null es then (shift "`- " "   " pAnnStrs)
+                                          else (shift "+- " "|  " pAnnStrs)
       in
       [show t ++ annStr] ++ shiftedTAnns ++ drawSubTrees es
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
-  let (typeAnns, anns) = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
-      prettyTypeAnns   = case typeAnns of
-                          []         -> []
-                          [EType t]  -> drawETypeAnnotation $ EType t
-                          [EQType t] -> drawETypeAnnotation $ EQType t
-                          [EPType t] -> drawETypeAnnotation $ EPType t
-                          [t, l, u]  -> drawETypeAnnotation t
-                                         %+ indent 2 (drawETypeAnnotation l
-                                         %+ indent 2 (drawETypeAnnotation u))
-                          _     -> error "Invalid type bound annotations"
-  in (drawAnnotations anns, prettyTypeAnns)
+  let (typeAnns, anns)    = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
+      (effectAnns, anns') = partition (\a -> isEEffect a || isESymbol a) anns
+      prettyTypeAnns = case typeAnns of
+                         []         -> []
+                         [EType t]  -> drawETypeAnnotation $ EType t
+                         [EQType t] -> drawETypeAnnotation $ EQType t
+                         [EPType t] -> drawETypeAnnotation $ EPType t
+                         [t, l, u]  -> drawETypeAnnotation t
+                                        %+ indent 2 (drawETypeAnnotation l
+                                        %+ indent 2 (drawETypeAnnotation u))
+                         _     -> error "Invalid type bound annotations"
+
+      prettyTypeAnnsPrefixed =
+        if null prettyTypeAnns then []
+        else head prettyTypeAnns : map (\(_:t) -> '|':t) (tail prettyTypeAnns)
+
+      prettyEffectAnnsL = map drawEEffectAnnotations effectAnns
+
+      prettyEffectAnnsConcat  = foldl (\a b -> a %$ ["|"] %$ b) [] prettyEffectAnnsL
+      prettyEffectAnnsShifted =
+        if null prettyEffectAnnsL then []
+        else    (concatMap (\e -> (shift "+- " "|  " e) ++ ["|"]) $ init prettyEffectAnnsL)
+             ++ (shift "`- " "   " $ last prettyEffectAnnsL)
+
+      prettyAnns = if null prettyTypeAnns || null prettyEffectAnnsL
+                     then prettyTypeAnns ++ prettyEffectAnnsConcat
+                     else prettyTypeAnnsPrefixed ++ ["|"] ++ prettyEffectAnnsShifted
+
+  in (drawAnnotations anns', prettyAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
@@ -175,6 +193,10 @@ drawExprAnnotations as =
         drawETypeAnnotation (EQType  t) = ["EQType  "] %+ prettyLines t
         drawETypeAnnotation (EPType  t) = ["EPType  "] %+ prettyLines t
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
+
+        drawEEffectAnnotations (EEffect e) = ["EEffect "] %+ prettyLines e
+        drawEEffectAnnotations (ESymbol s) = ["ESymbol "] %+ prettyLines s
+        drawEEffectAnnotations _ = error "Invalid effect annotation"
 
 
 {- Expression annotation predicates -}

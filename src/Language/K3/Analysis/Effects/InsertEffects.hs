@@ -26,6 +26,7 @@ import Data.Map(Map)
 import Data.List(nub)
 import qualified Data.Map as Map
 import Data.Foldable hiding (mapM_, any, concatMap, concat)
+import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -337,32 +338,19 @@ runAnalysis prog = flip evalState startEnv $
     -- NOTE: We assume that the effect for this function has been inserted locally
     --       on the project
 
-      -- Check in the type system for a function in a collection
-      case (e @~ isEType, n @~ isEType) of
-        (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
-          -- We can't have effects here -- we only have symbols
-          case getESymbol n of
-            Nothing   -> error $ "Missing symbol for projection " ++ i
-            Just nSym -> do
-              eSym'   <- getOrGenSymbol e
-              selfSym <- symbolM "self" PVar []
-              scope'  <- addFID $ scope [selfSym] emptyClosure []
-              sLam    <- genSym (PLambda "self" scope') [nSym]
-              sApp    <- genSym PApply [sLam, eSym']
-              return $ addEffSymCh Nothing (Just sApp) ch n
-
-        _ -> genericExpr ch n  -- not a collection member function
-
     -- On application, Apply creates a scope and substitutes into it
     -- We only create the effect of apply here
     handleExpr ch@[l,a] n@(tag -> EOperate OApp) = do
       seqE    <- combineEffSeq [getEEffect l, getEEffect a]
       -- Create the effect of application
       aSym    <- getOrGenSymbol a
-      appE    <- addFID $ apply (forceGetSymbol l) aSym
-      fullEff <- combineEffSeq [seqE, Just appE]
-      fullSym <- combineSymApply (Just $ forceGetSymbol l) (Just aSym)
-      return $ addEffSymCh fullEff fullSym ch n
+      case getESymbol l of
+        Nothing   -> trace (show n) $ error "failed to find symbol at lambda"
+        Just lSym -> do
+          appE    <- addFID $ apply lSym aSym
+          fullEff <- combineEffSeq [seqE, Just appE]
+          fullSym <- combineSymApply (Just lSym) (Just aSym)
+          return $ addEffSymCh fullEff fullSym ch n
 
     -- Bind
     handleExpr ch@[bind,e] n@(tag -> EBindAs b) = do
@@ -406,6 +394,28 @@ runAnalysis prog = flip evalState startEnv $
       -- peel off symbols until we get to ones in our outer scope
       fullSym  <- peelSymbol [] $ getESymbol e
       return $ addEffSymCh fullEff (Just fullSym) ch n
+
+    -- Projection
+    handleExpr ch@[e] n@(tag -> EProject i) = do
+      -- Check in the type system for a function in a collection
+      case (e @~ isEType, n @~ isEType) of
+        (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
+          -- We can't have effects here -- we only have symbols
+          case getESymbol n of
+            Nothing   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
+            Just nSym -> do
+              eSym    <- getOrGenSymbol e
+              -- Create a lambda application for self
+              selfSym <- symbolM "self" PVar []
+              scope'  <- addFID $ scope [selfSym] emptyClosure []
+              sLam    <- genSym (PLambda "self" scope') [nSym]
+              sApp    <- genSym PApply [sLam, eSym]
+              return $ addEffSymCh Nothing (Just sApp) ch n
+
+        _ -> do -- not a collection member function
+          eSym <- getOrGenSymbol e
+          nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
+          return $ addEffSymCh (getEEffect e) (Just nSym) ch n
 
     handleExpr ch n = genericExpr ch n
 

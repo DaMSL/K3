@@ -176,6 +176,15 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
+
+    let readOnly = case (e @~ \case { EOpt (FuncHint _) -> True; _ -> False}) of
+                     Nothing -> False
+                     Just (EOpt (FuncHint b)) -> b
+
+    let (cRef, cMove, cCopy) = case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
+                                 Nothing -> (S.empty, S.empty, S.empty)
+                                 Just (EOpt (CaptHint ch)) -> ch
+
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCInferredType ta
@@ -183,13 +192,18 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
             return (ta', tr')
         _ -> throwE $ CPPGenE "Invalid Function Form"
-    exc <- fst . unzip . globals <$> get
-    let fvs = nub $ filter (/= arg) $ freeVariables body
-    let capture = R.ValueCapture (Just ("this", Nothing)) : [R.ValueCapture (Just (j, Nothing)) | j <- fvs \\exc]
+    let thisCapture = R.ValueCapture (Just ("this", Nothing))
+    let refCapture = S.map (\s -> R.RefCapture $ Just (s, Nothing)) cRef
+    let moveCapture = S.map (\s -> R.ValueCapture $
+                                   Just (s, Just $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                                              [R.Variable $ R.Name s])) cCopy
+    let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
+    let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
+    let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
-           , R.Lambda capture [(arg, ta)] Nothing body'
+           , R.Lambda capture [(arg, hintedArgType)] Nothing body'
            )
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
@@ -284,19 +298,27 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
 
-    (ee, ev) <- inline e
+    et <- head . children <$> getKType e
+    ec <- genCType et
+
+    (g, gd, ee) <- case tag e of
+           EVariable k -> return (k, [], [])
+           _ -> do
+             g <- genSym
+             ee <- reify (RName g) e
+             return (g, [R.Forward $ R.ScalarDecl (R.Name g) ec Nothing], ee)
+
     se <- reify r s
     ne <- reify r n
 
-    et <- getKType e
-    ec <- genCType et
-
     let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
-               (Just $ R.Dereference ev)]
+               (Just $ R.Dereference (R.Variable $ R.Name g))]
 
-    let reconstruct = [R.Assignment ev (R.Initialization ec [R.Variable $ R.Name x]) | isWriteBound x]
+    let reconstruct = [R.Assignment (R.Variable $ R.Name g)
+                            (R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Specialized [ec]
+                                          (R.Name "make_shared")) [R.Variable $ R.Name x]) | isWriteBound x]
 
-    return $ ee ++ [R.IfThenElse ev (d ++ se ++ reconstruct) ne]
+    return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ se ++ reconstruct) ne]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds)

@@ -1,10 +1,15 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Data Representations for K3 Effects
 module Language.K3.Analysis.Effects.Core where
 
+import Data.Tree
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+
+import Language.K3.Utils.Pretty
 
 data EffectKind
     = FAtom
@@ -26,6 +31,7 @@ data Provenance
     = PRecord Identifier
     | PTuple Integer
     | PIndirection
+    | PProject Identifier -- Created by projections
     | PLet
     | PCase
     -- A symbol can be 'applied' to produce effects and a new symbol
@@ -65,3 +71,42 @@ data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)
 
 isFID :: Annotation Effect -> Bool
 isFID _ = True
+
+
+instance Pretty (K3 Symbol) where
+  prettyLines (Node (Symbol i (PLambda j eff) :@: as) ch) =
+    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ drawAnnotations as] ++
+      (if null ch
+        then terminalShift eff
+        else nonTerminalShift eff ++ drawSubTrees ch)
+
+  prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
+
+instance Pretty (K3 Effect) where
+  prettyLines (Node (FRead  sym :@: as) ch) =
+    ["FRead " ++ drawAnnotations as] ++
+      (if null ch
+        then terminalShift sym
+        else nonTerminalShift sym ++ drawSubTrees ch)
+
+  prettyLines (Node (FWrite sym :@: as) ch) =
+    ["FWrite " ++ drawAnnotations as] ++
+      (if null ch
+        then terminalShift sym
+        else nonTerminalShift sym ++ drawSubTrees ch)
+
+  prettyLines (Node (FScope syms (rd,wr,app) :@: as) ch) =
+    ["FScope " ++ drawAnnotations as]
+      ++ (concatMap (shift "+- " "|  " . prettyLines) syms)
+      ++ (concatMap (shift "+R " "|  " . prettyLines) rd)
+      ++ (concatMap (shift "+W " "|  " . prettyLines) wr)
+      ++ (concatMap (shift "+A " "|  " . prettyLines) app)
+      ++ drawSubTrees ch
+
+  prettyLines (Node (FApply fSym argSym :@: as) ch) =
+    ["FApply " ++ drawAnnotations as] ++
+      (if null ch
+        then nonTerminalShift fSym ++ terminalShift argSym
+        else nonTerminalShift fSym ++ nonTerminalShift argSym ++ drawSubTrees ch)
+
+  prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch

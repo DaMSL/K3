@@ -213,6 +213,7 @@ requiredIncludes = return
                    , "boost/multi_index_container.hpp"
                    , "boost/multi_index/ordered_index.hpp"
                    , "boost/multi_index/member.hpp"
+                   , "boost/multi_index/composite_key.hpp"
 
                    , "BaseTypes.hpp"
                    , "Common.hpp"

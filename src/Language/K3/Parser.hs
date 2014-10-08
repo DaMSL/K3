@@ -24,6 +24,8 @@ module Language.K3.Parser (
   parseDeclaration,
   parseSimpleK3,
   parseK3,
+  effectSignature,
+  effTerm,
   ensureUIDs
 ) where
 
@@ -64,6 +66,9 @@ import Language.K3.Parser.DataTypes
 import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
+
+import qualified Language.K3.Analysis.Effects.Core         as F
+import qualified Language.K3.Analysis.Effects.Constructors as FC
 
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
@@ -159,8 +164,14 @@ declaration = (//) attachComment <$> comment False <*>
 dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where
-    rule x = x <* colon <*> polymorphicTypeExpr <*> (optional equateExpr)
-    mkGlobal n qte eOpt = DC.global n qte (propagateQualifier qte eOpt)
+    rule x = x <* colon <*> polymorphicTypeExpr <*> optional equateExpr
+                                                <*> optional effectSignature
+
+    mkGlobal n qte eOpt eSigOpt =
+      let glob = DC.global n qte (propagateQualifier qte eOpt) in
+      case (eOpt, eSigOpt) of
+        (Just _, Just _) -> glob
+        (_, _) -> maybe glob (foldl (@+) glob. ($ n)) $ eSigOpt
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -220,7 +231,8 @@ dDataAnnotation = namedIdentifier "data annotation" "annotation" rule
 annotationMember :: K3Parser AnnMemDecl
 annotationMember = memberError $ mkMember <$> annotatedRule
   where
-    rule          = (,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+    rule          = (,,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
+                                      <*> optional effectSignature
     annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
 
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
@@ -230,24 +242,29 @@ annotationMember = memberError $ mkMember <$> annotatedRule
 
     subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
 
-    mkMember ((((p, Left (Just _,  n, qte, eOpt, uid)), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (maybe [] id props)
+    mkMember ((((p, Left (Just _,  n, qte, eOpt, uid), eSigOpt), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot n eSigOpt eOpt)
         $ Lifted p n qte (propagateQualifier qte eOpt)
 
-    mkMember ((((p, Left (Nothing, n, qte, eOpt, uid)), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (maybe [] id props)
+    mkMember ((((p, Left (Nothing, n, qte, eOpt, uid), eSigOpt), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot n eSigOpt eOpt)
         $ Attribute p n qte (propagateQualifier qte eOpt)
 
-    mkMember ((((p, Right (n, uid)), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (maybe [] id props) $ MAnnotation p n
+    mkMember ((((p, Right (n, uid), _), props), spn), cmts) =
+      attachMemAnnots uid spn cmts (maybe [] id props) [] $ MAnnotation p n
 
     mkLA kOpt n qte eOpt uid = Left (kOpt, n, qte, eOpt, uid)
     mkSub n uid              = Right (n, uid)
 
-    attachMemAnnots uid spn cmts props memCtor = memCtor $ (DUID uid):(DSpan spn):(props ++ map DSyntax cmts)
+    attachMemAnnots uid spn cmts props effectAnns memCtor =
+      memCtor $ (DUID uid):(DSpan spn):(effectAnns ++ props ++ map DSyntax cmts)
+
     wrapInComments p = (\a b c -> (b, a ++ c)) <$> comment False <*> p <*> comment True
 
     memberError = parseError "annotation" "member"
+
+    effectAnnot _ (Just _) (Just _) = []
+    effectAnnot n eSigOpt _ = maybe [] ($ n) eSigOpt
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
@@ -817,6 +834,31 @@ contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, try fromContext
       lv <- lookupSpliceE sn sEnv >>= ltLabel
       tv <- lookupSpliceE sn sEnv >>= ltType
       return $ spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)]
+
+
+{- Effect signatures -}
+effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
+effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effTerm $ symbol "|"))
+  where mkSigAnn s n = [DSymbol $ mkTopLevelSym n s]
+        mkTopLevelSym n s = replaceCh (FC.symbol n $ F.PSet) $ catMaybes $ map mkPLambda $ concat s
+        mkPLambda f@(tag -> F.FScope [sym] _ ) | F.Symbol i _ <- tag sym = Just $ FC.symbol i $ F.PLambda i f
+                                               | otherwise = Nothing
+        mkPLambda _ = Nothing
+
+effTerm :: K3Parser [K3 F.Effect]
+effTerm = (choice $ map try [effRead, effWrite, effLambda, effApply, effSeq, effLoop]) <?> "effect term"
+  where effRead   = map FC.read  <$> varList "R" effSymbol
+        effWrite  = map FC.write <$> varList "W" effSymbol
+        effLambda = mkScope  <$> choice [iArrow "fun", iArrowS "\\"] <*> effTerm
+        effApply  = (\a b -> [FC.apply a b]) <$> effSymbol <*> effSymbol
+        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
+        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
+
+        effSymbol = (flip FC.symbol F.PVar <$> identifier) <?> "effect symbol"
+
+        mkScope i ch = [FC.scope [FC.symbol i F.PVar] ([], [], []) $ [termAsSeq ch]]
+        termAsSeq t = if length t == 1 then head t else FC.seq t
+        varList pfx parser = string pfx *> brackets (commaSep1 parser)
 
 
 {- Identifiers and their list forms -}

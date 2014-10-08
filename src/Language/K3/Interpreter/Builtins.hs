@@ -16,6 +16,7 @@ import System.Locale
 
 import Data.List
 import Data.Time
+import Data.Time.Clock.POSIX
 
 import qualified Data.Map as Map
 import qualified System.Random as Random
@@ -345,6 +346,14 @@ genBuiltin "drainEngine" _ = vfun $ \_ -> liftEngine (terminateEngine False) >> 
 -- Sleep
 genBuiltin "sleep" _ = vfun $ \(VInt x) -> liftIO (threadDelay x) >> return vunit
 
+-- Int to String
+genBuiltin "itos" _ = vfun $ \(VInt x) -> return $ VString $ show x
+
+-- Real to String
+genBuiltin "rtos" _ = vfun $ \(VReal x) -> return $ VString $ show x
+
+-- Current time as int
+genBuiltin "now_int" _ = vfun $ \(VInt x) -> liftIO $ (VInt . round) `fmap` getPOSIXTime
 
 genBuiltin n _ = throwE $ RunTimeTypeError $ "Invalid builtin \"" ++ n ++ "\""
 

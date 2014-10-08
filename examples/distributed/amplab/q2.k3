@@ -1,7 +1,8 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
-include "Core/CppBuiltins.k3"
+include "Core/Builtins.k3"
 
+@:CArgs 2
 declare dataLoader : string -> collection {
     sourceIP: string,
     destURL: string,
@@ -20,8 +21,6 @@ declare peers_seq : collection {addr: address} @ {Seq}
 declare master: address = 127.0.0.1:40000
 declare index_by_hash: string -> int = \s -> (hash s) % (peers_seq.size ())
 
-
-declare peer_by_index: int -> address
 declare x: mut int = 3
 declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
@@ -60,7 +59,7 @@ declare peer_aggs : mut collection {key: int, value:
 trigger q2_local : () = \_ -> (
   agg_vals =
     local_uservisits.groupBy
-      (\r -> substring r.sourceIP 0 x) //TODO index by 0 or 1?
+      (\r -> slice_string r.sourceIP 0 x) //TODO index by 0 or 1?
       (\acc -> \r ->
         acc + r.adRevenue)
       0.0;
@@ -99,9 +98,9 @@ trigger peer_barrier : () = \_ -> (
 trigger master_done : () = \_ -> (
   master_peers_finished = master_peers_finished + 1;
   if master_peers_finished == peers.size ()
-  then end_ms = now ();
+  then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       printLine (itos elapsed_ms);
+       print (itos elapsed_ms);
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
@@ -116,7 +115,7 @@ trigger shutdown : () = \_ -> (
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then start_ms = now (); peers.iterate (\p -> (q2_local, p.addr) <- ())
+  then start_ms = now_int (); peers.iterate (\p -> (q2_local, p.addr) <- ())
   else ()
 )
 

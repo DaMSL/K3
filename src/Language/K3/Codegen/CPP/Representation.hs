@@ -147,7 +147,7 @@ instance Stringifiable Literal where
 data Capture
     = ValueCapture (Maybe (Identifier, Maybe Expression))
     | RefCapture (Maybe (Identifier, Maybe Expression))
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Capture where
     stringify (ValueCapture Nothing) = "="
@@ -168,7 +168,7 @@ data Expression
     | Subscript Expression Expression
     | Unary Identifier Expression
     | Variable Name
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Expression where
     stringify (Binary op a b)
@@ -203,7 +203,7 @@ data Declaration
     | ScalarDecl Name Type (Maybe Expression)
     | TemplateDecl [(Identifier, Maybe Type)] Declaration
     | UsingDecl (Either Name Name) (Maybe Name)
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Declaration where
     stringify (ClassDecl n) = "class" <+> stringify n
@@ -227,7 +227,7 @@ data Statement
     | IfThenElse Expression [Statement] [Statement]
     | Ignore Expression
     | Return Expression
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Statement where
     stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi

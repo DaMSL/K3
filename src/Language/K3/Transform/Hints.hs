@@ -13,6 +13,10 @@ data OptHint
     -- move.
     | PassHint Bool
 
-    -- | Whether or not a function should accept its argument by copy (True) or by reference.
+    -- | Whether or not a function's argument is read-only in its implementation.
     | FuncHint Bool
+
+    -- | Partitioning of a function's closure capture into whether it wants the closure to be
+    -- referenced, moved or copied.
+    | CaptHint (S.Set Identifier, S.Set Identifier, S.Set Identifier)
   deriving (Eq, Ord, Read, Show)

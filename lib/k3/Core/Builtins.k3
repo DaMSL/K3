@@ -1,23 +1,40 @@
 include "Annotation/Collection.k3"
 include "Annotation/Seq.k3"
 
+// TODO: implement in haskell backend:
+// 1. target string 2. split text
+//declare splitString : string -> string -> collection { elem: string } @ {Seq}
+
+// TODO: move to String.k3
+@:CArgs 2
+declare concat : string -> string -> string
+
+// TODO: move to String.k3
+@:CArgs 3
+declare slice_string : string -> int -> int -> string
+
+// TODO: move to Time.k3
+declare now_int : () -> int
+
 ///////////////////////
 //
 // Engine I/O builtins
 
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
+@:CArgs 3
 declare openBuiltin : string -> string -> string -> ()
 
 // openFile: channel id -> path -> format -> mode -> ()
+@:CArgs 4
 declare openFile : string -> string -> string -> string -> ()
 
 // openSocket: channel id -> address -> format -> mode -> ()
+@:CArgs 4
 declare openSocket : string -> address -> string -> string -> ()
 
 // close: channel id -> ()
 declare close : string -> ()
-
 
 //////////////////////////////////
 //
@@ -32,7 +49,6 @@ declare randomFraction : () -> real
 // Polymorphic hash function
 declare hash : forall a . a -> int
 
-
 ////////////////////////
 //
 // Collection builtins
@@ -45,6 +61,8 @@ declare range : int -> collection {i : int} @ { Seq }
 // Value conversion
 declare truncate : real -> int
 declare real_of_int : int -> real
+declare itos : int -> string
+declare rtos : real -> string
 
 // Maximum Int value
 declare get_max_int : () -> int
@@ -56,6 +74,7 @@ declare print : string -> ()
 declare show : forall a. a -> string
 
 // Error (exceptional state)
+@:ErrorFn
 declare error : forall a. () -> a
 
 

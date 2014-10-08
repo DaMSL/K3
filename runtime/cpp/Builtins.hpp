@@ -39,35 +39,23 @@ namespace K3 {
     public:
     __standard_context(Engine& engine);
 
-    F<F<unit_t(const string&)>(const string&)> openBuiltin(const string& chan_id);
+    unit_t openBuiltin(string ch_id, string builtin_ch_id, string fmt);
 
-    F<F<F<unit_t(const string&)>(const string&)>(const string&)> openFile(const string& chan_id);
+    unit_t openFile(string ch_id, string path, string fmt, string mode);
+
+    unit_t openSocket(string ch_id, Address a, string fmt, string mode);
 
     unit_t close(std::string chan_id);
 
-    unit_t haltEngine(unit_t);
+    int random(int n);
 
-    unit_t printLine(std::string message);
-
-    // TODO move to seperate context
+    double randomFraction(unit_t);
 
     template <class T>
     int hash(T x) {
       // We implement hash_value for all of our types.
       // for ordered containers, so we may as well delegate to that.
       return static_cast<int>(hash_value(x));
-    }
-
-    template <class T>
-    T error(unit_t) {
-      throw std::runtime_error("Error. Terminating");
-      return *((T *) nullptr);
-    }
-
-    // TODO, implement, sharing code with prettify()
-    template <class T>
-    std::string show(T t) {
-      return std::string("TODO: implement show()");
     }
 
     template <class R>
@@ -79,6 +67,34 @@ namespace K3 {
       return result;
     }
 
+    int truncate(double n);
+
+    double real_of_int(int n);
+
+    int get_max_int(unit_t);
+
+    unit_t print(std::string message);
+
+
+    // TODO, implement, sharing code with prettify()
+    template <class T>
+    std::string show(T t) {
+      return std::string("TODO: implement show()");
+    }
+
+    template <class T>
+    T error(unit_t) {
+      throw std::runtime_error("Error. Terminating");
+      return *((T *) nullptr);
+    }
+
+    unit_t haltEngine(unit_t);
+
+    unit_t drainEngine(unit_t);
+
+    unit_t sleep(int n);
+
+    // TODO move to seperate context
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
@@ -105,12 +121,6 @@ namespace K3 {
 
   };
 
-
-  // TODO Builtins that require a handle to peers. Do we need this?
-  int index_by_hash(const string& s);
-
-  Address& peer_by_index(const int i);
-
   // Utilities:
 
 
@@ -118,7 +128,7 @@ namespace K3 {
   class __time_context {
     public:
     __time_context();
-    int now(unit_t);
+    int now_int(unit_t);
   };
 
   // String operations:
@@ -132,34 +142,11 @@ namespace K3 {
 
     std::string rtos(double d);
 
-    string substring(const string& s, int i, int n);
+    string slice_string(const string& s, int i, int n);
 
     // Split a std::string by substrings
     F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
   };
-
-  // TODO clean this up. extract what is needed. delete the rest.
-  //class Builtins: public __k3_context {
-  //  public:
-
-  //    Builtins() {
-  //      // seed the random number generator
-  //      std::srand(std::time(0));
-  //    }
-
-  //    int random(int x) { return std::rand(x); }
-
-  //    double randomFraction(unit_t) { return (double)rand() / RAND_MAX; }
-
-  //    <template t>
-  //      int hash(t x) { return static_cast<int>std::hash<t>(x); }
-
-  //    int truncate(double x) { return (int)x; }
-
-  //    double real_of_int(int x) { return (double)x; }
-
-  //    int get_max_int(unit_t x) { return INT_MAX; }
-  //};
 
 
 } // namespace K3
