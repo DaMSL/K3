@@ -334,9 +334,7 @@ betaReduction expr = mapTree reduce expr
 --        case x of { Some j -> case x of { Some k -> l } { None -> m }} { None -> n }
 --          => case x of { Some j -> l } { None -> n }
 eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
-eliminateDeadProgramCode prog = do
-  aProg <- analyzeEffects prog
-  mapExpression eliminateDeadCode aProg
+eliminateDeadProgramCode = mapExpression eliminateDeadCode
 
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
 eliminateDeadCode expr = mapTree pruneExpr expr
