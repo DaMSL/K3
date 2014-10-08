@@ -129,6 +129,7 @@ library
         Language.K3.Analysis.Effects.Core,
         Language.K3.Analysis.Effects.Constructors,
         Language.K3.Analysis.Effects.InsertEffects,
+        Language.K3.Analysis.Effects.Purity,
         Language.K3.Optimization,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,

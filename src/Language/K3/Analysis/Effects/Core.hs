@@ -26,6 +26,7 @@ data Provenance
     = PRecord Identifier
     | PTuple Integer
     | PIndirection
+    | PProject Identifier -- Created by projections
     | PLet
     | PCase
     -- A symbol can be 'applied' to produce effects and a new symbol
