@@ -21,6 +21,7 @@ declare getOctalDigits : () -> string
 ///// String Functions /////
 
 // get substring from a string
+@:CArgs 2
 declare substring : int -> string -> string
 
 // convert a character to a number value

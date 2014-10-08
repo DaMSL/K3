@@ -25,25 +25,20 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
-  F<F<unit_t(const string&)>(const string&)> __standard_context::openBuiltin(const string& chan_id) {
-      return [&] (const string& builtin_chan_id) {
-        return [&] (const string& format) {
-          __engine.openBuiltin(chan_id, builtin_chan_id);
-          return unit_t();
-        };
-      };
-    }
+  unit_t __standard_context::openBuiltin(string ch_id, string builtin_ch_id, string fmt) {
+    __engine.openBuiltin(ch_id, builtin_ch_id);
+    return unit_t();
+  }
 
-  F<F<F<unit_t(const string&)>(const string&)>(const string&)> __standard_context::openFile(const string& chan_id) {
-      return [&] (const string& path) {
-          return [&] (const string& fmt) {
-              return [&] (const string& mode) {
-                  IOMode iomode = __engine.ioMode(mode);
-                  __engine.openFile(chan_id, path, iomode);
-                  return unit_t();
-              };
-          };
-      };
+
+  unit_t __standard_context::openFile(string ch_id, string path, string fmt, string mode) {
+    IOMode iomode = __engine.ioMode(mode);
+    __engine.openFile(ch_id, path, iomode);
+    return unit_t();
+  }
+
+  unit_t __standard_context::openSocket(string ch_id, Address a, string fmt, string mode) {
+    throw std::runtime_error("Not implemented: openSocket");
   }
 
   unit_t __standard_context::close(string chan_id) {
@@ -51,15 +46,42 @@ namespace K3 {
       return unit_t();
   }
 
+  int __standard_context::random(int n) {
+    throw std::runtime_error("Not implemented: random");
+  }
+
+  double __standard_context::randomFraction(unit_t) {
+    throw std::runtime_error("Not implemented: random");
+  }
+
+  int __standard_context::truncate(double n) {
+    throw std::runtime_error("Not implemented: truncate");
+  }
+
+  double  __standard_context::real_of_int(int n) {
+    throw std::runtime_error("Not implemented: real_of_int");
+  }
+
+  int  __standard_context::get_max_int(unit_t) {
+    throw std::runtime_error("Not implemented: get_max_int");
+  }
+
+  unit_t __standard_context::print(string message) {
+    std::cout << message << endl;
+    return unit_t();
+  }
 
   unit_t __standard_context::haltEngine(unit_t) {
     __engine.forceTerminateEngine();
     return unit_t();
   }
 
-  unit_t __standard_context::printLine(string message) {
-    std::cout << message << endl;
-    return unit_t();
+  unit_t __standard_context::drainEngine(unit_t) {
+    throw std::runtime_error("Not implemented: drainEngine");
+  }
+
+  unit_t sleep(int n) {
+    throw std::runtime_error("Not implemented: sleep");
   }
 
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
@@ -84,23 +106,10 @@ namespace K3 {
     return result;
   }
 
-  // TODO Builtins that require a handle to peers?
-  //int index_by_hash(const string& s) {
-  //  auto& container = peers.getConstContainer();
-  //  size_t h = std::hash<string>()(s);
-  //  return h % container.size();
-  //}
-
-  //Address& peer_by_index(const int i) {
-  //  auto& container = peers.getContainer();
-  //  return container[i].addr;
-  //}
-
-
   // Time:
   __time_context::__time_context() {}
 
-  int __time_context::now(unit_t) {
+  int __time_context::now_int(unit_t) {
     auto t = std::chrono::system_clock::now();
     auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
     return elapsed.count();
@@ -122,7 +131,7 @@ namespace K3 {
   }
 
 
-  string __string_context::substring(const string&s, int i, int n) {
+  string __string_context::slice_string(const string&s, int i, int n) {
     return s.substr(i,n);
   }
 

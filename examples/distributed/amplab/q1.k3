@@ -1,5 +1,5 @@
 include "Annotation/Collection.k3"
-include "Core/CppBuiltins.k3"
+include "Core/Builtins.k3"
 
 // Generate a builtin to load data into a collection
 @:CArgs 2
@@ -40,10 +40,10 @@ trigger finished: int = \num_peer_results -> (
   num_results = num_results + num_peer_results;
   peers_finished = peers_finished + 1;
   if peers_finished == peers.size ()
-  then end_ms = now ();
+  then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       printLine (concat "# Results: " (itos num_results));
-       printLine (concat "Elapsed time (ms):" (itos elapsed_ms));
+       print (concat "# Results: " (itos num_results));
+       print (concat "Elapsed time (ms):" (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
@@ -57,7 +57,7 @@ trigger shutdown: () = \_ -> (
 trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then start_ms = now (); peers.iterate (\p -> (q1_local, p.addr) <- ())
+  then start_ms = now_int (); peers.iterate (\p -> (q1_local, p.addr) <- ())
   else ()
 )
 
