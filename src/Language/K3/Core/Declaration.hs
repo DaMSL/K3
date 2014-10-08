@@ -21,6 +21,7 @@ module Language.K3.Core.Declaration (
     isDSyntax
 ) where
 
+import Data.List
 import Data.Tree
 import Data.Typeable
 
@@ -107,7 +108,9 @@ instance HasSpan (Annotation Declaration) where
 
 instance Pretty (K3 Declaration) where
   prettyLines (Node (DGlobal i t me :@: as) ds) =
-    ["DGlobal " ++ i ++ drawAnnotations as, "|"]
+    let (annStr, pAnnStrs) = drawDeclAnnotations as in
+    ["DGlobal " ++ i ++ annStr] ++ ["|"]
+    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
     ++ case (me, ds) of
         (Nothing, []) -> terminalShift t
         (Just e, [])  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
@@ -115,7 +118,9 @@ instance Pretty (K3 Declaration) where
         (Just e, _)   -> nonTerminalShift t ++ ["|"] ++ nonTerminalShift e ++ ["|"] ++ drawSubTrees ds
 
   prettyLines (Node (DTrigger i t e :@: as) ds) =
-    ["DTrigger " ++ i ++ drawAnnotations as, "|"]
+    let (annStr, pAnnStrs) = drawDeclAnnotations as in
+    ["DTrigger " ++ i ++ annStr] ++ ["|"]
+    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
     ++ nonTerminalShift t ++ ["|"]
     ++ case ds of
         [] -> terminalShift e
@@ -146,20 +151,34 @@ instance Pretty (K3 Declaration) where
   prettyLines (Node (DTypeDef i t :@: _) _) = ["DTypeDef " ++ i ++ " "] `hconcatTop` prettyLines t
 
 instance Pretty AnnMemDecl where
-  prettyLines (Lifted      pol n t eOpt anns) =
-    ["Lifted " ++ unwords [show pol, n, show anns], "|"]
+  prettyLines (Lifted pol n t eOpt anns) =
+    let (annStr, pAnnStrs) = drawDeclAnnotations anns in
+    ["Lifted " ++ unwords [show pol, n, annStr]] ++ ["|"]
+    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
 
-  prettyLines (Attribute   pol n t eOpt anns) =
-    ["Attribute " ++ unwords [show pol, n, show anns], "|"]
+  prettyLines (Attribute pol n t eOpt anns) =
+    let (annStr, pAnnStrs) = drawDeclAnnotations anns in
+    ["Attribute " ++ unwords [show pol, n, annStr]] ++ ["|"]
+    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
     ++ case eOpt of
         Nothing -> terminalShift t
         Just e  -> nonTerminalShift t ++ ["|"] ++ terminalShift e
 
   prettyLines (MAnnotation pol n anns) =
     ["MAnnotation " ++ unwords [show pol, n, show anns]]
+
+
+drawDeclAnnotations :: [Annotation Declaration] -> (String, [String])
+drawDeclAnnotations as =
+  let (symAnns, anns) = partition isDSymbol as
+      prettyDeclAnns  = concatMap drawDSymbolAnnotation symAnns
+  in (drawAnnotations anns, prettyDeclAnns)
+
+  where drawDSymbolAnnotation (DSymbol s) = ["DSymbol "] %+ prettyLines s
+        drawDSymbolAnnotation _ = error "Invalid symbol annotation"
 
 
 {- Declaration annotation predicates -}
