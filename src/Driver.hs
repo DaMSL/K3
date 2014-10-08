@@ -15,6 +15,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
 
 import Language.K3.Analysis.Interpreter.BindAlias
@@ -23,11 +24,12 @@ import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.HMTypes.Inference
 -- import Language.K3.Analysis.Properties
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
+import qualified Language.K3.Analysis.Effects.Purity        as Pure
 
-import qualified Language.K3.Transform.Normalization as Normalization
+import qualified Language.K3.Transform.Normalization  as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
-import qualified Language.K3.Transform.Profiling as Profiling
-import qualified Language.K3.Transform.RemoveROBinds as RemoveROBinds
+import qualified Language.K3.Transform.Profiling      as Profiling
+import qualified Language.K3.Transform.RemoveROBinds  as RemoveROBinds
 import Language.K3.Transform.Common(cleanGeneration)
 
 import Language.K3.Driver.Batch
@@ -52,7 +54,7 @@ run opts = do
   parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Left err      -> parseError err
-    Right parsedP -> evalMetaprogram Nothing Nothing Nothing parsedP
+    Right parsedP -> evalMetaprogram (metaprogramOpts $ mpOpts opts) Nothing Nothing parsedP
                        >>= either spliceError (dispatch $ mode opts)
 
   where
@@ -113,10 +115,19 @@ run opts = do
     analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
     --old: analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
     analyzer Effects x             = first Effects.runAnalysis x
-    analyzer DeadCodeElimination x = wrapEither Simplification.eliminateDeadProgramCode x
+    analyzer DeadCodeElimination x = wrapEither (Simplification.eliminateDeadProgramCode . Effects.runAnalysis) x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
+    analyzer Purity x              = first (Pure.runPurity . Effects.runAnalysis) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
+
+    -- Option handling utilities
+    metaprogramOpts (Just mpo) =
+      Just $ defaultMPEvalOptions { mpInterpArgs  = (unpair $ interpreterArgs  mpo)
+                                  , mpSearchPaths = (moduleSearchPath mpo) }
+      where unpair = concatMap (\(x,y) -> [x,y])
+
+    metaprogramOpts Nothing = Just $ defaultMPEvalOptions
 
     -- If we produce a proper program, put it first. Otherwise put the original program first
     -- and add to the string
