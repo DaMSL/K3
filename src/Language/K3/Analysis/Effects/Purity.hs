@@ -78,7 +78,7 @@ runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pur
 
     isGlobal :: K3 Symbol -> Bool
     isGlobal (tag -> Symbol _ PGlobal) = True
-    isGlobal (tag &&& children -> (Symbol _ (PRecord _), ps)) = any isGlobal ps -- TODO: Work out projection vs. bind.
+    isGlobal (tag &&& children -> (Symbol _ (PProject _), ps)) = any isGlobal ps
     isGlobal _ = False
 
     findSymbolType = fmap getKType . getFirst . flip findSymbolExpr e
