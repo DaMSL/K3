@@ -51,10 +51,22 @@ composite name ans = do
                           [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
 
     let superConstructor = R.FunctionDefn (R.Name name)
-                             [("__other" ++ (show i), R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
+                             [("__other" ++ show i, R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
                              Nothing
-                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ (show i)] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
+                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ show i] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
 
+    let superMoveConstructor = R.FunctionDefn (R.Name name)
+                             [("__other" ++ show i, R.RValueReference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
+                             Nothing
+                             [R.Call
+                               (R.Variable b)
+                               [R.Call
+                                   (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                                   [R.Variable $ R.Name $ "__other" ++ show i]
+                               ]
+                             | (b,i) <- zip baseClasses ([1..] :: [Integer])
+                             ]
+                             []
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
                               (R.Variable $
@@ -91,7 +103,7 @@ composite name ans = do
                      ]
 
     let addnDefns = indexDefns
-    let methods = [defaultConstructor, copyConstructor, superConstructor, serializeFn] ++ addnDefns
+    let methods = [defaultConstructor, copyConstructor, superConstructor, superMoveConstructor, serializeFn] ++ addnDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
