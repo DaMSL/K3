@@ -108,10 +108,22 @@ record (sort -> ids) = do
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
+    -- Forwarding constructor. One should be sufficient to handle all field-based constructions.
+
+    let forwardTemplateVars = map ('_':) templateVars
+
     let initConstructor
-            = R.FunctionDefn (R.Name recordName)
-              [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
-              Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name f] | i <- ids | f <- formalVars] []
+            = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
+              R.FunctionDefn (R.Name recordName)
+              [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- formalVars | tv <- forwardTemplateVars] Nothing
+              [ R.Call (R.Variable $ R.Name i)
+                           [R.Call (R.Variable $ R.Qualified (R.Name "std")
+                                         (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
+                            [(R.Variable $ R.Name f)]]
+              | i <- ids
+              | f <- formalVars
+              | t <- forwardTemplateVars
+              ] []
 
     let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
 
