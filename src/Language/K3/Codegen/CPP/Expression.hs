@@ -181,9 +181,13 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
                      Nothing -> False
                      Just (EOpt (FuncHint b)) -> b
 
-    let (cRef, cMove, cCopy) = case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
-                                 Nothing -> (S.empty, S.empty, S.empty)
-                                 Just (EOpt (CaptHint ch)) -> ch
+    (cRef, cMove, cCopy) <- case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
+                              Just (EOpt (CaptHint ch)) -> return ch
+                              -- If we have no capture hints, we need to do the heavy work ourselves
+                              _ -> do
+                                globVals <- fst . unzip . globals <$> get
+                                let fvs = nub $ filter (/= arg) $ freeVariables body
+                                return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
 
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
@@ -196,7 +200,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     let refCapture = S.map (\s -> R.RefCapture $ Just (s, Nothing)) cRef
     let moveCapture = S.map (\s -> R.ValueCapture $
                                    Just (s, Just $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                                              [R.Variable $ R.Name s])) cCopy
+                                              [R.Variable $ R.Name s])) cMove
     let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
     let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
     body' <- reify RReturn body
