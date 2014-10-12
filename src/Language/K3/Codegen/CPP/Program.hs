@@ -265,7 +265,7 @@ generateDispatchPopulation = do
 
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.Named $ R.Name "void*")] Nothing
+                             [("payload", R.Named $ R.Name "void*")] False Nothing
                              [R.Ignore $ R.Call (R.Variable $ R.Name tName)
                                    [R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
                                                              R.Name "static_cast")
@@ -329,7 +329,7 @@ prettifyExpr base_t e =
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] Nothing stmnts) [expr]
+   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] False Nothing stmnts) [expr]
    to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
    stringConcat = R.Binary "+"
    ossConcat = R.Binary "<<"
@@ -366,7 +366,9 @@ prettifyExpr base_t e =
        v    <- prettifyExpr et (R.Variable e_name)
        svar <- return $ R.ScalarDecl (R.Name "s") (R.Primitive R.PString) (Just v)
        lambda_body <- return [R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda [R.RefCapture (Just ("oss", Nothing))] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
+       fun <- return $ R.Lambda
+                [R.RefCapture (Just ("oss", Nothing))]
+                [("elem", R.Const $ R.Reference cEType)] False Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it

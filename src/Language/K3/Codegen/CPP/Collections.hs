@@ -209,7 +209,7 @@ record (sort -> ids) = do
 
     let oneFieldParserAction f
             = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
-              [("_partial", R.Primitive R.PString)] Nothing
+              [("_partial", R.Primitive R.PString)] False Nothing
               [R.Ignore $ doPatchInvocation f]
 
     let oneFieldParserDecl f

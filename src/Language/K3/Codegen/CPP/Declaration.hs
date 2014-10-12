@@ -167,7 +167,12 @@ genLoader suf (children -> [_,f]) name = do
  let err    = R.Binary "<<" (R.Variable $ R.Qualified (R.Name "std") (R.Name "cout")) (R.Literal $ R.LString "Failed to parse a row!\\n")
  let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
 
- let lamb = R.Lambda [R.RefCapture (Just ("rec", Nothing)), R.RefCapture (Just ("c", Nothing))] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
+ let lamb = R.Lambda
+             [R.RefCapture (Just ("rec", Nothing)), R.RefCapture (Just ("c", Nothing))]
+             [("str", R.Const $ R.Reference $ R.Named $ R.Qualified
+               (R.Name "std") (R.Name "string"))]
+             False Nothing
+             [ite]
  let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
