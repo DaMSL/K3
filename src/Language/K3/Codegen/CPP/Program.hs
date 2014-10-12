@@ -297,13 +297,18 @@ genPrettify = do
 
    -- Insert key-value pairs into the map
    genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   genInserts n_ts = do
-     names      <- return $ map fst n_ts
-     name_vars  <- return $ map (R.Variable . R.Name) names
-     new_nts    <- return $ zip name_vars $ map snd n_ts
-     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
+   genInserts n_ts' = do
+     -- Don't include unit vars
+     let n_ts      = filter (not . isTUnit . snd) n_ts'
+         names     = map fst n_ts
+         name_vars = map (R.Variable . R.Name) names
+         new_nts   = zip name_vars $ map snd n_ts
+         lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
      rhs_exprs  <- mapM (\(n,t) -> prettifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
+     where
+       isTUnit (tnc -> (TTuple, [])) = True
+       isTUnit _ = False
 
 -- | Generate an expression that represents an expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
