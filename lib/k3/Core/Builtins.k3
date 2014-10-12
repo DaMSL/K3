@@ -54,6 +54,7 @@ declare hash : forall a . a -> int
 // Collection builtins
 
 // Collection enumeration [0,1,..n-1]
+@:ErrorFn
 declare range : int -> collection {i : int} @ { Seq }
 
 ///////////////////////
