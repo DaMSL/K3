@@ -461,9 +461,9 @@ class Seq : public ListDS<Seq, Elem> {
   Seq(ListDS<Seq, Elem>&& c): ListDS<Seq, Elem>(std::move(c)) { }
 
   // Seq specific functions
-  Seq sort(const F<F<int(Elem)>(Elem)>& comp) {
-    auto& l(Super::getConstContainer());
-    auto f = [&] (Elem& a, Elem& b) {
+  Seq sort(F<F<int(Elem)>(Elem)> comp) {
+    auto& l(Super::getContainer());
+    auto f = [&] (Elem& a, Elem& b) mutable {
       return comp(a)(b) < 0;
     };
     l.sort(f);
