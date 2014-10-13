@@ -157,12 +157,14 @@ instance Stringifiable Capture where
     stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
     stringify (RefCapture (Just (i, Just e))) = "&" <> fromString i <+> equals <+> stringify e
 
+type IsMutable = Bool
+
 data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
     | Dereference Expression
     | Initialization Type [Expression]
-    | Lambda [Capture] [(Identifier, Type)] (Maybe Type) [Statement]
+    | Lambda [Capture] [(Identifier, Type)] IsMutable (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
     | Subscript Expression Expression
@@ -176,12 +178,13 @@ instance Stringifiable Expression where
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
-    stringify (Lambda cs as rt bd) = cs' <+> as' <+> rt' <+> bd'
+    stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <+> rt' <+> bd'
       where
-        cs' = brackets $ commaSep (map stringify cs)
-        as' = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
-        rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
-        bd' = hangBrace $ vsep $ map stringify bd
+        cs'  = brackets $ commaSep (map stringify cs)
+        mut' = if mut then "mutable" else ""
+        as'  = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
+        rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
+        bd'  = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parenthesize pt <> dot <> stringify i
       where
@@ -189,7 +192,7 @@ instance Stringifiable Expression where
         parenthesize pt' = parens $ stringify pt'
     stringify (Subscript a b)
         = case b of
-            (Lambda _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
+            (Lambda _ _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
             _ -> parenthesize a <> brackets (stringify b)
       where
         parenthesize a'@(Variable _) = stringify a'

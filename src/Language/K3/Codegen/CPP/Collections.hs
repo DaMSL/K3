@@ -51,10 +51,22 @@ composite name ans = do
                           [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
 
     let superConstructor = R.FunctionDefn (R.Name name)
-                             [("__other" ++ (show i), R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
+                             [("__other" ++ show i, R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
                              Nothing
-                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ (show i)] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
+                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ show i] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
 
+    let superMoveConstructor = R.FunctionDefn (R.Name name)
+                             [("__other" ++ show i, R.RValueReference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
+                             Nothing
+                             [R.Call
+                               (R.Variable b)
+                               [R.Call
+                                   (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                                   [R.Variable $ R.Name $ "__other" ++ show i]
+                               ]
+                             | (b,i) <- zip baseClasses ([1..] :: [Integer])
+                             ]
+                             []
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
                               (R.Variable $
@@ -91,7 +103,7 @@ composite name ans = do
                      ]
 
     let addnDefns = indexDefns
-    let methods = [defaultConstructor, copyConstructor, superConstructor, serializeFn] ++ addnDefns
+    let methods = [defaultConstructor, copyConstructor, superConstructor, superMoveConstructor, serializeFn] ++ addnDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -104,16 +116,33 @@ record (sort -> ids) = do
     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
     let formalVars = ["_" ++ i | i <- ids]
 
+    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
+
     let defaultConstructor
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
 
-    let initConstructor
-            = R.FunctionDefn (R.Name recordName)
-              [(fv, R.Named $ R.Name tv) | fv <- formalVars | tv <- templateVars]
-              Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name f] | i <- ids | f <- formalVars] []
+    -- Forwarding constructor. One should be sufficient to handle all field-based constructions.
 
-    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
+    let forwardTemplateVars = map ('_':) templateVars
+
+    let initArgsEnableIf fvs tvs
+            = case (fvs, tvs) of
+                ([fv], [tv]) -> [(fv, R.RValueReference $ R.Named $ R.Qualified (R.Name "std")
+                      (R.Specialized [R.Named $ R.Name tv, recordType] (R.Name "is_unrelated_type")))]
+                _ -> [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- fvs | tv <- tvs]
+
+    let initConstructor
+            = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
+              R.FunctionDefn (R.Name recordName) (initArgsEnableIf formalVars forwardTemplateVars) Nothing
+              [ R.Call (R.Variable $ R.Name i)
+                           [R.Call (R.Variable $ R.Qualified (R.Name "std")
+                                         (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
+                            [(R.Variable $ R.Name f)]]
+              | i <- ids
+              | f <- formalVars
+              | t <- forwardTemplateVars
+              ] []
 
     let copyConstructor
             = R.FunctionDefn (R.Name recordName)
@@ -185,7 +214,7 @@ record (sort -> ids) = do
 
     let oneFieldParserAction f
             = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
-              [("_partial", R.Primitive R.PString)] Nothing
+              [("_partial", R.Primitive R.PString)] False Nothing
               [R.Ignore $ doPatchInvocation f]
 
     let oneFieldParserDecl f

@@ -12,11 +12,10 @@
 #include <boost/multi_index/sequenced_index.hpp>
 #include <boost/lambda/lambda.hpp>
 
+
 #include <list>
 #include <vector>
 #include <math.h>
-
-// TODO verify the type signatures of ext for the various collection types
 
 namespace K3 {
 
@@ -39,12 +38,11 @@ template <template <typename> class Derived, template<typename...> class StlCont
 class StlDS {
   // The underlying STL container type backing this dataspace:
   typedef StlContainer<Elem> Container;
-
   // Iterator Types:
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
- public:
+  public:
   // Expose the element type with a public typedef  ( needed in ext() ):
   typedef Elem ElemType;
 
@@ -53,6 +51,7 @@ class StlDS {
   StlDS()
     : container()
   { }
+
 
   // Copy Constructor
   StlDS(const StlDS& other)
@@ -80,7 +79,8 @@ class StlDS {
     : container(begin,end)
   {}
 
-  ~StlDS() {}
+  ~StlDS() {
+  }
 
   // Assign Operators:
   // Copy Assign Operator
@@ -153,13 +153,14 @@ class StlDS {
   }
 
   // Return a new DS with data from this and other
-  Derived<Elem> combine(const StlDS& other) const {
+  Derived<Elem> combine(StlDS other) const {
     // copy this DS
     Derived<Elem> result;
     result = StlDS(*this);
-    // copy other DS
-    for (const Elem &e : other.container) {
-      result.insert(e);
+    // move insert each element of the other.
+    // this is okay since we are working with a copy
+    for (Elem &e : other.container) {
+      result.insert(std::move(e));
     }
     return result;
   }
@@ -187,15 +188,6 @@ class StlDS {
     return unit_t();
   }
 
-  // Produce a new ds by mapping a function over this ds
-  template<template <typename E> class Subclass, typename Fun>
-  auto map2(Fun f) -> Subclass<R_elem<RT<Fun, Elem>>> {
-    Subclass<R_elem<RT<Fun, Elem>>> result;
-    for (const Elem &e : container) {
-      result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
-    }
-    return result;
-  }
 
   // Produce a new ds by mapping a function over this ds
   template<typename Fun>
@@ -221,9 +213,8 @@ class StlDS {
 
   // Fold a function over this ds
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, const Acc& init_acc) {
-    Acc acc = init_acc;
-    for (const Elem &e : container) { acc = f(acc)(e); }
+  Acc fold(Fun f, Acc acc) {
+    for (const Elem &e : container) { acc = f(std::move(acc))(e); }
     return acc;
   }
 
@@ -239,29 +230,27 @@ class StlDS {
           if (accs.find(key) == accs.end()) {
             accs[key] = init;
           }
-          accs[key] = folder(accs[key])(elem);
+          accs[key] = folder(std::move(accs[key]))(elem);
        }
 
       // Build the R_key_value records and insert them into result
-      // TODO can we move into the R_key_value constructor?
       Derived<R_key_value<RT<F1, Elem>,Z>> result;
-      for(const auto& it : accs) {
-        result.insert(R_key_value<K, Z>{it.first, it.second});
+      for(auto& it : accs) {
+        // move out of the map as we iterate
+        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
 
       }
 
       return result;
   }
 
-  // TODO optimize copies
   template <class Fun>
   auto ext(Fun expand) -> Derived<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
     Derived<T> result;
     for (const Elem& elem : container) {
-      for (const T& elem2 : expand(elem).container) {
-        // TODO can we force a move here?
-        result.insert(elem2);
+      for (T& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
       }
     }
 
@@ -472,9 +461,9 @@ class Seq : public ListDS<Seq, Elem> {
   Seq(ListDS<Seq, Elem>&& c): ListDS<Seq, Elem>(std::move(c)) { }
 
   // Seq specific functions
-  Seq sort(const F<F<int(Elem)>(Elem)>& comp) {
-    auto& l(Super::getConstContainer());
-    auto f = [&] (Elem& a, Elem& b) {
+  Seq sort(F<F<int(Elem)>(Elem)> comp) {
+    auto& l(Super::getContainer());
+    auto f = [&] (Elem& a, Elem& b) mutable {
       return comp(a)(b) < 0;
     };
     l.sort(f);
@@ -488,38 +477,6 @@ class Seq : public ListDS<Seq, Elem> {
     auto it = l.begin();
     std::advance(it, i);
     return *it;
-  }
-
-  // Wrapped Dataspace Functions: (call DS function, then construct-by-move)
-  Seq combine(const Seq& other) const {
-    return Seq<Elem>(Super::combine(other));
-  }
-
-  // TODO: force a move when constructing the Sets?
-  tuple<Seq, Seq> split(unit_t) const {
-    auto t = Super::split(unit_t());
-    return std::make_tuple(Seq<Elem>(std::get<0>(t)), Seq<Elem>(std::get<1>(t)));
-  }
-
-  template<typename Fun>
-  auto map(Fun f) -> Seq<R_elem<RT<Fun, Elem>>> {
-    return Seq<R_elem<RT<Fun, Elem>>>(Super::map(f));
-  }
-
-  template<typename Fun>
-  Seq filter(Fun predicate) {
-    return Seq<Elem>(Super::filter(predicate));
-  }
-
-  template<typename F1, typename F2, typename Z>
-  Seq< R_key_value<RT<F1, Elem>,Z> > groupBy(F1 grouper, F2 folder, const Z& init) {
-    return Seq< R_key_value<RT<F1, Elem>,Z> >(Super::groupBy(grouper, folder, init));
-  }
-
-  template <class Fun>
-  auto ext(Fun expand) -> Seq< typename RT<Fun, Elem>::ElemType > {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    return Seq<T> (Super::ext(expand));
   }
 
 };
@@ -733,13 +690,9 @@ class Map {
   }
 
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, const Acc& init_acc) {
-    Acc acc = init_acc;
+  Acc fold(Fun f, Acc acc) {
     for (const std::pair<Key, Value>& p : container) {
-      R rec;
-      rec.key = p.first;
-      rec.value = p.second;
-      acc = f(acc)(rec);
+      acc = f(std::move(acc))(R {p.first, p.second});
     }
     return acc;
   }
@@ -748,8 +701,7 @@ class Map {
   auto map(Fun f) -> Map< RT<Fun, R> > {
     Map< RT<Fun,R> > result;
     for (const std::pair<Key,Value>& p : container) {
-      R rec {p.first, p.second};
-      result.insert( f(rec) );
+      result.insert( f(R {p.first, p.second}) );
     }
     return result;
   }
@@ -760,7 +712,7 @@ class Map {
       R rec;
       rec.key = p.first;
       rec.value = p.second;
-      f(rec);
+      f(R{p.first, p.second});
     }
     return unit_t();
   }
@@ -773,7 +725,7 @@ class Map {
       rec.key = p.first;
       rec.value = p.second;
       if (predicate(rec)) {
-        result.insert(rec);
+        result.insert(std::move(rec));
       }
     }
     return result;
@@ -814,11 +766,10 @@ class Map {
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(accs[key])(rec);
+      accs[key] = folder(std::move(accs[key]))(std::move(rec));
     }
 
     // Force a move from accs into a mapDS
-    // Careful! dont reference accs again!
     Map<R_key_value<K,Z>> result(std::move(accs));
     return result;
   }
@@ -829,8 +780,8 @@ class Map {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
-      for (const auto& it2 : expand(R{it.first, it.second}).container) {
-        result.insert(R{it.first, it.second});
+      for (auto& it2 : expand(R{it.first, it.second}).container) {
+        result.insert(R{std::move(it.first), std::move(it.second)});
       }
     }
 
@@ -1017,6 +968,7 @@ class Vector : public VectorDS<Vector, Elem> {
 template <typename Elem, typename... Indexes>
 class MultiIndex {
   public:
+
   typedef boost::multi_index_container<
     Elem,
     boost::multi_index::indexed_by<
@@ -1320,7 +1272,6 @@ template <typename... Args>
 std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
   return hash_collection(b);
 }
-
 
 
 #endif

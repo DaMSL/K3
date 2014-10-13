@@ -183,5 +183,13 @@ namespace K3 {
 
 } // namespace K3
 
+template <class T, class U>
+constexpr inline bool is_unrelated() {
+  return !std::is_same<typename std::decay<T>::type, U>::value
+    && !std::is_base_of<U, typename std::decay<T>::type>::value;
+}
+
+template <class T, class U>
+using is_unrelated_type = typename std::enable_if<is_unrelated<T, U>(), T>::type
+
 #endif
-// vim: set sw=2 ts=2 sts=2:

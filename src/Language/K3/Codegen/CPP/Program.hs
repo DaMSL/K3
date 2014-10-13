@@ -265,7 +265,7 @@ generateDispatchPopulation = do
 
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.Named $ R.Name "void*")] Nothing
+                             [("payload", R.Named $ R.Name "void*")] False Nothing
                              [R.Ignore $ R.Call (R.Variable $ R.Name tName)
                                    [R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
                                                              R.Name "static_cast")
@@ -297,13 +297,18 @@ genPrettify = do
 
    -- Insert key-value pairs into the map
    genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   genInserts n_ts = do
-     names      <- return $ map fst n_ts
-     name_vars  <- return $ map (R.Variable . R.Name) names
-     new_nts    <- return $ zip name_vars $ map snd n_ts
-     lhs_exprs  <- return $ map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
+   genInserts n_ts' = do
+     -- Don't include unit vars
+     let n_ts      = filter (not . isTUnit . snd) n_ts'
+         names     = map fst n_ts
+         name_vars = map (R.Variable . R.Name) names
+         new_nts   = zip name_vars $ map snd n_ts
+         lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
      rhs_exprs  <- mapM (\(n,t) -> prettifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
+     where
+       isTUnit (tnc -> (TTuple, [])) = True
+       isTUnit _ = False
 
 -- | Generate an expression that represents an expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
@@ -329,7 +334,7 @@ prettifyExpr base_t e =
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] Nothing stmnts) [expr]
+   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] False Nothing stmnts) [expr]
    to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
    stringConcat = R.Binary "+"
    ossConcat = R.Binary "<<"
@@ -366,7 +371,9 @@ prettifyExpr base_t e =
        v    <- prettifyExpr et (R.Variable e_name)
        svar <- return $ R.ScalarDecl (R.Name "s") (R.Primitive R.PString) (Just v)
        lambda_body <- return [R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda [R.RefCapture (Just ("oss", Nothing))] [("elem", R.Const $ R.Reference cEType)] Nothing lambda_body
+       fun <- return $ R.Lambda
+                [R.RefCapture (Just ("oss", Nothing))]
+                [("elem", R.Const $ R.Reference cEType)] False Nothing lambda_body
        iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
        result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
        -- wrap in lambda, then call it
