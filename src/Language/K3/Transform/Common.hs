@@ -34,6 +34,7 @@ substituteImmutBinding i iExpr expr =
 
     rebuild subs _  n@(tag -> EVariable j) = return $ maybe n id $ lookup j subs
     rebuild _    _  n@(tag -> EConstant _) = return $ n
+    rebuild _    ch n@(tag -> ETuple)      = return $ if null $ children n then n else replaceCh n ch
     rebuild _    ch   (Node t _)           = return $ Node t ch
 
 
