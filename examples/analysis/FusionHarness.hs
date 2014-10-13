@@ -20,7 +20,7 @@ import Language.K3.Utils.Pretty
 testProgram :: String
 testProgram = unlines $ [
     "include \"Annotation/Collection.k3\""
-  , nonStreamableProg
+  , groupByFoldMapMapProg
   ]
 
 streamableProg :: String
@@ -87,7 +87,7 @@ mapMapProg = "\
   \ declare d : MyC                                                 \
   \ trigger t : () = \\_ -> (                                       \
   \   let x = ((c.map (\\r -> r.a + 1))                             \
-  \              .map (\\r -> r.elem + 1))                          \
+  \              .map (\\r -> r.elem + 2))                          \
   \   in                                                            \
   \   c.insert {a:5}; c.iterate (\\_ -> ())                         \
   \ )                                                               \
@@ -199,6 +199,120 @@ foldMapMapProg = "\
   \   in                                                           \
   \   c.insert {a:5}; c.iterate (\\_ -> ())                        \
   \ )                                                              \
+  \ "
+
+mapGroupByProg :: String
+mapGroupByProg = "\
+  \ typedef MyC = collection {a:int} @Collection                    \
+  \ declare c : MyC                                                 \
+  \ declare d : MyC                                                 \
+  \ trigger t : () = \\_ -> (                                       \
+  \   let x = ((c.map     (\\r -> r.a + 1))                         \
+  \              .groupBy (\\r -> r.elem + 2)                       \
+  \                       (\\acc -> \\r -> acc + 1)                 \
+  \                       0)                                        \
+  \   in                                                            \
+  \   c.insert {a:5}                                                \
+  \ )                                                               \
+  \ "
+
+mapMapGroupByProg :: String
+mapMapGroupByProg = "\
+  \ typedef MyC = collection {a:int} @Collection                    \
+  \ declare c : MyC                                                 \
+  \ declare d : MyC                                                 \
+  \ trigger t : () = \\_ -> (                                       \
+  \   let x = (((c.map     (\\r -> r.a + 1))                        \
+  \               .map     (\\r -> r.elem + 2))                     \
+  \               .groupBy (\\r -> r.elem + 3)                      \
+  \                        (\\acc -> \\r -> acc + 1)                \
+  \                        0)                                       \
+  \   in                                                            \
+  \   c.insert {a:5}                                                \
+  \ )                                                               \
+  \ "
+
+groupByMapMapProg :: String
+groupByMapMapProg = "\
+  \ typedef MyC = collection {a:int} @Collection                    \
+  \ declare c : MyC                                                 \
+  \ declare d : MyC                                                 \
+  \ trigger t : () = \\_ -> (                                       \
+  \   let x = (((c.groupBy (\\r -> r.a + 3)                         \
+  \                        (\\acc -> \\r -> acc + 1)                \
+  \                        0)                                       \
+  \               .map     (\\r -> r.value + 1))                    \
+  \               .map     (\\r -> r.elem + 2))                     \
+  \   in                                                            \
+  \   c.insert {a:5}                                                \
+  \ )                                                               \
+  \ "
+
+foldGroupByProg :: String
+foldGroupByProg = "\
+  \ typedef MyC = collection {a:int} @Collection                        \
+  \ declare c : MyC                                                     \
+  \ declare d : MyC                                                     \
+  \ trigger t : () = \\_ -> (                                           \
+  \   let x = ((c.fold    (\\acc -> \\r -> (acc.insert {a:r.a+1}; acc)) \
+  \                       (empty {a:int} @Collection))                  \
+  \              .groupBy (\\r -> r.a + 2)                              \
+  \                       (\\acc -> \\r -> acc + 1)                     \
+  \                       0)                                            \
+  \   in                                                                \
+  \   c.insert {a:5}                                                    \
+  \ )                                                                   \
+  \ "
+
+groupByFoldProg :: String
+groupByFoldProg = "\
+  \ typedef MyC = collection {a:int} @Collection                            \
+  \ declare c : MyC                                                         \
+  \ declare d : MyC                                                         \
+  \ trigger t : () = \\_ -> (                                               \
+  \   let x = ((c.groupBy (\\r -> r.a + 2)                                  \
+  \                       (\\acc -> \\r -> acc + 1)                         \
+  \                       0)                                                \
+  \              .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
+  \                       (empty {a:int} @Collection))                      \
+  \   in                                                                    \
+  \   c.insert {a:5}                                                        \
+  \ )                                                                       \
+  \ "
+
+groupByFoldMapProg :: String
+groupByFoldMapProg = "\
+  \ typedef MyC = collection {a:int} @Collection                            \
+  \ declare c : MyC                                                         \
+  \ declare d : MyC                                                         \
+  \ trigger t : () = \\_ -> (                                               \
+  \   let x = ((c.groupBy (\\r -> r.a + 2)                                  \
+  \                       (\\acc -> \\r -> acc + 1)                         \
+  \                       0)                                                \
+  \              .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
+  \                       (empty {a:int} @Collection))                      \
+  \              .map     (\\r -> r.a + 4)                                  \
+  \   in                                                                    \
+  \   c.insert {a:5}                                                        \
+  \ )                                                                       \
+  \ "
+
+groupByFoldMapMapProg :: String
+groupByFoldMapMapProg = "\
+  \ typedef MyC = collection {a:int} @Collection                              \
+  \ declare c : MyC                                                           \
+  \ declare d : MyC                                                           \
+  \ trigger t : () = \\_ -> (                                                 \
+  \   let x = ((((c.groupBy (\\r -> r.a + 2)                                  \
+  \                       (\\acc -> \\r -> acc + 1)                           \
+  \                       0)                                                  \
+  \                .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
+  \                         (empty {a:int} @Collection))                      \
+  \                .map     (\\r -> r.a + 4))                                 \
+  \                .map     (\\r -> r.elem + 7))                              \
+  \   in                                                                      \
+  \   c.insert {a:5}                                                          \
+  \ )                                                                         \
   \ "
 
 
