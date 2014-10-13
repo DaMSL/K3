@@ -131,7 +131,7 @@ record (sort -> ids) = do
               [ R.Call (R.Variable $ R.Name i)
                            [R.Call (R.Variable $ R.Qualified (R.Name "std")
                                          (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
-                            [(R.Variable $ R.Name f)]]
+                            [R.Variable $ R.Name f]]
               | i <- ids
               | f <- formalVars
               | t <- forwardTemplateVars
@@ -144,6 +144,41 @@ record (sort -> ids) = do
               [("__other", R.Const $ R.Reference recordType)] Nothing
               [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids] []
 
+    let moveConstructor
+            = R.FunctionDefn (R.Name recordName)
+                [("__other", R.RValueReference recordType)] Nothing
+                [R.Call
+                  (R.Variable $ R.Name i)
+                  [R.Call
+                     (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                     [R.Project (R.Variable $ R.Name "__other") (R.Name i)]
+                  ]
+                | i <-  ids
+                ]
+                []
+
+    let copyAssign
+            = R.FunctionDefn (R.Name "operator=")
+                [("__other", R.Const $ R.Reference recordType)]
+                (Just $ R.Reference recordType)
+                []
+                ([ R.Ignore $ R.Binary "=" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
+                | i <- ids
+                ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
+
+    let moveAssign
+            = R.FunctionDefn (R.Name "operator=")
+                [("__other",  R.RValueReference recordType)]
+                (Just $ R.Reference recordType)
+                []
+                ([ R.Ignore $ R.Binary "="
+                  (R.Variable $ R.Name i)
+                  (R.Call
+                    (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                    [ R.Project (R.Variable $ R.Name "__other") (R.Name i) ]
+                  )
+                | i <- ids
+                ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
     let equalityOperator
             = R.FunctionDefn (R.Name "operator==")
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
@@ -186,8 +221,8 @@ record (sort -> ids) = do
                        (Just $ R.Named $ R.Name "void")
                        [] serializeStatements)
 
-    let operators = [equalityOperator, inequalityOperator, lessOperator, greaterOperator]
-    let members = [defaultConstructor, initConstructor, copyConstructor, serializeFn] ++ operators ++ fieldDecls
+    let operators = [copyAssign, moveAssign, equalityOperator, inequalityOperator, lessOperator, greaterOperator]
+    let members = [defaultConstructor, initConstructor, copyConstructor, moveConstructor,  serializeFn] ++ operators ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $

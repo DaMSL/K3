@@ -4,11 +4,11 @@ include "Core/Builtins.k3"
 // Generate a builtin to load data into a collection
 @:CArgs 2
 declare dataLoader: string -> collection {pageURL: string,pageRank: int, avgDuration: int} @ { Collection } -> ()
+declare dataFiles : collection {path: string} @ Collection
 
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 10 //pageRank threshold for the select statement
-declare rankings_file: string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
 declare peers_ready: mut int = 0
@@ -62,7 +62,9 @@ trigger ready: () = \_ -> (
 )
 
 trigger load_all: () = \_ -> (
-  (dataLoader rankings_file local_rankings);
+  dataFiles.iterate (\e ->
+    dataLoader e.path local_rankings
+  );
   ((ready, master) <- ())
 )
 
