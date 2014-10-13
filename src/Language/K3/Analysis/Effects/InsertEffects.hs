@@ -519,17 +519,18 @@ combineEffSet = combineEff set
 combineEffSeq :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSeq = combineEff seq
 
--- combineEff symbols into 1 set symbol (if needed)
--- otherwise just use one of the symbols/don't generate anything
+-- combineSym symbols into 1 set symbol (always)
+-- if there's no symbol, generate 1
 combineSym :: Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSym p ss =
-  case filter isJust ss of
-    []  -> return Nothing
-    [s] -> return s
-    ss' -> liftM Just $ genSym p $ map fromJust ss'
+combineSym p ss = do
+  ss' <- mapM maybeGen ss
+  liftM Just $ genSym p ss'
+  where
+    maybeGen (Just s) = return s
+    maybeGen Nothing  = genSym (PTemporary TTemp) []
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSymSet   = combineSym PSet
+combineSymSet = combineSym PSet
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
 combineSymApply l a = combineSym PApply [l,a]
 
