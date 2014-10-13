@@ -53,7 +53,8 @@ library
         transformers,
         unordered-containers,
         ansi-wl-pprint,
-        clock
+        clock,
+        safe
 
     exposed-modules:
         Language.K3.Core.Annotation,
