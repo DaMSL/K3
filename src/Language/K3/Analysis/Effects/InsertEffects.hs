@@ -600,6 +600,14 @@ runAnalysisEnv env prog = flip evalState env $
               s' <- symOfSymList lA
               return [(Nothing, replaceCh n [s, s'])]
 
+        -- Sets need to be kept if they refer to anything important
+        loop _ n@(tnc -> (s@(Symbol i PSet), ch)) = do
+          lCh <- mapM (loop (Just s)) ch
+          -- If all children are local, elide
+          if all ((==) []) lCh then return [] else do
+            ss <- mapM symOfSymList lCh
+            return [(Nothing, replaceCh n ss)]
+
         loop mLast n@(tnc -> (s@(Symbol i _), ch)) =
           -- Check for exclusion. Terminate this branch if we match
           if any (n `symEqual`) excludes then return []
