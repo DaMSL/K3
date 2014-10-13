@@ -81,7 +81,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     let patchDecl = R.FunctionDefn (R.Name "__patch")
                     [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                                     [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map")]
-                    (Just R.Void) [] (map popPatch patchables')
+                    (Just R.Void) [] False (map popPatch patchables')
 
     dispatchPop <- generateDispatchPopulation
 
@@ -99,11 +99,12 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                                  (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
                                  []
                              ]
+                             False
                              (inits ++ dispatchPop)
 
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
                        [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
-                       (Just R.Void) []
+                       (Just R.Void) [] False
                        [R.Ignore $ R.Call
                          (R.Subscript (R.Variable $ R.Name "dispatch_table") (R.Variable $ R.Name "trigger_id"))
                          [R.Variable $ R.Name "payload"]
@@ -161,7 +162,7 @@ main = do
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
-             (Just $ R.Primitive R.PInt) []
+             (Just $ R.Primitive R.PInt) [] False
              [ engineDecl
              , optionDecl
              , optionCall
@@ -282,7 +283,7 @@ genPrettify :: CPPGenM R.Definition
 genPrettify = do
    currentS <- get
    body    <- genBody $ showables currentS
-   return $ R.FunctionDefn prettifyName [] (Just result_type) [] body
+   return $ R.FunctionDefn prettifyName [] (Just result_type) [] False body
  where
    p_string = R.Primitive R.PString
    result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))

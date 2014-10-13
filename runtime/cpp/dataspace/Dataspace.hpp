@@ -304,8 +304,6 @@ using VectorDS = StlDS<Derived, std::vector, Elem>;
 
 
 // The Colllection variants inherit functionality from a dataspace.
-// Many of the dataspace functions return a dataspace, requiring an
-// explicit conversion/wrapping in its sub-classes. (call to Superclass constructor)
 // Each variant may also add extra functionality.
 template <class Elem>
 class Collection : public VectorDS<Collection, Elem> {
@@ -1143,7 +1141,7 @@ class MultiIndex {
   template<typename Fun, typename Acc>
   Acc fold(Fun f, const Acc& init_acc) {
     Acc acc = init_acc;
-    for (const Elem &e : container) { acc = f(acc)(e); }
+    for (const Elem &e : container) { acc = f(std::move(acc))(e); }
     return acc;
   }
 
@@ -1159,29 +1157,26 @@ class MultiIndex {
           if (accs.find(key) == accs.end()) {
             accs[key] = init;
           }
-          accs[key] = folder(accs[key])(elem);
+          accs[key] = folder(std::move(accs[key]))(elem);
        }
 
       // Build the R_key_value records and insert them into resul
-      // TODO can we move into the R_key_value constructor?
       MultiIndex<R_key_value<RT<F1, Elem>,Z>> result;
       for(const auto& it : accs) {
-        result.insert(R_key_value<K, Z>{it.first, it.second});
+        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
 
       }
 
       return result;
   }
 
-  // TODO optimize copies
   template <class Fun>
   auto ext(Fun expand) -> MultiIndex<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
     MultiIndex<T> result;
     for (const Elem& elem : container) {
-      for (const T& elem2 : expand(elem).container) {
-        // TODO can we force a move here?
-        result.insert(elem2);
+      for (T& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
       }
     }
 

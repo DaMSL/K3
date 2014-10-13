@@ -13,6 +13,8 @@ import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 
+import Safe
+
 import qualified Data.Set as S
 
 import Language.K3.Core.Annotation
@@ -305,7 +307,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     -- Create types for the element and the pointer to said element
     ept <- getKType e
     epc <- genCType ept
-    et  <- getKType $ head $ children e
+    let et = headNote ("Missing type in reify for " ++ show e) $ children ept
     ec  <- genCType et
 
     (g, gd, ee) <- case tag e of

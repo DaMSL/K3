@@ -44,7 +44,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
-    return [R.FunctionDefn (R.Name i) [(x, cta)] (Just ctr) [] cbody]
+    return [R.FunctionDefn (R.Name i) [(x, cta)] (Just ctr) [] False cbody]
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
@@ -60,7 +60,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
     body' <- reify RReturn body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration (tag -> DGlobal i t me) = do
@@ -138,7 +138,8 @@ genHasRead suf _ name = do
     let source_name = stripSuffix suf name
     let e_has_r = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasRead")
     let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive R.PBool) [] [body]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+      (Just $ R.Primitive R.PBool) [] False [body]
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoRead suf typ name = do
@@ -147,7 +148,8 @@ genDoRead suf typ name = do
     let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
     let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "doReadExternal")) [R.Literal $ R.LString source_name]
     let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+      (Just ret_type) [] False [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
@@ -177,7 +179,7 @@ genLoader suf (children -> [_,f]) name = do
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
             (Just $ R.Named $ R.Name "unit_t")
-            [] [result_dec, R.Ignore foreachline, ret]
+            [] False [result_dec, R.Ignore foreachline, ret]
  where
     getColType = case children f of
                   ([c,_])  -> case children c of
