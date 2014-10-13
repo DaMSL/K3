@@ -25,7 +25,7 @@ import Data.Maybe
 import Data.Map(Map)
 import Data.List(nub)
 import qualified Data.Map as Map
-import Data.Foldable hiding (mapM_, any, concatMap, concat)
+import Data.Foldable hiding (mapM_, any, all, concatMap, concat)
 import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
@@ -519,15 +519,19 @@ combineEffSet = combineEff set
 combineEffSeq :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSeq = combineEff seq
 
--- combineSym symbols into 1 set symbol (always)
--- if there's no symbol, generate 1
+-- combineSym symbols into 1 symbol
 combineSym :: Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSym p ss = do
-  ss' <- mapM maybeGen ss
-  liftM Just $ genSym p ss'
-  where
-    maybeGen (Just s) = return s
-    maybeGen Nothing  = genSym (PTemporary TTemp) []
+combineSym p ss =
+  -- if there's no subsymbol at all, just gensym a temp
+  if all ((==) Nothing) ss then
+    liftM Just $ genSym (PTemporary TTemp) []
+  -- if we have some symbols, we must preserve them
+  else do
+    ss' <- mapM maybeGen ss
+    liftM Just $ genSym p ss'
+    where
+      maybeGen (Just s) = return s
+      maybeGen Nothing  = genSym (PTemporary TTemp) []
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSymSet = combineSym PSet
