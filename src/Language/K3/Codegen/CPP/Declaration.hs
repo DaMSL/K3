@@ -136,7 +136,7 @@ getSourceBuiltin k =
 genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead suf _ name = do
     let source_name = stripSuffix suf name
-    let e_has_r = R.Project (R.Variable $ R.Name "engine") (R.Name "hasRead")
+    let e_has_r = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasRead")
     let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive R.PBool) [] [body]
 
@@ -145,7 +145,7 @@ genDoRead suf typ name = do
     ret_type    <- genCType $ last $ children typ
     let source_name =  stripSuffix suf name
     let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
-    let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "doReadExternal")) []
+    let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "doReadExternal")) [R.Literal $ R.LString source_name]
     let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
@@ -167,7 +167,12 @@ genLoader suf (children -> [_,f]) name = do
  let err    = R.Binary "<<" (R.Variable $ R.Qualified (R.Name "std") (R.Name "cout")) (R.Literal $ R.LString "Failed to parse a row!\\n")
  let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
 
- let lamb = R.Lambda [R.RefCapture (Just ("rec", Nothing)), R.RefCapture (Just ("c", Nothing))] [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] Nothing [ite]
+ let lamb = R.Lambda
+             [R.RefCapture (Just ("rec", Nothing)), R.RefCapture (Just ("c", Nothing))]
+             [("str", R.Const $ R.Reference $ R.Named $ R.Qualified
+               (R.Name "std") (R.Name "string"))]
+             False Nothing
+             [ite]
  let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]

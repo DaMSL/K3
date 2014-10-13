@@ -42,7 +42,7 @@ import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction 
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool
-traceLogging = True
+traceLogging = False
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid traceLogging
@@ -102,7 +102,7 @@ defaultMetaAnalysis p = do
     liftError = either throwG
 
 defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
-defaultMetaRepair p = return $ repairProgram p
+defaultMetaRepair p = return $ repairProgram "metaprogram" p
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p

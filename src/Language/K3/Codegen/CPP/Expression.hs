@@ -207,7 +207,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     -- TODO: Handle `mutable' arguments.
     let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
-           , R.Lambda capture [(arg, hintedArgType)] Nothing body'
+           , R.Lambda capture [(arg, hintedArgType)] (not readOnly) Nothing body'
            )
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
@@ -302,8 +302,11 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
 
-    et <- getKType e
-    ec <- genCType et
+    -- Create types for the element and the pointer to said element
+    ept <- getKType e
+    epc <- genCType ept
+    et  <- getKType $ head $ children e
+    ec  <- genCType et
 
     (g, gd, ee) <- case tag e of
            -- Reuse an existing variable
@@ -311,7 +314,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
            _ -> do
              g  <- genSym
              ee <- reify (RName g) e
-             return (g, [R.Forward $ R.ScalarDecl (R.Name g) ec Nothing], ee)
+             return (g, [R.Forward $ R.ScalarDecl (R.Name g) epc Nothing], ee)
 
     se <- reify r s
     ne <- reify r n

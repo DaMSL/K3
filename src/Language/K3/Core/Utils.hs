@@ -26,6 +26,8 @@ module Language.K3.Core.Utils
 , biFoldMapTree
 , foldRebuildTree
 , foldMapRebuildTree
+, biFoldRebuildTree
+, biFoldMapRebuildTree
 , mapIn1RebuildTree
 , foldIn1RebuildTree
 , foldMapIn1RebuildTree
@@ -35,9 +37,15 @@ module Language.K3.Core.Utils
 , foldExpression
 , mapExpression
 
+, foldReturnExpression
+, foldMapReturnExpression
+, mapReturnExpression
+
 , freeVariables
 , bindingVariables
+, modifiedVariables
 , compareWithoutAnnotations
+
 , stripDeclAnnotations
 , stripExprAnnotations
 , stripTypeAnnotations
@@ -176,6 +184,42 @@ foldMapRebuildTree :: (Monad m)
 foldMapRebuildTree f x n@(Node _ []) = f [x] [] n
 foldMapRebuildTree f x n@(Node _ ch) =
     mapM (foldMapRebuildTree f x) ch >>= (\(a, b) -> f a b n) . unzip
+
+-- | Joint top-down and bottom-up traversal of a tree with both
+--   threaded accumulation and tree reconstruction.
+biFoldRebuildTree :: (Monad m)
+                  => (td -> Tree a -> m (td, [td]))
+                  -> (td -> bu -> [Tree a] -> Tree a -> m (bu, Tree a))
+                  -> td -> bu -> Tree a -> m (bu, Tree a)
+biFoldRebuildTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td buAcc [] n
+biFoldRebuildTree tdF buF tdAcc buAcc n@(Node _ ch) = do
+  (ntd, cntd) <- tdF tdAcc n
+  if (length cntd) /= (length ch)
+    then fail "Invalid top-down accumulation in biFoldRebuildTree"
+    else do
+      (nbu, nch) <- foldM rcrWAccumCh (buAcc, []) $ zip cntd ch
+      buF ntd nbu nch n
+
+  where
+    rcrWAccumCh (nbuAcc, chAcc) (ctd, c) = do
+      (rAcc, nc) <- biFoldRebuildTree tdF buF ctd nbuAcc c
+      return (rAcc, chAcc ++ [nc])
+
+-- | Joint top-down and bottom-up traversal of a tree with both
+--   independent accumulation and tree reconstruction.
+biFoldMapRebuildTree :: (Monad m)
+                     => (td -> Tree a -> m (td, [td]))
+                     -> (td -> [bu] -> [Tree a] -> Tree a -> m (bu, Tree a))
+                     -> td -> bu -> Tree a -> m (bu, Tree a)
+biFoldMapRebuildTree tdF buF tdAcc buAcc n@(Node _ []) = tdF tdAcc n >>= \(td,_) -> buF td [buAcc] [] n
+biFoldMapRebuildTree tdF buF tdAcc buAcc n@(Node _ ch) = do
+  (ntd, cntd) <- tdF tdAcc n
+  if (length cntd) /= (length ch)
+    then fail "Invalid top-down accumulation in biFoldMapRebuildTree"
+    else do
+      let rcr (ctd, c) = biFoldMapRebuildTree tdF buF ctd buAcc c
+      (nbu, nch) <- mapM rcr (zip cntd ch) >>= return . unzip
+      buF ntd nbu nch n
 
 -- | Rebuild a tree with explicit pre and post transformers applied to the first
 --   child of every tree node. This is useful for stateful monads that modify
@@ -325,8 +369,9 @@ mapProgram :: (Monad m)
             -> Maybe (K3 Type  -> m (K3 Type))
             -> K3 Declaration
             -> m (K3 Declaration)
-mapProgram declF annMemF exprF typeFOpt prog =
-    foldProgram (wrap declF) (wrap annMemF) (wrap exprF) (maybe Nothing (Just . wrap) $ typeFOpt) () prog >>= return . snd
+mapProgram declF annMemF exprF typeFOpt prog = do
+    (_, r) <- foldProgram (wrap declF) (wrap annMemF) (wrap exprF) (maybe Nothing (Just . wrap) $ typeFOpt) () prog
+    return r
   where wrap f _ x = f x >>= return . ((), )
 
 
@@ -343,6 +388,76 @@ mapExpression :: (Monad m)
 mapExpression exprF prog = foldProgram returnPair returnPair wrapExprF Nothing () prog >>= return . snd
   where returnPair a b = return (a,b)
         wrapExprF a e = exprF e >>= return . (a,)
+
+-- | Fold a function and accumulator over all return expressions in the program.
+--
+--   This function accepts a top-down aggregator, a bottom-up aggregator for return expressions
+--   and a bottom-up aggregator for non-return expressions.
+--   The top-down aggregator is applied to all expressions (e.g., to track lambda shadowing).
+--
+--   Return expressions are those expressions defining the return value of an arbitrary expression.
+--   For example, the body of a let-in is the return expression, not the binding expression.
+--   Each return expression is visited: consider an expression returning a tuple. Both the tuple
+--   constructor and individual tuple fields are return expressions, and they will all be visited.
+foldReturnExpression :: (Monad m)
+                     => (a -> K3 Expression -> m (a, [a]))
+                     -> (a -> b -> K3 Expression -> m (b, K3 Expression))
+                     -> (a -> b -> K3 Expression -> m (b, K3 Expression))
+                     -> a -> b -> K3 Expression
+                     -> m (b, K3 Expression)
+foldReturnExpression tdF onReturnF onNonReturnF tdAcc buAcc expr =
+  biFoldRebuildTree (skipChildrenForReturns tdF) skipOrApply (False, tdAcc) buAcc expr
+
+  where skipOrApply (skip, tdAcc') buAcc' ch e =
+          (if skip then onNonReturnF else onReturnF) tdAcc' buAcc' (replaceCh e ch)
+
+-- | Variant of the above with independent rather than serial bottom-up accumulations.
+foldMapReturnExpression :: (Monad m)
+                        => (a -> K3 Expression -> m (a, [a]))
+                        -> (a -> [b] -> K3 Expression -> m (b, K3 Expression))
+                        -> (a -> [b] -> K3 Expression -> m (b, K3 Expression))
+                        -> a -> b -> K3 Expression
+                        -> m (b, K3 Expression)
+foldMapReturnExpression tdF onReturnF onNonReturnF tdAcc buAcc expr =
+  biFoldMapRebuildTree (skipChildrenForReturns tdF) skipOrApply (False, tdAcc) buAcc expr
+
+  where skipOrApply (skip, tdAcc') buAcc' ch e =
+          (if skip then onNonReturnF else onReturnF) tdAcc' buAcc' (replaceCh e ch)
+
+skipChildrenForReturns :: (Monad m)
+                       => (a -> K3 Expression -> m (a, [a])) -> (Bool, a) -> K3 Expression
+                       -> m ((Bool, a), [(Bool, a)])
+skipChildrenForReturns tdF (skip, tdAcc) e =
+  let chSkip = replicate (length $ children e) True
+  in do { (nTd, chTd) <- tdF tdAcc e;
+          if skip then return ((True, nTd), zip chSkip chTd)
+          else skipChildren e >>= return . ((False, nTd),) . flip zip chTd }
+
+  where
+    skipChildren :: (Monad m) => K3 Expression -> m [Bool]
+    skipChildren (tag -> EOperate OApp) = return [False, True]
+    skipChildren (tag -> EOperate OSnd) = return [True, False]
+    skipChildren (tag -> EOperate OSeq) = return [True, False]
+
+    skipChildren (tag -> ELetIn  _)   = return [True, False]
+    skipChildren (tag -> EBindAs _)   = return [True, False]
+    skipChildren (tag -> ECaseOf _)   = return [True, False, False]
+    skipChildren (tag -> EIfThenElse) = return [True, False, False]
+
+    skipChildren e' = return $ replicate (length $ children e') False
+
+
+-- | Map a function over all return expressions.
+--   See definition of foldReturnExpression for more information.
+mapReturnExpression :: (Monad m)
+                    => (K3 Expression -> m (K3 Expression))
+                    -> (K3 Expression -> m (K3 Expression))
+                    -> K3 Expression -> m (K3 Expression)
+mapReturnExpression onReturnF nonReturnF expr =
+  foldReturnExpression tdF wrapRetF wrapNonRetF () () expr >>= return . snd
+  where tdF tdAcc e = return (tdAcc, replicate (length $ children e) tdAcc)
+        wrapRetF    _ a e = onReturnF  e >>= return . (a,)
+        wrapNonRetF _ a e = nonReturnF e >>= return . (a,)
 
 
 {- Expression utilities -}
@@ -363,6 +478,17 @@ bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+
+-- | Retrieves all variables modified in an expression.
+modifiedVariables :: K3 Expression -> [Identifier]
+modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
+  where
+    extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
+    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
+    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extractVariable chAcc _                    = return $ concat chAcc
 
 -- | Compares two expressions for identical AST structures while ignoring annotations
 --   (such as UIDs, spans, etc.)
@@ -426,8 +552,8 @@ stripAllTypeAnnotations = stripTypeAnnotations (const False)
 -- | Ensures every node has a valid UID and Span.
 --   This currently does not handle literals.
 
-repairProgram :: K3 Declaration -> K3 Declaration
-repairProgram p =
+repairProgram :: String -> K3 Declaration -> K3 Declaration
+repairProgram repairMsg p =
     let maxUid = (\case { UID i -> i }) $ maxProgramUID p
     in snd $ runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) (maxUid + 1) p
 
@@ -448,13 +574,13 @@ repairProgram p =
         validateMem uid anns =
           let (nuid, extraAnns) =
                 (\spa -> maybe (uid+1, [DUID $ UID uid]++spa) (const (uid, spa)) $ find isDUID anns)
-                  $ maybe ([DSpan $ GeneratedSpan "repair"]) (const []) $ find isDSpan anns
+                  $ maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
           in (nuid, anns ++ extraAnns)
 
         ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
           return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
-        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan "repair") t n
+        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
         ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
 
         addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)

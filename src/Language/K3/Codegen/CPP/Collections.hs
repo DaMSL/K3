@@ -116,6 +116,8 @@ record (sort -> ids) = do
     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
     let formalVars = ["_" ++ i | i <- ids]
 
+    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
+
     let defaultConstructor
             = R.FunctionDefn (R.Name recordName) [] Nothing
               [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
@@ -124,10 +126,15 @@ record (sort -> ids) = do
 
     let forwardTemplateVars = map ('_':) templateVars
 
+    let initArgsEnableIf fvs tvs
+            = case (fvs, tvs) of
+                ([fv], [tv]) -> [(fv, R.RValueReference $ R.Named $ R.Qualified (R.Name "std")
+                      (R.Specialized [R.Named $ R.Name tv, recordType] (R.Name "is_unrelated_type")))]
+                _ -> [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- fvs | tv <- tvs]
+
     let initConstructor
             = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
-              R.FunctionDefn (R.Name recordName)
-              [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- formalVars | tv <- forwardTemplateVars] Nothing
+              R.FunctionDefn (R.Name recordName) (initArgsEnableIf formalVars forwardTemplateVars) Nothing
               [ R.Call (R.Variable $ R.Name i)
                            [R.Call (R.Variable $ R.Qualified (R.Name "std")
                                          (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
@@ -136,8 +143,6 @@ record (sort -> ids) = do
               | f <- formalVars
               | t <- forwardTemplateVars
               ] []
-
-    let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
 
     let copyConstructor
             = R.FunctionDefn (R.Name recordName)
@@ -244,7 +249,7 @@ record (sort -> ids) = do
 
     let oneFieldParserAction f
             = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
-              [("_partial", R.Primitive R.PString)] Nothing
+              [("_partial", R.Primitive R.PString)] False Nothing
               [R.Ignore $ doPatchInvocation f]
 
     let oneFieldParserDecl f

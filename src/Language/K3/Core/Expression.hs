@@ -146,7 +146,7 @@ instance Pretty (K3 Expression) where
 
     prettyLines (Node (EConstant (CEmpty t) :@: as) []) =
       let (annStr, pAnnStrs) = drawExprAnnotations as
-      in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " pAnnStrs) ++ ["|"] ++ prettyLines t
+      in ["EConstant CEmpty" ++ annStr] ++ (shift "+- " "|  " pAnnStrs) ++ ["|"] ++ terminalShift t
 
     prettyLines (Node (t :@: as) es) =
       let (annStr, pAnnStrs) = drawExprAnnotations as
