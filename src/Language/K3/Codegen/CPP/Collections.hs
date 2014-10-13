@@ -46,14 +46,16 @@ composite name ans = do
 
     let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
-    let defaultConstructor = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] []
+    let defaultConstructor = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
     let copyConstructor = R.FunctionDefn (R.Name name) [("__other", R.Const $ R.Reference selfType)] Nothing
-                          [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] []
+                          [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] False []
 
     let superConstructor = R.FunctionDefn (R.Name name)
                              [("__other" ++ show i, R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
                              Nothing
-                             [R.Call (R.Variable b) [R.Variable $ R.Name $ "__other" ++ show i] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]                                []
+                             [R.Call (R.Variable b)
+                               [R.Variable $ R.Name $ "__other" ++ show i] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
+                             False []
 
     let superMoveConstructor = R.FunctionDefn (R.Name name)
                              [("__other" ++ show i, R.RValueReference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
@@ -66,7 +68,7 @@ composite name ans = do
                                ]
                              | (b,i) <- zip baseClasses ([1..] :: [Integer])
                              ]
-                             []
+                             False []
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
                               (R.Variable $
@@ -83,11 +85,11 @@ composite name ans = do
                             , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
                             ]
                        (Just $ R.Named $ R.Name "void")
-                       [] serializeStatements)
+                       [] False serializeStatements)
 
     let patcherFnDefn
             = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_c", R.Reference selfType)]
-              (Just $ R.Named $ R.Name "static void") []
+              (Just $ R.Named $ R.Name "static void") [] False
               [R.Ignore $
                 R.Call (
                   R.Variable $ R.Qualified
@@ -120,19 +122,19 @@ record (sort -> ids) = do
 
     let defaultConstructor
             = R.FunctionDefn (R.Name recordName) [] Nothing
-              [R.Call (R.Variable $ R.Name i) [] | i <- ids] []
+              [R.Call (R.Variable $ R.Name i) [] | i <- ids] False []
 
     -- Forwarding constructor. One should be sufficient to handle all field-based constructions.
 
     let forwardTemplateVars = map ('_':) templateVars
 
     let init1Const fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.Const $ R.Reference $ R.Named $ R.Name tv)]
-                             Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name fv]] []
+                             Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name fv]] False []
 
     let init1Move fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.RValueReference $ R.Named $ R.Name tv)]
                             Nothing [R.Call (R.Variable $ R.Name i)
                                           [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                                                [R.Variable $ R.Name fv]]] []
+                                                [R.Variable $ R.Name fv]]] False []
 
     let initConstructor
             = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
@@ -145,7 +147,7 @@ record (sort -> ids) = do
               | i <- ids
               | f <- formalVars
               | t <- forwardTemplateVars
-              ] []
+              ] False []
 
 
     let initConstructors = case (formalVars, templateVars, ids) of
@@ -154,7 +156,8 @@ record (sort -> ids) = do
     let copyConstructor
             = R.FunctionDefn (R.Name recordName)
               [("__other", R.Const $ R.Reference recordType)] Nothing
-              [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids] []
+              [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids]
+              False []
 
     let moveConstructor
             = R.FunctionDefn (R.Name recordName)
@@ -167,22 +170,22 @@ record (sort -> ids) = do
                   ]
                 | i <-  ids
                 ]
-                []
+                False []
 
     let copyAssign
             = R.FunctionDefn (R.Name "operator=")
                 [("__other", R.Const $ R.Reference recordType)]
                 (Just $ R.Reference recordType)
-                []
+                [] False
                 ([ R.Ignore $ R.Binary "=" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
-                | i <- ids
-                ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
+                  | i <- ids
+                  ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
 
     let moveAssign
             = R.FunctionDefn (R.Name "operator=")
                 [("__other",  R.RValueReference recordType)]
                 (Just $ R.Reference recordType)
-                []
+                [] False
                 ([ R.Ignore $ R.Binary "="
                   (R.Variable $ R.Name i)
                   (R.Call
@@ -194,6 +197,7 @@ record (sort -> ids) = do
     let equalityOperator
             = R.FunctionDefn (R.Name "operator==")
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              True
               [R.Return $ foldr1 (R.Binary "&&")
                     [ R.Binary "==" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
                     | i <- ids
@@ -204,17 +208,20 @@ record (sort -> ids) = do
 
     let inequalityOperator
             = R.FunctionDefn (R.Name "operator!=")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
+              [] True
               [R.Return $ R.Binary "!=" tieSelf (tieOther "__other")]
 
     let lessOperator
             = R.FunctionDefn (R.Name "operator<")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
+              [] True
               [R.Return $ R.Binary "<" tieSelf (tieOther "__other")]
 
     let greaterOperator
             = R.FunctionDefn (R.Name "operator>")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
+              [] True
               [R.Return $ R.Binary ">" tieSelf (tieOther "__other")]
 
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
@@ -231,7 +238,7 @@ record (sort -> ids) = do
                             , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
                             ]
                        (Just $ R.Named $ R.Name "void")
-                       [] serializeStatements)
+                       [] False serializeStatements)
 
     let operators = [copyAssign, moveAssign, equalityOperator, inequalityOperator, lessOperator, greaterOperator]
     let members = [defaultConstructor] ++ initConstructors ++ [copyConstructor, moveConstructor,  serializeFn] ++ operators ++ fieldDecls
@@ -302,7 +309,7 @@ record (sort -> ids) = do
 
     let patcherFnDefn
             = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_record", R.Reference recordType)]
-              (Just $ R.Named $ R.Name "static void") []
+              (Just $ R.Named $ R.Name "static void") [] False
               ([shallowDecl] ++ allFieldParserDecls ++ [fieldParserDecl, recordParserDecl, R.Ignore parseInvocation])
 
     let patcherStructDefn
@@ -313,7 +320,8 @@ record (sort -> ids) = do
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.FunctionDefn (R.Name "hash_value")
-                  [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) []
+                  [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
+                  [] False
                       [R.Forward $ R.ScalarDecl (R.Name "hasher")
                         (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]] (R.Name "hash"))) Nothing,
                        R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]]

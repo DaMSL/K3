@@ -117,6 +117,7 @@ indexes name ans = do
                        [("key", c_t)]
                        (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
                        []
+                       False
                        [R.Return $ look k_t]
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
@@ -149,6 +150,7 @@ indexes name ans = do
                        [("a", c_t), ("b", c_t)]
                        (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
                        []
+                       False
                        [R.Return $ slice k_t]
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
