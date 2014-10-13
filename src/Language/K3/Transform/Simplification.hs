@@ -1116,7 +1116,6 @@ fuseTransformers expr = mapTree (flip $ curry fuse) expr
 
     rewriteUnaryTernary _ _ _ = Left $ "Invalid unary-ternary rewrite"
 
-    -- TODO: simplify and inline function bodies where possible.
     composeUnaryPair g f =
       EC.lambda "x" $ EC.applyMany g [EC.applyMany f [EC.variable "x"]]
 
@@ -1170,6 +1169,10 @@ fuseTransformers expr = mapTree (flip $ curry fuse) expr
                                                  %+ [" "] %+ prettyLines e
 
 -- | Infer return points in expressions that are collection insertions to the given variable.
+--   Every return expression must be one of:
+--     i.   accumulating expression
+--     ii.  alias (for now we consider only the exact variable, not equivalent bnds)
+--     iii. a branching expression composed only of accumulating expression and alias children.
 mapAccumulation :: (K3 Expression -> K3 Expression)
                 -> (K3 Expression -> K3 Expression)
                 -> Identifier -> K3 Expression -> (Bool, K3 Expression)
@@ -1201,12 +1204,7 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
 
       where onBinding sp j = if i == j then (True, False) else sp
 
-    -- TODO: every return expression must be one of:
-    --   i.   accumulating expression
-    --   ii.  alias (for now we consider only the exact variable, not equivalent bnds)
-    --   iii. a branching expression composed only of accumulating expression and alias children.
     -- TODO: using symbols as lineage here will provide better alias tracking.
-
     -- TODO: test in-place modification property
     returnAsAccumulator (shadowed, _) _ e@(InsertAndReturn j "insert" v)
       | i == j && not shadowed && notAccessedIn v = return (Right True, onAccumF e)
