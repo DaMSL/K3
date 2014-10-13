@@ -1,4 +1,0 @@
-# Blah
-
-- name: Generate K-Means data
-  shell: "/damsl/projects/k3/driver/scripts/kmeans_generator.py > /local/means1.txt"
