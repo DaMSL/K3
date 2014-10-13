@@ -126,15 +126,18 @@ record (sort -> ids) = do
 
     let forwardTemplateVars = map ('_':) templateVars
 
-    let initArgsEnableIf fvs tvs
-            = case (fvs, tvs) of
-                ([fv], [tv]) -> [(fv, R.RValueReference $ R.Named $ R.Qualified (R.Name "std")
-                      (R.Specialized [R.Named $ R.Name tv, recordType] (R.Name "is_unrelated_type")))]
-                _ -> [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- fvs | tv <- tvs]
+    let init1Const fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.Const $ R.Reference $ R.Named $ R.Name tv)]
+                             Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name fv]] []
+
+    let init1Move fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.RValueReference $ R.Named $ R.Name tv)]
+                            Nothing [R.Call (R.Variable $ R.Name i)
+                                          [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                                                [R.Variable $ R.Name fv]]] []
 
     let initConstructor
             = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
-              R.FunctionDefn (R.Name recordName) (initArgsEnableIf formalVars forwardTemplateVars) Nothing
+              R.FunctionDefn (R.Name recordName)
+              [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- formalVars | tv <- forwardTemplateVars] Nothing
               [ R.Call (R.Variable $ R.Name i)
                            [R.Call (R.Variable $ R.Qualified (R.Name "std")
                                          (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
@@ -144,6 +147,10 @@ record (sort -> ids) = do
               | t <- forwardTemplateVars
               ] []
 
+
+    let initConstructors = case (formalVars, templateVars, ids) of
+                             ([fv], [tv], [i]) -> [init1Const fv tv i, init1Move fv tv i]
+                             _ -> [initConstructor]
     let copyConstructor
             = R.FunctionDefn (R.Name recordName)
               [("__other", R.Const $ R.Reference recordType)] Nothing
@@ -227,7 +234,7 @@ record (sort -> ids) = do
                        [] serializeStatements)
 
     let operators = [copyAssign, moveAssign, equalityOperator, inequalityOperator, lessOperator, greaterOperator]
-    let members = [defaultConstructor, initConstructor, copyConstructor, moveConstructor,  serializeFn] ++ operators ++ fieldDecls
+    let members = [defaultConstructor] ++ initConstructors ++ [copyConstructor, moveConstructor,  serializeFn] ++ operators ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $
