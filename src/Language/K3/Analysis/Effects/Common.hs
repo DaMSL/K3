@@ -6,6 +6,7 @@ module Language.K3.Analysis.Effects.Common where
 import Prelude hiding (any)
 import Data.Foldable
 import Data.Monoid
+import Data.Maybe
 
 import qualified Data.Set as S
 
@@ -24,9 +25,9 @@ anySuperStructure :: K3 Symbol -> S.Set (K3 Symbol)
 anySuperStructure s = S.insert s (S.unions $ map anySuperStructure (children s))
 
 hasRead :: K3 Symbol -> K3 Effect -> Bool
-hasRead s (tag -> FRead k) = s == k
+hasRead s (tag -> FRead k) = fromJust (k @~ isSID) == fromJust (s @~ isSID)
 hasRead s (children -> cs) = any (hasRead s) cs
 
 hasWrite :: K3 Symbol -> K3 Effect -> Bool
-hasWrite s (tag -> FWrite k) = s == k
+hasWrite s (tag -> FWrite k) = fromJust (k @~ isSID) == fromJust (s @~ isSID)
 hasWrite s (children -> cs) = any (hasWrite s) cs
