@@ -61,24 +61,35 @@ inferEffects prog = return $ Effects.runConsolidatedAnalysis prog
 inferTypesAndEffects :: ProgramTransform
 inferTypesAndEffects p = inferEffects =<< inferTypes p
 
+inferFreshTypes :: ProgramTransform
+inferFreshTypes = inferTypes . stripTypeAnns
+
+inferFreshEffects :: ProgramTransform
+inferFreshEffects = inferEffects . stripEffectAnns
+
+inferFreshTypesAndEffects :: ProgramTransform
+inferFreshTypesAndEffects = inferTypesAndEffects . stripTypeAndEffectAnns
+
 withTypecheck :: ProgramTransform -> ProgramTransform
 withTypecheck transformF prog = transformF =<< inferTypes prog
-
-wrapTypecheck :: ProgramTransform -> ProgramTransform
-wrapTypecheck transformF prog = inferTypes . stripTypeAnns =<< withTypecheck transformF prog
 
 withEffects :: ProgramTransform -> ProgramTransform
 withEffects transformF prog = transformF =<< inferEffects prog
 
-wrapEffects :: ProgramTransform -> ProgramTransform
-wrapEffects transformF prog = inferEffects . stripEffectAnns =<< withEffects transformF prog
-
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
 withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
 
+{-
+wrapTypecheck :: ProgramTransform -> ProgramTransform
+wrapTypecheck transformF prog = inferFreshTypes =<< withTypecheck transformF prog
+
+wrapEffects :: ProgramTransform -> ProgramTransform
+wrapEffects transformF prog = inferFreshEffects =<< withEffects transformF prog
+
 wrapTypeAndEffects :: ProgramTransform -> ProgramTransform
 wrapTypeAndEffects transformF prog =
-  inferTypesAndEffects . stripTypeAndEffectAnns =<< withTypeAndEffects transformF prog
+  inferFreshTypesAndEffects =<< withTypeAndEffects transformF prog
+-}
 
 withProperties :: ProgramTransform -> ProgramTransform
 withProperties transformF prog = transformF =<< inferProgramUsageProperties prog
@@ -108,11 +119,11 @@ effectPasses :: [ProgramTransform]
 effectPasses = [return . Purity.runPurity]
 
 optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
-                           , (streamFusion, "opt-fuse")
-                           , (simplify,     "opt-simplify-final") ]
-  where prepareOpt (f,i) = withPasses $ [inferTypesAndEffects . stripTypeAndEffectAnns]
-                                        ++ effectPasses ++ [withRepair i f]
+optPasses = map prepareOpt [ (simplifyWCSE,  "opt-simplify-prefuse")
+                           , (streamFusion,     "opt-fuse")
+                           , (simplifyWCSE,  "opt-simplify-final") ]
+  where prepareOpt (f,i) =
+          withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 
 cgPasses :: [ProgramTransform]
 cgPasses = [return . writebackOpt, return . lambdaFormOptD]
