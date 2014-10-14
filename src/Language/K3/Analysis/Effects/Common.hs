@@ -10,6 +10,7 @@ import Control.Arrow ((&&&))
 import Data.Foldable
 import Data.Monoid
 import Data.Maybe
+import Data.Tree
 
 import qualified Data.Set as S
 
@@ -37,8 +38,15 @@ hasWrite s (tag -> FWrite k) = fromJust (k @~ isSID) == fromJust (s @~ isSID)
 hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
 
+argHasWrite :: K3 Symbol -> Bool
+argHasWrite s@(Node (Symbol _ (PLambda _ (Node (FScope [binding] _ :@: _) effects)) :@: _) ss)
+    = hasWriteInFunction binding s
+argHasWrite _ = False
+
 hasWriteInFunction :: K3 Symbol -> K3 Symbol -> Bool
 hasWriteInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), [])) = hasWrite s f
 hasWriteInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), cs))
     = hasWrite s f || any (hasWriteInFunction s) cs
+hasWriteInFunction s (tag &&& children -> ((Symbol _ PApply), [f, k]))
+    = hasWriteInFunction s f || (fromJust (k @~ isSID) == fromJust (s @~ isSID) && argHasWrite f)
 hasWriteInFunction _ _ = False
