@@ -22,7 +22,7 @@ import Language.K3.Utils.Pretty
 testProgram :: String
 testProgram = unlines $ [
     "include \"Annotation/Collection.k3\""
-  , groupByFoldMapMapProg
+  , simpleProg
   ]
 
 streamableProg :: String
@@ -299,24 +299,6 @@ groupByFoldMapProg = "\
   \ )                                                                       \
   \ "
 
---groupByFoldMapMapProg :: String
---groupByFoldMapMapProg = "\
---  \ typedef MyC = collection {a:int} @Collection                              \
---  \ declare c : MyC                                                           \
---  \ declare d : MyC                                                           \
---  \ trigger t : () = \\_ -> (                                                 \
---  \   let x = ((((c.groupBy (\\r -> r.a + 2)                                  \
---  \                       (\\acc -> \\r -> acc + 1)                           \
---  \                       0)                                                  \
---  \                .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
---  \                         (empty {a:int} @Collection))                      \
---  \                .map     (\\r -> r.a + 4))                                 \
---  \                .map     (\\r -> r.elem + 7))                              \
---  \   in                                                                      \
---  \   c.insert {a:5}                                                          \
---  \ )                                                                         \
---  \ "
-
 groupByFoldMapMapProg :: String
 groupByFoldMapMapProg = "\
   \ typedef MyC = collection {a:int} @Collection                     \
@@ -334,19 +316,26 @@ groupByFoldMapMapProg = "\
   \ )                                                                \
   \ "
 
+simpleProg :: String
+simpleProg = "\
+  \ declare c : mut int = 0                                          \
+  \ trigger t : () = \\_ -> (                                        \
+  \    c = ((\\x -> x + 1) 5)                                        \
+  \ )                                                                \
+  \ "
 
 doPurity :: K3 Declaration -> K3 Declaration
-doPurity p = runPurity $ runAnalysis p
+doPurity p = runPurity $ runConsolidatedAnalysis p
 
 doFusionInference :: K3 Declaration -> Either String (K3 Declaration)
 doFusionInference p = do
-  pWithProp <- inferProgramUsageProperties p {-(doPurity p)-}
-  --inferFusableProgramApplies pWithProp
-  pWithFuse <- inferFusableProgramApplies pWithProp
-  fuseProgramTransformers pWithFuse
+  pWithProp <- inferProgramUsageProperties (doPurity p)
+  inferFusableProgramApplies pWithProp
+  --pWithFuse <- inferFusableProgramApplies pWithProp
+  --fuseProgramTransformers pWithFuse
 
 doOptimization :: K3 Declaration -> Either String (K3 Declaration)
-doOptimization p = return . stripAllProperties . stripAllTypeAndEffectAnns =<< runOptPasses p
+doOptimization p = return {-. stripAllProperties-} . stripAllTypeAndEffectAnns =<< runOptPasses p
 
 main :: IO ()
 main = do
@@ -357,5 +346,5 @@ main = do
     Right parsedP -> do
       progE <- evalMetaprogram Nothing Nothing Nothing parsedP
       (flip $ either $ putStrLn . show) progE $ \p ->
-        (flip $ either putStrLn) (doOptimization p)  $ \fp ->
+        (flip $ either putStrLn) (doFusionInference p)  $ \fp ->
           putStrLn $ pretty fp

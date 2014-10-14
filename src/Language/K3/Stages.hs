@@ -11,6 +11,7 @@ import Language.K3.Core.Utils
 import Language.K3.Analysis.Properties
 import Language.K3.Analysis.HMTypes.Inference
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
+import qualified Language.K3.Analysis.Effects.Purity        as Purity
 
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
@@ -55,7 +56,10 @@ inferTypes :: ProgramTransform
 inferTypes prog = translateProgramTypes =<< inferProgramTypes prog
 
 inferEffects :: ProgramTransform
-inferEffects prog = return $ Effects.runAnalysis prog
+inferEffects prog = return $ Effects.runConsolidatedAnalysis prog
+
+inferTypesAndEffects :: ProgramTransform
+inferTypesAndEffects p = inferEffects =<< inferTypes p
 
 withTypecheck :: ProgramTransform -> ProgramTransform
 withTypecheck transformF prog = transformF =<< inferTypes prog
@@ -74,14 +78,16 @@ withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes 
 
 wrapTypeAndEffects :: ProgramTransform -> ProgramTransform
 wrapTypeAndEffects transformF prog =
-  inferEffectsAndTypes . stripTypeAndEffectAnns =<< withTypeAndEffects transformF prog
-  where inferEffectsAndTypes p = inferEffects =<< inferTypes p
+  inferTypesAndEffects . stripTypeAndEffectAnns =<< withTypeAndEffects transformF prog
 
 withProperties :: ProgramTransform -> ProgramTransform
 withProperties transformF prog = transformF =<< inferProgramUsageProperties prog
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg transformF prog = return . repairProgram msg =<< transformF prog
+
+withPasses :: [ProgramTransform] -> ProgramTransform
+withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
 simplify prog = do
@@ -96,13 +102,17 @@ streamFusion :: ProgramTransform
 streamFusion = withProperties $ \p -> fuseProgramTransformers =<< inferFusableProgramApplies p
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration)
-runPasses passes prog = foldM (flip ($!)) prog passes
+runPasses = withPasses
+
+effectPasses :: [ProgramTransform]
+effectPasses = [return . Purity.runPurity]
 
 optPasses :: [ProgramTransform]
-optPasses = map (\(f,i) -> wrapTypecheck $ withRepair i f)
-              [ (simplify,     "opt-simplify-prefuse")
-              , (streamFusion, "opt-fuse")
-              , (simplify,     "opt-simplify-final") ]
+optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
+                           , (streamFusion, "opt-fuse")
+                           , (simplify,     "opt-simplify-final") ]
+  where prepareOpt (f,i) = withPasses $ [inferTypesAndEffects . stripTypeAndEffectAnns]
+                                        ++ effectPasses ++ [withRepair i f]
 
 cgPasses :: [ProgramTransform]
 cgPasses = [return . writebackOpt, return . lambdaFormOptD]
