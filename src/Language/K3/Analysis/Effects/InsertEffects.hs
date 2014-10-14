@@ -18,6 +18,9 @@ module Language.K3.Analysis.Effects.InsertEffects (
   preprocessBuiltins,
   runAnalysis,
   runAnalysisEnv,
+  buildEnv,
+  applyLambda,
+  applyLambdaEnv,
   runConsolidatedAnalysis
 )
 where
@@ -722,7 +725,6 @@ buildEnv n = snd $ flip runState startEnv $
           insertGlobalM i s
           return n
         _          -> return n
-
     highestDeclId n = do
       case n @~ isDSymbol of
         Just (DSymbol s) -> highestSymId s
@@ -754,21 +756,22 @@ buildEnv n = snd $ flip runState startEnv $
                         Nothing      -> c
       put $ env {count=maxCount}
 
+applyLambdaEnv :: Env -> K3 Symbol -> K3 Symbol -> (Maybe (K3 Effect, K3 Symbol), Env)
+applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
 
--- TODO: we need to substitute for every (effect,symbol) pair inside the lambda
--- AST, given a target id to substitute for
---
 -- If the symbol is a global, substitute from the global environment
-
 -- Apply (substitute) a symbol into a lambda symbol, generating effects and a new symbol
 -- If we return Nothing, we cannot apply yet because of a missing lambda
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
 applyLambda sArg sLam =
     case tnc sLam of
       (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
+        -- Dummy substitute into the argument, in case there's an application there
+        -- Any effects won't be substituted in and will be visible outside
+        sArg'   <- subSymTree sOld sOld sArg
         -- Substitute into the old effects and symbol
-        e'      <- subEffTree sOld sArg lamEff
-        chSym'  <- subSymTree sOld sArg chSym
+        e'      <- subEffTree sOld sArg' lamEff
+        chSym'  <- subSymTree sOld sArg' chSym
         return $ Just (e', chSym')
 
       (Symbol _ PGlobal, [ch]) -> applyLambda sArg ch
@@ -796,9 +799,9 @@ applyLambda sArg sLam =
     -- Returns possible result effects and the new symbol
     subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 
-    subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return s'
+    subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
 
-    -- Apply: recurse
+    -- Apply: recurse (we already substituted into the children)
     subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
       x <- applyLambda sA sL
       return $ maybe n snd x
