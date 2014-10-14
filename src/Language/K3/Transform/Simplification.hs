@@ -472,6 +472,10 @@ eliminateDeadCode expr = mapTree pruneExpr expr
         return $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE
                $ zip ids fieldsE
 
+      -- Immediate option bindings
+      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> return $ maybe e (const someE) $ sE @~ isEPure
+      (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
+
       -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
       -- These strip UID and Span annotations due to duplication following the rewrite.
       (PCaseOf (PCaseOf optE i isomeE inoneE icAs) j jsomeE jnoneE jcAs) ->
@@ -1291,6 +1295,9 @@ pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
 pattern PInd     iE          iAs   = Node (EIndirect     :@: iAs)   [iE]
 pattern PRec     ids fieldsE rAs   = Node (ERecord ids   :@: rAs)   fieldsE
 pattern PTup         fieldsE tAs   = Node (ETuple        :@: tAs)   fieldsE
+
+pattern PSome sE optAs = Node (ESome :@: optAs) [sE]
+pattern PNone nm optAs = Node (EConstant (CNone nm) :@: optAs) []
 
 pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
 pattern PCaseOf      caseE varId someE noneE cAs = Node (ECaseOf varId :@: cAs) [caseE, someE, noneE]

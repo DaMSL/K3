@@ -15,6 +15,8 @@ import Language.K3.Metaprogram.Evaluation
 import Language.K3.Parser.DataTypes
 import Language.K3.Parser
 
+import Language.K3.Stages
+
 import Language.K3.Utils.Pretty
 
 testProgram :: String
@@ -297,22 +299,39 @@ groupByFoldMapProg = "\
   \ )                                                                       \
   \ "
 
+--groupByFoldMapMapProg :: String
+--groupByFoldMapMapProg = "\
+--  \ typedef MyC = collection {a:int} @Collection                              \
+--  \ declare c : MyC                                                           \
+--  \ declare d : MyC                                                           \
+--  \ trigger t : () = \\_ -> (                                                 \
+--  \   let x = ((((c.groupBy (\\r -> r.a + 2)                                  \
+--  \                       (\\acc -> \\r -> acc + 1)                           \
+--  \                       0)                                                  \
+--  \                .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
+--  \                         (empty {a:int} @Collection))                      \
+--  \                .map     (\\r -> r.a + 4))                                 \
+--  \                .map     (\\r -> r.elem + 7))                              \
+--  \   in                                                                      \
+--  \   c.insert {a:5}                                                          \
+--  \ )                                                                         \
+--  \ "
+
 groupByFoldMapMapProg :: String
 groupByFoldMapMapProg = "\
-  \ typedef MyC = collection {a:int} @Collection                              \
-  \ declare c : MyC                                                           \
-  \ declare d : MyC                                                           \
-  \ trigger t : () = \\_ -> (                                                 \
-  \   let x = ((((c.groupBy (\\r -> r.a + 2)                                  \
-  \                       (\\acc -> \\r -> acc + 1)                           \
-  \                       0)                                                  \
-  \                .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
-  \                         (empty {a:int} @Collection))                      \
-  \                .map     (\\r -> r.a + 4))                                 \
-  \                .map     (\\r -> r.elem + 7))                              \
-  \   in                                                                      \
-  \   c.insert {a:5}                                                          \
-  \ )                                                                         \
+  \ typedef MyC = collection {a:int} @Collection                     \
+  \ declare c : MyC                                                  \
+  \ declare d : MyC                                                  \
+  \ trigger t : () = \\_ -> (                                        \
+  \ (((((c.groupBy (\\r -> r.a + 2)                                  \
+  \                (\\acc -> \\r -> acc + 1)                         \
+  \                0)                                                \
+  \       .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
+  \                (empty {a:int} @Collection))                      \
+  \       .map     (\\r -> r.a + 4))                                 \
+  \       .map     (\\r -> r.elem + 7))                              \
+  \       .iterate (\\r -> ()))                                      \
+  \ )                                                                \
   \ "
 
 
@@ -326,6 +345,8 @@ doFusionInference p = do
   pWithFuse <- inferFusableProgramApplies pWithProp
   fuseProgramTransformers pWithFuse
 
+doOptimization :: K3 Declaration -> Either String (K3 Declaration)
+doOptimization p = return . stripAllProperties . stripAllTypeAndEffectAnns =<< runOptPasses p
 
 main :: IO ()
 main = do
@@ -336,5 +357,5 @@ main = do
     Right parsedP -> do
       progE <- evalMetaprogram Nothing Nothing Nothing parsedP
       (flip $ either $ putStrLn . show) progE $ \p ->
-        (flip $ either putStrLn) (doFusionInference p)  $ \fp ->
+        (flip $ either putStrLn) (doOptimization p)  $ \fp ->
           putStrLn $ pretty fp
