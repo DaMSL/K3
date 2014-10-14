@@ -29,7 +29,7 @@ import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
 import qualified Language.K3.Analysis.InsertMembers as InsertMembers
 import qualified Language.K3.Analysis.CArgs as CArgs
 
-import Language.K3.Optimization (runOptimization)
+import Language.K3.Stages (runOptimization)
 
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
