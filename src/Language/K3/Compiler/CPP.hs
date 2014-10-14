@@ -29,7 +29,7 @@ import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
 import qualified Language.K3.Analysis.CArgs as CArgs
 import qualified Language.K3.Analysis.Effects.Purity as Purity
 
-import Language.K3.Stages (runOptimization)
+import Language.K3.Stages ( runCGPasses )
 
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
@@ -79,9 +79,9 @@ applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = case optimizationLevel cOpts of
   Nothing -> prog
   -- TODO: simple flag for now
-  -- runOptimization could take a list of required optimization passes
+  -- runCGPasses could take a list of required optimization passes
   -- for the various levels of optimization
-  Just _  -> runOptimization prog
+  Just _  -> either (error "Invalid result from runCGPasses") id $ runCGPasses prog
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
