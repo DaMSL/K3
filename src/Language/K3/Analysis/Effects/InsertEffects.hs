@@ -17,7 +17,8 @@ module Language.K3.Analysis.Effects.InsertEffects (
   Env,
   preprocessBuiltins,
   runAnalysis,
-  runAnalysisEnv
+  runAnalysisEnv,
+  runConsolidatedAnalysis
 )
 where
 
@@ -40,6 +41,8 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
+
+import qualified Language.K3.Analysis.InsertMembers as IM
 
 type GlobalEnv = Map Identifier (K3 Symbol)
 type LocalEnv  = Map Identifier [K3 Symbol]
@@ -345,6 +348,8 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 runAnalysis :: K3 Declaration -> K3 Declaration
 runAnalysis = runAnalysisEnv startEnv
 
+runConsolidatedAnalysis :: K3 Declaration -> K3 Declaration
+runConsolidatedAnalysis d = let (p, env) = preprocessBuiltins d in runAnalysisEnv env (IM.runAnalysis p)
 
 runAnalysisEnv :: Env -> K3 Declaration -> K3 Declaration
 runAnalysisEnv env prog = flip evalState env $
