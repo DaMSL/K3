@@ -185,8 +185,7 @@ getOrGenSymbol n = case getESymbol n of
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
 createClosure :: K3 Effect -> MEnv ClosureInfo
-createClosure n = foldTree addClosure ([],[],[]) n >>=
-                  return . nubtuple
+createClosure n = liftM nubTuple $ foldTree addClosure ([],[],[]) n
   where
     nubtuple (a,b,c) = (nub a, nub b, nub c)
 
@@ -216,7 +215,7 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
           -- if we haven't found a match, it might be deeper in the tree
           liftM concat $ mapM getClosureSyms ch
 
-        
+
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
     handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
@@ -236,7 +235,7 @@ addAllGlobals n = mapProgram preHandleDecl mId mId Nothing n
     preHandleDecl n = return n
 
 mId :: Monad m => a -> m a
-mId x = return x
+mId = return
 
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s') = s == s'
@@ -269,9 +268,9 @@ wrapEffFn effFn symFn n =
       sA' <- mapSym effFn symFn sA
       effFn $ replaceTag n $ FApply sL' sA'
     _ -> effFn n
-    
+
 wrapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
-wrapSymFn effFn symFn n = 
+wrapSymFn effFn symFn n =
   case tag n of
     Symbol x (PLambda y e) -> do
       e' <- mapEff effFn symFn e
@@ -586,7 +585,7 @@ runAnalysisEnv env prog = flip evalState env $
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- Projection
-    handleExpr ch@[e] n@(tag -> EProject i) = do
+    handleExpr ch@[e] n@(tag -> EProject i) =
       -- Check in the type system for a function in a collection
       case (e @~ isEType, n @~ isEType) of
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
@@ -742,7 +741,7 @@ combineEffSeq = combineEff seq
 combineSym :: Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSym p ss =
   -- if there's no subsymbol at all, just gensym a temp
-  if all ((==) Nothing) ss then
+  if all (Nothing ==) ss then
     liftM Just $ genSym (PTemporary TTemp) []
   -- if we have some symbols, we must preserve them
   else do
@@ -775,7 +774,7 @@ buildEnv n = snd $ flip runState startEnv $
           insertGlobalM i s
           return n
         _          -> return n
-    highestDeclId n = do
+    highestDeclId n =
       case n @~ isDSymbol of
         Just (DSymbol s) -> highestSymId s
         _ -> return ()
