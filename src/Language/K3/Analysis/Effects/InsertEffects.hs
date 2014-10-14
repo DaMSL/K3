@@ -602,7 +602,8 @@ runAnalysisEnv env prog = flip evalState env $
               eSym    <- getOrGenSymbol e
               -- Create a lambda application for self
               sApp    <- genSym PApply [sLam, eSym]
-              return $ addEffSymCh Nothing (Just sApp) ch n
+              eApp    <- addFID $ apply sLam eSym
+              return $ addEffSymCh (Just eApp) (Just sApp) ch n
 
         _ -> do -- not a collection member function
           eSym <- getOrGenSymbol e
