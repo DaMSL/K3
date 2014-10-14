@@ -26,8 +26,10 @@ anySuperStructure s = S.insert s (S.unions $ map anySuperStructure (children s))
 
 hasRead :: K3 Symbol -> K3 Effect -> Bool
 hasRead s (tag -> FRead k) = fromJust (k @~ isSID) == fromJust (s @~ isSID)
+hasRead _ (children -> []) = False
 hasRead s (children -> cs) = any (hasRead s) cs
 
 hasWrite :: K3 Symbol -> K3 Effect -> Bool
 hasWrite s (tag -> FWrite k) = fromJust (k @~ isSID) == fromJust (s @~ isSID)
+hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
