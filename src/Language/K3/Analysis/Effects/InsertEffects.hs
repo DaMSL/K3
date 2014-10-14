@@ -203,13 +203,14 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
     getClosureSyms s@(tnc -> (Symbol i _, ch)) = do
       x <- lookupBindInnerM i
       case x of
-        Nothing ->
+        Just (tag -> Symbol _ (PTemporary TUnbound)) -> return []
+        Just (tag -> Symbol _ PGlobal) -> return []
+        Just s' | s `symEqual` s' -> return [s']
+        _ ->
           -- if we haven't found a match, it might be deeper in the tree
           liftM concat $ mapM getClosureSyms ch
 
-        Just (tag -> Symbol _ (PTemporary TUnbound)) -> return []
-        Just (tag -> Symbol _ (PGlobal)) -> return []
-        Just s' | s `symEqual` s' -> return [s']
+        
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
     handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
