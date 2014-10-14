@@ -32,7 +32,7 @@ lambdaFormOptD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) (map lambdaFor
 lambdaFormOptD t = t
 
 lambdaFormOptE :: K3 Expression -> K3 Expression
-lambdaFormOptE e@(Node (ELambda x :@: as) cs) = Node (ELambda x :@: (a:c:as)) cs
+lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE b]
   where
     ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) effects))))
         = fromJust $ e @~ isESymbol
