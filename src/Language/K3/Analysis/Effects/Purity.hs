@@ -62,7 +62,8 @@ runPurityE (Node (EIndirect :@: as) [c]) = Node (EIndirect :@: (guardAddPure c' 
 runPurityE (Node (ETuple :@: as) cs) = Node (ETuple :@: (guardAddPureAll cs' as)) cs' where cs' = map runPurityE cs
 runPurityE (Node (ERecord ids :@: as) cs)
     = Node (ERecord ids :@: (guardAddPureAll cs' as)) cs' where cs' = map runPurityE cs
-runPurityE e@(Node (ELambda x :@: as) cs) = (if isPure then e @+ (EProperty "Pure" Nothing) else e)
+runPurityE e@(Node (ELambda x :@: as) cs)
+    = (Node (ELambda x :@: ([EProperty "Pure" Nothing | isPure] ++ as)) (map runPurityE cs))
   where
     ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope bindings closure :@: _) effects))))
         = fromJust $ e @~ isESymbol
