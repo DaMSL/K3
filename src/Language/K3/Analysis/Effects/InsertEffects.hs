@@ -14,7 +14,10 @@
 --  TODO: lambda needs to filter effects for closure/formal args
 
 module Language.K3.Analysis.Effects.InsertEffects (
-  runAnalysis
+  Env,
+  preprocessBuiltins,
+  runAnalysis,
+  runAnalysisEnv
 )
 where
 
@@ -23,7 +26,7 @@ import Control.Arrow ( (&&&) )
 import Control.Monad.State.Lazy
 import Data.Maybe
 import Data.Map(Map)
-import Data.List(nub)
+import Data.List(nub, delete)
 import qualified Data.Map as Map
 import Data.Foldable hiding (mapM_, any, all, concatMap, concat)
 import Debug.Trace(trace)
@@ -127,6 +130,11 @@ addFID eff = do
   i <- getIdM
   return $ eff @+ FID i
 
+addSID :: K3 Symbol -> MEnv (K3 Symbol)
+addSID sym = do
+  i <- getIdM
+  return $ sym @+ SID i
+
 getSID :: K3 Symbol -> Int
 getSID sym = maybe (error "no SID found") extract $ sym @~ isSID
   where extract (SID i) = i
@@ -221,8 +229,123 @@ mId x = return x
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s') = s == s'
 
+-------- Preprocessing phase --------
+--
+-- Fill in the effect symbols missing in any builtins
+-- Number any existing symbols with SIDs and FIDs
+-- This must be called before effects are lifted into the expression tree
+preprocessBuiltins :: K3 Declaration -> (K3 Declaration, Env)
+preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl prog
+  where
+    addMissingDecl :: K3 Declaration -> MEnv(K3 Declaration)
+
+    addMissingDecl n@(tag -> (DDataAnnotation i t attrs)) = do
+      attrs' <- mapM handleAttrs attrs
+      return $ replaceTag n $ DDataAnnotation i t attrs'
+
+    -- A global without an effect symbol
+    addMissingDecl n@(tag -> (DGlobal i t@(tag -> TFunction) Nothing))
+      | n @~ isDSymbol == Nothing = do
+        s <- symOfFunction t
+        return $ n @+ DSymbol s
+
+    -- If we have a symbol, number it
+    addMissingDecl n = case n @~ isDSymbol of
+                         Nothing -> return n
+                         Just ds@(DSymbol s) -> do
+                           s' <- liftM DSymbol $ numberSyms s
+                           return (n @- ds @+ s')
+
+    -- Handle lifted/unlifted attributes without symbols
+    handleAttrs :: AnnMemDecl -> MEnv AnnMemDecl
+    handleAttrs (Lifted x y t@(tag -> TFunction) Nothing annos)
+      | find isDSymbol annos == Nothing = do
+          s <- symOfFunction t
+          return $ Lifted x y t Nothing $ (DSymbol s):annos
+
+    -- If we have a sumbol, number it
+    handleAttrs (Lifted x y z u as) = liftM (Lifted x y z u) $ handleAttrsInner as
+
+    handleAttrs (Attribute x y t@(tag -> TFunction) Nothing annos)
+      | find isDSymbol annos == Nothing = do
+          s <- symOfFunction t
+          return $ Attribute x y t Nothing $ (DSymbol s):annos
+
+    -- If we have a symbol, number it
+    handleAttrs (Attribute x y z u as) = liftM (Attribute x y z u) $ handleAttrsInner as
+
+    handleAttrs a = return a
+
+    -- handle common attribute renumbering functionality
+    handleAttrsInner as =
+      case find isDSymbol as of
+        Nothing -> return as
+        Just ds@(DSymbol s) -> do
+          s' <- liftM DSymbol $ numberSyms s
+          let as' = delete ds as
+          return $ s':as'
+
+    -- Number existing symbols/effects
+    numberSyms :: K3 Symbol -> MEnv(K3 Symbol)
+    numberSyms s = modifyTree addNumSym s
+    numberEffs :: K3 Effect -> MEnv(K3 Effect)
+    numberEffs e = modifyTree addNumEff e
+
+    addNumSym :: K3 Symbol -> MEnv (K3 Symbol)
+    addNumSym n@(tag -> Symbol ii (PLambda i eff)) = do
+      eff' <- numberEffs eff
+      addSID $ replaceTag n $ Symbol ii $ PLambda i eff'
+    addNumSym s = addSID s
+
+    addNumEff :: K3 Effect -> MEnv (K3 Effect)
+    addNumEff n@(tag -> FRead sym) = do
+      sym' <- numberSyms sym
+      addFID $ replaceTag n $ FRead sym'
+    addNumEff n@(tag -> FWrite sym) = do
+      sym' <- numberSyms sym
+      addFID $ replaceTag n $ FWrite sym'
+    addNumEff n@(tag -> FScope syms (sx,sy,sz)) = do
+      syms' <- mapM numberSyms syms
+      sx' <- mapM numberSyms sx
+      sy' <- mapM numberSyms sy
+      sz' <- mapM numberSyms sz
+      addFID $ replaceTag n $ FScope syms' (sx', sy', sz')
+    addNumEff n@(tag -> FApply s1 s2) = do
+      s1' <- numberSyms s1
+      s2' <- numberSyms s2
+      addFID $ replaceTag n $ FApply s1' s2'
+    addNumEff n = addFID n
+
+    -- Create a symbol for a function based on type
+    symOfFunction :: K3 Type -> MEnv (K3 Symbol)
+    symOfFunction t = liftM head $ symOfFunction' t 1
+
+    symOfFunction' :: K3 Type -> Int -> MEnv ([K3 Symbol])
+    symOfFunction' t@(tnc -> (TFunction, [_, ret])) i = do
+      s  <- symOfFunction' ret $ i + 1
+      s' <- createSym s $ "__"++show i
+      return [s']
+    symOfFunction' t _ = return []
+
+    -- Create a default conservative symbol for the function
+    createSym acc nm = do
+      sym <- symbolM nm PVar []
+      r   <- addFID $ read sym
+      w   <- addFID $ write sym
+      seq <- combineEffSeq [Just w, Just r]
+      lp  <- addFID $ loop $ fromJust seq
+      sc  <- addFID $ scope [sym] emptyClosure [lp]
+      genSym (PLambda nm sc) acc
+
+----- Actual effect insertion ------
+-- Requires an environment built up by the preprocess phase
+
 runAnalysis :: K3 Declaration -> K3 Declaration
-runAnalysis prog = flip evalState startEnv $
+runAnalysis = runAnalysisEnv startEnv
+
+
+runAnalysisEnv :: Env -> K3 Declaration -> K3 Declaration
+runAnalysisEnv env prog = flip evalState env $
   -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
   -- actual modification of AST (no need to decorate declarations here)
@@ -417,6 +540,12 @@ runAnalysis prog = flip evalState startEnv $
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
 
+    -- handle seq (last symbol)
+    handleExpr ch n@(tag -> EOperate OSeq) = do
+      let chSym = getESymbol $ last ch
+      eff   <- combineEffSeq $ map getEEffect ch
+      return $ addEffSymCh eff chSym ch n
+
     handleExpr ch n = genericExpr ch n
 
     -- Generic case: combineEff effects, ignore symbols
@@ -470,6 +599,14 @@ runAnalysis prog = flip evalState startEnv $
               s  <- symOfSymList lS
               s' <- symOfSymList lA
               return [(Nothing, replaceCh n [s, s'])]
+
+        -- Sets need to be kept if they refer to anything important
+        loop _ n@(tnc -> (s@(Symbol i PSet), ch)) = do
+          lCh <- mapM (loop (Just s)) ch
+          -- If all children are local, elide
+          if all ((==) []) lCh then return [] else do
+            ss <- mapM symOfSymList lCh
+            return [(Nothing, replaceCh n ss)]
 
         loop mLast n@(tnc -> (s@(Symbol i _), ch)) =
           -- Check for exclusion. Terminate this branch if we match
