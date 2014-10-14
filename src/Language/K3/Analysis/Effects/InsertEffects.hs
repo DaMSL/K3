@@ -400,16 +400,18 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       genSym (PLambda nm sc) subSym
 
     -- Wrap an attribute in a self scope
-    -- Substitute it for self inside the symbol
+    -- Substitute it for self inside the symbol, and a symbol for contents
     wrapAttr subSym = do
-      selfSym <- symbolM "self" PVar []
-      sc      <- addFID $ scope [selfSym] emptyClosure []
-      subSym' <- mapSym mId (matchSelf selfSym) subSym
-      sLam    <- genSym (PLambda "self" sc) [subSym']
+      selfSym    <- symbolM "self" PVar []
+      contentSym <- symbolM "contents" (PTemporary TSub) [selfSym]
+      sc         <- addFID $ scope [selfSym] emptyClosure []
+      subSym'    <- mapSym mId (replace selfSym contentSym) subSym
+      sLam       <- genSym (PLambda "self" sc) [subSym']
       genSym PApply [sLam] -- Incomplete on purpose
       where
-        matchSelf selfSym (tag -> Symbol "self" PVar) = return selfSym
-        matchSelf _ n = return n
+        replace s c (tag -> Symbol "self" PVar)     = return s
+        replace s c (tag -> Symbol "contents" PVar) = return c
+        replace _ _ n = return n
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
