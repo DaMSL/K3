@@ -13,6 +13,7 @@ import qualified Data.Map as Map
 import Data.Map(Map)
 import Data.Maybe
 import Data.List(foldl')
+import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -32,7 +33,7 @@ runAnalysis prog =
       aMap  = annosToMap annos
       gMap  = globalMap prog
       prog' = placeGlobalsInExprs gMap prog
-  in placeAnnosInExprs aMap prog'
+  in trace (show aMap) $ placeAnnosInExprs aMap prog'
 
 -- Collect all the collection annotations in the tree
 collectAnnos :: K3 Declaration -> [Declaration]
@@ -59,6 +60,7 @@ annosToMap annos = foldr addAnno Map.empty annos
             decs -> Map.insert i decs aMap
         isValuable (DProperty _ _) = True
         isValuable (DSyntax _)     = True
+        isValuable (DSymbol _)     = True
         isValuable _               = False
 
 -- Insert the annotations in the expression tree
