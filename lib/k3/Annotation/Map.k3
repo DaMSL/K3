@@ -55,3 +55,4 @@ annotation Map given type a,b {
   //lookup ignores the value of the provided element.
   provides lifted lookup : content -> option content
     with effects \elem -> [R[self]; R[elem]]
+}

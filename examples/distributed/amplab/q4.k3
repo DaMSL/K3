@@ -1,7 +1,8 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
-include "Core/CppBuiltins.k3"
+include "Core/Builtins.k3"
 
+@:CArgs 2
 declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
 
 // Constants
@@ -35,7 +36,7 @@ declare url_counts_partial :
 
 declare get_line : string -> () = \line -> (
   let sp = splitString line " " in  
-  (if substring line 0 4 == "http" and sp.size () == 5 then
+  (if slice_string line 0 4 == "http" and sp.size () == 5 then
      cur_page = (sp.at 0).elem;
      url_count.iterate(\v ->
        url_counts_partial.insert
@@ -43,10 +44,11 @@ declare get_line : string -> () = \line -> (
      // Empty url_count
      url_count.iterate (\v -> url_count.erase v)
    else ());
-   url_regex.iterate (\r -> 
-     case lookup url_count r.key of
-     {Some x -> url_count.insert {key:r.key, value:x + 1} }
-     {None   -> url_count.insert {key:r.key, value:0}}
+   url_regex.iterate (\r ->
+     // lookup ignores value
+     case url_count.lookup {key: r.key, value: 0}  of
+       {Some x -> url_count.insert {key:r.key, value:x.value + 1} }
+       {None   -> url_count.insert {key:r.key, value:0}}
    )
 )
 
@@ -65,17 +67,18 @@ trigger local : () = \_ -> (
 declare url_counts_agg : collection {key: string, value: int} @ {Map}
 declare received : mut int = 0
 
-trigger aggregate : collection {key: string, value: int} @ {Map} = \newVals -> (
+trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (
   newVals.iterate (\v ->
-    case lookup url_counts_agg v.key of
-    { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x} }
-    { None   -> url_counts_agg.insert v }
+    // lookup ignores value
+    case url_counts_agg.lookup {key: v.key, value: 0} of
+      { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x.value} }
+      { None   -> url_counts_agg.insert v }
     );
   peers_finished = peers_finished + 1;
   if peers_finished == num_peers
-  then end_ms = now ();
+  then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       printLine (itos elapsed_ms);
+       print (itos elapsed_ms);
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
@@ -89,7 +92,7 @@ trigger shutdown : () = \_ -> (
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == num_peers
-  then start_ms = now (); peers.iterate (\p -> (local, p.addr) <- ())
+  then start_ms = now_int (); peers.iterate (\p -> (local, p.addr) <- ())
   else ()
 )
 
