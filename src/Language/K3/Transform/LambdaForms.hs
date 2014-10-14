@@ -29,6 +29,7 @@ lambdaFormOptD :: K3 Declaration -> K3 Declaration
 lambdaFormOptD (Node (DGlobal i t me :@: as) cs) = Node (DGlobal i t (lambdaFormOptE <$> me) :@: as) cs
 lambdaFormOptD (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE $ e) :@: as) cs
 lambdaFormOptD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) (map lambdaFormOptD cs)
+lambdaFormOptD t = t
 
 lambdaFormOptE :: K3 Expression -> K3 Expression
 lambdaFormOptE e@(Node (ELambda x :@: as) cs) = Node (ELambda x :@: (a:c:as)) cs
