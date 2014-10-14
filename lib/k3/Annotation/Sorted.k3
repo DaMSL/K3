@@ -1,50 +1,73 @@
-annotation Sorted given type a, b {
-  provides lifted peek    : () -> option content
+annotation Sorted given type a, b
+{
+  provides lifted peek : () -> option content
+    with effects \_ -> R[self]
 
-  provides lifted insert  : content -> ()
-  provides lifted erase  : content -> ()
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update  : content -> (content -> ())
+  provides lifted update : content -> (content -> ())
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
   provides lifted size : () -> int
+    with effects \_ -> R[self]
 
   @:Transformer
   provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
 
   @:Transformer
-  provides lifted split   : () -> (self, self)
+  provides lifted split : () -> (self, self)
+    with effects \_ -> R[self]
 
   @:Transformer
   provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Sorted}
+  provides lifted map : (content -> a) -> collection {elem : a} @ {Sorted}
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
-  provides lifted selfMap     : (content -> a) -> collection {elem : a} @ {Sorted}
+  provides lifted selfMap : (content -> a) -> collection {elem : a} @ {Sorted}
+    with effects \selfMapF -> [R[self]; ([R[content]; selfMapF content])*]
 
   @:Transformer
-  provides lifted filter  : (content -> bool) -> self
+  provides lifted filter : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
 
   @:{Transformer, CArgs 2}
-  provides lifted fold    : (a -> (content -> a)) -> a -> a
+  provides lifted fold : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; foldF content])*]
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {Sorted}
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Sorted})
-                             -> collection {elem : a} @ {Sorted}
+  provides lifted ext : (content -> collection {elem : a} @ {Sorted})
+                         -> collection {elem : a} @ {Sorted}
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
-  provides lifted min         : () -> option content
+  provides lifted min : () -> option content
+    with effects \_ -> R[self]
 
-  provides lifted max         : () -> option content
+  provides lifted max : () -> option content
+    with effects \_ -> R[self]
 
-  provides lifted lowerBound  : content -> option content
+  provides lifted lowerBound : content -> option content
+    with effects \elem -> [R[self]; R[elem]]
 
-  provides lifted upperBound  : content -> option content
+  provides lifted upperBound : content -> option content
+    with effects \elem -> [R[self]; R[elem]]
 
-  provides lifted slice       : content -> (content -> self)
-
+  provides lifted slice : content -> (content -> self)
+    with effects \elem -> [R[self]; R[elem]]
 }
