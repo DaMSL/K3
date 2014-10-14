@@ -185,10 +185,9 @@ getOrGenSymbol n = case getESymbol n of
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
 createClosure :: K3 Effect -> MEnv ClosureInfo
-createClosure n = foldTree addClosure ([],[],[]) n >>=
-                  return . nubtuple
+createClosure n = liftM nubTuple $ foldTree addClosure ([],[],[]) n
   where
-    nubtuple (a,b,c) = (nub a, nub b, nub c)
+    nubTuple (a,b,c) = (nub a, nub b, nub c)
 
     addClosure :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
     addClosure (a,b,c) (tag -> FRead s)     = do
@@ -216,7 +215,7 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
           -- if we haven't found a match, it might be deeper in the tree
           liftM concat $ mapM getClosureSyms ch
 
-        
+
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
     handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
@@ -236,10 +235,16 @@ addAllGlobals n = mapProgram preHandleDecl mId mId Nothing n
     preHandleDecl n = return n
 
 mId :: Monad m => a -> m a
-mId x = return x
+mId = return
 
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s') = s == s'
+
+strip f n =
+  case n @~ f of
+    Nothing -> n
+    Just x  -> strip f (n @- x)
+
 
 -- map over symbols and effects, starting at an effect
 mapEff :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
@@ -269,9 +274,9 @@ wrapEffFn effFn symFn n =
       sA' <- mapSym effFn symFn sA
       effFn $ replaceTag n $ FApply sL' sA'
     _ -> effFn n
-    
+
 wrapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
-wrapSymFn effFn symFn n = 
+wrapSymFn effFn symFn n =
   case tag n of
     Symbol x (PLambda y e) -> do
       e' <- mapEff effFn symFn e
@@ -416,7 +421,7 @@ runAnalysisEnv env prog = flip evalState env $
   -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
   -- actual modification of AST (no need to decorate declarations here)
-  mapProgram mId mId handleExprs Nothing >>=
+  mapProgram handleDecl mId handleExprs Nothing >>=
   -- fix up any globals that couldn't be looked up due to cyclic scope
   mapProgram handleDecl mId fixUpExprs Nothing
 
@@ -428,7 +433,7 @@ runAnalysisEnv env prog = flip evalState env $
         DGlobal i _ Nothing  -> addSym i []
         DGlobal i _ (Just e) -> addE i e
         DTrigger i _ e       -> addE i e
-        _                     -> return n
+        _                    -> return n
       where
         addE i e = case e @~ isESymbol of
                      Just (ESymbol s)  -> addSym i [s]
@@ -437,7 +442,7 @@ runAnalysisEnv env prog = flip evalState env $
         addSym i ss = do
           sym <- symbolM i PGlobal ss
           insertGlobalM i sym
-          return (n @+ DSymbol sym)
+          return $ (strip isDSymbol n) @+ DSymbol sym
 
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
@@ -586,7 +591,7 @@ runAnalysisEnv env prog = flip evalState env $
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- Projection
-    handleExpr ch@[e] n@(tag -> EProject i) = do
+    handleExpr ch@[e] n@(tag -> EProject i) =
       -- Check in the type system for a function in a collection
       case (e @~ isEType, n @~ isEType) of
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
@@ -621,35 +626,21 @@ runAnalysisEnv env prog = flip evalState env $
     fixUpExprs :: K3 Expression -> MEnv (K3 Expression)
     fixUpExprs node = modifyTree fixupAll node
       where
-        fixupAll n = do
-          n' <- fixupExprEff n
-          fixupExprSym n'
+        fixupAll n = fixupExprEff n >>= fixupExprSym
 
         fixupExprSym n@(getESymbol -> Nothing) = return n
         fixupExprSym n@(getESymbol -> Just s)  =
-          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $ fixupSymTree s
+          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $
+            mapSym mId fixupSym s
         fixupExprEff n@(getEEffect -> Nothing) = return n
         fixupExprEff n@(getEEffect -> Just e)  =
-          liftM (\x -> (n @- EEffect e) @+ EEffect x) $ fixupEffTree e
+          liftM (\x -> (n @- EEffect e) @+ EEffect x) $
+            mapEff mId fixupSym e
 
         -- Any unbound globals should be translated
-        fixupSymTree = modifyTree fixupSym
-        fixupEffTree = modifyTree fixupEff
-
         fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
-        fixupSym n@(tag -> Symbol i (PLambda i' eff)) = do
-          eff' <- fixupEffTree eff
-          return $ replaceTag n $ Symbol i $ PLambda i' eff'
         fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupBindM i
         fixupSym s = return s
-
-        fixupEff n@(tag -> FRead s) = liftM (replaceTag n . FRead) $ fixupSymTree s
-        fixupEff n@(tag -> FWrite s) = liftM (replaceTag n . FWrite) $ fixupSymTree s
-        fixupEff n@(tag -> FScope ss cs) =
-          liftM (replaceTag n . flip FScope cs) $ mapM fixupSymTree ss
-        fixupEff n@(tag -> FApply s1 s2) =
-          liftM2 (\x y -> replaceTag n $ FApply x y) (fixupSymTree s1) (fixupSymTree s2)
-        fixupEff e = return e
 
     ------ Utilities ------
     -- Common procedure for adding back the symbols, effects and children
@@ -742,7 +733,7 @@ combineEffSeq = combineEff seq
 combineSym :: Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSym p ss =
   -- if there's no subsymbol at all, just gensym a temp
-  if all ((==) Nothing) ss then
+  if all (Nothing ==) ss then
     liftM Just $ genSym (PTemporary TTemp) []
   -- if we have some symbols, we must preserve them
   else do
@@ -775,7 +766,7 @@ buildEnv n = snd $ flip runState startEnv $
           insertGlobalM i s
           return n
         _          -> return n
-    highestDeclId n = do
+    highestDeclId n =
       case n @~ isDSymbol of
         Just (DSymbol s) -> highestSymId s
         _ -> return ()
@@ -818,10 +809,10 @@ applyLambda sArg sLam =
       (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
         -- Dummy substitute into the argument, in case there's an application there
         -- Any effects won't be substituted in and will be visible outside
-        sArg'   <- subSymTree sOld sOld sArg
+        sArg'   <- mapSym (subEff sOld sOld) (subSym sOld sOld) sArg
         -- Substitute into the old effects and symbol
-        e'      <- subEffTree sOld sArg' lamEff
-        chSym'  <- subSymTree sOld sArg' chSym
+        e'      <- mapEff (subEff sOld sArg') (subSym sOld sArg') lamEff
+        chSym'  <- mapSym (subEff sOld sArg') (subSym sOld sArg') chSym
         return $ Just (e', chSym')
 
       (Symbol _ PGlobal, [ch]) -> applyLambda sArg ch
@@ -840,45 +831,18 @@ applyLambda sArg sLam =
   where
     wrap f x = return $ f x
 
-    -- substitute in one symbol for another
-    -- effect can only be from application of lambdas
-    subSymTree :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-    subSymTree s s' n = modifyTree (subSym s s') n
-
     -- Substitute a symbol: old, new, symbol in which to replace
-    -- Returns possible result effects and the new symbol
     subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-
     subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
-
     -- Apply: recurse (we already substituted into the children)
     subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
-      x <- applyLambda sA sL
-      return $ maybe n snd x
-
+        x <- applyLambda sA sL
+        return $ maybe n snd x
     subSym _ _ n = return n
 
-    -- Substitute a symbol into an effect tree
-    subEffTree :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv(K3 Effect)
-    subEffTree s s' e = modifyTree (subEff s s') e
-
-    -- TODO: occurs check (somehow)
     -- Substitute one symbol for another in an effect
     subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
-    subEff sym sym' n =
-      case tag n of
-        FRead s      -> sub s >>= newTag . FRead
-        FWrite s     -> sub s >>= newTag . FWrite
-        FScope ss x  -> do
-          ss' <- mapM sub ss
-          newTag $ FScope ss' x
-        FApply sL sA -> do
-          sA' <- sub sA
-          sL' <- sub sL
-          x <- applyLambda sA' sL'
-          return $ maybe (replaceTag n $ FApply sL' sA') fst x
-
-        _            -> return n
-      where
-        newTag x = return $ replaceTag n x
-        sub = subSymTree sym sym'
+    subEff sym sym' n@(tag -> FApply sL sA) = do
+        x <- applyLambda sA sL
+        return $ maybe n fst x
+    subEff _ _ n = return n
