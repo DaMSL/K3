@@ -81,7 +81,7 @@ placeAnnosInExprs annoMap prog = runIdentity $ mapProgram m_id m_id placeInExpr 
             tAnnos ->
               let ids    = concatMap unwrapTAnno tAnnos -- get collection ids
                   props  = findProps ids p
-                  props' = concatMap decToExpr props
+                  props' = concatMap decToExpr' props
               in return $ foldl' (@+) n props'
         Just _ -> return n
     handleExpr e = return e
@@ -134,6 +134,7 @@ placeGlobalsInExprs gMap prog = runIdentity $ mapProgram return return (visitE g
 
   -- Attach properties associated with this global identifier, if there are any.
   attachProperties :: GlobalMap -> K3 Expression -> K3 Expression
+  -- NOTE: this is incorrect. Shadowing is a problem here
   attachProperties gs e@(tag -> EVariable i) = case Map.lookup i gs of
     Nothing -> e
     Just l -> foldl (\e' ann -> foldl (@+) e' $ decToExpr ann) e l
@@ -147,3 +148,11 @@ decToExpr :: Annotation Declaration -> [Annotation Expression]
 decToExpr (DProperty i m) = [EProperty i m]
 decToExpr (DSyntax s)     = [ESyntax s]
 decToExpr _               = []
+
+-- Translate declaration annotations to expression annoations
+-- NOTE: used by collection annotation pass
+decToExpr' :: Annotation Declaration -> [Annotation Expression]
+decToExpr' (DProperty i m) = [EProperty i m]
+decToExpr' (DSyntax s)     = [ESyntax s]
+decToExpr' (DSymbol s)     = [ESymbol s]
+decToExpr' _               = []
