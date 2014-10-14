@@ -860,7 +860,10 @@ effTerm = (choice $ map try [effRead, effWrite, effLambda, effApply, effSeq, eff
         effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
         effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
 
-        effSymbol = (flip FC.symbol F.PVar <$> identifier) <?> "effect symbol"
+        effSymbol = (flip FC.symbol F.PVar
+                        <$> (identifier <|> (keyword "self"    >> return "self")
+                                        <|> (keyword "content" >> return "content")))
+                        <?> "effect symbol"
 
         mkScope i ch = [FC.scope [FC.symbol i F.PVar] ([], [], []) $ [termAsSeq ch]]
         termAsSeq t = if length t == 1 then head t else FC.seq t
