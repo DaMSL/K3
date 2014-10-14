@@ -376,8 +376,11 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     symOfFunction :: K3 Type -> MEnv (K3 Symbol)
     symOfFunction t = liftM head $ symOfFunction' t 1
 
+    -- We need to create the self symbol, and wrap it in a half application
     symOfAttr :: K3 Symbol -> MEnv (K3 Symbol)
-    symOfAttr s = createSym [s] "self"
+    symOfAttr s = do
+      sLam <- createSym [s] "self"
+      genSym PApply [sLam] -- Incomplete on purpose
 
     symOfFunction' :: K3 Type -> Int -> MEnv [K3 Symbol]
     symOfFunction' t@(tnc -> (TFunction, [_, ret])) i = do
@@ -402,7 +405,8 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       selfSym <- symbolM "self" PVar []
       sc      <- addFID $ scope [selfSym] emptyClosure []
       subSym' <- mapSym mId (matchSelf selfSym) subSym
-      genSym (PLambda "self" sc) [subSym']
+      sLam    <- genSym (PLambda "self" sc) [subSym']
+      genSym PApply [sLam] -- Incomplete on purpose
       where
         matchSelf selfSym (tag -> Symbol "self" PVar) = return selfSym
         matchSelf _ n = return n
@@ -597,13 +601,14 @@ runAnalysisEnv env prog = flip evalState env $
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
           -- We can't have effects here -- we only have symbols
           case getESymbol n of
-            Nothing   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
-            Just sLam -> do
+            -- We left a half-done application symbol here in the preprocessing
+            Just sApp@(tnc -> (Symbol _ PApply, sLam@(tag -> Symbol _ (PLambda _ _)):_))  -> do
               eSym    <- getOrGenSymbol e
-              -- Create a lambda application for self
-              sApp    <- genSym PApply [sLam, eSym]
+              -- Fill in the lambda application for self with the argument
+              let sApp' = replaceCh sApp [sLam, eSym]
               eApp    <- addFID $ apply sLam eSym
-              return $ addEffSymCh (Just eApp) (Just sApp) ch n
+              return $ addEffSymCh (Just eApp) (Just sApp') ch n
+            _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
 
         _ -> do -- not a collection member function
           eSym <- getOrGenSymbol e
@@ -647,9 +652,10 @@ runAnalysisEnv env prog = flip evalState env $
     -- Common procedure for adding back the symbols, effects and children
     addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
     addEffSymCh eff sym ch n =
-      let n'  = maybe n  ((@+) n  . EEffect) eff
-          n'' = maybe n' ((@+) n' . ESymbol) sym
-      in replaceCh n'' ch
+      let n'   = strip (\x -> isEEffect x || isESymbol x) n
+          n''  = maybe n'  ((@+) n'  . EEffect) eff
+          n''' = maybe n'' ((@+) n'' . ESymbol) sym
+      in replaceCh n''' ch
 
     -- If necessary, remove layers of symbols to get to those just above the bind symbols
     -- This function assumes that the direct bindsymbols have only one child each
