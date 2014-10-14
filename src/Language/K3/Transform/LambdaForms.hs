@@ -34,11 +34,11 @@ lambdaFormOptD t = t
 lambdaFormOptE :: K3 Expression -> K3 Expression
 lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE b]
   where
-    ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) effects))))
+    ESymbol symbol@(tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) effects))))
         = fromJust $ e @~ isESymbol
     (cRead, cWritten, cApplied) = closure
 
-    a = EOpt $ FuncHint (null effects || (not $ hasWrite binding $ head effects))
+    a = EOpt $ FuncHint (not $ hasWriteInFunction binding symbol)
     c = EOpt $ CaptHint (if null effects then (symIDs $ S.fromList cRead, S.empty, symIDs $ S.fromList cWritten)
                          else (S.empty, S.empty, symIDs $ S.fromList $ cRead ++ cWritten ++ cApplied))
 lambdaFormOptE (Node (t :@: as) cs) = Node (t :@: as) (map lambdaFormOptE cs)
