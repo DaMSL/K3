@@ -37,7 +37,8 @@ lambdaFormOptE e@(Node (ELambda x :@: as) cs) = Node (ELambda x :@: (a:c:as)) cs
     ESymbol (tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) effects))))
         = fromJust $ e @~ isESymbol
     (cRead, cWritten, cApplied) = closure
-    a = EOpt $ FuncHint (if null effects then False else hasRead binding $ head effects)
+
+    a = EOpt $ FuncHint (null effects || (not $ hasWrite binding $ head effects))
     c = EOpt $ CaptHint (if null effects then (symIDs $ S.fromList cRead, S.empty, symIDs $ S.fromList cWritten)
                          else (S.empty, S.empty, S.empty))
 lambdaFormOptE (Node (t :@: as) cs) = Node (t :@: as) (map lambdaFormOptE cs)
