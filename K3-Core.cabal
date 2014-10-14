@@ -131,7 +131,6 @@ library
         Language.K3.Analysis.Effects.Constructors,
         Language.K3.Analysis.Effects.InsertEffects,
         Language.K3.Analysis.Effects.Purity,
-        Language.K3.Optimization,
         Language.K3.TypeSystem.Consistency,
         Language.K3.TypeSystem.Data,
         Language.K3.TypeSystem.Monad.Iface.FreshVar,
@@ -193,7 +192,8 @@ library
         Language.K3.TypeSystem.Data.Constraints,
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
         Language.K3.TypeSystem.Data.Result,
-        Language.K3.Codegen.CPP.Representation
+        Language.K3.Codegen.CPP.Representation,
+        Language.K3.Stages
 
     ghc-options: -Wall -fno-warn-orphans -O2
 

@@ -1,4 +1,4 @@
-module Language.K3.Optimization where
+module Language.K3.Stages where
 
 import Data.List
 
