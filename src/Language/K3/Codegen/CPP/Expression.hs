@@ -178,10 +178,8 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-
-    let readOnly = case (e @~ \case { EOpt (FuncHint _) -> True; _ -> False}) of
-                     Just (EOpt (FuncHint b)) -> b
-                     _ -> False
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
 
     (cRef, cMove, cCopy) <- case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
                               Just (EOpt (CaptHint ch)) -> return ch
