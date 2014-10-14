@@ -6,6 +6,8 @@ module Language.K3.Codegen.CPP.Declaration where
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
+import Data.Maybe
+
 import qualified Data.List as L
 
 import Language.K3.Core.Annotation
@@ -23,6 +25,8 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Transform.Hints
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
@@ -36,7 +40,7 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
 
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
-                        (Just (tag &&& children -> (ELambda x, [body])))) = do
+                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
     cta <- genCType ta
     ctr <- genCType tr
 
@@ -44,11 +48,17 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
-    return [R.FunctionDefn (R.Name i) [(x, cta)] (Just ctr) [] False cbody]
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
+
+    let cta' = if readOnly then R.Const (R.Reference cta) else cta
+
+    return [R.FunctionDefn (R.Name i) [(x, cta')] (Just ctr) [] False cbody]
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
-                        (Just (tag &&& children -> (ELambda x, [body])))) = do
+                      e@(Just (tag &&& children -> (ELambda x, [body])))) = do
+
     returnType <- genCInferredType tr
     (argumentType, template) <- case tag ta of
                       TDeclaredVar t -> return (R.Named (R.Name t), Just t)
@@ -59,8 +69,13 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
+
+    let argumentType' = if readOnly then R.Const (R.Reference argumentType) else argumentType
+
     body' <- reify RReturn body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] False body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType')] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration (tag -> DGlobal i t me) = do
