@@ -200,9 +200,12 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
     addClosure acc     _                    = return acc
 
     getClosureSyms :: K3 Symbol -> MEnv [K3 Symbol]
+    getClosureSyms (tag -> Symbol _ (PTemporary TTemp))    = return []
+    getClosureSyms (tag -> Symbol _ (PTemporary TUnbound)) = return []
     getClosureSyms s@(tnc -> (Symbol i _, ch)) = do
       x <- lookupBindInnerM i
       case x of
+        Just (tag -> Symbol _ (PTemporary TTemp))    -> return []
         Just (tag -> Symbol _ (PTemporary TUnbound)) -> return []
         Just (tag -> Symbol _ PGlobal) -> return []
         Just s' | s `symEqual` s' -> return [s']
