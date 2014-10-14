@@ -204,6 +204,8 @@ createClosure n = foldTree addClosure ([],[],[]) n >>=
           -- if we haven't found a match, it might be deeper in the tree
           liftM concat $ mapM getClosureSyms ch
 
+        Just (tag -> Symbol _ (PTemporary TUnbound)) -> return []
+        Just (tag -> Symbol _ (PGlobal)) -> return []
         Just s' | s `symEqual` s' -> return [s']
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
@@ -555,19 +557,37 @@ runAnalysisEnv env prog = flip evalState env $
 
     -- Post-processing for cyclic scope
     fixUpExprs :: K3 Expression -> MEnv (K3 Expression)
-    fixUpExprs n = modifyTree fixupExpr n
+    fixUpExprs node = modifyTree fixupAll node
       where
-        fixupExpr n =
-          case getESymbol n of
-            Nothing -> return n
-            Just s  -> do
-              s' <- modifyTree fixupSym s
-              return $ (n @- ESymbol s) @+ ESymbol s'
+        fixupAll n = do
+          n' <- fixupExprEff n
+          fixupExprSym n'
+
+        fixupExprSym n@(getESymbol -> Nothing) = return n
+        fixupExprSym n@(getESymbol -> Just s)  =
+          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $ fixupSymTree s
+        fixupExprEff n@(getEEffect -> Nothing) = return n
+        fixupExprEff n@(getEEffect -> Just e)  =
+          liftM (\x -> (n @- EEffect e) @+ EEffect x) $ fixupEffTree e
 
         -- Any unbound globals should be translated
+        fixupSymTree = modifyTree fixupSym
+        fixupEffTree = modifyTree fixupEff
+
         fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
+        fixupSym n@(tag -> Symbol i (PLambda i' eff)) = do
+          eff' <- fixupEffTree eff
+          return $ replaceTag n $ Symbol i $ PLambda i' eff'
         fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupBindM i
         fixupSym s = return s
+
+        fixupEff n@(tag -> FRead s) = liftM (replaceTag n . FRead) $ fixupSymTree s
+        fixupEff n@(tag -> FWrite s) = liftM (replaceTag n . FWrite) $ fixupSymTree s
+        fixupEff n@(tag -> FScope ss cs) =
+          liftM (replaceTag n . flip FScope cs) $ mapM fixupSymTree ss
+        fixupEff n@(tag -> FApply s1 s2) =
+          liftM2 (\x y -> replaceTag n $ FApply x y) (fixupSymTree s1) (fixupSymTree s2)
+        fixupEff e = return e
 
     ------ Utilities ------
     -- Common procedure for adding back the symbols, effects and children
