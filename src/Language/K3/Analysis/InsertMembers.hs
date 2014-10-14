@@ -33,7 +33,7 @@ runAnalysis prog =
       aMap  = annosToMap annos
       gMap  = globalMap prog
       prog' = placeGlobalsInExprs gMap prog
-  in trace (show aMap) $ placeAnnosInExprs aMap prog'
+  in placeAnnosInExprs aMap prog'
 
 -- Collect all the collection annotations in the tree
 collectAnnos :: K3 Declaration -> [Declaration]
