@@ -241,6 +241,43 @@ mId x = return x
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s') = s == s'
 
+-- map over symbols and effects, starting at an effect
+mapEff :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
+mapEff effFn symFn eff = modifyTree (wrapEffFn effFn symFn) eff
+
+-- map over symbols and effects, starting at a symbol
+mapSym :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
+mapSym effFn symFn sym = modifyTree (wrapSymFn effFn symFn) sym
+
+wrapEffFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
+wrapEffFn effFn symFn n =
+  case tag n of
+    FRead s -> do
+      s' <- mapSym effFn symFn s
+      effFn $ replaceTag n $ FRead s'
+    FWrite s -> do
+      s' <- mapSym effFn symFn s
+      effFn $ replaceTag n $ FWrite s'
+    FScope ss (xs,ys,zs) -> do
+      ss' <- mapM (mapSym effFn symFn) ss
+      xs' <- mapM (mapSym effFn symFn) xs
+      ys' <- mapM (mapSym effFn symFn) ys
+      zs' <- mapM (mapSym effFn symFn) zs
+      effFn $ replaceTag n $ FScope ss' (xs', ys', zs')
+    FApply sL sA -> do
+      sL' <- mapSym effFn symFn sL
+      sA' <- mapSym effFn symFn sA
+      effFn $ replaceTag n $ FApply sL' sA'
+    _ -> effFn n
+    
+wrapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
+wrapSymFn effFn symFn n = 
+  case tag n of
+    Symbol x (PLambda y e) -> do
+      e' <- mapEff effFn symFn e
+      symFn $ replaceTag n $ Symbol x $ PLambda y e'
+    _ -> symFn n
+
 -------- Preprocessing phase --------
 --
 -- Fill in the effect symbols missing in any builtins
@@ -257,7 +294,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 
     -- A global without an effect symbol
     addMissingDecl n@(tag -> (DGlobal i t@(tag -> TFunction) Nothing))
-      | n @~ isDSymbol == Nothing = do
+      | isNothing (n @~ isDSymbol) = do
         s <- symOfFunction t
         return $ n @+ DSymbol s
 
@@ -271,29 +308,30 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- Handle lifted/unlifted attributes without symbols
     handleAttrs :: AnnMemDecl -> MEnv AnnMemDecl
     handleAttrs (Lifted x y t@(tag -> TFunction) Nothing annos)
-      | find isDSymbol annos == Nothing = do
-          s <- symOfFunction t
-          return $ Lifted x y t Nothing $ (DSymbol s):annos
+      | isNothing (find isDSymbol annos) = do
+          s <- symOfFunction t >>= symOfAttr
+          return $ Lifted x y t Nothing $ DSymbol s:annos
 
     -- If we have a sumbol, number it
     handleAttrs (Lifted x y z u as) = liftM (Lifted x y z u) $ handleAttrsInner as
 
     handleAttrs (Attribute x y t@(tag -> TFunction) Nothing annos)
-      | find isDSymbol annos == Nothing = do
-          s <- symOfFunction t
-          return $ Attribute x y t Nothing $ (DSymbol s):annos
+      | isNothing(find isDSymbol annos) = do
+          s <- symOfFunction t >>= symOfAttr
+          return $ Attribute x y t Nothing $ DSymbol s:annos
 
     -- If we have a symbol, number it
     handleAttrs (Attribute x y z u as) = liftM (Attribute x y z u) $ handleAttrsInner as
 
     handleAttrs a = return a
 
-    -- handle common attribute renumbering functionality
+    -- handle common attribute symbol/effect renumbering functionality
+    -- Also, wrap existing lambda symbols in "self" lambdas
     handleAttrsInner as =
       case find isDSymbol as of
         Nothing -> return as
         Just ds@(DSymbol s) -> do
-          s' <- liftM DSymbol $ numberSyms s
+          s' <- liftM DSymbol (numberSyms s >>= wrapAttr)
           let as' = delete ds as
           return $ s':as'
 
@@ -329,10 +367,14 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     addNumEff n = addFID n
 
     -- Create a symbol for a function based on type
+    -- If we're an attribute, we need to also write to self
     symOfFunction :: K3 Type -> MEnv (K3 Symbol)
     symOfFunction t = liftM head $ symOfFunction' t 1
 
-    symOfFunction' :: K3 Type -> Int -> MEnv ([K3 Symbol])
+    symOfAttr :: K3 Symbol -> MEnv (K3 Symbol)
+    symOfAttr s = createSym [s] "self"
+
+    symOfFunction' :: K3 Type -> Int -> MEnv [K3 Symbol]
     symOfFunction' t@(tnc -> (TFunction, [_, ret])) i = do
       s  <- symOfFunction' ret $ i + 1
       s' <- createSym s $ "__"++show i
@@ -340,14 +382,25 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     symOfFunction' t _ = return []
 
     -- Create a default conservative symbol for the function
-    createSym acc nm = do
+    createSym subSym nm = do
       sym <- symbolM nm PVar []
       r   <- addFID $ read sym
       w   <- addFID $ write sym
       seq <- combineEffSeq [Just w, Just r]
       lp  <- addFID $ loop $ fromJust seq
       sc  <- addFID $ scope [sym] emptyClosure [lp]
-      genSym (PLambda nm sc) acc
+      genSym (PLambda nm sc) subSym
+
+    -- Wrap an attribute in a self scope
+    -- Substitute it for self inside the symbol
+    wrapAttr subSym = do
+      selfSym <- symbolM "self" PVar []
+      sc      <- addFID $ scope [selfSym] emptyClosure []
+      subSym' <- mapSym mId (matchSelf selfSym) subSym
+      genSym (PLambda "self" sc) [subSym']
+      where
+        matchSelf selfSym (tag -> Symbol "self" PVar) = return selfSym
+        matchSelf _ n = return n
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
@@ -540,12 +593,9 @@ runAnalysisEnv env prog = flip evalState env $
           -- We can't have effects here -- we only have symbols
           case getESymbol n of
             Nothing   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
-            Just nSym -> do
+            Just sLam -> do
               eSym    <- getOrGenSymbol e
               -- Create a lambda application for self
-              selfSym <- symbolM "self" PVar []
-              scope'  <- addFID $ scope [selfSym] emptyClosure []
-              sLam    <- genSym (PLambda "self" scope') [nSym]
               sApp    <- genSym PApply [sLam, eSym]
               return $ addEffSymCh Nothing (Just sApp) ch n
 
