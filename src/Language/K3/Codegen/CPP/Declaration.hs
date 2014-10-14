@@ -57,7 +57,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
-                      e@(Just (tag &&& children -> (ELambda x, [body])))) = do
+                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
 
     returnType <- genCInferredType tr
     (argumentType, template) <- case tag ta of
