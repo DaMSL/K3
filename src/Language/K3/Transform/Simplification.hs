@@ -398,14 +398,7 @@ betaReduction :: K3 Expression -> Identity (K3 Expression)
 betaReduction expr = mapTree reduce expr
   where
     reduce ch n@(tag -> ELetIn i) = reduceOnOccurrences n ch i (head ch) $ last ch
-
-    reduce ch n@(tag -> EOperate OApp) =
-      let (fn, arg) = (head ch, last ch) in
-      case tag fn of
-        ELambda i -> reduceOnOccurrences n ch i arg $ head $ children fn
-
-        _ -> rebuildNode n ch
-
+    reduce ch n@(PAppLam i bodyE argE lamAs appAs) = reduceOnOccurrences n ch i argE bodyE
     reduce ch n = rebuildNode n ch
 
     reduceOnOccurrences n ch i ie e =
@@ -438,6 +431,7 @@ eliminateDeadProgramCode = mapExpression eliminateDeadCode
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
 eliminateDeadCode expr = mapTree pruneExpr expr
   where
+    -- Unused, effect-free binding.
     pruneExpr ch n@(tag -> ELetIn  i) =
       let vars = freeVariables $ last ch in
       if maybe False (const $ i `notElem` vars) $ (head ch) @~ isEPure
@@ -448,23 +442,65 @@ eliminateDeadCode expr = mapTree pruneExpr expr
       let vars = freeVariables $ last ch in
       case b of
         BRecord ijs ->
-          let nBinder = BRecord $ filter (\(_,j) -> j `elem` vars) ijs
-          in return $ Node (EBindAs nBinder :@: annotations n) ch
+          let nBinder = filter (\(_,j) -> j `elem` vars) ijs in
+          if maybe False (const $ null nBinder) $ (head ch) @~ isEPure
+            then return $ last ch
+            else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
         _ -> rebuildNode n ch
-
-    pruneExpr ch n@(tag -> ECaseOf _) = rebuildNode n ch
 
     pruneExpr ch n@(tag -> EOperate OSeq) =
         case (head ch) @~ isEPure of
           Nothing -> rebuildNode n ch
           Just _  -> return $ last ch
 
-    pruneExpr ch n = rebuildNode n ch
+    pruneExpr ch n = case replaceCh n ch of
+
+      -- Immediate record construction and projection, provided all other record fields are pure.
+      (PPrjRec fId ids fieldsE _ _) ->
+        flip (maybe $ rebuildNode n ch) (elemIndex fId ids) $ \i ->
+          if all isJust $ map ((@~ isEPure) . snd) $ filter ((/= fId) . fst) $ zip ids ch
+            then return $ fieldsE !! i
+            else rebuildNode n ch
+
+      -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
+      (PBindInd i iE bodyE iAs bAs) -> return $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
+
+      (PBindTup ids fieldsE bodyE _ _) ->
+        return $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE $ zip ids fieldsE
+
+      (PBindRec ijs ids fieldsE bodyE _ _) ->
+        return $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE
+               $ zip ids fieldsE
+
+      -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
+      -- These strip UID and Span annotations due to duplication following the rewrite.
+      (PCaseOf (PCaseOf optE i isomeE inoneE icAs) j jsomeE jnoneE jcAs) ->
+        return $ PCaseOf optE i (PCaseOf isomeE j jsomeE jnoneE $ stripUIDSpanE jcAs)
+                                (PCaseOf inoneE j jsomeE jnoneE $ stripUIDSpanE jcAs)
+                                icAs
+
+      (PCaseOf (PIfThenElse pE tE eE bAs) i isomeE inoneE cAs) ->
+        return $ PIfThenElse pE (PCaseOf tE i isomeE inoneE $ stripUIDSpanE cAs)
+                                (PCaseOf eE i isomeE inoneE $ stripUIDSpanE cAs)
+                                bAs
+
+      (PIfThenElse (PCaseOf optE i someE noneE cAs) otE oeE oAs) ->
+        return $ PCaseOf optE i (PIfThenElse someE otE oeE $ stripUIDSpanE oAs)
+                                (PIfThenElse noneE otE oeE $ stripUIDSpanE oAs)
+                                cAs
+
+      (PIfThenElse (PIfThenElse ipE itE ieE iAs) otE oeE oAs) ->
+        return $ PIfThenElse ipE (PIfThenElse itE otE oeE $ stripUIDSpanE oAs)
+                                 (PIfThenElse ieE otE oeE $ stripUIDSpanE oAs)
+                                 iAs
+
+      e -> return e
 
     rebuildNode n@(tag -> EConstant _) _ = return n
     rebuildNode n@(tag -> EVariable _) _ = return n
     rebuildNode n ch = return $ Node (tag n :@: annotations n) ch
 
+    stripUIDSpanE = filter (not . \a -> isEUID a || isESpan a)
 
 -- | Effect-aware common subexpression elimination.
 --
@@ -1249,9 +1285,24 @@ rewriteAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i expr
 
 
 -- Helper patterns for fusion
-pattern PApp     fE argE  appAs = Node (EOperate OApp :@: appAs) [fE, argE]
-pattern PLam     i  bodyE iAs   = Node (ELambda i :@: iAs)       [bodyE]
-pattern PPrj     cE fId   fAs   = Node (EProject fId :@: fAs)    [cE]
+pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
+pattern PLam     i   bodyE   iAs   = Node (ELambda i     :@: iAs)   [bodyE]
+pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
+pattern PInd     iE          iAs   = Node (EIndirect     :@: iAs)   [iE]
+pattern PRec     ids fieldsE rAs   = Node (ERecord ids   :@: rAs)   fieldsE
+pattern PTup         fieldsE tAs   = Node (ETuple        :@: tAs)   fieldsE
+
+pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
+pattern PCaseOf      caseE varId someE noneE cAs = Node (ECaseOf varId :@: cAs) [caseE, someE, noneE]
+pattern PIfThenElse  pE tE eE cAs                = Node (EIfThenElse   :@: cAs) [pE, tE, eE]
+
+pattern PAppLam i bodyE argE lamAs appAs = PApp (PLam i bodyE lamAs) argE appAs
+
+pattern PBindInd i iE bodyE iAs bAs            = PBindAs (PInd iE          iAs) (BIndirection i)   bodyE bAs
+pattern PBindTup ids fieldsE bodyE tAs bAs     = PBindAs (PTup fieldsE     tAs) (BTuple       ids) bodyE bAs
+pattern PBindRec ijs ids fieldsE bodyE rAs bAs = PBindAs (PRec ids fieldsE rAs) (BRecord      ijs) bodyE bAs
+
+pattern PPrjRec fId ids fieldsE fAs rAs = PPrj (PRec ids fieldsE rAs) fId fAs
 
 pattern PPrjApp cE fId fAs fArg iAppAs = PApp (PPrj cE fId fAs) fArg iAppAs
 
