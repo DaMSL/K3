@@ -24,6 +24,9 @@ declare start_ms: mut int = 0
 declare end_ms: mut int = 0
 declare elapsed_ms: mut int = 0
 
+// Dummy trigger to warm up connections
+trigger hello : () = \_ -> ()
+
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 trigger q1_local: () = \_ -> (
@@ -57,7 +60,12 @@ trigger shutdown: () = \_ -> (
 trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then start_ms = now_int (); peers.iterate (\p -> (q1_local, p.addr) <- ())
+  then (
+    // Establish connections before starting the timer
+    peers.iterate (\p -> (hello, p.addr) <- ());
+    start_ms = now_int (); 
+    peers.iterate (\p -> (q1_local, p.addr) <- ())
+  )
   else ()
 )
 

@@ -790,9 +790,9 @@ class Map {
 
   // lookup ignores the value of the argument
   shared_ptr<R> lookup(const R& r) {
-      auto it(container.find(r.key));
+      auto it = container.find(r.key);
       if (it != container.end()) {
-        return std::make_shared<R>(R {it->first, it->second} );
+        return std::make_shared<R>(it->first, it->second );
       } else {
         return nullptr;
       }

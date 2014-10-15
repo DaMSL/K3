@@ -48,12 +48,12 @@ typedef rk_map_record = {key: string, value: int}
 declare rankingsMap : collection rk_map_record @ Map
 
 
-declare empty_source_ip_to_aggs_C : collection  {key: string, value: {prSum: real, prCount: int, arSum: real}} @ Map
-declare empty_aggs : {prSum: real, prCount: int, arSum: real}
+declare empty_source_ip_to_aggs_C : collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
+declare empty_aggs : {prSum: int, prCount: int, arSum: real}
 
-typedef Source_ip_to_aggs = {key: string, value: {prSum: real, prCount: int, arSum: real}}
+typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSum: real}}
 
-typedef Source_ip_to_aggs_C = collection  {key: string, value: {prSum: real, prCount: int, arSum: real}} @ Map
+typedef Source_ip_to_aggs_C = collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
 
 declare partial_aggs : collection {key: address, value: Source_ip_to_aggs_C} @ Map
 
@@ -101,7 +101,7 @@ trigger q3_local : () = \_ -> (
         {Some r ->
           partial_aggs.insert
           {key: a, value:
-            {|key: string, value: {prSum: real, prCount: int, arSum: real}|
+            {|key: string, value: {prSum: int, prCount: int, arSum: real}|
               {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
             |} @ Map
           }
