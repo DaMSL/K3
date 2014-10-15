@@ -340,34 +340,10 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
           return $ s':as'
 
     -- Number existing symbols/effects
-    numberSyms :: K3 Symbol -> MEnv(K3 Symbol)
-    numberSyms s = modifyTree addNumSym s
-    numberEffs :: K3 Effect -> MEnv(K3 Effect)
-    numberEffs e = modifyTree addNumEff e
+    numberSyms s = mapSym addNumEff addNumSym s
+    numberEffs e = mapEff addNumEff addNumSym e
 
-    addNumSym :: K3 Symbol -> MEnv (K3 Symbol)
-    addNumSym n@(tag -> Symbol ii (PLambda i eff)) = do
-      eff' <- numberEffs eff
-      addSID $ replaceTag n $ Symbol ii $ PLambda i eff'
     addNumSym s = addSID s
-
-    addNumEff :: K3 Effect -> MEnv (K3 Effect)
-    addNumEff n@(tag -> FRead sym) = do
-      sym' <- numberSyms sym
-      addFID $ replaceTag n $ FRead sym'
-    addNumEff n@(tag -> FWrite sym) = do
-      sym' <- numberSyms sym
-      addFID $ replaceTag n $ FWrite sym'
-    addNumEff n@(tag -> FScope syms (sx,sy,sz)) = do
-      syms' <- mapM numberSyms syms
-      sx' <- mapM numberSyms sx
-      sy' <- mapM numberSyms sy
-      sz' <- mapM numberSyms sz
-      addFID $ replaceTag n $ FScope syms' (sx', sy', sz')
-    addNumEff n@(tag -> FApply s1 s2) = do
-      s1' <- numberSyms s1
-      s2' <- numberSyms s2
-      addFID $ replaceTag n $ FApply s1' s2'
     addNumEff n = addFID n
 
     -- Create a symbol for a function based on type
