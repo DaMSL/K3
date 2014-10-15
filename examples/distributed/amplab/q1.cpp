@@ -493,6 +493,9 @@ public K3::__time_context {
         start_ms = 0;
         end_ms = 0;
         elapsed_ms = 0;
+        load_start_ms = 0;
+        load_end_ms = 0;
+        load_elapsed_ms = 0;
         dispatch_table[0] = [this] (void* payload)   {
           load_all(*(static_cast<unit_t*>(payload)));
         };
@@ -540,6 +543,9 @@ public K3::__time_context {
       int start_ms;
       int end_ms;
       int elapsed_ms;
+      int load_start_ms;
+      int load_end_ms;
+      int load_elapsed_ms;
       unit_t hello(const unit_t& _)  {
         return unit_t {};
       }
@@ -596,9 +602,13 @@ public K3::__time_context {
         }
       }
       unit_t load_all(const unit_t& _)  {
+        load_start_ms = now_int(unit_t {});
         dataFiles.iterate([this] (const R_path<std::string>& e) mutable  {
           return dataLoader(e.path, local_rankings);
         });
+        load_end_ms = now_int(unit_t {});
+        load_elapsed_ms = load_end_ms - load_start_ms;
+        print(concat("Load time: ", itos(load_elapsed_ms)));
         auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
         __engine.send(master, 1, d);
         return unit_t {};
@@ -629,6 +639,9 @@ public K3::__time_context {
       }
       std::map<std::string, std::string> __prettify()  {
         std::map<std::string, std::string> result;
+        result["load_elapsed_ms"] = std::to_string(load_elapsed_ms);
+        result["load_end_ms"] = std::to_string(load_end_ms);
+        result["load_start_ms"] = std::to_string(load_start_ms);
         result["elapsed_ms"] = std::to_string(elapsed_ms);
         result["end_ms"] = std::to_string(end_ms);
         result["start_ms"] = std::to_string(start_ms);
@@ -696,6 +709,15 @@ public K3::__time_context {
         return result;
       }
       void __patch(std::map<std::string, std::string> bindings)  {
+        if (bindings.count("load_elapsed_ms") > (0)) {
+          do_patch(bindings["load_elapsed_ms"], load_elapsed_ms);
+        }
+        if (bindings.count("load_end_ms") > (0)) {
+          do_patch(bindings["load_end_ms"], load_end_ms);
+        }
+        if (bindings.count("load_start_ms") > (0)) {
+          do_patch(bindings["load_start_ms"], load_start_ms);
+        }
         if (bindings.count("elapsed_ms") > (0)) {
           do_patch(bindings["elapsed_ms"], elapsed_ms);
         }
