@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | K3 Parser.
-module Language.K3.Parser (
+module Language.K3.Parser {-(
   K3Parser,
   qualifiedTypeExpr,
   typeExpr,
@@ -25,7 +25,7 @@ module Language.K3.Parser (
   parseSimpleK3,
   parseK3,
   ensureUIDs
-) where
+)-} where
 
 import Control.Applicative
 import Control.Arrow
@@ -499,7 +499,9 @@ eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
 
 eVariable :: ExpressionParser
-eVariable = exprError "variable" $ EC.variable <$> identifier
+eVariable = exprError "variable" $ parserWithPMode $ \pMode -> mkVar pMode <$> identifier
+  where mkVar Normal ('\'':t) = EC.constant $ CString t
+        mkVar _      i = EC.variable i
 
 {- Complex literals -}
 eOption :: ExpressionParser

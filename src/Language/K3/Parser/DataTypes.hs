@@ -145,10 +145,11 @@ k3Ops :: IdentifierStyle K3Parser
 k3Ops = emptyOps { _styleReserved = set k3Operators }
 
 k3Idents :: IdentifierStyle K3Parser
-k3Idents = emptyIdents { _styleReserved = set k3Keywords }
+k3Idents = emptyIdents { _styleStart    = letter <|> char '_' <|> char '\''
+                       , _styleReserved = set k3Keywords }
 
 k3PatternIdents :: IdentifierStyle K3Parser
-k3PatternIdents = emptyIdents { _styleStart    = letter <|> char '_' <|> char '?'
+k3PatternIdents = emptyIdents { _styleStart    = letter <|> char '_' <|> char '\''  <|> char '?'
                               , _styleReserved = set k3Keywords }
 
 keyword :: String -> K3Parser ()
@@ -170,8 +171,8 @@ identifier = fmap fromString $ token $ concat <$> some (choice . map try =<< par
   where parts Normal        = return [i]
         parts SourcePattern = return [patI]
         parts _             = return [i, spliceIdentifierEmbedding]
-        i    = nonTokenIdent k3Idents
-        patI = nonTokenIdent k3PatternIdents
+        i     = nonTokenIdent k3Idents
+        patI  = nonTokenIdent k3PatternIdents
 
 identParts :: K3Parser [MPEmbedding]
 identParts = token $ some (choice $ map try parts)
