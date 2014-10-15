@@ -78,14 +78,18 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType')] (Just returnType) [] False body']
 
 -- Global scalars.
-declaration (tag -> DGlobal i t me) = do
+declaration d@(tag -> DGlobal i t me) = do
     globalType <- genCType t
     globalInit <- maybe (return []) (reify $ RName i) me
 
     addInitialization globalInit
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
 
-    return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType Nothing]
+    let pinned = isJust $ d @~ (\case { DProperty "Pinned" Nothing -> True; _ -> False })
+
+    let globalType' = if pinned then R.Static globalType else globalType
+
+    return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing]
 
 -- Triggers are implementationally identical to functions returning unit, except they also generate
 -- dispatch wrappers.
