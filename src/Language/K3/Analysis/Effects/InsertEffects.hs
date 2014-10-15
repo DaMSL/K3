@@ -6,8 +6,12 @@
 --   the InsertMembers analysis, so that collection annotation effects
 --   are present in the expression tree
 --
+--  TODO: handle cyclic scope properly
+--        cyclic scope can create loops
+--
+--  TODO: handle collection attributes (pass lambda var of self immediate)
 --  TODO: handle recursive scope
---  TODO: handle numbering of unnumbered symbols correctly
+--  TODO: lambda needs to filter effects for closure/formal args
 
 module Language.K3.Analysis.Effects.InsertEffects (
   Env,
@@ -331,7 +335,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       case find isDSymbol as of
         Nothing -> return as
         Just ds@(DSymbol s) -> do
-          s' <- liftM DSymbol $ numberSyms s >>= addSelfToScope
+          s' <- liftM DSymbol $ numberSyms s
           let as' = delete ds as
           return $ s':as'
 
@@ -366,13 +370,6 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       addFID $ replaceTag n $ FApply s1' s2'
     addNumEff n = addFID n
 
-    -- Add self to the scope of the lambda symbol
-    addSelfToScope n@(tag -> Symbol i (PLambda j eff@(tag -> FScope ss cl))) = do
-      self <- symbolM "self" PVar []
-      let eff' = replaceTag eff $ FScope (self:ss) cl
-      return $ replaceTag n $ Symbol i $ PLambda j eff'
-    addSelfToScope n = error $ "unexpected value "++show n++" in addSelfToScope"
-
     -- Create a symbol for a function based on type
     -- If we're an attribute, we need to also write to self
     symOfFunction :: Bool -> K3 Type -> MEnv (K3 Symbol)
@@ -391,18 +388,16 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       sym <- symbolM nm PVar []
       r   <- addFID $ read sym
       w   <- addFID $ write sym
-      (seq', binds) <- if addSelf then do
-                         selfSym <- symbolM "self" PVar []
-                         rSelf <- addFID $ read selfSym
-                         wSelf <- addFID $ write selfSym
-                         let s = [Just w, Just r, Just wSelf, Just rSelf]
-                             b = [selfSym, sym]
-                         return (s, b)
-                       else
-                         return ([Just w, Just r], [sym])
-      seq <- combineEffSeq seq'
+      seq <- if addSelf then do
+               selfSym <- symbolM "self" PVar []
+               rSelf <- addFID $ read selfSym
+               wSelf <- addFID $ write selfSym
+               return [Just w, Just r, Just wSelf, Just rSelf]
+             else
+               return [Just w, Just r]
+      seq <- combineEffSeq seq
       lp  <- addFID $ loop $ fromJust seq
-      sc  <- addFID $ scope binds emptyClosure [lp]
+      sc  <- addFID $ scope [sym] emptyClosure [lp]
       genSym (PLambda nm sc) subSym
 
 ----- Actual effect insertion ------
@@ -595,14 +590,11 @@ runAnalysisEnv env prog = flip evalState env $
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
           -- We can't have effects here -- we only have symbols
           case getESymbol n of
-            Just nSym@(tag -> Symbol j (PLambda i nEff@(tag -> FScope (self:ss) z))) -> do
+            Just nSym -> do
               eSym  <- getOrGenSymbol e
-              let self' = replaceCh self [eSym]
               -- Substitute for 'self' and 'content'
-              nSym' <- mapSym mId (subSelf self') nSym
-              let nEff' = replaceTag nEff $ FScope (self':ss) z
-                  nSym'' = replaceTag nSym' $ Symbol j $ PLambda i nEff'
-              return $ addEffSymCh Nothing (Just nSym'') ch n
+              nSym' <- mapSym mId (subSelf eSym) nSym
+              return $ addEffSymCh Nothing (Just nSym') ch n
 
             _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
 
@@ -611,7 +603,7 @@ runAnalysisEnv env prog = flip evalState env $
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
       where
-        subSelf s n@(tag -> Symbol "self" PVar)    = return s
+        subSelf s n@(tag -> Symbol "self" PVar)    = return $ replaceCh n [s]
         subSelf s n@(tag -> Symbol "content" PVar) = return $ replaceCh n [s]
         subSelf _ n = return n
 
@@ -813,8 +805,7 @@ applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
 applyLambda sArg sLam =
     case tnc sLam of
-      (Symbol _ (PLambda _ e@(tnc -> (FScope sOld' _, [lamEff]))), [chSym]) -> do
-        let sOld = last sOld'  -- Take account of possible self as first arg
+      (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
         -- Dummy substitute into the argument, in case there's an application there
         -- Any effects won't be substituted in and will be visible outside
         sArg'   <- mapSym (subEff sOld sOld) (subSym sOld sOld) sArg
