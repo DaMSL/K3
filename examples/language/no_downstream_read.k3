@@ -1,0 +1,2 @@
+include "Annotation/Collection.k3"
+declare f: collection { a: int } @ { Collection } -> collection { a: int } @ { Collection } -> collection { a: int } @ { Collection } = \x -> \y -> (x.insert { a: 2 }; y)
