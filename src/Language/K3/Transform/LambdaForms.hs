@@ -45,7 +45,7 @@ lambdaFormOptE ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)
     getEffects :: K3 Expression -> Maybe (K3 Effect)
     getEffects g = fmap (\(EEffect f) -> f) $ g @~ (\case { EEffect _ -> True; _ -> False })
 
-    moveable x = not $ any (hasWrite x) $ catMaybes $ map getEffects downstreams
+    moveable x = not $ any (hasWrite x) $ catMaybes $ map getEffects ds
 
     (cMove, cCopy) = partition moveable cWritten
 
