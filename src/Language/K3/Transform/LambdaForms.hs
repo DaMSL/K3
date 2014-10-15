@@ -6,10 +6,11 @@ module Language.K3.Transform.LambdaForms where
 import Prelude hiding (any)
 
 import Control.Arrow
+import Control.Applicative
 
 import Data.Foldable
 import Data.Functor
-import Data.List (partition)
+import Data.List ((\\), partition)
 import Data.Maybe
 import Data.Tree
 
@@ -45,7 +46,7 @@ lambdaFormOptE ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)
     getEffects :: K3 Expression -> Maybe (K3 Effect)
     getEffects g = fmap (\(EEffect f) -> f) $ g @~ (\case { EEffect _ -> True; _ -> False })
 
-    moveable x = not $ any (hasWrite x) $ catMaybes $ map getEffects ds
+    moveable x = not $ any ((||) <$> hasWrite x <*> hasRead x) $ catMaybes $ map getEffects ds
 
     (cMove, cCopy) = partition moveable cWritten
 
@@ -53,7 +54,7 @@ lambdaFormOptE ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)
     c = EOpt $ CaptHint (if null effects then ( symIDs $ S.fromList cRead
                                               , S.empty
                                               , symIDs $ S.fromList (cWritten ++ cApplied))
-                         else ( symIDs $ S.fromList cRead
+                         else ( symIDs $ S.fromList $ cRead \\ cWritten
                               , symIDs $ S.fromList cMove
                               , symIDs $ S.fromList $ cCopy ++ cApplied))
 lambdaFormOptE ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE ds) cs)
