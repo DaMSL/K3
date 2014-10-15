@@ -1,6 +1,0 @@
-- hosts: qp-hm1:qp-hm2
-  tasks:
-    - include: ../../common/run_k3.yml
-      vars:
-        app_name: "amplab_q1"
-        binary_path: "/tmp/q1"

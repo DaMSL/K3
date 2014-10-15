@@ -1,0 +1,68 @@
+---
+  # Define Constants
+  - name: Build the peers string
+    set_fact:
+      peers: "[ {%- for key in play_hosts -%} {% for i in range(numprocs) %} {addr: <{{ hostvars[key].ip }}:{{40000 + i}}> }{%- if not loop.last %},{% endif %} {%- endfor %} {%- if not loop.last %},{% endif %}{%- endfor %}]"
+      setup_dir: /tmp/k3_{{app_name}}/setup/
+      data_dir: /tmp/k3_{{app_name}}/data/
+      docker_image: k3_{{app_name}}
+      results_dir: /tmp/k3_results/k3_{{app_name}} # Local side. 
+      colon: ":"
+      num_hosts: "{{play_hosts | count}}"
+      num_peers: "{{(play_hosts | count) * numprocs}}"
+
+  # copy over files
+  - name: setup directories on the remote host
+    shell: mkdir -p {{setup_dir}} {{data_dir}}{{item}}
+    with_sequence: start=40000 end={{40000+numprocs-1 }}
+
+  - name: copy the binary to the remote host
+    copy: src={{binary}} dest={{setup_dir}}k3
+  
+  - name: copy the Dockerfile to the remote host
+    copy: src=Dockerfile dest={{setup_dir}}
+  
+  - name: copy the run script to the remote host
+    copy: src=run_k3.sh dest={{setup_dir}}
+  
+
+  # docker cleanup
+  - name: kill existing docker containers for this app
+    docker: name="{{docker_image}}_{{item}}" image={{docker_image}} state=killed
+    ignore_errors: yes
+    with_sequence: start=40000 end={{40000+numprocs-1}}
+
+  - name: remove existing docker containers for this app
+    shell: docker rm -f {{docker_image}}_{{item}} 
+    ignore_errors: yes
+    with_sequence: start=40000 end={{40000+numprocs-1}}
+
+  - name: delete existing docker image for this app
+    docker_image: name={{docker_image}} state=absent
+    ignore_errors: yes
+
+  # docker build
+  - name: build the docker image for this app
+    shell: docker build -t {{docker_image}} {{setup_dir}}
+ 
+
+  - name: run the binary in a docker container
+    shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3  -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %},{% for file in data_files -%} {{file.name}}{{colon}} [{% for i in range(file.num) -%} {% if (i % (num_peers|int)) == ((peer*(numprocs|int))+(item|int)) -%} {% if i >= (num_peers|int) %} , {% endif %} { path{{colon}} "{{file.prefix}}{{"%04d" | format(i|int)}}" } {% endif %} {%- endfor %} ]{%- endfor %}'
+    with_sequence: start=0 end={{numprocs-1}}
+  
+        
+  - name: block until all containers have completed 
+    command: docker wait {{docker_image}}_{{item}}
+    with_sequence: start=40000 end={{40000+numprocs-1}}
+
+  - name: create local directories for the results
+    local_action: shell mkdir -p {{results_dir}}
+    sudo: no
+    
+  - name: retreive the results from each host
+    sudo: no 
+    synchronize: mode=pull src={{data_dir}}  dest={{results_dir}}/{{ip}}
+
+  - name: cleanup remote folders
+    shell: rm -rf {{data_dir}} {{setup_dir}}
+    with_sequence: start=0 end={{numprocs-1}}

@@ -1,3 +1,0 @@
-- hosts: qp-hm
-  tasks:
-    - include: generate_kmeans_data.yml

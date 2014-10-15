@@ -1,3 +1,0 @@
-- hosts: qp-hm
-  tasks:
-    - include: deploy_container.yml

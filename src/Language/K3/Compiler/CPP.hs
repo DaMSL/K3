@@ -26,10 +26,10 @@ import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
 import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
-import qualified Language.K3.Analysis.InsertMembers as InsertMembers
 import qualified Language.K3.Analysis.CArgs as CArgs
+import qualified Language.K3.Analysis.Effects.Purity as Purity
 
-import Language.K3.Optimization (runOptimization)
+import Language.K3.Stages ( runCGPasses )
 
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
@@ -69,19 +69,19 @@ applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimization
 
 requiredAnalyses :: Maybe OptimizationLevel -> [K3 Declaration -> K3 Declaration]
 requiredAnalyses Nothing   = mandatoryAnalyses
-requiredAnalyses (Just O1) = InsertEffects.runAnalysis : mandatoryAnalyses
+requiredAnalyses (Just O1) = mandatoryAnalyses
 
 -- CArgs is mandatory for CPP codegen, and depends on InsertMembers
 mandatoryAnalyses :: [K3 Declaration -> K3 Declaration]
-mandatoryAnalyses = [InsertMembers.runAnalysis, CArgs.runAnalysis]
+mandatoryAnalyses = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis]
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = case optimizationLevel cOpts of
   Nothing -> prog
   -- TODO: simple flag for now
-  -- runOptimization could take a list of required optimization passes
+  -- runCGPasses could take a list of required optimization passes
   -- for the various levels of optimization
-  Just _  -> runOptimization prog
+  Just _  -> either (error "Invalid result from runCGPasses") id $ runCGPasses prog
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
