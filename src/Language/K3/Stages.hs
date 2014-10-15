@@ -119,9 +119,9 @@ effectPasses :: [ProgramTransform]
 effectPasses = [return . Purity.runPurity]
 
 optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplifyWCSE,  "opt-simplify-prefuse")
+optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
                            , (streamFusion,     "opt-fuse")
-                           , (simplifyWCSE,  "opt-simplify-final") ]
+                           , (simplify,         "opt-simplify-final") ]
   where prepareOpt (f,i) =
           withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 

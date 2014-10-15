@@ -727,7 +727,7 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
       | unaryTransformer fId && any isETransformer fAs
         = return $ PPrjApp cE fId nfAs fArg nappAs
         where
-          nfAs   = markPureTransformer [fArg] fAs
+          nfAs   = markPureTransformer fAs appAs
           nappAs = markOElemRec fId $ markTAppChain $ markStreamableApp streamable appAs
 
     fusable e@(PPrjApp2 cE fId fAs
@@ -736,7 +736,7 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
       | binaryTransformer fId && any isETransformer fAs
         = return $ PPrjApp2 cE fId nfAs fArg1 fArg2 napp1As napp2As
         where
-          nfAs    = markPureTransformer [fArg1] fAs
+          nfAs    = markPureTransformer fAs app2As
           napp1As = markTAppChain $ markStreamableApp streamable app1As
           napp2As = markTAppChain app2As
 
@@ -746,7 +746,7 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
       | ternaryTransformer fId && any isETransformer fAs
         = return $ PPrjApp3 cE fId nfAs fArg1 fArg2 fArg3 napp1As napp2As napp3As
         where
-          nfAs    = markPureTransformer [fArg1, fArg2] fAs
+          nfAs    = markPureTransformer fAs app3As
           napp1As = markTAppChain $ markStreamableApp False app1As
           napp2As = markTAppChain app2As
           napp3As = markTAppChain app3As
@@ -754,81 +754,95 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
     fusable e = return e
 
     -- TODO: ternary chain matching for streamability as needed for groupBys
+    -- Stream fusion (foldl-style) annotation on transformer pairs rather than
+    -- foldr-style fusion.
     annotateStream e@(PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs oAppAs)
       | isAnyStreamed iAppAs && any isETransformer gAs
-          = (\a b -> PChainPrjApp1 cE fId gId fArg gArg fAs a gAs b)
-              <$> niAppAs <*> noAppAs
+          = (\(a, b) -> return $ PChainPrjApp1 cE fId gId fArg gArg fAs a gAs b) =<< ioAppAs
 
       | otherwise = return $ PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs noAppAs'
-      where niAppAs  = markStreamApp iAppAs gId oAppAs
-            noAppAs  = return . propagateElemRec gId iAppAs =<< propagateStreamApp oAppAs gId oAppAs
-            noAppAs' = propagateElemRec gId iAppAs oAppAs
+      where ioAppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oAppAs gId iAppAs oAppAs
+              return $ (ri, propagateElemRec gId si ro)
+
+            noAppAs' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oAppAs
 
     annotateStream e@(PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As)
       | isAnyStreamed iAppAs && any isETransformer gAs
-          = (\a b -> PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs a gAs b oApp2As)
-              <$> niAppAs <*> noApp1As
+          = (\(a, b) -> return $ PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs a gAs b oApp2As) =<< io1AppAs
 
       | otherwise = return $ PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs noApp1As' oApp2As
-      where niAppAs   = markStreamApp iAppAs gId oApp2As
-            noApp1As  = return . propagateElemRec gId iAppAs =<< propagateStreamApp oApp1As gId oApp2As
-            noApp1As' = propagateElemRec gId iAppAs oApp1As
+      where io1AppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oApp1As gId iAppAs oApp2As
+              return $ (ri, propagateElemRec gId si ro)
+
+            noApp1As' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oApp1As
 
     annotateStream e@(PChainPrjApp3 cE fId gId
                                     fArg gArg1 gArg2 gArg3
                                     fAs iAppAs gAs oApp1As oApp2As oApp3As)
 
       | isAnyStreamed iAppAs && any isETransformer gAs
-          = (\a b -> PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3
-                                   fAs a gAs b noApp2As oApp3As)
-              <$> niAppAs <*> noApp1As
+          = (\(a, b) -> return $ PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3
+                                               fAs a gAs b noApp2As oApp3As)
+              =<< io1AppAs
 
       | otherwise = return $ PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3
                                            fAs iAppAs gAs noApp1As' noApp2As oApp3As
-      where niAppAs   = markStreamApp iAppAs gId oApp3As
-            noApp1As  = return . propagateElemRec gId iAppAs =<< propagateStreamApp oApp1As gId oApp3As
-            noApp2As  = propagateElemRec gId iAppAs oApp2As
-            noApp1As' = propagateElemRec gId iAppAs oApp1As
+      where io1AppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oApp1As gId iAppAs oApp3As
+              return $ (ri, propagateElemRec gId si ro)
 
+            noApp1As' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oApp1As
+            noApp2As  = propagateElemRec gId iAppAs oApp2As
+
+    -- Match binary transformers as the inner computation.
+    -- These can only be streamed, and not fused.
     annotateStream e@(PBinChainPrjApp1 cE fId gId
                                        fArg1 fArg2 gArg
                                        fAs iApp1As iApp2As gAs oAppAs)
 
       | isAnyStreamed iApp1As && any isETransformer gAs
-          = (\a b -> PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg
-                                      fAs a iApp2As gAs b)
-              <$> niApp1As <*> noAppAs
+          = (\(a, b) -> return $ PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg
+                                                  fAs a iApp2As gAs b)
+              =<< i1oAppAs
 
       | otherwise = return e
-      where niApp1As = markStreamApp iApp1As gId oAppAs
-            noAppAs  = propagateStreamApp oAppAs gId oAppAs
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oAppAs gId iApp2As oAppAs
 
     annotateStream e@(PBinChainPrjApp2 cE fId gId
                                        fArg1 fArg2 gArg gArg2
                                        fAs iApp1As iApp2As gAs oApp1As oApp2As)
 
       | isAnyStreamed iApp1As && any isETransformer gAs
-          = (\a b -> PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg gArg2
-                                      fAs a iApp2As gAs b oApp2As)
-              <$> niApp1As <*> noApp1As
+          = (\(a, b) -> return $ PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg gArg2
+                                                  fAs a iApp2As gAs b oApp2As)
+              =<< i1oAppAs
 
       | otherwise = return e
-      where niApp1As = markStreamApp iApp1As gId oApp2As
-            noApp1As = propagateStreamApp oApp1As gId oApp2As
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oApp1As gId iApp2As oApp2As
 
     annotateStream e@(PBinChainPrjApp3 cE fId gId
                                        fArg1 fArg2 gArg gArg2 gArg3
                                        fAs iApp1As iApp2As gAs oApp1As oApp2As oApp3As)
 
       | isAnyStreamed iApp1As && any isETransformer gAs
-          = (\a b -> PBinChainPrjApp3 cE fId gId
-                                      fArg1 fArg2 gArg gArg2 gArg3
-                                      fAs a iApp2As gAs b oApp2As oApp3As)
-              <$> niApp1As <*> noApp1As
+          = (\(a, b) -> return $ PBinChainPrjApp3 cE fId gId
+                                                  fArg1 fArg2 gArg gArg2 gArg3
+                                                  fAs a iApp2As gAs b oApp2As oApp3As)
+              =<< i1oAppAs
 
       | otherwise = return e
-      where niApp1As = markStreamApp iApp1As gId oApp3As
-            noApp1As = propagateStreamApp oApp1As gId oApp3As
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oApp1As gId iApp2As oApp3As
 
     annotateStream e@(PApp _ _ (any isETAppChain -> True))   = return e
     annotateStream e@(PPrj _ _ (any isETransformer -> True)) = return e
@@ -851,33 +865,53 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
     markStreamableApp streamable as =
       nub $ as ++ (if streamable then [pStreamable] else []) ++ [pFusable]
 
-    markPureTransformer el as =
-      nub $ maybe (as ++ [pImpureTransformer]) (const $ as ++ [pPureTransformer])
-          $ mapM (@~ isEPure) el
-
-    markStream :: [Annotation Expression] -> Either String [Annotation Expression]
     markStream as = return $ nub $ as ++ [pStream]
 
-    markStreamApp iAs oId oAsWType
-      | oId == "groupBy" = maybe unstreamTypeErr (unstreamWithType iAs) $ find isEType oAsWType
+    markStreamApp :: [Annotation Expression] -> Identifier -> [Annotation Expression]
+                  -> Either String [Annotation Expression]
+    markStreamApp iAs oId iAsWType
+      | oId == "groupBy" = unstreamOnAnns iAsWType $ markUnstreamA iAs
       | otherwise = markStream iAs
 
+    markUnstreamApp :: K3 Expression -> [Annotation Expression] -> Either String [Annotation Expression]
     markUnstreamApp e as = case e @~ isEType of
-        Just (EType t) -> markUnstreamAppT t as
+        Just (EType t) -> markUnstream t as
         _ -> Left $ boxToString $ ["No type found on "] %+ prettyLines e
 
-    markUnstreamAppT t as = return $
+    propagateStreamApp iAs oAs oId iAsWType oAsWType
+      | isAnyImpure iAs && isAnyImpure oAs = do
+          niAs <- unstreamOnAnns iAsWType $ markUnstreamA iAs
+          return (niAs, filter (not . anyFuseOrStream) oAs)
+
+      | oId == "iterate" = unstreamOnAnns oAsWType $ markEdgeUnstreamA iAs oAs
+      | otherwise = markStream oAs >>= return . (iAs,)
+
+    propagateFusableApp iAs oAs
+      | isAnyImpure iAs && isAnyImpure oAs = filter (not . anyFuseOrStream) oAs
+      | otherwise = oAs
+
+    unstreamOnAnns asWType f = maybe unstreamErr f $ find isEType asWType
+
+    markUnstreamA as (EType t) = markUnstream t =<< markStream as
+    markUnstreamA _ _ = unstreamErr
+
+    markEdgeUnstreamA iAs oAs ta = markUnstreamA oAs ta >>= return . (iAs,)
+
+    markUnstream :: K3 Type -> [Annotation Expression] -> Either String [Annotation Expression]
+    markUnstream t as = return $
       if not $ any isEStream as then as
       else filter (not . isEStream) as ++ [pUnstream t]
 
-    propagateStreamApp oAs oId oAsWType
-      | oId == "iterate" = maybe unstreamTypeErr (unstreamWithType oAs) $ find isEType oAsWType
-      | otherwise = markStream oAs
+    unstreamErr = Left $ "Invalid type when creating unstream annotation"
 
-    unstreamWithType oAs (EType t) = markUnstreamAppT t =<< markStream oAs
-    unstreamWithType _ _ = unstreamTypeErr
+    markPureTransformer as asWithEffect =
+      nub $ if any isEPure asWithEffect then as ++ [pPureTransformer]
+                                        else as ++ [pImpureTransformer]
 
-    unstreamTypeErr = Left $ "Invalid type when creating unstream annotation"
+    markEffects iAs oAs =
+      if any isEImpureTransformer iAs && any isEImpureTransformer oAs
+        then filter (not . anyFuseOrStream) oAs
+        else oAs
 
     markTAppChain as = nub $ as ++ [pTAppChain]
 
@@ -890,6 +924,9 @@ inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateSt
                     else []
 
     isAnyStreamed as = any isEStreamable as || any isEStream as
+    isAnyImpure   as = any isEImpureTransformer as
+
+    anyFuseOrStream a = isEFusable a || isEStreamable a || isEStream a
 
     unaryTransformer   fId = fId `elem` ["map", "filter", "iterate", "ext"]
     binaryTransformer  fId = fId `elem` ["fold"]
@@ -910,8 +947,8 @@ fuseTransformers expr = mapTree (flip $ curry fuse) expr
     -- TODO: anything to do with arg2E? At least ensure it is an empty collection.
     -- Rewrites fold to: cE.map (\j -> ... Some v ... None)
     -- where Some v and None are the new return values of the accumulation
-    fuse nch@(PStreamableTransformerPair cE fId bodyE i j _ iAs jAs fAs appAs)
-      | fId == "fold" && any isEStream appAs =
+    fuse nch@(PStreamableTransformerPair cE fId bodyE i j _ iAs jAs fAs iAppAs oAppAs)
+      | fId == "fold" && any isEStream iAppAs =
 
           let (isAccum, nBodyE) = rewriteAccumulation i bodyE
               passThruP a = isEIElemRec a || isETAppChain a
@@ -921,11 +958,11 @@ fuseTransformers expr = mapTree (flip $ curry fuse) expr
                 in foldl (@+) e eAnns
 
               markStreamedApp e = foldl (@+) e $ [pStream, pFusable, pHasSkip, pOElemRec]
-                                                 ++ (filter passThruP appAs)
+                                                 ++ (filter passThruP iAppAs)
 
               nBAnns = filter isEPure iAs
               nArgE  = foldl (@+) (EC.lambda j nBodyE) nBAnns
-              nPrjE  = markPureTransformer (EC.project "map" cE) $ any isEPure iAs
+              nPrjE  = markPureTransformer (EC.project "map" cE) $ any isEPure oAppAs
               nAppE  = markStreamedApp $ EC.applyMany nPrjE [nArgE]
           in
           let isInferAccum = inferAccumulation i bodyE in
@@ -1371,11 +1408,11 @@ pattern PUnstream3 fE arg1E arg2E arg3E app1As app2As app3As <-
 pattern PStreamableTransformerArg i j iAs jAs <-
   PChainLambda1 i j (inferAccumulation i -> True) iAs jAs
 
-pattern PStreamableTransformerPair cE fId bodyE i j arg2E iAs jAs fAs appAs <-
-  (PApp _ _ (any isETAppChain -> True)
+pattern PStreamableTransformerPair cE fId bodyE i j arg2E iAs jAs fAs iAppAs oAppAs <-
+  (PApp _ _ (id &&& any isETAppChain -> (oAppAs, True))
   , [PApp (PPrj cE fId fAs)
           (PChainLambda1 i j bodyE iAs jAs)
-          (id &&& any isEStreamable -> (appAs, True))
+          (id &&& any isEStreamable -> (iAppAs, True))
     , arg2E])
 
 pattern InsertAndReturn i cfId arg <-
