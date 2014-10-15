@@ -5,23 +5,22 @@ include "Core/Builtins.k3"
 @:CArgs 2
 declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
 
+declare dataFiles : collection {path: string} @ {Collection}
+
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 3
 declare num_peers: int = 2
-declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
 declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
-
 
 // Time
 declare start_ms : mut int = 0
 declare end_ms : mut int = 0
 declare elapsed_ms : mut int = 0
 
-declare file_name : string = "data.txt"
 
 declare inputData : collection {elem:string} @ {Seq}
 
@@ -97,7 +96,7 @@ trigger ready : () = \_ -> (
 )
 
 trigger load_all : () = \_ -> (
-  stringLoader file_name inputData;
+   dataFiles.iterate (\e -> stringLoader e.path inputData);
   ((ready, master) <- ())
 )
 
