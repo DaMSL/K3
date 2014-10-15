@@ -357,7 +357,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                 return [ R.Forward $ R.ScalarDecl (R.Name i)
                            (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
                            (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
-                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                           (R.Specialized [R.TypeLit $ R.LInt n] $ R.Name "get")) [g])
                        | i <- is
                        | n <- [0..]
                        ]
