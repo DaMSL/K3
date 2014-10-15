@@ -24,8 +24,6 @@ module Language.K3.Parser (
   parseDeclaration,
   parseSimpleK3,
   parseK3,
-  effectSignature,
-  effTerm,
   ensureUIDs
 ) where
 
@@ -222,8 +220,9 @@ dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 dDataAnnotation :: DeclParser
 dDataAnnotation = namedIdentifier "data annotation" "annotation" rule
   where rule x = mkAnnotation <$> x <*> option [] spliceParameterDecls <*> typesParamsAndMembers
-        typesParamsAndMembers = parseInMode Splice $ protectedVarDecls typeParameters $ braces (some annotationMember)
+        typesParamsAndMembers = parseInMode Splice $ protectedVarDecls typeParameters $ braces (some member)
         typeParameters = keyword "given" *> keyword "type" *> typeVarDecls <|> return []
+        member = try (Left <$> mpAnnotationMember) <|> try (Right <$> annotationMember)
         mkAnnotation n sp (tp, mems) = DC.generator $ mpDataAnnotation n sp tp mems
 
 
@@ -269,6 +268,12 @@ annotationMember = memberError $ mkMember <$> annotatedRule
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
                    keyword "requires" >> return Requires]
+
+mpAnnotationMember :: K3Parser MPAnnMemDecl
+mpAnnotationMember = mpAnnMemDecl <$> (keyword "for" *> parseInMode Normal identifier)
+                                  <*> (keyword "in" *> svTerm <* colon)
+                                  <*> some annotationMember
+
 
 -- | Control annotation parsing
 dControlAnnotation :: DeclParser
@@ -798,8 +803,9 @@ spliceParameterDecls :: K3Parser [TypedSpliceVar]
 spliceParameterDecls = brackets (commaSep stVar)
 
 svTerm :: K3Parser SpliceValue
-svTerm = choice $ map try [sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
+svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
   where
+    sVar        = SVar     <$> identifier
     sLabel      = SLabel   <$> wrap "[#"  "]" identifier
     sType       = SType    <$> wrap "[:"  "]" typeExpr
     sExpr       = SExpr    <$> wrap "[$"  "]" expr
@@ -820,7 +826,7 @@ spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> svTerm)
 
 contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
-contextualizedSpliceParameter sEnvOpt = choice [spliceParameter, try fromContext]
+contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter]
   where
     fromContext = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
     contextParams = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
@@ -854,7 +860,10 @@ effTerm = (choice $ map try [effRead, effWrite, effLambda, effApply, effSeq, eff
         effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
         effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
 
-        effSymbol = (flip FC.symbol F.PVar <$> identifier) <?> "effect symbol"
+        effSymbol = (flip FC.symbol F.PVar
+                        <$> (identifier <|> (keyword "self"    >> return "self")
+                                        <|> (keyword "content" >> return "content")))
+                        <?> "effect symbol"
 
         mkScope i ch = [FC.scope [FC.symbol i F.PVar] ([], [], []) $ [termAsSeq ch]]
         termAsSeq t = if length t == 1 then head t else FC.seq t

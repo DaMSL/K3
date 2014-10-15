@@ -275,6 +275,93 @@ std::size_t hash_value(const R_addr<_T0>& r)  {
   return hasher(std::tie(r.addr));
 }
 #endif
+#ifndef K3_R_arSum_prCount_prSum_hash_value
+#define K3_R_arSum_prCount_prSum_hash_value
+template <class _T0, class _T1, class _T2>
+class R_arSum_prCount_prSum {
+  public:
+      R_arSum_prCount_prSum(): arSum(), prCount(), prSum()  {}
+      template <class __T0, class __T1, class __T2>
+      R_arSum_prCount_prSum(__T0&& _arSum, __T1&& _prCount,
+      __T2&& _prSum): arSum(std::forward<__T0>(_arSum)), prCount(std::forward<__T1>(_prCount)),
+      prSum(std::forward<__T2>(_prSum))  {}
+      R_arSum_prCount_prSum(const R_arSum_prCount_prSum<_T0, _T1,
+      _T2>& __other): arSum(__other.arSum), prCount(__other.prCount), prSum(__other.prSum)  {}
+      R_arSum_prCount_prSum(R_arSum_prCount_prSum<_T0, _T1,
+      _T2>&& __other): arSum(std::move(__other.arSum)), prCount(std::move(__other.prCount)),
+      prSum(std::move(__other.prSum))  {}
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & arSum;
+        _archive & prCount;
+        _archive & prSum;
+      }
+      R_arSum_prCount_prSum<_T0, _T1, _T2>& operator=(const R_arSum_prCount_prSum<_T0, _T1,
+      _T2>& __other)  {
+        arSum = (__other.arSum);
+        prCount = (__other.prCount);
+        prSum = (__other.prSum);
+        return *(this);
+      }
+      R_arSum_prCount_prSum<_T0, _T1, _T2>& operator=(R_arSum_prCount_prSum<_T0, _T1,
+      _T2>&& __other)  {
+        arSum = std::move(__other.arSum);
+        prCount = std::move(__other.prCount);
+        prSum = std::move(__other.prSum);
+        return *(this);
+      }
+      bool operator==(const R_arSum_prCount_prSum<_T0, _T1, _T2>& __other) const {
+        return arSum == (__other.arSum) && prCount == (__other.prCount) && prSum == (__other.prSum);
+      }
+      bool operator!=(const R_arSum_prCount_prSum<_T0, _T1, _T2>& __other) const {
+        return std::tie(arSum, prCount, prSum) != std::tie(__other.arSum, __other.prCount,
+        __other.prSum);
+      }
+      bool operator<(const R_arSum_prCount_prSum<_T0, _T1, _T2>& __other) const {
+        return std::tie(arSum, prCount, prSum) < std::tie(__other.arSum, __other.prCount,
+        __other.prSum);
+      }
+      bool operator>(const R_arSum_prCount_prSum<_T0, _T1, _T2>& __other) const {
+        return std::tie(arSum, prCount, prSum) > std::tie(__other.arSum, __other.prCount,
+        __other.prSum);
+      }
+      _T0 arSum;
+      _T1 prCount;
+      _T2 prSum;
+};
+#endif
+namespace K3 {
+  template <class _T0, class _T1, class _T2>
+  class patcher<R_arSum_prCount_prSum<_T0, _T1, _T2>> {
+    public:
+        static void patch(std::string _input, R_arSum_prCount_prSum<_T0, _T1, _T2>& _record)  {
+          shallow<string::iterator> _shallow;
+          qi::rule<string::iterator,
+          qi::space_type> _arSum = (qi::lit("arSum") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.arSum);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _prCount = (qi::lit("prCount") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.prCount);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _prSum = (qi::lit("prSum") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.prSum);
+          })];
+          qi::rule<string::iterator, qi::space_type> _field = _arSum | _prCount | _prSum;
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
+        }
+  };
+}
+#ifndef K3_R_arSum_prCount_prSum
+#define K3_R_arSum_prCount_prSum
+template <class _T0, class _T1, class _T2>
+std::size_t hash_value(const R_arSum_prCount_prSum<_T0, _T1, _T2>& r)  {
+  boost::hash<std::tuple<_T0, _T1, _T2>> hasher;
+  return hasher(std::tie(r.arSum, r.prCount, r.prSum));
+}
+#endif
 #ifndef K3_R_arg_hash_value
 #define K3_R_arg_hash_value
 template <class _T0>
@@ -510,60 +597,43 @@ namespace K3 {
         }
   };
 }
-template <class __CONTENT>
-class _Seq: public K3::Seq<__CONTENT> {
-  public:
-      _Seq(): K3::Seq<__CONTENT>()  {}
-      _Seq(const _Seq<__CONTENT>& __other): K3::Seq<__CONTENT>(__other)  {}
-      _Seq(const K3::Seq<__CONTENT>& __other1): K3::Seq<__CONTENT>(__other1)  {}
-      _Seq(K3::Seq<__CONTENT>&& __other1): K3::Seq<__CONTENT>(std::move(__other1))  {}
-      template <class archive>
-      void serialize(archive& _archive, const unsigned int _version)  {
-        _archive & boost::serialization::base_object<K3::Seq<__CONTENT>>(*this);
-      }
-};
-namespace K3 {
-  template <class __CONTENT>
-  class patcher<_Seq<__CONTENT>> {
-    public:
-        static void patch(std::string _input, _Seq<__CONTENT>& _c)  {
-          collection_patcher<_Seq, __CONTENT>::patch(_input, _c);
-        }
-  };
-}
 class __global_context: public K3::__standard_context, public K3::__string_context,
 public K3::__time_context {
   public:
       __global_context(Engine& __engine): K3::__standard_context(__engine), K3::__string_context(),
       K3::__time_context()  {
-        master = make_address("127.0.0.1", 40000);
-        x = 3;
+        master = make_address("127.0.0.1", 30001);
+        peer_count = 0;
+        date_lb = 0;
+        date_ub = 100;
+        merged_peers = 0;
+        peers_done = 0;
         peers_ready = 0;
-        peers_finished = 0;
-        master_peers_finished = 0;
-        start_ms = 0;
-        end_ms = 0;
-        elapsed_ms = 0;
         dispatch_table[0] = [this] (void* payload)   {
-          load_all(*(static_cast<unit_t*>(payload)));
+          loadAll(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[1] = [this] (void* payload)   {
           ready(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[2] = [this] (void* payload)   {
-          shutdown_(*(static_cast<unit_t*>(payload)));
+          finished(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[3] = [this] (void* payload)   {
-          master_done(*(static_cast<unit_t*>(payload)));
+          find_global_max(*(static_cast<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+          int>>*>(payload)));
         };
         dispatch_table[4] = [this] (void* payload)   {
-          peer_barrier(*(static_cast<unit_t*>(payload)));
+          find_local_max(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[5] = [this] (void* payload)   {
-          aggregate(*(static_cast<_Collection<R_key_value<std::string, double>>*>(payload)));
+          count_merges(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[6] = [this] (void* payload)   {
-          q2_local(*(static_cast<unit_t*>(payload)));
+          merge(*(static_cast<_Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+          int>>>*>(payload)));
+        };
+        dispatch_table[7] = [this] (void* payload)   {
+          q3_local(*(static_cast<unit_t*>(payload)));
         };
       }
       Address me;
@@ -571,13 +641,198 @@ public K3::__time_context {
       std::tuple<_Collection<R_arg<std::string>>, _Collection<R_key_value<std::string,
       std::string>>> args;
       std::string role;
-      unit_t dataLoader(string file,
+      Address master;
+      int peer_count;
+      int start_ms;
+      int end_ms;
+      int elapsed_ms;
       _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
       std::string, std::string, int, std::string, std::string, std::string, std::string,
-      std::string>>& c)  {
-        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
+      int>> user_visits;
+      _Map<R_key_value<std::string, int>> rankingsMap;
+      _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+      int>>> empty_source_ip_to_aggs_C;
+      R_arSum_prCount_prSum<double, int, int> empty_aggs;
+      _Map<R_key_value<Address, _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+      int>>>>> partial_aggs;
+      _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int, int>>> merged_partials;
+      int date_lb;
+      int date_ub;
+      bool valid_date(const int& i)  {
+        return i <= date_ub && i >= date_lb;
+      }
+      unit_t q3_local(const unit_t& _)  {
+        user_visits.iterate([this] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
         std::string, std::string, int, std::string, std::string, std::string, std::string,
-        std::string> rec;
+        int>& uv) mutable  {
+          if (valid_date(uv.visitDate)) {
+            {
+              std::string ip;
+              ip = uv.sourceIP;
+              {
+                Address a;
+                a = peer_by_hash(ip);
+                shared_ptr<R_key_value<Address, _Map<R_key_value<std::string,
+                R_arSum_prCount_prSum<double, int, int>>>>> __0;
+                __0 = partial_aggs.lookup(R_key_value<Address, _Map<R_key_value<std::string,
+                R_arSum_prCount_prSum<double, int, int>>>> {a, empty_source_ip_to_aggs_C});
+                if (__0) {
+                  auto& aggs = *(__0);
+                  shared_ptr<R_key_value<std::string, int>> __1;
+                  __1 = rankingsMap.lookup(R_key_value<std::string, int> {ip, 0});
+                  if (__1) {
+                    auto& r = *(__1);
+                    shared_ptr<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+                    int>>> __2;
+                    __2 = (aggs.value).lookup(R_key_value<std::string, R_arSum_prCount_prSum<double,
+                    int, int>> {ip, empty_aggs});
+                    if (__2) {
+                      auto& pa_v = *(__2);
+                      (aggs.value).insert(R_key_value<std::string, R_arSum_prCount_prSum<double,
+                      int, int>> {ip, R_arSum_prCount_prSum<double, int,
+                      int> {((pa_v.value).arSum) + (uv.adRevenue), ((pa_v.value).prCount) + (1),
+                      ((pa_v.value).prSum) + (r.value)}});
+                    } else {
+                      (aggs.value).insert(R_key_value<std::string, R_arSum_prCount_prSum<double,
+                      int, int>> {ip, R_arSum_prCount_prSum<double, int, int> {uv.adRevenue, 1,
+                      r.value}});
+                    }
+                    return partial_aggs.insert(R_key_value<Address, _Map<R_key_value<std::string,
+                    R_arSum_prCount_prSum<double, int, int>>>> {a, aggs.value});
+                  } else {
+                    return unit_t {};
+                  }
+                } else {
+                  shared_ptr<R_key_value<std::string, int>> __3;
+                  __3 = rankingsMap.lookup(R_key_value<std::string, int> {ip, 0});
+                  if (__3) {
+                    auto& r = *(__3);
+                    _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int, int>>> __4;
+                    {
+                      _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+                      int>>> __collection;
+                      __collection = _Map<R_key_value<std::string, R_arSum_prCount_prSum<double,
+                      int, int>>> {};
+                      __collection.insert(R_key_value<std::string, R_arSum_prCount_prSum<double,
+                      int, int>> {ip, R_arSum_prCount_prSum<double, int, int> {uv.adRevenue, 1,
+                      r.value}});
+                      __4 = __collection;
+                    }
+                    return partial_aggs.insert(R_key_value<Address, _Map<R_key_value<std::string,
+                    R_arSum_prCount_prSum<double, int, int>>>> {a, __4});
+                  } else {
+                    return unit_t {};
+                  }
+                }
+              }
+            }
+          } else {
+            return unit_t {};
+          }
+        });
+        partial_aggs.iterate([this] (const R_key_value<Address, _Map<R_key_value<std::string,
+        R_arSum_prCount_prSum<double, int, int>>>>& kv) mutable  {
+          auto d = std::make_shared<K3::ValDispatcher<_Map<R_key_value<std::string,
+          R_arSum_prCount_prSum<double, int, int>>>>>(kv.value);
+          __engine.send(kv.key, 6, d);
+          return unit_t {};
+        });
+        return peers.iterate([this] (const R_addr<Address>& p) mutable  {
+          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+          __engine.send(p.addr, 5, d);
+          return unit_t {};
+        });
+      }
+      unit_t merge(const _Map<R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+      int>>>& aggs_map)  {
+        return aggs_map.iterate([this] (const R_key_value<std::string, R_arSum_prCount_prSum<double,
+        int, int>>& kv) mutable  {
+          shared_ptr<R_key_value<std::string, R_arSum_prCount_prSum<double, int, int>>> __5;
+          __5 = merged_partials.lookup(R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+          int>> {kv.key, kv.value});
+          if (__5) {
+            auto& agg = *(__5);
+            return merged_partials.insert(R_key_value<std::string, R_arSum_prCount_prSum<double,
+            int, int>> {kv.key, R_arSum_prCount_prSum<double, int,
+            int> {((agg.value).arSum) + ((kv.value).arSum),
+            ((agg.value).prCount) + ((kv.value).prCount),
+            ((agg.value).prSum) + ((kv.value).prSum)}});
+          } else {
+            return merged_partials.insert(kv);
+          }
+        });
+      }
+      int merged_peers;
+      unit_t count_merges(const unit_t& _)  {
+        merged_peers = merged_peers + (1);
+        if (merged_peers == peers.size(unit_t {})) {
+          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+          __engine.send(me, 4, d);
+          return unit_t {};
+        } else {
+          return unit_t {};
+        }
+      }
+      R_key_value<std::string, R_arSum_prCount_prSum<double, int, int>> local_max;
+      unit_t find_local_max(const unit_t& _)  {
+        merged_partials.iterate([this] (const R_key_value<std::string, R_arSum_prCount_prSum<double,
+        int, int>>& kv) mutable  {
+          if (((kv.value).arSum) > ((local_max.value).arSum)) {
+            local_max = kv;
+            return unit_t {};
+          } else {
+            return unit_t {};
+          }
+        });
+        auto d = std::make_shared<K3::ValDispatcher<R_key_value<std::string,
+        R_arSum_prCount_prSum<double, int, int>>>>(local_max);
+        __engine.send(master, 3, d);
+        return unit_t {};
+      }
+      int peers_done;
+      R_key_value<std::string, R_arSum_prCount_prSum<double, int, int>> global_max;
+      unit_t find_global_max(const R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+      int>>& kv)  {
+        if (((kv.value).arSum) > ((global_max.value).arSum)) {
+          global_max = kv;
+          return unit_t {};
+        } else {
+          peers_done = peers_done + (1);
+          if (peers_done == peers.size(unit_t {})) {
+            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+            __engine.send(master, 2, d);
+            return unit_t {};
+          } else {
+            return unit_t {};
+          }
+        }
+      }
+      unit_t finished(const unit_t& _)  {
+        end_ms = now_int(unit_t {});
+        elapsed_ms = end_ms - start_ms;
+        return print(concat("Elapsed: ", itos(elapsed_ms)));
+      }
+      int peers_ready;
+      unit_t ready(const unit_t& _)  {
+        peers_ready = peers_ready + (1);
+        if (peers_ready == peers.size(unit_t {})) {
+          start_ms = now_int(unit_t {});
+          return peers.iterate([this] (const R_addr<Address>& p) mutable  {
+            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+            __engine.send(p.addr, 7, d);
+            return unit_t {};
+          });
+        } else {
+          return unit_t {};
+        }
+      }
+      _Collection<R_path<std::string>> uvFiles;
+      unit_t uvLoader(string file,
+      _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
+      std::string, std::string, int, std::string, std::string, std::string, std::string,
+      int>>& c)  {
+        R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
+        std::string, std::string, int, std::string, std::string, std::string, std::string, int> rec;
         strtk::for_each_line(file, [&rec, &c] (const std::string& str)   {
           if (strtk::parse(str, ",", rec.sourceIP, rec.destURL, rec.visitDate, rec.adRevenue,
           rec.userAgent, rec.countryCode, rec.languageCode, rec.searchWord, rec.duration)) {
@@ -588,123 +843,13 @@ public K3::__time_context {
         });
         return unit_t {};
       }
-      _Collection<R_path<std::string>> dataFiles;
-      _Seq<R_addr<Address>> peers_seq;
-      Address master;
-      int index_by_hash(const std::string& s)  {
-        return hash(s) % peers_seq.size(unit_t {});
-      }
-      int x;
-      int peers_ready;
-      int peers_finished;
-      int master_peers_finished;
-      _Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
-      std::string, std::string, int, std::string, std::string, std::string, std::string,
-      std::string>> local_uservisits;
-      _Map<R_key_value<std::string, double>> local_q2_results;
-      int start_ms;
-      int end_ms;
-      int elapsed_ms;
-      _Collection<R_key_value<std::string, double>> agg_vals;
-      _Collection<R_key_value<int, _Collection<R_key_value<std::string, double>>>> peer_aggs;
-      unit_t q2_local(const unit_t& _)  {
-        agg_vals = local_uservisits.groupBy([this] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
-        std::string, std::string, int, std::string, std::string, std::string, std::string,
-        std::string>& r) mutable  {
-          return slice_string(r.sourceIP, 0, x);
-        }, [this] (const double& acc) mutable  {
-          return [this,
-          &acc] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
-          std::string, std::string, int, std::string, std::string, std::string, std::string,
-          std::string>& r) mutable  {
-            return acc + (r.adRevenue);
-          };
-        }, 0.0);
-        peer_aggs = agg_vals.groupBy([this] (const R_key_value<std::string, double>& v) mutable  {
-          return index_by_hash(v.key);
-        }, [this] (_Collection<R_key_value<std::string, double>> acc) mutable  {
-          return [this, acc = std::move(acc)] (const R_key_value<std::string, double>& v) mutable  {
-            acc.insert(v);
-            return acc;
-          };
-        }, _Collection<R_key_value<std::string, double>> {});
-        peer_aggs.iterate([this] (const R_key_value<int, _Collection<R_key_value<std::string,
-        double>>>& v) mutable  {
-          auto d = std::make_shared<K3::ValDispatcher<_Collection<R_key_value<std::string,
-          double>>>>(v.value);
-          __engine.send((peers_seq.at(v.key)).addr, 5, d);
-          return unit_t {};
+      _Collection<R_path<std::string>> rkFiles;
+      unit_t loadAll(const unit_t& _)  {
+        uvFiles.iterate([this] (const R_path<std::string>& e) mutable  {
+          return uvLoader(e.path, user_visits);
         });
-        return peers.iterate([this] (const R_addr<Address>& p) mutable  {
-          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(p.addr, 4, d);
-          return unit_t {};
-        });
-      }
-      unit_t merge_results(const _Collection<R_key_value<std::string, double>>& vals)  {
-        return vals.iterate([this] (const R_key_value<std::string, double>& v) mutable  {
-          shared_ptr<R_key_value<std::string, double>> __0;
-          __0 = local_q2_results.lookup(R_key_value<std::string, double> {v.key, 0.0});
-          if (__0) {
-            auto& kv = *(__0);
-            return local_q2_results.insert(R_key_value<std::string, double> {v.key,
-            (kv.value) + (v.value)});
-          } else {
-            return local_q2_results.insert(v);
-          }
-        });
-      }
-      unit_t aggregate(const _Collection<R_key_value<std::string, double>>& vals)  {
-        return merge_results(vals);
-      }
-      unit_t peer_barrier(const unit_t& _)  {
-        peers_finished = peers_finished + (1);
-        if (peers_finished == peers.size(unit_t {})) {
-          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(master, 3, d);
-          return unit_t {};
-        } else {
-          return unit_t {};
-        }
-      }
-      unit_t master_done(const unit_t& _)  {
-        master_peers_finished = master_peers_finished + (1);
-        if (master_peers_finished == peers.size(unit_t {})) {
-          end_ms = now_int(unit_t {});
-          elapsed_ms = end_ms - start_ms;
-          print(itos(elapsed_ms));
-          return peers.iterate([this] (const R_addr<Address>& p) mutable  {
-            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-            __engine.send(p.addr, 2, d);
-            return unit_t {};
-          });
-        } else {
-          return unit_t {};
-        }
-      }
-      unit_t shutdown_(const unit_t& _)  {
-        print(concat("Num local results: ", itos(local_q2_results.size(unit_t {}))));
-        return haltEngine(unit_t {});
-      }
-      unit_t ready(const unit_t& _)  {
-        peers_ready = peers_ready + (1);
-        if (peers_ready == peers.size(unit_t {})) {
-          start_ms = now_int(unit_t {});
-          return peers.iterate([this] (const R_addr<Address>& p) mutable  {
-            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-            __engine.send(p.addr, 6, d);
-            return unit_t {};
-          });
-        } else {
-          return unit_t {};
-        }
-      }
-      unit_t load_all(const unit_t& _)  {
-        peers.iterate([this] (const R_addr<Address>& i) mutable  {
-          return peers_seq.insert(i);
-        });
-        dataFiles.iterate([this] (const R_path<std::string>& e) mutable  {
-          return dataLoader(e.path, local_uservisits);
+        rkFiles.iterate([this] (const R_path<std::string>& e) mutable  {
+          return rkLoaderMap(e.path, rankingsMap);
         });
         auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
         __engine.send(master, 1, d);
@@ -736,16 +881,53 @@ public K3::__time_context {
       }
       std::map<std::string, std::string> __prettify()  {
         std::map<std::string, std::string> result;
-        result["peer_aggs"] = [] (_Collection<R_key_value<int, _Collection<R_key_value<std::string,
-        double>>>> x)   {
+        result["rkFiles"] = [] (_Collection<R_path<std::string>> x)   {
           std::ostringstream oss;
-          x.iterate([&oss] (const R_key_value<int, _Collection<R_key_value<std::string,
-          double>>>& elem)   {
-            std::string s = ("{") + std::string("key:") + std::to_string(elem.key) + (",") + std::string("value:") + [] (_Collection<R_key_value<std::string,
-            double>> x)   {
+          x.iterate([&oss] (const R_path<std::string>& elem)   {
+            std::string s = ("{") + std::string("path:") + (elem.path) + ("}");
+            oss << s << (",");
+            return unit_t {};
+          });
+          return ("[") + oss.str();
+        }(rkFiles);
+        result["uvFiles"] = [] (_Collection<R_path<std::string>> x)   {
+          std::ostringstream oss;
+          x.iterate([&oss] (const R_path<std::string>& elem)   {
+            std::string s = ("{") + std::string("path:") + (elem.path) + ("}");
+            oss << s << (",");
+            return unit_t {};
+          });
+          return ("[") + oss.str();
+        }(uvFiles);
+        result["peers_ready"] = std::to_string(peers_ready);
+        result["global_max"] = ("{") + std::string("key:") + (global_max.key) + (",") + std::string("value:") + ("{") + std::string("prSum:") + std::to_string((global_max.value).prSum) + (",") + std::string("prCount:") + std::to_string((global_max.value).prCount) + (",") + std::string("arSum:") + std::to_string((global_max.value).arSum) + ("}") + ("}");
+        result["peers_done"] = std::to_string(peers_done);
+        result["local_max"] = ("{") + std::string("key:") + (local_max.key) + (",") + std::string("value:") + ("{") + std::string("prSum:") + std::to_string((local_max.value).prSum) + (",") + std::string("prCount:") + std::to_string((local_max.value).prCount) + (",") + std::string("arSum:") + std::to_string((local_max.value).arSum) + ("}") + ("}");
+        result["merged_peers"] = std::to_string(merged_peers);
+        result["date_ub"] = std::to_string(date_ub);
+        result["date_lb"] = std::to_string(date_lb);
+        result["merged_partials"] = [] (_Map<R_key_value<std::string, R_arSum_prCount_prSum<double,
+        int, int>>> x)   {
+          std::ostringstream oss;
+          x.iterate([&oss] (const R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+          int>>& elem)   {
+            std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + ("{") + std::string("prSum:") + std::to_string((elem.value).prSum) + (",") + std::string("prCount:") + std::to_string((elem.value).prCount) + (",") + std::string("arSum:") + std::to_string((elem.value).arSum) + ("}") + ("}");
+            oss << s << (",");
+            return unit_t {};
+          });
+          return ("[") + oss.str();
+        }(merged_partials);
+        result["partial_aggs"] = [] (_Map<R_key_value<Address, _Map<R_key_value<std::string,
+        R_arSum_prCount_prSum<double, int, int>>>>> x)   {
+          std::ostringstream oss;
+          x.iterate([&oss] (const R_key_value<Address, _Map<R_key_value<std::string,
+          R_arSum_prCount_prSum<double, int, int>>>>& elem)   {
+            std::string s = ("{") + std::string("key:") + K3::addressAsString(elem.key) + (",") + std::string("value:") + [] (_Map<R_key_value<std::string,
+            R_arSum_prCount_prSum<double, int, int>>> x)   {
               std::ostringstream oss;
-              x.iterate([&oss] (const R_key_value<std::string, double>& elem)   {
-                std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + std::to_string(elem.value) + ("}");
+              x.iterate([&oss] (const R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+              int>>& elem)   {
+                std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + ("{") + std::string("prSum:") + std::to_string((elem.value).prSum) + (",") + std::string("prCount:") + std::to_string((elem.value).prCount) + (",") + std::string("arSum:") + std::to_string((elem.value).arSum) + ("}") + ("}");
                 oss << s << (",");
                 return unit_t {};
               });
@@ -755,64 +937,46 @@ public K3::__time_context {
             return unit_t {};
           });
           return ("[") + oss.str();
-        }(peer_aggs);
-        result["agg_vals"] = [] (_Collection<R_key_value<std::string, double>> x)   {
+        }(partial_aggs);
+        result["empty_aggs"] = ("{") + std::string("prSum:") + std::to_string(empty_aggs.prSum) + (",") + std::string("prCount:") + std::to_string(empty_aggs.prCount) + (",") + std::string("arSum:") + std::to_string(empty_aggs.arSum) + ("}");
+        result["empty_source_ip_to_aggs_C"] = [] (_Map<R_key_value<std::string,
+        R_arSum_prCount_prSum<double, int, int>>> x)   {
           std::ostringstream oss;
-          x.iterate([&oss] (const R_key_value<std::string, double>& elem)   {
+          x.iterate([&oss] (const R_key_value<std::string, R_arSum_prCount_prSum<double, int,
+          int>>& elem)   {
+            std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + ("{") + std::string("prSum:") + std::to_string((elem.value).prSum) + (",") + std::string("prCount:") + std::to_string((elem.value).prCount) + (",") + std::string("arSum:") + std::to_string((elem.value).arSum) + ("}") + ("}");
+            oss << s << (",");
+            return unit_t {};
+          });
+          return ("[") + oss.str();
+        }(empty_source_ip_to_aggs_C);
+        result["rankingsMap"] = [] (_Map<R_key_value<std::string, int>> x)   {
+          std::ostringstream oss;
+          x.iterate([&oss] (const R_key_value<std::string, int>& elem)   {
             std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + std::to_string(elem.value) + ("}");
             oss << s << (",");
             return unit_t {};
           });
           return ("[") + oss.str();
-        }(agg_vals);
-        result["elapsed_ms"] = std::to_string(elapsed_ms);
-        result["end_ms"] = std::to_string(end_ms);
-        result["start_ms"] = std::to_string(start_ms);
-        result["local_q2_results"] = [] (_Map<R_key_value<std::string, double>> x)   {
-          std::ostringstream oss;
-          x.iterate([&oss] (const R_key_value<std::string, double>& elem)   {
-            std::string s = ("{") + std::string("key:") + (elem.key) + (",") + std::string("value:") + std::to_string(elem.value) + ("}");
-            oss << s << (",");
-            return unit_t {};
-          });
-          return ("[") + oss.str();
-        }(local_q2_results);
-        result["local_uservisits"] = [] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
+        }(rankingsMap);
+        result["user_visits"] = [] (_Collection<R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
         std::string, std::string, int, std::string, std::string, std::string, std::string,
-        std::string>> x)   {
+        int>> x)   {
           std::ostringstream oss;
           x.iterate([&oss] (const R_adRevenue_countryCode_destURL_duration_languageCode_searchWord_sourceIP_userAgent_visitDate<double,
           std::string, std::string, int, std::string, std::string, std::string, std::string,
-          std::string>& elem)   {
-            std::string s = ("{") + std::string("adRevenue:") + std::to_string(elem.adRevenue) + (",") + std::string("countryCode:") + (elem.countryCode) + (",") + std::string("destURL:") + (elem.destURL) + (",") + std::string("duration:") + std::to_string(elem.duration) + (",") + std::string("languageCode:") + (elem.languageCode) + (",") + std::string("searchWord:") + (elem.searchWord) + (",") + std::string("sourceIP:") + (elem.sourceIP) + (",") + std::string("userAgent:") + (elem.userAgent) + (",") + std::string("visitDate:") + (elem.visitDate) + ("}");
+          int>& elem)   {
+            std::string s = ("{") + std::string("sourceIP:") + (elem.sourceIP) + (",") + std::string("destURL:") + (elem.destURL) + (",") + std::string("visitDate:") + std::to_string(elem.visitDate) + (",") + std::string("adRevenue:") + std::to_string(elem.adRevenue) + (",") + std::string("userAgent:") + (elem.userAgent) + (",") + std::string("countryCode:") + (elem.countryCode) + (",") + std::string("languageCode:") + (elem.languageCode) + (",") + std::string("searchWord:") + (elem.searchWord) + (",") + std::string("duration:") + std::to_string(elem.duration) + ("}");
             oss << s << (",");
             return unit_t {};
           });
           return ("[") + oss.str();
-        }(local_uservisits);
-        result["master_peers_finished"] = std::to_string(master_peers_finished);
-        result["peers_finished"] = std::to_string(peers_finished);
-        result["peers_ready"] = std::to_string(peers_ready);
-        result["x"] = std::to_string(x);
+        }(user_visits);
+        result["elapsed_ms"] = std::to_string(elapsed_ms);
+        result["end_ms"] = std::to_string(end_ms);
+        result["start_ms"] = std::to_string(start_ms);
+        result["peer_count"] = std::to_string(peer_count);
         result["master"] = K3::addressAsString(master);
-        result["peers_seq"] = [] (_Seq<R_addr<Address>> x)   {
-          std::ostringstream oss;
-          x.iterate([&oss] (const R_addr<Address>& elem)   {
-            std::string s = ("{") + std::string("addr:") + K3::addressAsString(elem.addr) + ("}");
-            oss << s << (",");
-            return unit_t {};
-          });
-          return ("[") + oss.str();
-        }(peers_seq);
-        result["dataFiles"] = [] (_Collection<R_path<std::string>> x)   {
-          std::ostringstream oss;
-          x.iterate([&oss] (const R_path<std::string>& elem)   {
-            std::string s = ("{") + std::string("path:") + (elem.path) + ("}");
-            oss << s << (",");
-            return unit_t {};
-          });
-          return ("[") + oss.str();
-        }(dataFiles);
         result["role"] = role;
         result["args"] = ("(") + [] (_Collection<R_arg<std::string>> x)   {
           std::ostringstream oss;
@@ -844,11 +1008,50 @@ public K3::__time_context {
         return result;
       }
       void __patch(std::map<std::string, std::string> bindings)  {
-        if (bindings.count("peer_aggs") > (0)) {
-          do_patch(bindings["peer_aggs"], peer_aggs);
+        if (bindings.count("rkFiles") > (0)) {
+          do_patch(bindings["rkFiles"], rkFiles);
         }
-        if (bindings.count("agg_vals") > (0)) {
-          do_patch(bindings["agg_vals"], agg_vals);
+        if (bindings.count("uvFiles") > (0)) {
+          do_patch(bindings["uvFiles"], uvFiles);
+        }
+        if (bindings.count("peers_ready") > (0)) {
+          do_patch(bindings["peers_ready"], peers_ready);
+        }
+        if (bindings.count("global_max") > (0)) {
+          do_patch(bindings["global_max"], global_max);
+        }
+        if (bindings.count("peers_done") > (0)) {
+          do_patch(bindings["peers_done"], peers_done);
+        }
+        if (bindings.count("local_max") > (0)) {
+          do_patch(bindings["local_max"], local_max);
+        }
+        if (bindings.count("merged_peers") > (0)) {
+          do_patch(bindings["merged_peers"], merged_peers);
+        }
+        if (bindings.count("date_ub") > (0)) {
+          do_patch(bindings["date_ub"], date_ub);
+        }
+        if (bindings.count("date_lb") > (0)) {
+          do_patch(bindings["date_lb"], date_lb);
+        }
+        if (bindings.count("merged_partials") > (0)) {
+          do_patch(bindings["merged_partials"], merged_partials);
+        }
+        if (bindings.count("partial_aggs") > (0)) {
+          do_patch(bindings["partial_aggs"], partial_aggs);
+        }
+        if (bindings.count("empty_aggs") > (0)) {
+          do_patch(bindings["empty_aggs"], empty_aggs);
+        }
+        if (bindings.count("empty_source_ip_to_aggs_C") > (0)) {
+          do_patch(bindings["empty_source_ip_to_aggs_C"], empty_source_ip_to_aggs_C);
+        }
+        if (bindings.count("rankingsMap") > (0)) {
+          do_patch(bindings["rankingsMap"], rankingsMap);
+        }
+        if (bindings.count("user_visits") > (0)) {
+          do_patch(bindings["user_visits"], user_visits);
         }
         if (bindings.count("elapsed_ms") > (0)) {
           do_patch(bindings["elapsed_ms"], elapsed_ms);
@@ -859,32 +1062,11 @@ public K3::__time_context {
         if (bindings.count("start_ms") > (0)) {
           do_patch(bindings["start_ms"], start_ms);
         }
-        if (bindings.count("local_q2_results") > (0)) {
-          do_patch(bindings["local_q2_results"], local_q2_results);
-        }
-        if (bindings.count("local_uservisits") > (0)) {
-          do_patch(bindings["local_uservisits"], local_uservisits);
-        }
-        if (bindings.count("master_peers_finished") > (0)) {
-          do_patch(bindings["master_peers_finished"], master_peers_finished);
-        }
-        if (bindings.count("peers_finished") > (0)) {
-          do_patch(bindings["peers_finished"], peers_finished);
-        }
-        if (bindings.count("peers_ready") > (0)) {
-          do_patch(bindings["peers_ready"], peers_ready);
-        }
-        if (bindings.count("x") > (0)) {
-          do_patch(bindings["x"], x);
+        if (bindings.count("peer_count") > (0)) {
+          do_patch(bindings["peer_count"], peer_count);
         }
         if (bindings.count("master") > (0)) {
           do_patch(bindings["master"], master);
-        }
-        if (bindings.count("peers_seq") > (0)) {
-          do_patch(bindings["peers_seq"], peers_seq);
-        }
-        if (bindings.count("dataFiles") > (0)) {
-          do_patch(bindings["dataFiles"], dataFiles);
         }
         if (bindings.count("role") > (0)) {
           do_patch(bindings["role"], role);
@@ -913,21 +1095,24 @@ int main(int argc, char** argv)  {
   }
   auto contexts = createContexts<__global_context>(opt.peer_strings, engine);
   {
-    __k3_context::__trigger_names[0] = "load_all";
+    __k3_context::__trigger_names[0] = "loadAll";
     __k3_context::__trigger_names[1] = "ready";
-    __k3_context::__trigger_names[2] = "shutdown_";
-    __k3_context::__trigger_names[3] = "master_done";
-    __k3_context::__trigger_names[4] = "peer_barrier";
-    __k3_context::__trigger_names[5] = "aggregate";
-    __k3_context::__trigger_names[6] = "q2_local";
+    __k3_context::__trigger_names[2] = "finished";
+    __k3_context::__trigger_names[3] = "find_global_max";
+    __k3_context::__trigger_names[4] = "find_local_max";
+    __k3_context::__trigger_names[5] = "count_merges";
+    __k3_context::__trigger_names[6] = "merge";
+    __k3_context::__trigger_names[7] = "q3_local";
     __k3_context::__clonable_dispatchers[0] = make_shared<ValDispatcher<unit_t>>();
     __k3_context::__clonable_dispatchers[1] = make_shared<ValDispatcher<unit_t>>();
     __k3_context::__clonable_dispatchers[2] = make_shared<ValDispatcher<unit_t>>();
-    __k3_context::__clonable_dispatchers[3] = make_shared<ValDispatcher<unit_t>>();
+    __k3_context::__clonable_dispatchers[3] = make_shared<ValDispatcher<R_key_value<std::string,
+    R_arSum_prCount_prSum<double, int, int>>>>();
     __k3_context::__clonable_dispatchers[4] = make_shared<ValDispatcher<unit_t>>();
-    __k3_context::__clonable_dispatchers[5] = make_shared<ValDispatcher<_Collection<R_key_value<std::string,
-    double>>>>();
-    __k3_context::__clonable_dispatchers[6] = make_shared<ValDispatcher<unit_t>>();
+    __k3_context::__clonable_dispatchers[5] = make_shared<ValDispatcher<unit_t>>();
+    __k3_context::__clonable_dispatchers[6] = make_shared<ValDispatcher<_Map<R_key_value<std::string,
+    R_arSum_prCount_prSum<double, int, int>>>>>();
+    __k3_context::__clonable_dispatchers[7] = make_shared<ValDispatcher<unit_t>>();
   }
   SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
   engine.configure(opt.simulation, se, make_shared<DefaultInternalCodec>(), opt.log_level);

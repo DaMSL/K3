@@ -2,9 +2,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Core.Metaprogram where
 
+import Data.Either
 import Data.List
 import qualified Data.Map as Map
 import Data.Map ( Map )
@@ -30,7 +32,8 @@ import Language.K3.Utils.Pretty
     into standard expression and type ASTs through identifiers.
 -}
 
-data SpliceValue = SLabel   Identifier
+data SpliceValue = SVar     Identifier
+                 | SLabel   Identifier
                  | SType    (K3 Type)
                  | SExpr    (K3 Expression)
                  | SDecl    (K3 Declaration)
@@ -58,28 +61,27 @@ data SpliceResult m = SRType    (m (K3 Type))
                     | SRLiteral (m (K3 Literal))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]))
 
-data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [AnnMemDecl]
+data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [Either MPAnnMemDecl AnnMemDecl]
                    | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-                   deriving (Eq, Ord, Show, Read, Typeable)
+                   deriving (Eq, Ord, Read, Show, Typeable)
+
+data MPAnnMemDecl = MPAnnMemDecl Identifier SpliceValue [AnnMemDecl]
+                  deriving (Eq, Ord, Read, Show, Typeable)
 
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
 
 instance Pretty MPDeclaration where
-  prettyLines (MPDataAnnotation i svars tvars members) =
+  prettyLines (MPDataAnnotation i svars tvars (partitionEithers -> (mpAnnMems, annMems))) =
       ["MPDataAnnotation " ++ i
           ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
           ++ if null tvars then "" else ("[" ++ multiLineSep tvars ++ "]")
           , "|"]
-      ++ drawAnnotationMembers members
+      ++ drawMPAnnotationMembers mpAnnMems
+      ++ drawAnnotationMembers annMems
     where
       multiLineSep l = removeTrailingWhitespace . boxToString
                          $ foldl1 (\a b -> a %+ [", "] %+ b) $ map prettyLines l
-
-      drawAnnotationMembers []  = []
-      drawAnnotationMembers [x] = terminalShift x
-      drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
-                                    ++ terminalShift (last x)
 
   prettyLines (MPCtrlAnnotation i svars rewriteRules extensions) =
       ["MPCtrlAnnotation " ++ i
@@ -104,6 +106,31 @@ instance Pretty MPDeclaration where
       nonTermExt tagStr d = shift (extensionPrefix tagStr) "|  " $ prettyLines d
       termExt    tagStr d = shift (extensionPrefix tagStr) "   " $ prettyLines d
 
+instance Pretty MPAnnMemDecl where
+  prettyLines (MPAnnMemDecl i c mems) =
+    ["MPAnnMemDecl " ++ i] ++ nonTerminalShift c ++ ["|"] ++ drawAnnotationMembers mems
+
+instance Pretty SpliceValue where
+  prettyLines (SType    t)   = ["SType "]    %+ prettyLines t
+  prettyLines (SExpr    e)   = ["SExpr "]    %+ prettyLines e
+  prettyLines (SDecl    d)   = ["SDecl "]    %+ prettyLines d
+  prettyLines (SLiteral l)   = ["SLiteral "] %+ prettyLines l
+  prettyLines (SRecord  nsv) = ["SRecord"]   %$ (indent 3 $ concatMap (\(i,sv) -> [i] %+ prettyLines sv) $ recordElemsAsList nsv)
+  prettyLines (SList    l)   = ["SList"]     %$ (indent 2 $ concatMap prettyLines l)
+  prettyLines sv = [show sv]
+
+
+drawMPAnnotationMembers :: [MPAnnMemDecl] -> [String]
+drawMPAnnotationMembers []  = []
+drawMPAnnotationMembers [x] = terminalShift x
+drawMPAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                              ++ terminalShift (last x)
+
+drawAnnotationMembers :: [AnnMemDecl] -> [String]
+drawAnnotationMembers []  = []
+drawAnnotationMembers [x] = terminalShift x
+drawAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                              ++ terminalShift (last x)
 
 {- Splice value and type constructors -}
 spliceRecord :: [(Identifier, SpliceValue)] -> SpliceValue
@@ -128,11 +155,17 @@ ltLabel v = spliceRecordField v spliceVIdSym
 ltType :: SpliceValue -> Maybe SpliceValue
 ltType v = spliceRecordField v spliceVTSym
 
-mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> MPDeclaration
+recordElemsAsList :: NamedSpliceValues -> [(Identifier, SpliceValue)]
+recordElemsAsList = Map.toList
+
+mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> MPDeclaration
 mpDataAnnotation n svars tvars mems = MPDataAnnotation n svars tvars mems
 
 mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> MPDeclaration
 mpCtrlAnnotation n svars rules extensions = MPCtrlAnnotation n svars rules extensions
+
+mpAnnMemDecl :: Identifier -> SpliceValue -> [AnnMemDecl] -> MPAnnMemDecl
+mpAnnMemDecl i c mems = MPAnnMemDecl i c mems
 
 {- Splice context accessors -}
 lookupSCtxt :: Identifier -> SpliceContext -> Maybe SpliceValue

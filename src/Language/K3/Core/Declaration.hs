@@ -15,8 +15,9 @@ module Language.K3.Core.Declaration (
 
     getTriggerIds,
 
-    isDSpan,
     isDUID,
+    isDSpan,
+    isDProperty,
     isDSymbol,
     isDSyntax
 ) where
@@ -190,6 +191,10 @@ isDSpan _         = False
 isDUID :: Annotation Declaration -> Bool
 isDUID (DUID _) = True
 isDUID _        = False
+
+isDProperty :: Annotation Declaration -> Bool
+isDProperty (DProperty _ _) = True
+isDProperty _               = False
 
 isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True

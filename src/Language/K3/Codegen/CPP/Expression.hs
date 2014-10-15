@@ -13,6 +13,8 @@ import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 
+import Safe
+
 import qualified Data.Set as S
 
 import Language.K3.Core.Annotation
@@ -179,14 +181,16 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
 
-    let readOnly = case (e @~ \case { EOpt (FuncHint _) -> True; _ -> False}) of
-                     Nothing -> False
-                     Just (EOpt (FuncHint b)) -> b
-
-    let (cRef, cMove, cCopy) = case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
-                                 Nothing -> (S.empty, S.empty, S.empty)
-                                 Just (EOpt (CaptHint ch)) -> ch
+    (cRef, cMove, cCopy) <- case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
+                              Just (EOpt (CaptHint ch)) -> return ch
+                              -- If we have no capture hints, we need to do the heavy work ourselves
+                              _ -> do
+                                globVals <- fst . unzip . globals <$> get
+                                let fvs = nub $ filter (/= arg) $ freeVariables body
+                                return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
 
     (ta, tr) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
@@ -199,14 +203,14 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     let refCapture = S.map (\s -> R.RefCapture $ Just (s, Nothing)) cRef
     let moveCapture = S.map (\s -> R.ValueCapture $
                                    Just (s, Just $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                                              [R.Variable $ R.Name s])) cCopy
+                                              [R.Variable $ R.Name s])) cMove
     let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
     let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
     body' <- reify RReturn body
     -- TODO: Handle `mutable' arguments.
     let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
-           , R.Lambda capture [(arg, hintedArgType)] Nothing body'
+           , R.Lambda capture [(arg, hintedArgType)] True Nothing body'
            )
 
 --inline (tag &&& children ->
@@ -318,21 +322,25 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
 reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let (refBinds, copyBinds, writeBinds)
             = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
-                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
-                Nothing -> (S.empty, S.empty, S.singleton x)
+                Just (EOpt (BindHint ch)) -> ch
+                _ -> (S.empty, S.empty, S.singleton x)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
 
-    et <- head . children <$> getKType e
-    ec <- genCType et
+    -- Create types for the element and the pointer to said element
+    ept <- getKType e
+    epc <- genCType ept
+    let et = headNote ("Missing type in reify for " ++ show e) $ children ept
+    ec  <- genCType et
 
     (g, gd, ee) <- case tag e of
+           -- Reuse an existing variable
            EVariable k -> return (k, [], [])
            _ -> do
-             g <- genSym
+             g  <- genSym
              ee <- reify (RName g) e
-             return (g, [R.Forward $ R.ScalarDecl (R.Name g) ec Nothing], ee)
+             return (g, [R.Forward $ R.ScalarDecl (R.Name g) epc Nothing], ee)
 
     se <- reify r s
     ne <- reify r n
@@ -350,7 +358,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds)
             = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
                 Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
-                Nothing -> (S.empty, S.empty, S.fromList $ bindingVariables b)
+                _ -> (S.empty, S.empty, S.fromList $ bindingVariables b)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
@@ -375,7 +383,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                 return [ R.Forward $ R.ScalarDecl (R.Name i)
                            (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
                            (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
-                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                           (R.Specialized [R.TypeLit $ R.LInt n] $ R.Name "get")) [g])
                        | i <- is
                        | n <- [0..]
                        ]

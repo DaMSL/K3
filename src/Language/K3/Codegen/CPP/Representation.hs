@@ -103,7 +103,8 @@ data Type
     | Primitive Primitive
     | Reference Type
     | RValueReference Type
-    | Static Literal
+    | Static Type
+    | TypeLit Literal
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -125,7 +126,8 @@ instance Stringifiable Type where
     stringify (Primitive p) = stringify p
     stringify (Reference t) = stringify t <> "&"
     stringify (RValueReference t) = stringify t <> "&&"
-    stringify (Static c) = stringify c
+    stringify (Static c) = "static" <+> stringify c
+    stringify (TypeLit c) = stringify c
 
 data Literal
     = LBool Bool
@@ -157,12 +159,14 @@ instance Stringifiable Capture where
     stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
     stringify (RefCapture (Just (i, Just e))) = "&" <> fromString i <+> equals <+> stringify e
 
+type IsMutable = Bool
+
 data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
     | Dereference Expression
     | Initialization Type [Expression]
-    | Lambda [Capture] [(Identifier, Type)] (Maybe Type) [Statement]
+    | Lambda [Capture] [(Identifier, Type)] IsMutable (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
     | Subscript Expression Expression
@@ -176,12 +180,13 @@ instance Stringifiable Expression where
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
-    stringify (Lambda cs as rt bd) = cs' <+> as' <+> rt' <+> bd'
+    stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <+> rt' <+> bd'
       where
-        cs' = brackets $ commaSep (map stringify cs)
-        as' = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
-        rt' = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
-        bd' = hangBrace $ vsep $ map stringify bd
+        cs'  = brackets $ commaSep (map stringify cs)
+        mut' = if mut then "mutable" else ""
+        as'  = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
+        rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
+        bd'  = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project pt i) = parenthesize pt <> dot <> stringify i
       where
@@ -189,7 +194,7 @@ instance Stringifiable Expression where
         parenthesize pt' = parens $ stringify pt'
     stringify (Subscript a b)
         = case b of
-            (Lambda _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
+            (Lambda _ _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
             _ -> parenthesize a <> brackets (stringify b)
       where
         parenthesize a'@(Variable _) = stringify a'
@@ -240,9 +245,11 @@ instance Stringifiable Statement where
     stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
+type IsConst = Bool
+
 data Definition
     = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
+    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] IsConst [Statement]
     | GlobalDefn Statement
     | GuardedDefn Identifier Definition
     | IncludeDefn Identifier
@@ -262,12 +269,13 @@ instance Stringifiable Definition where
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
-    stringify (FunctionDefn fn as mrt is bd) = rt' <> fn' <> as' <> is' <+> bd'
+    stringify (FunctionDefn fn as mrt is c bd) = rt' <> fn' <> as' <> is' <+> c' <+> bd'
       where
         rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         is' = if null is then empty else colon <+> commaSep (map stringify is)
+        c'  = if c then "const" else ""
         bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (GuardedDefn i d)

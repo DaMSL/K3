@@ -60,6 +60,7 @@ writebackOpt :: K3 Declaration -> K3 Declaration
 writebackOpt (TAC (DGlobal i t me) as cs) = TAC (DGlobal i t (writebackOptE <$> me)) as cs
 writebackOpt (TAC (DTrigger i t e) as cs) = TAC (DTrigger i t (writebackOptE e)) as cs
 writebackOpt (TAC (DRole n) as cs) = TAC (DRole n) as (map writebackOpt cs)
+writebackOpt t = t
 
 writebackOptE :: K3 Expression -> K3 Expression
 writebackOptE g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint g : as) (map writebackOptE cs)

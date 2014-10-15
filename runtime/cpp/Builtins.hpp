@@ -58,11 +58,11 @@ namespace K3 {
       return static_cast<int>(hash_value(x));
     }
 
-    template <class R>
-    Seq<R> range(int i) {
-      Seq<R> result;
+    template <class T>
+    T range(int i) {
+      T result;
       for (int j = 0; j < i; j++) {
-        result.insert(R{j});
+        result.insert(j);
       }
       return result;
     }

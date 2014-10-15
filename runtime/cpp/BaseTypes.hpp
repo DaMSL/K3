@@ -1,3 +1,9 @@
+
+
+
+
+
+
 #ifndef K3_RUNTIME_BASETYPES_H
 #define K3_RUNTIME_BASETYPES_H
 
@@ -120,35 +126,50 @@ template <class T>
 
 #ifndef K3_R_key_value
 #define K3_R_key_value
-template <class _T0,class _T1>
+
+template <class _T0, class _T1>
 class R_key_value {
-    public:
-        R_key_value() {}
-        R_key_value(_T0 _key,_T1 _value): key(_key), value(_value) {}
-        R_key_value(const R_key_value<_T0, _T1>& _r): key(_r.key), value(_r.value) {}
-        bool operator==(const R_key_value& _r) const {
-            if (key == _r.key&& value == _r.value)
-                return true;
-            return false;
-        }
-        bool operator!=(const R_key_value& _r) const {
-            return !(*this == _r);
-        }
-        bool operator<(const R_key_value& _r) const {
-          return std::tie(key, value) < std::tie(_r.key, _r.value);
-        }
-        template <class archive>
-        void serialize(archive& _archive,const unsigned int) {
-            _archive & key;
-            _archive & value;
-
-        }
-        _T0 key;
-        _T1 value;
-
-        typedef _T0 KeyType;
-        typedef _T1 ValueType;
+  public:
+      typedef _T0 KeyType;
+      typedef _T1 ValueType;
+      R_key_value(): key(), value()  {}
+      template <class __T0, class __T1>
+      R_key_value(__T0&& _key, __T1&& _value): key(std::forward<__T0>(_key)),
+      value(std::forward<__T1>(_value))  {}
+      R_key_value(const R_key_value<_T0, _T1>& __other): key(__other.key), value(__other.value)  {}
+      R_key_value(R_key_value<_T0, _T1>&& __other): key(std::move(__other.key)),
+      value(std::move(__other.value))  {}
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & key;
+        _archive & value;
+      }
+      R_key_value<_T0, _T1>& operator=(const R_key_value<_T0, _T1>& __other)  {
+        key = (__other.key);
+        value = (__other.value);
+        return *(this);
+      }
+      R_key_value<_T0, _T1>& operator=(R_key_value<_T0, _T1>&& __other)  {
+        key = std::move(__other.key);
+        value = std::move(__other.value);
+        return *(this);
+      }
+      bool operator==(const R_key_value<_T0, _T1>& __other) const {
+        return key == (__other.key) && value == (__other.value);
+      }
+      bool operator!=(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) != std::tie(__other.key, __other.value);
+      }
+      bool operator<(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) < std::tie(__other.key, __other.value);
+      }
+      bool operator>(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) > std::tie(__other.key, __other.value);
+      }
+      _T0 key;
+      _T1 value;
 };
+
 #endif // K3_R_key_value
 
 #ifndef K3_R_key_value_hash_value

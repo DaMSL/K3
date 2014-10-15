@@ -1,26 +1,25 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
-include "Core/CppBuiltins.k3"
+include "Core/Builtins.k3"
 
+@:CArgs 2
 declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
+
+declare dataFiles : collection {path: string} @ {Collection}
 
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 3
-declare num_peers: int = 2
-declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
 declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
-
 
 // Time
 declare start_ms : mut int = 0
 declare end_ms : mut int = 0
 declare elapsed_ms : mut int = 0
 
-declare file_name : string = "data.txt"
 
 declare inputData : collection {elem:string} @ {Seq}
 
@@ -35,7 +34,7 @@ declare url_counts_partial :
 
 declare get_line : string -> () = \line -> (
   let sp = splitString line " " in  
-  (if substring line 0 4 == "http" and sp.size () == 5 then
+  (if slice_string line 0 4 == "http" and sp.size () == 5 then
      cur_page = (sp.at 0).elem;
      url_count.iterate(\v ->
        url_counts_partial.insert
@@ -43,10 +42,11 @@ declare get_line : string -> () = \line -> (
      // Empty url_count
      url_count.iterate (\v -> url_count.erase v)
    else ());
-   url_regex.iterate (\r -> 
-     case lookup url_count r.key of
-     {Some x -> url_count.insert {key:r.key, value:x + 1} }
-     {None   -> url_count.insert {key:r.key, value:0}}
+   url_regex.iterate (\r ->
+     // lookup ignores value
+     case url_count.lookup {key: r.key, value: 0}  of
+       {Some x -> url_count.insert {key:r.key, value:x.value + 1} }
+       {None   -> url_count.insert {key:r.key, value:0}}
    )
 )
 
@@ -65,17 +65,18 @@ trigger local : () = \_ -> (
 declare url_counts_agg : collection {key: string, value: int} @ {Map}
 declare received : mut int = 0
 
-trigger aggregate : collection {key: string, value: int} @ {Map} = \newVals -> (
+trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (
   newVals.iterate (\v ->
-    case lookup url_counts_agg v.key of
-    { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x} }
-    { None   -> url_counts_agg.insert v }
+    // lookup ignores value
+    case url_counts_agg.lookup {key: v.key, value: 0} of
+      { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x.value} }
+      { None   -> url_counts_agg.insert v }
     );
   peers_finished = peers_finished + 1;
-  if peers_finished == num_peers
-  then end_ms = now ();
+  if peers_finished == (peers.size ())
+  then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       printLine (itos elapsed_ms);
+       print (itos elapsed_ms);
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
@@ -88,13 +89,13 @@ trigger shutdown : () = \_ -> (
 // Once all peers are ready, the master will start the query.
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
-  if peers_ready == num_peers
-  then start_ms = now (); peers.iterate (\p -> (local, p.addr) <- ())
+  if peers_ready == (peers.size ())
+  then start_ms = now_int (); peers.iterate (\p -> (local, p.addr) <- ())
   else ()
 )
 
 trigger load_all : () = \_ -> (
-  stringLoader file_name inputData;
+   dataFiles.iterate (\e -> stringLoader e.path inputData);
   ((ready, master) <- ())
 )
 

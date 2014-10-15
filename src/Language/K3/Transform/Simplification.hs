@@ -1,9 +1,12 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Transform.Simplification where
 
+import Control.Applicative
 import Control.Arrow
 import Control.Monad
 import Control.Monad.Identity
@@ -17,20 +20,116 @@ import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
+import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Type       as TC
+import qualified Language.K3.Core.Constructor.Literal    as LC
 
-import Language.K3.Analysis.Effect
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
+
+import Language.K3.Utils.Pretty
+
+traceLogging :: Bool
+traceLogging = False
+
+localLog :: (Functor m, Monad m) => String -> m ()
+localLog = logVoid traceLogging
+
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+localLogAction = logAction traceLogging
+
+
+-- | Property testers and constructors
+pTransformer :: Annotation Expression
+pTransformer = EProperty "Transformer" Nothing
+
+pPureTransformer :: Annotation Expression
+pPureTransformer = EProperty "PureTransformer" Nothing
+
+pImpureTransformer :: Annotation Expression
+pImpureTransformer = EProperty "ImpureTransformer" Nothing
+
+pFusable :: Annotation Expression
+pFusable = EProperty "Fusable" Nothing
+
+pStreamable :: Annotation Expression
+pStreamable = EProperty "Streamable" Nothing
+
+pStream :: Annotation Expression
+pStream = EProperty "Stream" Nothing
+
+pUnstream :: K3 Type -> Annotation Expression
+pUnstream t = EProperty "Unstream" (Just $ LC.string $ show t)
+
+pHasSkip :: Annotation Expression
+pHasSkip = EProperty "HasSkip" Nothing
+
+pTAppChain :: Annotation Expression
+pTAppChain = EProperty "TAppChain" Nothing
+
+pIElemRec :: Annotation Expression
+pIElemRec = EProperty "IElemRec" Nothing
+
+pOElemRec :: Annotation Expression
+pOElemRec = EProperty "OElemRec" Nothing
+
+isEPure :: Annotation Expression -> Bool
+isEPure (EProperty "Pure" _) = True
+isEPure _ = False
+
+isETransformer :: Annotation Expression -> Bool
+isETransformer (EProperty "Transformer" _) = True
+isETransformer _ = False
+
+isEPureTransformer :: Annotation Expression -> Bool
+isEPureTransformer (EProperty "PureTransformer" _) = True
+isEPureTransformer _ = False
+
+isEImpureTransformer :: Annotation Expression -> Bool
+isEImpureTransformer (EProperty "ImpureTransformer" _) = True
+isEImpureTransformer _ = False
+
+isEFusable :: Annotation Expression -> Bool
+isEFusable (EProperty "Fusable" _) = True
+isEFusable _ = False
+
+isEStreamable :: Annotation Expression -> Bool
+isEStreamable (EProperty "Streamable" _) = True
+isEStreamable _ = False
+
+isEStream :: Annotation Expression -> Bool
+isEStream (EProperty "Stream" _) = True
+isEStream _ = False
+
+isEUnstream :: Annotation Expression -> Bool
+isEUnstream (EProperty "Unstream" _) = True
+isEUnstream _ = False
+
+isEHasSkip :: Annotation Expression -> Bool
+isEHasSkip (EProperty "HasSkip" _) = True
+isEHasSkip _ = False
+
+isETAppChain :: Annotation Expression -> Bool
+isETAppChain (EProperty "TAppChain" _) = True
+isETAppChain _ = False
+
+isEIElemRec :: Annotation Expression -> Bool
+isEIElemRec (EProperty "IElemRec" _) = True
+isEIElemRec _ = False
+
+isEOElemRec :: Annotation Expression -> Bool
+isEOElemRec (EProperty "OElemRec" _) = True
+isEOElemRec _ = False
+
 
 -- | Constant folding
 type FoldedExpr = Either String (Either Value (K3 Expression))
@@ -86,7 +185,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
       applyVCtor ch n (recordCtor ids $ map extractQualifier $ children n)
 
     -- Binding simplification.
-    -- TODO: substitute when we have read-only mutable bindings.
+    -- TODO: substitute when we have read-only mutable bnds.
     simplifyConstants ch n@(tag -> ELetIn i) =
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
@@ -94,7 +193,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         (Left v, Right bodyE, True) -> substituteBinding i v bodyE >>= simplifyAsFoldedExpr
         (_, _, _)                   -> rebuildNode n ch
 
-    -- TODO: substitute when we have read-only mutable bindings.
+    -- TODO: substitute when we have read-only mutable bnds.
     simplifyConstants ch n@(tag -> EBindAs b) =
       case (b, head ch, last ch) of
         (_, _, Left v) -> return $ Left v
@@ -119,7 +218,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid if-then-else predicate simplification"
 
-    -- TODO: substitute when we have read-only mutable bindings.
+    -- TODO: substitute when we have read-only mutable bnds.
     simplifyConstants ch n@(tag -> ECaseOf i) =
       case head ch of
         Left (VOption (Just v, MemImmut)) ->
@@ -283,14 +382,14 @@ stringOp op a b =
 
 
 -- | Conservative beta reduction.
---   This reduces lambda and let bindings that are used at most once in their bodies.
+--   This reduces lambda and let bnds that are used at most once in their bodies.
 --
 --   TODO:
 --   More generally, we can use a cost model to determine this threshold based
 --   on the cost of the argument and the cost of the increased lifetime of the
 --   object given its encapsulation in a lambda.
 --   Furthermore, this only applies to direct lambda invocations, rather than
---   on general function values (i.e., including applications through bindings
+--   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
 betaReductionOnProgram :: K3 Declaration -> K3 Declaration
 betaReductionOnProgram prog = runIdentity $ mapExpression betaReduction prog
@@ -299,14 +398,7 @@ betaReduction :: K3 Expression -> Identity (K3 Expression)
 betaReduction expr = mapTree reduce expr
   where
     reduce ch n@(tag -> ELetIn i) = reduceOnOccurrences n ch i (head ch) $ last ch
-
-    reduce ch n@(tag -> EOperate OApp) =
-      let (fn, arg) = (head ch, last ch) in
-      case tag fn of
-        ELambda i -> reduceOnOccurrences n ch i arg $ head $ children fn
-
-        _ -> rebuildNode n ch
-
+    reduce ch n@(PAppLam i bodyE argE lamAs appAs) = reduceOnOccurrences n ch i argE bodyE
     reduce ch n = rebuildNode n ch
 
     reduceOnOccurrences n ch i ie e =
@@ -322,7 +414,7 @@ betaReduction expr = mapTree reduce expr
 --   unused declarations from the program.
 --   Since constant folding already handles constant-based control flow
 --   simplification, the only work left for this transformation is to:
---   i. prune unused let-in bindings and narrow bind-as expressions with record binders.
+--   i. prune unused let-in bnds and narrow bind-as expressions with record binders.
 --   ii. prune unused values (i.e., pure expressions in blocks)
 --
 -- TODO:
@@ -339,9 +431,10 @@ eliminateDeadProgramCode = mapExpression eliminateDeadCode
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
 eliminateDeadCode expr = mapTree pruneExpr expr
   where
+    -- Unused, effect-free binding.
     pruneExpr ch n@(tag -> ELetIn  i) =
       let vars = freeVariables $ last ch in
-      if maybe False (const $ i `notElem` vars) $ (head ch) @~ ePure
+      if maybe False (const $ i `notElem` vars) $ (head ch) @~ isEPure
         then return $ last ch
         else rebuildNode n ch
 
@@ -349,26 +442,69 @@ eliminateDeadCode expr = mapTree pruneExpr expr
       let vars = freeVariables $ last ch in
       case b of
         BRecord ijs ->
-          let nBinder = BRecord $ filter (\(_,j) -> j `elem` vars) ijs
-          in return $ Node (EBindAs nBinder :@: annotations n) ch
+          let nBinder = filter (\(_,j) -> j `elem` vars) ijs in
+          if maybe False (const $ null nBinder) $ (head ch) @~ isEPure
+            then return $ last ch
+            else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
         _ -> rebuildNode n ch
 
-    pruneExpr ch n@(tag -> ECaseOf _) = rebuildNode n ch
-
     pruneExpr ch n@(tag -> EOperate OSeq) =
-        case (head ch) @~ ePure of
+        case (head ch) @~ isEPure of
           Nothing -> rebuildNode n ch
           Just _  -> return $ last ch
 
-    pruneExpr ch n = rebuildNode n ch
+    pruneExpr ch n = case replaceCh n ch of
+
+      -- Immediate record construction and projection, provided all other record fields are pure.
+      (PPrjRec fId ids fieldsE _ _) ->
+        flip (maybe $ rebuildNode n ch) (elemIndex fId ids) $ \i ->
+          if all isJust $ map ((@~ isEPure) . snd) $ filter ((/= fId) . fst) $ zip ids ch
+            then return $ fieldsE !! i
+            else rebuildNode n ch
+
+      -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
+      (PBindInd i iE bodyE iAs bAs) -> return $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
+
+      (PBindTup ids fieldsE bodyE _ _) ->
+        return $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE $ zip ids fieldsE
+
+      (PBindRec ijs ids fieldsE bodyE _ _) ->
+        return $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE
+               $ zip ids fieldsE
+
+      -- Immediate option bindings
+      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> return $ maybe e (const someE) $ sE @~ isEPure
+      (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
+
+      -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
+      -- These strip UID and Span annotations due to duplication following the rewrite.
+      (PCaseOf (PCaseOf optE i isomeE inoneE icAs) j jsomeE jnoneE jcAs) ->
+        return $ PCaseOf optE i (PCaseOf isomeE j jsomeE jnoneE $ stripUIDSpanE jcAs)
+                                (PCaseOf inoneE j jsomeE jnoneE $ stripUIDSpanE jcAs)
+                                icAs
+
+      (PCaseOf (PIfThenElse pE tE eE bAs) i isomeE inoneE cAs) ->
+        return $ PIfThenElse pE (PCaseOf tE i isomeE inoneE $ stripUIDSpanE cAs)
+                                (PCaseOf eE i isomeE inoneE $ stripUIDSpanE cAs)
+                                bAs
+
+      (PIfThenElse (PCaseOf optE i someE noneE cAs) otE oeE oAs) ->
+        return $ PCaseOf optE i (PIfThenElse someE otE oeE $ stripUIDSpanE oAs)
+                                (PIfThenElse noneE otE oeE $ stripUIDSpanE oAs)
+                                cAs
+
+      (PIfThenElse (PIfThenElse ipE itE ieE iAs) otE oeE oAs) ->
+        return $ PIfThenElse ipE (PIfThenElse itE otE oeE $ stripUIDSpanE oAs)
+                                 (PIfThenElse ieE otE oeE $ stripUIDSpanE oAs)
+                                 iAs
+
+      e -> return e
 
     rebuildNode n@(tag -> EConstant _) _ = return n
     rebuildNode n@(tag -> EVariable _) _ = return n
     rebuildNode n ch = return $ Node (tag n :@: annotations n) ch
 
-    ePure (EProperty "Pure" _) = True
-    ePure _ = False
-
+    stripUIDSpanE = filter (not . \a -> isEUID a || isESpan a)
 
 -- | Effect-aware common subexpression elimination.
 --
@@ -445,28 +581,27 @@ commonSubexprElim expr = do
       case x of
         EUID uid ->
           let (ctCh, sExprCh, subAcc) = unzip3 chAccs
-              bindings      = case tag t of
+              bnds      = case tag t of
                                 ELambda i -> [[i]]
                                 ELetIn  i -> [[], [i]]
                                 ECaseOf j -> [[], [j], []]
                                 EBindAs b -> [[], bindingVariables b]
                                 _         -> repeat []
-              filteredCands = nub $ concatMap filterOpenCandidates $ zip bindings subAcc
+              filteredCands = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
               localCands    = sortBy ((flip compare) `on` snd) $
                                 foldl (addCandidateIfLCA subAcc) [] filteredCands
               candTreeNode  = Node (uid, localCands) $ concat ctCh
               nStrippedExpr = Node (tag t :@: (filter isEQualified $ annotations t)) $ concat sExprCh
+              propagatedExprs = maybe [] (const $ (concat subAcc)++[nStrippedExpr]) $ n @~ isEPure
           in
-          case n @~ ePure of
-            Nothing -> return $ ([candTreeNode], [nStrippedExpr], [])
-            Just _  -> return $ ([candTreeNode], [nStrippedExpr], (concat subAcc)++[nStrippedExpr])
+          return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n
 
       where
         filterOpenCandidates ([], cands) = cands
-        filterOpenCandidates (bindings, cands) =
-          filter (\e -> null $ freeVariables e `intersect` bindings) cands
+        filterOpenCandidates (bnds, cands) =
+          filter (\e -> null $ freeVariables e `intersect` bnds) cands
 
     leafTreeAccumulator :: K3 Expression
                         -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
@@ -572,11 +707,12 @@ commonSubexprElim expr = do
 
     uidError e = Left $ "No UID found on " ++ show e
 
-    ePure (EProperty "Pure" _) = True
-    ePure _ = False
-
 
 -- | Collection transformer fusion.
+
+streamableTransformerArg :: K3 Expression -> Bool
+streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
+streamableTransformerArg _ = False
 
 -- | Marks all function applications that are fusable transformers as a
 --   preprocessing for fusion optimizations.
@@ -584,75 +720,704 @@ inferFusableProgramApplies :: K3 Declaration -> Either String (K3 Declaration)
 inferFusableProgramApplies prog = mapExpression inferFusableExprApplies prog
 
 inferFusableExprApplies :: K3 Expression -> Either String (K3 Expression)
-inferFusableExprApplies expr = modifyTree fusable expr
+inferFusableExprApplies expr = modifyTree fusable expr >>= modifyTree annotateStream
   where
-    fusable e@(tag -> EOperate OApp) =
-      let pl = filter isPTransformer $ annotations $ head $ children e in
-      return $ if null pl then e else e @+ fusableProp
+    fusable e@(PPrjApp  cE fId fAs
+                        fArg@(streamableTransformerArg -> streamable) appAs)
+      | unaryTransformer fId && any isETransformer fAs
+        = return $ PPrjApp cE fId nfAs fArg nappAs
+        where
+          nfAs   = markPureTransformer fAs appAs
+          nappAs = markOElemRec fId $ markTAppChain $ markStreamableApp streamable appAs
+
+    fusable e@(PPrjApp2 cE fId fAs
+                        fArg1@(streamableTransformerArg -> streamable) fArg2
+                        app1As app2As)
+      | binaryTransformer fId && any isETransformer fAs
+        = return $ PPrjApp2 cE fId nfAs fArg1 fArg2 napp1As napp2As
+        where
+          nfAs    = markPureTransformer fAs app2As
+          napp1As = markTAppChain $ markStreamableApp streamable app1As
+          napp2As = markTAppChain app2As
+
+    fusable e@(PPrjApp3 cE fId fAs
+                        fArg1 fArg2 fArg3
+                        app1As app2As app3As)
+      | ternaryTransformer fId && any isETransformer fAs
+        = return $ PPrjApp3 cE fId nfAs fArg1 fArg2 fArg3 napp1As napp2As napp3As
+        where
+          nfAs    = markPureTransformer fAs app3As
+          napp1As = markTAppChain $ markStreamableApp False app1As
+          napp2As = markTAppChain app2As
+          napp3As = markTAppChain app3As
 
     fusable e = return e
 
-    isPTransformer :: Annotation Expression -> Bool
-    isPTransformer (EProperty "Transformer" _) = True
-    isPTransformer _ = False
+    -- TODO: ternary chain matching for streamability as needed for groupBys
+    -- Stream fusion (foldl-style) annotation on transformer pairs rather than
+    -- foldr-style fusion.
+    annotateStream e@(PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs oAppAs)
+      | isAnyStreamed iAppAs && any isETransformer gAs
+          = (\(a, b) -> return $ PChainPrjApp1 cE fId gId fArg gArg fAs a gAs b) =<< ioAppAs
 
-    fusableProp :: Annotation Expression
-    fusableProp = EProperty "Fusable" Nothing
+      | otherwise = return $ PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs noAppAs'
+      where ioAppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oAppAs gId iAppAs oAppAs
+              return $ (ri, propagateElemRec gId si ro)
 
+            noAppAs' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oAppAs
+
+    annotateStream e@(PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As)
+      | isAnyStreamed iAppAs && any isETransformer gAs
+          = (\(a, b) -> return $ PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs a gAs b oApp2As) =<< io1AppAs
+
+      | otherwise = return $ PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs noApp1As' oApp2As
+      where io1AppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oApp1As gId iAppAs oApp2As
+              return $ (ri, propagateElemRec gId si ro)
+
+            noApp1As' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oApp1As
+
+    annotateStream e@(PChainPrjApp3 cE fId gId
+                                    fArg gArg1 gArg2 gArg3
+                                    fAs iAppAs gAs oApp1As oApp2As oApp3As)
+
+      | isAnyStreamed iAppAs && any isETransformer gAs
+          = (\(a, b) -> return $ PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3
+                                               fAs a gAs b noApp2As oApp3As)
+              =<< io1AppAs
+
+      | otherwise = return $ PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3
+                                           fAs iAppAs gAs noApp1As' noApp2As oApp3As
+      where io1AppAs = do
+              si       <- markStreamApp iAppAs gId iAppAs
+              (ri, ro) <- propagateStreamApp si oApp1As gId iAppAs oApp3As
+              return $ (ri, propagateElemRec gId si ro)
+
+            noApp1As' = propagateElemRec gId iAppAs $ propagateFusableApp iAppAs oApp1As
+            noApp2As  = propagateElemRec gId iAppAs oApp2As
+
+    -- Match binary transformers as the inner computation.
+    -- These can only be streamed, and not fused.
+    annotateStream e@(PBinChainPrjApp1 cE fId gId
+                                       fArg1 fArg2 gArg
+                                       fAs iApp1As iApp2As gAs oAppAs)
+
+      | isAnyStreamed iApp1As && any isETransformer gAs
+          = (\(a, b) -> return $ PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg
+                                                  fAs a iApp2As gAs b)
+              =<< i1oAppAs
+
+      | otherwise = return e
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oAppAs gId iApp2As oAppAs
+
+    annotateStream e@(PBinChainPrjApp2 cE fId gId
+                                       fArg1 fArg2 gArg gArg2
+                                       fAs iApp1As iApp2As gAs oApp1As oApp2As)
+
+      | isAnyStreamed iApp1As && any isETransformer gAs
+          = (\(a, b) -> return $ PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg gArg2
+                                                  fAs a iApp2As gAs b oApp2As)
+              =<< i1oAppAs
+
+      | otherwise = return e
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oApp1As gId iApp2As oApp2As
+
+    annotateStream e@(PBinChainPrjApp3 cE fId gId
+                                       fArg1 fArg2 gArg gArg2 gArg3
+                                       fAs iApp1As iApp2As gAs oApp1As oApp2As oApp3As)
+
+      | isAnyStreamed iApp1As && any isETransformer gAs
+          = (\(a, b) -> return $ PBinChainPrjApp3 cE fId gId
+                                                  fArg1 fArg2 gArg gArg2 gArg3
+                                                  fAs a iApp2As gAs b oApp2As oApp3As)
+              =<< i1oAppAs
+
+      | otherwise = return e
+      where i1oAppAs = do
+              si       <- markStreamApp iApp1As gId iApp2As
+              propagateStreamApp si oApp1As gId iApp2As oApp3As
+
+    annotateStream e@(PApp _ _ (any isETAppChain -> True))   = return e
+    annotateStream e@(PPrj _ _ (any isETransformer -> True)) = return e
+
+    annotateStream e = mapM unstreamChild (children e) >>= return . replaceCh e
+
+    unstreamChild :: K3 Expression -> Either String (K3 Expression)
+    unstreamChild e@(PAnyStream1 _ _ appAs) = markUnstreamApp e appAs >>= return . (e @<-)
+
+    unstreamChild e@(PAnyStream2 fE arg1E arg2E app1As app2As) =
+      markUnstreamApp e app1As >>= \napp1As ->
+        return $ PApp (PApp fE arg1E app1As @<- napp1As) arg2E app2As
+
+    unstreamChild e@(PAnyStream3 fE arg1E arg2E arg3E app1As app2As app3As) =
+      markUnstreamApp e app1As >>= \napp1As ->
+        return $ PApp (PApp (PApp fE arg1E app1As @<- napp1As) arg2E app2As) arg3E app3As
+
+    unstreamChild e = return $ e
+
+    markStreamableApp streamable as =
+      nub $ as ++ (if streamable then [pStreamable] else []) ++ [pFusable]
+
+    markStream as = return $ nub $ as ++ [pStream]
+
+    markStreamApp :: [Annotation Expression] -> Identifier -> [Annotation Expression]
+                  -> Either String [Annotation Expression]
+    markStreamApp iAs oId iAsWType
+      | oId == "groupBy" = unstreamOnAnns iAsWType $ markUnstreamA iAs
+      | otherwise = markStream iAs
+
+    markUnstreamApp :: K3 Expression -> [Annotation Expression] -> Either String [Annotation Expression]
+    markUnstreamApp e as = case e @~ isEType of
+        Just (EType t) -> markUnstream t as
+        _ -> Left $ boxToString $ ["No type found on "] %+ prettyLines e
+
+    propagateStreamApp iAs oAs oId iAsWType oAsWType
+      | isAnyImpure iAs && isAnyImpure oAs = do
+          niAs <- unstreamOnAnns iAsWType $ markUnstreamA iAs
+          return (niAs, filter (not . anyFuseOrStream) oAs)
+
+      | oId == "iterate" = unstreamOnAnns oAsWType $ markEdgeUnstreamA iAs oAs
+      | otherwise = markStream oAs >>= return . (iAs,)
+
+    propagateFusableApp iAs oAs
+      | isAnyImpure iAs && isAnyImpure oAs = filter (not . anyFuseOrStream) oAs
+      | otherwise = oAs
+
+    unstreamOnAnns asWType f = maybe unstreamErr f $ find isEType asWType
+
+    markUnstreamA as (EType t) = markUnstream t =<< markStream as
+    markUnstreamA _ _ = unstreamErr
+
+    markEdgeUnstreamA iAs oAs ta = markUnstreamA oAs ta >>= return . (iAs,)
+
+    markUnstream :: K3 Type -> [Annotation Expression] -> Either String [Annotation Expression]
+    markUnstream t as = return $
+      if not $ any isEStream as then as
+      else filter (not . isEStream) as ++ [pUnstream t]
+
+    unstreamErr = Left $ "Invalid type when creating unstream annotation"
+
+    markPureTransformer as asWithEffect =
+      nub $ if any isEPure asWithEffect then as ++ [pPureTransformer]
+                                        else as ++ [pImpureTransformer]
+
+    markEffects iAs oAs =
+      if any isEImpureTransformer iAs && any isEImpureTransformer oAs
+        then filter (not . anyFuseOrStream) oAs
+        else oAs
+
+    markTAppChain as = nub $ as ++ [pTAppChain]
+
+    markOElemRec "map" as = nub $ as ++ [pOElemRec]
+    markOElemRec _ as = as
+
+    propagateElemRec gId ias as =
+      nub $ as ++ if any isEOElemRec ias
+                    then ([pIElemRec] ++ if gId == "filter" then [pOElemRec] else [])
+                    else []
+
+    isAnyStreamed as = any isEStreamable as || any isEStream as
+    isAnyImpure   as = any isEImpureTransformer as
+
+    anyFuseOrStream a = isEFusable a || isEStreamable a || isEStream a
+
+    unaryTransformer   fId = fId `elem` ["map", "filter", "iterate", "ext"]
+    binaryTransformer  fId = fId `elem` ["fold"]
+    ternaryTransformer fId = fId `elem` ["groupBy"]
+
+-- TODO: recompute types, and iterate to fusion fixpoint
 fuseProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
-fuseProgramTransformers prog = mapExpression fuseTransformers prog
+fuseProgramTransformers prog = mapExpression fuseTransformers prog >>= return . repairProgram "fusion"
 
+-- TODO: purity: at most one of the transformers must be impure on fusion edges
+-- TODO: binary and ternary chain matching
 fuseTransformers :: K3 Expression -> Either String (K3 Expression)
-fuseTransformers expr = mapTree fuse expr
+fuseTransformers expr = mapTree (flip $ curry fuse) expr
   where
-    fuse ch n | Just (outer, inner) <- fusablePair n ch =
-      trace (unwords ["fuse", show outer, "and", show inner]) $
-      case (outer, inner) of
-        (EProject "map",     EProject "map") -> rewriteMapMap n ch
-        -- (EProject "fold",    EProject "map") -> rebuildE n ch -- TODO
-        -- (EProject "groupby", EProject "map") -> rebuildE n ch -- TODO
-        -- (EProject "filter",  EProject "map") -> rebuildE n ch -- TODO
-        -- (EProject "iterate", EProject "map") -> rebuildE n ch -- TODO
-        _ -> rebuildE ch n
+    repeatE e = fuse $ (id &&& children) e
+    repeatM m = m >>= fuse . (id &&& children)
 
-    fuse ch n = rebuildE ch n
-    rebuildE ch (Node n _) = return $ Node n ch
+    -- TODO: anything to do with arg2E? At least ensure it is an empty collection.
+    -- Rewrites fold to: cE.map (\j -> ... Some v ... None)
+    -- where Some v and None are the new return values of the accumulation
+    fuse nch@(PStreamableTransformerPair cE fId bodyE i j _ iAs jAs fAs iAppAs oAppAs)
+      | fId == "fold" && any isEStream iAppAs =
 
-    -- TODO: add generated spans and type annotations for all expressions built.
-    rewriteMapMap :: K3 Expression -> [K3 Expression] -> Either String (K3 Expression)
-    rewriteMapMap n ch = case extractFusablePairArgs ch of
-      Just (c, f, g) -> return $ EC.applyMany (EC.project "map" c) [composeFunctions f g]
-      Nothing -> rebuildE ch n
+          let (isAccum, nBodyE) = rewriteAccumulation i bodyE
+              passThruP a = isEIElemRec a || isETAppChain a
 
-    -- TODO: simplify and inline function bodies where possible.
-    -- TODO: add generated spans and type annotations for all expressions built.
-    composeFunctions :: K3 Expression -> K3 Expression -> K3 Expression
-    composeFunctions f g = EC.lambda "x" $ EC.applyMany f [EC.record [("elem", EC.applyMany g [EC.variable "x"])]]
+              markPureTransformer e pure =
+                let eAnns = [pTransformer] ++ (if pure then [pPureTransformer] else [pImpureTransformer])
+                in foldl (@+) e eAnns
 
-    fusablePair :: K3 Expression -> [K3 Expression] -> Maybe (Expression, Expression)
-    fusablePair n [ch1@(tag &&& children -> (EProject _, [gch])), _]
-      | isFusable n && isFusable gch =
-        let ggch = children gch in
-        if null ggch then Nothing else Just (tag ch1, tag $ head ggch)
-      | otherwise = Nothing
+              markStreamedApp e = foldl (@+) e $ [pStream, pFusable, pHasSkip, pOElemRec]
+                                                 ++ (filter passThruP iAppAs)
 
-    fusablePair _ _ = Nothing
+              nBAnns = filter isEPure iAs
+              nArgE  = foldl (@+) (EC.lambda j nBodyE) nBAnns
+              nPrjE  = markPureTransformer (EC.project "map" cE) $ any isEPure oAppAs
+              nAppE  = markStreamedApp $ EC.applyMany nPrjE [nArgE]
+          in
+          let isInferAccum = inferAccumulation i bodyE in
+          logRewrite "fold-as-map" nch $
+            if isAccum
+              then repeatE nAppE
+              else Left $ boxToString $ (["Invalid accumulator for fold-as-map rewrite "] %+ prettyLines bodyE)
+                                          %$ ["Inferred: " ++ show isInferAccum ++ " " ++ show isAccum]
 
-    extractFusablePairArgs :: [K3 Expression] -> Maybe (K3 Expression, K3 Expression, K3 Expression)
-    extractFusablePairArgs [(children -> [gchApp]), arg1] =
-      let ggch = children gchApp
-          (target, arg2) = fusableTarget gchApp
-      in if null ggch then Nothing else Just (target, arg1, arg2)
+    fuse nch@(PChainPrjApp1Pair _ fId gId _ _ _ iAppAs _ oAppAs)
+      | iStream   <- any isEStream   iAppAs
+      , oStream   <- any isEStream   oAppAs
+      , oUnstream <- any isEUnstream oAppAs
+      , iHasSkip  <- any isEHasSkip  iAppAs
+      , oHasSkip  <- any isEHasSkip  oAppAs
+      , oIElemRec <- any isEIElemRec oAppAs
+      , any isEFusable iAppAs && any isEFusable oAppAs
+        && validateStreamedPair fId iStream gId oStream oUnstream iHasSkip oHasSkip =
+          case (fId, gId) of
+            -- Map function fusion
+            ("map", "map"    ) -> repeatM $ logRewrite "map-map"     nch $ rewriteUnaryPair nch oStream oUnstream oHasSkip oIElemRec
+            ("map", "filter" ) -> repeatM $ logRewrite "map-filter"  nch $ rewriteUnaryPair nch oStream oUnstream oHasSkip oIElemRec
+            ("map", "iterate") -> repeatM $ logRewrite "map-iterate" nch $ rewriteUnaryPair nch oStream oUnstream oHasSkip oIElemRec
 
-    extractFusablePairArgs _ = Nothing
+            -- Filter fusion
+            ("filter", "filter")  -> repeatM $ logRewrite "filter-filter"  nch $ rewriteUnaryPair nch oStream oUnstream oHasSkip oIElemRec
+            ("filter", "iterate") -> repeatM $ logRewrite "filter-iterate" nch $ rewriteUnaryPair nch oStream oUnstream oHasSkip oIElemRec
 
-    fusableTarget :: K3 Expression -> (K3 Expression, K3 Expression)
-    fusableTarget e = let ch = children e in (head $ children $ head ch, last ch)
+            _ -> uncurry rebuildE nch
 
-    isFusable :: K3 Expression -> Bool
-    isFusable e@(tag -> EOperate OApp) = isJust $ find isEFusable $ annotations e
-    isFusable _ = False
+      | otherwise = uncurry rebuildE nch
 
-    isEFusable :: Annotation Expression -> Bool
-    isEFusable (EProperty "Fusable" _) = True
-    isEFusable _ = False
+    fuse nch@(PChainPrjApp2Pair _ fId gId _ _ _ _ iAppAs _ oApp1As _)
+      | iStream   <- any isEStream   iAppAs
+      , oStream   <- any isEStream   oApp1As
+      , oUnstream <- any isEUnstream oApp1As
+      , iHasSkip  <- any isEHasSkip  iAppAs
+      , oHasSkip  <- any isEHasSkip  oApp1As
+      , oIElemRec <- any isEIElemRec oApp1As
+      , any isEFusable iAppAs && any isEFusable oApp1As
+        && validateStreamedPair fId iStream gId oStream oUnstream iHasSkip oHasSkip =
+          case (fId, gId, oStream) of
+            -- Map and filter fusion
+            -- rewriteUnaryBinary handles unstreaming in the fold function.
+            ("map",    "fold", False) -> repeatM $ logRewrite "map-fold"    nch $ rewriteUnaryBinary nch iStream oIElemRec
+            ("filter", "fold", False) -> repeatM $ logRewrite "filter-fold" nch $ rewriteUnaryBinary nch iStream oIElemRec
+
+            _ -> uncurry rebuildE nch
+
+      | otherwise = uncurry rebuildE nch
+
+    fuse nch@(PChainPrjApp3Pair _ fId gId _ _ _ _ _ iAppAs _ oApp1As oApp2As _)
+      | iStream   <- any isEStream    iAppAs
+      , oStream   <- any isEStream    oApp1As
+      , oUnstream <- any isEUnstream  oApp1As
+      , iHasSkip  <- any isEHasSkip   iAppAs
+      , oHasSkip  <- any isEHasSkip   oApp1As
+      , o1IElemRec <- any isEIElemRec oApp1As
+      , o2IElemRec <- any isEIElemRec oApp2As
+      , any isEFusable iAppAs && any isEFusable oApp1As
+        && validateStreamedPair fId iStream gId oStream oUnstream iHasSkip oHasSkip =
+          case (fId, gId, iStream, oStream) of
+            -- Map function fusion
+            ("map", "groupBy", False, False) -> logRewrite "map-groupBy" nch $ rewriteUnaryTernary nch o1IElemRec o2IElemRec
+
+            -- GroupBy cannot support skips without treating the result as an accumulator
+            -- That is, we must implement groupBy as a fold with a associative accumulator.
+            (_, "groupBy", True, _)          -> Left $ "Unsupported stream operation as input to groupBy"
+            _ -> uncurry rebuildE nch
+
+      | otherwise = uncurry rebuildE nch
+
+    fuse nch@(PApp _ _ (any isETAppChain -> True), _)   = uncurry rebuildE nch
+    fuse nch@(PPrj _ _ (any isETransformer -> True), _) = uncurry rebuildE nch
+
+    fuse nch = mapM unstreamChild (snd nch) >>= rebuildE (fst nch)
+
+    unstreamChild e@(PUnstream1 (PPrj cE fId fAs) argE oAppAs)
+      | oIElemRec <- any isEIElemRec oAppAs
+      , oOElemRec <- any isEOElemRec oAppAs
+      , fId == "map" || fId == "filter" =
+          case find isEUnstream oAppAs of
+            Just (EProperty "Unstream" (literalTypeAsTElement -> Just cT)) ->
+              let emptyE = EC.constant $ CEmpty cT
+                  argYE  = if oIElemRec then EC.record [("elem", EC.variable "y")]
+                                        else EC.variable "y"
+                  resE e = if oOElemRec then EC.record [("elem", e)] else e
+
+                  appArgE   = EC.applyMany argE [argYE]
+                  insertE e = EC.applyMany (EC.project "insert" $ EC.variable "x") [e]
+                  accumE  e = EC.binop OSeq (insertE e) $ EC.variable "x"
+
+                  (testE, valE) = if fId == "map"
+                                    then (EC.caseOf appArgE "r", EC.variable "r")
+                                    else (EC.ifThenElse appArgE, EC.variable "y")
+
+                  foldFE = simplifyLambda $ binaryLambda "x" "y" $
+                             uncurry testE ( accumE $ resE $ valE
+                                           , EC.variable "x" )
+              in
+              Right $ EC.applyMany (EC.project "fold" cE) [foldFE, emptyE]
+
+            _ -> Left $ "No valid unstream annotation found on application"
+
+      | fId == "iterate" =
+          let iterateFE = simplifyLambda $ EC.lambda "x" $
+                EC.caseOf (EC.applyMany argE [EC.variable "x"]) "r" EC.unit EC.unit
+          in
+          Right $ EC.applyMany (EC.project "iterate" cE) [iterateFE]
+
+      where simplifyLambda e = runIdentity $ betaReduction e
+
+    unstreamChild e = Right e
+
+    validateStreamedPair fId fStream gId gStream gUnstream iHasSkip oHasSkip =
+      case (fId, fStream, gId, gStream, gUnstream) of
+        (_, False, "map", True,  False) -> (not iHasSkip) && oHasSkip
+        (_, False, _,     False, False) -> (not iHasSkip) && (not oHasSkip)
+        (_, True,  _, x, y)             -> not (gStream && gUnstream) && iHasSkip
+        (_, _,     _, _, _)             -> False
+
+    rewriteUnaryPair (PChainPrjApp1Pair cE fId gId fArg gArg _ iAppAs gAs oAppAs)
+                     gStream gUnstream gHasSkip gIElemRec
+      | fId == "map" =
+        let skipVOpt = if gId == "filter" then Just $ Left $ EC.constant $ CBool False
+                                          else Nothing
+
+            (ngArg, noAppAs) = if (gStream || gUnstream) && not gHasSkip
+                then (applyWithSkip gIElemRec skipVOpt gArg, oAppAs ++ [pHasSkip])
+                else (applyWithElemRec gIElemRec gArg, oAppAs)
+
+            nLambda = simplifyLambda $ composeUnaryPair ngArg fArg
+        in
+        return $ EC.applyMany (EC.project gId cE @<- gAs) [nLambda]
+                   @<- updateElemRec iAppAs noAppAs
+
+      | fId == "filter" && gId == "filter" =
+        let ngArg    = applyWithSkip gIElemRec (Just $ Left $ EC.constant $ CBool False) gArg
+            ngArgRec = applyWithElemRec gIElemRec gArg
+
+            fLambda id ngArg = simplifyLambda $ EC.lambda id $
+              EC.binop OAnd (EC.applyMany fArg  [EC.variable id])
+                            (EC.applyMany ngArg [EC.variable id])
+
+            (nLambda, noAppAs) = if (gStream || gUnstream) && not gHasSkip
+                then (fLambda "xOpt" ngArg,    oAppAs ++ [pHasSkip])
+                else (fLambda "x"    ngArgRec, oAppAs)
+        in
+        return $ EC.applyMany (EC.project gId cE @<- gAs) [nLambda]
+                   @<- updateElemRec iAppAs noAppAs
+
+      | fId == "filter" && gId == "iterate" =
+        let ngArg    = applyWithSkip gIElemRec (Just $ Left EC.unit) gArg
+            ngArgRec = applyWithElemRec gIElemRec gArg
+
+            iLambda id ngArg = simplifyLambda $
+              EC.lambda id $ EC.ifThenElse (EC.applyMany fArg [EC.variable id])
+                                 (EC.applyMany ngArg [EC.variable id])
+                                 EC.unit
+
+            (nLambda, noAppAs) = if (gStream || gUnstream) && not gHasSkip
+                then (iLambda "xOpt" ngArg,    oAppAs ++ [pHasSkip])
+                else (iLambda "x"    ngArgRec, oAppAs)
+        in
+        return $ EC.applyMany (EC.project gId cE @<- gAs) [nLambda]
+                   @<- updateElemRec iAppAs noAppAs
+
+      where updateElemRec ias as =
+              if any isEIElemRec ias then nub $ as ++ [pIElemRec]
+                                     else filter (not . isEIElemRec) as
+
+            simplifyLambda e = runIdentity $ betaReduction e
+
+    rewriteUnaryPair _ _ _ _ _ = Left $ "Invalid unary-unary rewrite"
+
+    rewriteUnaryBinary (PChainPrjApp2Pair cE fId gId@("fold") fArg gArg1 gArg2
+                                          _ iAppAs gAs oApp1As oApp2As)
+                       fStream gIElemRec
+      | fId == "map" =
+          let ngArg1 = if fStream then applyAccumWithSkip gIElemRec gArg1
+                                  else applyAccumWithElemRec gIElemRec gArg1
+              nLambda = simplifyLambda $ composeUnaryBinary ngArg1 fArg
+          in return $
+               EC.applyMany
+                 (EC.applyMany (EC.project gId cE @<- gAs) [nLambda]
+                    @<- updateElemRec iAppAs oApp1As)
+                 [gArg2] @<- oApp2As
+
+      | fId == "filter" =
+          let id2     = if fStream then "ySkip" else "y"
+              narg2   = if gIElemRec then EC.record [("elem", EC.variable "y")]
+                                     else EC.variable "y"
+              onFValE = if fStream
+                          then EC.caseOf (EC.variable id2) "y"
+                                  (EC.applyMany gArg1 [EC.variable "x", narg2])
+                                  (EC.variable "x")
+                          else EC.applyMany gArg1 [EC.variable "x", narg2]
+
+              nLambda = simplifyLambda $ EC.lambda "x" $ EC.lambda id2 $
+                          EC.ifThenElse (EC.applyMany fArg [EC.variable id2])
+                                        onFValE (EC.variable "x")
+
+          in return $ EC.applyMany
+                        (EC.applyMany (EC.project gId cE @<- gAs) [nLambda]
+                           @<- updateElemRec iAppAs oApp1As)
+                        [gArg2] @<- oApp2As
+
+      where updateElemRec ias as =
+              if any isEIElemRec ias then nub $ as ++ [pIElemRec]
+                                     else filter (not . isEIElemRec) as
+
+            simplifyLambda e = runIdentity $ betaReduction e
+
+    rewriteUnaryBinary _ _ _ = Left $ "Invalid unary-binary rewrite"
+
+    rewriteUnaryTernary (PChainPrjApp3Pair cE _ gId@("groupBy") fArg gArg1 gArg2 gArg3
+                                             _ _ gAs oApp1As oApp2As oApp3As)
+                        g1IElemRec g2IElemRec =
+      let ngArg1 = applyWithElemRec g1IElemRec gArg1
+          ngArg2 = applyWithElemRec g2IElemRec gArg2
+      in
+      return $
+        EC.applyMany
+          (EC.applyMany
+            (EC.applyMany (EC.project gId cE @<- gAs) [composeUnaryPair ngArg1 fArg] @<- oApp1As)
+            [composeUnaryBinary ngArg2 fArg] @<- oApp2As)
+            [gArg3] @<- oApp3As
+
+    rewriteUnaryTernary _ _ _ = Left $ "Invalid unary-ternary rewrite"
+
+    composeUnaryPair g f =
+      EC.lambda "x" $ EC.applyMany g [EC.applyMany f [EC.variable "x"]]
+
+    composeUnaryBinary gBinary fUnary =
+      EC.lambda "x" $ EC.lambda "y" $
+        EC.applyMany gBinary [EC.variable "x", EC.applyMany fUnary [EC.variable "y"]]
+
+    applyWithSkip iElemRec skipVOpt lamE =
+      let skipVarE = EC.variable "x"
+          appLamE  = EC.applyMany lamE [if iElemRec then EC.record [("elem", skipVarE)] else skipVarE]
+          caseBranches = case skipVOpt of
+                           Nothing              -> (EC.some appLamE, EC.constant $ CNone NoneImmut)
+                           Just (Right onSkipE) -> (EC.some appLamE, onSkipE)
+                           Just (Left  onSkipE) -> (appLamE, onSkipE)
+      in EC.lambda "xSkip" $ uncurry (EC.caseOf (EC.variable "xSkip") "x") caseBranches
+
+    applyAccumWithSkip iElemRec lamE =
+      let caseBranches = (EC.applyMany lamE
+                            [EC.variable "x",
+                             if iElemRec then EC.record [("elem", EC.variable "y")]
+                                         else EC.variable "y"]
+                         , EC.variable "x")
+      in binaryLambda "x" "ySkip" $
+           uncurry (EC.caseOf (EC.variable "ySkip") "y") caseBranches
+
+    applyWithElemRec True  lamE = EC.lambda "xToWrap" $ EC.applyMany lamE [elemVar "xToWrap"]
+    applyWithElemRec False lamE = lamE
+
+    applyAccumWithElemRec True lamE =
+      binaryLambda "x" "yToWrap" $
+        EC.applyMany lamE [EC.variable "x", elemVar "yToWrap"]
+
+    applyAccumWithElemRec False lamE = lamE
+
+    elemVar id = EC.record [("elem", EC.variable id)]
+    binaryLambda id1 id2 e = EC.lambda id1 $ EC.lambda id2 e
+
+    literalTypeAsTElement (Just (tag -> LString ctStr)) =
+      let t = (read ctStr) :: (K3 Type) in
+      case tag t of
+        TCollection -> Just $ head $ children t
+        _ -> Nothing
+
+    literalTypeAsTElement _ = Nothing
+
+    rebuildE (Node n _) ch = return $ Node n ch
+
+    logRewrite msg nch newEEither = flip localLogAction newEEither $ \case
+      Nothing -> Nothing
+      Just e  -> Just $ boxToString $ ["Rewrite " ++ msg] %+ prettyLines (uncurry replaceCh nch)
+                                                 %+ [" "] %+ prettyLines e
+
+-- | Infer return points in expressions that are collection insertions to the given variable.
+--   Every return expression must be one of:
+--     i.   accumulating expression
+--     ii.  alias (for now we consider only the exact variable, not equivalent bnds)
+--     iii. a branching expression composed only of accumulating expression and alias children.
+mapAccumulation :: (K3 Expression -> K3 Expression)
+                -> (K3 Expression -> K3 Expression)
+                -> Identifier -> K3 Expression -> (Bool, K3 Expression)
+mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
+  (isAcc, e) <- doInference
+  return $ (either id id isAcc, e)
+
+  where
+    doInference =
+      foldMapReturnExpression trackBindings returnAsAccumulator independentF (False, False) (Left False) expr
+
+    -- TODO: check effects and lineage rather than free variables.
+    independentF (shadowed, _) _ e
+      | EVariable j <- tag e , i == j && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , i == j && not shadowed = return (Right False, e)
+
+    independentF _ (onIndepR -> isAccum) e = return (isAccum, e)
+
+    trackBindings sp@(shadowed, _) e@(InsertAndReturn j "insert" v)
+      | i == j && not shadowed && notAccessedIn v
+         = return (sp, [(shadowed, True), (shadowed, True)])
+
+    trackBindings sp@(shadowed, protected) e = case tag e of
+        ELambda j -> return (sp, [onBinding sp j])
+        ELetIn  j -> return (sp, [sp, onBinding sp j])
+        ECaseOf j -> return (sp, [sp, onBinding sp j, sp])
+        EBindAs b -> return (sp, [sp, foldl onBinding sp $ bindingVariables b])
+        _ -> return (sp, replicate (length $ children e) sp)
+
+      where onBinding sp j = if i == j then (True, False) else sp
+
+    -- TODO: using symbols as lineage here will provide better alias tracking.
+    -- TODO: test in-place modification property
+    returnAsAccumulator (shadowed, _) _ e@(InsertAndReturn j "insert" v)
+      | i == j && not shadowed && notAccessedIn v = return (Right True, onAccumF e)
+
+    returnAsAccumulator (shadowed, protected) _ e@(tag -> EVariable j)
+      | i == j && not shadowed = if protected then return (Left True, e)
+                                              else return (Left True, onRetVarF e)
+
+    returnAsAccumulator _ (onReturnBranch [0]   -> isAccum) e@(tag -> ELambda _)     = return (isAccum, e)
+    returnAsAccumulator _ (onReturnBranch [0]   -> isAccum) e@(tag -> EOperate OApp) = return (isAccum, e)
+    returnAsAccumulator _ (onReturnBranch [1]   -> isAccum) e@(tag -> EOperate OSeq) = return (isAccum, e)
+
+    returnAsAccumulator _ (onReturnBranch [1]   -> isAccum) e@(tag -> ELetIn  _)     = return (isAccum, e)
+    returnAsAccumulator _ (onReturnBranch [1]   -> isAccum) e@(tag -> EBindAs _)     = return (isAccum, e)
+    returnAsAccumulator _ (onReturnBranch [1,2] -> isAccum) e@(tag -> ECaseOf _)     = return (isAccum, e)
+    returnAsAccumulator _ (onReturnBranch [1,2] -> isAccum) e@(tag -> EIfThenElse)   = return (isAccum, e)
+
+    returnAsAccumulator _ _ e = return (Right False, e)
+
+    -- TODO: replace with testing effects/symbol.
+    notAccessedIn e = i `notElem` (freeVariables e) && i `notElem` (modifiedVariables e)
+
+    onIndepR l = if any not $ rights l then Right False else Left False
+
+    onReturnBranch branchIds l =
+      if any not $ rights l then Right False
+      else ensureEither (map (l !!) branchIds)
+
+    ensureEither l =
+      if all id (lefts l) && all id (rights l)
+        then (if null $ rights l then Left else Right) True
+        else Right False
+
+inferAccumulation :: Identifier -> K3 Expression -> Bool
+inferAccumulation i expr = fst $ mapAccumulation annotationAccumE id i expr
+  where annotationAccumE e = e @+ EProperty "Accumulation" Nothing
+
+rewriteAccumulation :: Identifier -> K3 Expression -> (Bool, K3 Expression)
+rewriteAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i expr
+  where rewriteAccumE e@(InsertAndReturn _ "insert" v) = EC.some v
+        rewriteVarE   _ = EC.constant $ CNone NoneImmut
+
+
+-- Helper patterns for fusion
+pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
+pattern PLam     i   bodyE   iAs   = Node (ELambda i     :@: iAs)   [bodyE]
+pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
+pattern PInd     iE          iAs   = Node (EIndirect     :@: iAs)   [iE]
+pattern PRec     ids fieldsE rAs   = Node (ERecord ids   :@: rAs)   fieldsE
+pattern PTup         fieldsE tAs   = Node (ETuple        :@: tAs)   fieldsE
+
+pattern PSome sE optAs = Node (ESome :@: optAs) [sE]
+pattern PNone nm optAs = Node (EConstant (CNone nm) :@: optAs) []
+
+pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
+pattern PCaseOf      caseE varId someE noneE cAs = Node (ECaseOf varId :@: cAs) [caseE, someE, noneE]
+pattern PIfThenElse  pE tE eE cAs                = Node (EIfThenElse   :@: cAs) [pE, tE, eE]
+
+pattern PAppLam i bodyE argE lamAs appAs = PApp (PLam i bodyE lamAs) argE appAs
+
+pattern PBindInd i iE bodyE iAs bAs            = PBindAs (PInd iE          iAs) (BIndirection i)   bodyE bAs
+pattern PBindTup ids fieldsE bodyE tAs bAs     = PBindAs (PTup fieldsE     tAs) (BTuple       ids) bodyE bAs
+pattern PBindRec ijs ids fieldsE bodyE rAs bAs = PBindAs (PRec ids fieldsE rAs) (BRecord      ijs) bodyE bAs
+
+pattern PPrjRec fId ids fieldsE fAs rAs = PPrj (PRec ids fieldsE rAs) fId fAs
+
+pattern PPrjApp cE fId fAs fArg iAppAs = PApp (PPrj cE fId fAs) fArg iAppAs
+
+pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
+  = PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As
+
+pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
+  = PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As
+
+pattern PChainLambda1  i j bodyE iAs jAs = PLam i (PLam j bodyE jAs) iAs
+
+pattern PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs oAppAs =
+  PPrjApp (PPrjApp cE fId fAs fArg iAppAs) gId gAs gArg oAppAs
+
+pattern PChainPrjApp1Pair cE fId gId fArg gArg fAs iAppAs gAs oAppAs <-
+  (PApp _ _ oAppAs, [PPrj (PPrjApp cE fId fAs fArg iAppAs) gId gAs, gArg])
+
+pattern PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As =
+  PApp (PChainPrjApp1 cE fId gId fArg gArg1 fAs iAppAs gAs oApp1As) gArg2 oApp2As
+
+pattern PChainPrjApp2Pair cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As <-
+  (PApp _ _ oApp2As
+  , [PChainPrjApp1 cE fId gId fArg gArg1 fAs iAppAs gAs oApp1As, gArg2])
+
+pattern PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3 fAs iAppAs gAs oApp1As oApp2As oApp3As =
+  PApp (PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As) gArg3 oApp3As
+
+pattern PChainPrjApp3Pair cE fId gId fArg gArg1 gArg2 gArg3 fAs iAppAs gAs oApp1As oApp2As oApp3As <-
+  (PApp _ _ oApp3As
+  , [PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As, gArg3])
+
+pattern PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg fAs iApp1As iApp2As gAs oAppAs =
+  PPrjApp (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg oAppAs
+
+pattern PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As =
+  PApp (PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg1 fAs iApp1As iApp2As gAs oApp1As) gArg2 oApp2As
+
+pattern PBinChainPrjApp3 cE fId gId fArg1 fArg2 gArg1 gArg2 gArg3 fAs iApp1As iApp2As gAs oApp1As oApp2As oApp3As =
+  PApp (PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As) gArg3 oApp3As
+
+pattern PAnyStream1 fE argE appAs <-
+  PApp fE argE (id &&& (\e -> any isEStreamable e || any isEStream e) -> (appAs, True))
+
+pattern PAnyStream2 fE arg1E arg2E app1As app2As <-
+  PApp (PAnyStream1 fE arg1E app1As) arg2E app2As
+
+pattern PAnyStream3 fE arg1E arg2E arg3E app1As app2As app3As <-
+  PApp (PAnyStream2 fE arg1E arg2E app1As app2As) arg3E app3As
+
+pattern PUnstream1 fE argE appAs <-
+  PApp fE argE (id &&& any isEUnstream -> (appAs, True))
+
+pattern PUnstream2 fE arg1E arg2E app1As app2As <-
+  PApp (PUnstream1 fE arg1E app1As) arg2E app2As
+
+pattern PUnstream3 fE arg1E arg2E arg3E app1As app2As app3As <-
+  PApp (PUnstream2 fE arg1E arg2E app1As app2As) arg3E app3As
+
+pattern PStreamableTransformerArg i j iAs jAs <-
+  PChainLambda1 i j (inferAccumulation i -> True) iAs jAs
+
+pattern PStreamableTransformerPair cE fId bodyE i j arg2E iAs jAs fAs iAppAs oAppAs <-
+  (PApp _ _ (id &&& any isETAppChain -> (oAppAs, True))
+  , [PApp (PPrj cE fId fAs)
+          (PChainLambda1 i j bodyE iAs jAs)
+          (id &&& any isEStreamable -> (iAppAs, True))
+    , arg2E])
+
+pattern InsertAndReturn i cfId arg <-
+    Node (EOperate OSeq :@: _)
+      [Node (EOperate OApp :@: _)
+        [Node (EProject cfId :@: _) [Node (EVariable i :@: _) []], arg]
+      , Node (EVariable ((== i) -> True) :@: _) []]
+

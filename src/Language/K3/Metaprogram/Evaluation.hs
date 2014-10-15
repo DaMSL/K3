@@ -11,6 +11,7 @@ import Control.Arrow
 import Control.Monad
 import Control.Monad.IO.Class
 
+import Data.Either
 import Data.Functor.Identity
 import Data.List
 import qualified Data.Map as Map
@@ -41,7 +42,7 @@ import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction 
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool
-traceLogging = True
+traceLogging = False
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid traceLogging
@@ -101,7 +102,7 @@ defaultMetaAnalysis p = do
     liftError = either throwG
 
 defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
-defaultMetaRepair p = return $ repairProgram p
+defaultMetaRepair p = return $ repairProgram "metaprogram" p
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
@@ -110,8 +111,8 @@ mpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
 mpGenerators mp = mapTree evalMPDecl mp
   where
     evalMPDecl :: [K3 Declaration] -> K3 Declaration -> GeneratorM (K3 Declaration)
-    evalMPDecl ch d@(tag -> DGenerator (MPDataAnnotation n [] tvars mems)) =
-      rebuildNode (DC.dataAnnotation n tvars mems) (annotations d) ch
+    evalMPDecl ch d@(tag -> DGenerator (MPDataAnnotation n [] tvars (partitionEithers -> ([], annMems)))) =
+      rebuildNode (DC.dataAnnotation n tvars annMems) (annotations d) ch
 
     evalMPDecl ch d@(tag -> DGenerator mpd@(MPDataAnnotation n svars tvars mems)) =
       let extendGen genEnv =
@@ -258,11 +259,11 @@ globalSplicer n t eOpt = Splicer $ \spliceEnv -> SRDecl $ do
   neOpt <- maybe (return Nothing) (\e -> generateInSpliceEnv spliceEnv (spliceExpression e) >>= return . Just) eOpt
   return $ DC.global n nt neOpt
 
-annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [AnnMemDecl] -> K3Generator
+annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> K3Generator
 annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
-  nmems <- generateInSpliceEnv vspliceEnv $ mapM spliceAnnMem mems
-  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams nmems
+  nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
+  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
 
 exprSplicer :: K3 Expression -> K3Generator
 exprSplicer e = Splicer $ \spliceEnv -> SRExpr $ generateInSpliceEnv spliceEnv $ spliceExpression e
@@ -293,6 +294,17 @@ spliceDeclaration = mapProgram doSplice spliceAnnMem spliceExpression (Just spli
       newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
 
     newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
+
+spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
+spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
+  where
+    spliceWithValue = \case
+      SVar  v   -> generatorWithSCtxt $ \sctxt -> maybe (lookupErr v) spliceWithValue $ lookupSCtxt v sctxt
+      SList svs -> mapM (\sv -> generateInExtendedSpliceEnv i sv $ mapM spliceAnnMem mems) svs >>= return . concat
+      v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
+
+    lookupErr v = throwG $ "Invalid loop target in member generator: " ++ show v
+
 
 spliceAnnMem :: AnnMemDecl -> AnnMemGenerator
 spliceAnnMem = \case

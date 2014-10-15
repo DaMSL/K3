@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -22,6 +23,7 @@ import Control.Applicative ( (<*>) )
 import qualified Control.Applicative as C ( (<$>) )
 import Control.Monad
 
+import Data.Either
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.List hiding ( group )
@@ -33,7 +35,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
-import Language.K3.Core.Metaprogram
+import Language.K3.Core.Metaprogram hiding ( mpAnnMemDecl )
 
 import Text.PrettyPrint.ANSI.Leijen
 
@@ -152,10 +154,11 @@ polarity Provides = text "provides"
 polarity Requires = text "requires"
 
 mpDeclaration :: MPDeclaration -> SyntaxPrinter
-mpDeclaration (MPDataAnnotation i svars tvars members) = do
+mpDeclaration (MPDataAnnotation i svars tvars (partitionEithers -> (mpAnnMems, annMems))) = do
   pfxsp <- dAnnPrefix i svars tvars
-  msps  <- mapM annMemDecl members
-  return $ pfxsp <+> lbrace <$> (indent 2 $ vsep msps) <$> rbrace
+  mpsps <- mapM mpAnnMemDecl mpAnnMems
+  msps  <- mapM annMemDecl annMems
+  return $ pfxsp <+> lbrace <$> (indent 2 $ vsep $ mpsps ++ msps) <$> rbrace
 
 mpDeclaration (MPCtrlAnnotation i svars rewriteRules extensions) = do
   svsps  <- mapM typedSpliceVar svars
@@ -164,6 +167,12 @@ mpDeclaration (MPCtrlAnnotation i svars rewriteRules extensions) = do
   headsp <- return $ if null svsps then text "control" <+> text i
                      else text "control" <+> text i <+> (brackets $ cat (punctuate comma svsps))
   return $ headsp <$> rsps <$> cdsps
+
+mpAnnMemDecl :: MPAnnMemDecl -> SyntaxPrinter
+mpAnnMemDecl (MPAnnMemDecl i c mems) = do
+  csp  <- spliceValue c
+  msps <- mapM annMemDecl mems
+  return $ text "for" <+> text i <+> text "in" <+> csp <$> (indent 2 $ vsep msps)
 
 dAnnPrefix :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> SyntaxPrinter
 dAnnPrefix i svars tvars = do
@@ -190,7 +199,7 @@ ctrlExtension :: K3 Declaration -> SyntaxPrinter
 ctrlExtension d = (text "+>" <+>) C.<$> decl d
 
 spliceType :: SpliceType -> SyntaxPrinter
-spliceType st = case st of
+spliceType = \case
     STLabel    -> return $ text "label"
     STType     -> return $ text "type"
     STExpr     -> return $ text "expr"
@@ -200,6 +209,19 @@ spliceType st = case st of
     STList   t -> spliceType t >>= return . brackets
 
   where field (i,t) = spliceType t >>= return . ((text i <+> colon) <+>)
+
+spliceValue :: SpliceValue -> SyntaxPrinter
+spliceValue = \case
+    SVar     i    -> return $ text i
+    SLabel   i    -> return $ text i
+    SType    t    -> typ  t
+    SExpr    e    -> expr e
+    SDecl    d    -> decl d
+    SLiteral l    -> literal l
+    SRecord  nsvs -> mapM spliceField (recordElemsAsList nsvs) >>= return . braces . cat . punctuate comma
+    SList    svs  -> mapM spliceValue svs >>= return . brackets . cat . punctuate comma
+
+  where spliceField (i,v) = spliceValue v >>= return . ((text i <+> colon) <+>)
 
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = spliceType t >>= return . ((text i <+> colon) <+>)

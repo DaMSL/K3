@@ -18,7 +18,7 @@ namespace K3 {
     virtual void __dispatch(int, void *) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;
     virtual void __patch(std::map<string, string>) = 0;
-    virtual unit_t processRole(unit_t) = 0;
+    virtual unit_t processRole(const unit_t&) = 0;
 
     unit_t sayHello(std::tuple<const PeerId&, Address> data);
     unit_t registerPeerChangeTrigger(TriggerId trigger, Address me);

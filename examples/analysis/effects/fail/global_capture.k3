@@ -1,0 +1,4 @@
+declare g: mut int
+
+// BUG: `g` should not be 'captured', it's global.
+declare f: int -> int = \x -> (g = x; x + 1)

@@ -1,0 +1,6 @@
+include "Annotation/Collection.k3"
+
+typedef MyC = collection {a:int} @Collection
+
+declare c : MyC
+declare f : int -> int-> int = \x -> \y -> let z = x in if true then z else (x + 1)
