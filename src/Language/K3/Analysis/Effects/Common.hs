@@ -47,12 +47,17 @@ hasWrite s (tag -> FApply f _) = hasWriteInFunction s f
 hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
 
-argHasWrite :: K3 Symbol -> Bool
-argHasWrite s@(Node (Symbol _ (PLambda _ (Node (FScope [binding] _ :@: _) effects)) :@: _) ss)
-    = hasWriteInFunction binding s
-argHasWrite _ = False
+hasReadInFunction :: K3 Symbol -> K3 Symbol -> Bool
+hasReadInFunction s (tag &&& children -> (Symbol _ PSet, cs)) = any (hasReadInFunction s) cs
+hasReadInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), [])) = hasRead s f
+hasReadInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), cs))
+    = hasRead s f || any (hasReadInFunction s) cs
+hasReadInFunction s (tag &&& children -> ((Symbol _ PApply), [f, k]))
+    = hasReadInFunction s f || (s === k && hasReadInFunction k f)
+hasReadInFunction _ _ = False
 
 hasWriteInFunction :: K3 Symbol -> K3 Symbol -> Bool
+hasWriteInFunction s (tag &&& children -> (Symbol _ PSet, cs)) = any (hasWriteInFunction s) cs
 hasWriteInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), [])) = hasWrite s f
 hasWriteInFunction s (tag &&& children -> (Symbol _ (PLambda _ f), cs))
     = hasWrite s f || any (hasWriteInFunction s) cs
