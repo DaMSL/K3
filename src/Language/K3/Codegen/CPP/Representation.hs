@@ -103,7 +103,8 @@ data Type
     | Primitive Primitive
     | Reference Type
     | RValueReference Type
-    | Static Literal
+    | Static Type
+    | TypeLit Literal
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -125,7 +126,8 @@ instance Stringifiable Type where
     stringify (Primitive p) = stringify p
     stringify (Reference t) = stringify t <> "&"
     stringify (RValueReference t) = stringify t <> "&&"
-    stringify (Static c) = stringify c
+    stringify (Static c) = "static" <+> stringify c
+    stringify (TypeLit c) = stringify c
 
 data Literal
     = LBool Bool
