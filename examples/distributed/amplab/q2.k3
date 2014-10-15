@@ -15,6 +15,8 @@ declare dataLoader : string -> collection {
     duration: int
     } @ { Collection } -> ()
 
+declare dataFiles : collection {path: string} @ Collection
+
 // Constants
 declare peers_seq : collection {addr: address} @ {Seq}
 
@@ -22,7 +24,6 @@ declare master: address = 127.0.0.1:40000
 declare index_by_hash: string -> int = \s -> (hash s) % (peers_seq.size ())
 
 declare x: mut int = 3
-declare data_file : string = "/k3/data/amplab/rankings_10.k3"
 
 // Globals
 declare peers_ready: mut int = 0
@@ -107,6 +108,7 @@ trigger master_done : () = \_ -> (
 
 
 trigger shutdown : () = \_ -> (
+  print (concat "Num local results: " (itos (local_q2_results.size ())));
   haltEngine ()
 )
 
@@ -121,7 +123,7 @@ trigger ready : () = \_ -> (
 
 trigger load_all : () = \_ -> (
   peers.iterate (\i -> peers_seq.insert i);
-  (dataLoader data_file local_uservisits);
+  (dataFiles.iterate (\e -> dataLoader e.path local_uservisits)); 
   ((ready, master) <- ())
 )
 

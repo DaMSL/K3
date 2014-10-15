@@ -6,6 +6,8 @@ module Language.K3.Codegen.CPP.Declaration where
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
+import Data.Maybe
+
 import qualified Data.List as L
 
 import Language.K3.Core.Annotation
@@ -23,6 +25,8 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Transform.Hints
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
@@ -36,7 +40,7 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
 
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
-                        (Just (tag &&& children -> (ELambda x, [body])))) = do
+                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
     cta <- genCType ta
     ctr <- genCType tr
 
@@ -44,11 +48,17 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
-    return [R.FunctionDefn (R.Name i) [(x, cta)] (Just ctr) [] cbody]
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
+
+    let cta' = if readOnly then R.Const (R.Reference cta) else cta
+
+    return [R.FunctionDefn (R.Name i) [(x, cta')] (Just ctr) [] False cbody]
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
-                        (Just (tag &&& children -> (ELambda x, [body])))) = do
+                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
+
     returnType <- genCInferredType tr
     (argumentType, template) <- case tag ta of
                       TDeclaredVar t -> return (R.Named (R.Name t), Just t)
@@ -59,18 +69,27 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
+
+    let argumentType' = if readOnly then R.Const (R.Reference argumentType) else argumentType
+
     body' <- reify RReturn body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType')] (Just returnType) [] False body']
 
 -- Global scalars.
-declaration (tag -> DGlobal i t me) = do
+declaration d@(tag -> DGlobal i t me) = do
     globalType <- genCType t
     globalInit <- maybe (return []) (reify $ RName i) me
 
     addInitialization globalInit
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
 
-    return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType Nothing]
+    let pinned = isJust $ d @~ (\case { DProperty "Pinned" Nothing -> True; _ -> False })
+
+    let globalType' = if pinned then R.Static globalType else globalType
+
+    return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing]
 
 -- Triggers are implementationally identical to functions returning unit, except they also generate
 -- dispatch wrappers.
@@ -138,7 +157,8 @@ genHasRead suf _ name = do
     let source_name = stripSuffix suf name
     let e_has_r = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasRead")
     let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just $ R.Primitive R.PBool) [] [body]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+      (Just $ R.Primitive R.PBool) [] False [body]
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoRead suf typ name = do
@@ -147,7 +167,8 @@ genDoRead suf typ name = do
     let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
     let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "doReadExternal")) [R.Literal $ R.LString source_name]
     let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")] (Just ret_type) [] [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+      (Just ret_type) [] False [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
@@ -177,7 +198,7 @@ genLoader suf (children -> [_,f]) name = do
  let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf) [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
             (Just $ R.Named $ R.Name "unit_t")
-            [] [result_dec, R.Ignore foreachline, ret]
+            [] False [result_dec, R.Ignore foreachline, ret]
  where
     getColType = case children f of
                   ([c,_])  -> case children c of

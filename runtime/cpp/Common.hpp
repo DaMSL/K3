@@ -34,16 +34,20 @@ namespace K3 {
 
   typedef uint32_t fixed_int;
 
-  class unit_t {
-   public:
-    template <class archive>
-    void serialize(archive&, const unsigned int) {}
-  };
-
   typedef std::tuple<boost::asio::ip::address, unsigned short> Address;
 
   enum class Builtin { Stdin, Stdout, Stderr };
   enum class IOMode  { Read, Write, Append, ReadWrite };
+
+  class unit_t {
+    public:
+    template <class archive>
+    void serialize(archive&, const unsigned int) {}
+    bool operator==(const unit_t& r) const { return true; }
+    bool operator!=(const unit_t& r) const { return false; }
+    bool operator<(const unit_t& r) const { return false; }
+    bool operator>(const unit_t& r) const { return false; }
+  };
 
   //---------------
   // Addresses.
@@ -182,14 +186,5 @@ namespace K3 {
   }; // Class LogMT
 
 } // namespace K3
-
-template <class T, class U>
-constexpr inline bool is_unrelated() {
-  return !std::is_same<typename std::decay<T>::type, U>::value
-    && !std::is_base_of<U, typename std::decay<T>::type>::value;
-}
-
-template <class T, class U>
-using is_unrelated_type = typename std::enable_if<is_unrelated<T, U>(), T>::type
 
 #endif

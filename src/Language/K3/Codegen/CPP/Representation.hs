@@ -103,7 +103,8 @@ data Type
     | Primitive Primitive
     | Reference Type
     | RValueReference Type
-    | Static Literal
+    | Static Type
+    | TypeLit Literal
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -125,7 +126,8 @@ instance Stringifiable Type where
     stringify (Primitive p) = stringify p
     stringify (Reference t) = stringify t <> "&"
     stringify (RValueReference t) = stringify t <> "&&"
-    stringify (Static c) = stringify c
+    stringify (Static c) = "static" <+> stringify c
+    stringify (TypeLit c) = stringify c
 
 data Literal
     = LBool Bool
@@ -243,9 +245,11 @@ instance Stringifiable Statement where
     stringify (Ignore e) = stringify e <> semi
     stringify (Return e) = "return" <+> stringify e <> semi
 
+type IsConst = Bool
+
 data Definition
     = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] [Statement]
+    | FunctionDefn Name [(Identifier, Type)] (Maybe Type) [Expression] IsConst [Statement]
     | GlobalDefn Statement
     | GuardedDefn Identifier Definition
     | IncludeDefn Identifier
@@ -265,12 +269,13 @@ instance Stringifiable Definition where
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
-    stringify (FunctionDefn fn as mrt is bd) = rt' <> fn' <> as' <> is' <+> bd'
+    stringify (FunctionDefn fn as mrt is c bd) = rt' <> fn' <> as' <> is' <+> c' <+> bd'
       where
         rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
         fn' = stringify fn
         as' = parens (commaSep [stringify t <+> fromString i | (i, t) <- as])
         is' = if null is then empty else colon <+> commaSep (map stringify is)
+        c'  = if c then "const" else ""
         bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
     stringify (GlobalDefn s) = stringify s
     stringify (GuardedDefn i d)

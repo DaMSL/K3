@@ -18,7 +18,7 @@ namespace K3 {
     virtual void __dispatch(int, void *) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;
     virtual void __patch(std::map<string, string>) = 0;
-    virtual unit_t processRole(unit_t) = 0;
+    virtual unit_t processRole(const unit_t&) = 0;
 
     static std::string __get_trigger_name(int trig_id);
     static shared_ptr<Dispatcher> __get_clonable_dispatcher(int trig_id);

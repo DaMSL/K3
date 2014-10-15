@@ -1,0 +1,4 @@
+declare g: mut int
+
+// BUG: OSeq should draw its symbol from its right operand.
+declare h: int = (g = 5; 3)

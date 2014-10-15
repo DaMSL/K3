@@ -13,6 +13,8 @@ import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 
+import Safe
+
 import qualified Data.Set as S
 
 import Language.K3.Core.Annotation
@@ -176,10 +178,8 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
-
-    let readOnly = case (e @~ \case { EOpt (FuncHint _) -> True; _ -> False}) of
-                     Just (EOpt (FuncHint b)) -> b
-                     _ -> False
+    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
+                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
 
     (cRef, cMove, cCopy) <- case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
                               Just (EOpt (CaptHint ch)) -> return ch
@@ -305,7 +305,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     -- Create types for the element and the pointer to said element
     ept <- getKType e
     epc <- genCType ept
-    et  <- getKType $ head $ children e
+    let et = headNote ("Missing type in reify for " ++ show e) $ children ept
     ec  <- genCType et
 
     (g, gd, ee) <- case tag e of
@@ -357,7 +357,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                 return [ R.Forward $ R.ScalarDecl (R.Name i)
                            (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
                            (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
-                           (R.Specialized [R.Static $ R.LInt n] $ R.Name "get")) [g])
+                           (R.Specialized [R.TypeLit $ R.LInt n] $ R.Name "get")) [g])
                        | i <- is
                        | n <- [0..]
                        ]

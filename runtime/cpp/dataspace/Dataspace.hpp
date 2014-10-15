@@ -181,7 +181,7 @@ class StlDS {
 
   // Apply a function to each element of this ds
   template<typename Fun>
-  unit_t iterate(Fun f) {
+  unit_t iterate(Fun f) const {
     for (const Elem& e : container) {
       f(e);
     }
@@ -705,7 +705,7 @@ class Map {
   }
 
   template <typename Fun>
-  unit_t iterate(Fun f) {
+  unit_t iterate(Fun f) const {
     for (const std::pair<Key,Value>& p : container) {
       R rec;
       rec.key = p.first;
@@ -1108,7 +1108,7 @@ class MultiIndex {
 
   // Apply a function to each element of this ds
   template<typename Fun>
-  unit_t iterate(Fun f) {
+  unit_t iterate(Fun f) const {
     for (const Elem& e : container) {
       f(e);
     }
