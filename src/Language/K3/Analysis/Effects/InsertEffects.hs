@@ -300,7 +300,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- A global without an effect symbol
     addMissingDecl n@(tag -> (DGlobal i t@(tag -> TFunction) Nothing))
       | isNothing (n @~ isDSymbol) = do
-        s <- symOfFunction t
+        s <- symOfFunction False t
         return $ n @+ DSymbol s
 
     -- If we have a symbol, number it
@@ -314,15 +314,15 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     handleAttrs :: AnnMemDecl -> MEnv AnnMemDecl
     handleAttrs (Lifted x y t@(tag -> TFunction) Nothing annos)
       | isNothing (find isDSymbol annos) = do
-          s <- symOfFunction t >>= symOfAttr
+          s <- symOfFunction True t
           return $ Lifted x y t Nothing $ DSymbol s:annos
 
     -- If we have a sumbol, number it
     handleAttrs (Lifted x y z u as) = liftM (Lifted x y z u) $ handleAttrsInner as
 
     handleAttrs (Attribute x y t@(tag -> TFunction) Nothing annos)
-      | isNothing(find isDSymbol annos) = do
-          s <- symOfFunction t >>= symOfAttr
+      | isNothing (find isDSymbol annos) = do
+          s <- symOfFunction True t
           return $ Attribute x y t Nothing $ DSymbol s:annos
 
     -- If we have a symbol, number it
@@ -331,12 +331,11 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     handleAttrs a = return a
 
     -- handle common attribute symbol/effect renumbering functionality
-    -- Also, wrap existing lambda symbols in "self" lambdas
     handleAttrsInner as =
       case find isDSymbol as of
         Nothing -> return as
         Just ds@(DSymbol s) -> do
-          s' <- liftM DSymbol (numberSyms s >>= wrapAttr)
+          s' <- liftM DSymbol $ numberSyms s
           let as' = delete ds as
           return $ s':as'
 
@@ -373,45 +372,33 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 
     -- Create a symbol for a function based on type
     -- If we're an attribute, we need to also write to self
-    symOfFunction :: K3 Type -> MEnv (K3 Symbol)
-    symOfFunction t = liftM head $ symOfFunction' t 1
+    symOfFunction :: Bool -> K3 Type -> MEnv (K3 Symbol)
+    symOfFunction addSelf t = liftM head $ symOfFunction' addSelf t 1
 
-    -- We need to create the self symbol, and wrap it in a half application
-    symOfAttr :: K3 Symbol -> MEnv (K3 Symbol)
-    symOfAttr s = do
-      sLam <- createSym [s] "self"
-      genSym PApply [sLam] -- Incomplete on purpose
-
-    symOfFunction' :: K3 Type -> Int -> MEnv [K3 Symbol]
-    symOfFunction' t@(tnc -> (TFunction, [_, ret])) i = do
-      s  <- symOfFunction' ret $ i + 1
-      s' <- createSym s $ "__"++show i
+    symOfFunction' :: Bool -> K3 Type -> Int -> MEnv [K3 Symbol]
+    symOfFunction' addSelf t@(tnc -> (TFunction, [_, ret])) i = do
+      s  <- symOfFunction' addSelf ret $ i + 1
+      s' <- createSym (addSelf && i==1) s $ "__"++show i
       return [s']
-    symOfFunction' t _ = return []
+    symOfFunction' _ t _ = return []
 
     -- Create a default conservative symbol for the function
-    createSym subSym nm = do
+    -- @addSelf: add a r/w to 'self' (for attributes)
+    createSym addSelf subSym nm = do
       sym <- symbolM nm PVar []
       r   <- addFID $ read sym
       w   <- addFID $ write sym
-      seq <- combineEffSeq [Just w, Just r]
+      seq <- if addSelf then do
+               selfSym <- symbolM "self" PVar []
+               rSelf <- addFID $ read selfSym
+               wSelf <- addFID $ write selfSym
+               return [Just w, Just r, Just wSelf, Just rSelf]
+             else
+               return [Just w, Just r]
+      seq <- combineEffSeq seq
       lp  <- addFID $ loop $ fromJust seq
       sc  <- addFID $ scope [sym] emptyClosure [lp]
       genSym (PLambda nm sc) subSym
-
-    -- Wrap an attribute in a self scope
-    -- Substitute it for self inside the symbol, and a symbol for contents
-    wrapAttr subSym = do
-      selfSym    <- symbolM "self" PVar []
-      contentSym <- symbolM "contents" (PTemporary TSub) [selfSym]
-      sc         <- addFID $ scope [selfSym] emptyClosure []
-      subSym'    <- mapSym mId (replace selfSym contentSym) subSym
-      sLam       <- genSym (PLambda "self" sc) [subSym']
-      genSym PApply [sLam] -- Incomplete on purpose
-      where
-        replace s c (tag -> Symbol "self" PVar)     = return s
-        replace s c (tag -> Symbol "contents" PVar) = return c
-        replace _ _ n = return n
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
@@ -603,19 +590,22 @@ runAnalysisEnv env prog = flip evalState env $
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
           -- We can't have effects here -- we only have symbols
           case getESymbol n of
-            -- We left a half-done application symbol here in the preprocessing
-            Just sApp@(tnc -> (Symbol _ PApply, sLam@(tag -> Symbol _ (PLambda _ _)):_))  -> do
-              eSym    <- getOrGenSymbol e
-              -- Fill in the lambda application for self with the argument
-              let sApp' = replaceCh sApp [sLam, eSym]
-              eApp    <- addFID $ apply sLam eSym
-              return $ addEffSymCh (Just eApp) (Just sApp') ch n
+            Just nSym -> do
+              eSym  <- getOrGenSymbol e
+              -- Substitute for 'self' and 'content'
+              nSym' <- mapSym mId (subSelf eSym) nSym
+              return $ addEffSymCh Nothing (Just nSym') ch n
+
             _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
 
         _ -> do -- not a collection member function
           eSym <- getOrGenSymbol e
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
+      where
+        subSelf s n@(tag -> Symbol "self" PVar)    = return $ replaceCh n [s]
+        subSelf s n@(tag -> Symbol "content" PVar) = return $ replaceCh n [s]
+        subSelf _ n = return n
 
     -- handle seq (last symbol)
     handleExpr ch n@(tag -> EOperate OSeq) = do
