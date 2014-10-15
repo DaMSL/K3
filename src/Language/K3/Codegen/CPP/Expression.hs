@@ -207,7 +207,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     -- TODO: Handle `mutable' arguments.
     let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
-           , R.Lambda capture [(arg, hintedArgType)] (not readOnly) Nothing body'
+           , R.Lambda capture [(arg, hintedArgType)] True Nothing body'
            )
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
