@@ -10,7 +10,6 @@ declare dataFiles : collection {path: string} @ {Collection}
 // Constants
 declare master: address = 127.0.0.1:40000
 declare x: mut int = 3
-declare num_peers: int = 2
 
 // Globals
 declare peers_ready: mut int = 0
@@ -74,7 +73,7 @@ trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVa
       { None   -> url_counts_agg.insert v }
     );
   peers_finished = peers_finished + 1;
-  if peers_finished == num_peers
+  if peers_finished == (peers.size ())
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
        print (itos elapsed_ms);
@@ -90,7 +89,7 @@ trigger shutdown : () = \_ -> (
 // Once all peers are ready, the master will start the query.
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
-  if peers_ready == num_peers
+  if peers_ready == (peers.size ())
   then start_ms = now_int (); peers.iterate (\p -> (local, p.addr) <- ())
   else ()
 )
