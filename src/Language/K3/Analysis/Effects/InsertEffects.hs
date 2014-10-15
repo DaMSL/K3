@@ -84,6 +84,9 @@ deleteBind i env =
   in
   env {bindEnv=m'}
 
+clearBinds :: Env -> Env
+clearBinds env = env {bindEnv=Map.empty}
+
 emptyClosure :: ClosureInfo
 emptyClosure = ([],[],[])
 
@@ -114,6 +117,9 @@ insertBindM i s = modify $ insertBind i s
 
 deleteBindM :: Identifier -> MEnv ()
 deleteBindM i = modify $ deleteBind i
+
+clearBindsM :: MEnv ()
+clearBindsM = modify clearBinds
 
 lookupBindM :: Identifier -> MEnv (K3 Symbol)
 lookupBindM i = do
@@ -340,11 +346,23 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
           return $ s':as'
 
     -- Number existing symbols/effects
-    numberSyms s = mapSym addNumEff addNumSym s
+    numberSyms s = do
+      s' <- mapSym addNumEff addNumSym s
+      clearBindsM  -- binds are only temporary here
+      return s'
     numberEffs e = mapEff addNumEff addNumSym e
 
-    addNumSym s = addSID s
-    addNumEff n = addFID n
+    -- For symbols, we only need a very simple binding pattern
+    addNumSym s@(tag -> Symbol i PVar) = do
+      l <- lookupBindInnerM i
+      case l of
+        Nothing -> do
+          s' <- addSID s
+          insertBindM i s'
+          return s'
+        Just s' -> return s'
+
+    addNumEff = addFID
 
     -- Create a symbol for a function based on type
     -- If we're an attribute, we need to also write to self
