@@ -24,6 +24,10 @@ declare start_ms: mut int = 0
 declare end_ms: mut int = 0
 declare elapsed_ms: mut int = 0
 
+declare load_start_ms : mut int = 0
+declare load_end_ms : mut int = 0
+declare load_elapsed_ms : mut int = 0
+
 // Dummy trigger to warm up connections
 trigger hello : () = \_ -> ()
 
@@ -70,9 +74,13 @@ trigger ready: () = \_ -> (
 )
 
 trigger load_all: () = \_ -> (
+  load_start_ms = now_int ();
   dataFiles.iterate (\e ->
     dataLoader e.path local_rankings
   );
+  load_end_ms = now_int ();
+  load_elapsed_ms = load_end_ms - load_start_ms;
+  print (concat "Load time: " (itos load_elapsed_ms));
   ((ready, master) <- ())
 )
 
