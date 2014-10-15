@@ -10,7 +10,7 @@ import Control.Applicative
 
 import Data.Foldable
 import Data.Functor
-import Data.List (partition)
+import Data.List ((\\), partition)
 import Data.Maybe
 import Data.Tree
 
@@ -54,7 +54,7 @@ lambdaFormOptE ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)
     c = EOpt $ CaptHint (if null effects then ( symIDs $ S.fromList cRead
                                               , S.empty
                                               , symIDs $ S.fromList (cWritten ++ cApplied))
-                         else ( symIDs $ S.fromList cRead
+                         else ( symIDs $ S.fromList $ cRead \\ cWritten
                               , symIDs $ S.fromList cMove
                               , symIDs $ S.fromList $ cCopy ++ cApplied))
 lambdaFormOptE ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE ds) cs)
