@@ -7,8 +7,9 @@
       data_dir: /tmp/k3_{{app_name}}/data/
       docker_image: k3_{{app_name}}
       results_dir: /tmp/k3_results/k3_{{app_name}} # Local side. 
-      data_files: '{% for file in data_files -%} {{file.name}}: [{% for i in range(file.num) -%} {path: "{{file.prefix}}{{"%04d" | format(i|int)}}" }{% if not loop.last %} , {% endif %} {%- endfor %} ]{%- endfor %}'
-
+      colon: ":"
+      num_hosts: "{{play_hosts | count}}"
+      num_peers: "{{(play_hosts | count) * numprocs}}"
 
   # copy over files
   - name: setup directories on the remote host
@@ -46,7 +47,7 @@
  
 
   - name: run the binary in a docker container
-    shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3  -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %},{{data_files}}' 
+    shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3  -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %},{% for file in data_files -%} {{file.name}}{{colon}} [{% for i in range(file.num) -%} {% if (i % (num_peers|int)) == ((peer*(numprocs|int))+(item|int)) -%} {% if i >= (num_peers|int) %} , {% endif %} { path{{colon}} "{{file.prefix}}{{"%04d" | format(i|int)}}" } {% endif %} {%- endfor %} ]{%- endfor %}'
     with_sequence: start=0 end={{numprocs-1}}
   
         
