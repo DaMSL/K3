@@ -137,7 +137,7 @@ main = do
                      [R.Return (R.Literal $ R.LInt 0)] []
     -- TODO grab context name from elsewhere (Add to state?)
     let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") R.Inferred
-                     (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Variable $ R.Name "engine"])
+                     (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Project (R.Variable $ R.Name "opt") (R.Name "name"), R.Variable $ R.Name "engine"])
 
     staticContextMembersPop <- R.Block <$> generateStaticContextMembers
     let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
@@ -151,6 +151,8 @@ main = do
                           , R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DefaultInternalCodec"]
                                      (R.Name "make_shared")) []
                           , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
+                          , R.Project (R.Variable $ R.Name "opt") (R.Name "directory_master")
+                          , R.Project (R.Variable $ R.Name "opt") (R.Name "directory_upstream")
                           ]
 
     let processRoles = R.Ignore $ R.Call (R.Variable $ R.Name "processRoles") [R.Variable $ R.Name "contexts"]

@@ -15,6 +15,7 @@
 #include "Message.hpp"
 #include "MessageProcessor.hpp"
 #include "Options.hpp"
+#include "Resolver.hpp"
 
 namespace K3 {
 
@@ -154,12 +155,14 @@ namespace K3 {
       bool simulation,
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec,
-      string log_level
+      string log_level,
+      bool directory_master,
+      const string& directory_upstream
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level);
+      configure(simulation, sys_env, _internal_codec, log_level, directory_master, directory_upstream);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level, bool directory_master, const string& directory_upstream);
 
     //-----------
     // Messaging.
@@ -343,6 +346,9 @@ namespace K3 {
 
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode ioMode(string k3Mode);
+
+    void sayHello(const PeerId& myId, Address my_address);
+    void registerPeerChangeTrigger(TriggerId trigger, Address me);
   protected:
     bool                            log_enabled;
     shared_ptr<EngineConfiguration> config;
@@ -360,6 +366,8 @@ namespace K3 {
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
+
+    unique_ptr<Resolver> resolver;
 
     void logMessageLoop(string s);
 

@@ -35,8 +35,11 @@ type EndpointInfo = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Exp
 defaultRoleName :: Identifier
 defaultRoleName = "__global"
 
-myId :: Identifier
-myId = "me"
+meId :: Identifier
+meId = "me"
+
+meIdId :: Identifier
+meIdId = "me_id"
 
 peersId :: Identifier
 peersId = "peers"
@@ -45,7 +48,10 @@ argsId :: Identifier
 argsId = "args"
 
 myAddr :: K3 Expression
-myAddr = EC.variable myId
+myAddr = EC.variable meId
+
+meIdVar :: K3 Expression
+meIdVar = EC.variable meIdId
 
 chrName :: Identifier -> Identifier
 chrName n = n++"HasRead"
@@ -84,6 +90,15 @@ openSocketFn = EC.variable "openSocket"
 closeFn :: K3 Expression
 closeFn = EC.variable "close"
 
+registerPeerChangeId :: Identifier
+registerPeerChangeId = "registerPeerChangeTrigger"
+
+registerPeerChangeFn :: K3 Expression
+registerPeerChangeFn = EC.variable registerPeerChangeId
+
+peerUpdaterId :: Identifier
+peerUpdaterId = "peerUpdater"
+
 {- -- Unused
 registerFileDataTriggerFn :: K3 Expression
 registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
@@ -112,8 +127,14 @@ exitId = "atExit"
 initDeclId :: Identifier
 initDeclId = "initDecls"
 
+helloId :: Identifier
+helloId = "sayHello"
+
 initDeclFn :: K3 Expression
 initDeclFn = EC.variable initDeclId
+
+helloFn :: K3 Expression
+helloFn = EC.variable helloId
 
 roleId :: Identifier
 roleId = "role"
@@ -160,7 +181,8 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
                 $ Just . qualifyE $ mkInitDeclBody sinkEndpoints,
 
               builtinGlobal roleFnId (qualifyT unitFnT)
-                $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults ]
+                $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults
+            ]
 
         mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
 
@@ -302,40 +324,68 @@ declareBuiltins d
   where new_children = runtimeDecls ++ peerDecls ++ (children d) ++ topLevelDecls
 
         runtimeDecls = [
-          mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerFileCloseTrigger"    (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketDataTrigger"   (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketCloseTrigger"  (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing ]
+            mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
+          , mkGlobal "registerFileCloseTrigger"    (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
+          , mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
+          , mkGlobal "registerSocketDataTrigger"   (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
+          , mkGlobal "registerSocketCloseTrigger"  (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
+          --, mkGlobal "registerPeerChangeTrigger"   (mkCurriedFnT [TC.trigger peerChangeT, TC.address, TC.unit]) Nothing
+          --mkGlobal "registerPeerChangeTrigger"   (TC.function  (TC.trigger peerChangeT) TC.unit) Nothing
+         ]
 
         peerDecls = [
-          mkGlobal myId    TC.address Nothing,
+          mkGlobal meId    TC.address Nothing,
+          mkGlobal meIdId  TC.string  Nothing,
           mkGlobal peersId peersT     Nothing,
           mkGlobal argsId  progArgT   Nothing,
           mkGlobal roleId  TC.string  Nothing]
 
         topLevelDecls = [
-          mkGlobal initId unitFnT $ Just atInitE,
-          mkGlobal exitId unitFnT $ Just atExitE ]
+            mkGlobal initId unitFnT $ Just atInitE
+          , mkGlobal exitId unitFnT $ Just atExitE
+          , mkGlobal helloId addrFnT $ Nothing
+          , mkTrigger peerUpdaterId peerChangeT peerJoinE
+         ]
 
         atInitE = EC.lambda "_" $
           EC.block [EC.applyMany initDeclFn [EC.unit],
-                    EC.applyMany roleFn [EC.unit]]
+                    EC.applyMany roleFn [EC.unit],
+                    --EC.applyMany registerPeerChangeFn [ EC.variable peerUpdaterId, EC.variable "me" ],
+                    EC.applyMany helloFn [EC.tuple [EC.variable "me_id", EC.variable "me" ]]
+                    ]
 
         atExitE = EC.lambda "_" $ EC.tuple []
 
+        peerJoinE = EC.lambda "args" $
+          EC.bindAs (EC.variable "args") (BTuple ["join", "new_peers"]) $
+            EC.ifThenElse (EC.variable "join") (peerModifierFn "insert") (peerModifierFn "erase")
+
+        peerModifierFn op =
+          EC.applyMany (EC.project "iterate" (EC.variable "new_peers")) [
+                            EC.lambda "p" $ EC.block [
+                                EC.applyMany (EC.project op (EC.variable "peers")) [EC.variable "p"]
+                            ]
+                    ]
+            
+
         idT      = TC.string
         progArgT = TC.tuple [qualifyT argT, qualifyT paramsT]
-        peersT   = mkCollection [("addr", TC.address)]
+        --peersT   = mkCollection [("addr", TC.address)]
+        peersT   = mkCollection [("name", TC.string)]
         argT     = mkCollection [("arg", TC.string)]
         paramsT  = mkCollection [("key", TC.string), ("value", TC.string)]
 
-        mkGlobal n t eOpt = builtinGlobal n (qualifyT t) $ maybe Nothing (Just . qualifyE) eOpt
+        mkGlobal n t eOpt  = builtinGlobal n (qualifyT t) $ maybe Nothing (Just . qualifyE) eOpt
+        mkTrigger = builtinTrigger
 
         mkCurriedFnT tl = foldr1 TC.function tl
 
         --mkAUnitFnT at = TC.function at TC.unit
         --mkRUnitFnT rt = TC.function TC.unit rt
         unitFnT       = TC.function TC.unit TC.unit
+        addrFnT       = TC.function (TC.tuple [TC.string, TC.address]) TC.unit
+        peerChangeT   = TC.tuple [TC.bool, (mkCollection [("name", TC.string)]) ]
+        --peerChangeT   = TC.tuple [TC.bool, (TC.collection (TC.record [("name", TC.string)]) @+ TAnnotation "Collection") ]
 
         mkCollection fields = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation "Collection"
+        mkMap fields = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation "Map"

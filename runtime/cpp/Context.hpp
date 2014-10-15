@@ -20,6 +20,9 @@ namespace K3 {
     virtual void __patch(std::map<string, string>) = 0;
     virtual unit_t processRole(unit_t) = 0;
 
+    unit_t sayHello(std::tuple<const PeerId&, Address> data);
+    unit_t registerPeerChangeTrigger(TriggerId trigger, Address me);
+
     static std::string __get_trigger_name(int trig_id);
     static shared_ptr<Dispatcher> __get_clonable_dispatcher(int trig_id);
 
@@ -30,11 +33,11 @@ namespace K3 {
   };
 
   template <class context>
-  std::map<Address, shared_ptr<__k3_context>> createContexts(std::vector<string> peer_strs, Engine& engine) {
+  std::map<Address, shared_ptr<__k3_context>> createContexts(std::vector<string> peer_strs, const std::string& name, Engine& engine) {
     std::map<Address, shared_ptr<__k3_context>> contexts;
     for (auto& s : peer_strs) {
-      auto gc = make_shared<context>(engine);
-      gc->__patch(parse_bindings(s));
+      std::shared_ptr<context> gc = make_shared<context>(engine);
+      gc->__patch(parse_bindings(s, name));
       std::cout << addressAsString(gc->me) << std::endl;
       contexts[gc->me] = gc;
     }

@@ -1,4 +1,5 @@
 #include "Engine.hpp"
+#include "Context.hpp"
 
 using namespace boost::log;
 using namespace boost::log::trivial;
@@ -6,7 +7,7 @@ using boost::thread;
 
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level, bool directory_master, const string& directory_upstream) {
       internal_codec = _internal_codec;
       std::cout << "Engine log level: " << log_level << std::endl;
       log_enabled = false;
@@ -21,14 +22,15 @@ namespace K3 {
         initialAddress = defaultAddress;
       }
 
-      config       = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-      control      = shared_ptr<EngineControl>(new EngineControl(config));
-      deployment   = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
+      config       = make_shared<EngineConfiguration>(initialAddress);
+      control      = make_shared<EngineControl>(config);
+      deployment   = make_shared<SystemEnvironment>(sys_env);
       // workers     = shared_ptr<WorkerPool>(new InlinePool());
-      network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
-      endpoints    = shared_ptr<EndpointState>(new EndpointState());
-      listeners    = shared_ptr<Listeners>(new Listeners());
+      network_ctxt = make_shared<Net::NContext>();
+      endpoints    = make_shared<EndpointState>();
+      listeners    = make_shared<Listeners>();
       collectionCount   = 0;
+      resolver     = make_unique<RedisResolver>(sendFunction(), directory_master, directory_upstream);
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -410,6 +412,15 @@ namespace K3 {
       } else {
         logAt(trivial::error, "Unintialized engine listeners");
       }
+    }
+
+    void Engine::sayHello(const PeerId& myId, Address myAddress)
+    {
+        resolver->sayHello(myId, myAddress);
+    }
+    void Engine::registerPeerChangeTrigger(TriggerId trigger, Address me)
+    {
+        resolver->bindings.attachNotifier(EndpointNotification::PeerChange, me, trigger);
     }
 
     //-----------------------

@@ -24,7 +24,7 @@ namespace K3
 
   enum class EndpointNotification {
     NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose,
-    PeerHello, PeerGoodbye
+    PeerChange
   };
 
   class BufferException : public runtime_error {

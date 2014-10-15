@@ -137,6 +137,9 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
+--inline e@(tag -> EVariable "registerPeerChangeTrigger") = do
+--    return ([], R.Variable $ R.Name "HELLO_ITS_PAUL")
+
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
 inline e@(tag -> EVariable v)
@@ -205,6 +208,29 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     return ( []
            , R.Lambda capture [(arg, hintedArgType)] Nothing body'
            )
+
+--inline (tag &&& children ->
+--    (EOperate OApp, [
+--        (tag &&& children -> (_, [])),
+--        (tag &&& children -> (EVariable _, _)),
+--        (tag &&& children -> (EVariable _, _))
+--      ]
+--     )) = do
+--inline (tag &&& children -> (EOperate OApp, (tag &&& children -> (EVariable funcName, _)) : xs ))= do
+    --(te, _) <- inline trig
+    --trigList <- triggers <$> get
+    --let (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
+    --                 tName `lookup` trigList
+    --return ([], R.Call (R.Variable $ R.Name "ITS_ME_AGAIN!") [R.Variable $ R.Name $ show trigId])
+inline (tag &&& children -> (EOperate OApp, [
+    (tag &&& children -> (EVariable registerPeerChangeTriggerId, _)),
+    (trig@(tag -> EVariable tName)) ]))
+  = do
+    (te, _)  <- inline trig
+    trigList  <- triggers <$> get
+    let (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
+                      tName `lookup` trigList
+    return ([], R.Call (R.Variable $ R.Name registerPeerChangeTriggerId) [R.Variable $ R.Name $ show trigId])
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.

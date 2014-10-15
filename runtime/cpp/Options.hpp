@@ -15,9 +15,12 @@ class Options {
   public:
     int parse(int argc, const char *const argv[]);
 
-    vector<string> peer_strings;
+    std::vector<std::string> peer_strings;
     bool simulation = false;
     string log_level = "";
+    bool directory_master;
+    string directory_upstream;
+    string name;
 };
 
 }
@@ -25,4 +28,3 @@ class Options {
 namespace po = boost::program_options;
 
 #endif /* K3_RUNTIME_OPTIONS_H */
-

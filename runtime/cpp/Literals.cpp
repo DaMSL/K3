@@ -9,10 +9,11 @@ namespace K3 {
   using std::map;
   using std::pair;
 
-  map<string, string> parse_bindings(string s) {
+  map<string, string> parse_bindings(string s, string name) {
     map<string, string> bindings;
     literal<string::iterator> parser;
     qi::phrase_parse(begin(s), end(s), parser, qi::space, bindings);
+    bindings.insert(std::make_pair("me_name", name));
     return bindings;
   }
 

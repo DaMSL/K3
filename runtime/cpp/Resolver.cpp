@@ -13,6 +13,12 @@
 #include "Common.hpp"
 #include "Resolver.hpp"
 #include "Serialization.hpp"
+#include "dataspace/Dataspace.hpp"
+
+K3::Resolver::Resolver(SendFunctionPtr sendFn)
+  : bindings(sendFn)
+{
+}
 
 constexpr int REDIS_PORT    =  6379;
 constexpr int SENTINEL_PORT = 26379;
@@ -48,14 +54,15 @@ static inline std::string getAddress(const std::string& addr_and_port)
 
 const std::string redisServerCommand = "redis-server";
 K3::RedisResolver::RedisResolver(K3::SendFunctionPtr sendFn, bool master, const std::string& address)
-  : K3::EndpointBindings(sendFn),
+  : Resolver(sendFn), LogMT("RedisResolver"),
     subscription_listener(), subscription_started(false),
-    cv()
+    download_completed(false), cv(), directory()
 {
-    if (master)
-        startMaster(address);
-    else
-        startSlave(address);
+  if (master)
+    startMaster(address);
+  else
+    startSlave(address);
+
 }
 
 K3::RedisResolver::~RedisResolver()
@@ -241,6 +248,9 @@ void K3::RedisResolver::startMaster(const std::string&)
   startRedis("redis-server", nullptr);
   sleep(2);
 
+  // Redis-sentinel doesn't need the global IP address
+  // the sentinels will figure out the IP of this server from each
+  // other, so localhost is fine here.
   writeSentinelConfiguration(LOCALHOST, std::to_string(REDIS_PORT));
   startRedis("redis-server", "./sentinel.conf", "--sentinel", NULL);
   sleep(2); // need to know when redis starts up
@@ -260,10 +270,10 @@ void K3::RedisResolver::startSlave(const std::string& upstream)
   sleep(2);
 }
 
-void K3::RedisResolver::sayHello(PeerID me)
+void K3::RedisResolver::sayHello(PeerId myID, Address me)
 {
-  const std::string my_address = "127.0.0.1 40000";
-  this->me = me;
+  const std::string my_address = addressHost(me) + " " + std::to_string(addressPort(me));
+  this->myID = myID;
 
   std::vector<std::string> master_location = redisGetMasterAddress(LOCALHOST);
   std::string& master_address = master_location.at(0);
@@ -271,9 +281,9 @@ void K3::RedisResolver::sayHello(PeerID me)
 
   {
     RedisConnection writeContext(master_address, master_port);
-    writeContext.HSET(K3_PEER_MAP, me, my_address);
+    writeContext.HSET(K3_PEER_MAP, myID, my_address);
 
-    writeContext.PUBLISH(K3_UPDATE_CHANEL.c_str(), (HELLO + me + " " + my_address).c_str());
+    writeContext.PUBLISH(K3_UPDATE_CHANEL.c_str(), (HELLO + " " + myID + " " + my_address).c_str());
   }
 
   subscription_listener = boost::thread([=] { this->subscriptionWork(); });
@@ -288,8 +298,30 @@ void K3::RedisResolver::sayHello(PeerID me)
   }
 
   RedisConnection directoryCon(LOCALHOST, REDIS_PORT);
-  std::vector<std::string> directory = directoryCon.GETALL(K3_PEER_MAP);
+  std::vector<std::string> directory_download = directoryCon.GETALL(K3_PEER_MAP);
   // TODO fill in peers with the directory
+
+  Collection<PeerRecord> name_list;
+  for (size_t idx = 0; idx < directory_download.size(); idx += 2)
+  {
+    const std::string& name = directory_download.at(0);
+    const std::string& address = directory_download.at(idx + 1);
+    auto first_space = std::find(address.cbegin(), address.cend(), ' ');
+    int port = std::stoi(std::string(first_space + 1, address.cend()));
+    Address addr = make_address(std::string(address.cbegin(), first_space), port);
+
+    directory.insert(std::make_pair(name, addr));
+    name_list.insert(name);
+  }
+
+  publishHello(name_list);
+
+  // Emit event notification for initial download
+  {
+    boost::unique_lock<boost::mutex> lock(mutex);
+    download_completed = true;
+  }
+  cv.notify_all();
 }
 
 void K3::RedisResolver::sayGoodbye()
@@ -299,10 +331,10 @@ void K3::RedisResolver::sayGoodbye()
   int master_port = std::stoi(master_location.at(1));
 
   RedisConnection writeContext(master_address, master_port);
-  writeContext.HDELETE(K3_PEER_MAP, me.c_str());
-  writeContext.PUBLISH(K3_UPDATE_CHANEL, (GOODBYE + " " + me).c_str());
+  writeContext.HDELETE(K3_PEER_MAP, myID);
+  writeContext.PUBLISH(K3_UPDATE_CHANEL, GOODBYE + " " + myID);
 
-  // join with the worker thread
+  // Make sure that the worker thread is done
   subscription_listener.join();
 }
 
@@ -316,6 +348,14 @@ void K3::RedisResolver::subscriptionWork()
     subscription_started = true;
   }
   cv.notify_all();
+
+  // Wait for the parent thread to send the initial batch of peers
+  {
+    boost::unique_lock<boost::mutex> lock(mutex);
+    while (!download_completed) {
+      cv.wait(lock);
+    }
+  }
 
   redisReply * reply = nullptr;
   while(readContext.getReply(&reply) == REDIS_OK)
@@ -341,22 +381,32 @@ void K3::RedisResolver::subscriptionWork()
 
     // If there is no space, std::find returns message.cend()
     auto name_end = std::find(first_space + 1, message.cend(), ' ');
-    PeerID peer(first_space + 1, name_end);
+    PeerId peer(first_space + 1, name_end);
 
     if (command == HELLO)
     {
       // Also need to retrieve the ip address and port
       auto address_end = std::find(name_end + 1, message.cend(), ' ');
       std::string address(name_end + 1, address_end);
-      std::string port(address_end + 1, message.cend());
+      int port = std::stoi(std::string(address_end + 1, message.cend()));
+      K3::Address addr = make_address(address, port);
 
-      publishHello(peer, address, port);
+      {
+        boost::unique_lock<boost::mutex> lock(mutex);
+        directory.insert(std::make_pair(peer, addr));
+      }
+
+      publishHello(peer);
     }
     else if (command == GOODBYE)
     {
-      if (peer == me)
+      if (peer == myID)
       {
         return;
+      }
+      {
+        boost::unique_lock<boost::mutex> lock(mutex);
+        directory.erase(peer);
       }
       publishGoodbye(peer);
     }
@@ -367,19 +417,36 @@ void K3::RedisResolver::subscriptionWork()
   }
 }
 
-void K3::RedisResolver::publishHello(const PeerID& peer, const std::string& address_str, const std::string& port_str)
+void K3::RedisResolver::publishHello(const PeerId& peer)
 {
-  int port = std::stoi(port_str);
-  std::tuple<PeerID, std::string, int> vars(peer, address_str, port);
+  Collection<PeerRecord> col;
+  col.insert(PeerRecord(peer));
 
-  std::shared_ptr<Value> value = std::make_shared<Value>(BoostSerializer::pack(vars));
-
-  notifyEvent(EndpointNotification::PeerHello, value);
+  publishHello(col);
 }
 
-void K3::RedisResolver::publishGoodbye(const PeerID& peer)
+void K3::RedisResolver::publishHello(const Collection<PeerRecord>& col)
 {
-  std::shared_ptr<Value> value = std::make_shared<Value>(BoostSerializer::pack(peer));
-  notifyEvent(EndpointNotification::PeerGoodbye, value);
+  std::tuple<bool, Collection<PeerRecord>> args(true, col);
+  std::shared_ptr<Value> value = std::make_shared<Value>(BoostSerializer::pack(args));
+
+  bindings.notifyEvent(EndpointNotification::PeerChange, value);
+}
+
+void K3::RedisResolver::publishGoodbye(const PeerId& peer)
+{
+  Collection<PeerRecord> col;
+  col.insert(PeerRecord(peer));
+
+  std::tuple<bool, Collection<PeerRecord>> args(false, col);
+  std::shared_ptr<Value> value = std::make_shared<Value>(BoostSerializer::pack(col));
+
+  bindings.notifyEvent(EndpointNotification::PeerChange, value);
+}
+
+K3::Address K3::RedisResolver::lookup(const PeerId& id)
+{
+  boost::unique_lock<boost::mutex> lock(mutex);
+  return directory.at(id);
 }
 // vim: set sw=2 ts=2 sts=2:

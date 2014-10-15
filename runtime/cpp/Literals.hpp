@@ -124,7 +124,7 @@ namespace K3 {
 
       if (qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), r)) {
         t = r;
-      } else if 
+      } else if
         (qi::parse(begin(s), end(s), ('\'' >> *(('\\' >> qi::char_) | (qi::char_ - '\'')) >> '\''), r)) {
         t = r;
       }
@@ -228,7 +228,7 @@ namespace K3 {
     }
   };
 
-  map<string, string> parse_bindings(string s);
+  map<string, string> parse_bindings(string s, string name);
 
   template <class T>
   void do_patch(string s, T& t) {
