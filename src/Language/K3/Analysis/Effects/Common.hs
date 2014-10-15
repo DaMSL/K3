@@ -36,12 +36,14 @@ anySuperStructure :: K3 Symbol -> S.Set (K3 Symbol)
 anySuperStructure s = S.insert s (S.unions $ map anySuperStructure (children s))
 
 hasRead :: K3 Symbol -> K3 Effect -> Bool
-hasRead s (tag -> FRead k) = s === k
+hasRead s (tag -> FRead k) = s === k || equalAlias s k
+hasRead s (tag -> FApply f _) = hasReadInFunction s f
 hasRead _ (children -> []) = False
 hasRead s (children -> cs) = any (hasRead s) cs
 
 hasWrite :: K3 Symbol -> K3 Effect -> Bool
-hasWrite s (tag -> FWrite k) = s === k
+hasWrite s (tag -> FWrite k) = s === k || equalAlias s k
+hasWrite s (tag -> FApply f _) = hasWriteInFunction s f
 hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
 
