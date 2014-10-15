@@ -3,9 +3,6 @@
 
 #include <list>
 #include <map>
-#include <memory>
-#include <string>
-#include <tuple>
 #include <vector>
 
 #include "boost/asio.hpp"
@@ -13,17 +10,14 @@
 #include "boost/spirit/include/qi.hpp"
 
 #include "BaseTypes.hpp"
+#include "Common.hpp"
+
+using std::list;
+using std::map;
+using std::pair;
 
 namespace K3 {
   namespace qi = boost::spirit::qi;
-
-  using std::list;
-  using std::make_shared;
-  using std::map;
-  using std::pair;
-  using std::shared_ptr;
-  using std::string;
-  using std::tuple;
 
   template <class iterator>
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {

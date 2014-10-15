@@ -1,7 +1,6 @@
 #ifndef K3_RUNTIME_IOHANDLE_HPP
 #define K3_RUNTIME_IOHANDLE_HPP
 
-#include <memory>
 #include <boost/iostreams/device/file.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/line.hpp>

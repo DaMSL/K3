@@ -1,20 +1,17 @@
 #ifndef K3_RUNTIME_SERIALIZATION_H
 #define K3_RUNTIME_SERIALIZATION_H
 
-#include <memory>
 #include <sstream>
-#include <string>
 
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 
-namespace K3 {
+#include "Common.hpp"
 
-  using std::istringstream;
-  using std::make_shared;
-  using std::ostringstream;
-  using std::shared_ptr;
-  using std::string;
+using std::istringstream;
+using std::ostringstream;
+
+namespace K3 {
 
   class Engine;
 

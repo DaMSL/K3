@@ -100,9 +100,8 @@ FACT("Collection Send simulation mode") {
 FACT("Collection send network mode") {
 
   K3::received = std::shared_ptr<K3::int_c>(new K3::int_c(nullptr));
-  using std::shared_ptr;
   using boost::thread;
-   using boost::thread_group;
+  using boost::thread_group;
   // // Create peers
 
   K3::peer1 = K3::make_address("127.0.0.1", 4000);

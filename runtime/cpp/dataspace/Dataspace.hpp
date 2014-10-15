@@ -1,6 +1,10 @@
 #ifndef __K3_RUNTIME_DATASPACE__
 #define __K3_RUNTIME_DATASPACE__
 
+#include <list>
+#include <vector>
+#include <math.h>
+
 #include <boost/tr1/unordered_set.hpp>
 #include <boost/tr1/unordered_map.hpp>
 #include "boost/serialization/vector.hpp"
@@ -12,18 +16,12 @@
 #include <boost/multi_index/sequenced_index.hpp>
 #include <boost/lambda/lambda.hpp>
 
-
-#include <list>
-#include <vector>
-#include <math.h>
+#include "Common.hpp"
 
 namespace K3 {
 
 // Utility to give the return type of a Function F expecting an Element E as an argument:
 template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
-
-using std::shared_ptr;
-using std::tuple;
 
 // Utility Typedefs
 template<class K, class V>

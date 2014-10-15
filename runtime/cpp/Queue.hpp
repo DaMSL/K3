@@ -3,7 +3,6 @@
 
 #include <list>
 #include <map>
-#include <memory>
 #include <queue>
 #include <tuple>
 #include <boost/lockfree/queue.hpp>
@@ -15,11 +14,9 @@
 #include "Common.hpp"
 #include "Message.hpp"
 
+using mutex = boost::mutex;
+using std::dynamic_pointer_cast;
 namespace K3 {
-
-  using std::shared_ptr;
-
-  using mutex = boost::mutex;
 
   //-------------
   // Queue types.

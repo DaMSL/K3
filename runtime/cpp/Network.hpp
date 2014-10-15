@@ -2,10 +2,8 @@
 #define K3_RUNTIME_NETWORK_HPP
 
 #include <ios>
-#include <memory>
 #include <queue>
 #include <system_error>
-#include <tuple>
 #include <boost/asio.hpp>
 #include <boost/iostreams/categories.hpp>
 #include <boost/iostreams/stream.hpp>
@@ -19,14 +17,17 @@
 
 class EndpointBuffer;
 
+using namespace boost::iostreams;
+
+using boost::thread_group;
+using std::bind;
+using std::endl;
+using std::cin;
+using std::cout;
+using std::cerr;
+
 namespace K3
 {
-  using namespace std;
-
-  using namespace boost::iostreams;
-
-  using boost::thread_group;
-  using std::bind;
 
   //-------------------------------------------------
   // Abstract base classes for low-level networking.
