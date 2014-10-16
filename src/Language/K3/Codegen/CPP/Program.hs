@@ -9,6 +9,7 @@ import Control.Monad.State
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Maybe (isJust)
 
 import Data.Functor
 
@@ -122,10 +123,12 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
                              ]
                              contextDefns [] [dispatchTableDecl]
+
+    pinned <- (map R.GlobalDefn) <$> definePinnedGlobals
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ pinned ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
@@ -136,7 +139,7 @@ main = do
                                     [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
                      [R.Return (R.Literal $ R.LInt 0)] []
 
-    staticContextMembersPop <- R.Block <$> generateStaticContextMembers
+    staticContextMembersPop <- generateStaticContextMembers
 
 
     let runProgram = R.Ignore $ R.Call
@@ -149,11 +152,13 @@ main = do
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) [] False
+             (
+             staticContextMembersPop ++
              [ optionDecl
              , optionCall
-             , staticContextMembersPop
              , runProgram
              ]
+             )
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
@@ -215,18 +220,27 @@ requiredIncludes = return
                    ]
 
 
+definePinnedGlobals :: CPPGenM [R.Statement]
+definePinnedGlobals =
+  staticGlobals <$> get >>= mapM defineGlobal
+  where
+    defineGlobal (i, t) = do
+      gType <- genCType t
+      return $ R.Forward $ R.ScalarDecl (R.Qualified (R.Name "__global_context") (R.Name i)) gType Nothing
+
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS <- triggers <$> get
   names <- mapM assignTrigName triggerS
   dispatchers <- mapM assignClonableDispatcher triggerS
-  return $ names ++ dispatchers;
+  return $ names ++ dispatchers
   where
     assignTrigName (tName, (_, tNum)) = do
       let i = R.Literal $ R.LInt tNum
       let nameStr = R.Literal $ R.LString tName
       let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names")
       return $ R.Assignment (R.Subscript table i) nameStr
+
     assignClonableDispatcher (_, (tType, tNum)) = do
       kType <- genCType tType
       let i = R.Literal $ R.LInt tNum
@@ -235,6 +249,7 @@ generateStaticContextMembers = do
                          (R.Variable $ R.Specialized [R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")] (R.Name "make_shared"))
                          []
       return $ R.Assignment (R.Subscript table i) dispatcher
+
 
 generateDispatchPopulation :: CPPGenM [R.Statement]
 generateDispatchPopulation = do

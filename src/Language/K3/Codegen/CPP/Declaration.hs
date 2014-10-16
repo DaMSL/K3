@@ -86,6 +86,7 @@ declaration d@(tag -> DGlobal i t me) = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
 
     let pinned = isJust $ d @~ (\case { DProperty "Pinned" Nothing -> True; _ -> False })
+    if pinned then modify (\s -> s { staticGlobals = (i, t) : (staticGlobals s) } ) else return ()
 
     let globalType' = if pinned then R.Static globalType else globalType
 
