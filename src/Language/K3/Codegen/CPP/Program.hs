@@ -131,47 +131,28 @@ program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
 main = do
-    let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
     let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
                                     [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
                      [R.Return (R.Literal $ R.LInt 0)] []
-    -- TODO grab context name from elsewhere (Add to state?)
-    let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") R.Inferred
-                     (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Variable $ R.Name "engine"])
 
     staticContextMembersPop <- R.Block <$> generateStaticContextMembers
-    let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
-                            (R.Named $ R.Name "SystemEnvironment")
-                            (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
-                                    [R.Call (R.Variable $ R.Name "getAddrs") [R.Variable $ R.Name "contexts"]])
 
-    let engineConfigure = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "configure"))
-                          [ R.Project (R.Variable $ R.Name "opt") (R.Name "simulation")
-                          , R.Variable (R.Name "se")
-                          , R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DefaultInternalCodec"]
-                                     (R.Name "make_shared")) []
-                          , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
-                          ]
 
-    let processRoles = R.Ignore $ R.Call (R.Variable $ R.Name "processRoles") [R.Variable $ R.Name "contexts"]
-
-    let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
-                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "virtualizing_message_processor"]
-                                     (R.Name "make_shared")) [R.Variable $ R.Name "contexts"]]
+    let runProgram = R.Ignore $ R.Call
+                       (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "runProgram"))
+                       [ (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "simulation"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "log_level") )
+                       ]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) [] False
-             [ engineDecl
-             , optionDecl
+             [ optionDecl
              , optionCall
-             , contexts
              , staticContextMembersPop
-             , systemEnvironment
-             , engineConfigure
-             , processRoles
-             , runEngineCall
+             , runProgram
              ]
        ]
 
@@ -186,6 +167,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "runProgram"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "do_patch"), Nothing)
@@ -225,6 +207,7 @@ requiredIncludes = return
                    , "Literals.hpp"
                    , "Serialization.hpp"
                    , "Builtins.hpp"
+                   , "Run.hpp"
 
                    , "dataspace/Dataspace.hpp"
 

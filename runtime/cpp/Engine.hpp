@@ -287,7 +287,6 @@ namespace K3 {
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
       control->set_terminate();
-      logAt(boost::log::trivial::trace, "Signalled engine termination");
     }
 
     void forceTerminateEngine() {
