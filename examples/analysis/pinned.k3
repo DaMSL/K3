@@ -1,0 +1,21 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+@:Pinned
+declare data : collection {elem: int} @ {Collection}
+
+declare p1 : address = 127.0.0.1:3000
+declare p2 : address = 127.0.0.1:4000
+
+trigger write : () = \_ -> (
+  data.insert {elem: 1};
+  data.insert {elem: 2};
+  (read, p2) <- ()
+)
+
+trigger read : () = \_ -> (
+  print "Data:";
+  data.iterate (\e -> print (itos e.elem))
+)
+
+source go : () = value ()
+feed go |> write
