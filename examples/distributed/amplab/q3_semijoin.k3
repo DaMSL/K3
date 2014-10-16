@@ -1,11 +1,16 @@
 
 include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 
 
 declare master: address = 127.0.0.1:30001
-declare peer_by_hash: string -> address
+declare peer_seq : collection {addr: address} @ {Seq}
+declare peer_by_hash: string -> address = \s -> (
+  let i = (hash s) % (peer_seq.size ()) in
+  (peer_seq.at i).addr
+)
 
 declare peer_count: int = 0
 
@@ -200,6 +205,7 @@ declare rkFiles : collection {path: string} @Collection
 
 
 trigger loadAll : () = \_ -> (
+  peers.iterate (\p -> peer_seq.insert p);
   uvFiles.iterate (\e -> uvLoader e.path user_visits);
   rkFiles.iterate (\e -> rkLoaderMap e.path rankingsMap);
 

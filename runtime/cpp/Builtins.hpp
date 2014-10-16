@@ -9,6 +9,9 @@
 #include <string>
 #include <functional>
 
+
+
+#include "strtk.hpp"
 #include "BaseTypes.hpp"
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
@@ -95,6 +98,19 @@ namespace K3 {
     unit_t sleep(int n);
 
     // TODO move to seperate context
+    unit_t rkLoaderMap(string file, K3::Map<R_key_value<std::string,int>>& c)  {
+
+           R_key_value<std::string, int> rec;
+	   int foo; 
+        strtk::for_each_line(file, [&] (const std::string& str)   {
+          if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
+            c.insert(rec);
+          } else {
+            std::cout << ("Failed to parse a row!\n");
+          }
+        });
+        return unit_t {};
+      }
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
