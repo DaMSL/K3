@@ -51,7 +51,8 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
     let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
                                      (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
 
-    let cta' = if readOnly then R.Const (R.Reference cta) else cta
+    -- processRole always gets generated as const ref because that's our built-in signature
+    let cta' = if readOnly || i == "processRole" then R.Const (R.Reference cta) else cta
 
     return [R.FunctionDefn (R.Name i) [(x, cta')] (Just ctr) [] False cbody]
 
