@@ -179,10 +179,6 @@ getESymbol n = case n @~ isESymbol of
                  Nothing          -> Nothing
                  _                -> error "unexpected"
 
-forceGetSymbol :: K3 Expression -> K3 Symbol
-forceGetSymbol n = fromMaybe err $ getESymbol n
-  where err = error "Expected a necessary symbol but didn't find any"
-
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
 getOrGenSymbol n = case getESymbol n of
@@ -225,12 +221,12 @@ createClosure n = liftM nubTuple $ foldTree addClosure ([],[],[]) n
 
     handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
     handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
-    handleApply acc n@(tnc -> (Symbol _ PSet, ch)) = foldrM (flip handleApply) acc ch
+    handleApply acc (tnc -> (Symbol _ PSet, ch)) = foldrM (flip handleApply) acc ch
     handleApply acc _ = return acc
 
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
-addAllGlobals n = mapProgram preHandleDecl mId mId Nothing n
+addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
   where
     -- add everything to global environment for cyclic/recursive scope
     -- we'll fix it up the second time through
@@ -304,17 +300,17 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       return $ replaceTag n $ DDataAnnotation i t attrs'
 
     -- A global without an effect symbol
-    addMissingDecl n@(tag -> (DGlobal i t@(tag -> TFunction) Nothing))
+    addMissingDecl n@(tag -> (DGlobal _ t@(tag -> TFunction) Nothing))
       | isNothing (n @~ isDSymbol) = do
         s <- symOfFunction False t
         return $ n @+ DSymbol s
 
     -- If we have a symbol, number it
     addMissingDecl n = case n @~ isDSymbol of
-                         Nothing -> return n
                          Just ds@(DSymbol s) -> do
                            s' <- liftM DSymbol $ numberSyms s
                            return (n @- ds @+ s')
+                         _ -> return n
 
     -- Handle lifted/unlifted attributes without symbols
     handleAttrs :: AnnMemDecl -> MEnv AnnMemDecl
@@ -339,18 +335,17 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- handle common attribute symbol/effect renumbering functionality
     handleAttrsInner as =
       case find isDSymbol as of
-        Nothing -> return as
         Just ds@(DSymbol s) -> do
           s' <- liftM DSymbol $ numberSyms s
           let as' = delete ds as
           return $ s':as'
+        _ -> return as
 
     -- Number existing symbols/effects
     numberSyms s = do
       s' <- mapSym addNumEff addNumSym s
       clearBindsM  -- binds are only temporary here
       return s'
-    numberEffs e = mapEff addNumEff addNumSym e
 
     -- For symbols, we only need a very simple binding pattern
     addNumSym s@(tag -> Symbol i PVar) = do
@@ -361,6 +356,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
           insertBindM i s'
           return s'
         Just s' -> return s'
+    addNumSym s = addSID s
 
     addNumEff = addFID
 
@@ -370,28 +366,28 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     symOfFunction addSelf t = liftM head $ symOfFunction' addSelf t 1
 
     symOfFunction' :: Bool -> K3 Type -> Int -> MEnv [K3 Symbol]
-    symOfFunction' addSelf t@(tnc -> (TFunction, [_, ret])) i = do
+    symOfFunction' addSelf (tnc -> (TFunction, [_, ret])) i = do
       s  <- symOfFunction' addSelf ret $ i + 1
       s' <- createSym (addSelf && i==1) s $ "__"++show i
       return [s']
-    symOfFunction' _ t _ = return []
+    symOfFunction' _ _ _ = return []
 
     -- Create a default conservative symbol for the function
     -- @addSelf: add a r/w to 'self' (for attributes)
     createSym addSelf subSym nm = do
-      sym <- symbolM nm PVar []
-      r   <- addFID $ read sym
-      w   <- addFID $ write sym
-      seq <- if addSelf then do
+      sym   <- symbolM nm PVar []
+      r     <- addFID $ read sym
+      w     <- addFID $ write sym
+      seq'  <- if addSelf then do
                selfSym <- symbolM "self" PVar []
                rSelf <- addFID $ read selfSym
                wSelf <- addFID $ write selfSym
                return [Just w, Just r, Just wSelf, Just rSelf]
              else
                return [Just w, Just r]
-      seq <- combineEffSeq seq
-      lp  <- addFID $ loop $ fromJust seq
-      sc  <- addFID $ scope [sym] emptyClosure [lp]
+      seq'' <- combineEffSeq seq'
+      lp    <- addFID $ loop $ fromJust seq''
+      sc    <- addFID $ scope [sym] emptyClosure [lp]
       genSym (PLambda nm sc) subSym
 
 ----- Actual effect insertion ------
@@ -593,13 +589,12 @@ runAnalysisEnv env prog = flip evalState env $
             _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
 
         _ -> do -- not a collection member function
-          eSym <- getOrGenSymbol e
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
       where
-        subSelf s n@(tag -> Symbol "self" PVar)    = return $ replaceCh n [s]
-        subSelf s n@(tag -> Symbol "content" PVar) = return $ replaceCh n [s]
-        subSelf _ n = return n
+        subSelf s n'@(tag -> Symbol "self" PVar)    = return $ replaceCh n' [s]
+        subSelf s n'@(tag -> Symbol "content" PVar) = return $ replaceCh n' [s]
+        subSelf _ n' = return n'
 
     -- handle seq (last symbol)
     handleExpr ch n@(tag -> EOperate OSeq) = do
@@ -620,14 +615,13 @@ runAnalysisEnv env prog = flip evalState env $
       where
         fixupAll n = fixupExprEff n >>= fixupExprSym
 
-        fixupExprSym n@(getESymbol -> Nothing) = return n
         fixupExprSym n@(getESymbol -> Just s)  =
-          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $
-            mapSym mId fixupSym s
-        fixupExprEff n@(getEEffect -> Nothing) = return n
+          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $ mapSym mId fixupSym s
+        fixupExprSym n = return n
+
         fixupExprEff n@(getEEffect -> Just e)  =
-          liftM (\x -> (n @- EEffect e) @+ EEffect x) $
-            mapEff mId fixupSym e
+          liftM (\x -> (n @- EEffect e) @+ EEffect x) $ mapEff mId fixupSym e
+        fixupExprEff n = return n
 
         -- Any unbound globals should be translated
         fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
@@ -648,15 +642,15 @@ runAnalysisEnv env prog = flip evalState env $
     -- @exclude: always delete this particular symbol (for CaseOf)
     peelSymbol :: [K3 Symbol] -> Maybe (K3 Symbol) -> MEnv (K3 Symbol)
     peelSymbol _ Nothing = genSymTemp TTemp []
-    peelSymbol excludes (Just sym) = loop Nothing sym >>= symOfSymList
+    peelSymbol excludes (Just sym) = loops Nothing sym >>= symOfSymList
       where
         -- Sending last symbol along allows us to know which kind of temporary to make
-        loop :: Maybe Symbol -> K3 Symbol -> MEnv [(Maybe Symbol, K3 Symbol)]
+        loops :: Maybe Symbol -> K3 Symbol -> MEnv [(Maybe Symbol, K3 Symbol)]
 
         -- Applys require that we check their children and include the apply instead
-        loop _ n@(tag &&& children -> (s@(Symbol i PApply), [lam, arg])) = do
-          lS <- loop Nothing lam
-          lA <- loop Nothing arg
+        loops _ n@(tag &&& children -> (Symbol _ PApply, [lam, arg])) = do
+          lS <- loops Nothing lam
+          lA <- loops Nothing arg
           case (lS, lA) of
             -- If both arguments are local, elide the Apply
             ([], []) -> return []
@@ -667,28 +661,28 @@ runAnalysisEnv env prog = flip evalState env $
               return [(Nothing, replaceCh n [s, s'])]
 
         -- Sets need to be kept if they refer to anything important
-        loop _ n@(tnc -> (s@(Symbol i PSet), ch)) = do
-          lCh <- mapM (loop (Just s)) ch
+        loops _ n@(tnc -> (s@(Symbol _ PSet), ch)) = do
+          lCh <- mapM (loops (Just s)) ch
           -- If all children are local, elide
           if all ((==) []) lCh then return [] else do
             ss <- mapM symOfSymList lCh
             return [(Nothing, replaceCh n ss)]
 
-        loop mLast n@(tnc -> (s@(Symbol i _), ch)) =
+        loops mLast n@(tnc -> (s@(Symbol i _), ch)) =
           -- Check for exclusion. Terminate this branch if we match
           if any (n `symEqual`) excludes then return []
           else do
-            env <- get
+            env' <- get
             -- If we don't find the symbol in the environment, it's beneath our scope
             -- So continue to look in the children
-            case lookupBindInner i env of
+            case lookupBindInner i env' of
               Nothing -> doLoops
               -- If we find a match, something is in our scope so report back
               -- Just make sure it's really equivalent
               Just s'  -> if s' `symEqual` n then return [(mLast, n)]
                           else doLoops
 
-          where doLoops = liftM concat $ mapM (loop $ Just s) ch
+          where doLoops = liftM concat $ mapM (loops $ Just s) ch
 
 
     -- Convert a list of symbols to a combination symbol (if possible)
@@ -744,9 +738,9 @@ combineSymApply l a = combineSym PApply [l,a]
 
 -- Build a global environment for using state monad functions dynamically
 buildEnv :: K3 Declaration -> Env
-buildEnv n = snd $ flip runState startEnv $
-               addAllGlobals n >>
-               mapProgram handleDecl mId highestExprId Nothing n
+buildEnv n' = snd $ flip runState startEnv $
+               addAllGlobals n' >>
+               mapProgram handleDecl mId highestExprId Nothing n'
   where
     handleDecl n@(tag -> DGlobal i _ _)  = possibleInsert n i
     handleDecl n@(tag -> DTrigger i _ _) = possibleInsert n i
@@ -777,7 +771,7 @@ buildEnv n = snd $ flip runState startEnv $
       env <- get
       let c = count env
           maxCount = case n @~ isSID of
-                       Just (SID n) -> max n c
+                       Just (SID x) -> max x c
                        Nothing      -> c
       put $ env {count=maxCount}
 
@@ -786,7 +780,7 @@ buildEnv n = snd $ flip runState startEnv $
       env <- get
       let c = count env
           maxCount = case n @~ isFID of
-                        Just (FID n) -> max n c
+                        Just (FID x) -> max x c
                         Nothing      -> c
       put $ env {count=maxCount}
 
@@ -799,7 +793,7 @@ applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
 applyLambda sArg sLam =
     case tnc sLam of
-      (Symbol _ (PLambda _ e@(tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
+      (Symbol _ (PLambda _ (tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
         -- Dummy substitute into the argument, in case there's an application there
         -- Any effects won't be substituted in and will be visible outside
         sArg'   <- mapSym (subEff sOld sOld) (subSym sOld sOld) sArg
@@ -822,20 +816,18 @@ applyLambda sArg sLam =
       _ -> return Nothing
 
   where
-    wrap f x = return $ f x
-
     -- Substitute a symbol: old, new, symbol in which to replace
     subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
     subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
     -- Apply: recurse (we already substituted into the children)
-    subSym s s' n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
+    subSym _ _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
         x <- applyLambda sA sL
         return $ maybe n snd x
     subSym _ _ n = return n
 
     -- Substitute one symbol for another in an effect
     subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
-    subEff sym sym' n@(tag -> FApply sL sA) = do
+    subEff _ _ n@(tag -> FApply sL sA) = do
         x <- applyLambda sA sL
         return $ maybe n fst x
     subEff _ _ n = return n
