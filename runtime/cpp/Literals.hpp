@@ -81,6 +81,11 @@ namespace K3 {
     static void patch(string, T&);
   };
 
+  template <> struct patcher<unit_t> {
+    static void patch(std::string, unit_t&) {}
+  };
+
+
   template <> struct patcher<bool> {
     static void patch(string s, bool& b) {
       qi::parse(begin(s), end(s), qi::bool_[([&b] (bool q) { b = q; })]);
