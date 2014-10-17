@@ -127,7 +127,7 @@ def main():
     print_sys(cmd)
 
     # Create a clean log file
-    sanitize_file = os.path.join(base_path, 'K3-Driver/scripts/cumulus/sanitize_log.py')
+    sanitize_file = os.path.join(base_path, 'K3-Driver/scripts/mosaic/sanitize_log.py')
     cmd = '{sanitize_file} --unhash {log_file} > {file_no_ext}_clean.log'.format(**locals())
     print_sys(cmd)
 
