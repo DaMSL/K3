@@ -129,6 +129,12 @@ namespace K3 {
       }
     }
 
+    void Engine::send(const PeerId& target, TriggerId triggerId, shared_ptr<Dispatcher> disp)
+    {
+        Address addr = resolver->lookup(target);
+        send(addr, triggerId, disp);
+    }
+
     //-----------------------
     // Engine execution loop
 

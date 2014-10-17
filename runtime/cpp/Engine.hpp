@@ -169,6 +169,7 @@ namespace K3 {
 
     // TODO: rvalue-ref overload for value argument.
     void send(Address addr, TriggerId triggerId, std::shared_ptr<Dispatcher> d);
+    void send(const PeerId& target, TriggerId triggerId, std::shared_ptr<Dispatcher> d);
 
     // TODO: avoid destructing tuple here
     void send(Message& m) {
