@@ -1,7 +1,6 @@
 declare nodeCounter : mut int = 0
-declare rendezvous : immut address = 192.168.1.200:40000
 
-trigger join : () = \_ -> (register, rendezvous) <- 1
+trigger join : () = \_ -> (register, 'rendezvous) <- 1
 
 trigger register : int = \x -> nodeCounter = nodeCounter + x
 
