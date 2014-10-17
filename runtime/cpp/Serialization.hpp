@@ -71,4 +71,26 @@ void serialize(archive& a, std::tuple<args ...>& t, const unsigned int version) 
 
 } } // namespaces
 
+#include <boost/serialization/split_free.hpp>
+
+namespace boost { namespace serialization {
+
+// For asio ip address we don't have access to the member, so we'll do a separate save and load
+template<class archive>
+void save(archive& ar, const asio::ip::address& ip, unsigned int version) {
+  std::string s = ip.to_string();
+  ar << s;
+}
+
+template<class archive>
+void load(archive& ar, asio::ip::address& ip, unsigned int version) {
+  std::string s;
+  ar >> s;
+  ip.from_string(s);
+}
+
+}} // namespace boost/serialization
+
+BOOST_SERIALIZATION_SPLIT_FREE(boost::asio::ip::address);
+
 #endif // K3_RUNTIME_SERIALIZATION_H
