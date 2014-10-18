@@ -184,61 +184,52 @@ genLoader suf (children -> [_,f]) name = do
  let bufferDecl = [R.Forward $ R.ScalarDecl (R.Name "tmp_buffer")
                         (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing]
 
- let readField f = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
+ let readField f t = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
                                 [ R.Variable (R.Name "in")
                                 , R.Variable (R.Name "tmp_buffer")
-                                , R.Literal (R.LChar '\'')
+                                , R.Literal (R.LChar "\\'")
                                 ]
                    , R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
-                                  (R.Variable $ R.Name "tmp_buffer")
+                                  (typeMap t $ R.Variable $ R.Name "tmp_buffer")
                    ]
- let recordGetLines = bufferDecl ++ concat [readField field | field <- fields]
+ let recordDecl = [R.Forward $ R.ScalarDecl (R.Name "record") cRecType Nothing]
 
- let readRecordFn = R.Lambda []
-                    [ ("in", (R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
-                    , ("record", (R.Reference $ cRecType))
-                    ] False Nothing recordGetLines
+ let recordGetLines = bufferDecl ++ recordDecl ++ concat [readField field ft | (field, ft)  <- uncurry zip fields]
+                      ++ [R.Return $ R.Variable $ R.Name "record"]
 
- -- let result_dec = R.Forward $ R.ScalarDecl (R.Name "rec") cRecType Nothing
- -- let projs = [R.Project (R.Variable $ R.Name "rec") (R.Name i) | i <- fields]
- -- let parse = R.Call
- --               (R.Variable $ R.Qualified (R.Name "strtk" ) (R.Name "parse"))
- --               ( [R.Variable $ R.Name "str", R.Literal $ R.LString ","] ++ projs)
- -- let insert = R.Call (R.Project (R.Variable $ R.Name "c") (R.Name "insert")) [R.Variable $ R.Name "rec"]
- -- let err    = R.Binary "<<" (R.Variable $ R.Qualified (R.Name "std") (R.Name "cout")) (R.Literal $ R.LString "Failed to parse a row!\\n")
- -- let ite = R.IfThenElse parse [R.Ignore insert] [R.Ignore err]
+ let readRecordFn = R.Lambda [] [("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))]
+                    False Nothing recordGetLines
 
- -- let lamb = R.Lambda
- --             [R.RefCapture (Just ("rec", Nothing)), R.RefCapture (Just ("c", Nothing))]
- --             [("str", R.Const $ R.Reference $ R.Named $ R.Qualified
- --               (R.Name "std") (R.Name "string"))]
- --             False Nothing
- --             [ite]
- -- let foreachline = R.Call (R.Variable $ R.Qualified (R.Name "strtk") (R.Name "for_each_line")) [R.Variable $ R.Name "file", lamb]
- -- let ret = R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
             [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
             (Just $ R.Named $ R.Name "unit_t") [] False
-            [ R.Forward $ R.ScalarDecl (R.Name "_in") R.Inferred
-                            (Just $ R.Initialization (R.Named $ R.Qualified (R.Name "std") (R.Name "ifstream"))
-                                      [R.Literal $ R.LString "file"])
+            [ R.Forward $ R.ScalarDecl (R.Name "_in")
+                            (R.Named $ R.Qualified (R.Name "std") (R.Name "ifstream")) Nothing
+            , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "_in") (R.Name "open")) [R.Variable $ R.Name "file"]
             , R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
-                           [ R.Variable $ R.Name "in"
+                           [ R.Variable $ R.Name "_in"
                            , R.Variable $ R.Name "c"
                            , readRecordFn
                            ]
             ]
  where
-    getColType = case children f of
+   typeMap :: K3 Type -> R.Expression -> R.Expression
+   typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
+                             [R.Call (R.Project e (R.Name "c_str")) []]
+   typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
+                              [R.Call (R.Project e (R.Name "c_str")) []]
+   typeMap (tag -> _) x = x
+
+   getColType = case children f of
                   ([c,_])  -> case children c of
                                 [r] -> return (c, r)
                                 _   -> type_mismatch
                   _        -> type_mismatch
 
-    getRecFields (tag -> TRecord ids)  = return ids
-    getRecFields _ = error "Cannot get fields for non-record type"
+   getRecFields (tag &&& children -> (TRecord ids, cs))  = return (ids, cs)
+   getRecFields _ = error "Cannot get fields for non-record type"
 
-    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
+   type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
 genLoader _ _ _ =  error "Invalid type for Loader function."
 
