@@ -47,6 +47,11 @@ namespace K3 {
       swap(first.buffer, second.buffer);
     }
 
+    // Conversions
+    operator std::string() const {
+      return std::string(buffer);
+    }
+
     // Accessors
     std::size_t length() {
       return strlen(buffer);
