@@ -1,5 +1,5 @@
 control PlusVW
-  ?e => $[e] + (v * w)
+  ?e => $.[e] + (v * w)
      +> { declare v : int = 10
           declare w : int = 100 }
 
