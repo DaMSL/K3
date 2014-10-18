@@ -179,7 +179,7 @@ identParts = token $ some (choice $ map try parts)
   where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
 spliceSymbols :: [(String, [Identifier])]
-spliceSymbols = map (,[]) ["$"] ++ [("&#", [spliceVIdSym]), ("&::", [spliceVTSym])]
+spliceSymbols = map (,[]) ["$"] ++ [("#$", [spliceVIdSym]), ("::$", [spliceVTSym]), (".$", [spliceVESym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")

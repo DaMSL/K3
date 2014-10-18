@@ -1125,14 +1125,9 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
     -- | Check trigger-address pair and unify trigger type and message argument.
     inferTagQType ch n@(tag -> EOperate OSnd) = do
-        env   <- get
         trgtv <- newtv
-        let (unifE, nenv) = runTInfM env $ void $ unifyBinaryM (ttup [ttrg trgtv, tstr]) trgtv ch n sndError
-        case unifE of
-          Left err -> do
-            void $ unifyBinaryM (ttup [ttrg trgtv, taddr]) trgtv ch n sndError
-            return $ ("send",) $ rebuildE n ch .+ tunit
-          Right _  -> put nenv >> return (("send",) $ rebuildE n ch .+ tunit)
+        void $ unifyBinaryM (ttup [ttrg trgtv, taddr]) trgtv ch n sndError
+        return $ ("send",) $ rebuildE n ch .+ tunit
 
     -- | Unify operand types based on the kind of operator.
     inferTagQType ch n@(tag -> EOperate op)
