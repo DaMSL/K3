@@ -58,18 +58,23 @@ declare peer_aggs : mut collection {key: int, value:
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 trigger q2_local : () = \_ -> (
+  let agg_vals_start = now_int () in
   agg_vals =
     local_uservisits.groupBy
       (\r -> slice_string r.sourceIP 0 x) //TODO index by 0 or 1?
       (\acc -> \r ->
         acc + r.adRevenue)
       0.0;
+  let agg_vals_end = now_int () in
+  print (concat "Agg vals time: " (itos (agg_vals_end-agg_vals_start)));
   // Group by destination peer address
   peer_aggs =
     agg_vals.groupBy
       (\v -> index_by_hash v.key)
       (\acc -> \v -> (acc.insert(v); acc))
       (empty {key: string, value: real} @ {Collection});
+  let peer_aggs_end = now_int () in
+  print (concat "Peer aggs time: " (itos (peer_aggs_end-agg_vals_end)));
   peer_aggs.iterate (\v ->
     (aggregate, (peers_seq.at v.key).addr) <- v.value
   );
@@ -86,7 +91,11 @@ declare merge_results: collection { key: string, value: real } @ { Collection } 
 )
 
 trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
-  merge_results vals
+
+  let aggregate_start = now_int () in
+  merge_results vals;
+  let aggregate_end = now_int () in
+  print (concat "Aggregate time: " (itos (aggregate_end-aggregate_start)))
 )
 
 trigger peer_barrier : () = \_ -> (

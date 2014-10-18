@@ -10,6 +10,7 @@
 #include "boost/spirit/include/qi.hpp"
 
 #include "BaseTypes.hpp"
+#include "BaseString.hpp"
 #include "Common.hpp"
 
 using std::list;
@@ -110,8 +111,8 @@ namespace K3 {
     }
   };
 
-  template <> struct patcher<Str> {
-    static void patch(string s, Str st) {
+  template <> struct patcher<K3::base_string> {
+    static void patch(string s, K3::base_string st) {
       string s2(st.c_str());
       patch(s, s2);
     }
