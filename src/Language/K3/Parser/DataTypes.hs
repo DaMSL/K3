@@ -179,7 +179,7 @@ identParts = token $ some (choice $ map try parts)
   where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
 spliceSymbols :: [(String, [Identifier])]
-spliceSymbols = map (,[]) ["$"] ++ [("#$", [spliceVIdSym]), ("::$", [spliceVTSym]), (".$", [spliceVESym])]
+spliceSymbols = map (,[]) ["$"] ++ [("$#", [spliceVIdSym]), ("$::", [spliceVTSym]), ("$.", [spliceVESym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")
@@ -236,7 +236,7 @@ multiComment post = (mkComment post True
 singleComment :: Bool -> K3Parser SyntaxAnnotation
 singleComment post = (mkComment post False
                       <$> PP.getPosition
-                      <*> (symbol "//" *> manyTill anyChar (try newline) <* spaces)
+                      <*> (char '/' *> char '/' *> manyTill anyChar (try newline) <* spaces)
                       <*> PP.getPosition) <?> "single line comment"
 
 comment :: Bool -> K3Parser [SyntaxAnnotation]
