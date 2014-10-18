@@ -19,8 +19,9 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
-import Language.K3.Core.Constructor.Type    as TC
-import Language.K3.Core.Constructor.Literal as LC
+import Language.K3.Core.Constructor.Type       as TC
+import Language.K3.Core.Constructor.Literal    as LC
+import Language.K3.Core.Constructor.Expression as EC
 
 import Language.K3.Utils.Pretty
 
@@ -266,3 +267,7 @@ literalLabel _ = error "Invalid splice label for literalLabel"
 literalType :: SpliceValue -> SpliceValue
 literalType (SType t) = SLiteral . LC.string $ show t
 literalType _ = error "Invalid splice label for literalType"
+
+exprLabel :: SpliceValue -> SpliceValue
+exprLabel (SLabel i) = SExpr $ EC.constant $ CString i
+exprLabel _ = error "Invalid splice label for exprLabel"

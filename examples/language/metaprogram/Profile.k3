@@ -1,0 +1,18 @@
+include "Core/Builtins.k3"
+
+control Profile[lbl : label]
+  ?e => let start = now_int () in
+        let result = $[e] in
+        let end = now_int () in
+        ((print (concat $[|exprLabel 'lbl|] (itos (end-start))));
+        result)
+  
+  
+
+
+declare myFunc : () -> () = \_ -> ()
+
+trigger t : () = \_ -> (
+ ( myFunc () ) @Profile(lbl=[# test])
+
+)
