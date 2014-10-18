@@ -87,7 +87,7 @@ namespace K3 {
     }
 
     // Operations
-    base_string substr(std::size_t from, std::size_t to) {
+    base_string substr(std::size_t from, std::size_t to) const {
       auto n = strlen(buffer);
 
       if (from > n) {
