@@ -257,7 +257,7 @@ record (sort -> ids) = do
     let oneFieldParserDefn f
             = foldl1 (R.Binary ">>")
               [ R.Call (R.Variable $ R.Qualified (R.Name "qi") (R.Name "lit")) [R.Literal $ R.LString f]
-              , R.Literal (R.LChar ':')
+              , R.Literal (R.LChar ":")
               , R.Variable (R.Name "_shallow")
               ]
 
@@ -294,9 +294,9 @@ record (sort -> ids) = do
                     ]
                (R.Qualified (R.Name "qi") (R.Name "rule")))
               (Just $ foldl1 (R.Binary ">>")
-                                   [ R.Literal (R.LChar '{')
-                                   , R.Binary "%" (R.Variable $ R.Name "_field") (R.Literal $ R.LChar ',')
-                                   , R.Literal (R.LChar '}')
+                                   [ R.Literal (R.LChar "{")
+                                   , R.Binary "%" (R.Variable $ R.Name "_field") (R.Literal $ R.LChar ",")
+                                   , R.Literal (R.LChar "}")
                                    ])
 
     let parseInvocation
