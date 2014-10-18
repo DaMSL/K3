@@ -131,7 +131,7 @@ instance Stringifiable Type where
 
 data Literal
     = LBool Bool
-    | LChar Char
+    | LChar String
     | LInt Int
     | LDouble Double
     | LString String
@@ -140,7 +140,7 @@ data Literal
 
 instance Stringifiable Literal where
     stringify (LBool b) = if b then "true" else "false"
-    stringify (LChar c) = squotes (char c)
+    stringify (LChar c) = squotes $ fromString c
     stringify (LInt i) = int i
     stringify (LDouble d) = double d
     stringify (LString s) = dquotes $ string s

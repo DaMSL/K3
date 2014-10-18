@@ -164,13 +164,10 @@ namespace K3 {
   };
 
 
-  template <class C, class R, class F>
-  void read_records(std::istream in, C& container, F read_record) {
-    R record;
-
+  template <class C, class F>
+  void read_records(std::istream& in, C& container, F read_record) {
     while (!in.eof()) {
-      read_record(in, record);
-      container.insert(std::move(record));
+      container.insert((read_record(in)));
     }
 
     return;
