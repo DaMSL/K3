@@ -1,6 +1,7 @@
 K3/core
 ==========
 
+[ ![Codeship Status for DaMSL/K3-Core](https://codeship.io/projects/ccd968e0-394e-0132-1ebe-6a383b1c1684/status)](https://codeship.io/projects/42192)
 [![Build Status](https://travis-ci.org/DaMSL/K3-Core.svg?branch=master)](https://travis-ci.org/DaMSL/K3-Core)
 [![Stories in Ready](https://badge.waffle.io/damsl/k3-core.png?label=ready&title=Ready)](https://waffle.io/damsl/k3-core)
 
