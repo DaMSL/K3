@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <functional>
-#include <memory>
 #include <unordered_set>
 #include <boost/array.hpp>
 #include <boost/thread/condition_variable.hpp>
@@ -329,7 +328,7 @@ namespace K3 {
     protected:
       shared_ptr<boost::thread> thread_;
       atomic_bool terminated_;
-      unordered_set<string> senders;
+      std::unordered_set<string> senders;
 
       // TODO: simulate socket accept notifications. Since nanomsg is not connection-oriented,
       // we simulate connections based on the arrival of messages from unseen addresses.

@@ -23,6 +23,12 @@
 
 namespace K3 {
 
+  using std::shared_ptr;
+  using std::make_shared;
+  using std::string;
+  using std::tuple;
+  using std::make_tuple;
+
   template <class r> using F = std::function<r>;
   typedef std::string Identifier;
   typedef int TriggerId;

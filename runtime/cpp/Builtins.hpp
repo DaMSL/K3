@@ -35,7 +35,6 @@ std::size_t hash_value(T const& t) {
 }
 
 namespace K3 {
-  using std::string;
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {

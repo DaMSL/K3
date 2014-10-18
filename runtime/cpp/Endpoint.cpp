@@ -2,6 +2,7 @@
 
 using namespace boost::log;
 using namespace boost;
+using std::out_of_range;
 
 namespace K3
 {

@@ -2,7 +2,6 @@
 #define K3_RUNTIME_WORKER_H
 
 #include <list>
-#include <memory>
 
 namespace K3 {
 

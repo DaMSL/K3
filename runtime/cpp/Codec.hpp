@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "Common.hpp"
 #include "Message.hpp"
 
 namespace K3 {
@@ -32,13 +33,13 @@ namespace K3 {
       Codec(): LogMT("Codec") {}
 
       virtual Value encode(const Value&) = 0;
-      virtual std::shared_ptr<Value> decode(const Value&) = 0;
-      virtual std::shared_ptr<Value> decode(const char *, size_t) = 0;
+      virtual shared_ptr<Value> decode(const Value&) = 0;
+      virtual shared_ptr<Value> decode(const char *, size_t) = 0;
       virtual bool decode_ready() = 0;
       virtual bool good() = 0;
 
       // codec cloning
-      virtual std::shared_ptr<Codec> freshClone() = 0;
+      virtual shared_ptr<Codec> freshClone() = 0;
       virtual ~Codec() {}
 
   };
@@ -49,18 +50,18 @@ namespace K3 {
 
       Value encode(const Value& v) { return v; }
 
-      std::shared_ptr<Value> decode(const Value& v) {
-        std::shared_ptr<Value> result;
+      shared_ptr<Value> decode(const Value& v) {
+        shared_ptr<Value> result;
         if (v != "") {
-          result = std::make_shared<Value>(v);
+          result = make_shared<Value>(v);
         }
         return result;
       }
 
-      std::shared_ptr<Value> decode(const char* v, size_t i) {
-        std::shared_ptr<Value> result;
+      shared_ptr<Value> decode(const char* v, size_t i) {
+        shared_ptr<Value> result;
         if (v != nullptr) {
-          result = std::make_shared<Value>(v, i);
+          result = make_shared<Value>(v, i);
         }
         return result;
       }
@@ -69,8 +70,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      std::shared_ptr<Codec> freshClone() {
-        std::shared_ptr<Codec> cdec = std::shared_ptr<DefaultCodec>(new DefaultCodec());
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
         return cdec;
       };
 
@@ -115,7 +116,7 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      std::shared_ptr<Codec> freshClone() {
+      shared_ptr<Codec> freshClone() {
         return make_shared<DelimiterCodec>(delimiter_);
       }
 
@@ -123,7 +124,7 @@ namespace K3 {
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
       bool good_;
-      std::shared_ptr<std::string> buf_;
+      shared_ptr<std::string> buf_;
   };
 
   class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
@@ -146,7 +147,7 @@ namespace K3 {
         return completeDecode();
       }
 
-      std::shared_ptr<Value> completeDecode();
+      shared_ptr<Value> completeDecode();
 
       bool decode_ready() {
         return next_size_? buf_->length() >= *next_size_ : false;
@@ -154,14 +155,14 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      std::shared_ptr<Codec> freshClone() {
+      shared_ptr<Codec> freshClone() {
         return make_shared<LengthHeaderCodec>();
       };
 
     protected:
       bool good_;
-      std::shared_ptr<fixed_int> next_size_;
-      std::shared_ptr<std::string> buf_;
+      shared_ptr<fixed_int> next_size_;
+      shared_ptr<std::string> buf_;
 
       void strip_header();
   };
@@ -181,8 +182,8 @@ namespace K3 {
         : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
       {}
 
-      std::shared_ptr<Codec> freshClone() {
-        std::shared_ptr<Codec> cdec = std::shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
+      shared_ptr<Codec> freshClone() {
+        shared_ptr<Codec> cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
         return cdec;
       };
 
@@ -194,7 +195,7 @@ namespace K3 {
         : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimiterInternalCodec"), delimiter_(delimiter)
       {}
 
-      std::shared_ptr<Codec> freshClone() {
+      shared_ptr<Codec> freshClone() {
         return make_shared<DelimiterInternalCodec>(delimiter_);
       };
 
@@ -208,7 +209,7 @@ namespace K3 {
         : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
       {}
 
-      std::shared_ptr<Codec> freshClone() {
+      shared_ptr<Codec> freshClone() {
         return make_shared<LengthHeaderInternalCodec>();
       };
 
