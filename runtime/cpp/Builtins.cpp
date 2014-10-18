@@ -8,12 +8,6 @@
 #include "BaseCollections.hpp"
 #include "Builtins.hpp"
 
-char *sdup (const char *s) {
-    char *d = (char *)malloc (strlen (s) + 1);   // Allocate memory
-    if (d != NULL) strcpy (d,s);         // Copy string if okay
-    return d;                            // Return new memory
-}
-
 namespace K3 {
   using std::string;
   using std::endl;
