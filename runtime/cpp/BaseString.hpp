@@ -37,11 +37,6 @@ namespace K3 {
       return *this;
     }
 
-    base_string& operator =(base_string&& other) {
-      swap(*this, other);
-      return *this;
-    }
-
     friend void swap(base_string& first, base_string& second) {
       using std::swap;
       swap(first.buffer, second.buffer);
