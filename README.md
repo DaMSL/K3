@@ -81,6 +81,7 @@ For example, to run [our fibonnacci example](examples/algorithms/fibonacci.k3) o
                                   K3-Core/examples/algorithms/fibonacci.k3
 
 Example interpreter output:
+
     $> Mode: Interpret
         Batch
            Network: False
