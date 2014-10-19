@@ -80,6 +80,24 @@ For example, to run [our fibonnacci example](examples/algorithms/fibonacci.k3) o
                                   -b -p 127.0.0.1:40000:role=\"s1\" \
                                   K3-Core/examples/algorithms/fibonacci.k3
 
+Example interpreter output:
+    >$ Mode: Interpret
+        Batch
+           Network: False
+           System environment:
+           127.0.0.1:40000
+             me   => 127.0.0.1:40000
+             role => "s1"
+           [... snip remainder of config ...]
+
+        Input: "../K3-Core/examples/algorithms/fibonacci.k3"
+
+        [127.0.0.1:40000]               ## Final program state printed at exit
+          Value: VTuple []
+          Environment:
+            final                       => 8
+            [... snip other variables ...]
+
 We're actively working on making larger deployments easy to manage.
 We deploy K3 on our cluster with ansible and docker (and soon Mesos) and will release our deployment tools following more testing and experimentation. Please contact us if you'd like help deploying K3.
 
