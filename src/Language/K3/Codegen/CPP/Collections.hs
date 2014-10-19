@@ -41,34 +41,39 @@ composite name ans = do
 
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n  then indexTypes else []
 
-    let baseClass (n,_) = R.Qualified (R.Name "K3") (R.Specialized ((R.Named $ R.Name "__CONTENT") :  addnSpecializations n ) (R.Name n) )
+    let baseClass (n,_) = R.Qualified (R.Name "K3")
+                          (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n) (R.Name n))
+
     let baseClasses = map baseClass ras
 
     let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
-    let defaultConstructor = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
-    let copyConstructor = R.FunctionDefn (R.Name name) [("__other", R.Const $ R.Reference selfType)] Nothing
-                          [R.Call (R.Variable b) [R.Variable $ R.Name "__other"] | b <- baseClasses] False []
+    let defaultConstructor
+            = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
 
     let superConstructor = R.FunctionDefn (R.Name name)
-                             [("__other" ++ show i, R.Const $ R.Reference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
-                             Nothing
-                             [R.Call (R.Variable b)
-                               [R.Variable $ R.Name $ "__other" ++ show i] | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
-                             False []
-
-    let superMoveConstructor = R.FunctionDefn (R.Name name)
-                             [("__other" ++ show i, R.RValueReference $ R.Named b)  | (b,i) <- zip baseClasses ([1..] :: [Integer]) ]
-                             Nothing
-                             [R.Call
-                               (R.Variable b)
-                               [R.Call
-                                   (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                                   [R.Variable $ R.Name $ "__other" ++ show i]
-                               ]
+                           [ ("__other" ++ show i, R.Const $ R.Reference $ R.Named b)
+                           | (b,i) <- zip baseClasses ([1..] :: [Integer])
+                           ] Nothing
+                           [ R.Call (R.Variable b)
+                             [ R.Variable $ R.Name $ "__other" ++ show i]
                              | (b,i) <- zip baseClasses ([1..] :: [Integer])
-                             ]
-                             False []
+                           ] False []
+
+    let superMoveConstructor
+            = R.FunctionDefn (R.Name name)
+              [ ("__other" ++ show i, R.RValueReference $ R.Named b)
+              | (b,i) <- zip baseClasses ([1..] :: [Integer])
+              ] Nothing
+              [ R.Call
+                (R.Variable b)
+                [ R.Call
+                      (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                      [R.Variable $ R.Name $ "__other" ++ show i]
+                ]
+              | (b,i) <- zip baseClasses ([1..] :: [Integer])
+              ] False []
+
     let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
                           (R.Call
                               (R.Variable $
@@ -105,8 +110,7 @@ composite name ans = do
                      ]
 
     let addnDefns = indexDefns
-    let methods = [defaultConstructor, copyConstructor, superConstructor, superMoveConstructor, serializeFn] ++ addnDefns
-
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn]
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
 
@@ -149,51 +153,9 @@ record (sort -> ids) = do
               | t <- forwardTemplateVars
               ] False []
 
-
     let initConstructors = case (formalVars, templateVars, ids) of
                              ([fv], [tv], [i]) -> [init1Const fv tv i, init1Move fv tv i]
                              _ -> [initConstructor]
-    let copyConstructor
-            = R.FunctionDefn (R.Name recordName)
-              [("__other", R.Const $ R.Reference recordType)] Nothing
-              [R.Call (R.Variable $ R.Name i) [R.Project (R.Variable $ R.Name "__other") (R.Name i)] | i <-  ids]
-              False []
-
-    let moveConstructor
-            = R.FunctionDefn (R.Name recordName)
-                [("__other", R.RValueReference recordType)] Nothing
-                [R.Call
-                  (R.Variable $ R.Name i)
-                  [R.Call
-                     (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                     [R.Project (R.Variable $ R.Name "__other") (R.Name i)]
-                  ]
-                | i <-  ids
-                ]
-                False []
-
-    let copyAssign
-            = R.FunctionDefn (R.Name "operator=")
-                [("__other", R.Const $ R.Reference recordType)]
-                (Just $ R.Reference recordType)
-                [] False
-                ([ R.Ignore $ R.Binary "=" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
-                  | i <- ids
-                  ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
-
-    let moveAssign
-            = R.FunctionDefn (R.Name "operator=")
-                [("__other",  R.RValueReference recordType)]
-                (Just $ R.Reference recordType)
-                [] False
-                ([ R.Ignore $ R.Binary "="
-                  (R.Variable $ R.Name i)
-                  (R.Call
-                    (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                    [ R.Project (R.Variable $ R.Name "__other") (R.Name i) ]
-                  )
-                | i <- ids
-                ] ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
     let equalityOperator
             = R.FunctionDefn (R.Name "operator==")
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
@@ -204,7 +166,8 @@ record (sort -> ids) = do
                     ]]
 
     let tieSelf  = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Variable $ R.Name i | i <- ids]
-    let tieOther n = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie")) [R.Project (R.Variable $ R.Name n) (R.Name i) | i <- ids]
+    let tieOther n = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie"))
+                     [R.Project (R.Variable $ R.Name n) (R.Name i) | i <- ids]
 
     let inequalityOperator
             = R.FunctionDefn (R.Name "operator!=")
@@ -240,12 +203,14 @@ record (sort -> ids) = do
                        (Just $ R.Named $ R.Name "void")
                        [] False serializeStatements)
 
-    let operators = [copyAssign, moveAssign, equalityOperator, inequalityOperator, lessOperator, greaterOperator]
-    let members = [defaultConstructor] ++ initConstructors ++ [copyConstructor, moveConstructor,  serializeFn] ++ operators ++ fieldDecls
+    let constructors = (defaultConstructor:initConstructors)
+    let comparators = [equalityOperator, inequalityOperator, lessOperator, greaterOperator]
+    let members = constructors ++ comparators ++ [serializeFn] ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $
-                R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.ClassDefn (R.Name recordName) [] [] members [] []
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                 R.ClassDefn (R.Name recordName) [] [] members [] []
 
     let shallowDecl = R.Forward $ R.ScalarDecl (R.Name "_shallow")
                       (R.Named $ R.Specialized [R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")]
