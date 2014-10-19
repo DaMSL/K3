@@ -166,8 +166,10 @@ namespace K3 {
 
   template <class C, class F>
   void read_records(std::istream& in, C& container, F read_record) {
+
+    std::string tmp_buffer;
     while (!in.eof()) {
-      container.insert((read_record(in)));
+      container.insert(read_record(in, tmp_buffer));
     }
 
     return;

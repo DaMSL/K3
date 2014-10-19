@@ -184,21 +184,26 @@ genLoader suf (children -> [_,f]) name = do
  let bufferDecl = [R.Forward $ R.ScalarDecl (R.Name "tmp_buffer")
                         (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing]
 
- let readField f t = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
+ let readField f t b = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline")) $
                                 [ R.Variable (R.Name "in")
                                 , R.Variable (R.Name "tmp_buffer")
-                                , R.Literal (R.LChar "\\'")
-                                ]
+                                ] ++ [R.Literal (R.LChar ",") | not b]
                    , R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
                                   (typeMap t $ R.Variable $ R.Name "tmp_buffer")
                    ]
  let recordDecl = [R.Forward $ R.ScalarDecl (R.Name "record") cRecType Nothing]
 
- let recordGetLines = bufferDecl ++ recordDecl ++ concat [readField field ft | (field, ft)  <- uncurry zip fields]
+ let fts = uncurry zip fields
+
+ let recordGetLines = recordDecl
+                      ++ concat [readField field ft False | (field, ft)  <- init fts]
+                      ++ uncurry readField (last fts) True
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
- let readRecordFn = R.Lambda [] [("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))]
-                    False Nothing recordGetLines
+ let readRecordFn = R.Lambda []
+                    [ ("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
+                    , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
+                    ] False Nothing recordGetLines
 
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
             [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
