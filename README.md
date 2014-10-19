@@ -8,24 +8,29 @@ K3 is a programming language for building specialized large-scale data systems.
 
 K3 aims to separate high-performance systems design and implementation concerns from application and algorithm logic.
 We empower K3 developers to create algorithms with the mindset of working on a single machine, and then facilitate the transition to a scalable service with our data systems building blocks (e.g., resource allocation, replication, data partitioning, fault tolerance).
-Our approach of developing a language and compiler rather than a suite of libraries allows us to leverage application information and realize powerful co-design opportunities that are often lost at API boundaries and abstractions.
+Our language and compiler allows us to leverage powerful program analyses and statistics to realize co-design opportunities that are often lost at API boundaries in library and framework-based approaches.
 
 K3 is a work in progress at all levels (language, compiler, cloud runtime).
 You can find examples of language features, and simple algorithms in [damsl/K3-Core/examples/](examples/)
 
-The easiest way to try out K3 is with our docker image: https://registry.hub.docker.com/u/damsl/k3-vanilla/
+The easiest way to try out K3 is with our docker container:
+https://registry.hub.docker.com/u/damsl/k3-vanilla/
 
-From any docker installation, you can do:
+From any docker installation, you can grab this with:
 
     $> docker pull damsl/k3-vanilla
 
-Our docker image contains both the K3-Core and K3-Driver codebases, as well as any dependencies/libraries, etc. We're developing K3 in the Haskell language, and K3 generates C++ code. So our docker image contains the Haskell platform, as well as Clang/LLVM for second stage compilation.
+Our docker image contains both the K3-Core and K3-Driver codebases, as well as any dependencies/libraries, etc. We're developing K3 in the Haskell language, and K3 generates C++ code. Our docker image contains all the dependencies listed below.
 
 Dependencies
 -------------
 Haskell platform: https://www.haskell.org/platform/
 
-For second-stage compilation: any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support.
+We use [cabal](http://www.haskell.org/cabal/) for managing Haskell package and library dependencies.
+
+For second-stage compilation:
+- any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support
+- the [Boost C++ libraries](http://www.boost.org/).
 
 
 Full Toolchain Installation
@@ -52,7 +57,20 @@ Assuming you've installed the Haskell platform:
     $> cabal install --only-dependencies
     $> cabal build
 
-This will leave you with a binary in: K3-Driver/dist/build/build/k3
+This will leave you with a binary in: K3-Driver/dist/build/k3/k3
+
+Running and Deploying
+----------------------
+The K3 driver supports several modes of execution for testing simple programs:
+- Interpreted execution
+- Network simulation (in a single process)
+- Multithreaded and multiprocess network execution
+
+For example, to run [our fibonnacci example](examples/algorithms/fibonnacci.k3) on a single local peer:
+
+    $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret -b -p 127.0.0.1:40000 K3-Core/examples/algorithms/fibonacci.k3
+
+We deploy K3 on our cluster with ansible and docker (and soon Mesos).
 
 
 Core Library Installation
