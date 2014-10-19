@@ -77,7 +77,7 @@ The K3 driver supports several modes of execution for testing simple programs:
 For example, to run [our fibonnacci example](examples/algorithms/fibonacci.k3) on a single local peer:
 
     $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret \
-                                  -b -p 127.0.0.1:40000 \
+                                  -b -p 127.0.0.1:40000:role=\"s1\" \
                                   K3-Core/examples/algorithms/fibonacci.k3
 
 We're actively working on making larger deployments easy to manage.
