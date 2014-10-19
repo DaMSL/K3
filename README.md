@@ -6,9 +6,14 @@ K3/core
 
 K3 is a programming language for building specialized large-scale data systems.
 
-The easiest way to try out K3 is with our docker images:
+K3 aims to separate high-performance systems design and implementation concerns from application and algorithm logic.
+We empower K3 developers to create algorithms with the mindset of working on a single machine, and then facilitate the transition to a scalable service with our data systems building blocks (e.g., resource allocation, replication, data partitioning, fault tolerance).
+Our approach of developing a language and compiler rather than a suite of libraries allows us to leverage application information and realize powerful co-design opportunities that are often lost at API boundaries and abstractions.
 
-https://registry.hub.docker.com/u/damsl/k3-vanilla/
+K3 is a work in progress at all levels (language, compiler, cloud runtime).
+You can find examples of language features, and simple algorithms in damsl/K3-Core/examples/
+
+The easiest way to try out K3 is with our docker image: https://registry.hub.docker.com/u/damsl/k3-vanilla/
 
 From any docker installation, you can do:
 
@@ -19,6 +24,7 @@ Our docker image contains both the K3-Core and K3-Driver codebases, as well as a
 Dependencies
 -------------
 Haskell platform: https://www.haskell.org/platform/
+
 For second-stage compilation: any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support.
 
 
