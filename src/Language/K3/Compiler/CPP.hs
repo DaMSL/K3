@@ -26,6 +26,7 @@ import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
 import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
+import qualified Language.K3.Analysis.InsertMembers as InsertMembers
 import qualified Language.K3.Analysis.CArgs as CArgs
 import qualified Language.K3.Analysis.Effects.Purity as Purity
 
@@ -68,12 +69,13 @@ applyAnalyses :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimizationLevel cOpts))
 
 requiredAnalyses :: Maybe OptimizationLevel -> [K3 Declaration -> K3 Declaration]
-requiredAnalyses Nothing   = mandatoryAnalyses
-requiredAnalyses (Just O1) = mandatoryAnalyses
-
--- CArgs is mandatory for CPP codegen, and depends on InsertMembers
-mandatoryAnalyses :: [K3 Declaration -> K3 Declaration]
-mandatoryAnalyses = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis]
+requiredAnalyses l =
+  case l of Nothing -> analysesO0
+            Just O1 -> analysesO1
+  where
+    -- CArgs is mandatory for CPP codegen, and depends on InsertMembers
+    analysesO0 = [InsertMembers.runAnalysis, CArgs.runAnalysis]
+    analysesO1 = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis]
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = case optimizationLevel cOpts of
