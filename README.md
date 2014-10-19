@@ -1,14 +1,55 @@
 K3/core
 ==========
 
-[ ![Codeship Status for DaMSL/K3-Core](https://codeship.io/projects/ccd968e0-394e-0132-1ebe-6a383b1c1684/status)](https://codeship.io/projects/42192)
 [![Build Status](https://travis-ci.org/DaMSL/K3-Core.svg?branch=master)](https://travis-ci.org/DaMSL/K3-Core)
 [![Stories in Ready](https://badge.waffle.io/damsl/k3-core.png?label=ready&title=Ready)](https://waffle.io/damsl/k3-core)
 
-Core definitions for the K3 programming language.
+K3 is a programming language for building specialized large-scale data systems.
 
-Installation
-------------
+The easiest way to try out K3 is with our docker images:
+
+https://registry.hub.docker.com/u/damsl/k3-vanilla/
+
+From any docker installation, you can do:
+
+#> docker pull damsl/k3-vanilla
+
+Our docker image contains both the K3-Core and K3-Driver codebases, as well as any dependencies/libraries, etc. We're developing K3 in the Haskell language, and K3 generates C++ code. So our docker image contains the Haskell platform, as well as Clang/LLVM for second stage compilation.
+
+Dependencies
+-------------
+Haskell platform: https://www.haskell.org/platform/
+For second-stage compilation: any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support.
+
+
+Full Toolchain Installation
+----------------------------
+This repository contains the compiler toolchain backend implemented as a Haskell package.
+To use the library, you'll also need a frontend, as found in our driver repo: http://github.com/damsl/K3-Driver
+
+Assuming you've installed the Haskell platform:
+
+#> mkdir K3
+#> git clone git@github.com:DaMSL/K3-Core.git K3/K3-Core
+#> git clone git@github.com:DaMSL/K3-Driver.git K3/K3-Driver
+
+#> cd K3/K3-Core
+#> cabal sandbox init
+#> cabal configure
+#> cabal install --only-dependencies
+#> cabal build
+
+#> cd ../K3-Driver
+#> cabal sandbox init
+#> cabal sandbox add-source ../K3-Core
+#> cabal configure
+#> cabal install --only-dependencies
+#> cabal build
+
+This will leave you with a binary in:   K3-Driver/dist/build/build/k3
+
+Core Library Installation
+--------------------------
 
 This package can be compiled using:
 
