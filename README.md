@@ -11,7 +11,7 @@ We empower K3 developers to create algorithms with the mindset of working on a s
 Our approach of developing a language and compiler rather than a suite of libraries allows us to leverage application information and realize powerful co-design opportunities that are often lost at API boundaries and abstractions.
 
 K3 is a work in progress at all levels (language, compiler, cloud runtime).
-You can find examples of language features, and simple algorithms in [a damsl/K3-Core/examples/](damsl/K3-Core/examples/)
+You can find examples of language features, and simple algorithms in [damsl/K3-Core/examples/](examples/)
 
 The easiest way to try out K3 is with our docker image: https://registry.hub.docker.com/u/damsl/k3-vanilla/
 
