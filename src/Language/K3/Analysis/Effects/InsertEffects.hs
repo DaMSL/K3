@@ -94,9 +94,12 @@ emptyClosure = ([],[],[])
 lookupBindInner :: Identifier -> Env -> Maybe (K3 Symbol)
 lookupBindInner i env =
   case Map.lookup i $ bindEnv env of
-    Nothing -> Map.lookup i $ globalEnv env
+    Nothing -> lookupGlobalInner i env
     s       -> liftM head s
 
+lookupGlobalInner :: Identifier -> Env -> Maybe (K3 Symbol)
+lookupGlobalInner i env = Map.lookup i $ globalEnv env
+    
 lookupBindInnerM :: Identifier -> MEnv (Maybe (K3 Symbol))
 lookupBindInnerM i = do
   env <- get
@@ -106,6 +109,10 @@ lookupBindInnerM i = do
 lookupBind :: Identifier -> Env -> K3 Symbol
 lookupBind i env = fromMaybe err $ lookupBindInner i env
   where err = error $ "failed to find " ++ i ++ " in environment"
+
+lookupGlobal :: Identifier -> Env -> K3 Symbol
+lookupGlobal i env = fromMaybe err $ lookupGlobalInner i env
+  where err = error $ "failed to find " ++ i ++ " in global environment"
 
 type MEnv = State Env
 
@@ -125,6 +132,11 @@ lookupBindM :: Identifier -> MEnv (K3 Symbol)
 lookupBindM i = do
   env <- get
   return $ lookupBind i env
+
+lookupGlobalM :: Identifier -> MEnv (K3 Symbol)
+lookupGlobalM i = do
+  env <- get
+  return $ lookupGlobal i env
 
 getIdM :: MEnv Int
 getIdM = do
@@ -625,7 +637,7 @@ runAnalysisEnv env prog = flip evalState env $
 
         -- Any unbound globals should be translated
         fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
-        fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupBindM i
+        fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
         fixupSym s = return s
 
     ------ Utilities ------
