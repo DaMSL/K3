@@ -29,24 +29,25 @@ To use the library, you'll also need a frontend, as found in our driver repo: ht
 
 Assuming you've installed the Haskell platform:
 
-#> mkdir K3
-#> git clone git@github.com:DaMSL/K3-Core.git K3/K3-Core
-#> git clone git@github.com:DaMSL/K3-Driver.git K3/K3-Driver
+    $> mkdir K3
+    $> git clone git@github.com:DaMSL/K3-Core.git K3/K3-Core
+    $> git clone git@github.com:DaMSL/K3-Driver.git K3/K3-Driver
 
-#> cd K3/K3-Core
-#> cabal sandbox init
-#> cabal configure
-#> cabal install --only-dependencies
-#> cabal build
+    $> cd K3/K3-Core
+    $> cabal sandbox init
+    $> cabal configure
+    $> cabal install --only-dependencies
+    $> cabal build
 
-#> cd ../K3-Driver
-#> cabal sandbox init
-#> cabal sandbox add-source ../K3-Core
-#> cabal configure
-#> cabal install --only-dependencies
-#> cabal build
+    $> cd ../K3-Driver
+    $> cabal sandbox init
+    $> cabal sandbox add-source ../K3-Core
+    $> cabal configure
+    $> cabal install --only-dependencies
+    $> cabal build
 
-This will leave you with a binary in:   K3-Driver/dist/build/build/k3
+This will leave you with a binary in: K3-Driver/dist/build/build/k3
+
 
 Core Library Installation
 --------------------------
