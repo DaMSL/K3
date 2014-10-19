@@ -9,6 +9,9 @@
 #include <string>
 #include <functional>
 
+
+
+#include "strtk.hpp"
 #include "BaseTypes.hpp"
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
@@ -32,7 +35,6 @@ std::size_t hash_value(T const& t) {
 }
 
 namespace K3 {
-  using std::string;
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
@@ -95,6 +97,19 @@ namespace K3 {
     unit_t sleep(int n);
 
     // TODO move to seperate context
+    unit_t rkLoaderMap(string file, K3::Map<R_key_value<std::string,int>>& c)  {
+
+           R_key_value<std::string, int> rec;
+	   int foo; 
+        strtk::for_each_line(file, [&] (const std::string& str)   {
+          if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
+            c.insert(rec);
+          } else {
+            std::cout << ("Failed to parse a row!\n");
+          }
+        });
+        return unit_t {};
+      }
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
@@ -148,6 +163,15 @@ namespace K3 {
     F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
   };
 
+
+  template <class C, class F>
+  void read_records(std::istream& in, C& container, F read_record) {
+    while (!in.eof()) {
+      container.insert((read_record(in)));
+    }
+
+    return;
+  }
 
 } // namespace K3
 

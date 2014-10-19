@@ -51,7 +51,7 @@ tests mfilename =
                             Just filename -> filename == name
 
 testFilePath :: FilePath
-testFilePath = "examples" </> "typeSystem"
+testFilePath = "examples" </> "types" </> "typeSystem"
 
 -- |This function, when given the path of an example source file, will generate
 --  a test to parse and typecheck it.  The parsed code is submitted directly to

@@ -3,7 +3,6 @@
 
 #include <list>
 #include <map>
-#include <memory>
 #include <tuple>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/externally_locked.hpp>
@@ -14,6 +13,8 @@
 #include <Network.hpp>
 #include <IOHandle.hpp>
 #include <Queue.hpp>
+
+using std::runtime_error;
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.
 // Ideally we want to use a shared_lock since the most common operation will be read accesses.

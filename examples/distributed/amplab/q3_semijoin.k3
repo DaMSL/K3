@@ -1,14 +1,16 @@
-
 include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 
-
 declare master: address = 127.0.0.1:30001
-declare peer_by_hash: string -> address
+declare peer_seq : collection {addr: address} @ {Seq}
+declare peer_by_hash: string -> address = \s -> (
+  let i = (hash s) % (peer_seq.size ()) in
+  (peer_seq.at i).addr
+)
 
 declare peer_count: int = 0
-
 
 declare start_ms : mut int
 declare end_ms : mut int
@@ -17,7 +19,7 @@ declare elapsed_ms : mut int
 typedef uv_record = {
     sourceIP: string,
     destURL: string,
-    visitDate: int,
+    visitDate: string,
     adRevenue: real,
     userAgent: string,
     countryCode: string,
@@ -26,9 +28,7 @@ typedef uv_record = {
     duration: int
 }
 
-
 declare user_visits: collection uv_record @ { Collection }
-
 
 typedef rankings_record = {
     pageURL: string,
@@ -36,17 +36,10 @@ typedef rankings_record = {
     avgDuration: int
 }
 
-
-
-//declare rankings: collection rankings_record @ { Collection }
-
-
 typedef rk_map_record = {key: string, value: int}
-
 //key: pageURL, value: pageRank
-
+@:Pinned
 declare rankingsMap : collection rk_map_record @ Map
-
 
 declare empty_source_ip_to_aggs_C : collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
 declare empty_aggs : {prSum: int, prCount: int, arSum: real}
@@ -60,21 +53,23 @@ declare partial_aggs : collection {key: address, value: Source_ip_to_aggs_C} @ M
 
 declare merged_partials : Source_ip_to_aggs_C
 
+declare date_lb : string = "1980-01-01"
+declare date_ub : string = "1990-01-01"
+declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
 
-declare date_lb : int = 0
-declare date_ub : int = 100
-declare valid_date : int -> bool = \i -> (i <= date_ub and i >= date_lb)
-
+declare flag : mut bool = false
+declare flag2 : mut bool = false
 
 trigger q3_local : () = \_ -> (
   user_visits.iterate (\uv ->
     if (valid_date uv.visitDate)
     then (
       let ip = uv.sourceIP in
+      let url = uv.destURL in
       let a = peer_by_hash ip in
       case partial_aggs.lookup {key: a, value: empty_source_ip_to_aggs_C} of
       { Some aggs ->
-        case rankingsMap.lookup {key: ip, value: 0} of
+        case rankingsMap.lookup {key: url, value: 0} of
         {Some r ->
           case (aggs.value.lookup {key: ip, value: empty_aggs}) of
           {Some pa_v ->
@@ -85,7 +80,6 @@ trigger q3_local : () = \_ -> (
                       arSum: pa_v.value.arSum + uv.adRevenue
                       }
               }
-
           }
           { None ->
               aggs.value.insert {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
@@ -97,7 +91,7 @@ trigger q3_local : () = \_ -> (
         { None -> () }
       }
       { None ->
-        case rankingsMap.lookup {key: ip, value: 0} of
+        case rankingsMap.lookup {key: url, value: 0} of
         {Some r ->
           partial_aggs.insert
           {key: a, value:
@@ -149,7 +143,6 @@ trigger count_merges : () = \_ -> (
 
 declare local_max : mut Source_ip_to_aggs
 
-
 trigger find_local_max : () = \_ -> (
   merged_partials.iterate (\kv ->
     if (kv.value.arSum > local_max.value.arSum)
@@ -159,14 +152,13 @@ trigger find_local_max : () = \_ -> (
   (find_global_max, master) <- local_max
 )
 
-
 declare peers_done : mut int = 0
 declare global_max : mut Source_ip_to_aggs
 
 trigger find_global_max :  Source_ip_to_aggs = \kv -> (
-  if (kv.value.arSum > global_max.value.arSum)
+  (if (kv.value.arSum > global_max.value.arSum)
   then (global_max = kv)
-  else ();
+  else ());
   peers_done = peers_done + 1;
   if (peers_done == peers.size ())
   then ((finished, master) <- ())
@@ -176,10 +168,10 @@ trigger find_global_max :  Source_ip_to_aggs = \kv -> (
 trigger finished : () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print (concat "Elapsed: " (itos elapsed_ms))
-
+  print (concat "Elapsed: " (itos elapsed_ms));
+  print (concat "Global max.key: " global_max.key);
+  peers.iterate (\p -> (shutdown, p.addr) <- ())
 )
-
 
 declare peers_ready : mut int = 0
 trigger ready: () = \_ -> (
@@ -193,19 +185,20 @@ declare uvFiles : collection {path: string} @Collection
 @:{CArgs 2}
 declare uvLoader: string -> collection uv_record @Collection -> ()
 
-
 @:CArgs 2
 declare rkLoaderMap : string -> collection rk_map_record @Map  -> ()
 declare rkFiles : collection {path: string} @Collection
 
-
 trigger loadAll : () = \_ -> (
+  peers.iterate (\p -> peer_seq.insert p);
   uvFiles.iterate (\e -> uvLoader e.path user_visits);
   rkFiles.iterate (\e -> rkLoaderMap e.path rankingsMap);
-
   ((ready, master) <- ())
 )
 
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
 
 source rows : () = value ()
 feed rows |> loadAll

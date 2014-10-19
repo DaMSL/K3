@@ -1,9 +1,6 @@
 #ifndef K3_RUNTIME_MESSAGE_H
 #define K3_RUNTIME_MESSAGE_H
 
-#include <tuple>
-#include <string>
-
 #include "Common.hpp"
 #include "Dispatch.hpp"
 
@@ -12,15 +9,15 @@ namespace K3 {
   //-------------
   // Local Messages (inside a system)
 
-  class Message : public std::tuple<Address, TriggerId, std::shared_ptr<Dispatcher> > {
+  class Message : public std::tuple<Address, TriggerId, shared_ptr<Dispatcher> > {
   public:
-    Message(Address addr, TriggerId id, std::shared_ptr<Dispatcher> d)
-      : std::tuple<Address, TriggerId, std::shared_ptr<Dispatcher> >(std::move(addr), id, d) {}
+    Message(Address addr, TriggerId id, shared_ptr<Dispatcher> d)
+      : std::tuple<Address, TriggerId, shared_ptr<Dispatcher> >(std::move(addr), id, d) {}
 
     const Address&  address()  const { return std::get<0>(*this); }
     TriggerId id()             const { return std::get<1>(*this); }
-    const std::shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
-    std::string target() const {
+    const shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
+    string target() const {
       return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address());
     }
   };
@@ -51,10 +48,10 @@ namespace K3 {
     }
 
     // TODO: error reporting if not found
-    const std::shared_ptr<Message> toMessage() const {
+    const shared_ptr<Message> toMessage() const {
       auto *d = __k3_context::__get_clonable_dispatcher(id())->clone();
       d->unpack(contents());
-      return std::make_shared<Message>(address(), id(), std::shared_ptr<Dispatcher>(d));
+      return make_shared<Message>(address(), id(), shared_ptr<Dispatcher>(d));
     }
   };
 

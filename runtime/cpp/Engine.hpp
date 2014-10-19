@@ -5,7 +5,6 @@
 #include <string>
 #include <list>
 #include <map>
-#include <memory>
 #include <exception>
 #include <tuple>
 
@@ -168,8 +167,8 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, TriggerId triggerId, std::shared_ptr<Dispatcher> d);
-    void send(const PeerId& target, TriggerId triggerId, std::shared_ptr<Dispatcher> d);
+    void send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> d);
+    void send(const PeerId& target, TriggerId triggerId, shared_ptr<Dispatcher> d);
 
     // TODO: avoid destructing tuple here
     void send(Message& m) {
@@ -291,7 +290,6 @@ namespace K3 {
     // Set the EngineControl's terminateV to true
     void terminateEngine() {
       control->set_terminate();
-      logAt(boost::log::trivial::trace, "Signalled engine termination");
     }
 
     void forceTerminateEngine() {

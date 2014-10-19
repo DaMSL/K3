@@ -1,6 +1,6 @@
 annotation MultiMemTest[keys : [labeltype]] {
   for i in keys:
-    provides lifted lookup_by_&#[i] : &::[i] -> content
+    provides lifted lookup_by_$#[i] : $::[i] -> content
 }
 
 declare c : collection {id : int, age : int, salary : int}

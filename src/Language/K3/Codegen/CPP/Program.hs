@@ -9,6 +9,7 @@ import Control.Monad.State
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Maybe (isJust)
 
 import Data.Functor
 
@@ -122,59 +123,45 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
                              ]
                              contextDefns [] [dispatchTableDecl]
+
+    pinned <- (map R.GlobalDefn) <$> definePinnedGlobals
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ pinned ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
 main = do
-    let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
     let optionDecl = R.Forward $ R.ScalarDecl (R.Name "opt") (R.Named $ R.Name "Options") Nothing
     let optionCall = R.IfThenElse (R.Call (R.Project (R.Variable $ R.Name "opt") (R.Name "parse"))
                                     [R.Variable $ R.Name "argc", R.Variable $ R.Name "argv"])
                      [R.Return (R.Literal $ R.LInt 0)] []
-    -- TODO grab context name from elsewhere (Add to state?)
-    let contexts = R.Forward $ R.ScalarDecl (R.Name "contexts") R.Inferred
-                     (Just $ R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] $ R.Name "createContexts") [R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"), R.Project (R.Variable $ R.Name "opt") (R.Name "name"), R.Variable $ R.Name "engine"])
 
-    staticContextMembersPop <- R.Block <$> generateStaticContextMembers
-    let systemEnvironment = R.Forward $ R.ScalarDecl (R.Name "se")
-                            (R.Named $ R.Name "SystemEnvironment")
-                            (Just $ R.Call (R.Variable $ R.Name "defaultEnvironment")
-                                    [R.Call (R.Variable $ R.Name "getAddrs") [R.Variable $ R.Name "contexts"]])
+    staticContextMembersPop <- generateStaticContextMembers
 
-    let engineConfigure = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "configure"))
-                          [ R.Project (R.Variable $ R.Name "opt") (R.Name "simulation")
-                          , R.Variable (R.Name "se")
-                          , R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "DefaultInternalCodec"]
-                                     (R.Name "make_shared")) []
-                          , R.Project (R.Variable $ R.Name "opt") (R.Name "log_level")
-                          , R.Project (R.Variable $ R.Name "opt") (R.Name "directory_master")
-                          , R.Project (R.Variable $ R.Name "opt") (R.Name "directory_upstream")
-                          ]
 
-    let processRoles = R.Ignore $ R.Call (R.Variable $ R.Name "processRoles") [R.Variable $ R.Name "contexts"]
-
-    let runEngineCall = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "runEngine"))
-                        [R.Call (R.Variable $ R.Specialized [R.Named $ R.Name "virtualizing_message_processor"]
-                                     (R.Name "make_shared")) [R.Variable $ R.Name "contexts"]]
+    let runProgram = R.Ignore $ R.Call
+                       (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "runProgram"))
+                       [ (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "simulation"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "log_level"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "name"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "directory_master"))
+                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "directory_upstream"))
+                       ]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) [] False
-             [ engineDecl
-             , optionDecl
+             (
+             staticContextMembersPop ++
+             [ optionDecl
              , optionCall
-             , contexts
-             , staticContextMembersPop
-             , systemEnvironment
-             , engineConfigure
-             , processRoles
-             , runEngineCall
+             , runProgram
              ]
+             )
        ]
 
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
@@ -188,6 +175,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "runProgram"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "do_patch"), Nothing)
@@ -227,6 +215,7 @@ requiredIncludes = return
                    , "Literals.hpp"
                    , "Serialization.hpp"
                    , "Builtins.hpp"
+                   , "Run.hpp"
 
                    , "dataspace/Dataspace.hpp"
 
@@ -234,18 +223,27 @@ requiredIncludes = return
                    ]
 
 
+definePinnedGlobals :: CPPGenM [R.Statement]
+definePinnedGlobals =
+  staticGlobals <$> get >>= mapM defineGlobal
+  where
+    defineGlobal (i, t) = do
+      gType <- genCType t
+      return $ R.Forward $ R.ScalarDecl (R.Qualified (R.Name "__global_context") (R.Name i)) gType Nothing
+
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS <- triggers <$> get
   names <- mapM assignTrigName triggerS
   dispatchers <- mapM assignClonableDispatcher triggerS
-  return $ names ++ dispatchers;
+  return $ names ++ dispatchers
   where
     assignTrigName (tName, (_, tNum)) = do
       let i = R.Literal $ R.LInt tNum
       let nameStr = R.Literal $ R.LString tName
       let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names")
       return $ R.Assignment (R.Subscript table i) nameStr
+
     assignClonableDispatcher (_, (tType, tNum)) = do
       kType <- genCType tType
       let i = R.Literal $ R.LInt tNum
@@ -254,6 +252,7 @@ generateStaticContextMembers = do
                          (R.Variable $ R.Specialized [R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")] (R.Name "make_shared"))
                          []
       return $ R.Assignment (R.Subscript table i) dispatcher
+
 
 generateDispatchPopulation :: CPPGenM [R.Statement]
 generateDispatchPopulation = do

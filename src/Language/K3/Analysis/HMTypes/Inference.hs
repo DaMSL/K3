@@ -879,9 +879,8 @@ inferProgramTypes prog = do
     uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
 
     initDeclF :: K3 Declaration -> TInfM (K3 Declaration)
-    initDeclF d@(tag -> DGlobal n t _)
-      | isTFunction t = withUnique n $ qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
-      | otherwise     = return d
+    initDeclF d@(tag -> DGlobal n t _) =
+      withUnique n $ qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
 
     initDeclF d@(tag -> DTrigger n t _) =
       withUnique n $ trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
@@ -1249,7 +1248,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     applyErrF fnqt argqt retqt =
       (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
 
-    msgWithTypeEnv msg        = get >>= \env -> left $ msg ++ "\nType envrionment:\n" ++ pretty env
+    msgWithTypeEnv msg        = get >>= \env -> left $ msg ++ "\nType environment:\n" ++ pretty env
     lookupError j reason      = msgWithTypeEnv $ unwords ["No type environment binding for ", j, ":", reason]
     lambdaBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find typevar for lambda binding: ", i, reason]
     polyLambdaBindingErr      = msgWithTypeEnv "Invalid forall type in lambda binding"

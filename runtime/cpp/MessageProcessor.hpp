@@ -4,8 +4,8 @@
 #include <map>
 #include <string>
 #include <functional>
-#include <memory>
 
+#include "Common.hpp"
 #include "Context.hpp"
 #include "Dispatch.hpp"
 
@@ -84,7 +84,7 @@ namespace K3
     virtualizing_message_processor(std::map<Address, shared_ptr<__k3_context>> m):
       MessageProcessor(), contexts(m) {}
 
-    void add_context(Address a, std::shared_ptr<__k3_context> p) {
+    void add_context(Address a, shared_ptr<__k3_context> p) {
       contexts[a] = p;
     }
 

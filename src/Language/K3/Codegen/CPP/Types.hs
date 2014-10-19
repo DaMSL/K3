@@ -50,6 +50,9 @@ data CPPGenS = CPPGenS {
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [(Identifier, K3 Type)],
 
+        -- | Static global variables that must be defined outside of class-scope
+        staticGlobals :: [(Identifier, K3 Type)],
+
         patchables :: [Identifier],
 
         showables :: [(Identifier, K3 Type)],
@@ -75,7 +78,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] [] [] []  [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do

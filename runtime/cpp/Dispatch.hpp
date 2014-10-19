@@ -3,7 +3,6 @@
 
 #include <map>
 #include <string>
-#include <memory>
 
 #include "Common.hpp"
 #include "Context.hpp"
