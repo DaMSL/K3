@@ -20,17 +20,23 @@ From any docker installation, you can grab this with:
 
     $> docker pull damsl/k3-vanilla
 
-Our docker image contains both the K3-Core and K3-Driver codebases, as well as any dependencies/libraries, etc. We're developing K3 in the Haskell language, and K3 generates C++ code. Our docker image contains all the dependencies listed below.
+Our docker image contains both the K3-Core and K3-Driver codebases, as well as the dependencies and libraries listed below. We're developing K3 in the Haskell language, and K3 generates C++ code.
 
 Dependencies
 -------------
 Haskell platform: https://www.haskell.org/platform/
+- version: 2014.2.0.0
+- alternatively: [ghc == 7.8.3](http://www.haskell.org/ghc/download_ghc_7_8_3) and [cabal >= 1.20](http://www.haskell.org/ghc/download_ghc_7_8_3)
 
 We use [cabal](http://www.haskell.org/cabal/) for managing Haskell package and library dependencies.
 
 For second-stage compilation:
 - any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support
-- the [Boost C++ libraries](http://www.boost.org/).
+- the [Boost C++ libraries](http://www.boost.org/)
+
+For cluster deployment:
+- [ansible](http://www.ansible.com)
+- [docker](https://www.docker.com)
 
 
 Full Toolchain Installation
@@ -57,7 +63,7 @@ Assuming you've installed the Haskell platform:
     $> cabal install --only-dependencies
     $> cabal build
 
-This will leave you with a binary in: K3-Driver/dist/build/k3/k3
+This will leave you with a binary in: **K3-Driver/dist/build/k3/k3**
 
 Running and Deploying
 ----------------------
@@ -68,9 +74,11 @@ The K3 driver supports several modes of execution for testing simple programs:
 
 For example, to run [our fibonnacci example](examples/algorithms/fibonnacci.k3) on a single local peer:
 
-    $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret -b -p 127.0.0.1:40000 K3-Core/examples/algorithms/fibonacci.k3
+    $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret \
+                                  -b -p 127.0.0.1:40000 \
+                                  K3-Core/examples/algorithms/fibonacci.k3
 
-We deploy K3 on our cluster with ansible and docker (and soon Mesos).
+We deploy K3 on our cluster with ansible and docker (and soon Mesos) and will release our deployment tools following more testing and experimentation. Please contact us if you'd like help deploying K3.
 
 
 Core Library Installation
