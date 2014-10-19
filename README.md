@@ -41,6 +41,8 @@ For cluster deployment:
 
 Full Toolchain Installation
 ----------------------------
+We **strongly** recommend you use our docker container unless you're comfortable with Haskell, cabal and C++ compilers. You'll only need to build this repository if you plan to work directly on the compiler toolchain.
+
 This repository contains the compiler toolchain backend implemented as a Haskell package.
 To use the library, you'll also need a frontend, as found in our driver repo: http://github.com/damsl/K3-Driver
 
@@ -72,12 +74,13 @@ The K3 driver supports several modes of execution for testing simple programs:
 - Network simulation (in a single process)
 - Multithreaded and multiprocess network execution
 
-For example, to run [our fibonnacci example](examples/algorithms/fibonnacci.k3) on a single local peer:
+For example, to run [our fibonnacci example](examples/algorithms/fibonacci.k3) on a single local peer:
 
     $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret \
                                   -b -p 127.0.0.1:40000 \
                                   K3-Core/examples/algorithms/fibonacci.k3
 
+We're actively working on making larger deployments easy to manage.
 We deploy K3 on our cluster with ansible and docker (and soon Mesos) and will release our deployment tools following more testing and experimentation. Please contact us if you'd like help deploying K3.
 
 
