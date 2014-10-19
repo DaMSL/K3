@@ -12,7 +12,7 @@ https://registry.hub.docker.com/u/damsl/k3-vanilla/
 
 From any docker installation, you can do:
 
-#> docker pull damsl/k3-vanilla
+    $> docker pull damsl/k3-vanilla
 
 Our docker image contains both the K3-Core and K3-Driver codebases, as well as any dependencies/libraries, etc. We're developing K3 in the Haskell language, and K3 generates C++ code. So our docker image contains the Haskell platform, as well as Clang/LLVM for second stage compilation.
 
