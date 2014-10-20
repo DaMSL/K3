@@ -32,7 +32,12 @@ namespace K3 {
       delete [] buffer;
     }
 
-    base_string& operator =(base_string other) {
+    base_string& operator =(const base_string& other) {
+      *this = base_string { other };
+      return *this;
+    }
+
+    base_string& operator =(base_string&& other) {
       swap(*this, other);
       return *this;
     }
