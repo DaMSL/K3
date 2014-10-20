@@ -110,6 +110,8 @@ namespace K3 {
         });
         return unit_t {};
       }
+
+    F<Collection<R_elem<string>>(const string &)> regex_matcher(const string&);
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 

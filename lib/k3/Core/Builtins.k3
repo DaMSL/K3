@@ -14,6 +14,9 @@ declare concat : string -> string -> string
 @:CArgs 3
 declare slice_string : string -> int -> int -> string
 
+// TODO: move to String.k3
+declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
+
 // TODO: move to Time.k3
 declare now_int : () -> int
 

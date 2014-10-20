@@ -1,6 +1,7 @@
 #include <functional>
 #include <string>
 
+#include "re2/re2.h"
 #include "Common.hpp"
 #include "Engine.hpp"
 #include "BaseTypes.hpp"
@@ -78,6 +79,19 @@ namespace K3 {
     throw std::runtime_error("Not implemented: sleep");
   }
 
+  F<Collection<R_elem<string>>(const string &)> __standard_context::regex_matcher(const string& regex) {
+    auto pattern = make_shared<RE2>(regex);
+    return [pattern] (const string& in_str) {
+      re2::StringPiece input(in_str);
+      Collection<R_elem<string>> results;
+      string s;
+      while(RE2::FindAndConsume(&input, *pattern, &s)) {
+        results.insert(s);
+      }
+      return results;
+    };
+
+  }
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
     Vector<R_elem<double>> result;
     auto& c = result.getContainer();
