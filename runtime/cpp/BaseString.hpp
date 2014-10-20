@@ -62,27 +62,27 @@ namespace K3 {
     }
 
     // Comparisons
-    bool operator ==(const base_string& other) {
+    bool operator ==(const base_string& other) const {
       return strcmp(buffer, other.buffer) == 0;
     }
 
-    bool operator !=(const base_string& other) {
+    bool operator !=(const base_string& other) const {
       return strcmp(buffer, other.buffer) != 0;
     }
 
-    bool operator <=(const base_string& other) {
+    bool operator <=(const base_string& other) const {
       return strcmp(buffer, other.buffer) <= 0;
     }
 
-    bool operator <(const base_string& other) {
+    bool operator <(const base_string& other) const {
       return strcmp(buffer, other.buffer) < 0;
     }
 
-    bool operator >=(const base_string& other) {
+    bool operator >=(const base_string& other) const {
       return strcmp(buffer, other.buffer) >= 0;
     }
 
-    bool operator >(const base_string& other) {
+    bool operator >(const base_string& other) const {
       return strcmp(buffer, other.buffer) > 0;
     }
 
